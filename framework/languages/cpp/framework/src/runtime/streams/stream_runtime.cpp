@@ -196,6 +196,20 @@ class stream_session_dispatcher_t
     stream_state_t &_stream;
 };
 
+task_t<void> dispatch_packet_session (
+  packet_stream_session_t *session,
+  stream_t stream,
+  std::shared_ptr<stream_header_t> header,
+  std::shared_ptr<stream_dispatch_context_t> context,
+  std::shared_ptr<zlink::message_t> payload)
+{
+    enter_stream_relay_dispatch (*header);
+    auto task = session->on_packet (stream, *context, *payload);
+    ::zlink::framework::observe_task_completion (
+      task, [] (const result_t<void> &) { exit_stream_relay_dispatch (); });
+    co_return co_await task;
+}
+
 void configure_stream_dispatch_executor ()
 {
     ensure_stream_dispatch_executor ();
@@ -1000,14 +1014,10 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                              dispatch_stream = std::move (dispatch_stream),
                              dispatch_header = std::move (dispatch_header),
                              dispatch_context = std::move (dispatch_context),
-                             dispatch_payload = std::move (dispatch_payload)] () mutable
-                              -> task_t<void> {
-        detail::enter_stream_relay_dispatch (*dispatch_header);
-        auto task =
-          session->on_packet (dispatch_stream, *dispatch_context, *dispatch_payload);
-        ::zlink::framework::observe_task_completion (
-          task, [] (const result_t<void> &) { detail::exit_stream_relay_dispatch (); });
-        co_return co_await task;
+                             dispatch_payload = std::move (dispatch_payload)] () mutable {
+        return dispatch_packet_session (
+          session, std::move (dispatch_stream), std::move (dispatch_header),
+          std::move (dispatch_context), std::move (dispatch_payload));
     });
 }
 

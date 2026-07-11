@@ -596,8 +596,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     actor_gateway_runtime.bind_serializers (_state->serializers);
     actor_gateway_runtime.set_dispatch (options.configure_dispatch ());
     const auto channel_snapshot = _state->zlink.channels ();
-    detail::channel_runtime_manager_t::from (_state->zlink)
-      .initialize_route_channels (_state->zlink);
+    auto channel_runtime = detail::channel_runtime_t::from (_state->zlink.message_bus ());
+    detail::channel_runtime_manager_t::from (_state->zlink).initialize_route_channels (
+      _state->zlink);
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();
     add_hosted_service (std::make_unique<runtime::location_host_service_t> (
       detail::location_owner_node_rid (spot_node_snapshot)));
@@ -615,6 +616,21 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             if (runtime) {
                 runtime->bind_location_lifecycle (location_lifecycle);
                 runtime->bind_spot_location_resolver (spot_location_resolver);
+                channel_runtime.bind_spot_mesh_transport (
+                  spot_node.name,
+                  [spot_runtime = *runtime] (const zlink::routing_id_t &target_node_rid,
+                                             const zlink::routing_id_t &target_spot_rid,
+                                             runtime::messaging::message_parts_t parts) {
+                      return spot_runtime.send_spot_mesh_parts (
+                        target_node_rid, target_spot_rid, std::move (parts));
+                  },
+                  [spot_runtime = *runtime] (const zlink::routing_id_t &target_node_rid,
+                                             const zlink::routing_id_t &target_spot_rid,
+                                             runtime::messaging::message_parts_t parts,
+                                             std::chrono::milliseconds timeout) {
+                      return spot_runtime.request_spot_mesh_parts (
+                        target_node_rid, target_spot_rid, std::move (parts), timeout);
+                  });
                 spot_node_runtimes.push_back (
                   runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime});
             }

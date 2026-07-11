@@ -3049,6 +3049,77 @@ int main ()
         return 77;
     }
 
+    zlink::framework::zlink_builder_t spot_only_builder;
+    auto spot_only_runtime = zlink::framework::detail::channel_runtime_t::from (
+      spot_only_builder.message_bus ());
+    int spot_only_send_count = 0;
+    bool spot_only_request_called = false;
+    spot_only_runtime.bind_spot_mesh_transport (
+      "spot-only",
+      [&spot_only_send_count] (
+        const zlink::routing_id_t &target_node_rid,
+        const zlink::routing_id_t &target_spot_rid,
+        zlink::framework::runtime::messaging::message_parts_t) {
+          if (target_node_rid.to_string () == "spot-node"
+              && (target_spot_rid.to_string () == "spot-rid"
+                  || target_spot_rid.to_string () == "spot-node")) {
+              ++spot_only_send_count;
+          }
+          return zlink::framework::result_t<void>::success ();
+      },
+      [&spot_only_request_called, &envelope_codec, &serializers] (
+        const zlink::routing_id_t &target_node_rid,
+        const zlink::routing_id_t &target_spot_rid,
+        zlink::framework::runtime::messaging::message_parts_t parts,
+        std::chrono::milliseconds timeout) {
+          const auto header = envelope_codec.decode_header (parts);
+          const auto body = envelope_codec.decode_body (parts);
+          if (!header || !body || target_node_rid.to_string () != "spot-node"
+              || target_spot_rid.to_string () != "spot-rid"
+              || timeout != std::chrono::milliseconds (75)
+              || serializers.get<request_t> ()
+                     .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                       body.value ()))
+                     .value
+                   != 53) {
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::request_failed,
+                "spot-only transport received unexpected request");
+          }
+          spot_only_request_called = true;
+          auto reply_header = header.value ();
+          reply_header.kind = zlink::framework::runtime::messaging::message_kind_t::response;
+          reply_t reply{353};
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::success (
+            envelope_codec.encode_parts (reply_header, std::type_index (typeid (reply_t)), &reply,
+                                         serializers));
+      });
+    auto spot_only_client = spot_only_builder.route_client (serializers);
+    const auto spot_only_ref = zlink::framework::spot_ref_t{
+      .node_rid = zlink::routing_id_t::from ("spot-node"),
+      .spot_rid = zlink::routing_id_t::from ("spot-rid")};
+    const auto spot_only_send = spot_only_client
+                                  .send_to_node ("spot-only", spot_only_ref, event_t{33})
+                                  .packet_name ("spot-only.send")
+                                  .submit ();
+    const auto spot_only_node_send =
+      spot_only_client
+        .send_to_node ("spot-only", zlink::routing_id_t::from ("spot-node"), event_t{34})
+        .packet_name ("spot-only.node.send")
+        .submit ();
+    const auto spot_only_reply = spot_only_client
+                                   .request_to_node ("spot-only", spot_only_ref, request_t{53})
+                                   .packet_name ("spot-only.request")
+                                   .timeout (std::chrono::milliseconds (75))
+                                   .async<reply_t> ()
+                                   .result ();
+    if (!spot_only_send || !spot_only_node_send || spot_only_send_count != 2 || !spot_only_reply
+        || !spot_only_request_called || spot_only_reply.value ().value != 353) {
+        return 142;
+    }
+
     std::promise<void> delayed_backend_entered;
     std::promise<void> release_delayed_backend;
     auto delayed_backend_entered_future = delayed_backend_entered.get_future ();

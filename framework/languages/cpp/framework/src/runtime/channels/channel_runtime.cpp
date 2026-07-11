@@ -38,6 +38,35 @@ bool is_internal_spot_route_packet (std::string_view packet_name)
            || packet_name == actor_bound_session_route_request_t::packet_name;
 }
 
+std::optional<channel_runtime_state_t::spot_mesh_send_t>
+spot_mesh_sender (const std::shared_ptr<channel_runtime_state_t> &state,
+                  const std::string &mesh_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found = state->spot_mesh_senders.find (mesh_name);
+    return found == state->spot_mesh_senders.end ()
+             ? std::nullopt
+             : std::optional<channel_runtime_state_t::spot_mesh_send_t> (found->second);
+}
+
+std::optional<channel_runtime_state_t::spot_mesh_request_t>
+spot_mesh_requester (const std::shared_ptr<channel_runtime_state_t> &state,
+                     const std::string &mesh_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found = state->spot_mesh_requesters.find (mesh_name);
+    return found == state->spot_mesh_requesters.end ()
+             ? std::nullopt
+             : std::optional<channel_runtime_state_t::spot_mesh_request_t> (found->second);
+}
+
+bool has_route_channel (const std::shared_ptr<channel_runtime_state_t> &state,
+                        const std::string &channel_name)
+{
+    std::lock_guard lock (state->mutex);
+    return state->route_channels.find (channel_name) != state->route_channels.end ();
+}
+
 } // namespace
 
 route_client_state_t::route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
@@ -538,6 +567,16 @@ channel_runtime_t::outbound_calls () const
 void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) noexcept
 {
     _state->serializers = &serializers;
+}
+
+void channel_runtime_t::bind_spot_mesh_transport (
+  std::string mesh_name,
+  channel_runtime_state_t::spot_mesh_send_t send,
+  channel_runtime_state_t::spot_mesh_request_t request)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->spot_mesh_senders.insert_or_assign (mesh_name, std::move (send));
+    _state->spot_mesh_requesters.insert_or_assign (std::move (mesh_name), std::move (request));
 }
 
 dispatch_options_t channel_runtime_t::dispatch_options () const
@@ -1096,9 +1135,16 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                         "route client is not configured");
     }
     runtime::messaging::message_parts_t parts;
+    const auto use_route_channel = detail::has_route_channel (state->runtime, router_channel_id);
+    const auto mesh_sender = use_route_channel
+                               ? std::nullopt
+                               : detail::spot_mesh_sender (state->runtime, router_channel_id);
+    if (!use_route_channel && !mesh_sender) {
+        return result_t<void>::failure (
+          framework_error_kind_t::route_not_connected,
+          "route channel or SPOT mesh '" + router_channel_id + "' is not registered");
+    }
     try {
-        detail::channel_runtime_manager_t manager (state->runtime);
-        auto &runtime = manager.get_route_channel (router_channel_id);
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
                                              router_channel_id, packet_name);
@@ -1124,6 +1170,9 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
         return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
     try {
+        if (mesh_sender) {
+            return (*mesh_sender) (target_node_rid, target_node_rid, std::move (parts));
+        }
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
         return runtime.submit_send_parts (target_node_rid, std::move (parts));
@@ -1214,9 +1263,16 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
     }
     runtime::messaging::message_parts_t parts;
     const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    const auto use_route_channel = detail::has_route_channel (state->runtime, router_channel_id);
+    const auto mesh_sender = use_route_channel
+                               ? std::nullopt
+                               : detail::spot_mesh_sender (state->runtime, router_channel_id);
+    if (!use_route_channel && !mesh_sender) {
+        return result_t<void>::failure (
+          framework_error_kind_t::route_not_connected,
+          "route channel or SPOT mesh '" + router_channel_id + "' is not registered");
+    }
     try {
-        detail::channel_runtime_manager_t manager (state->runtime);
-        auto &runtime = manager.get_route_channel (router_channel_id);
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
                                              router_channel_id, packet_name);
@@ -1242,6 +1298,9 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
         return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
     try {
+        if (mesh_sender) {
+            return (*mesh_sender) (target_node_rid, spot_rid, std::move (parts));
+        }
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
         return runtime.submit_spot_send_parts (target_node_rid, spot_rid, std::move (parts));
@@ -1461,12 +1520,25 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
     runtime::messaging::message_parts_t parts;
     auto effective_timeout = timeout;
     const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    const auto use_route_channel = detail::has_route_channel (state->runtime, router_channel_id);
+    const auto mesh_requester = use_route_channel
+                                  ? std::nullopt
+                                  : detail::spot_mesh_requester (state->runtime, router_channel_id);
+    if (!use_route_channel && !mesh_requester) {
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::route_not_connected,
+          "route channel or SPOT mesh '" + router_channel_id + "' is not registered"));
+    }
     try {
-        detail::channel_runtime_manager_t manager (state->runtime);
-        auto &runtime = manager.get_route_channel (router_channel_id);
-        effective_timeout = timeout > std::chrono::milliseconds::zero ()
-                              ? timeout
-                              : runtime.default_request_timeout ();
+        if (use_route_channel) {
+            detail::channel_runtime_manager_t manager (state->runtime);
+            auto &runtime = manager.get_route_channel (router_channel_id);
+            effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                                  ? timeout
+                                  : runtime.default_request_timeout ();
+        } else if (effective_timeout <= std::chrono::milliseconds::zero ()) {
+            effective_timeout = state->runtime->default_request_timeout;
+        }
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
                                              router_channel_id, packet_name, effective_timeout);
@@ -1502,17 +1574,22 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                    target_node_rid = std::move (target_node_rid),
                                    spot_rid = std::move (spot_rid),
                                    packet_name = std::move (packet_name), parts = std::move (parts),
-                                   effective_timeout] () mutable {
+                                   effective_timeout, mesh_requester] () mutable {
               try {
-                  detail::channel_runtime_manager_t manager (runtime_state);
-                  auto &runtime = manager.get_route_channel (router_channel_id);
                   runtime::messaging::envelope_codec_t envelope;
-                  auto reply =
-                    detail::is_internal_spot_route_packet (packet_name)
-                      ? runtime.request_reply_parts (target_node_rid, std::move (parts),
-                                                     effective_timeout)
-                      : runtime.request_reply_spot_parts (
-                          target_node_rid, spot_rid, std::move (parts), effective_timeout);
+                  auto reply = [&] () -> result_t<runtime::messaging::message_parts_t> {
+                      if (mesh_requester) {
+                          return (*mesh_requester) (
+                            target_node_rid, spot_rid, std::move (parts), effective_timeout);
+                      }
+                      detail::channel_runtime_manager_t manager (runtime_state);
+                      auto &runtime = manager.get_route_channel (router_channel_id);
+                      return detail::is_internal_spot_route_packet (packet_name)
+                               ? runtime.request_reply_parts (
+                                   target_node_rid, std::move (parts), effective_timeout)
+                               : runtime.request_reply_spot_parts (
+                                   target_node_rid, spot_rid, std::move (parts), effective_timeout);
+                  } ();
                   if (!reply) {
                       source->complete (result_t<zlink::message_t>::failure (
                         reply.error_kind (),

@@ -15,6 +15,7 @@
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -88,6 +89,16 @@ class route_client_state_t
 class channel_runtime_state_t
 {
   public:
+    using spot_mesh_send_t = std::function<result_t<void> (
+      const zlink::routing_id_t &,
+      const zlink::routing_id_t &,
+      runtime::messaging::message_parts_t)>;
+    using spot_mesh_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
+      const zlink::routing_id_t &,
+      const zlink::routing_id_t &,
+      runtime::messaging::message_parts_t,
+      std::chrono::milliseconds)>;
+
     struct outbound_call_record_t
     {
         std::string kind;
@@ -111,6 +122,8 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_native_client_t>> native_clients;
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
+    std::map<std::string, spot_mesh_send_t> spot_mesh_senders;
+    std::map<std::string, spot_mesh_request_t> spot_mesh_requesters;
     std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
@@ -178,6 +191,9 @@ class channel_runtime_t
     std::size_t pending_limit () const noexcept;
     std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;
     void bind_serializers (serializer_registry_t &serializers) noexcept;
+    void bind_spot_mesh_transport (std::string mesh_name,
+                                   channel_runtime_state_t::spot_mesh_send_t send,
+                                   channel_runtime_state_t::spot_mesh_request_t request);
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void mark_auto_connect_active ();

@@ -911,7 +911,11 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
     }
     if (found->second.ref.generation () > actor_ref.generation ()) {
         return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
-                                        "actor generation is stale");
+                                        "actor generation is stale. actor="
+                                          + std::string (actor_ref.actor_id ()) + ", current="
+                                          + std::to_string (found->second.ref.generation ())
+                                          + ", received="
+                                          + std::to_string (actor_ref.generation ()));
     }
     found->second.ref = actor_ref;
     return result_t<void>::success ();

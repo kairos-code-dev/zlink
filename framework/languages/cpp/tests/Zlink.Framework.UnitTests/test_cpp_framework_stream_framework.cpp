@@ -4,9 +4,14 @@
 
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <condition_variable>
+#include <deque>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -76,6 +81,74 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
     }
 
     bool on_error_called = false;
+};
+
+class delayed_reply_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    delayed_reply_session_t () :
+        _entered_future (_entered.get_future ()),
+        _resume ([this] (std::function<void ()> continuation) {
+            {
+                std::lock_guard lock (_mutex);
+                _continuations.push_back (std::move (continuation));
+            }
+            _continuation_ready.notify_one ();
+        })
+    {
+    }
+
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_error_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::message_t &payload) override
+    {
+        _entered.set_value ();
+        co_await _resume.task ();
+        reply_result = stream.reply_packet (payload).submit ();
+    }
+
+    void wait_until_suspended () { _entered_future.wait (); }
+
+    void resume ()
+    {
+        _resume.complete (zlink::framework::result_t<void>::success ());
+        std::function<void ()> continuation;
+        {
+            std::unique_lock lock (_mutex);
+            _continuation_ready.wait (lock, [this] { return !_continuations.empty (); });
+            continuation = std::move (_continuations.front ());
+            _continuations.pop_front ();
+        }
+        continuation ();
+    }
+
+    std::optional<zlink::framework::result_t<void>> reply_result;
+
+  private:
+    std::promise<void> _entered;
+    std::future<void> _entered_future;
+    std::mutex _mutex;
+    std::condition_variable _continuation_ready;
+    std::deque<std::function<void ()>> _continuations;
+    zlink::framework::detail::task_completion_source_t<void> _resume;
 };
 
 class prefix_stream_compression_codec_t final
@@ -298,6 +371,24 @@ int main ()
         || runtime.written_headers (stream)[0].request_seq () != 77
         || runtime.written_headers (stream)[0].packet_name () != "reply") {
         return 15;
+    }
+
+    auto delayed_stream = runtime.open_session ("client-stream");
+    delayed_reply_session_t delayed_session;
+    std::optional<zlink::framework::result_t<void>> delayed_dispatch;
+    std::thread delayed_dispatch_thread ([&] {
+        delayed_dispatch = runtime.dispatch_packet (
+          delayed_session, delayed_stream, request_header,
+          zlink::message_t::from (std::string ("delayed-payload")));
+    });
+    delayed_session.wait_until_suspended ();
+    delayed_session.resume ();
+    delayed_dispatch_thread.join ();
+    if (!delayed_dispatch || !*delayed_dispatch || !delayed_session.reply_result
+        || !*delayed_session.reply_result || runtime.written_headers (delayed_stream).size () != 1
+        || runtime.written_headers (delayed_stream)[0].request_seq () != 77
+        || runtime.written_payloads (delayed_stream)[0].to_string () != "delayed-payload") {
+        return 29;
     }
 
     auto fluent_stream = runtime.open_session ("client-stream");

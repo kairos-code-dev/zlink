@@ -5,7 +5,6 @@
 #include "../../samples/Bingo/Shared/Contracts/messages.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
@@ -114,12 +113,15 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     const allocate_bingo_room_res_t allocated{"two-player-room-1",
                                               topology.selected_play_node_rid ()};
 
-    ensure_player_actor_handler_t actors (topology);
-    const auto actor = actors.handle ({authenticated.actor_id, authenticated.display_name});
-    EXPECT_STREQ (actor.actor_type.c_str (), sample_names_t::player_actor_type);
+    zlink::framework::service_collection_t entry_services;
+    entry_services.add_scoped<zlink::framework::session_actor_manager_t> ();
+    bingo_entry_spot_t entry_spot (topology, entry_services.build_provider ());
+    const actor_ref_snapshot_t actor{node_rid_t::from_string (
+                                       topology.selected_play_node_rid ()),
+                                     authenticated.actor_id, 1};
 
     player_actor_factory_t actor_factory;
-    const auto player_actor = actor_factory.create (actor.actor, authenticated.display_name);
+    const auto player_actor = actor_factory.create (actor, authenticated.display_name);
     EXPECT_EQ (player_actor.actor.actor_id, authenticated.actor_id);
 
     bingo_room_spot_t room_spot (allocated.room_id);
@@ -139,12 +141,12 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
     EXPECT_EQ (room_handlers[0].packet_name, submit_bingo_card_req_t::packet_name);
 
-    bingo_entry_spot_t entry_spot;
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 2U);
-    EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
+    ASSERT_EQ (entry_handlers.size (), 3U);
+    EXPECT_EQ (entry_handlers[0].kind, zlink::framework::spot_handler_kind_t::packet);
+    EXPECT_EQ (entry_handlers[0].packet_name, ensure_player_actor_req_t::packet_name);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined = room_spot.on_actor_join (
@@ -657,6 +659,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     {
         std::string entry_spot_path;
         std::string user_spot_path;
+        std::string user_handler_path;
         std::string actor_path;
         std::string session_path;
         std::string readme_path;
@@ -665,6 +668,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     const std::vector<sample_lifecycle_case_t> cases{
       {"samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
        "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp",
+       "",
        "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
        "samples/Bingo/Server/Session/Sessions/bingo_session.hpp", "samples/Bingo/README.ko.md",
        "samples/Bingo/run_sample.sh"},
@@ -672,13 +676,18 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
        "tictactoe_entry_spot.hpp",
        "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/"
        "tictactoe_game_spot.hpp",
+       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/"
+       "play_actor_leave_game_handler.hpp",
        "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
        "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp",
        "samples/TicTacToe/README.ko.md", "samples/TicTacToe/run_sample.sh"}};
 
     for (const auto &sample : cases) {
         const auto entry = read_file (cpp_root / sample.entry_spot_path);
-        const auto user = read_file (cpp_root / sample.user_spot_path);
+        auto user = read_file (cpp_root / sample.user_spot_path);
+        if (!sample.user_handler_path.empty ()) {
+            user += read_file (cpp_root / sample.user_handler_path);
+        }
         const auto actor = read_file (cpp_root / sample.actor_path);
         const auto session = read_file (cpp_root / sample.session_path);
         const auto readme = read_file (cpp_root / sample.readme_path);
@@ -846,7 +855,7 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (session_factory.find (".enable_router"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_pub_sub"), std::string::npos);
     EXPECT_NE (session_factory.find (".enable_pub_sub"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ()"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ("), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);

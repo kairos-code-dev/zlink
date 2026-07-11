@@ -1,10 +1,8 @@
 using Google.Protobuf;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
-using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Codecs;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Codecs.Protobuf;
 
@@ -67,10 +65,7 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
         return Expression.Lambda<Func<IMessage>>(convert).Compile();
     }
 
-    private sealed class ProtobufSerializer :
-        IZLinkMessageSerializer,
-        IZLinkMessagePartSerializer,
-        IZLinkMessageSpanDeserializer
+    private sealed class ProtobufSerializer : IZLinkMessageSerializer
     {
         public static ProtobufSerializer Instance { get; } = new();
 
@@ -79,35 +74,10 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             if (value is not IMessage protobuf || !typeof(IMessage).IsAssignableFrom(type))
                 throw new InvalidOperationException($"Protobuf codec cannot serialize payload type '{type}'.");
 
-            return ZLinkEncodedPayload.FromOwned(protobuf.ToByteArray());
-        }
-
-        public Message SerializePart(object value, Type type)
-        {
-            if (value is not IMessage protobuf || !typeof(IMessage).IsAssignableFrom(type))
-                throw new InvalidOperationException($"Protobuf codec cannot serialize payload type '{type}'.");
-
-            // Hot path: write protobuf directly into a Message buffer so the
-            // framework does not allocate an intermediate byte[] per payload.
-            var message = Message.Allocate(protobuf.CalculateSize());
-            try
-            {
-                protobuf.WriteTo(message.AsSpan());
-                return message;
-            }
-            catch
-            {
-                message.Dispose();
-                throw;
-            }
+            return ZLinkEncodedPayload.From(protobuf.ToByteArray());
         }
 
         public object? Deserialize(ZLinkEncodedPayload payload, Type type)
-        {
-            return Deserialize(payload.Bytes.Span, type);
-        }
-
-        public object? Deserialize(ReadOnlySpan<byte> payload, Type type)
         {
             if (!typeof(IMessage).IsAssignableFrom(type))
                 throw new InvalidOperationException($"Protobuf codec cannot deserialize payload type '{type}'.");
@@ -116,7 +86,7 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             // response decode while still honoring protobuf's parameterless ctor
             // contract.
             var protobuf = CreateMessage(type);
-            protobuf.MergeFrom(payload);
+            protobuf.MergeFrom(payload.Bytes.Span);
             return protobuf;
         }
     }

@@ -177,7 +177,9 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 4 | Node.js | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 | 5 | C++ | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 
-현재 실행 대상: `.NET` G0 재개. 새 관측·운영 계약을 기존 ledger에 합친 뒤 G1부터 다시 닫는다.
+현재 실행 대상: `.NET` G4. G0~G3 구현과 검증 뒤 발견된 DDD/POSD finding을 반영하고
+있으며, production code가 바뀌므로 G4가 깨끗해진 뒤 G1 package 검증과 G3 전체 명령을 다시
+실행한다.
 
 2026-07-11에 `flow-correlation.ko.md`, `runtime-metrics.ko.md`,
 `graceful-drain-handoff.ko.md`와 Config 11이 작업 범위에 추가되었다. 이 기능은 별도 후속 계획으로
@@ -230,6 +232,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 |------|----------------|------------------|------|
 | `.NET` | `README.ko.md` | - | [ ] |
 | `.NET` | `handler-interfaces.ko.md` | - | [ ] |
+| `.NET` | `public-contract.ko.md` | `DN-016`, 고정 API/package snapshot | [x] |
 | `.NET` | `aspnet-core-actor.ko.md` | - | [ ] |
 | `.NET` | `aspnet-core-channel-messaging.ko.md` | - | [ ] |
 | `.NET` | `aspnet-core-location.ko.md` | - | [ ] |
@@ -726,6 +729,34 @@ finding마다 다음 표를 채운다.
 | .NET-16 | G4-F77 | 같은 hosted singleton이 여러 DI descriptor에서 dispose될 때 watch CTS를 중복 사용 | lifecycle 소유권이 dispose 호출 횟수에 의존해 정상 shutdown이 예외로 끝남 | CTS와 task 배열을 원자적으로 한 번만 인수해 dispose를 idempotent하게 구현 | DI descriptor 하나만 disposable owner로 만들고 proxy descriptor 도입 | A | `Spot_Handle_Watch_Host_Disposal_Is_Idempotent`, ResilienceLifecycle E2E | 완료 |
 | .NET-17 | G4-F78 | StopAsync와 DisposeAsync가 서로 다른 field snapshot으로 종료 | 동시 종료에서 CTS가 먼저 dispose되거나 task 배열이 분리될 수 있음 | lifecycle gate와 공유 shutdown task로 모든 종료 호출을 집약 | 단일 disposable DI owner와 proxy descriptor | A | concurrent `Spot_Handle_Watch_Host_Disposal_Is_Idempotent` | 완료 |
 | .NET-18 | G4-F79 | actor 요청 handler가 `DestroyActorAsync`를 호출하면 reply relay보다 native teardown이 먼저 실행됨 | handler 반환과 요청 응답 완료의 lifecycle 경계가 분리되어 응답 경로가 삭제됨 | 기존 bound-session dispatch 지연 큐에서 teardown을 reply 전송 뒤 실행 | actor request dispatcher에 별도 teardown 큐 추가 | A | `ActorDestroy_DuringBoundRequest_IsDeferredUntilReplyFinalization`, SpotService SM-B8 | 완료 |
+| .NET-19 | G4-F80 | framework와 connector에 packet-name, LZ4와 frame wire 지식이 중복되고 framework가 connector 내부 protocol에 의존 | wire 정보의 소유권 분산과 변경 증폭 | 중립적인 일곱 번째 protocol package 추가 | 고정된 connector package를 protocol owner로 깊게 만들고 framework는 오류 의미만 변환 | B | connector codec, `StreamWireInteropTests`, package verifier | 완료 |
+| .NET-19 | G4-F81 | backend abstraction이 `NativeInstance`와 `NativeRequest` escape hatch를 노출 | binding 구현 세부가 framework runtime 경계를 통과 | backend operation별 capability로 감싼다 | native object에 범용 mapping helper를 유지한다 | A | backend mapping/solution test | 완료 |
+| .NET-19 | G4-F82 | actor context가 bound-session factory를 service provider에서 조회 | domain context에 service locator와 DI 구성 지식 누출 | factory를 명시적으로 생성자 주입 | context가 runtime facade를 통해 생성 | A | actor dispatch 24개, unit 전체 | 완료 |
+| .NET-19 | G4-F83 | actor destroy/migration이 같은 instance 상태를 서로 다른 method에서 초기화 | lifecycle invariant 중복과 상태 역행 위험 | terminal transition 하나가 공통 상태 변경을 소유 | 상태별 class로 전체 state machine 교체 | A | actor teardown/handoff unit | 완료 |
+| .NET-19 | G4-F84 | `EmptyServiceProvider`와 구 stream metadata codec file이 사용되지 않음 | dead file과 구형 runtime path | exact-symbol 확인 뒤 두 file 삭제 | 미래 사용을 위해 유지 | A | production no-hit, solution build | 완료 |
+| .NET-19 | G4-F85 | runtime channel options interface의 대부분이 호출할 때 항상 실패 | 확정 interface가 명목 mirror에 머물고 오류 조건을 호출자가 암기 | client/server socket과 routing의 실제 read view를 모두 제공 | runtime 전용 interface로 public contract 변경 | A | runtime options contract/unit | 완료 |
+| .NET-19 | G4-F86 | validation, DI, route와 Spot activation이 같은 handler assembly를 반복 scan | 검증한 descriptor와 실행 descriptor의 owner 부재 | registration이 immutable handler catalog를 한 번 소유 | scanner별 assembly cache만 추가 | A | registration/route/Spot unit, solution build | 완료 |
+| .NET-19 | G4-F87 | connector transport factory가 dispatch, reconnect와 callback 옵션까지 검증 | transport 선택과 connector 전체 정책 혼합 | 별도 options validator가 전체 불변을 소유 | immutable options public contract로 변경 | A | connector options test | 완료 |
+| .NET-19 | G4-F88 | routed send가 이미 decode한 header를 internal dispatcher에서 다시 decode | protocol 지식 누출과 request/send 비대칭 | decoded header를 internal send dispatch에 전달 | dispatcher registry로 resolve와 dispatch를 합침 | A | route dispatcher unit | 완료 |
+| .NET-19 | G4-F89 | connector 기본 JSON 설정이 process-global mutable instance를 직접 노출 | consumer 간 시간적 결합과 실행 중 정책 변경 | clone한 copy-on-write snapshot을 원자 교체 | connector별 serializer option을 새 public 설정으로 추가 | A | typed connector serialization unit | 완료 |
+| .NET-19 | G4-F90 | 읽히지 않는 diagnostics counter 두 개가 hot path에서 증가 | unused state와 불필요한 동기화 | field, property와 increment 삭제 | 정식 meter로 승격 | A | exact-symbol no-hit, diagnostics unit | 완료 |
+| .NET-19 | G4-F91 | serial queue의 capacity bypass boolean 분기에 호출자가 없음 | 구형/신형 admission path가 함께 남음 | 일반 path는 capacity reserve를 직접 호출하고 분기 삭제 | 이름 있는 essential path로 승격 | A | serial queue unit | 완료 |
+| .NET-19 | G4-F92 | leaf package가 사용하지 않는 framework transitive dependency를 직접 고정 | package 경계에 상위 구현 dependency graph 누출 | leaf pack에서 transitive pinning을 끄고 직접 dependency만 기록 | nuspec dependency를 수동 필터링 | A | fixed package snapshot, clean consumer | 완료 |
+| .NET-19 | G4-F93 | 세 internal capability builder가 단일 bind assignment만 감쌈 | pass-through class와 호출되지 않는 method | 기존 endpoint support에 검증을 모으고 builder 삭제 | capability builder에 전체 책임 이동 | A | channel/route registration unit | 완료 |
+| .NET-19 | G4-F94 | peer row acceptance 정책이 resolver와 runtime query에 중복 | domain policy와 diagnostic 문구 분산 | observed-generation owner가 값 검증과 단조 수락을 함께 소유 | 새 acceptance policy class 추가 | A | location resolver/query unit | 완료 |
+| .NET-19 | G4-F95 | location health scalar 두 개가 production에서 사용되지 않고 snapshot과 병행 | test-only seam과 상태 읽기 경로 중복 | scalar를 삭제하고 실제 snapshot을 test | internal diagnostic interface 추가 | A | location runtime unit | 완료 |
+| .NET-19 | G4-F96 | Redis public XML comment가 Lua, TTL과 임시 draft 번호를 계약처럼 설명 | 구현 결정이 public package 문서 hash에 노출 | public comment는 atomic ownership 계약만 유지하고 구현 설명을 internal owner로 이동 | public comment에서 internals 문서를 링크 | A | XML package snapshot, documentation review | 완료 |
+| .NET-20 | G4-F97 | STREAM session 생성마다 configured assembly 전체를 다시 reflection scan | 검증한 handler discovery 결과가 session runtime에 전달되지 않아 startup 지식이 두 경로에 존재 | registration immutable catalog에 unbound session descriptor를 포함하고 session은 filter/bind만 수행 | session registry 내부에 assembly별 static cache 추가 | A | session handler registry/unit, production scan no-hit | 완료 |
+| .NET-20 | G4-F98 | framework와 Redis location key codec이 length-prefix와 peer identity 알고리즘을 각각 구현 | canonical wire 지식 중복과 변경 증폭 | 중립적인 internal shared-source formatter를 두 package가 함께 compile | 두 구현을 유지하고 golden vector만 강제 | A | framework/Redis key codec golden vectors, package verifier | 완료 |
+| .NET-20 | G4-F99 | Protobuf package가 friend assembly로 framework internal zero-copy ABI를 사용 | 독립 배포 extension이 public contract 밖 내부 변경에 결합 | public serializer와 `ZLinkEncodedPayload.From`만 사용하고 friend grant 삭제 | 새 public zero-copy capability를 spec에 추가 | A | protobuf serialization/contract/package test | 완료 |
+| .NET-20 | G4-F100 | connector connect/disconnect callback이 같은 lifecycle 순서를 공유하지 않아 `Disconnected`가 `Connected`보다 먼저 관측될 수 있음 | 상태 전이와 callback 게시 owner 분리, 시간 순서 결합 | lifecycle owner의 단일 직렬 event 경로로 상태와 disconnect reason을 게시 | test에서 순서 assertion을 완화하거나 retry | A | lifecycle deterministic race/repetition, connector 전체 | 완료 |
+| .NET-21 | G4-F101 | Immediate callback에서 `Close.Async()`를 기다리면 Close가 현재 connect/receive/heartbeat task를 다시 기다릴 수 있음 | tracked worker가 user callback 완료를 소유하면서 callback의 종료 요청도 같은 worker 완료를 기다리는 순환 의존 | worker 전체 실행 문맥을 owner/kind로 표시하고 Close는 현재 자기 worker만 wait 대상에서 제외 | callback 호출부마다 task scope를 전달하거나 notification을 queue로 바꿈 | A | lifecycle/typed/error/UserCallbackFailed self-close, Immediate/Manual 반복 test | 완료 |
+| .NET-23 | G4-F102 | worker-wide `AsyncLocal` identity가 callback의 detached child task에 상속되어 외부 Dispose를 reentrant 호출로 오인 | callback 재진입 권한과 worker identity 혼합, worker join 전 resource finalization 가능 | 중앙 callback 경계의 만료 가능한 permit과 worker를 항상 join하는 단일 finalizer를 분리 | callback을 별도 ordered executor에서만 실행 | A | detached/awaited child Close·Dispose, owner isolation, external repeated Dispose | 완료 |
+| .NET-24 | G4-F103 | WebSocket graceful close가 취소되거나 실패하면 transport `Dispose()`를 건너뜀 | caller cancellation과 무조건 수행할 resource cleanup 혼합 | graceful handshake는 취소 가능하게 두되 transport release는 `finally`에서 보장 | lifecycle에 별도 abort/dispose capability 추가 | A | canceled/faulted WebSocket close cleanup | 완료 |
+| .NET-24 | G4-F104 | 외부 `Close.Async(token)`이 공유 worker termination 대기에서 token을 무시 | caller wait cancellation과 non-cancelable shared shutdown 의미 혼합 | shared termination은 계속하고 외부 대기만 `WaitAsync(token)`으로 취소 | Close token을 문서상 무효로 정의 | A | blocked-worker Close cancellation, repeated Close | 완료 |
+| .NET-24 | G4-F105 | callback 안의 `DisposeAsync()`가 실제 finalization 전에 완료된 것으로 반환 | 교착 회피가 `IAsyncDisposable` 완료 의미를 깨뜨림 | callback에서는 Dispose를 명시 오류로 거부하고 callback-safe Close와 외부 Dispose를 사용 | callback executor를 transport worker에서 분리 | A | callback Dispose rejection과 후속 external Dispose | 완료 |
+| .NET-25 | G4-F106 | worker termination task가 terminal callback과 transport close 오류를 포함하지 않아 concurrent Close/Dispose가 먼저 완료될 수 있음 | 하나의 close transaction이 두 completion owner로 분리 | transport 해제, worker join, terminal event와 최종 오류를 단일 shared full-close task가 소유 | worker termination과 close completion task를 별도로 유지 | A | blocked terminal callback, concurrent Close/Dispose, shared close fault | 진행 |
+| .NET-25 | G4-F107 | Close caller cancellation이 noncancelable terminal callback을 직접 기다려 반환하지 못함 | shared cleanup 진행과 caller wait cancellation 분리 부족 | full-close task는 계속 실행하고 각 caller만 `WaitAsync(token)`으로 대기 | caller token을 terminal callback에 전달 | A | canceled Close와 later shared completion, terminal callback self-Close | 진행 |
 
 반복 종료 조건:
 
@@ -1181,6 +1212,19 @@ ctest --test-dir <coverage-build-dir> \
 | 2026-07-12 04:04 KST | `.NET` | G1 | working tree | source/package public contract snapshot을 포함한 `./scripts/verify_packaged_contract.sh` | 0 | 6개 source/package assembly snapshot 일치, SHA-256 `7df41fc58cbb36b7332c11ecc4928eddffe4b705797747e3d0d4b3b4a3ebf336` | `dotnet packaged contract result=passed` |
 | 2026-07-12 04:11 KST | `.NET` | G2 | working tree | framework unit test | 0 | terminal close와 liveness 동시성 변경을 포함해 unit 424 PASS | console output |
 | 2026-07-12 04:23 KST | `.NET` | G2/G6 | working tree | `e2e/ObservabilityOps/run_e2e.sh drain` | 0 | C1~C5와 C4의 server drain, idle, heartbeat, protocol 종료 사유 PASS | `ObservabilityOps/logs/20260712-042019-877582` |
+| 2026-07-12 05:27 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | restore, solution build, contract/unit/connector/Redis test | 0 | build 0 warning/error, contract 40, unit 431, connector 92, Redis 26 PASS | console output |
+| 2026-07-12 05:27 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
+| 2026-07-12 05:40 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 1 | build 0 warning/error; connector lifecycle에서 `Disconnected`가 `Connected`를 추월하는 경쟁 1건 발견, 나머지 suite PASS | console output |
+| 2026-07-12 05:48 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 0 | build 0 warning/error; contract 40, unit 432, connector 92, Redis 33, sample regression 28, HTTP client 54, ObservabilityOps 2 PASS | console output |
+| 2026-07-12 05:48 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
+| 2026-07-12 06:00 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 0 | build 0 warning/error; contract 40, unit 432, connector 98, Redis 33, sample regression 28, HTTP client 54, ObservabilityOps 2 PASS | console output |
+| 2026-07-12 06:00 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
+| 2026-07-12 06:09 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 0 | build 0 warning/error; contract 40, unit 432, connector 101, Redis 33, sample regression 28, HTTP client 54, ObservabilityOps 2 PASS | console output |
+| 2026-07-12 06:09 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
+| 2026-07-12 06:19 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 0 | build 0 warning/error; contract 40, unit 432, connector 104, Redis 33, sample regression 28, HTTP client 54, ObservabilityOps 2 PASS | console output |
+| 2026-07-12 06:19 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
+| 2026-07-12 06:27 KST | `.NET` | G3 재검증 | `4db9be562` + working tree | warnings-as-errors build와 `dotnet test Zlink.Framework.sln --no-build --no-restore` | 0 | build 0 warning/error; contract 40, unit 432, connector 107, Redis 33, sample regression 28, HTTP client 54, ObservabilityOps 2 PASS | console output |
+| 2026-07-12 06:27 KST | `.NET` | G1 재검증 | `4db9be562` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | 6개 package와 clean consumer PASS, API hash `045a6f44e5ed24b0e1f0b9974d0f312fc66a2b906b12fa6fa490404ac1d5c4b9` | `dotnet packaged contract result=passed` |
 
 Codex 리뷰도 같은 방식으로 기록한다.
 
@@ -1191,6 +1235,13 @@ Codex 리뷰도 같은 방식으로 기록한다.
 | 2026-07-12 00:45 KST | `.NET` | G0 재감사 | Codex drain/flow/metrics 3개 병렬 읽기 전용 재검토 | drain 2, flow 4, metrics 5 기능 gap | 반영 진행; actor/Spot drain 순서, route admission, 오류 kind, pending/request/session 계수, lifecycle flow 수정 | working tree | agent file:line finding |
 | 2026-07-12 03:35 KST | `.NET` | G0/G1/G2 재감사 | Codex spec/flow, package/export, drain/wire 3개 병렬 읽기 전용 리뷰 | G0 ledger 2 critical, contract/export 6 high, runtime 4 high+3 medium | 미완료; 문서 충돌·exact test·package gate·malformed flow·protocol close부터 반영 | working tree | agent file:line finding |
 | 2026-07-12 04:23 KST | `.NET` | G0/G1/G2 재감사 | Codex flow, package/export, drain/liveness 읽기 전용 재검토 | subscription 검증 순서 1 high, spec snapshot 3 high+2 medium, 종료 보장 2 high+1 medium | 미완료; 다음 수정 대상으로 유지하고 현재 중간 상태를 커밋 | working tree | agent file:line finding |
+| 2026-07-12 05:19 KST | `.NET` | .NET-19 | Codex channel/connector, location/package, actor/backend 전체 분할 읽기 전용 리뷰 | 중복을 합쳐 17개 | G4-F80~F96으로 확정하고 public contract를 유지하는 내부 리팩터링 진행 | `4db9be562` + working tree | agent review manifest와 file:line finding |
+| 2026-07-12 05:31 KST | `.NET` | .NET-20 | Codex 전체 production adversarial 읽기 전용 재검토 | 3개 | session scan, location key codec 중복, Protobuf friend ABI를 G4-F97~F99로 확정 | working tree | 전체 `src/**`, package/DI/reflection manifest와 file:line finding |
+| 2026-07-12 05:52 KST | `.NET` | .NET-21 | Codex 전체 production adversarial 읽기 전용 재검토 | 1개 | Immediate lifecycle callback self-close 순환 대기를 G4-F101로 확정 | working tree | connector lifecycle/callback task ownership file:line finding |
+| 2026-07-12 06:04 KST | `.NET` | .NET-22 | Codex 전체 production adversarial 읽기 전용 재검토 | 1개 | lifecycle notification 외 typed/error/UserCallbackFailed callback에도 F101 순환 대기가 남아 worker 전체 scope로 재설계 | working tree | 450개 production/build 입력 manifest와 receive dispatcher file:line finding |
+| 2026-07-12 06:13 KST | `.NET` | .NET-23 | Codex 전체 production adversarial 읽기 전용 재검토 | 1개 | worker identity의 detached child 상속과 Dispose 조기 resource 해제를 G4-F102로 확정 | working tree | AsyncLocal lease, Close wait 제외와 Dispose finalization file:line finding |
+| 2026-07-12 06:24 KST | `.NET` | .NET-24 | Codex 전체 production adversarial 읽기 전용 재검토 | 3개 | canceled WebSocket cleanup, Close wait cancellation, callback Dispose 완료 의미를 G4-F103~F105로 확정 | working tree | transport Close, lifecycle termination, async disposal file:line finding |
+| 2026-07-12 06:31 KST | `.NET` | .NET-25 | Codex 전체 production adversarial 읽기 전용 재검토 | 2개 | close transaction completion owner 분리와 terminal callback cancellation gap을 G4-F106~F107로 확정 | working tree | lifecycle shared close/concurrent Dispose file:line finding |
 
 ## 15. 최종 전체 완료 조건
 

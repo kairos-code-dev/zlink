@@ -20,15 +20,17 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
     private readonly ZlinkStreamReceivedMessages _receivedMessages;
     private readonly ZlinkStreamReceiveLoop _receiveLoop;
+    private readonly object _disposeGate = new();
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly ZlinkStreamTaskRunner _taskRunner;
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
+    private Task? _finalizationTask;
     private int _disposed;
 
     internal ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
-        ZlinkStreamTransportFactory.ValidateOptions(options);
+        ZlinkStreamConnectorOptionsValidator.Validate(options);
         _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
         _receivedMessages = new ZlinkStreamReceivedMessages(options.MaxReceivedMessages);
         _callbacks = new ZlinkStreamConnectorCallbacks(
@@ -241,15 +243,44 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             callback);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_lifecycle.IsCurrentCallback)
+            throw new InvalidOperationException(
+                "DisposeAsync cannot run inside a connector callback. Use Close.Async in the callback and dispose the connector externally after the callback returns.");
 
-        await Close.Async().ConfigureAwait(false);
-        _lifetimeCts.Cancel();
-        _sendGate.Dispose();
-        _lifecycle.Dispose();
-        _lifetimeCts.Dispose();
+        Task finalizationTask;
+        TaskCompletionSource? startFinalization = null;
+        lock (_disposeGate)
+        {
+            if (_finalizationTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                startFinalization = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _finalizationTask = FinalizeAfterStartAsync(startFinalization.Task);
+            }
+
+            finalizationTask = _finalizationTask;
+        }
+
+        startFinalization?.TrySetResult();
+        return new ValueTask(finalizationTask);
+    }
+
+    private async Task FinalizeAfterStartAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
+        try
+        {
+            await _lifecycle.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifetimeCts.Cancel();
+            _sendGate.Dispose();
+            _lifecycle.Dispose();
+            _lifetimeCts.Dispose();
+        }
     }
 
     private async ValueTask ConnectCoreAsync(CancellationToken cancellationToken = default)

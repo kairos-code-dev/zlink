@@ -855,8 +855,6 @@ public sealed class UnhandledDispatchPolicyTests
 
         public int? LastJoinResultCode { get; private set; }
 
-        public object NativeInstance => this;
-
         public RoutingId RoutingId => RoutingId.From("spot");
 
         public ValueTask DisposeAsync()

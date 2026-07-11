@@ -17,9 +17,11 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
 
     public ValueTask DispatchSendAsync(
         Received received,
+        ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)
     {
         _ = received;
+        _ = routedHeader;
         _ = cancellationToken;
         throw new InvalidOperationException("Actor EntrySpot route join does not support fire-and-forget send.");
     }

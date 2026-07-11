@@ -1,5 +1,4 @@
-using System.Collections.Concurrent;
-using System.Reflection;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -7,7 +6,8 @@ internal static class ZLinkStreamProtocolDefaults
 {
     private const int DefaultMaxDecompressedPayloadSize = 64 * 1024;
 
-    public static IZlinkStreamPacketNameResolver PacketNameResolver { get; } = new DefaultPacketNameResolver();
+    public static IZlinkStreamPacketNameResolver PacketNameResolver { get; } =
+        new ZlinkStreamPacketNameResolver();
 
     public static ReadOnlyMemory<byte> EncodeHeader(ZlinkStreamHeader header)
     {
@@ -46,18 +46,4 @@ internal static class ZLinkStreamProtocolDefaults
 
         return decompressed;
     }
-
-    private sealed class DefaultPacketNameResolver : IZlinkStreamPacketNameResolver
-    {
-        private static readonly ConcurrentDictionary<Type, string> Cache = new();
-
-        public string Resolve(Type payloadType)
-        {
-            ArgumentNullException.ThrowIfNull(payloadType);
-            return Cache.GetOrAdd(payloadType, static type =>
-                type.GetCustomAttribute<ZlinkStreamPacketNameAttribute>(false)?.Name
-                ?? type.Name);
-        }
-    }
-
 }

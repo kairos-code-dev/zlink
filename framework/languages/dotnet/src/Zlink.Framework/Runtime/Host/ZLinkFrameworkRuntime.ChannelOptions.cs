@@ -2,21 +2,35 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal IZLinkSocketConfig ResolveClientServerServerSocketConfig(string channelName)
+    internal IZLinkClientServerChannelOptions ResolveClientServerRuntimeOptions(string channelName)
     {
         return ExecuteOperation(() =>
         {
             var channel = ResolveChannelRegistration(channelName);
             var state = GetOrStartState();
-            if (channel.Server is null || !state.ServerBundles.TryGetValue(channelName, out var bundle))
-                throw new ZLinkConfigurationException(
-                    $"Channel '{channelName}' has no client-server server role on this node.");
+            IZLinkSocketConfig? serverSocket = null;
+            IZLinkRouteConfig? serverRouting = null;
+            if (channel.Server is { } server)
+            {
+                if (!state.ServerBundles.TryGetValue(channelName, out var bundle)
+                    || bundle.Socket is not IZLinkBackendWeightedSocket weighted)
+                    throw new ZLinkConfigurationException(
+                        $"Channel '{channelName}' server role is not initialized or does not support weight.");
+                serverSocket = new ZLinkLiveSocketConfig(this, weighted, server.SocketConfig);
+                serverRouting = new ZLinkFrozenRouteConfig(server.RoutingConfig);
+            }
 
-            if (bundle.Socket is not IZLinkBackendWeightedSocket weighted)
-                throw new ZLinkConfigurationException(
-                    $"Channel '{channelName}' server socket does not support weight.");
-
-            return new ZLinkLiveSocketConfig(this, weighted, channel.Server.SocketConfig);
+            var clientSocket = channel.Client is { } client
+                ? new ZLinkFrozenSocketConfig(client.SocketConfig)
+                : null;
+            var clientRouting = channel.Client is { } clientCapability
+                ? new ZLinkFrozenOutboundRouteConfig(clientCapability.RoutingConfig)
+                : null;
+            return new ZLinkClientServerRuntimeOptions(
+                serverSocket,
+                serverRouting,
+                clientSocket,
+                clientRouting);
         });
     }
 

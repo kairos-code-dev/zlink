@@ -90,12 +90,16 @@ internal sealed class WebSocketConnection(
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
         ReturnPendingMessage();
-
-        if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken)
-                .ConfigureAwait(false);
-
-        webSocket.Dispose();
+        try
+        {
+            if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken)
+                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            webSocket.Dispose();
+        }
     }
 
     private static void EnsureCapacity(ref byte[] buffer, int existingLength, int requiredCapacity)

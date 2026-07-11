@@ -50,29 +50,14 @@ internal sealed class ZLinkStoreLocationResolvers :
             cancellationToken,
             storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
 
-        // Drop rows older than a generation this runtime already observed
-        // for the same key: a lagging store replica must never roll the
-        // view backwards (monotonic read guard). Rows with values outside
-        // the closed auto-connect/role sets are ignored too and reported to
-        // diagnostics (draft 6.5).
+        // The shared acceptance policy rejects lagging generations and
+        // values outside the closed auto-connect and role sets.
         return await _liveRows.FilterAsync(
                 rows,
                 static row => row.OwnerId,
-                AcceptPeer,
+                _observed.AcceptPeer,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private bool AcceptPeer(ZLinkPeerLocation row)
-    {
-        if (ZLinkLocationValueCodec.IsKnown(row.AutoConnectType)
-            && ZLinkLocationValueCodec.IsKnown(row.Role))
-            return _observed.AcceptPeer(row);
-
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
-            + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
-        return false;
     }
 
     internal async ValueTask<ZLinkSpotLocation?> ResolveSpotRowAsync(

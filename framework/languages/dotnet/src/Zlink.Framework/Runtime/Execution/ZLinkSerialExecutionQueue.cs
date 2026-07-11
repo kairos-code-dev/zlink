@@ -90,7 +90,29 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         Func<CancellationToken, ValueTask> callback,
         out ZLinkSerialWorkItem item)
     {
-        return TryPost(callback, enforceCapacity: true, out item);
+        lock (_admissionGate)
+        {
+            if (Volatile.Read(ref _completed) != 0 || !TryReserveSlot())
+            {
+                item = null!;
+                return false;
+            }
+
+            var metricTimestamp = _spotMetricKind is null
+                ? 0
+                : ZLinkRuntimeMetrics.RecordSpotQueueEnqueued(_spotMetricKind);
+            item = new ZLinkSerialWorkItem(callback, metricTimestamp);
+            if (!_queue.Writer.TryWrite(item))
+            {
+                if (_spotMetricKind is not null)
+                    ZLinkRuntimeMetrics.RecordSpotQueueRemoved(_spotMetricKind);
+                CompletePendingItem();
+                item = null!;
+                return false;
+            }
+            ScheduleDrain();
+            return true;
+        }
     }
 
     public bool TryPostFinal(
@@ -121,37 +143,6 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             }
 
             _queue.Writer.TryComplete();
-            ScheduleDrain();
-            return true;
-        }
-    }
-
-    private bool TryPost(
-        Func<CancellationToken, ValueTask> callback,
-        bool enforceCapacity,
-        out ZLinkSerialWorkItem item)
-    {
-        lock (_admissionGate)
-        {
-            if (Volatile.Read(ref _completed) != 0
-                || (enforceCapacity ? !TryReserveSlot() : !TryReserveEssentialSlot()))
-            {
-                item = null!;
-                return false;
-            }
-
-            var metricTimestamp = _spotMetricKind is null
-                ? 0
-                : ZLinkRuntimeMetrics.RecordSpotQueueEnqueued(_spotMetricKind);
-            item = new ZLinkSerialWorkItem(callback, metricTimestamp);
-            if (!_queue.Writer.TryWrite(item))
-            {
-                if (_spotMetricKind is not null)
-                    ZLinkRuntimeMetrics.RecordSpotQueueRemoved(_spotMetricKind);
-                CompletePendingItem();
-                item = null!;
-                return false;
-            }
             ScheduleDrain();
             return true;
         }

@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendSubscriberSocketWrapper(ISubSocket nativeSocket) : IZLinkBackendSubscriberSocket
 {
-    public object NativeInstance => nativeSocket;
+    internal ISubSocket NativeSocket => nativeSocket;
 
     public void Bind(string endpoint)
     {

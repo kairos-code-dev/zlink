@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
-internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendSpotNode : IAsyncDisposable
 {
     RoutingId RoutingId { get; }
 
@@ -109,7 +109,7 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         CancellationToken cancellationToken);
 }
 
-internal interface IZLinkBackendSpotRouteBridge : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendSpotRouteBridge : IAsyncDisposable
 {
     void AttachRouterChannel(
         string channelName,
@@ -141,7 +141,7 @@ internal interface IZLinkBackendSpotRouteBridge : IZLinkBackendObject, IAsyncDis
     void Drain();
 }
 
-internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendSpot : IAsyncDisposable
 {
     RoutingId RoutingId { get; }
 

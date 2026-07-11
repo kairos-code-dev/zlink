@@ -18,11 +18,13 @@ public sealed class BackendAdapterFactoryTests
         await using var publisher = channelAdapter.CreatePublisherSocket(context);
         await using var subscriber = channelAdapter.CreateSubscriberSocket(context);
 
-        Assert.IsAssignableFrom<IContext>(context.NativeInstance);
-        Assert.IsAssignableFrom<IDealerSocket>(dealer.NativeInstance);
-        Assert.IsAssignableFrom<IRouterSocket>(router.NativeInstance);
-        Assert.IsAssignableFrom<IPubSocket>(publisher.NativeInstance);
-        Assert.IsAssignableFrom<ISubSocket>(subscriber.NativeInstance);
+        Assert.IsType<ZLinkBackendContextWrapper>(context);
+        Assert.IsType<ZLinkBackendDealerSocketWrapper>(dealer);
+        Assert.IsType<ZLinkBackendRouterSocketWrapper>(router);
+        Assert.IsType<ZLinkBackendPublisherSocketWrapper>(publisher);
+        Assert.IsType<ZLinkBackendSubscriberSocketWrapper>(subscriber);
+        await using var completionPump = dealer.CreateRequestCompletionPump();
+        await using var monitor = factory.CreateMonitoringAdapter().OpenSocketMonitor(dealer);
         await AssertSpotBackendAsync(channelAdapter, spotAdapter);
         await AssertStreamBackendAsync(channelAdapter, streamAdapter);
     }
@@ -34,7 +36,7 @@ public sealed class BackendAdapterFactoryTests
         await using var context = channelAdapter.CreateContext();
         await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
 
-        Assert.IsAssignableFrom<ISpotNode>(spotNode.NativeInstance);
+        Assert.IsType<ZLinkBackendSpotNodeWrapper>(spotNode);
     }
 
     private static async Task AssertStreamBackendAsync(
@@ -44,7 +46,7 @@ public sealed class BackendAdapterFactoryTests
         await using var context = channelAdapter.CreateContext();
         await using var streamSocket = streamAdapter.CreateStreamSocket(context);
 
-        Assert.IsAssignableFrom<IStreamSocket>(streamSocket.NativeInstance);
+        Assert.IsType<ZLinkBackendStreamSocketWrapper>(streamSocket);
     }
 
     [Fact]

@@ -14,7 +14,6 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 //     if (tracer.Enabled(outcome)) tracer.Trace(new ZLinkMessageFlowEvent(...));
 internal sealed class ZLinkMessageFlowTracer
 {
-    private static long _tracedCount;
     private readonly ILogger _logger;
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly ZLinkMessageFlowObserverPump? _observerPump;
@@ -31,8 +30,6 @@ internal sealed class ZLinkMessageFlowTracer
         _observerPump = observerPump;
         _logger = logger ?? ZLinkStandardErrorLogger.Instance;
     }
-
-    public static long TracedCount => Interlocked.Read(ref _tracedCount);
 
     public bool GenerationEnabled =>
         _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off;
@@ -64,8 +61,6 @@ internal sealed class ZLinkMessageFlowTracer
                          && (flow.Outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
                              || Sample(flow.FlowId));
         if (!logSampled && !observerEnabled) return;
-
-        Interlocked.Increment(ref _tracedCount);
 
         if (logSampled)
         {

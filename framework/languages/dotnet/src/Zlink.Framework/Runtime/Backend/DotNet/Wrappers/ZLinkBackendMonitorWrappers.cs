@@ -2,8 +2,6 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendSocketMonitorWrapper(ISocketMonitor nativeMonitor) : IZLinkBackendSocketMonitor
 {
-    public object NativeInstance => nativeMonitor;
-
     public void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler)
     {
         nativeMonitor.OnEvent(monitorEvent => handler(monitorEvent.ToFramework()));

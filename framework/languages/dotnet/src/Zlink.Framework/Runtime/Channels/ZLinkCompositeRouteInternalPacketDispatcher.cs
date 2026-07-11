@@ -16,10 +16,11 @@ internal sealed class ZLinkCompositeRouteInternalPacketDispatcher(
 
     public ValueTask DispatchSendAsync(
         Received received,
+        ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)
     {
-        var packetName = ZLinkEnvelopeCodec.DecodeHeader(received.Parts).MessageName;
-        return ResolveSend(packetName).DispatchSendAsync(received, cancellationToken);
+        return ResolveSend(routedHeader.MessageName)
+            .DispatchSendAsync(received, routedHeader, cancellationToken);
     }
 
     public ValueTask<Message> DispatchRequestAsync(

@@ -15,19 +15,19 @@ public sealed class LocationRuntimeTests
         var runtime = NewRuntime(store, flaky, time);
 
         Assert.True(await runtime.RenewOwnerLeaseOnceAsync());
-        Assert.True(runtime.OwnerLeaseHealthy);
+        Assert.True(runtime.GetHealthSnapshot().Healthy);
         Assert.Null(runtime.LastError);
 
         // Fail-static: a store outage is recorded, never thrown, and the
         // next successful renew clears the error.
         flaky.Fail = true;
         Assert.False(await runtime.RenewOwnerLeaseOnceAsync());
-        Assert.False(runtime.OwnerLeaseHealthy);
+        Assert.False(runtime.GetHealthSnapshot().Healthy);
         Assert.NotNull(runtime.LastError);
 
         flaky.Fail = false;
         Assert.True(await runtime.RenewOwnerLeaseOnceAsync());
-        Assert.True(runtime.OwnerLeaseHealthy);
+        Assert.True(runtime.GetHealthSnapshot().Healthy);
         Assert.Null(runtime.LastError);
     }
 
@@ -161,14 +161,14 @@ public sealed class LocationRuntimeTests
 
         await runtime.StartAsync(RoutingId.From("stable-node"));
         var firstOwner = runtime.OwnerId;
-        Assert.True(runtime.OwnerLeaseHealthy);
+        Assert.True(runtime.GetHealthSnapshot().Healthy);
 
         await runtime.StopAsync();
-        Assert.False(runtime.OwnerLeaseHealthy);
+        Assert.False(runtime.GetHealthSnapshot().Healthy);
 
         await runtime.StartAsync(RoutingId.From("stable-node"));
         Assert.NotEqual(firstOwner, runtime.OwnerId);
-        Assert.True(runtime.OwnerLeaseHealthy);
+        Assert.True(runtime.GetHealthSnapshot().Healthy);
         await runtime.StopAsync();
     }
 

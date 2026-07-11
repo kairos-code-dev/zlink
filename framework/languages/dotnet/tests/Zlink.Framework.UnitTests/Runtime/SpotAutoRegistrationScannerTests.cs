@@ -3,12 +3,27 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
+using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class SpotAutoRegistrationScannerTests
 {
+    [Fact]
+    public void RegistrationOwnsOneFrozenHandlerCatalog()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        registration.HandlerAssemblies.Add(typeof(SpotAutoRegistrationScannerTests).Assembly);
+
+        registration.FreezeScannedHandlerCatalog();
+        var catalog = registration.ScannedHandlerCatalog;
+
+        Assert.Same(catalog, registration.ScannedHandlerCatalog);
+        Assert.Contains(catalog.SpotHandlers, static handler =>
+            handler.HandlerType == typeof(AutoRoomSubscriptionHandler));
+    }
+
     [Fact]
     public void Scan_Reads_Spot_Handler_Metadata_From_Attributes_And_Interface_Types()
     {

@@ -19,7 +19,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
-        var socket = context.RequireNative<IContext>().CreateDealerSocket();
+        var socket = RequireContext(context).NativeContext.CreateDealerSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendDealerSocketWrapper(
             socket);
@@ -27,7 +27,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context)
     {
-        var socket = context.RequireNative<IContext>().CreateRouterSocket();
+        var socket = RequireContext(context).NativeContext.CreateRouterSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendRouterSocketWrapper(
             socket);
@@ -35,7 +35,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendPublisherSocket CreatePublisherSocket(IZLinkBackendContext context)
     {
-        var socket = context.RequireNative<IContext>().CreatePubSocket();
+        var socket = RequireContext(context).NativeContext.CreatePubSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendPublisherSocketWrapper(
             socket);
@@ -43,11 +43,15 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendSubscriberSocket CreateSubscriberSocket(IZLinkBackendContext context)
     {
-        var socket = context.RequireNative<IContext>().CreateSubSocket();
+        var socket = RequireContext(context).NativeContext.CreateSubSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendSubscriberSocketWrapper(
             socket);
     }
+
+    private static ZLinkBackendContextWrapper RequireContext(IZLinkBackendContext context) =>
+        context as ZLinkBackendContextWrapper
+        ?? throw new InvalidOperationException("Expected the .NET backend context wrapper.");
 }
 
 internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
@@ -57,7 +61,8 @@ internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
         SpotNodeMode mode)
     {
         return new ZLinkBackendSpotNodeWrapper(
-            context.RequireNative<IContext>().CreateSpotNode(mode));
+            (context as ZLinkBackendContextWrapper)?.NativeContext.CreateSpotNode(mode)
+            ?? throw new InvalidOperationException("Expected the .NET backend context wrapper."));
     }
 }
 
@@ -65,7 +70,8 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
 {
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
-        var socket = context.RequireNative<IContext>().CreateStreamSocket();
+        var socket = (context as ZLinkBackendContextWrapper)?.NativeContext.CreateStreamSocket()
+                     ?? throw new InvalidOperationException("Expected the .NET backend context wrapper.");
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendStreamSocketWrapper(
             socket);
@@ -76,7 +82,15 @@ internal sealed class ZLinkDotNetMonitoringBackendAdapter : IZLinkMonitoringBack
 {
     public IZLinkBackendSocketMonitor OpenSocketMonitor(IZLinkBackendSocket socket)
     {
-        var nativeMonitor = socket.OpenNativeMonitor();
+        var nativeMonitor = socket switch
+        {
+            ZLinkBackendDealerSocketWrapper dealer => dealer.NativeSocket.MonitorOpen(),
+            ZLinkBackendRouterSocketWrapper router => router.NativeSocket.MonitorOpen(),
+            ZLinkBackendPublisherSocketWrapper publisher => publisher.NativeSocket.MonitorOpen(),
+            ZLinkBackendSubscriberSocketWrapper subscriber => subscriber.NativeSocket.MonitorOpen(),
+            ZLinkBackendStreamSocketWrapper stream => stream.NativeSocket.MonitorOpen(),
+            _ => throw new InvalidOperationException("Expected a .NET backend socket wrapper.")
+        };
         return new ZLinkBackendSocketMonitorWrapper(nativeMonitor);
     }
 }

@@ -17,12 +17,7 @@ internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
             TaskScheduler.Default);
     }
 
-    public static ZLinkRequestCompletionPump? Start(object nativeInstance)
-    {
-        return nativeInstance is IZlinkSocket socket
-            ? new ZLinkRequestCompletionPump(socket)
-            : null;
-    }
+    public static ZLinkRequestCompletionPump Start(IZlinkSocket socket) => new(socket);
 
     public async ValueTask DisposeAsync()
     {

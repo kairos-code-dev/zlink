@@ -1,3 +1,5 @@
+using Zlink.Framework.Internal.Locations;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
@@ -15,11 +17,22 @@ internal sealed class ZLinkObservedLocationGenerations
     private readonly Observed<ZLinkActorLocationKey> _actors = new();
     private readonly Observed<ZLinkRouteLocationKey> _routes = new();
 
-    internal bool AcceptPeer(ZLinkPeerLocation row) =>
-        _peers.Accept(
+    internal bool AcceptPeer(ZLinkPeerLocation row)
+    {
+        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(row.AutoConnectType)
+            || !ZLinkCanonicalLocationKeyFormatter.IsKnown(row.Role))
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
+                + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
+            return false;
+        }
+
+        return _peers.Accept(
             new ZLinkPeerLocationKey(
                 row.AutoConnectType, row.MeshName, row.Role, row.NodeRid, row.Endpoint),
             row.Generation);
+    }
 
     internal void ObservePeer(ZLinkPeerLocation row) =>
         _peers.Observe(

@@ -70,16 +70,28 @@ internal sealed record ZLinkBackendActorPart(
     bool More,
     ZLinkBackendActorRef? ReplyActor = null);
 
-internal sealed record ZLinkBackendActorJoinRequest(
-    ZLinkBackendActorRef SourceActor,
-    ZLinkBackendActorRef TargetActor,
-    RoutingId SourceNodeRid,
-    RoutingId TargetSpotRid,
-    ulong JoinEpoch,
-    Message Message,
-    IReadOnlyList<Message> Parts)
+internal class ZLinkBackendActorJoinRequest(
+    ZLinkBackendActorRef sourceActor,
+    ZLinkBackendActorRef targetActor,
+    RoutingId sourceNodeRid,
+    RoutingId targetSpotRid,
+    ulong joinEpoch,
+    Message message,
+    IReadOnlyList<Message> parts)
 {
-    internal object? NativeRequest { get; init; }
+    public ZLinkBackendActorRef SourceActor { get; } = sourceActor;
+
+    public ZLinkBackendActorRef TargetActor { get; } = targetActor;
+
+    public RoutingId SourceNodeRid { get; } = sourceNodeRid;
+
+    public RoutingId TargetSpotRid { get; } = targetSpotRid;
+
+    public ulong JoinEpoch { get; } = joinEpoch;
+
+    public Message Message { get; } = message;
+
+    public IReadOnlyList<Message> Parts { get; } = parts;
 }
 
 internal readonly record struct ZLinkBackendSpotDispatchInfo(
@@ -95,12 +107,7 @@ internal readonly record struct ZLinkBackendSocketMonitorEvent(
     string RemoteAddr,
     uint Value);
 
-internal interface IZLinkBackendObject
-{
-    object NativeInstance { get; }
-}
-
-internal interface IZLinkBackendContext : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendContext : IAsyncDisposable
 {
     void Shutdown();
 }

@@ -471,7 +471,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var context = new TestSessionPacketContext();
         var registry = new ZLinkSessionHandlerRegistry(provider);
         registry.BindContext(context);
-        registry.AddScannedHandlers([typeof(TestSessionPacketHandler).Assembly]);
+        registry.AddScannedHandlers(ZLinkScannedSessionHandlerScanner.Scan(
+            typeof(TestSessionPacketHandler).Assembly,
+            new HashSet<Type>()));
         registry.Bind();
 
         var handled = await registry.TryHandleAsync(
@@ -491,7 +493,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var registry = new ZLinkSessionHandlerRegistry(provider);
         registry.BindContext(context);
         registry.BindSession(session);
-        registry.AddScannedHandlers([typeof(TestHeaderSession).Assembly]);
+        registry.AddScannedHandlers(ZLinkScannedSessionHandlerScanner.Scan(
+            typeof(TestHeaderSession).Assembly,
+            new HashSet<Type> { typeof(TestHeaderSession) }));
         registry.Bind();
 
         var handled = await registry.TryHandleAsync(
@@ -524,6 +528,46 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Contains(typeof(TestHeaderSession).Assembly, assemblies);
         Assert.Contains(typeof(TestSpot).Assembly, assemblies);
         Assert.Contains(typeof(TestEntrySpot).Assembly, assemblies);
+        Assert.Contains(registration.ScannedHandlerCatalog.SessionHandlers, static candidate =>
+            candidate is ZLinkScannedAttributedSessionHandler attributed
+            && attributed.SessionType == typeof(TestHeaderSession));
+    }
+
+    [Fact]
+    public async Task FrozenSessionHandlerCatalogCanBindRepeatedRegistriesWithoutRescanning()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("client.stream")
+                .Bind("tcp://127.0.0.1:9100")
+                .RegisterSession<TestHeaderSession>();
+        });
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var candidates = registration.ScannedHandlerCatalog.SessionHandlers;
+
+        var firstContext = new TestSessionPacketContext();
+        var first = new ZLinkSessionHandlerRegistry(provider);
+        first.BindContext(firstContext);
+        first.AddScannedHandlers(candidates);
+        first.Bind();
+
+        var secondContext = new TestSessionPacketContext();
+        var second = new ZLinkSessionHandlerRegistry(provider);
+        second.BindContext(secondContext);
+        second.AddScannedHandlers(candidates);
+        second.Bind();
+
+        Assert.Same(candidates, registration.ScannedHandlerCatalog.SessionHandlers);
+        Assert.True(await first.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(TestSessionPacketMessage)),
+            ZLinkMessage.From(new TestSessionPacketMessage())));
+        Assert.True(await second.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(TestSessionPacketMessage)),
+            ZLinkMessage.From(new TestSessionPacketMessage())));
+        Assert.Equal(1, firstContext.HandledCount);
+        Assert.Equal(1, secondContext.HandledCount);
     }
 
     [Fact]

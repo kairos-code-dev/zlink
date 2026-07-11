@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Messaging;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
@@ -12,7 +10,7 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
         ZLinkAsyncSubmitter? submitter = null,
-        ZLinkRequestCompletionPump? completionPump = null,
+        IAsyncDisposable? completionPump = null,
         RoutingId localRid = default,
         string? socketRole = null)
     {
@@ -27,7 +25,7 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public ZLinkAsyncSubmitter? Submitter { get; }
 
-    public ZLinkRequestCompletionPump? CompletionPump { get; }
+    public IAsyncDisposable? CompletionPump { get; }
 
     public string? LocalRid { get; }
 

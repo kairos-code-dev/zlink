@@ -302,19 +302,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             "peer-query-read",
             cancellationToken,
             storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
-        return rows.Where(AcceptPeer).ToArray();
-    }
-
-    private bool AcceptPeer(ZLinkPeerLocation row)
-    {
-        if (ZLinkLocationValueCodec.IsKnown(row.AutoConnectType)
-            && ZLinkLocationValueCodec.IsKnown(row.Role))
-            return _observed.AcceptPeer(row);
-
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
-            + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
-        return false;
+        return rows.Where(_observed.AcceptPeer).ToArray();
     }
 
     private static bool Matches(

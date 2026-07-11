@@ -9,7 +9,9 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
     public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
     {
         registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        new ZLinkChannelServerCapabilityBuilder(registration.Server).Bind(endpoint);
+        registration.Server.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
+            endpoint,
+            "Channel server bind endpoint must not be empty.");
         return this;
     }
 
@@ -118,7 +120,9 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
     public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
     {
         registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
-        new ZLinkChannelPublisherCapabilityBuilder(registration.Publisher).Bind(endpoint);
+        registration.Publisher.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
+            endpoint,
+            "Channel publisher bind endpoint must not be empty.");
         return this;
     }
 
@@ -171,14 +175,19 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
 
 internal static class ZLinkChannelEndpointBuilderSupport
 {
+    public static string Validate(string endpoint, string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint)) throw new ZLinkConfigurationException(errorMessage);
+
+        return endpoint;
+    }
+
     public static void AddManualConnection(
         ZLinkEndpointConnections endpoints,
         string endpoint,
         string errorMessage)
     {
-        if (string.IsNullOrWhiteSpace(endpoint)) throw new ZLinkConfigurationException(errorMessage);
-
-        endpoints.Connect(endpoint);
+        endpoints.Connect(Validate(endpoint, errorMessage));
     }
 }
 
@@ -306,37 +315,5 @@ internal static class ZLinkTypedHandlerBuilderSupport
             _ => throw new ZLinkConfigurationException(
                 $"Handler '{handlerType.FullName}' implements multiple {handlerKind} handler interfaces. Use the overload with explicit message types.")
         };
-    }
-}
-
-internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapabilityRegistration registration)
-{
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("Channel server bind endpoint must not be empty.");
-
-        registration.BindEndpoint = endpoint;
-    }
-
-    public IZLinkSocketConfig ConfigureSocket()
-    {
-        return registration.SocketConfig;
-    }
-}
-
-internal sealed class ZLinkChannelPublisherCapabilityBuilder(ZLinkChannelPublisherCapabilityRegistration registration)
-{
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("Channel publisher bind endpoint must not be empty.");
-
-        registration.BindEndpoint = endpoint;
-    }
-
-    public IZLinkSocketConfig ConfigureSocket()
-    {
-        return registration.SocketConfig;
     }
 }

@@ -1,3 +1,5 @@
+using Zlink.Framework.Internal.Locations;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
@@ -54,10 +56,6 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     /// successful restart attempt uses a fresh id so rows left by an older
     /// generation cannot become live again.</summary>
     internal string OwnerId => _ownerId;
-
-    internal bool OwnerLeaseHealthy => Volatile.Read(ref _health).Healthy;
-
-    internal DateTimeOffset? OwnerLeaseRenewedAt => Volatile.Read(ref _health).RenewedAt;
 
     internal string? LastError => Volatile.Read(ref _health).LastError;
 
@@ -238,13 +236,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     {
         // The registration path rejects values outside the closed sets as a
         // validation error; readers additionally ignore such rows (draft 6.5).
-        if (!ZLinkLocationValueCodec.IsKnown(peer.AutoConnectType))
+        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(peer.AutoConnectType))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(peer), peer.AutoConnectType, "Unknown auto-connect type.");
         }
 
-        if (!ZLinkLocationValueCodec.IsKnown(peer.Role))
+        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(peer.Role))
         {
             throw new ArgumentOutOfRangeException(nameof(peer), peer.Role, "Unknown location role.");
         }

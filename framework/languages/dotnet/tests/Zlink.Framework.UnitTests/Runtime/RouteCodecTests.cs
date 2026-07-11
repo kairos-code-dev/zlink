@@ -324,8 +324,6 @@ public sealed class RouteCodecTests
 
         public int ReceiveHighWaterMark { get; private set; }
 
-        public object NativeInstance => this;
-
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
@@ -362,8 +360,6 @@ public sealed class RouteCodecTests
         public string? ReplyContentType { get; private set; }
 
         public string? ReplyBody { get; private set; }
-
-        public object NativeInstance => this;
 
         public ValueTask DisposeAsync()
         {
@@ -522,8 +518,6 @@ public sealed class RouteCodecTests
         public RoutingId? ConnectRoutingId { get; private set; }
 
         public bool ProbeEnabled { get; private set; }
-
-        public object NativeInstance => this;
 
         public ValueTask DisposeAsync()
         {
@@ -687,8 +681,6 @@ public sealed class RouteCodecTests
         public SendFlags LastSendFlags { get; private set; }
 
         public SendFlags LastRequestFlags { get; private set; }
-
-        public object NativeInstance => this;
 
         public ValueTask DisposeAsync()
         {

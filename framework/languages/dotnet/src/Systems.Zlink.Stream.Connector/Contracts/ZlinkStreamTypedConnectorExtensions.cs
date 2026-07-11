@@ -4,7 +4,15 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public static class ZlinkStreamJsonCodec
 {
-    public static JsonSerializerOptions SerializerOptions { get; private set; } = new(JsonSerializerDefaults.Web);
+    private static JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
+
+    public static JsonSerializerOptions SerializerOptions
+    {
+        get => new(Volatile.Read(ref _serializerOptions));
+        private set => Volatile.Write(ref _serializerOptions, new JsonSerializerOptions(value));
+    }
+
+    internal static JsonSerializerOptions Snapshot => Volatile.Read(ref _serializerOptions);
 
     public static void Configure(JsonSerializerOptions options)
     {
@@ -18,14 +26,14 @@ public static class ZlinkStreamJsonExtensions
     public static T FromJson<T>(this ZlinkStreamEncodedPayload payload)
     {
         EnsureJson(payload);
-        return JsonSerializer.Deserialize<T>(payload.Payload.Span, ZlinkStreamJsonCodec.SerializerOptions)!;
+        return JsonSerializer.Deserialize<T>(payload.Payload.Span, ZlinkStreamJsonCodec.Snapshot)!;
     }
 
     public static ZlinkStreamEncodedPayload ToJson<T>(this T value)
     {
         return new ZlinkStreamEncodedPayload(
             ZlinkStreamCodec.Json,
-            JsonSerializer.SerializeToUtf8Bytes(value, ZlinkStreamJsonCodec.SerializerOptions),
+            JsonSerializer.SerializeToUtf8Bytes(value, ZlinkStreamJsonCodec.Snapshot),
             typeof(T));
     }
 

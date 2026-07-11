@@ -4,17 +4,10 @@ using Zlink.Framework.Runtime.Locations;
 namespace Zlink.Framework.Locations.Redis;
 
 /// <summary>
-/// Official Redis implementation of every location store contract. One
-/// instance backs the peer, spot, actor, and route stores plus the owner
-/// lease store and the change stamp store, which satisfies the contract
-/// requirement that location rows and owner leases share one physical store
-/// (draft 6.6): NewClaim judges "row owner's lease expired" atomically inside
-/// a Lua script against the lease key's Redis TTL.
-///
-/// Behavior is contractually identical to the framework's in-memory store:
-/// store-issued generations that survive row removal, owner-guarded removes,
-/// store-clock UpdatedAt, and double change stamp bumps per write. Read APIs
-/// surface store failures as exceptions for both reads and writes.
+/// Redis implementation of the framework location, owner lease, and change
+/// stamp store contracts. It preserves store-issued generations, applies
+/// owner-guarded mutations, uses store timestamps, and reports store failures
+/// through the operation that encountered them.
 /// </summary>
 public sealed class ZLinkRedisLocationStore :
     IZLinkLocationStore,

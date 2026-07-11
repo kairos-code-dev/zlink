@@ -113,7 +113,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             throw new InvalidOperationException(
                 $"Session '{_handler.GetType().FullName}' must expose the context provided by the runtime.");
         Handlers.BindSession(_handler);
-        Handlers.AddScannedHandlers(_runtime.Registration.EnumerateHandlerScanAssemblies());
+        Handlers.AddScannedHandlers(_runtime.Registration.ScannedHandlerCatalog.SessionHandlers);
         _handler.Configure();
         Handlers.Bind();
     }

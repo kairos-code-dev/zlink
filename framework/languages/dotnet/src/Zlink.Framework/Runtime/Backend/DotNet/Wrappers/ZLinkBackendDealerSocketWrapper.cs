@@ -8,7 +8,10 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
     // framework 가 유일한 writer 이므로 set 한 값을 read 로 돌려주는 것은 정합하다.
     private int _peerWeight = ZLinkSocketConfig.DefaultPeerWeight;
 
-    public object NativeInstance => nativeSocket;
+    internal IDealerSocket NativeSocket => nativeSocket;
+
+    public IAsyncDisposable CreateRequestCompletionPump() =>
+        ZLinkRequestCompletionPump.Start(nativeSocket);
 
     public void Bind(string endpoint)
     {

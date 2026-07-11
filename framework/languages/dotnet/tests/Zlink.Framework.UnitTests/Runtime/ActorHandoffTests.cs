@@ -104,6 +104,35 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void MigratedAndDestroyedTransitions_PreserveThenReleaseBoundSessionIdentity()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var source = ActorRef("node-a", 1);
+        var target = ActorRef("node-b", 2);
+        var sessionRid = RoutingId.From("session-1");
+        state.BindNativeActorRef(target);
+        state.BindSession(RoutingId.From("session-node"), sessionRid, "binding-1");
+        state.Handoff.BeginCapture();
+        _ = state.Handoff.CutoverCaptureToForwarding(0, source, target);
+        state.Handoff.CommitForwardingCutover(TimeSpan.FromSeconds(1));
+
+        state.RetireMigratedActorInstance(source);
+
+        Assert.Equal(target, state.NativeActorRef);
+        Assert.Equal(source, state.RetiredLocalActorRef);
+        Assert.True(state.TryGetBoundSession(out var retained));
+        Assert.Equal(sessionRid, retained.SessionRid);
+        Assert.Equal("binding-1", retained.BindingToken);
+
+        var released = state.ClearAfterDestroy();
+
+        Assert.Equal(retained, released);
+        Assert.Null(state.NativeActorRef);
+        Assert.Null(state.RetiredLocalActorRef);
+        Assert.False(state.TryGetBoundSession(out _));
+    }
+
+    [Fact]
     public void HandoffCompletion_RequiresMatchingTransfer()
     {
         var state = new ZLinkActorRuntimeState("actor-1");

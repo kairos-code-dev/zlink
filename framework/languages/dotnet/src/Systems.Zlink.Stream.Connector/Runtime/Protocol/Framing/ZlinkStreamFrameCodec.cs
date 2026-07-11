@@ -8,7 +8,41 @@ internal readonly record struct ZlinkStreamFrame(
 
 internal static class ZlinkStreamFrameCodec
 {
-    // Keep byte-compatible with Zlink.Framework stream framing; StreamWireInteropTests is the drift gate.
+    internal const int PrefixSize = 6;
+
+    public static byte[] Encode(
+        ReadOnlySpan<byte> header,
+        ReadOnlySpan<byte> payload)
+    {
+        ValidateSendFrame(header.Length, payload.Length);
+        var frame = new byte[GetFrameSize(header.Length, payload.Length)];
+        WritePrefix(frame.AsSpan(0, PrefixSize), header.Length, payload.Length);
+        header.CopyTo(frame.AsSpan(PrefixSize, header.Length));
+        payload.CopyTo(frame.AsSpan(PrefixSize + header.Length, payload.Length));
+        return frame;
+    }
+
+    public static bool TryDecode(
+        ReadOnlySpan<byte> frame,
+        out ReadOnlySpan<byte> header,
+        out ReadOnlySpan<byte> payload)
+    {
+        header = default;
+        payload = default;
+        if (frame.Length < PrefixSize) return false;
+
+        var headerSize = BinaryPrimitives.ReadUInt16BigEndian(frame[..2]);
+        var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(frame.Slice(2, 4));
+        if (payloadSize > int.MaxValue) return false;
+
+        var totalSize = PrefixSize + headerSize + (int)payloadSize;
+        if (frame.Length != totalSize) return false;
+
+        header = frame.Slice(PrefixSize, headerSize);
+        payload = frame.Slice(PrefixSize + headerSize, (int)payloadSize);
+        return true;
+    }
+
     public static void ValidateSendFrame(int headerLength, int payloadLength)
     {
         if (headerLength > ushort.MaxValue)
@@ -22,7 +56,7 @@ internal static class ZlinkStreamFrameCodec
         int headerLength,
         int payloadLength)
     {
-        if (destination.Length < 6)
+        if (destination.Length < PrefixSize)
             throw new ArgumentException("Frame prefix destination must be at least 6 bytes.", nameof(destination));
 
         ValidateSendFrame(headerLength, payloadLength);
@@ -33,7 +67,7 @@ internal static class ZlinkStreamFrameCodec
     public static int GetFrameSize(int headerLength, int payloadLength)
     {
         ValidateSendFrame(headerLength, payloadLength);
-        return checked(2 + 4 + headerLength + payloadLength);
+        return checked(PrefixSize + headerLength + payloadLength);
     }
 
     public static void WriteFrame(
@@ -46,8 +80,8 @@ internal static class ZlinkStreamFrameCodec
             throw new ArgumentException("Frame destination is smaller than the encoded frame.", nameof(destination));
 
         WritePrefix(destination[..6], header.Length, payload.Length);
-        header.Span.CopyTo(destination[6..]);
-        payload.Span.CopyTo(destination[(6 + header.Length)..]);
+        header.Span.CopyTo(destination[PrefixSize..]);
+        payload.Span.CopyTo(destination[(PrefixSize + header.Length)..]);
     }
 
     public static void ValidateSendPayload(int payloadLength, int maxPayloadSize)
@@ -90,7 +124,7 @@ internal static class ZlinkStreamFrameCodec
 
     public static long GetMaxReceiveFrameSize(int maxPayloadSize)
     {
-        return 6L + ushort.MaxValue + maxPayloadSize;
+        return PrefixSize + (long)ushort.MaxValue + maxPayloadSize;
     }
 
     private static async ValueTask ReadExactAsync(

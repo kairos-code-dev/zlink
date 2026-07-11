@@ -4,10 +4,45 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime.Transport;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
 {
+    [Fact]
+    public async Task CanceledWebSocketCloseStillDisposesTransport()
+    {
+        using var listener = new HttpListener();
+        var port = GetFreeTcpPort();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/canceled-close/");
+        listener.Start();
+        var server = Task.Run(async () =>
+        {
+            var context = await listener.GetContextAsync();
+            var accepted = await context.AcceptWebSocketAsync(null);
+            using var socket = accepted.WebSocket;
+            var buffer = new byte[1];
+            try
+            {
+                await socket.ReceiveAsync(buffer, CancellationToken.None);
+            }
+            catch (WebSocketException)
+            {
+            }
+        });
+        using var client = new ClientWebSocket();
+        await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/canceled-close/"), CancellationToken.None);
+        var connection = new WebSocketConnection(client, 1024);
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await connection.CloseAsync(canceled.Token));
+
+        Assert.Equal(WebSocketState.Closed, client.State);
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [Fact]
     public async Task TcpSendUsesHeaderPayloadFrame()
     {

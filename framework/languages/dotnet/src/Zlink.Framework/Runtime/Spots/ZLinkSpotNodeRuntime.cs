@@ -292,8 +292,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 Registration.Router?.SocketConfig.SendTimeout
                 ?? _frameworkRegistration.DefaultSocketSendTimeout);
             activation.InitializeRuntimeResources();
-            foreach (var assembly in _frameworkRegistration.EnumerateHandlerScanAssemblies())
-            foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
+            foreach (var handler in _frameworkRegistration.ScannedHandlerCatalog.SpotHandlers)
                 await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
                     .ConfigureAwait(false);
 

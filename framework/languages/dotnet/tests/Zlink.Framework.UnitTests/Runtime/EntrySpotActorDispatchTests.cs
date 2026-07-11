@@ -1542,8 +1542,6 @@ public sealed class EntrySpotActorDispatchTests
     {
         private Action<ZLinkBackendSpotDispatchInfo>? _dispatchHandler;
 
-        public object NativeInstance => this;
-
         public RoutingId RoutingId => RoutingId.From("entry-spot");
 
         public Func<ValueTask>? DisposeHandler { get; set; }
@@ -1674,8 +1672,6 @@ public sealed class EntrySpotActorDispatchTests
 
         public TaskCompletionSource FinalPartAttempted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public object NativeInstance => this;
 
         public RoutingId RoutingId { get; private set; }
 
@@ -1888,8 +1884,6 @@ public sealed class EntrySpotActorDispatchTests
 
     private sealed class CapturingBackendContext : IZLinkBackendContext
     {
-        public object NativeInstance => this;
-
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public void Shutdown() { }

@@ -106,45 +106,89 @@ internal sealed class ZLinkLiveSocketConfig(
 
     private static ZLinkConfigurationException StartupOnly(string name)
     {
-        return new ZLinkConfigurationException(
-            $"'{name}' is a startup-only socket option and cannot be changed at runtime. "
-            + "Only Weight is runtime-mutable; set startup options at build time via Configure*Socket().");
+        return ZLinkRuntimeOptionsErrors.StartupOnly(name);
     }
 }
 
-// 확장 슬롯(routing/client socket/pubsub) 의 1차 미wiring 공통 오류.
 internal static class ZLinkRuntimeOptionsErrors
 {
-    public static ZLinkConfigurationException NotWired(string aspect)
+    public static ZLinkConfigurationException StartupOnly(string name)
     {
         return new ZLinkConfigurationException(
-            $"Runtime configuration of '{aspect}' is not supported in this release; "
-            + "only the serving socket Weight (drain) is wired for runtime mutation.");
+            $"'{name}' is a startup-only option and cannot be changed at runtime; "
+            + "set it at build time through the channel builder.");
     }
 }
 
-internal sealed class ZLinkClientServerRuntimeOptions(IZLinkSocketConfig serverSocket)
+internal sealed class ZLinkFrozenSocketConfig(IZLinkSocketConfig recipe) : IZLinkSocketConfig
+{
+    public long MaxMessageSize { get => recipe.MaxMessageSize; set => throw StartupOnly(); }
+    public int SendHighWaterMark { get => recipe.SendHighWaterMark; set => throw StartupOnly(); }
+    public int ReceiveHighWaterMark { get => recipe.ReceiveHighWaterMark; set => throw StartupOnly(); }
+    public int SendBufferSize { get => recipe.SendBufferSize; set => throw StartupOnly(); }
+    public int ReceiveBufferSize { get => recipe.ReceiveBufferSize; set => throw StartupOnly(); }
+    public TimeSpan? Linger { get => recipe.Linger; set => throw StartupOnly(); }
+    public TimeSpan? ReceiveTimeout { get => recipe.ReceiveTimeout; set => throw StartupOnly(); }
+    public TimeSpan? SendTimeout { get => recipe.SendTimeout; set => throw StartupOnly(); }
+    public TimeSpan? ConnectTimeout { get => recipe.ConnectTimeout; set => throw StartupOnly(); }
+    public TimeSpan? HandshakeInterval { get => recipe.HandshakeInterval; set => throw StartupOnly(); }
+    public bool IPv6 { get => recipe.IPv6; set => throw StartupOnly(); }
+    public bool TcpNoDelay { get => recipe.TcpNoDelay; set => throw StartupOnly(); }
+    public bool Immediate { get => recipe.Immediate; set => throw StartupOnly(); }
+    public int Weight { get => recipe.Weight; set => throw StartupOnly(); }
+
+    private static ZLinkConfigurationException StartupOnly() =>
+        ZLinkRuntimeOptionsErrors.StartupOnly("socket configuration");
+}
+
+internal sealed class ZLinkFrozenRouteConfig(IZLinkRouteConfig recipe) : IZLinkRouteConfig
+{
+    public bool RequireKnownPeer { get => recipe.RequireKnownPeer; set => throw StartupOnly(); }
+    public bool AllowPeerHandover { get => recipe.AllowPeerHandover; set => throw StartupOnly(); }
+    public bool EnablePeerProbe { get => recipe.EnablePeerProbe; set => throw StartupOnly(); }
+    public RoutingId ConnectRoutingId { get => recipe.ConnectRoutingId; set => throw StartupOnly(); }
+
+    private static ZLinkConfigurationException StartupOnly() =>
+        ZLinkRuntimeOptionsErrors.StartupOnly("server routing configuration");
+}
+
+internal sealed class ZLinkFrozenOutboundRouteConfig(IZLinkOutboundRouteConfig recipe) : IZLinkOutboundRouteConfig
+{
+    public bool ProbeRouterOnConnect { get => recipe.ProbeRouterOnConnect; set => throw StartupOnly(); }
+
+    private static ZLinkConfigurationException StartupOnly() =>
+        ZLinkRuntimeOptionsErrors.StartupOnly("client routing configuration");
+}
+
+internal sealed class ZLinkClientServerRuntimeOptions(
+    IZLinkSocketConfig? serverSocket,
+    IZLinkRouteConfig? serverRouting,
+    IZLinkSocketConfig? clientSocket,
+    IZLinkOutboundRouteConfig? clientRouting)
     : IZLinkClientServerChannelOptions
 {
     public IZLinkSocketConfig ConfigureServerSocket()
     {
-        return serverSocket;
+        return serverSocket ?? throw MissingRole("server");
     }
 
     public IZLinkSocketConfig ConfigureClientSocket()
     {
-        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientSocket));
+        return clientSocket ?? throw MissingRole("client");
     }
 
     public IZLinkRouteConfig ConfigureServerRouting()
     {
-        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureServerRouting));
+        return serverRouting ?? throw MissingRole("server");
     }
 
     public IZLinkOutboundRouteConfig ConfigureClientRouting()
     {
-        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientRouting));
+        return clientRouting ?? throw MissingRole("client");
     }
+
+    private static ZLinkConfigurationException MissingRole(string role) =>
+        new($"Client-server channel has no {role} role on this node.");
 }
 
 internal sealed class ZLinkRouteMeshRuntimeOptions(IZLinkSocketConfig socket)
@@ -162,7 +206,7 @@ internal sealed class ZLinkChannelRuntimeOptions(ZLinkFrameworkRuntime runtime)
     public IZLinkClientServerChannelOptions ClientServerChannel(string channelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
-        return new ZLinkClientServerRuntimeOptions(runtime.ResolveClientServerServerSocketConfig(channelName));
+        return runtime.ResolveClientServerRuntimeOptions(channelName);
     }
 
     public IZLinkRouteMeshChannelOptions RouteMeshChannel(string channelName)

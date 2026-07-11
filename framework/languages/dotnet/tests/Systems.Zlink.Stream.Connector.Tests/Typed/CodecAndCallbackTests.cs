@@ -20,6 +20,31 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void JsonCodecConfigurationUsesDefensiveSnapshots()
+    {
+        var original = ZlinkStreamJsonCodec.SerializerOptions;
+        try
+        {
+            var configured = new JsonSerializerOptions(original);
+            ZlinkStreamJsonCodec.Configure(configured);
+
+            configured.MaxDepth = 1;
+            Assert.NotEqual(1, ZlinkStreamJsonCodec.SerializerOptions.MaxDepth);
+
+            var exposed = ZlinkStreamJsonCodec.SerializerOptions;
+            exposed.MaxDepth = 2;
+            Assert.NotEqual(2, ZlinkStreamJsonCodec.SerializerOptions.MaxDepth);
+
+            var payload = new Ping("snapshot").ToJson();
+            Assert.Equal("snapshot", payload.FromJson<Ping>().Text);
+        }
+        finally
+        {
+            ZlinkStreamJsonCodec.Configure(original);
+        }
+    }
+
+    [Fact]
     public async Task TypedConnectorUsesMessagePackExtensionWhenConfigured()
     {
         var headerCodec = new ZlinkStreamHeaderCodec();

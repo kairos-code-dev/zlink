@@ -4,7 +4,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
 {
     private readonly object _gate = new();
 
-    public object NativeInstance => nativeSocket;
+    internal IRouterSocket NativeSocket => nativeSocket;
 
     public void Bind(string endpoint)
     {

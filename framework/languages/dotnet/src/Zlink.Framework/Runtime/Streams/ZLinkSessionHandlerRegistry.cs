@@ -69,35 +69,27 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
         _bound = true;
     }
 
-    internal void AddScannedHandlers(IEnumerable<Assembly> assemblies)
+    internal void AddScannedHandlers(IReadOnlyList<ZLinkScannedSessionHandler> candidates)
     {
         EnsureNotBound();
         var context = _context
                       ?? throw new InvalidOperationException("Session handler registry is not bound to a session.");
         var contextType = context.GetType();
-        foreach (var assembly in assemblies)
-        foreach (var handlerType in assembly.GetTypes())
+        var sessionType = _session?.GetType();
+        foreach (var candidate in candidates)
         {
-            if (handlerType.IsAbstract || handlerType.IsInterface) continue;
-
-            if (handlerType == _session?.GetType())
-                foreach (var method in handlerType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
-                    if (method.GetCustomAttribute<ZLinkStreamPacketAttribute>() is not null)
-                        AddAttributedHandler(handlerType, method);
-
-            if (!ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType)
-                    .Any(contract => contract.Definition == typeof(IZLinkSessionPacketHandler<,>)
-                                     && contract.Arguments[0].IsAssignableFrom(contextType)))
-                continue;
-
-            AddHandler(handlerType, null);
+            switch (candidate)
+            {
+                case ZLinkScannedAttributedSessionHandler attributed
+                    when attributed.SessionType == sessionType:
+                    AddDescriptor(attributed.Descriptor);
+                    break;
+                case ZLinkScannedInterfaceSessionHandler implemented
+                    when implemented.ContextType.IsAssignableFrom(contextType):
+                    AddDescriptor(implemented.Descriptor);
+                    break;
+            }
         }
-    }
-
-    private void AddAttributedHandler(Type sessionType, MethodInfo method)
-    {
-        var descriptor = ZLinkSessionPacketHandlerDescriptorFactory.CreateAttributed(sessionType, method);
-        AddDescriptor(descriptor);
     }
 
     private void AddHandler(Type handlerType, string? packetName)
@@ -192,6 +184,55 @@ internal abstract class ZLinkSessionPacketHandlerDescriptor(
         CancellationToken cancellationToken);
 }
 
+internal abstract record ZLinkScannedSessionHandler(
+    ZLinkSessionPacketHandlerDescriptor Descriptor);
+
+internal sealed record ZLinkScannedAttributedSessionHandler(
+    Type SessionType,
+    ZLinkSessionPacketHandlerDescriptor Descriptor)
+    : ZLinkScannedSessionHandler(Descriptor);
+
+internal sealed record ZLinkScannedInterfaceSessionHandler(
+    Type ContextType,
+    ZLinkSessionPacketHandlerDescriptor Descriptor)
+    : ZLinkScannedSessionHandler(Descriptor);
+
+internal static class ZLinkScannedSessionHandlerScanner
+{
+    public static IReadOnlyList<ZLinkScannedSessionHandler> Scan(
+        Assembly assembly,
+        IReadOnlySet<Type> sessionTypes)
+    {
+        var candidates = new List<ZLinkScannedSessionHandler>();
+        foreach (var handlerType in assembly.GetTypes())
+        {
+            if (handlerType.IsAbstract || handlerType.IsInterface) continue;
+
+            if (sessionTypes.Contains(handlerType))
+                foreach (var method in handlerType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+                    if (method.GetCustomAttribute<ZLinkStreamPacketAttribute>() is not null)
+                        candidates.Add(new ZLinkScannedAttributedSessionHandler(
+                            handlerType,
+                            ZLinkSessionPacketHandlerDescriptorFactory.CreateAttributed(handlerType, method)));
+
+            foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
+            {
+                if (definition != typeof(IZLinkSessionPacketHandler<,>)) continue;
+
+                candidates.Add(new ZLinkScannedInterfaceSessionHandler(
+                    arguments[0],
+                    ZLinkSessionPacketHandlerDescriptorFactory.Create(
+                        handlerType,
+                        arguments[0],
+                        arguments[1],
+                        null)));
+            }
+        }
+
+        return Array.AsReadOnly(candidates.ToArray());
+    }
+}
+
 internal sealed class ZLinkSessionPacketHandlerDescriptor<TSessionContext, TMessage, THandler>
     : ZLinkSessionPacketHandlerDescriptor
     where THandler : class, IZLinkSessionPacketHandler<TSessionContext, TMessage>
@@ -275,15 +316,24 @@ internal static class ZLinkSessionPacketHandlerDescriptorFactory
                     $"Session packet handler '{handlerType.FullName}' targets context '{handlerContextType.FullName}', but the session context is '{sessionContextType.FullName}'.");
 
             var messageType = arguments[1];
-            return (ZLinkSessionPacketHandlerDescriptor)Activator.CreateInstance(
-                typeof(ZLinkSessionPacketHandlerDescriptor<,,>).MakeGenericType(
-                    handlerContextType,
-                    messageType,
-                    handlerType),
-                packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType))!;
+            return Create(handlerType, handlerContextType, messageType, packetName);
         }
 
         throw new ZLinkConfigurationException(
             $"Session packet handler '{handlerType.FullName}' must implement IZLinkSessionPacketHandler<TSessionContext, TMessage>.");
+    }
+
+    public static ZLinkSessionPacketHandlerDescriptor Create(
+        Type handlerType,
+        Type handlerContextType,
+        Type messageType,
+        string? packetName)
+    {
+        return (ZLinkSessionPacketHandlerDescriptor)Activator.CreateInstance(
+            typeof(ZLinkSessionPacketHandlerDescriptor<,,>).MakeGenericType(
+                handlerContextType,
+                messageType,
+                handlerType),
+            packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType))!;
     }
 }

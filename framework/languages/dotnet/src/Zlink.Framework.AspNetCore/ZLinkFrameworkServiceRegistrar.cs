@@ -23,24 +23,18 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
-            AddScannedHandlers(services, assembly);
-
-        foreach (var channel in registration.Channels.Values) AddExplicitChannelHandlers(services, channel);
-
-        return services;
-    }
-
-    private static void AddScannedHandlers(IServiceCollection services, System.Reflection.Assembly assembly)
-    {
-        foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly))
+        foreach (var endpoint in registration.ScannedHandlerCatalog.ChannelEndpoints)
         {
             services.TryAddTransient(endpoint.DeclaringType);
             services.AddSingleton(endpoint);
         }
 
-        foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
+        foreach (var endpoint in registration.ScannedHandlerCatalog.RouteEndpoints)
             services.TryAddTransient(endpoint.DeclaringType);
+
+        foreach (var channel in registration.Channels.Values) AddExplicitChannelHandlers(services, channel);
+
+        return services;
     }
 
     private static void AddExplicitChannelHandlers(

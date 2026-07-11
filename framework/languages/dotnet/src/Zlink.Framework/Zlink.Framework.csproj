@@ -8,7 +8,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="K4os.Compression.LZ4"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
         <PackageReference Include="Systems.Zlink"/>
@@ -16,5 +15,10 @@
 
     <ItemGroup>
         <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="../Shared/ZLinkCanonicalLocationKeyFormatter.cs"
+                 Link="Internal/ZLinkCanonicalLocationKeyFormatter.cs"/>
     </ItemGroup>
 </Project>

@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket) : IZLinkBackendPublisherSocket
 {
-    public object NativeInstance => nativeSocket;
+    internal IPubSocket NativeSocket => nativeSocket;
 
     public void Bind(string endpoint)
     {

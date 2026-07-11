@@ -7,7 +7,9 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
 
     public IZLinkRouteMeshChannelBuilder EnableServer(string endpoint)
     {
-        new ZLinkRouteMeshChannelServerCapabilityBuilder(registration).Bind(endpoint);
+        registration.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
+            endpoint,
+            "Route mesh channel server bind endpoint must not be empty.");
         return this;
     }
 
@@ -106,22 +108,5 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             args[1],
             packetName));
         return this;
-    }
-}
-
-internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
-    ZLinkRouteChannelRegistration registration)
-{
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("Route mesh channel server bind endpoint must not be empty.");
-
-        registration.BindEndpoint = endpoint;
-    }
-
-    public IZLinkSocketConfig ConfigureSocket()
-    {
-        return registration.SocketConfig;
     }
 }

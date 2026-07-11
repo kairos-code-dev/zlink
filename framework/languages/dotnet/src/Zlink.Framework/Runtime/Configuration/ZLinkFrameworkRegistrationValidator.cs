@@ -4,9 +4,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 {
     public static void Validate(ZLinkFrameworkRegistration registration)
     {
+        registration.FreezeScannedHandlerCatalog();
         var globalSpotFactories = new HashSet<Type>();
-        var channelHandlerEndpoints = ScanChannelHandlerEndpoints(registration);
-        var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);
+        var channelHandlerEndpoints = registration.ScannedHandlerCatalog.ChannelEndpoints;
+        var routeHandlerEndpoints = registration.ScannedHandlerCatalog.RouteEndpoints;
         var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
 
         ValidateDispatchOptions(registration.DispatchOptions);
@@ -60,26 +61,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             || options.Diagnostics.SampleRate > 1.0d)
             throw new ZLinkConfigurationException(
                 "Diagnostics SampleRate must be between 0.0 and 1.0.");
-    }
-
-    private static IReadOnlyList<ZLinkHandlerEndpointDescriptor> ScanChannelHandlerEndpoints(
-        ZLinkFrameworkRegistration registration)
-    {
-        var endpoints = new List<ZLinkHandlerEndpointDescriptor>();
-        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
-            endpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
-
-        return endpoints;
-    }
-
-    private static IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> ScanRouteHandlerEndpoints(
-        ZLinkFrameworkRegistration registration)
-    {
-        var endpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
-        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
-            endpoints.AddRange(ZLinkHandlerScanner.ScanRoute(assembly));
-
-        return endpoints;
     }
 
     private static IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> BuildHandlerGroupCatalog(

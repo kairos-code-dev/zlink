@@ -5,6 +5,7 @@
         <AssemblyName>Zlink.Framework.Codecs.MessagePack</AssemblyName>
         <RootNamespace>Zlink.Framework.Codecs.MessagePack</RootNamespace>
         <Description>MessagePack codec extension for the ZLink .NET framework.</Description>
+        <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
     </PropertyGroup>
 
     <ItemGroup>

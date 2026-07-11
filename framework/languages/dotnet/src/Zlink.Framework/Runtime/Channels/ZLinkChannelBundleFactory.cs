@@ -36,7 +36,7 @@ internal sealed class ZLinkChannelBundleFactory(
                     dealer.OnSendReady,
                     channel.Client.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token),
-                completionPump: ZLinkRequestCompletionPump.Start(dealer.NativeInstance),
+                completionPump: dealer.CreateRequestCompletionPump(),
                 localRid: localRid,
                 socketRole: "dealer");
 

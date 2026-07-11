@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
-internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendSocket : IAsyncDisposable
 {
     void Bind(string endpoint);
 
@@ -34,6 +34,8 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
 internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
+    IAsyncDisposable CreateRequestCompletionPump();
+
     void SetRoutingId(RoutingId routingId);
 
     void OnSendReady(Action handler);
@@ -188,7 +190,7 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
         SendFlags flags);
 }
 
-internal interface IZLinkBackendSocketMonitor : IZLinkBackendObject, IAsyncDisposable
+internal interface IZLinkBackendSocketMonitor : IAsyncDisposable
 {
     void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler);
 

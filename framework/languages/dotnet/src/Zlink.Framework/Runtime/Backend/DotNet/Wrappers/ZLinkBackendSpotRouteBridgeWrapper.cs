@@ -3,8 +3,6 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 internal sealed class ZLinkBackendSpotRouteBridgeWrapper(ISpotRouteBridge nativeBridge) :
     IZLinkBackendSpotRouteBridge
 {
-    public object NativeInstance => nativeBridge;
-
     public void AttachRouterChannel(
         string channelName,
         IZLinkBackendRouterSocket router,
@@ -12,7 +10,8 @@ internal sealed class ZLinkBackendSpotRouteBridgeWrapper(ISpotRouteBridge native
     {
         nativeBridge.AttachRouterChannel(
             channelName,
-            router.RequireNative<IRouterSocket>(),
+            (router as ZLinkBackendRouterSocketWrapper)?.NativeSocket
+            ?? throw new InvalidOperationException("Expected the .NET backend router wrapper."),
             options);
     }
 

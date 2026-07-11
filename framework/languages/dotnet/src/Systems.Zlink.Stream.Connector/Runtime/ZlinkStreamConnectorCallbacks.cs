@@ -202,6 +202,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         CancellationToken cancellationToken,
         bool reportErrors)
     {
+        using var permit = ZlinkStreamCallbackInvocationPermit.EnterCurrentWorker();
         try
         {
             await callback(cancellationToken).ConfigureAwait(false);

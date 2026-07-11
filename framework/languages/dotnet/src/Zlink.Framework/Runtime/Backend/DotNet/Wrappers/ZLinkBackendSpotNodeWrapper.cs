@@ -2,8 +2,6 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
-    public object NativeInstance => nativeSpotNode;
-
     public RoutingId RoutingId => nativeSpotNode.RoutingId;
 
     public void SetRoutingId(RoutingId routingId)

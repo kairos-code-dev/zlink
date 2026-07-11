@@ -1,3 +1,5 @@
+using Zlink.Framework.Internal.Locations;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
@@ -105,7 +107,7 @@ internal static class ZLinkAutoConnectPlanner
         // without a rid fall back to endpoint + role. An endpoint change
         // under the same key is a peer handover, not a new peer.
         var identity = peer.NodeRid is { Size: > 0 } rid ? rid.ToHex() : peer.Endpoint;
-        return $"{peer.Role.ToCanonicalString()}|{identity}";
+        return $"{ZLinkCanonicalLocationKeyFormatter.CanonicalName(peer.Role)}|{identity}";
     }
 
     private static bool IsSelf(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer)

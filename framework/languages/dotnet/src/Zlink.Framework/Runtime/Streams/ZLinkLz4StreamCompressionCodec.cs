@@ -1,4 +1,4 @@
-using K4os.Compression.LZ4;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -6,18 +6,20 @@ internal sealed class ZLinkLz4StreamCompressionCodec : IZlinkStreamCompressionCo
 {
     public static ReadOnlyMemory<byte> CompressPayload(ReadOnlyMemory<byte> payload)
     {
-        return LZ4Pickler.Pickle(payload.Span);
+        return ZlinkStreamLz4PayloadCodec.Compress(payload);
     }
 
     public static ReadOnlyMemory<byte> DecompressPayload(
         ReadOnlyMemory<byte> payload,
         int maxDecompressedPayloadSize)
     {
-        var decompressedSize = LZ4Pickler.UnpickledSize(payload.Span);
-        if (decompressedSize > maxDecompressedPayloadSize)
+        if (!ZlinkStreamLz4PayloadCodec.TryDecompress(
+                payload,
+                maxDecompressedPayloadSize,
+                out var decompressed))
             throw new InvalidOperationException("LZ4 decoded stream payload exceeds maximum stream payload size.");
 
-        return LZ4Pickler.Unpickle(payload.Span);
+        return decompressed;
     }
 
     public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)

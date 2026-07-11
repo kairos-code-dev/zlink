@@ -5,6 +5,8 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal sealed class ZLinkFrameworkRegistration
 {
+    private ZLinkScannedHandlerCatalog? _scannedHandlerCatalog;
+
     public TimeSpan DefaultRequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan ActorTransferForwardWindow { get; set; } = TimeSpan.FromSeconds(5);
@@ -102,6 +104,54 @@ internal sealed class ZLinkFrameworkRegistration
         }
 
         return assemblies;
+    }
+
+    public ZLinkScannedHandlerCatalog ScannedHandlerCatalog =>
+        _scannedHandlerCatalog ??= ZLinkScannedHandlerCatalog.Build(
+            EnumerateHandlerScanAssemblies(),
+            EnumerateSessionTypes());
+
+    public void FreezeScannedHandlerCatalog()
+    {
+        _scannedHandlerCatalog = ZLinkScannedHandlerCatalog.Build(
+            EnumerateHandlerScanAssemblies(),
+            EnumerateSessionTypes());
+    }
+
+    private IReadOnlySet<Type> EnumerateSessionTypes() => StreamNodes.Values
+        .Select(static node => node.HeaderSessionType)
+        .Where(static type => type is not null)
+        .Cast<Type>()
+        .ToHashSet();
+}
+
+internal sealed record ZLinkScannedHandlerCatalog(
+    IReadOnlyList<ZLinkHandlerEndpointDescriptor> ChannelEndpoints,
+    IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> RouteEndpoints,
+    IReadOnlyList<ZLinkScannedSpotHandler> SpotHandlers,
+    IReadOnlyList<ZLinkScannedSessionHandler> SessionHandlers)
+{
+    public static ZLinkScannedHandlerCatalog Build(
+        IEnumerable<Assembly> assemblies,
+        IReadOnlySet<Type> sessionTypes)
+    {
+        var channelEndpoints = new List<ZLinkHandlerEndpointDescriptor>();
+        var routeEndpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
+        var spotHandlers = new List<ZLinkScannedSpotHandler>();
+        var sessionHandlers = new List<ZLinkScannedSessionHandler>();
+        foreach (var assembly in assemblies)
+        {
+            channelEndpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
+            routeEndpoints.AddRange(ZLinkHandlerScanner.ScanRoute(assembly));
+            spotHandlers.AddRange(ZLinkScannedSpotHandlerScanner.Scan(assembly));
+            sessionHandlers.AddRange(ZLinkScannedSessionHandlerScanner.Scan(assembly, sessionTypes));
+        }
+
+        return new ZLinkScannedHandlerCatalog(
+            Array.AsReadOnly(channelEndpoints.ToArray()),
+            Array.AsReadOnly(routeEndpoints.ToArray()),
+            Array.AsReadOnly(spotHandlers.ToArray()),
+            Array.AsReadOnly(sessionHandlers.ToArray()));
     }
 }
 

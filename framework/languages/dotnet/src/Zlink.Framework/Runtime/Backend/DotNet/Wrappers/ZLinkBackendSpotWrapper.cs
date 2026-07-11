@@ -2,8 +2,6 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendSpot
 {
-    public object NativeInstance => nativeSpot;
-
     public RoutingId RoutingId => nativeSpot.RoutingId;
 
     public void SetRoutingId(RoutingId routingId)
@@ -179,17 +177,15 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         var request = nativeSpot.RecvActorJoin(flags);
         if (request is null) return null;
 
-        return new ZLinkBackendActorJoinRequest(
+        return new ZLinkDotNetBackendActorJoinRequest(
             request.Info.SourceActor.ToBackend(),
             request.Info.TargetActor.ToBackend(),
             request.Info.SourceNodeRid,
             request.Info.TargetSpotRid,
             request.Info.JoinEpoch,
             request.Message,
-            request.Parts)
-        {
-            NativeRequest = request
-        };
+            request.Parts,
+            request);
     }
 
     public ZLinkBackendSpotActorLifecycleEvent? RecvActorLifecycle(RecvFlags flags)
@@ -203,7 +199,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         int joinResultCode,
         Message reply)
     {
-        var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
+        var nativeRequest = RequireNativeRequest(request);
         nativeSpot.ReplyActorJoin(nativeRequest, joinResultCode)
             .Message(reply)
             .Submit();
@@ -214,10 +210,36 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         int joinResultCode,
         IReadOnlyList<Message> parts)
     {
-        var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
+        var nativeRequest = RequireNativeRequest(request);
         nativeSpot.ReplyActorJoin(nativeRequest, joinResultCode)
             .Messages(parts)
             .Submit();
+    }
+
+    private static ActorJoinRequest RequireNativeRequest(ZLinkBackendActorJoinRequest request) =>
+        request is ZLinkDotNetBackendActorJoinRequest dotNetRequest
+            ? dotNetRequest.NativeRequest
+            : throw new InvalidOperationException("Expected a .NET backend actor join request.");
+
+    private sealed class ZLinkDotNetBackendActorJoinRequest(
+        ZLinkBackendActorRef sourceActor,
+        ZLinkBackendActorRef targetActor,
+        RoutingId sourceNodeRid,
+        RoutingId targetSpotRid,
+        ulong joinEpoch,
+        Message message,
+        IReadOnlyList<Message> parts,
+        ActorJoinRequest nativeRequest)
+        : ZLinkBackendActorJoinRequest(
+            sourceActor,
+            targetActor,
+            sourceNodeRid,
+            targetSpotRid,
+            joinEpoch,
+            message,
+            parts)
+    {
+        public ActorJoinRequest NativeRequest { get; } = nativeRequest;
     }
 
     public ValueTask DisposeAsync()

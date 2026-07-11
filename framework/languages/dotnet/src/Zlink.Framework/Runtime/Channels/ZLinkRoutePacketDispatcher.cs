@@ -70,7 +70,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
     {
         if (internalPackets.CanHandleSend(header.MessageName))
         {
-            await internalPackets.DispatchSendAsync(received, cancellationToken).ConfigureAwait(false);
+            await internalPackets.DispatchSendAsync(received, header, cancellationToken).ConfigureAwait(false);
             return;
         }
 

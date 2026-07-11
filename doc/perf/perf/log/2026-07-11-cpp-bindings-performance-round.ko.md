@@ -105,3 +105,54 @@ tcp 64B 대표 실행에서 C process는 CPU 최대 194.0%, 최대 `nlwp=6`이�
 - 코드 변경: 없음
 - 성능 개선 커밋과 푸시: 해당 없음
 - 다음 pattern: Single `PUBSUB`
+
+## Single PUBSUB 진행 기록
+
+### tcp 기준 측정 의미 수정
+
+최초 tcp paired 측정에서는 C가 active publish에 `DONTWAIT`를 사용하고 C++은 blocking
+publish를 사용했다. Single 정책은 연속 blocking send와 socket HWM의 자연스러운
+backpressure를 요구하므로 같은 동작을 비교한 결과가 아니었다. 실제 중앙값도 64B에서
+C 180.46 Kmsg/s, C++ 962.76 Kmsg/s로 비정상적으로 벌어졌고, 이 결과는 판정에서
+제외했다.
+
+POSD 관점에서 확인한 위험 신호는 정책에 정의된 송신 방식이 pattern 코드의 flag 선택과
+중복되어 서로 달라진 점이다. 다음 두 방안을 비교했다.
+
+1. C++을 `DONTWAIT` 재시도로 바꾸면 기존 C 수치와 가까워질 수 있지만, 잘못된 기준을
+   binding에 복제하고 Single 정책의 책임 경계를 흐리므로 폐기했다.
+2. C PUBSUB을 정책대로 blocking publish로 고치면 HWM이 backpressure를 담당하고 C와
+   C++이 같은 의미를 측정한다. 공개 API나 특수 우회를 추가하지 않으므로 이 방안을
+   선택했다.
+
+수정 뒤 CPU 고정 5회 paired 측정의 중앙값은 다음과 같다.
+
+| Size | C throughput | C++ throughput | 비율 | 최대 latency 비율 |
+|------|--------------|----------------|------|-------------------|
+| 64 | 1,101,111.0 | 967,475.2 | 87.9% | 0.99배 |
+| 1024 | 895,080.4 | 781,915.8 | 87.4% | 0.95배 |
+| 65536 | 65,074.2 | 57,588.8 | 88.5% | 1.15배 |
+
+처리량과 latency 비율은 C++ 단순 one-way 목표를 만족했다. 그러나 p99 변동 폭은 C가
+각각 61.6%, 10.7%, 37.0%였고 C++이 32.8%, 30.9%, 24.2%였다. 64B 단독 재측정과
+CPU 집합 진단에서도 간헐적인 40ms대 host pause가 남았다. 처리량 변동은 작았지만 p99
+변동 기준을 만족하지 못했으므로 tcp 셀은 아직 통과로 기록하지 않는다. CPU 집합을 넓히는
+runner 후보도 문제를 없애지 못해 채택하지 않았다.
+
+판정에 사용한 report는 다음과 같다.
+
+- C: `perf_c_single_linux_20260711_142234_core_9_0_cpp_pubsub_tcp_blocking_baseline_20260711.txt`
+- C++: `perf_cpp_single_linux_20260711_142406_core_9_0_cpp_pubsub_tcp_blocking_compare_20260711.txt`
+- C 64B 변동 확인: `perf_c_single_linux_20260711_142623_core_9_0_cpp_pubsub_tcp64_stability_20260711.txt`
+
+세 report는 모두 `status: complete`이고 runtime은
+`core/build/lib/libzlink.so.9.0.0`, auto-HWM profile은 `balanced`, I/O thread는 1,
+timeout은 200ms로 일치한다.
+
+### 현재 판정
+
+- Single `PUBSUB`: 진행 중
+- tcp throughput과 latency 비율: 목표 만족
+- tcp 변동성: 미달, 통과 처리하지 않음
+- C++ binding 변경: 없음
+- 다음 측정: host p99가 안정된 시점에 tcp 64B를 C와 C++ 순서로 다시 측정

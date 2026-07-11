@@ -425,16 +425,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.1 C++
 
 - perf 경로: `bindings/cpp/perf`
-- Single 상태: `PAIR 완료, 나머지 pattern 미측정`
+- Single 상태: `PAIR 완료, PUBSUB 진행 중, 나머지 pattern 미측정`
 - Multi 상태: `누락 구현 완료, pattern별 미측정`
-- 다음 작업: Single `PUBSUB`을 core 9.0.0 C와 가까운 시점에 paired 측정한다.
+- 다음 작업: Single `PUBSUB` tcp의 p99 변동성을 다시 확인한다. 이 셀이 안정되기 전에는
+  다른 transport나 pattern을 측정하지 않는다.
 
 #### 9.1.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
 | `tcp` | `PAIR` | 통과(99.9%) | 통과(100.0%) | 통과(99.8%) | 통과(100.0%) | 통과(100.1%) | 통과(99.8%) | 3회 paired 측정. 1024B는 CPU 고정 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
-| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | blocking publish로 C와 C++의 측정 의미를 맞췄다. 64/1024/65536B 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘어서 통과로 기록하지 않았다. 상세 내용은 C++ 라운드 로그 참고. |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
@@ -1177,16 +1178,16 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Single `PUBSUB` 대기 | Single `PAIR`은 모든 대상 셀을 완료했다. |
-| paired C | PAIR 완료 | 다음에는 C `PUBSUB`만 측정하고 바로 C++ `PUBSUB`을 측정한다. |
-| 개선 반복 | 미시작 | 목표 미달이면 같은 pattern에서 분석, 개선, paired 재측정을 반복한다. |
-| 커밋과 푸시 | 해당 없음 | 채택한 성능 개선이 생기면 다음 pattern 전에 검증된 범위만 커밋하고 푸시한다. |
+| 현재 pattern | Single `PUBSUB` 진행 중 | tcp 64/1024/65536B의 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. |
+| paired C | PUBSUB tcp 일부 측정 | C PUBSUB의 잘못된 `DONTWAIT`를 blocking publish로 고친 뒤 C와 C++을 CPU 고정 5회로 측정했다. |
+| 개선 반복 | 측정 조건 조사 중 | CPU 집합 후보는 p99 변동을 없애지 못해 폐기했다. host가 안정된 시점에 같은 tcp 셀만 다시 측정한다. |
+| 커밋과 푸시 | 준비 중 | 채택한 C 기준 측정 수정과 근거만 별도 커밋하고 푸시한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | `PAIR` 완료, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `PUBSUB`을 C와 C++으로 paired 측정한다. |
+| 1 | C++ | `PAIR` 완료, `PUBSUB` 진행 중, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `PUBSUB` tcp의 p99 변동성을 다시 확인한다. |
 | 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
@@ -1215,6 +1216,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | 전체 | 실행 순서 명확화 | - | C 전체 baseline을 미리 측정하지 않고 현재 언어의 pattern 하나만 C와 binding으로 paired 측정한다. 비교, 개선, 재측정, 목표 확인, 커밋과 푸시를 마친 뒤 다음 pattern으로 이동한다. | pattern과 언어 전환 gate 갱신 | 이 문서 7장과 10장 |
 | 2026-07-11 | 전체 | POSD gate 추가 | - | 성능 목표를 우선하되 구현 전 위험 신호와 두 가지 설계를 비교하고, 측정 효과와 정보 은닉, 책임 경계를 함께 확인한다. | 개선 설계와 커밋 gate 갱신 | 이 문서 5장과 7.7장 |
 | 2026-07-11 | C++ | Single `PAIR` | core_9_0_cpp_pair_*_20260711 | transport별로 C 3회 측정 직후 C++ 3회를 측정했다. secure transport와 변동 셀은 CPU 고정 5회로 보강했다. 모든 셀이 throughput, latency, 변동성 gate를 통과했고 코드 변경은 필요하지 않았다. | pattern 완료, 커밋 해당 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Single `PUBSUB` tcp 일부 | core_9_0_cpp_pubsub_tcp_blocking_*_20260711 | C PUBSUB의 active publish를 Single 정책에 맞게 blocking으로 수정한 뒤 C와 C++을 paired 측정했다. 64/1024/65536B 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. | pattern 진행 중, tcp 통과 보류 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

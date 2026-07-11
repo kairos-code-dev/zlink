@@ -205,14 +205,17 @@ void run_pubsub (const std::string &transport, size_t msg_size, const std::strin
                                                                   active_state, seq)) {
                   return perf_single_one_way::send_step_fatal;
               }
-              if (perf_zlink_publish_parts (publisher, k_pubsub_topic, &part, 1, ZLINK_DONTWAIT)
+              // Single one-way measures continuous blocking send. Let the
+              // socket HWM apply backpressure instead of spinning on EAGAIN.
+              if (perf_zlink_publish_parts (publisher, k_pubsub_topic, &part, 1,
+                                            ZLINK_SEND_FLAGS_NONE)
                   == 0) {
                   return perf_single_one_way::send_step_sent;
               }
 
               const int err = zlink_errno ();
               zlink_msg_close (&part);
-              if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)
+              if (err == EINTR)
                   return perf_single_one_way::send_step_retry;
               if (bench_debug_enabled ()) {
                   std::cerr << "[perf-pubsub] publish failed err=" << err << std::endl;

@@ -439,3 +439,82 @@ complete다. `test_cpp_contract_message`, `test_cpp_contract_socket`,
 - C++ binding 변경: 없음
 - 완료 커밋: `f951e7baa`
 - 다음 pattern: Single `ROUTER_ROUTER`
+
+## Single ROUTER_ROUTER
+
+### Transport 단위 측정 조건
+
+- source: `34fb4414f`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport 순서: tcp, ws, wss, tls, inproc, ipc
+- duration: 5초
+- 반복: transport마다 C 5회 직후 C++ 5회
+- CPU pin: 사용하지 않음
+- 공식 perf process: 한 번에 하나만 실행
+
+이 pattern부터 같은 pattern의 transport를 한꺼번에 측정하지 않았다. tcp의 모든 message
+size를 C와 C++으로 비교하고 판정한 뒤 ws로 이동했고, 같은 절차로 마지막 ipc까지 진행했다.
+한 transport가 미달이면 다른 transport를 미리 측정하지 않고 현재 transport에서 분석과
+개선, 재측정을 마치도록 계획 문서 7.4절도 갱신했다.
+
+### C 대비 최종 throughput
+
+아래 표는 C++ throughput을 가까운 시점의 C throughput으로 나눈 값이다. 평균 latency만
+latency gate에 사용했고 p95와 p99는 진단 자료로 보존했다.
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 110.1% | 99.5% | 96.9% | 101.5% | 99.4% | 99.4% |
+| ws | 104.8% | 95.9% | 95.2% | 95.4% | 99.4% | 99.7% |
+| wss | 111.8% | 95.3% | 97.5% | 97.5% | 99.1% | 98.0% |
+| tls | 110.9% | 105.5% | 97.2% | 96.1% | 99.1% | 100.5% |
+| inproc | 109.4% | 101.5% | 97.9% | 83.7% | 105.8% | 144.0% |
+| ipc | 101.8% | 100.4% | 94.1% | 93.8% | 98.0% | 99.3% |
+
+36개 throughput 셀이 routed one-way의 C++ 최소 목표 70%를 만족했다. 평균 latency의
+transport별 최대 비율은 tcp 1.00배, ws 1.95배, wss 1.26배, tls 1.11배, inproc
+1.00배, ipc 1.11배로 모두 상한 2배 이내였다.
+
+### 변동성과 POSD 확인
+
+tcp 64B 처리량은 C 13.0%, C++ 10.5% 변동이었고, ws와 tls의 일부 작은 메시지 평균
+latency는 20%를 넘게 변했다. 처리량은 목표에서 충분히 떨어지지 않았고 C와 C++ 모두
+one-way queue 체류 시간이 회차별로 달라지는 형태였다. 측정 중 지속적인 고부하 process는
+없었고, 각 transport의 C와 C++ Effective Options와 auto-HWM은 일치했다.
+
+ipc 65536B C++ 처리량은 최초 5회에서 약 30% 변동해 해당 transport와 size만 다시 paired
+측정했다. 재측정에서 C는 94.88~99.27 Kmsg/s로 4.5% 변동이었고, C++은
+65.78~94.99 Kmsg/s로 약 31.9% 변동이 반복됐다. C++ 중앙값은 91.71 Kmsg/s로 같은 시점
+C 중앙값 97.72 Kmsg/s의 93.8%이고, 평균 latency는 1.04배였다. 저부하 재측정에서도
+변동이 반복됐으므로 범위를 그대로 기록하고 5회 중앙값으로 판정했다.
+
+모든 transport가 최초 paired 중앙값에서 처리량과 평균 latency 목표를 만족했으므로 binding
+코드에 pattern 전용 분기나 추가 helper를 넣을 근거가 없었다. 성능 수치를 더 높이기 위한
+특수 경로는 public interface와 message 모듈에 transport 지식을 섞는 POSD 위험 신호가 된다.
+기존 공개 API와 측정 의미를 유지하는 방안과 transport 전용 fast path를 추가하는 방안을
+비교했으며, 목표를 이미 통과한 상태에서 복잡성을 늘리지 않는 기존 경로 유지를 선택했다.
+따라서 C++ binding과 perf 코드는 변경하지 않았다.
+
+### 최종 report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_213832_core_9_0_cpp_router_router_tcp_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_214114_core_9_0_cpp_router_router_tcp_nopin_paired_20260711.txt`
+- ws: `perf_c_single_linux_20260711_214516_core_9_0_cpp_router_router_ws_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_214745_core_9_0_cpp_router_router_ws_nopin_paired_20260711.txt`
+- wss: `perf_c_single_linux_20260711_215101_core_9_0_cpp_router_router_wss_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_215331_core_9_0_cpp_router_router_wss_nopin_paired_20260711.txt`
+- tls: `perf_c_single_linux_20260711_215612_core_9_0_cpp_router_router_tls_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_215844_core_9_0_cpp_router_router_tls_nopin_paired_20260711.txt`
+- inproc: `perf_c_single_linux_20260711_220117_core_9_0_cpp_router_router_inproc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_220346_core_9_0_cpp_router_router_inproc_nopin_paired_20260711.txt`
+- ipc: `perf_c_single_linux_20260711_220620_core_9_0_cpp_router_router_ipc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_220847_core_9_0_cpp_router_router_ipc_nopin_paired_20260711.txt`
+- ipc 65536B 재측정: `perf_c_single_linux_20260711_221126_core_9_0_cpp_router_router_ipc65536_nopin_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_221157_core_9_0_cpp_router_router_ipc65536_nopin_stability2_20260711.txt`
+
+최종 코드로 `cpp_perf_router_router`, `test_cpp_contract_message`,
+`test_cpp_contract_socket`, `test_cpp_contract_behavior` target을 다시 빌드했다. 세 계약 테스트는
+모두 통과했다. `ROUTER_ROUTER` 전용 sample smoke는 CTest에 등록되어 있지 않았다.
+
+### 판정
+
+- Single `ROUTER_ROUTER`: 완료
+- C++ binding 변경: 없음
+- C++ perf 변경: 없음
+- 다음 pattern: Single `ROUTER_ROUTER_REQREP`

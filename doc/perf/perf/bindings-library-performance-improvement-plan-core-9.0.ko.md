@@ -446,8 +446,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 
 - perf 경로: `bindings/cpp/perf`
 - Single 상태: `전체 pattern 완료`
-- Multi 상태: `MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_DEALER_ROUTER_REQREP 완료, 나머지 pattern 미측정`
-- 다음 작업: Multi `MULTI_ROUTER_ROUTER`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- Multi 상태: `MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER 완료, 나머지 pattern 미측정`
+- 다음 작업: Multi `MULTI_ROUTER_ROUTER_REQREP`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
@@ -509,7 +509,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `MULTI_DEALER_DEALER` | 통과(89.6%) | 통과(99.3%) | 통과(101.0%) | 통과(111.5%) | 통과(102.8%) | 통과(102.3%) | raw send가 사용하지 않은 service state 초기화를 hot path에서 제거했다. 64B는 5회, 전체 회귀는 3회 paired 측정했다. |
 | `tcp` | `MULTI_DEALER_ROUTER` | 통과(90.8%) | 통과(90.6%) | 통과(90.5%) | 통과(91.5%) | 통과(88.8%) | 통과(94.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.62배로 통과했다. |
 | `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 통과(88.8%) | 통과(92.5%) | 통과(90.6%) | 통과(90.5%) | 통과(71.6%) | 통과(78.3%) | CPU pin 없는 5회 paired 측정. 131072B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.94배로 통과했다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 통과(90.0%) | 통과(86.9%) | 통과(89.1%) | 통과(89.8%) | 통과(84.8%) | 통과(91.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.74배로 통과했다. |
 | `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 2 clients, 64B 제한 스모크를 통과했다. |
 | `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -519,7 +519,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `MULTI_DEALER_DEALER` | 통과(88.3%) | 통과(98.8%) | 통과(105.4%) | 통과(125.3%) | 통과(99.7%) | 통과(99.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.13배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER` | 통과(93.1%) | 통과(91.0%) | 통과(92.4%) | 통과(91.4%) | 통과(92.9%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.10배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(91.1%) | 통과(91.7%) | 통과(96.8%) | 통과(92.7%) | 통과(89.6%) | 통과(79.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.70배로 통과했다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER` | 통과(83.4%) | 통과(84.8%) | 통과(89.5%) | 통과(83.3%) | 통과(82.4%) | 통과(90.4%) | CPU pin 없는 5회 paired 측정. 65536B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.22배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -529,7 +529,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `MULTI_DEALER_DEALER` | 통과(88.4%) | 통과(100.8%) | 통과(108.3%) | 통과(98.6%) | 통과(96.2%) | 통과(100.6%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.03배로 통과했다. |
 | `wss` | `MULTI_DEALER_ROUTER` | 통과(96.4%) | 통과(95.2%) | 통과(97.1%) | 통과(96.4%) | 통과(97.0%) | 통과(100.7%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.06배로 통과했다. |
 | `wss` | `MULTI_DEALER_ROUTER_REQREP` | 통과(92.0%) | 통과(95.1%) | 통과(99.9%) | 통과(94.7%) | 통과(91.4%) | 통과(95.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.09배로 통과했다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER` | 통과(92.9%) | 통과(91.2%) | 통과(92.2%) | 통과(93.5%) | 통과(95.4%) | 통과(101.4%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.07배로 통과했다. |
 | `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -539,7 +539,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `MULTI_DEALER_DEALER` | 통과(94.8%) | 통과(98.7%) | 통과(94.0%) | 통과(96.7%) | 통과(95.5%) | 통과(95.9%) | C++ perf의 ready-event 용량을 C와 같은 의미로 수정하고 bindings poller의 관심 이벤트 갱신을 O(1)로 개선했다. 최종 5회 회귀에서 평균 latency 최대 1.70배로 통과했다. |
 | `tls` | `MULTI_DEALER_ROUTER` | 통과(95.7%) | 통과(92.7%) | 통과(94.8%) | 통과(96.2%) | 통과(91.6%) | 통과(98.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.12배로 통과했다. |
 | `tls` | `MULTI_DEALER_ROUTER_REQREP` | 통과(90.9%) | 통과(91.5%) | 통과(90.9%) | 통과(91.6%) | 통과(84.5%) | 통과(91.5%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.18배로 통과했다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER` | 통과(93.9%) | 통과(94.4%) | 통과(90.5%) | 통과(95.8%) | 통과(95.1%) | 통과(102.0%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.08배로 통과했다. |
 | `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1197,16 +1197,16 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Multi `MULTI_DEALER_DEALER` tcp 완료 | tcp의 여섯 size가 throughput 및 평균 latency 목표를 통과했다. |
-| paired C | tcp 완료 | C와 C++의 clients, I/O thread, HWM, timeout과 connect-ready timeout을 맞춰 측정했다. 다음에는 ws만 측정한다. |
-| 개선 반복 | tcp 64B 완료 | raw send pool reset hot path를 줄여 64B를 82.9%에서 89.6%로 개선했고 전체 size 회귀를 확인했다. |
-| 커밋과 푸시 | 완료 | 검증된 C++ binding 내부 변경과 tcp 측정 근거를 `18f539948`로 커밋해 원격에 푸시했다. |
+| 현재 pattern | Multi `MULTI_ROUTER_ROUTER` 완료 | tcp, ws, wss, tls의 모든 size가 throughput과 평균 latency 목표를 통과했다. |
+| paired C | 네 transport 완료 | transport를 하나씩 선택해 C 직후 C++을 CPU pin 없이 5회 측정했다. |
+| 개선 반복 | 코드 변경 없음 | ws 65536B 경계 셀은 저부하 상태에서 같은 셀만 다시 paired 측정해 82.4%로 통과했다. |
+| 커밋과 푸시 | 완료 | `MULTI_ROUTER_ROUTER` 완료 근거만 별도 커밋하고 원격에 푸시한 뒤 다음 pattern으로 이동한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | 전체 pattern 완료 | `MULTI_DEALER_DEALER` tcp 완료, 나머지 미측정 | 같은 pattern의 ws를 C와 C++ 순서로 CPU pin 없이 paired 측정한다. |
+| 1 | C++ | 전체 pattern 완료 | `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_DEALER_ROUTER_REQREP`, `MULTI_ROUTER_ROUTER` 완료 | `MULTI_ROUTER_ROUTER_REQREP` tcp를 C와 C++ 순서로 CPU pin 없이 paired 측정한다. |
 | 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |

@@ -390,10 +390,14 @@ class dealer_dealer_client_bench_t
                 // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
                 // timer cap. Outer loop bounds total wall-time via the
                 // steady_clock deadline check above.
-                if (_poll_events.empty ())
-                    _poll_events.resize (1);
+                // PERF_HOT_PATH: retain one event slot per client socket. Limiting
+                // this buffer to one ready socket serializes backpressure recovery
+                // and changes the C reference's all-ready-sockets scheduling.
+                if (_poll_events.size () != _socket_states.size ())
+                    _poll_events.resize (_socket_states.size ());
                 const size_t ready_count =
-                  _poller.wait (_poll_events.data (), 1, std::chrono::milliseconds (-1));
+                  _poller.wait (_poll_events.data (), _poll_events.size (),
+                                std::chrono::milliseconds (-1));
                 if (ready_count == 0)
                     continue;
 

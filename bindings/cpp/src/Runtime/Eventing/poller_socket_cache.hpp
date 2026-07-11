@@ -27,12 +27,6 @@ struct poller_item_t
     bool native_poller_only = false;
 };
 
-inline bool is_socket_poll_item_active (const poller_item_t &item_, short events_) noexcept
-{
-    return events_ != 0 && !item_.native_poller_only
-           && item_.source_kind == poll_source_kind_t::socket;
-}
-
 struct socket_poll_cache_t
 {
     std::vector<zlink_pollitem_t> poll_items;
@@ -66,14 +60,10 @@ struct socket_poll_cache_t
             const poller_item_t &item = *items_[i];
             if (item.source_kind != poll_source_kind_t::socket || item.native_poller_only)
                 continue;
-            const short events = static_cast<short> (item.events);
-            if (events == 0)
-                continue;
-
             zlink_pollitem_t poll_item;
             poll_item.socket = item.socket_handle;
             poll_item.fd = 0;
-            poll_item.events = events;
+            poll_item.events = static_cast<short> (item.events);
             poll_item.revents = 0;
             item_positions[i] = poll_items.size ();
             poll_items.push_back (poll_item);
@@ -105,51 +95,16 @@ struct socket_poll_cache_t
             return;
         }
 
-        const short old_events = static_cast<short> (item.events);
-        const short new_events = static_cast<short> (events_);
-        const bool old_active = is_socket_poll_item_active (item, old_events);
-        const bool new_active = is_socket_poll_item_active (item, new_events);
-
+        // POLLER_MODIFY_HOT_PATH: keep a stable cache slot for every socket,
+        // including sockets whose current interest mask is empty. Backpressure
+        // loops can then toggle interest in O(1) without erase/insert shifts.
         item.events = events_;
-
         const size_t position = item_positions[index_];
-        if (old_active && position >= poll_items.size ()) {
+        if (position >= poll_items.size ()) {
             dirty = true;
             return;
         }
-
-        if (old_active && new_active) {
-            poll_items[position].events = new_events;
-            return;
-        }
-
-        if (old_active && !new_active) {
-            poll_items.erase (poll_items.begin () + position);
-            item_indexes.erase (item_indexes.begin () + position);
-            item_positions[index_] = npos;
-            for (size_t i = position; i < item_indexes.size (); ++i)
-                item_positions[item_indexes[i]] = i;
-            return;
-        }
-
-        if (!old_active && new_active) {
-            size_t insert_at = item_indexes.size ();
-            for (size_t i = 0; i < item_indexes.size (); ++i) {
-                if (item_indexes[i] > index_) {
-                    insert_at = i;
-                    break;
-                }
-            }
-            zlink_pollitem_t poll_item;
-            poll_item.socket = item.socket_handle;
-            poll_item.fd = 0;
-            poll_item.events = new_events;
-            poll_item.revents = 0;
-            poll_items.insert (poll_items.begin () + insert_at, poll_item);
-            item_indexes.insert (item_indexes.begin () + insert_at, index_);
-            for (size_t i = insert_at; i < item_indexes.size (); ++i)
-                item_positions[item_indexes[i]] = i;
-        }
+        poll_items[position].events = static_cast<short> (events_);
     }
 };
 

@@ -778,3 +778,86 @@ C 중앙값은 2.975 Mmsg/s, C++은 2.665 Mmsg/s로 비율이 89.6%다. C++ 처�
 - perf 변경: 없음
 - 개선 커밋: `18f539948`
 - 다음 transport: ws
+
+### ws
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260711_235300_core_9_0_cpp_multi_dealer_dealer_ws_nopin_paired_after_raw_reset_20260711.txt`
+- C++: `perf_cpp_multi_linux_20260711_235646_core_9_0_cpp_multi_dealer_dealer_ws_nopin_paired_after_raw_reset_20260711.txt`
+
+64, 256, 1024, 4096, 65536, 131072B 처리량 비율은 88.3%, 98.8%, 105.4%,
+125.3%, 99.7%, 99.9%였다. 평균 latency 최대 비율은 1.13배다. 모든 셀이 목표를
+만족해 추가 변경 없이 완료했다.
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260711_235959_core_9_0_cpp_multi_dealer_dealer_wss_nopin_paired_after_raw_reset_20260711.txt`
+- C++: `perf_cpp_multi_linux_20260712_000303_core_9_0_cpp_multi_dealer_dealer_wss_nopin_paired_after_raw_reset_20260711.txt`
+
+처리량 비율은 88.4%, 100.8%, 108.3%, 98.6%, 96.2%, 100.6%였고 평균 latency
+최대 비율은 1.03배였다. 모든 셀이 목표를 만족해 추가 변경 없이 완료했다.
+
+### tls
+
+#### 최초 측정과 재현
+
+최초 C와 C++ 5회 report는 다음과 같다.
+
+- C: `perf_c_multi_linux_20260712_000606_core_9_0_cpp_multi_dealer_dealer_tls_nopin_paired_after_raw_reset_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_000909_core_9_0_cpp_multi_dealer_dealer_tls_nopin_paired_after_raw_reset_20260712.txt`
+
+처리량은 전 크기에서 목표를 만족했지만 1024B 평균 latency가 C 0.984ms, C++
+6.001ms로 6.10배였다. 해당 셀만 다시 C 직후 C++ 순서로 측정했을 때도 C 0.911ms,
+C++ 20.509ms로 재현됐고, C++ 처리량도 78.3%로 내려갔다. 재측정 report는 다음과 같다.
+
+- C: `perf_c_multi_linux_20260712_001216_core_9_0_cpp_multi_dealer_dealer_tls1024_nopin_latency_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_001304_core_9_0_cpp_multi_dealer_dealer_tls1024_nopin_latency_recheck_20260712.txt`
+
+#### 측정 의미 수정
+
+C++ client는 100개 socket을 poller에 등록했지만 wait에 ready event 한 개만 받을 수 있는
+버퍼를 넘겼다. C 기준은 pending socket 전체를 poll하고 준비된 socket을 모두 다시
+처리한다. C++ 주석은 C 기준과 같은 의미라고 설명했지만 실제 구현은 TLS backpressure
+복구를 한 socket씩 직렬화했다.
+
+검토한 대안은 public C++ poller의 event 용량을 client socket 수와 맞추는 방안과 C의 raw
+poll loop를 C++ perf에 복제하는 방안이다. 후자는 public binding 경로를 우회하고 같은
+scheduler를 중복하므로 제외했다. 기존 poller를 유지하면서 모든 ready event를 받도록
+고쳤고, 이 측정 의미가 유실되지 않도록 `PERF_HOT_PATH` 주석을 남겼다. perf runner와
+측정 옵션은 바꾸지 않았다.
+
+#### bindings poller 개선
+
+ready event 용량을 맞춘 뒤 처리량은 92.5%, 평균 latency는 2.90배까지 회복됐지만 latency
+목표는 아직 넘었다. 조사 결과 socket-only poller fast path가 관심 이벤트를
+`none`과 `pollout` 사이에서 바꿀 때마다 cache vector 중간을 지우거나 삽입하고 뒤의 모든
+인덱스를 갱신했다. 100-client TLS backpressure에서 이 O(n) 관리가 반복됐다.
+
+검토한 대안은 poller 내부에 socket별 고정 cache slot을 유지해 event mask만 O(1)로
+갱신하는 방안과 perf 호출자가 pending socket 배열을 직접 관리하는 방안이다. 두 번째는
+자료구조와 backpressure 정책을 호출자에게 노출하므로 제외했다. 첫 번째 방안을 적용하고
+`POLLER_MODIFY_HOT_PATH` 주석으로 고정 slot의 이유를 남겼다. public API 변경은 없다.
+
+#### 최종 결과와 검증
+
+1024B 후보 5회에서 C++은 1.397 Mmsg/s, 평균 latency 1.467ms였다. 최신 C 기준 처리량
+95.0%, 평균 latency 1.61배로 통과했다. 최종 tls 전체 크기 C++ report는
+`perf_cpp_multi_linux_20260712_001859_core_9_0_cpp_multi_dealer_dealer_tls_stable_poller_full_20260712.txt`다.
+
+최종 처리량 비율은 94.8%, 98.7%, 94.0%, 96.7%, 95.5%, 95.9%였고 평균 latency 최대
+비율은 1.70배였다. `test_cpp_contract_monitor`와 `test_cpp_contract_behavior`를 다시 빌드해
+실행했고 모두 통과했다.
+
+#### pattern 판정
+
+- `MULTI_DEALER_DEALER / ws`: 완료
+- `MULTI_DEALER_DEALER / wss`: 완료
+- `MULTI_DEALER_DEALER / tls`: 완료
+- C++ binding 변경: socket poll cache의 관심 이벤트 갱신을 O(1)로 개선
+- public API 변경: 없음
+- perf 변경: C 기준과 같은 all-ready-sockets scheduling으로 수정
+- 개선 커밋: 이번 커밋
+- 다음 pattern: Multi `MULTI_DEALER_ROUTER`

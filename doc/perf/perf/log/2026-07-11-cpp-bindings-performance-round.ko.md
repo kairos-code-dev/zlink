@@ -241,3 +241,88 @@ perf 우회가 필요하지 않았으며 binding 코드를 변경하지 않았�
 - Single `DEALER_DEALER`: 완료
 - 코드 변경: 없음
 - 다음 pattern: Single `DEALER_ROUTER`
+
+## Single DEALER_ROUTER
+
+### 최초 측정과 측정 의미 확인
+
+- source: `0ac653692`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport: tcp, tls, ws, wss, inproc, ipc
+- duration: 5초
+- 기본 판정: 3회 중앙값
+- secure transport와 변동 셀: 5회 중앙값
+- CPU pin: 사용하지 않음
+
+최초 tcp paired 측정에서 65536B, 131072B, 262144B의 C++ throughput은 C의 58.3%,
+45.0%, 45.2%였다. C++ binding의 공개 경계를 raw C 호출과 교차한 진단에서는 두 경로가
+메시지당 약 33~37us로 같았고, C와 C++의 메시지 할당·복사 단독 진단도 약 3.5us로 같았다.
+따라서 binding 내부 allocation이나 send 경계는 이 pattern의 병목이 아니었다.
+
+C perf는 재사용 payload 전체를 채운 뒤 매 메시지마다 새 message에 전체 payload를 복사한다.
+기존 C++ perf는 새 message를 할당한 뒤 metric header만 쓰고 나머지 payload에는 쓰지 않았다.
+이는 같은 message size를 전송하더라도 page touch와 copy 의미가 달라 C 대비 binding 비용을
+측정한다는 정책에 맞지 않았다. C++ perf가 재사용 payload를 채우고 기존
+`message_from_payload` 경로로 전체 payload를 복사하도록 정합화했다. 이 측정 의미가 이후
+리팩토링에서 사라지지 않도록 send loop에 C 기준과 full payload copy를 설명하는 주석을
+남겼다.
+
+### POSD 대안 검토
+
+위험 신호는 성능 원인을 binding으로 단정하면 pattern 전용 allocation 분기가 범용 message
+모듈에 섞일 수 있다는 점이었다. 두 가지 방향을 검토했다.
+
+1. `message_t::allocate`와 size constructor를 core 소유 native storage로 분리하는 방안은 공개
+   API를 바꾸지 않지만, 262144B probe를 45.2%에서 47.0%로만 높여 병목을 제거하지 못했다.
+   이 후보는 최종 코드에서 제거했다.
+2. C와 C++의 payload 생성·복사 의미를 같게 만들면 binding API와 무관한 page-touch 차이를
+   제거하고 기존 공개 API와 책임 경계를 유지할 수 있다.
+
+두 번째 방안을 선택했다. 새 public API, helper, timeout, sleep 또는 pattern 전용 binding
+분기를 추가하지 않았다. PUBSUB에서 실제로 확인한 대형 owned message allocation hot path의
+제한 재사용과 근거 주석은 `message.cpp` 안에 그대로 유지된다.
+
+### C 대비 최종 throughput
+
+아래 표는 C++ throughput을 가까운 시점의 C throughput으로 나눈 값이다. 평균 latency만
+latency gate로 비교했고 p95와 p99는 진단 자료로만 보존했다.
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 91.9% | 97.9% | 92.3% | 99.0% | 100.4% | 96.1% |
+| tls | 90.8% | 91.6% | 98.0% | 97.2% | 100.5% | 102.9% |
+| ws | 89.5% | 90.3% | 94.2% | 95.2% | 97.8% | 99.3% |
+| wss | 92.5% | 94.6% | 97.6% | 101.9% | 97.9% | 98.4% |
+| inproc | 87.7% | 92.8% | 97.4% | 80.2% | 106.1% | 90.3% |
+| ipc | 90.2% | 91.1% | 99.1% | 95.3% | 88.9% | 90.9% |
+
+모든 throughput 셀이 routed one-way 최소 목표 70%를 만족했다. 평균 latency의 transport별
+최대 비율은 tcp 1.03배, tls 1.15배, ws 1.57배, wss 1.27배, inproc 1.17배,
+ipc 1.12배로 C++ 상한 2배 이내였다. 변동 폭이 10%를 넘었던 ws 65536B와 wss 65536B,
+262144B는 CPU pin 없이 C와 C++를 각각 5회 다시 측정했다. 최종 throughput 변동 폭은
+ws가 C 7.6%, C++ 3.4%, wss가 C 8.5% 이하, C++ 6.7% 이하로 안정화됐다.
+
+### 최종 report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_174157_core_9_0_cpp_dealer_router_tcp_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_174328_core_9_0_cpp_dealer_router_tcp_payload_aligned_final_20260711.txt`
+- tls: `perf_c_single_linux_20260711_174511_core_9_0_cpp_dealer_router_tls_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_174741_core_9_0_cpp_dealer_router_tls_payload_aligned_final_20260711.txt`
+- ws: `perf_c_single_linux_20260711_175020_core_9_0_cpp_dealer_router_ws_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_175152_core_9_0_cpp_dealer_router_ws_payload_aligned_final_20260711.txt`
+- ws 65536B 안정성: `perf_c_single_linux_20260711_180627_core_9_0_cpp_dealer_router_ws65536_payload_aligned_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_180655_core_9_0_cpp_dealer_router_ws65536_payload_aligned_stability2_20260711.txt`
+- wss: `perf_c_single_linux_20260711_175436_core_9_0_cpp_dealer_router_wss_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_175705_core_9_0_cpp_dealer_router_wss_payload_aligned_final_20260711.txt`
+- wss 대형 안정성: `perf_c_single_linux_20260711_180721_core_9_0_cpp_dealer_router_wss_large_payload_aligned_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_180814_core_9_0_cpp_dealer_router_wss_large_payload_aligned_stability2_20260711.txt`
+- inproc: `perf_c_single_linux_20260711_175936_core_9_0_cpp_dealer_router_inproc_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_180114_core_9_0_cpp_dealer_router_inproc_payload_aligned_final_20260711.txt`
+- ipc: `perf_c_single_linux_20260711_180309_core_9_0_cpp_dealer_router_ipc_payload_aligned_final_20260711.txt`, `perf_cpp_single_linux_20260711_180446_core_9_0_cpp_dealer_router_ipc_payload_aligned_final_20260711.txt`
+
+`test_cpp_contract_message`, `test_cpp_contract_socket`, `test_cpp_contract_behavior`가 통과했다.
+`sample_cpp_dealer_router_recv_sample` target을 빌드한 뒤
+`sample_smoke_sample_cpp_dealer_router_recv_sample`도 통과했다.
+
+### 판정
+
+- Single `DEALER_ROUTER`: 완료
+- C++ perf 변경: C와 같은 full payload copy 의미로 정합화
+- C++ binding 변경: 없음
+- 다음 pattern: Single `DEALER_ROUTER_REQREP`

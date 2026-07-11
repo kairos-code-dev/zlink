@@ -430,9 +430,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.1 C++
 
 - perf 경로: `bindings/cpp/perf`
-- Single 상태: `PAIR, PUBSUB, DEALER_DEALER 완료, 나머지 pattern 미측정`
+- Single 상태: `PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER 완료, 나머지 pattern 미측정`
 - Multi 상태: `누락 구현 완료, pattern별 미측정`
-- 다음 작업: Single `DEALER_ROUTER`를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- 다음 작업: Single `DEALER_ROUTER_REQREP`를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
@@ -441,7 +441,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `PAIR` | 통과(99.9%) | 통과(100.0%) | 통과(99.8%) | 통과(100.0%) | 통과(100.1%) | 통과(99.8%) | 3회 paired 측정. 1024B는 CPU 고정 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
 | `tcp` | `PUBSUB` | 통과(95.7%) | 통과(95.2%) | 통과(101.7%) | 통과(109.2%) | 통과(99.4%) | 통과(91.4%) | CPU pin 없는 paired 측정. 경계 셀은 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
 | `tcp` | `DEALER_DEALER` | 통과(99.9%) | 통과(99.8%) | 통과(100.0%) | 통과(99.9%) | 통과(100.0%) | 통과(99.8%) | CPU pin 없는 3회 paired 측정. 상세 report는 C++ 라운드 로그 참고. |
-| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 통과(91.9%) | 통과(97.9%) | 통과(92.3%) | 통과(99.0%) | 통과(100.4%) | 통과(96.1%) | CPU pin 없는 3회 paired 측정. C와 같은 full payload copy 의미로 정합화. 상세 report는 C++ 라운드 로그 참고. |
 | `tcp` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
 | `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
@@ -449,7 +449,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `PAIR` | 통과(100.0%) | 통과(100.0%) | 통과(100.4%) | 통과(100.0%) | 통과(100.2%) | 통과(100.0%) | 3회 paired 측정. |
 | `ws` | `PUBSUB` | 통과(95.3%) | 통과(91.2%) | 통과(100.7%) | 통과(96.4%) | 통과(93.0%) | 통과(97.9%) | CPU pin 없는 paired 측정. 65536B는 5회 보강. |
 | `ws` | `DEALER_DEALER` | 통과(100.0%) | 통과(99.9%) | 통과(95.1%) | 통과(100.0%) | 통과(100.1%) | 통과(100.0%) | CPU pin 없는 3회 paired 측정. |
-| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 통과(89.5%) | 통과(90.3%) | 통과(94.2%) | 통과(95.2%) | 통과(97.8%) | 통과(99.3%) | CPU pin 없는 paired 측정. 65536B는 안정성 5회 재측정 비율로 판정. |
 | `ws` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -457,7 +457,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `PAIR` | 통과(100.6%) | 통과(99.9%) | 통과(96.8%) | 통과(98.2%) | 통과(97.3%) | 통과(95.1%) | CPU 고정 5회. 131072B는 단독 안정성 보강 report로 판정. |
 | `wss` | `PUBSUB` | 통과(95.2%) | 통과(92.6%) | 통과(97.4%) | 통과(96.8%) | 통과(100.0%) | 통과(100.6%) | CPU pin 없는 paired 측정. 262144B는 5회 보강. |
 | `wss` | `DEALER_DEALER` | 통과(100.0%) | 통과(99.5%) | 통과(98.4%) | 통과(98.8%) | 통과(99.5%) | 통과(100.7%) | CPU pin 없는 5회 paired 측정. |
-| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 통과(92.5%) | 통과(94.6%) | 통과(97.6%) | 통과(101.9%) | 통과(97.9%) | 통과(98.4%) | CPU pin 없는 5회 paired 측정. 65536B와 262144B는 안정성 재측정 비율로 판정. |
 | `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -465,7 +465,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `PAIR` | 통과(99.4%) | 통과(98.5%) | 통과(100.5%) | 통과(99.8%) | 통과(97.8%) | 통과(99.6%) | CPU 고정 5회 paired 측정. |
 | `tls` | `PUBSUB` | 통과(91.9%) | 통과(95.0%) | 통과(101.6%) | 통과(98.4%) | 통과(99.5%) | 통과(99.0%) | CPU pin 없는 paired 측정. secure transport와 64B 경계는 5회 보강. |
 | `tls` | `DEALER_DEALER` | 통과(100.0%) | 통과(99.9%) | 통과(97.9%) | 통과(96.8%) | 통과(99.7%) | 통과(99.7%) | CPU pin 없는 5회 paired 측정. |
-| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 통과(90.8%) | 통과(91.6%) | 통과(98.0%) | 통과(97.2%) | 통과(100.5%) | 통과(102.9%) | CPU pin 없는 5회 paired 측정. |
 | `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -473,7 +473,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `inproc` | `PAIR` | 통과(90.6%) | 통과(93.9%) | 통과(89.2%) | 통과(99.8%) | 통과(100.1%) | 통과(100.3%) | 3회 paired 측정. |
 | `inproc` | `PUBSUB` | 통과(101.8%) | 통과(95.0%) | 통과(92.4%) | 통과(85.2%) | 통과(105.9%) | 통과(125.4%) | 5회 paired 측정. 128KiB 이상 메시지 저장소 재사용 후 최종 판정. |
 | `inproc` | `DEALER_DEALER` | 통과(89.0%) | 통과(100.3%) | 통과(90.4%) | 통과(99.9%) | 통과(100.7%) | 통과(100.0%) | CPU pin 없는 3회 paired 측정. |
-| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 통과(87.7%) | 통과(92.8%) | 통과(97.4%) | 통과(80.2%) | 통과(106.1%) | 통과(90.3%) | CPU pin 없는 3회 paired 측정. routed one-way 최소 목표 70% 통과. |
 | `inproc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -481,7 +481,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ipc` | `PAIR` | 통과(100.5%) | 통과(100.3%) | 통과(95.3%) | 통과(99.8%) | 통과(100.0%) | 통과(100.0%) | 3회 paired 측정. |
 | `ipc` | `PUBSUB` | 통과(94.3%) | 통과(95.4%) | 통과(95.2%) | 통과(94.2%) | 통과(97.8%) | 통과(94.6%) | CPU pin 없는 paired 측정. 65536B는 5회 보강. |
 | `ipc` | `DEALER_DEALER` | 통과(100.1%) | 통과(100.1%) | 통과(93.5%) | 통과(99.9%) | 통과(100.1%) | 통과(100.0%) | CPU pin 없는 3회 paired 측정. |
-| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 통과(90.2%) | 통과(91.1%) | 통과(99.1%) | 통과(95.3%) | 통과(88.9%) | 통과(90.9%) | CPU pin 없는 3회 paired 측정. |
 | `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |

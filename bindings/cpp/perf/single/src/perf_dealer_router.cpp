@@ -135,6 +135,7 @@ bool run_pattern_dealer_router (const std::string &transport,
     }
 
     const size_t payload_size = std::max<size_t> (msg_size, perf_single_metric::header_size ());
+    std::vector<char> payload (payload_size, 'a');
 
     const uint32_t run_id = 1U;
     const int duration_s = std::max (1, perf::single::resolve_single_duration_seconds ());
@@ -149,11 +150,18 @@ bool run_pattern_dealer_router (const std::string &transport,
     std::thread sender_thread ([&] () {
         uint64_t seq = 1;
         while (std::chrono::steady_clock::now () < active_deadline) {
-            zlink::message_t msg = zlink::message_t::allocate (payload_size);
-            if (!msg.valid ()
-                || !perf_single_metric::stamp_payload (msg.data (), msg.size (), run_id,
-                                                       perf_single_metric::phase_active, msg_size,
-                                                       seq++, perf_single_metric::now_ns ())) {
+            // Keep this measured send hot path aligned with the C reference:
+            // stamp reusable caller storage, then copy the full payload into
+            // the message submitted by the binding.
+            if (!perf_single_metric::stamp_payload (
+                  payload.data (), payload.size (), run_id, perf_single_metric::phase_active,
+                  msg_size, seq++, perf_single_metric::now_ns ())) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            zlink::message_t msg =
+              perf::single::message_from_payload (payload.data (), payload.size ());
+            if (!msg.valid ()) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }

@@ -2,6 +2,7 @@
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { acquireNodeTestGateLock } = require('./node-test-gate-lock');
 
 const nodeRoot = path.resolve(__dirname, '..');
 const eslintEntry = path.resolve(nodeRoot, 'node_modules/eslint/bin/eslint.js');
@@ -18,6 +19,8 @@ if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
   console.error(`Expected Node ${expectedMajor}, got ${process.version}.`);
   process.exit(1);
 }
+
+const releaseGateLock = acquireNodeTestGateLock(nodeRoot, 'runtime');
 
 run('build', process.execPath, [
   path.resolve(nodeRoot, 'node_modules/typescript/bin/tsc'),
@@ -41,8 +44,9 @@ for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
     console.log(`-- ${relative} # SKIP framework CI excludes e2e sample/runtime checks`);
     continue;
   }
-  run(relative, process.execPath, ['--test', testFile]);
+  run(relative, process.execPath, ['--test', '--test-force-exit', testFile]);
 }
+releaseGateLock();
 
 function relativePath(base, file) {
   return path.relative(base, file).split(path.sep).join('/');

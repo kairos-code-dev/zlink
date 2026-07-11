@@ -3,6 +3,7 @@
 
 #include "../../Actors/player_actor.hpp"
 #include "../../../../../Configuration/sample_names.hpp"
+#include "../../../../../Configuration/sample_topology.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace zlink::samples::bingo
@@ -22,32 +24,24 @@ using framework::message_t;
 class bingo_entry_spot_t : public entry_spot_t
 {
   public:
+    bingo_entry_spot_t (sample_topology_t topology, service_provider_t services) :
+        _topology (std::move (topology)),
+        _services (services.create_scope (service_scope_kind_t::entry_spot))
+    {
+    }
+
     void configure (entry_spot_context_t &context)
     {
         _context = context;
+        context.handlers ().add_handler<&bingo_entry_spot_t::ensure_player_actor> ();
         context.handlers ().add_actor_request<&bingo_entry_spot_t::match_bingo> ();
         context.handlers ().add_actor_request<&bingo_entry_spot_t::observe_bingo_events> ();
     }
 
     task_t<observe_bingo_events_res_t>
     observe_bingo_events (const player_actor_t &actor,
-                          spot_actor_request_context_t &,
-                          const observe_bingo_events_req_t &request)
-    {
-        const auto display_name = actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
-        const auto observer_rid = observer_room_rid (request.room_id, _context.node_rid ());
-
-        bingo_room_settings_payload_t payload{
-            "Bingo Observer " + std::string (_context.node_rid ().value ()),
-            bingo_sample_modes_t::two_player, 0, 75, "Observer", request.room_id
-        };
-
-        _context.manager ().get_or_create_spot (sample_names_t::room_spot, observer_rid, payload);
-
-        const auto join_request = bingo_room_join_req_t{request.room_id, actor.actor.actor_id, display_name, true};
-        auto joined = co_await actor.context.join_spot (observer_rid, join_request).async<bingo_room_join_res_t> ();
-        co_return observe_bingo_events_res_t{true, std::string (joined.actor->node_rid ().value ())};
-    }
+                          spot_actor_request_context_t &context,
+                          const observe_bingo_events_req_t &request);
 
     void configure (spot_context_t &context)
     {
@@ -56,25 +50,11 @@ class bingo_entry_spot_t : public entry_spot_t
     }
 
     task_t<match_bingo_res_t> match_bingo (const player_actor_t &actor,
-                                           spot_actor_request_context_t &,
-                                           const match_bingo_req_t &request)
-    {
-        const auto display_name = actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
-        const auto match_request = match_bingo_api_req_t{
-            actor.actor.actor_id, display_name, request.mode,
-            std::string (_context.node_rid ().value ())
-        };
+                                           spot_actor_request_context_t &context,
+                                           const match_bingo_req_t &request);
 
-        auto matched = co_await _context.outbound ()
-            .request (sample_names_t::api_channel, match_request).async<match_bingo_api_res_t> ();
-
-        const auto spot_rid = spot_rid_t::from_string (matched.room_id);
-        const auto join_request = bingo_room_join_req_t{matched.room_id, actor.actor.actor_id, display_name};
-
-        auto joined = co_await actor.context.join_spot (spot_rid, join_request).async<bingo_room_join_res_t> ();
-
-        co_return match_bingo_res_t{matched.room_id, joined.reply.state, matched.room_owner_node_rid};
-    }
+    task_t<ensure_player_actor_res_t>
+    ensure_player_actor (const ensure_player_actor_req_t &request);
 
     void onCreateActor (player_actor_t &actor, const message_t &create_request)
     {
@@ -124,6 +104,12 @@ class bingo_entry_spot_t : public entry_spot_t
     }
 
     entry_spot_context_t _context;
+    sample_topology_t _topology;
+    service_scope_t _services;
 };
 
 } // namespace zlink::samples::bingo
+
+#include "Handlers/ensure_player_actor_handler.hpp"
+#include "Handlers/match_bingo_actor_handler.hpp"
+#include "Handlers/observe_bingo_events_handler.hpp"

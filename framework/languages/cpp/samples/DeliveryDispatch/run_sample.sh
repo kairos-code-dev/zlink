@@ -9,6 +9,18 @@ mkdir -p "$DELIVERYDISPATCH_LOG_DIR"
 rm -f "$DELIVERYDISPATCH_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
+LOCAL_READINESS_TIMEOUT_SECONDS=30
+LOCAL_READINESS_POLL_SECONDS=0.5
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"

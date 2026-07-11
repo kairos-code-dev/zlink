@@ -7,6 +7,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <chrono>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -17,6 +18,14 @@ namespace zlink::samples::bingo
 using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
+
+class bingo_room_spot_t;
+
+class bingo_room_draw_timer_handler_t
+{
+  public:
+    task_t<void> handle (bingo_room_spot_t &spot, const timer_tick_t &tick) const;
+};
 
 class bingo_room_spot_t : public spot_t
 {
@@ -45,6 +54,15 @@ class bingo_room_spot_t : public spot_t
         return spot_create_response_t::accept ();
     }
 
+    void on_initialize ()
+    {
+        using namespace std::chrono_literals;
+        _draw_timer =
+          _context.add_timer<bingo_room_draw_timer_handler_t> ("bingo-draw", 200ms);
+    }
+
+    void on_closing () { _draw_timer.cancel (); }
+
     spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const message_t &request_message)
     {
@@ -69,48 +87,20 @@ class bingo_room_spot_t : public spot_t
         return spot_actor_join_response_t::accept (bingo_room_join_res_t{projected.snapshot ()});
     }
 
-    observe_bingo_events_res_t observe_events (const player_actor_t &actor,
-                                               const spot_actor_request_context_t &,
-                                               const observe_bingo_events_req_t &request)
-    {
-        _game.set_room_id_if_empty (request.room_id);
-        observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
-        return {true, std::string (actor.actor.node_rid.value ())};
-    }
+    observe_bingo_events_res_t observe_events (
+      const player_actor_t &actor,
+      const spot_actor_request_context_t &context,
+      const observe_bingo_events_req_t &request);
 
-    stop_observing_bingo_events_res_t
-    stop_observing_events (const player_actor_t &actor,
-                           const spot_actor_request_context_t &,
-                           const stop_observing_bingo_events_req_t &request)
-    {
-        (void) request;
-        observers.erase (actor.actor.actor_id);
-        (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        return {true, std::string (actor.actor.node_rid.value ())};
-    }
+    stop_observing_bingo_events_res_t stop_observing_events (
+      const player_actor_t &actor,
+      const spot_actor_request_context_t &context,
+      const stop_observing_bingo_events_req_t &request);
 
-    task_t<submit_bingo_card_res_t> submit_card (const player_actor_t &actor,
-                                                 const spot_actor_request_context_t &context,
-                                                 const submit_bingo_card_req_t &request)
-    {
-        if (context.packet_name.empty ()) {
-            throw std::runtime_error ("packet name is required");
-        }
-        (void) _game.submit_card (actor.actor.actor_id, request.card);
-        if (_game.should_draw ()) {
-            while (const auto drawn = _game.draw_next ()) {
-                send_to_players (*drawn);
-                if (drawn->state.status == bingo_room_status_t::finished) {
-                    const auto ended_notify = game_ended_notify_t{drawn->state};
-                    send_to_players (ended_notify);
-                    publish_reward (*drawn);
-                    co_await leave_finished_actors ();
-                    break;
-                }
-            }
-        }
-        co_return submit_bingo_card_res_t{snapshot ()};
-    }
+    task_t<submit_bingo_card_res_t> submit_card (
+      const player_actor_t &actor,
+      const spot_actor_request_context_t &context,
+      const submit_bingo_card_req_t &request);
 
     void on_actor_joined (const player_actor_t &actor)
     {
@@ -158,6 +148,10 @@ class bingo_room_spot_t : public spot_t
     const bingo_room_state_t &snapshot () const noexcept { return _game.snapshot (); }
 
   private:
+    friend class bingo_room_draw_timer_handler_t;
+
+    task_t<void> handle_draw_tick (const timer_tick_t &);
+
     void publish_reward (const number_drawn_notify_t &drawn)
     {
         if (drawn.state.winners.empty ()) {
@@ -185,29 +179,7 @@ class bingo_room_spot_t : public spot_t
         }
     }
 
-    task_t<void> on_reward_acquired (const bingo_reward_acquired_msg_t &event)
-    {
-        if (!_is_observer && event.room_id == snapshot ().room_id) {
-            co_await leave_finished_actors ();
-            co_return;
-        }
-        if (!_is_observer || event.room_id != _observed_room_id) {
-            co_return;
-        }
-        for (auto &[_, actor] : observers) {
-            const auto notify = bingo_reward_announced_notify_t{
-                event.room_id,
-                event.actor_id,
-                event.draw_seq,
-                event.item_id,
-                event.item_name,
-                event.rarity,
-                std::string (_context.node_rid ().value ())
-            };
-            actor->push (notify);
-        }
-        co_return;
-    }
+    task_t<void> on_reward_acquired (const bingo_reward_acquired_msg_t &event);
 
     task_t<void> leave_finished_actors ()
     {
@@ -242,6 +214,13 @@ class bingo_room_spot_t : public spot_t
     bool _is_observer = false;
     std::string _observed_room_id;
     bool cleanup_started = false;
+    framework::timer_t _draw_timer;
 };
 
 } // namespace zlink::samples::bingo
+
+#include "Handlers/bingo_reward_acquired_event_handler.hpp"
+#include "Handlers/bingo_room_draw_timer_handler.hpp"
+#include "Handlers/observe_bingo_events_handler.hpp"
+#include "Handlers/stop_observing_bingo_events_handler.hpp"
+#include "Handlers/submit_bingo_card_handler.hpp"

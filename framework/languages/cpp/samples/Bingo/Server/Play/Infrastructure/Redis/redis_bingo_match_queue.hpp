@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../Application/RoomAllocation/bingo_match_queue.hpp"
-#include "../../../../Configuration/sample_topology.hpp"
+#include "../../Application/RoomAllocation/bingo_match_queue.hpp"
+#include "../../../Configuration/sample_topology.hpp"
 
 #include <boost/asio.hpp>
 

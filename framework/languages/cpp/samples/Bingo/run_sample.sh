@@ -223,7 +223,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-  "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine"
+  "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine" "127.0.0.1:${PORTS[16]}:6379"
 BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 

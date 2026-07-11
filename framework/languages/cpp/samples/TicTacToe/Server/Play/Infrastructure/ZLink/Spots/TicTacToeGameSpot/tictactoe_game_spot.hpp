@@ -84,40 +84,11 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 
     place_mark_res_t place_mark (const player_actor_t &actor,
                                  const spot_actor_request_context_t &context,
-                                 const place_mark_req_t &request)
-    {
-        if (context.packet_name.empty ()) {
-            throw std::runtime_error ("packet name is required");
-        }
-        trace_tictactoe_game_spot ("place-mark-enter", actor.actor_id, request.cell);
-        auto state = place (actor.actor_id, request);
-        trace_tictactoe_game_spot ("place-mark-complete", actor.actor_id, request.cell);
-        game_state_notify_t state_notify{state.room_id, state.next_turn, state};
-        publisher.publish_game_state (state_notify);
-        send_to_other_actors (actor.actor_id, state_notify);
-        if (state.status == tictactoe_status_t::won || state.status == tictactoe_status_t::draw) {
-            game_ended_notify_t ended_notify{state.room_id, state.winner, state.draw, state};
-            publisher.publish_game_ended (ended_notify);
-            send_to_other_actors (actor.actor_id, ended_notify);
-            publish_win_milestone (actor, state);
-        }
-        return {state};
-    }
+                                 const place_mark_req_t &request);
 
     void leave_game (const player_actor_t &actor,
                      const spot_actor_send_context_t &,
-                     const leave_game_req_t &request)
-    {
-        if (request.room_id != snapshot ().room_id) {
-            throw std::runtime_error ("LeaveGameReq room id does not match the joined room.");
-        }
-        std::cout << "actor: LeaveGameReq received. actor=" << actor.actor_id
-                  << ", roomId=" << request.room_id << std::endl;
-        actor.mark_for_destroy_after_room_leave ();
-        (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        std::cout << "actor: LeaveGameReq completed. actor=" << actor.actor_id
-                  << ", roomId=" << request.room_id << std::endl;
-    }
+                     const leave_game_req_t &request);
 
     void on_actor_joined (const player_actor_t &actor)
     {
@@ -225,3 +196,6 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 };
 
 } // namespace zlink::samples::tictactoe
+
+#include "Handlers/play_actor_leave_game_handler.hpp"
+#include "Handlers/play_actor_place_mark_handler.hpp"

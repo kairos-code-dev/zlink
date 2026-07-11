@@ -40,25 +40,11 @@ class tictactoe_entry_spot_t : public entry_spot_t
 
     task_t<join_game_res_t> join_game (const player_actor_t &actor,
                                        spot_actor_request_context_t &,
-                                       const join_game_req_t &request)
-    {
-        const auto spot_rid = spot_rid_t::from_string (request.room_id);
-        auto payload = tictactoe_game_join_req_t{request.room_id, request.player};
-        if (payload.player.actor_id.empty ()) {
-            payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
-        }
-        auto joined =
-          co_await actor.context.join_spot (spot_rid, payload).async<join_game_res_t> ();
-        co_return joined.reply;
-    }
+                                       const join_game_req_t &request);
 
     observe_milestone_res_t observe_milestone (const player_actor_t &actor,
                                                spot_actor_request_context_t &,
-                                               const observe_milestone_req_t &)
-    {
-        observers[actor.actor_id] = const_cast<player_actor_t *> (&actor);
-        return {true};
-    }
+                                               const observe_milestone_req_t &);
 
     void onCreateActor (const player_actor_t &actor, const message_t &create_request)
     {
@@ -93,15 +79,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
     std::vector<std::string> actor_ids;
 
   private:
-    void on_player_win_milestone (const player_win_milestone_msg_t &event)
-    {
-        for (auto &[_, actor] : observers) {
-            const auto notify =
-              win_milestone_notify_t{event.room_id, event.actor_id, event.display_name, event.wins,
-                                     std::string (_context.node_rid ().value ())};
-            (void) actor->push (notify);
-        }
-    }
+    void on_player_win_milestone (const player_win_milestone_msg_t &event);
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
@@ -116,3 +94,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
 };
 
 } // namespace zlink::samples::tictactoe
+
+#include "Handlers/play_actor_join_game_handler.hpp"
+#include "Handlers/play_actor_observe_milestone_handler.hpp"
+#include "Handlers/player_win_milestone_event_handler.hpp"

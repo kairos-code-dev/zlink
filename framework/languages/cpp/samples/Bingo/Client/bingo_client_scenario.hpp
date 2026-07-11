@@ -10,6 +10,7 @@
 #include <chrono>
 #include <future>
 #include <iostream>
+#include <source_location>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -183,6 +184,9 @@ class bingo_client_scenario_t
             auto client1_card =
               co_await client1.request (client1_card_request)
                 .async<submit_bingo_card_res_t> ();
+            // Drawing is server-driven after both cards arrive; the submit reply
+            // still reflects the running game (same as the .NET scenario).
+            ensure (client1_card.state.status == bingo_room_status_t::running);
             std::vector<number_drawn_notify_t> drawn_numbers;
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
                 auto client1_drawn =
@@ -206,14 +210,13 @@ class bingo_client_scenario_t
             for (std::size_t index = 0; index < drawn_numbers.size (); ++index) {
                 ensure (client1_ended.state.drawn_numbers[index] == drawn_numbers[index].number);
             }
-            ensure (client1_card.state.status == bingo_room_status_t::finished);
+            // Final results are validated on the pushed game-ended state, matching
+            // the .NET scenario: winners, full cards, and the marked free cell.
+            ensure (!client1_ended.state.drawn_numbers.empty ());
+            ensure (client1_ended.state.winners
+                    == std::vector<std::string>{client1_auth.actor_id});
             ensure (std::all_of (
-              client1_card.state.players.begin (), client1_card.state.players.end (),
-              [] (const bingo_player_state_t &player) { return player.card.size () == 9; }));
-            ensure (!client1_card.state.drawn_numbers.empty ());
-            ensure (client1_card.state.winners == std::vector<std::string>{client1_auth.actor_id});
-            ensure (std::all_of (
-              client1_card.state.players.begin (), client1_card.state.players.end (),
+              client1_ended.state.players.begin (), client1_ended.state.players.end (),
               [] (const bingo_player_state_t &player) {
                   return player.card.size () == 9 && player.marks.size () == 9 && player.marks[4];
               }));
@@ -261,7 +264,13 @@ class bingo_client_scenario_t
         co_return co_await client.request (request).async<authenticate_res_t> ();
     }
 
-    static void ensure (bool condition) { ensure (condition, "condition"); }
+    static void ensure (bool condition,
+                        std::source_location location = std::source_location::current ())
+    {
+        ensure (condition, ("condition at " + std::string (location.file_name ()) + ":"
+                            + std::to_string (location.line ()))
+                             .c_str ());
+    }
 
     static void trace (const char *step) { std::cerr << "bingo step: " << step << '\n'; }
 };

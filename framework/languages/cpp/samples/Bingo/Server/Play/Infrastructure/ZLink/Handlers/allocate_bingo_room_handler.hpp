@@ -43,7 +43,14 @@ class allocate_bingo_room_handler_t
             const auto spot_rid = spot_rid_t::from_string (reservation.room_id);
             const auto payload = bingo_room_settings_payload_t{
               "Bingo Room " + reservation.room_id, request.mode, 2, 15, "Game", ""};
-            _spots.get_or_create_spot (sample_names_t::room_spot, spot_rid, payload);
+            try {
+                _spots.get_or_create_spot (sample_names_t::room_spot, spot_rid, payload);
+            }
+            catch (const std::exception &error) {
+                throw std::runtime_error ("failed to materialize bingo room '"
+                                          + reservation.room_id + "' on node '"
+                                          + owner_node_rid + "': " + error.what ());
+            }
         }
         return {reservation.room_id, reservation.owner_play_node_rid};
     }

@@ -124,8 +124,9 @@ gameplay event → 다중 instance 구독). **트리 구조를 허용**한다 �
 
 SPOT timer, [DeliveryDispatch](../dotnet/guide/samples/deliverydispatch-sample.ko.md)의 timeout
 재배정, drain 등은 인바운드 메시지가 없다. 규칙: **timer 발원 작업은 새 flow를 시작한다**
-(`origin=timer` 표시). 이후 그 작업이 내보내는 메시지는 이 새 flow_id로 전파된다. (MFT §7 표에 timer
-길목이 없으므로 이 스펙이 신규 정의한다.)
+(`flow_origin = timer`). 이후 그 작업이 내보내는 메시지는 이 새 flow_id로 전파된다. 이벤트의
+`flow_origin` 필드(§8)와 로그 토큰 `origin=`(바이트 동일)로 노출되며, 인바운드 발원은 `inbound`다.
+(MFT §7 표에 timer 길목이 없으므로 이 스펙이 신규 정의한다.)
 
 ### 4.3 error reporter 라인
 
@@ -178,16 +179,24 @@ MFT §5는 channel/spot에는 dispatch 옵션이 자동 전파되지만 stream/a
 MFT §3의 `message_flow_event_t`에 필드를 추가한다(값이 있을 때만 채운다).
 
 ```cpp
+enum class flow_origin_t { inbound, timer };  // §4.2, 값 있을 때만
 struct message_flow_event_t {
     // ... 기존 MFT §3 필드 ...
-    std::optional<std::string> flow_id;      // ≤64B ASCII, create-if-absent
+    std::optional<std::string>   flow_id;      // ≤64B ASCII, create-if-absent
+    std::optional<flow_origin_t> flow_origin;  // inbound | timer
     // dispatch_error_event_t 에도 동일 flow_id 필드 추가 (§4.3)
 };
 ```
 
-언어별 투영: `.NET` `IZLinkMessageFlowControl`에 `FlowId`/생성 모드, Java `ZLinkMessageFlowEvent`에
-`flowId`, Node flow 이벤트에 `flowId`. 케이싱만 변환하며 로그 토큰 `flow=`는 언어 간 바이트 동일
-([runtime-metrics §4.0 / X-1](runtime-metrics.ko.md)).
+**언어별 투영은 builder 전용이다.** 설정은 기존 dispatch 설정 체인에 `flow_id(mode)` 하나를 더하고,
+런타임 토글 표면(`IZLinkMessageFlowControl` 등)에는 추가하지 않는다 — 흐름 중 id 형식을 바꾸는 운영
+가치가 낮고 표면만 늘리기 때문이다. 이벤트에는 `flow_id`/`flow_origin` 필드를 더한다. 정식 언어 표면은
+각 언어 monitoring 문서가 소유한다:
+[.NET §11](languages/dotnet/aspnet-core-monitoring.ko.md) ·
+[Java §9](languages/java/spring-boot-monitoring.ko.md) ·
+[Node §11](languages/node/nestjs-monitoring.ko.md) ·
+[C++ §9](languages/cpp/cpp-monitoring.ko.md) · [Kotlin §8](languages/kotlin/handler-interfaces.ko.md).
+로그 토큰 `flow=`·`origin=`은 언어 간 바이트 동일([runtime-metrics §4.0](runtime-metrics.ko.md)).
 
 ## 9. 파싱 규약과 구현 상태
 
@@ -226,7 +235,7 @@ struct message_flow_event_t {
 
 | 언어 | 표면 |
 |------|------|
-| `.NET` | `IZLinkMessageFlowControl`에 `FlowId`·생성 모드; gateway 기본 sink 자동 배선 |
+| `.NET` | `ConfigureDispatch().FlowId(...)` + event `FlowId`/`FlowOrigin`; gateway 기본 sink 자동 배선 |
 | Java/Kotlin | `ZLinkMessageFlowEvent`에 `flowId`; SLF4J 바인딩 기본 폴백 |
 | Node | flow 이벤트에 `flowId`; NestJS 부트스트랩에서 gateway sink 자동 주입 |
 | C++ (레퍼런스) | `message_flow_event_t`에 `flow_id`; gateway tracer 기본 배선 |

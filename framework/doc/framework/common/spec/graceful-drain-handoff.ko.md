@@ -182,9 +182,11 @@ room 큐 콜백 처리 정책을 전부 요구한다. 이는 별도 스펙 **"ro
 
 - `Drain()`은 **멱등**이다. 두 번째 호출은 no-op이며 같은 completion에 합류한다(다른 deadline이면
   더 이른 deadline을 채택).
-- `Drain()` 전 `AwaitDrained()` 호출은 즉시 반환하지 않고, Drain이 시작될 때까지 또는 별도 규약대로
-  처리한다(승격 시 확정 — 기본 후보: `Drain` 미호출 상태에서 프로세스 stop 신호가 오면 자동 Drain).
-- 기본 deadline 값은 언어별 spec에서 고정하되 언어 간 동일하게 둔다(승격 시 확정).
+- **자동 drain이 기본이다.** 프로세스 stop 신호(host shutdown/SIGTERM)가 오면 framework가 `Drain()`을
+  자동 호출한다. 따라서 `Drain()` 전에 `AwaitDrained()`를 부른 배포 자동화는 미정의 동작이 아니라 그
+  자동 drain(또는 뒤이은 명시 `Drain`)의 완료에 합류해 대기한다 — 오류를 정의로 제거한다.
+- 기본 deadline 값은 언어별 spec에서 고정하되 언어 간 동일하게 둔다. deadline 없는 `Drain()`/
+  `DrainAsync(ct)` overload가 이 기본값을 쓴다(자동 drain 경로와 대칭).
 
 ## 7. 강제 종료·타임아웃과 세션 종료 통지
 
@@ -207,8 +209,11 @@ TCP/WS 연결은 이동할 수 없다. 세션의 재접속은 **클라이언트�
 - (ii) connector 측 **대체 endpoint 수용·재접속 로직** 신설.
 
 **본 계약의 기본 범위:** framework는 **종료 사유 코드(`server_drain`)만 제공**하고, 대체 endpoint로의
-재접속 로직은 **앱/connector의 몫**으로 둔다. reconnect 안내 control packet과 connector 표면은 별도
-후속 스펙으로 분리하며, 채택 시 이 절을 MFT §9 형식의 와이어 레이아웃 절로 확장한다.
+재접속 로직은 **앱/connector의 몫**으로 둔다. 이 사유 코드는 **connector 측에서 disconnect 시 읽을 수
+있어야** 하므로, connector의 disconnect 이벤트/오류 표면에 `closeReason`(닫힌 enum, [runtime-metrics
+§4.1](runtime-metrics.ko.md)의 `close_reason`과 정합)을 노출한다. 클라이언트는 이 값을 보고 재접속·백오프를
+결정한다. reconnect 안내 control packet(서버가 대체 endpoint를 지정)은 별도 후속 스펙으로 분리하며,
+채택 시 이 절을 MFT §9 형식의 와이어 레이아웃 절로 확장한다.
 
 ## 8. 배포 자동화 연동 (개념 예시)
 
@@ -233,6 +238,12 @@ framework는 아래 훅 지점만 제공하고, 스크립트·probe 배선은 �
 drain lifecycle 이벤트는 [MFT observer 계약](message-flow-tracing.ko.md)(offload executor, 예외
 격리 — [비동기 실행 정책](async-execution-policy.ko.md))을 따른다. 계기 이름 문법·종류·라벨은
 [runtime-metrics](runtime-metrics.ko.md)를 따른다.
+
+**drain 이벤트는 source 등록이 필요 없다(오류를 정의로 제거).** socket/spot monitoring source와 달리
+drain은 노드 생애 수 회의 저빈도 lifecycle 이벤트라 polling·filter 파라미터가 없다. 따라서 등록 표면
+(`AddDrainEvents` 같은 것)을 만들지 않고, runtime event handler가 존재하면 monitoring 구성 유무와
+무관하게 항상 수신한다. drain 이벤트의 `SourceName`은 **고정값 `drain`**이다. 이렇게 해야 flow
+correlation이 제거한 "조용한 무관측" 함정이 drain에서 재발하지 않는다.
 
 | 계기/이벤트 | 종류 | 의미 |
 |-------------|------|------|

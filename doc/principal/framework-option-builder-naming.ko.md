@@ -14,8 +14,11 @@ framework option builder 는 설정 객체를 조회하는 표면이 아니라, 
 - `enable*` 는 이미 선택한 등록 항목 안에서 역할을 켤 때 사용한다.
   예: `enableServer`, `enableClient`, `enable_publisher`
 - `use*` 는 기존 등록 항목에 적용되는 선택 정책이나 설정 영역을 열 때 쓴다. 그 안에서
-  실제로 값을 추가하는 메서드는 `add*` 로 명확하게 쓴다.
-  예: `useDiscovery`, `useRegistrySpotRemoteAddresses`, `use_handler_group`
+  실제로 값을 추가하는 메서드는 `add*` 로 명확하게 쓴다. 정책을 여는 것뿐 아니라 **정책 enum 하나를
+  기존 등록에 직접 선택**하는 경우도 `use*` 가 맞다(값 하나에 하위 option 객체를 강요하면 얕은 층이
+  생기므로 `configure*` 보다 낫다).
+  예: `useDiscovery`, `useRegistrySpotRemoteAddresses`, `use_handler_group`,
+  `useDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)`
 - `configure*` 는 하위 option 객체를 넘겨 세부 값을 바꿀 때 사용한다.
   예: `configureDispatch`, `configure_metadata`
 - `bind` 는 local endpoint 를 열 때 사용하고, `connect` 는 remote endpoint 로 연결할 때

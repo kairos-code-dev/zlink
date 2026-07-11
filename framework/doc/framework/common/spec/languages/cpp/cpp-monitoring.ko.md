@@ -238,21 +238,23 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 C++ 표면만
 적는다.
 
-> **설계 원칙(깊은 모듈).** DI가 없는 C++는 벤더 중립 meter 앰비언트가 없다. 그래서 유일한 공개
-> 표면은 **pull 방식 reader 인터페이스 하나**다. framework가 카탈로그 계기를 내부에 유지하고, 앱이
-> 등록한 reader가 주기적으로 스냅샷을 당긴다. per-계기 API는 노출하지 않는다.
+> **설계 원칙(같은 개념 → 같은 메커니즘).** C++에는 이미 §6의 metric event 표면
+> (`metric_event_payload_t` + `app.monitoring().on<metric_event_payload_t>(...)`)이 있다. framework
+> 카탈로그 계기는 **새 reader를 만들지 않고 이 기존 표면으로 방출**한다. 앱은 §6과 같은 handler로
+> 받아 자기 백엔드(OTel C++ SDK 등)로 브리지한다. per-계기 API는 노출하지 않는다.
 
 ### 8.1 표면
 
 | 공통 개념 | C++ |
 |-----------|-----|
-| reader 인터페이스 | `class zlink_metrics_reader_t { virtual void on_snapshot(const zlink_metrics_snapshot_t&) = 0; };` |
-| 스냅샷 | `zlink_metrics_snapshot_t` — counter/updown 현재값, histogram 버킷을 계기 이름·라벨 키로 노출 |
-| 등록 | `app.use_metrics(reader)` (미등록이면 계기 갱신이 no-op으로 접힘) |
-| OTel 브리지 | 앱이 reader에서 OTel C++ SDK로 매핑(framework는 OTel을 모른다, 공통 §6) |
+| 계기 방출 | framework가 공통 §4 카탈로그를 `metric_event_payload_t` 이벤트로 방출(이름·라벨 키는 카탈로그와 바이트 동일) |
+| 수신 | 기존 `app.monitoring().on<metric_event_payload_t>(handler)`(§6) — 새 표면 없음 |
+| OTel 브리지 | 앱이 handler에서 OTel C++ SDK로 매핑(framework는 OTel을 모른다, 공통 §6) |
 
-- `updown`은 이벤트 시점 atomic inc/dec, `observable`은 `on_snapshot` 시점에만 계산(공통 §7.1).
-- 계기 이름·라벨 키는 공통 §4 카탈로그와 바이트 동일. reader 미등록 시 무한 적재 없음(공통 §7.3).
+- §6의 `record_runtime_metric(...)`은 **앱 자신의 커스텀 metric**용이고 framework 카탈로그와는 별개
+  경로다 — 앱 커스텀 계기에 framework 소유 라벨(`surface` 등)을 붙이지 않는다(공통 §5).
+- `updown`은 이벤트 시점 값, `observable`은 주기 방출 시점 값(공통 §7.1). 구독 handler가 없으면 방출
+  자체가 접힌다(무한 적재 없음, 공통 §7.3).
 
 ## 9. 메시지 흐름 상관관계 (flow correlation)
 
@@ -263,9 +265,9 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 
 | 공통 개념 | C++ |
 |-----------|-----|
-| flow id 모드 | `enum class zlink_flow_id_mode_t { none, monotonic /*기본*/, global_unique };` |
-| 설정 | `configure_dispatch().flow_id(zlink_flow_id_mode_t::global_unique)` |
-| event 필드(추가) | `message_flow_event_t.flow_id`(`std::optional<std::string>`, ≤64B ASCII), `dispatch_error_event_t`에도 동일 |
+| flow id 모드 | `enum class flow_id_mode_t { none, monotonic /*기본*/, global_unique };` |
+| 설정 | `configure_dispatch().flow_id(flow_id_mode_t::global_unique)` |
+| event 필드(추가) | `message_flow_event_t.flow_id`(`std::optional<std::string>`, ≤64B ASCII), `message_flow_event_t.flow_origin`(`enum class flow_origin_t { inbound, timer }`, §4.2), `dispatch_error_event_t`에도 `flow_id` 동일 |
 | 스트림 와이어 | `header_flags_t`에 `has_flow_id = 0x10`, correlation_id 블록 뒤 `u8 len+bytes`(공통 §3.2) |
 
 - connector `header_codec`와 framework `stream_runtime`이 바이트 동일하게 인코딩한다(correlation_id
@@ -281,12 +283,16 @@ lifecycle 제어 표면(관측 아님)의 C++ 투영이다.
 
 | 공통 개념 | C++ |
 |-----------|-----|
-| drain 제어 | `app.drain(deadline)` / `app.await_drained()` / `bool app.is_ready()` |
-| SPOT drain 정책 | spot mesh 등록의 `.use_drain_policy(zlink_spot_drain_policy_t::{drain_natural /*기본*/, deadline, release_and_recreate})` |
-| 상태 관측 | 기존 runtime event handler 재사용. `zlink_drain_event_t.state` { `serving`/`draining`/`drained`/`force_stopping` } |
+| drain 제어 | `app.drain(deadline)` / `app.drain()`(기본 deadline) / `app.await_drained()` / `bool app.is_ready()` |
+| SPOT drain 정책 | spot mesh 등록의 `.use_drain_policy(spot_drain_policy_t::{drain_natural /*기본*/, deadline, release_and_recreate})` |
+| 상태 관측 | 기존 `app.monitoring().on<drain_event_t>(...)` 재사용. `drain_event_t.state` { `serving`/`draining`/`drained`/`force_stopping` } |
+| readiness | Draining 진입 시 기존 `app.health().report().ready()`가 false — 새 표면 없음(§5 `map_readiness`가 그대로 반영) |
 
 - C++는 DI/host lifecycle 앰비언트가 없으므로 `app.drain()`을 배포 훅(SIGTERM 핸들러)에서 명시
   호출한다. draining 마커·owner lease 유지·`Takeover` 순서(공통 §3)는 framework 내부가 소유한다.
+- **drain 이벤트는 source 등록이 필요 없다.** 노드 생애 수 회의 저빈도 lifecycle 이벤트라 polling·
+  filter 개념이 없고, `on<drain_event_t>(...)` handler 존재만으로 수신한다(공통 §9, 조용한 무관측
+  없음).
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -629,9 +629,9 @@ Bingo.Ts 3노드(Api/Play/Session)는 각자 `messageFlow(KeyTransitions)` +
 
 | 공통 개념 | Node.js |
 |-----------|---------|
-| flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` } |
-| 설정 | `ZLinkModule.forRoot({ dispatch: { messageFlow: 'KeyTransitions', flowId: 'GlobalUnique' } })` |
-| event 필드(추가) | `ZLinkMessageFlowEvent.flowId?`(불변 interface 필드 추가), 오류 이벤트에도 동일 |
+| flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` }(enum) |
+| 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GlobalUnique)` — §9.2 MFT 설정과 같은 builder 체인(경로 이중화 금지) |
+| event 필드(추가) | `ZLinkMessageFlowEvent.flowId?`, `ZLinkMessageFlowEvent.flowOrigin?`(`ZLinkFlowOrigin` { `Inbound`, `Timer` }, 공통 §4.2) — 불변 interface 필드 추가. 오류 이벤트에도 `flowId` 동일(§9.1 outcome 집합에 `Error` 정합 전제) |
 
 - 생성은 모드 게이트, 전파는 무조건(공통 §2.2). stream/actor gateway 로거 자동 배선(공통 §7),
   게이팅 불변(`Off`면 완전 침묵). 로그 토큰 `flow=`는 언어 간 바이트 동일.
@@ -649,13 +649,15 @@ lifecycle 제어 표면(관측 아님)의 Node.js 투영이다.
 | 공통 개념 | Node.js |
 |-----------|---------|
 | 자동 drain(기본) | framework가 `onApplicationShutdown(signal)`에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy('DrainNatural'│'Deadline'│'ReleaseAndRecreate')`(기본 `DrainNatural`) |
-| 명시 제어(선택) | `ZLinkDrainControl` { `drainAsync(deadlineMs): Promise<void>`, `awaitDrained(): Promise<void>`, `isReady(): boolean` } (injectable) |
-| readiness probe | `ZLinkDrainControl.isReady()`를 health controller가 반환 |
-| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` } |
+| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)`(enum, 기본 `DrainNatural`) |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(deadlineMs?): Promise<void>`(생략 시 기본 deadline), `awaitDrained(): Promise<void>`, `isReady(): boolean` } (injectable) |
+| readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator`를 제공, health controller에 등록. 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
+| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `sourceName` = 고정값 `'drain'` |
 
+- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례(`handle(): Promise`)에 맞춰 `drain`으로 둔다.
 - drain 상태 관측은 monitoring의 `ZLinkRuntimeEventHandler<T>`를 그대로 쓴다(같은 개념 → 같은
-  메커니즘). 새 관측 표면을 만들지 않는다.
+  메커니즘). **drain 이벤트는 source 등록이 필요 없다** — 저빈도 lifecycle 이벤트라 handler provider
+  존재만으로 수신한다(공통 §9, 조용한 무관측 없음).
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake 는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.

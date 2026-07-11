@@ -1071,7 +1071,7 @@ Bingo는 이미 세션 게이트웨이(STREAM)·actor 이동·룸 타이머·bou
 한 판(카드 제출→추첨→bound push)을 `flow=`로 grep하면 STREAM→actor→room-spot이 한 줄로 이어진다.
 
 ```csharp
-// 각 노드 공통 (.NET)
+// 각 노드 공통 (.NET). role = 그 노드의 역할 문자열("session"/"api"/"play", README §6)
 options.ConfigureDispatch()
     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .TraceLogFile($"log/flow-{role}.log")
@@ -1093,8 +1093,9 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
     .AddPrometheusExporter());
 ```
 
-관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`), `zlink.spot.queue.depth`
-(`kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
+`AddPrometheusExporter()`는 `OpenTelemetry.Exporter.Prometheus.AspNetCore` 패키지가 필요하다(exporter는
+앱 몫, 공통 스펙 §6). 관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
+`zlink.spot.queue.depth`(`kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
 
 ### 17.3 Graceful Drain
 

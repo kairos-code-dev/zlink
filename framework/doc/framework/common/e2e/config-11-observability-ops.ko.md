@@ -44,6 +44,8 @@ meter/registry(metrics), spot mesh `useDrainPolicy(...)` + 자동 drain(drain). 
 
 - **flow 로그**: 모든 프로세스가 [README](README.ko.md) §6대로 `log/`에 파일 로그를 남기고, message
   flow를 `key_transitions` 이상 + `flowId(GlobalUnique)`로 켠다. `flow=`로 grep해 노드 간 흐름을 잇는다.
+  파싱 부록 확정 전까지는 `flow=`/`corr=`/`label=`/`origin=` 토큰의 **바이트 동일**이 조인의 유일한
+  계약이다(공통 flow-correlation §9).
 - **메트릭**: 각 host가 테스트용 in-process reader(.NET `MeterListener` / C++ `zlink_metrics_reader_t`
   등)로 계기 스냅샷을 `/evidence`에 노출한다. 외부 exporter는 쓰지 않는다.
 - **drain evidence**: drain lifecycle 이벤트와 location row 상태를 `/evidence`에 기록한다.
@@ -120,7 +122,7 @@ meter/registry(metrics), spot mesh `useDrainPolicy(...)` + 자동 drain(drain). 
 
 **한마디로:** fanout 발행/수신 차분, owner lease 갱신 지연이 계기로 잡히고, 고카디널리티 라벨이 붙지 않는가.
 
-- 절차: `OrderWorkflow`가 이벤트를 fanout publish하고 다수 subscriber가 받는다. lease 갱신을 지연시키는 부하/장애를 넣는다.
+- 절차: `OrderWorkflow`가 이벤트를 fanout publish하고 다수 subscriber가 받는다. lease 갱신 지연은 내부 훅이 아니라 Redis 측 지연 주입(외부 인프라 조작, house rule 준수)으로 만든다.
 - 검증: `zlink.fanout.published`/`received`가 1:N로 계수된다. `zlink.location.owner_lease.renew.lateness`가 갱신 지연을 기록한다. **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_rid` 라벨이 붙지 않는다**(공통 §5).
 - 세부 동작: fanout/lease 계기 + 카디널리티 규약.
 
@@ -131,7 +133,7 @@ meter/registry(metrics), spot mesh `useDrainPolicy(...)` + 자동 drain(drain). 
 **한마디로:** meter/reader가 없으면 계기 갱신이 no-op으로 접히고 latency 타임스탬프 채취도 생략되는가.
 
 - 절차: reader를 등록하지 않은 노드에서 트래픽을 흘린다.
-- 검증: 계기 저장 공간이 무한 적재되지 않고(공통 §7.3), latency 히스토그램용 clock read가 핫패스에서 생략된다(공통 §7.2, RMETRIC-009). messaging 정확성은 불변.
+- 검증: reader 미등록에서도 messaging 정확성이 불변이고, 장시간 트래픽에 계기 저장 공간이 상한 내로 유지된다(무한 적재 없음, 공통 §7.3). (핫패스 clock read 생략은 프로세스 밖 e2e로 관찰 불가한 구현 내부 속성이라 언어별 벤치/단위 테스트 RMETRIC-009가 소유한다 — 이 config에서 단언하지 않는다.)
 - 세부 동작: off 제로코스트.
 
 ### Track C — Graceful Drain & Handoff
@@ -143,7 +145,7 @@ meter/registry(metrics), spot mesh `useDrainPolicy(...)` + 자동 drain(drain). 
 **한마디로:** `play-a`를 drain하면 신규 배정에서만 빠지고 기존 연결·in-flight는 유지되는가.
 
 - 절차: 룸과 bound actor가 살아 있는 `play-a`에 drain을 건다(자동 drain 또는 명시 `DrainAsync`).
-- 검증: `play-a`에 draining 마커가 서고 `IsReady()`=false가 되어 신규 room/actor 배정에서 빠진다. 그러나 peer row는 삭제되지 않아 기존 연결이 유지되고, 전파 지연 창에 기존 연결로 온 request가 정상 처리된다(오류율 0, 공통 §3.1/§3.3). owner lease는 draining 동안 계속 갱신된다(공통 §3.2).
+- 검증: `play-a`에 draining 마커가 서고 `IsReady()`=false가 되어 신규 room/actor 배정에서 빠진다. `zlink.drain.state` gauge가 `Serving`→`Draining`으로 전이한다(공통 §9). 그러나 peer row는 삭제되지 않아 기존 연결이 유지되고, 전파 지연 창에 기존 연결로 온 request가 정상 처리된다(오류율 0, 공통 §3.1/§3.3). owner lease는 draining 동안 계속 갱신된다(공통 §3.2).
 - 세부 동작: 마커 기반 배치 제외 + 연결 유지.
 
 #### OBS-C2 actor 핸드오프 + bound session 연속성
@@ -173,7 +175,7 @@ meter/registry(metrics), spot mesh `useDrainPolicy(...)` + 자동 drain(drain). 
 **한마디로:** deadline을 넘기면 강제 종료로 넘어가고 활성 세션에 `server_drain` 종료 통지가 가는가.
 
 - 절차: 핸드오프가 deadline 안에 못 끝나도록 짧은 deadline으로 drain한다.
-- 검증: 상태가 `ForceStopping`으로 전이하고, 활성 STREAM 세션에 `close_reason=server_drain` 종료 통지가 통지 상한 내에 전달된다. `zlink.drain.forced`가 계수되고, 통지가 프로세스 종료를 무한 지연시키지 않는다(공통 §7).
+- 검증: 상태가 `ForceStopping`으로 전이하고, 활성 STREAM 세션에 `close_reason=server_drain` 종료 통지가 통지 상한 내에 전달된다. 클라이언트 측은 connector의 `closeReason`(공통 drain §7.1)으로 이 사유를 읽어 확인한다. `zlink.drain.forced`가 계수되고, 통지가 프로세스 종료를 무한 지연시키지 않는다(공통 §7).
 - 세부 동작: 강제 종료 경로.
 
 #### OBS-C5 무중단 롤아웃 — 동시 drain 폴백

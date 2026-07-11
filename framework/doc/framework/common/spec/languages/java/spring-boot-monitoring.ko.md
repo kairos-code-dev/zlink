@@ -205,10 +205,12 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 | 계기 이름 접두 | `zlink.` (Micrometer meter name, 공통 §4.0 바이트 동일) |
 | 계기 방출 | 앰비언트 `MeterRegistry`에 `Counter`/`Gauge`/`Timer`(histogram) 등록 |
 | 앱 연결(공통 케이스) | Spring Boot Actuator + Micrometer registry 자동 구성 — 별도 zlink 설정 없음 |
-| 커스텀 조정(선택) | `ZLinkMetricsCustomizer`(registry·공통 태그 조정) |
+| meter/scope 이름 | 계기 접두 `zlink.` (Micrometer는 scope 개념이 없어 접두가 바이트 동일 식별자, 공통 §11) |
+| 커스텀 조정(선택) | `ZLinkMetricsCustomizer { void customize(MeterRegistry registry); }`(공통 태그 추가·필터 등) — `ZLinkMonitoringOptionsCustomizer` 선례와 동형 |
 
-- 공통 §3 `updown`=Micrometer `Gauge`(등록 시 상태 참조), `observable`=`Gauge` 콜백, histogram=`Timer`
-  또는 `DistributionSummary`.
+- 공통 §3 `updown`=Micrometer `Gauge`(등록 시 상태 참조), `observable`=`Gauge` 콜백. histogram은 **duration
+  계기(`.duration`/`.latency`)=`Timer`, 그 외 분포=`DistributionSummary`**로 고정한다. `Timer` base unit은
+  백엔드별이라 공통 §4.0의 ms 고정은 export 브리지가 맞춘다.
 - registry가 없으면(예: 테스트) 계기는 no-op registry로 접혀 성능 영향이 없다(공통 §7.2).
 - 대시보드·exporter(Prometheus/OTLP)는 앱 몫이다(공통 §6).
 
@@ -223,7 +225,7 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 |-----------|------|
 | flow id 모드 | `ZLinkFlowIdMode` { `NONE`, `MONOTONIC`(기본), `GLOBAL_UNIQUE` } |
 | 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE)` |
-| event 필드(추가) | `ZLinkMessageFlowEvent.flowId()` (§7.x record accessor 추가), 오류 이벤트에도 동일 |
+| event 필드(추가) | `ZLinkMessageFlowEvent.flowId()`, `ZLinkMessageFlowEvent.flowOrigin()`(`ZLinkFlowOrigin` { `INBOUND`, `TIMER` }, 공통 §4.2) — §7.1 record accessor 추가. 오류 이벤트에도 `flowId()` 동일 |
 
 ```java
 ZLinkFrameworkConfigurer dispatchTracing() {
@@ -250,17 +252,21 @@ lifecycle 제어 표면(관측 아님)의 Java 투영이다.
 |-----------|------|
 | 자동 drain(기본) | framework `SmartLifecycle` 빈이 shutdown에서 drain — 앱 코드 0 |
 | SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.{DRAIN_NATURAL(기본)/DEADLINE/RELEASE_AND_RECREATE})` |
-| 명시 제어(선택) | `ZLinkDrainControl` { `drainAsync(Duration deadline)` → `CompletionStage<Void>`, `awaitDrained()` → `CompletionStage<Void>`, `boolean isReady()` } (빈) |
-| readiness probe | `ZLinkDrainControl.isReady()` 또는 Actuator readiness group 연동 |
-| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state()` { `SERVING`/`DRAINING`/`DRAINED`/`FORCE_STOPPING` } |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(Duration deadline)` → `CompletionStage<Void>`, `drain()`(기본 deadline) → `CompletionStage<Void>`, `awaitDrained()` → `CompletionStage<Void>`, `boolean isReady()` } (빈) |
+| readiness probe | starter가 `ZLinkDrainReadinessContributor`를 자동 등록해 Actuator readiness group에 반영(무설정). 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
+| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state()` { `SERVING`/`DRAINING`/`DRAINED`/`FORCE_STOPPING` }, `sourceName()` = 고정값 `"drain"` |
 
 ```java
 options.addSpotMesh("orders")
     .useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE);
 ```
 
+- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례(`transferOut`, `onMessageFlow`)에 맞춰
+  `drain`으로 둔다.
 - drain 상태 관측은 monitoring의 `ZLinkRuntimeEventHandler<T>`를 그대로 쓴다(같은 개념 → 같은
-  메커니즘). Kotlin은 `suspend fun awaitDrained()` extension과 `onDrain { }` 람다를 추가로 제공한다.
+  메커니즘). **drain 이벤트는 source 등록이 필요 없다** — 저빈도 lifecycle 이벤트라 handler 빈 존재만으로
+  monitoring configurer 유무와 무관하게 수신한다(공통 §9, 조용한 무관측 없음). Kotlin은
+  `drainControl.drain(deadline).await()`와 `onDrain { }` 람다를 제공한다(§8).
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

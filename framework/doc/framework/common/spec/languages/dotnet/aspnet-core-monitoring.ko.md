@@ -463,10 +463,10 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 
 | 공통 개념 | `.NET` |
 |-----------|--------|
-| meter 이름(상수) | `ZLinkMeters.Framework` = `"Zlink.Framework"` |
-| 계기 방출 | `System.Diagnostics.Metrics.Meter("Zlink.Framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
+| 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
 | 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
-| 비-OTel/커스텀 수집 | `options.UseMetrics(m => m.UseListener(...))` (선택, `MeterListener` 기반 pull) |
+| 비-OTel/커스텀 수집(선택) | `options.SetMetricsListener(IZLinkMetricsListener listener)` — `MeterListener` 선례(`SetMessageFlowObserver`)와 같은 단일 훅 setter |
 
 ```csharp
 // 앱은 이 한 줄로 zlink 계기를 자기 OTel 파이프라인에 넣는다. 별도 zlink 설정 없음.
@@ -484,7 +484,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 
 `.NET`의 `Meter`/`MeterListener`가 이미 벤더 중립 계기 파사드다. framework가 별도 `IZLinkMetrics*`
 표면을 두면 그 위에 pass-through 층이 생겨 깊이가 없다(얕은 모듈). 그래서 공개 표면을 **안정된 meter
-이름 하나 + 선택적 `UseMetrics`**로 최소화한다.
+이름 하나 + 선택적 `SetMetricsListener`**로 최소화한다.
 
 ## 11. 메시지 흐름 상관관계 (flow correlation)
 
@@ -498,7 +498,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 |-----------|--------|
 | flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` } |
 | 설정 | `ConfigureDispatch().FlowId(ZLinkFlowIdMode.GlobalUnique)` |
-| event 필드(추가) | `ZLinkMessageFlowEvent.FlowId` (§9.1 record에 추가), dispatch 오류 이벤트에도 동일 필드 |
+| event 필드(추가) | `ZLinkMessageFlowEvent.FlowId`, `ZLinkMessageFlowEvent.FlowOrigin`(`ZLinkFlowOrigin` { `Inbound`, `Timer` }, §공통 §4.2) — §9.1 record에 추가. dispatch 오류 이벤트에도 `FlowId` 동일 |
 
 ```csharp
 options.ConfigureDispatch()
@@ -528,9 +528,9 @@ options.ConfigureDispatch()
 |-----------|--------|
 | 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
 | SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/Deadline/ReleaseAndRecreate})` |
-| 명시 제어(선택) | `IZLinkDrainControl` { `DrainAsync(TimeSpan deadline, CancellationToken)`, `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
+| 명시 제어(선택) | `IZLinkDrainControl` { `DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(기본 deadline, 공통 §6), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
 | readiness probe | `IZLinkDrainControl.IsReady` 또는 편의 `AddZLinkDrainHealthCheck()` |
-| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` } |
+| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
 
 ```csharp
 // SPOT별 정책만 선언 — 나머지는 전부 기본 동작
@@ -545,6 +545,10 @@ await drain.AwaitDrainedAsync(ct);
 
 - **왜 새 이벤트 구독을 안 만드나:** drain 상태 관측은 monitoring의 `IZLinkRuntimeEventHandler<T>`를
   그대로 쓴다(같은 개념 → 같은 메커니즘). 새 관측 표면을 만들지 않는다.
+- **drain 이벤트는 source 등록이 필요 없다.** socket/spot source와 달리 drain은 노드 생애 수 회의
+  저빈도 lifecycle 이벤트라 polling·filter 파라미터가 없다. `IZLinkRuntimeEventHandler<ZLinkDrainEvent>`
+  핸들러가 DI에 있으면 monitoring 구성 유무와 무관하게 항상 수신한다 — flow correlation이 제거한
+  "조용한 무관측" 함정을 여기서도 만들지 않는다(공통 §9).
 - **왜 앱이 `Drain`을 안 불러도 되나:** host 종료 신호 처리를 framework가 흡수한다. `IZLinkDrainControl`
   은 배포 자동화가 세밀 제어할 때만 쓰는 탈출구다.
 - `IsReady`는 술어 프로퍼티다(`Draining`이면 false). readiness probe가 이 값을 그대로 읽는다.

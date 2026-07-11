@@ -294,6 +294,12 @@ adapter에 연결하는 일은 application 또는 별도 extension이 담당한�
 각 언어는 이 카탈로그를 자기 계기 API로 내려 적는다. 계기 **이름·라벨 키**는 바꾸지 않고 provider
 연결 표면만 언어화한다.
 
+**meter/scope 이름도 언어 간 바이트 동일 — `zlink.framework`.** meter/scope 이름은 OTLP/Prometheus
+export에 scope로 실리는 백엔드 식별자이므로 계기 이름과 같은 규칙을 받는다(§4.0). `.NET`
+`ZLinkMeters.Framework` 값과 Node meter 이름 모두 `"zlink.framework"`이며, scope 개념이 없는 백엔드
+(Micrometer)는 계기 접두 `zlink.`가 그 역할을 한다. 혼합 fleet에서 같은 계기가 언어별로 다른 scope로
+갈라지지 않게 한다.
+
 | 언어 | 표면 |
 |------|------|
 | `.NET` | `System.Diagnostics.Metrics.Meter` + `MeterListener`; `AddZLinkFramework`에서 provider 주입, OTel `MeterProvider`로 브리지 |

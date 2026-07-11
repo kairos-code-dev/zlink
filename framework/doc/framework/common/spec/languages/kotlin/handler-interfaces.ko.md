@@ -857,9 +857,12 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 | 메트릭 | Micrometer `MeterRegistry` 자동 바인딩(무설정) | 없음 — Spring Boot Kotlin 앱도 동일 |
 | flow id 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE)` | `configureDispatch { flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE) }` DSL |
 | SPOT drain 정책 | `useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE)` | 동일(builder DSL) |
-| drain 명시 제어 | `ZLinkDrainControl` { `drainAsync`, `awaitDrained`, `isReady` } | `suspend fun ZLinkDrainControl.drain(deadline: Duration)` / `suspend fun ZLinkDrainControl.awaitDrained()` extension(별도 token 없음, §7.2 취소 규칙) |
+| drain 명시 제어 | `ZLinkDrainControl` { `drain(Duration)`, `awaitDrained()`, `isReady()` } | 별도 extension 없음 — Java `drain(deadline)`/`awaitDrained()`가 반환하는 `CompletionStage`를 기존 `CompletionStage.await()`(§7.2)로 대기: `drainControl.drain(deadline).await()` |
 | drain 상태 관측 | `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` | `onDrain { event -> ... }` 람다 옵저버(에르고노믹스) |
 
-`suspend` extension은 `CompletionStage`를 non-blocking으로 대기하며(§7.2), 별도 `CancellationToken`을
-두지 않는다. `ZLinkFlowIdMode`·`ZLinkSpotDrainPolicy`·`ZLinkDrainEvent` enum/타입은 Java 타입을 그대로
-사용한다.
+Java `drain`이 멤버이므로 Kotlin은 이름이 겹치는 `drain` extension을 두지 않고 기존 `CompletionStage.await()`
+확장을 재사용한다(표면 축소, §7.2 취소 규칙 — 별도 `CancellationToken` 없음). `ZLinkFlowIdMode`·
+`ZLinkFlowOrigin`·`ZLinkSpotDrainPolicy`·`ZLinkDrainEvent` enum/타입은 Java 타입을 그대로 사용한다.
+
+> §7.1 타입 목록·§7.2 함수 inventory는 이 §8의 `onDrain` 람다와 위 `.await()` 재사용을 포함한 것으로
+> 읽는다(새 `drain` extension은 추가하지 않으므로 inventory 증가 없음).

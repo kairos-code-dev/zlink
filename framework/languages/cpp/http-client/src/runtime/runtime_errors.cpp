@@ -18,10 +18,18 @@ zlink::framework::result_t<raw_http_response_t> timeout_before_exchange ()
       "HTTP request timed out before the scheduler started it", true);
 }
 
-zlink::framework::result_t<raw_http_response_t> map_exception (const std::exception &ex)
+//  Transport-layer failures (socket/TLS/wire errors) are retriable; anything else is an
+//  unexpected error and must not be retried (retrying a programming error is never correct).
+zlink::framework::result_t<raw_http_response_t> map_transport_exception (const std::exception &ex)
 {
     return zlink::framework::result_t<raw_http_response_t>::failure (
       zlink::framework::framework_error_kind_t::request_failed, ex.what (), true);
+}
+
+zlink::framework::result_t<raw_http_response_t> map_unexpected_exception (const std::exception &ex)
+{
+    return zlink::framework::result_t<raw_http_response_t>::failure (
+      zlink::framework::framework_error_kind_t::request_failed, ex.what (), false);
 }
 
 } // namespace zlink::http_client::detail

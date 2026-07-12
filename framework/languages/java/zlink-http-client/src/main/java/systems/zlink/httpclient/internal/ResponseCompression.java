@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 /**
@@ -53,6 +54,7 @@ public final class ResponseCompression {
             while ((read = stream.read(buffer)) > 0) {
                 if ((long) output.size() + read > maxBytes) {
                     throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
                         "HTTP response compressed body exceeds maxResponseBodySize");
                 }
                 output.write(buffer, 0, read);
@@ -62,6 +64,6 @@ public final class ResponseCompression {
     }
 
     private static ZLinkFrameworkException malformed(IOException cause) {
-        return new ZLinkFrameworkException("HTTP response compressed body is malformed", cause);
+        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED, "HTTP response compressed body is malformed", cause);
     }
 }

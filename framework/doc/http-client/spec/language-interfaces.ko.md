@@ -68,8 +68,8 @@
 | | 예외/실패 타입 | kind 접근 |
 | --- | --- | --- |
 | cpp | `framework_exception_t` / `result_t` | `framework_error_kind_t` (snake_case, 5종) |
-| dotnet | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (PascalCase) + `IsRetriable`; timeout은 `TimeoutException`(갭) |
-| java/kotlin | `ZLinkFrameworkException` | **없음 — 구현 갭** |
+| dotnet | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (PascalCase) + `IsRetriable` |
+| java/kotlin | `ZLinkFrameworkException` | `kind()` (UPPER_SNAKE) + `retriable()` |
 | node | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (camelCase) + `isRetriable` |
 
 ## 2. 언어별 공개 표면 전량 (normative)

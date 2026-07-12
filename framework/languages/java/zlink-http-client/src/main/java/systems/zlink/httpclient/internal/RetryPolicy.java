@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.httpclient.internal.RequestPerformer.RawResult;
 
@@ -45,7 +46,7 @@ final class RetryPolicy {
             return CompletableFuture.failedFuture(
                 cause instanceof ZLinkFrameworkException
                     ? cause
-                    : new ZLinkFrameworkException(cause.getMessage(), cause));
+                    : new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, cause.getMessage(), isRetriable(cause), cause));
         });
     }
 

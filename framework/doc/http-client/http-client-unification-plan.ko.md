@@ -71,15 +71,19 @@ package 정책(`scripts/local-package/README.ko.md`)을 http-client에 그대로
   참조 버전은 의도적으로만 상향. 계약 영향 변경(R 승격)은 minor 상향 +
   plan에 소비자 반영 항목 동반
 
-## Phase 3 — 에러 모델 parity (spec 9장 구현 갭 해소)
+## Phase 3 — 에러 모델 parity ✅ (2026-07-12)
 
-- [ ] java/kotlin: framework 공용 error kind + `isRetriable` 노출
-  (`ZLinkFrameworkException`에 kind 접근 경로 — framework-core 조율 필요)
-- [ ] dotnet: timeout의 `TimeoutException` 이탈을 zlink 에러 모델로 회수
-  (R2 결정과 연동 — R2 승격 전에는 최소한 kind 식별 가능하게)
-- [ ] cpp: 일반 예외 일괄 retriable=true 매핑 제거
-  (`runtime_errors.cpp:21-25`) — retriable은 전송 실패·timeout만
-- [ ] 계약 테스트: kind/isRetriable 검증 케이스를 4언어에 추가(spec 11장 매트릭스 갱신)
+- [x] java: framework-core에 `kind()`/`retriable()`가 **이미 존재**했음(조사
+  보고와 달리 갭은 http-client가 message-only 생성자만 쓴 것). http-client의
+  예외 생성 지점 28곳 전수에 kind 분류 적용(PROTO/FAILED/DECODE), 전송 실패
+  래핑에 retriable 플래그 전달. kotlin은 전이로 해소
+- [x] dotnet: timeout을 `RequestFailed(IsRetriable=true)` + inner
+  `TimeoutException`으로 회수(호출자 취소는 `OperationCanceledException` 유지)
+- [x] cpp: `map_exception` 일괄 retriable=true를
+  `map_transport_exception`(true) / `map_unexpected_exception`(false)으로 분리
+- [x] 계약 테스트: java 4케이스(400 kind/retriable, decode kind, 검증 kind,
+  timeout kind+retriable), dotnet timeout 2케이스 갱신. node/cpp는 기존
+  테스트가 이미 kind 검증. spec 9.2/9.3·언어별 spec 6절 현황 갱신
 
 ## Phase 4 — 언어별 결함 수정
 
@@ -135,7 +139,7 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 | 1 | Phase 0 공통 spec + perf 문서 | ✅ 2026-07-12 |
 | 2 | Phase 1 문서 정비 | ✅ 2026-07-12 |
 | 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ✅ 2026-07-12 (cpp는 소스 참조+계약 게이트로 편차 확정) |
-| 4 | Phase 3 에러 모델 parity | ⬜ |
+| 4 | Phase 3 에러 모델 parity | ✅ 2026-07-12 |
 | 5 | Phase 4 언어별 결함 | ⬜ |
 | 6 | Phase 5 R-항목 결정 | ⬜ |
 | 7 | Phase 6 배포·perf 체계 | ⬜ |

@@ -428,7 +428,11 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl)
             .Timeout(TimeSpan.FromMilliseconds(60)).Retry(2).Build();
 
-        await Assert.ThrowsAsync<TimeoutException>(async () => await client.Get("/slow").SubmitRawAsync());
+        var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await client.Get("/slow").SubmitRawAsync());
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
+        Assert.True(failure.IsRetriable);
+        Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
     [Fact]
@@ -489,7 +493,7 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
-    public async Task Timeout_throws_timeout_exception()
+    public async Task Timeout_throws_retriable_request_failed()
     {
         using var server = new TestHttpServer(async ctx =>
         {
@@ -499,7 +503,11 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl)
             .Timeout(TimeSpan.FromMilliseconds(80)).Build();
 
-        await Assert.ThrowsAsync<TimeoutException>(async () => await client.Get("/slow").SubmitRawAsync());
+        var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await client.Get("/slow").SubmitRawAsync());
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
+        Assert.True(failure.IsRetriable);
+        Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
     [Fact]

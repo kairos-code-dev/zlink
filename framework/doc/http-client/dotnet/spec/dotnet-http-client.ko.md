@@ -72,8 +72,9 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 `ZLinkFrameworkErrorKind`(PascalCase: `RequestProtocolError`/`RequestFailed`/
 `PayloadDecodeFailed`) + `IsRetriable`.
 
-- **편차(구현 갭)**: timeout이 `System.TimeoutException`으로 보고되어 zlink
-  에러 모델 밖으로 샌다 — 공통 spec 9.3의 수정 추적 대상.
+- timeout은 `RequestFailed`(`IsRetriable=true`) + inner `TimeoutException`으로
+  보고한다(2026-07-12에 `TimeoutException` 직접 노출에서 회수). 호출자 취소는
+  `OperationCanceledException` 그대로 전파된다.
 
 ## 7. 회귀 테스트 축
 

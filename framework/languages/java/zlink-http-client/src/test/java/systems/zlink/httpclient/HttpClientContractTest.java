@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 final class HttpClientContractTest {
@@ -289,7 +290,9 @@ final class HttpClientContractTest {
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             CompletionException ex = assertThrows(CompletionException.class,
                 () -> client.get("/players/0").submit(Player.class).toCompletableFuture().join());
-            assertTrue(ex.getCause() instanceof ZLinkFrameworkException);
+            ZLinkFrameworkException failure = (ZLinkFrameworkException) ex.getCause();
+            assertEquals(ZLinkFrameworkErrorKind.REQUEST_FAILED, failure.kind());
+            assertFalse(failure.retriable());
         } finally {
             server.closeable().close();
         }
@@ -302,7 +305,8 @@ final class HttpClientContractTest {
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             CompletionException ex = assertThrows(CompletionException.class,
                 () -> client.get("/x").submit(Player.class).toCompletableFuture().join());
-            assertTrue(ex.getCause() instanceof ZLinkFrameworkException);
+            ZLinkFrameworkException failure = (ZLinkFrameworkException) ex.getCause();
+            assertEquals(ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED, failure.kind());
         } finally {
             server.closeable().close();
         }
@@ -552,8 +556,11 @@ final class HttpClientContractTest {
             TestSupport.respond(exchange, 200, "{}");
         });
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).timeout(Duration.ofMillis(80)).build()) {
-            assertThrows(CompletionException.class,
+            CompletionException ex = assertThrows(CompletionException.class,
                 () -> client.get("/slow").submitRaw().toCompletableFuture().join());
+            ZLinkFrameworkException failure = (ZLinkFrameworkException) ex.getCause();
+            assertEquals(ZLinkFrameworkErrorKind.REQUEST_FAILED, failure.kind());
+            assertTrue(failure.retriable());
         } finally {
             server.closeable().close();
         }
@@ -599,7 +606,9 @@ final class HttpClientContractTest {
 
     @Test
     void validationRejectsInvalidConfiguration() {
-        assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create().build());
+        ZLinkFrameworkException invalid = assertThrows(
+            ZLinkFrameworkException.class, () -> ZLinkHttpClient.create().build());
+        assertEquals(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, invalid.kind());
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("ftp://x").build());
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").timeout(Duration.ZERO));
         assertThrows(ZLinkFrameworkException.class, () -> ZLinkHttpClient.create("http://h").proxy("https://p").build());

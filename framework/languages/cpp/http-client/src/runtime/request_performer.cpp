@@ -386,10 +386,10 @@ zlink::framework::result_t<raw_http_response_t> perform_once (const http_client_
             return zlink::framework::result_t<raw_http_response_t>::failure (
               zlink::framework::framework_error_kind_t::timeout, ex.what (), true);
         }
-        return map_exception (ex);
+        return map_transport_exception (ex);
     }
     catch (const std::exception &ex) {
-        return map_exception (ex);
+        return map_unexpected_exception (ex);
     }
 }
 

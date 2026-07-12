@@ -67,12 +67,12 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 
 ## 6. 에러 매핑
 
-[공통 spec 9장](../../spec/09-error-model.ko.md)을 따르는 것이 목표 계약이다.
+[공통 spec 9장](../../spec/09-error-model.ko.md)을 따른다. 모든 실패는
+`ZLinkFrameworkException`이며 `kind()`(`REQUEST_PROTOCOL_ERROR`/`REQUEST_FAILED`/
+`PAYLOAD_DECODE_FAILED`)와 `retriable()`을 노출한다.
 
-- **편차(구현 갭)**: 현재 모든 실패가 base `ZLinkFrameworkException`으로만
-  보고되고 kind enum과 `isRetriable`을 노출하지 않는다 — 공통 spec 9.3의
-  수정 추적 대상. retry 판단은 내부적으로 `IOException` 여부로 한다.
-  timeout은 `HttpTimeoutException`(IOException)이므로 retriable.
+- timeout은 `REQUEST_FAILED`(`retriable=true`) + `HttpTimeoutException` cause.
+- 내부 retry 판단은 `IOException`/`UncheckedIOException`/`TimeoutException` 여부.
 
 ## 7. 회귀 테스트 / 등록
 

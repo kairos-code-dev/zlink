@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.httpclient.internal.HttpClientText;
 
@@ -38,6 +39,7 @@ final class ZLinkHttpRequestBodyEncoder {
         List<MultipartPart> multipart) {
         if (countBodySources(body, bodyProvider, form, multipart) > 1) {
             throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
                 "HTTP request accepts a single body source: body, body_stream, form, or multipart");
         }
 

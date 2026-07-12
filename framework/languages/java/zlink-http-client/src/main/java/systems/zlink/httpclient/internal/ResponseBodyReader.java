@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 /**
@@ -39,7 +40,7 @@ final class ResponseBodyReader {
             while ((read = stream.read(buffer)) > 0) {
                 total += read;
                 if (total > options.maxResponseBodySize()) {
-                    throw new ZLinkFrameworkException("HTTP response exceeded the maximum body size");
+                    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
                 }
                 byte[] chunk = new byte[read];
                 System.arraycopy(buffer, 0, chunk, 0, read);
@@ -59,7 +60,7 @@ final class ResponseBodyReader {
             int read;
             while ((read = stream.read(buffer)) > 0) {
                 if ((long) output.size() + read > options.maxResponseBodySize()) {
-                    throw new ZLinkFrameworkException("HTTP response exceeded the maximum body size");
+                    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
                 }
                 output.write(buffer, 0, read);
             }

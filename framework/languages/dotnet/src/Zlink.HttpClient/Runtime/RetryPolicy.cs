@@ -6,8 +6,9 @@ namespace Zlink.HttpClient.Runtime;
 ///     Applies the wrapper's retry policy around a single request attempt: streaming requests are never
 ///     retried (they cannot be rewound), each attempt is bounded by the effective timeout, and only
 ///     retriable transport failures (timeout, connection errors) are retried at a fixed delay. Timeouts
-///     surface as <see cref="TimeoutException" />. Separated from <see cref="HttpClientRuntime" /> so the
-///     retry/timeout policy is independent of handler construction.
+///     surface as a retriable <see cref="ZLinkFrameworkException" /> (RequestFailed) with a
+///     <see cref="TimeoutException" /> inner exception, matching the node/java mapping. Separated from
+///     <see cref="HttpClientRuntime" /> so the retry/timeout policy is independent of handler construction.
 /// </summary>
 internal sealed class RetryPolicy(HttpClientOptions options)
 {
@@ -36,7 +37,9 @@ internal sealed class RetryPolicy(HttpClientOptions options)
             }
             catch (OperationCanceledException ex)
             {
-                failure = new TimeoutException("HTTP request exceeded timeout", ex);
+                failure = new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestFailed, "HTTP request exceeded timeout", true,
+                    new TimeoutException("HTTP request exceeded timeout", ex));
             }
             catch (ZLinkFrameworkException ex)
             {

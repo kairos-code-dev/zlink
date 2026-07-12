@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 /** Shared text helpers mirroring the C++ {@code client.cpp} anonymous-namespace utilities. */
@@ -19,13 +20,13 @@ public final class HttpClientText {
 
     public static void requireNonBlank(String value, String message) {
         if (isBlank(value)) {
-            throw new ZLinkFrameworkException(message);
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, message);
         }
     }
 
     public static void requirePositiveTimeout(Duration value) {
         if (value == null || value.isZero() || value.isNegative()) {
-            throw new ZLinkFrameworkException("HTTP client timeout must be greater than zero");
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, "HTTP client timeout must be greater than zero");
         }
     }
 

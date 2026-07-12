@@ -25,19 +25,18 @@ HTTP client는 자체 예외 계층을 만들지 않고 framework 공용 에러 
 | | kind enum 노출 | isRetriable 노출 | timeout 표현 | 전달 형태 |
 | --- | --- | --- | --- | --- |
 | cpp | O (5종: 위 3종 + `timeout` + `closed`) | O | `timeout` kind | `result_t` 봉투 또는 예외 |
-| dotnet | O (3종, PascalCase) | O | `System.TimeoutException` | 예외 |
+| dotnet | O (3종, PascalCase) | O | `RequestFailed(IsRetriable=true)` + inner `TimeoutException` | 예외 |
 | node | O (3종, camelCase) | O | `requestFailed(isRetriable=true)` | 예외 |
-| java | **X (구현 갭)** | **X (구현 갭)** | `HttpTimeoutException` cause | 예외 |
+| java | O (`kind()`, UPPER_SNAKE) | O (`retriable()`) | `REQUEST_FAILED(retriable=true)` + `HttpTimeoutException` cause | 예외 |
 | kotlin | java와 동일 | java와 동일 | java와 동일 | 예외 |
 
-## 9.3 구현 갭 (계약 위반 — plan 문서에서 수정 추적)
+## 9.3 편차 (언어 고유로 인정된 것)
 
-1. **java/kotlin**: kind와 `isRetriable`을 노출하지 않는다. 호출자가 메시지
-   문자열로만 실패를 구분할 수 있고 status도 꺼낼 수 없다. →
-   framework 공용 kind 노출로 정렬해야 한다.
-2. **dotnet**: timeout이 `TimeoutException`으로 zlink 에러 모델 밖으로 샌다.
-3. cpp의 `closed`(runtime 종료 후 제출) kind는 cpp 실행 모델 고유 —
-   언어 편차로 인정.
+1. cpp의 `timeout`·`closed` kind는 cpp 실행 모델 고유. timeout 전용 kind의
+   전 언어 통일은 개정 후보 [R2](10-revision-candidates.ko.md).
+2. java/kotlin의 kind 미노출·dotnet의 `TimeoutException` 이탈은 2026-07-12에
+   해소됐다(java는 전 예외 지점에 kind/retriable을 싣고, dotnet은 timeout을
+   `RequestFailed(retriable)` + inner `TimeoutException`으로 회수).
 
 ## 9.4 retriable 오염 금지
 

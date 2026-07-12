@@ -20,6 +20,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.httpclient.ZLinkHttpMethod;
 
@@ -95,7 +96,7 @@ public final class RequestPerformer {
         if (options.followRedirects() > 0 && RedirectPolicy.isRedirect(status) && location != null && !location.isEmpty()) {
             closeQuietly(response.body());
             if (redirectsLeft == 0) {
-                throw new ZLinkFrameworkException("HTTP request exceeded the redirect limit");
+                throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP request exceeded the redirect limit");
             }
             RedirectPolicy.Rewrite rewrite = RedirectPolicy.rewriteMethodAndBody(status, method, body);
             return hop(spec, RedirectPolicy.resolveLocation(current, location), origin,

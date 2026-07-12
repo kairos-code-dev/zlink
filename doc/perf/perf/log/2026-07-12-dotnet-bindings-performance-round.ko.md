@@ -314,6 +314,8 @@ tcp 256B 3회 중앙값은 1,189,460.0msg/s와 평균 latency 0.149ms였다. 직
 기능·성능 회귀 없이 잘못된 호출을 정상 no-op처럼 숨기던 분기를 제거했으므로 POSD 개선으로
 채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.
 
+- commit: `0d440efde`
+
 ### Message size 중복 검증 제거
 
 `Message.Allocate(size)`는 public 메서드, `AllocateCore`, `InitSize`에서 같은 음수 검증을

@@ -94,7 +94,7 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
 });
 
 test('location readiness returns false when ready state is missing or query fails', async () => {
-  const ready = new internal.ZLinkLocationReadiness({
+  const ready = new internal.DefaultZLinkLocationReadiness({
     async listTopology(filter) {
       assert.equal(filter.meshName, 'play');
       assert.equal(filter.role, framework.ZLinkLocationRole.Router);
@@ -104,14 +104,14 @@ test('location readiness returns false when ready state is missing or query fail
   });
   assert.equal(await ready.isPeerReady('play', framework.ZLinkLocationRole.Router, rid('node-a')), true);
 
-  const notReady = new internal.ZLinkLocationReadiness({
+  const notReady = new internal.DefaultZLinkLocationReadiness({
     async listTopology() {
       return { items: [] };
     }
   });
   assert.equal(await notReady.isPeerReady('play', framework.ZLinkLocationRole.Router), false);
 
-  const unknown = new internal.ZLinkLocationReadiness({
+  const unknown = new internal.DefaultZLinkLocationReadiness({
     async listTopology() {
       throw new Error('store unavailable');
     }

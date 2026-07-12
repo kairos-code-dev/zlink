@@ -171,7 +171,7 @@ export class ZLinkStoreLocationResolvers implements
   }
 }
 
-export class ZLinkLocationReadiness implements ZLinkLocationReadiness {
+export class DefaultZLinkLocationReadiness implements ZLinkLocationReadiness {
   constructor(private readonly query: ZLinkLocationRuntimeQuery) {}
 
   async isPeerReady(

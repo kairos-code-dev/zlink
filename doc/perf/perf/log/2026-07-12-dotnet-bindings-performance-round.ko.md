@@ -377,3 +377,34 @@ latency 상한을 모두 통과하므로 완료한다.
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PAIR / ws / 256B`
+
+### PAIR ws 완료
+
+다른 framework .NET 검증이 CPU를 사용할 때는 측정을 시작하지 않고, CPU idle
+98.8~99.3%를 확인한 뒤 C와 .NET을 CPU pin 없이 차례로 측정했다. 먼저 256B만
+5회 paired 측정해 C 1.656Mmsg/s, .NET 1.113Mmsg/s를 확인했다. 처리량 비율은
+67.2%, 평균 latency 비율은 1.48배였다.
+
+- C 256B: `perf_c_single_linux_20260712_115236_core_9_0_dotnet_pair_ws256_floor64_boundary_paired_c_nopin_20260712.txt`
+- .NET 256B: `perf_dotnet_single_linux_20260712_115307_core_9_0_dotnet_pair_ws256_floor64_boundary_paired_dotnet_nopin_20260712.txt`
+
+이어서 ws 여섯 크기를 각각 5회 paired 측정했다.
+
+- C: `perf_c_single_linux_20260712_115646_core_9_0_dotnet_pair_ws_full_floor64_final_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_115913_core_9_0_dotnet_pair_ws_full_floor64_final_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 93.4%, 68.6%, 84.0%, 90.1%, 92.2%, 101.8%였고 크기
+중앙값은 약 91.1%였다. 전체 측정의 131072B 평균 latency가 C 대비 4.88배여서
+CPU idle 98.7~100%에서 해당 셀만 다시 paired 측정했다.
+
+- C 131072B: `perf_c_single_linux_20260712_120159_core_9_0_dotnet_pair_ws131072_latency_boundary_paired_c_nopin_20260712.txt`
+- .NET 131072B: `perf_dotnet_single_linux_20260712_120228_core_9_0_dotnet_pair_ws131072_latency_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정은 C 28.796Kmsg/s와 0.382ms, .NET 27.388Kmsg/s와 0.872ms다.
+처리량 비율 95.1%와 평균 latency 비율 2.28배로 통과했다. 재측정값을 반영한 최종
+최소는 68.6%, 크기 중앙값은 91.8%다. 평균 latency 상한도 만족하므로 ws를 완료한다.
+
+- `PAIR / ws`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PAIR / wss`

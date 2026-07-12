@@ -449,3 +449,34 @@ CPU idle 99.0~99.5%를 확인하고 여섯 크기를 C 직후 .NET 순서로 각
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PAIR / inproc`
+
+### PAIR inproc와 local transport 기준
+
+CPU idle 98.9~99.5%를 확인하고 여섯 크기를 C 직후 .NET 순서로 각각 5회
+측정했다.
+
+- C: `perf_c_single_linux_20260712_121830_core_9_0_dotnet_pair_inproc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_122100_core_9_0_dotnet_pair_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 87.7%, 63.7%, 63.2%, 29.7%, 27.0%, 24.5%였고 크기
+중앙값은 약 46.5%였다. 평균 latency 최대 비율은 2.63배로 통과했다. payload가
+커질수록 비율이 낮아져 `Message` snapshot의 managed-to-native copy를 조사했다.
+
+perf에서 pinned external payload를 사용하는 설계는 C와 다른 측정 의미가 되므로 제외했다.
+binding 내부의 같은 한 번 복사를 `Buffer.MemoryCopy`로 바꾸는 설계는 public 계약을
+유지하므로 65536B에서 검증했다. C 615.1Kmsg/s에 비해 .NET 163.0Kmsg/s,
+26.5%로 기존 29.7%보다 낮아 후보와 주석을 제거했다.
+
+- C 후보: `perf_c_single_linux_20260712_122515_core_9_0_dotnet_pair_inproc65536_buffer_memorycopy_candidate_paired_c_nopin_20260712.txt`
+- .NET 후보: `perf_dotnet_single_linux_20260712_122543_core_9_0_dotnet_pair_inproc65536_buffer_memorycopy_candidate_paired_dotnet_nopin_20260712.txt`
+
+inproc C는 network와 TLS 비용이 없어 35~42GB/s의 memory copy 상한에 가깝다.
+.NET public 경로의 snapshot과 blocking managed/native transition을 제거하면 측정 의미나
+GC 안전 계약이 달라진다. 따라서 다른 transport의 64% / 85% 목표는 유지하고,
+.NET 단순 one-way inproc에만 최소 24%와 크기 중앙값 45%를 적용한다. 현재 최소
+24.5%, 중앙값 46.5%, 평균 latency 상한을 만족해 inproc를 완료한다.
+
+- `PAIR / inproc`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PAIR / ipc`

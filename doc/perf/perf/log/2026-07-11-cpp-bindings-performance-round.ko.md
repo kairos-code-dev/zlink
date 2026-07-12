@@ -1670,3 +1670,27 @@ STREAM 기본 크기를 유지했으므로 C report는 네 크기를 모두 포�
 - perf 변경: 없음
 - C++ Single/Multi 전체 pattern: 완료
 - 다음 언어와 pattern: .NET Single `PAIR`
+
+## request/reply 목표 재정의 후 재검토
+
+과거 완료 결과를 최적화 한계로 간주하지 않고, 언어별 개별 셀 최소 기준과 같은
+pattern·transport의 size 중앙값 목표를 함께 적용하도록 정책을 정리했다. C++의 routed
+one-way, socket request/reply, multi routed echo는 현재 측정에서 비슷한 비율을 보였으므로
+모두 최소 80%와 중앙값 85%를 사용한다.
+
+### MULTI_DEALER_ROUTER_REQREP tcp
+
+기존 대형 셀의 71.6%와 78.3%를 새 최소 기준으로 다시 검토하기 위해 tcp 한 transport의
+전체 크기만 C 직후 C++ 순서로 5회 측정했다. CPU pin은 사용하지 않았고 두 report는 같은
+`973a9e9df`와 core 9.0.0 runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_094226_core_9_0_cpp_multi_dealer_router_reqrep_tcp_target80_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_094731_core_9_0_cpp_multi_dealer_router_reqrep_tcp_target80_nopin_paired_20260712.txt`
+
+64, 256, 1024, 4096, 65536, 131072B 처리량 비율은 각각 90.3%, 85.4%, 97.4%,
+93.4%, 87.0%, 84.3%였다. 최소 비율은 84.3%, size 중앙값은 88.7%, 산술평균은
+89.6%였다. 평균 latency 비율은 1.14배, 1.30배, 1.07배, 1.17배, 1.56배,
+1.83배로 모두 상한 안이었다.
+
+개별 셀 최소 80%와 중앙값 목표 85%를 모두 만족하므로 코드 변경 없이 tcp를 완료한다.
+다음 단위는 같은 pattern의 ws transport다.

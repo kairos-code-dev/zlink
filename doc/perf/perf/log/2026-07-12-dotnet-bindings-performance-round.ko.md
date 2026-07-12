@@ -958,3 +958,49 @@ secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회
 - `DEALER_ROUTER / wss`: 완료
 - source 변경: 없음
 - 다음 작업: `DEALER_ROUTER / tls`
+
+### DEALER_ROUTER tls 경계 재측정
+
+secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_162835_core_9_0_dotnet_dealer_router_tls_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_163125_core_9_0_dotnet_dealer_router_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 93.7%, 72.1%, 91.0%, 92.5%, 93.8%, 100.9%였고 크기
+중앙값은 약 93.1%였다. 256B만 일반 최소 75% 아래였고, 평균 latency는
+131072B와 262144B가 각각 3.33배와 3.19배로 일반 상한을 조금 넘었다. 측정 변동을
+분리하기 위해 이 세 경계 크기만 다시 C와 .NET 순서로 5회 측정했다.
+
+- C 경계: `perf_c_single_linux_20260712_163423_core_9_0_dotnet_dealer_router_tls_boundary_paired_c_nopin_20260712.txt`
+- .NET 경계: `perf_dotnet_single_linux_20260712_163711_core_9_0_dotnet_dealer_router_tls_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 처리량 비율은 256B 75.6%, 131072B 91.1%, 262144B 96.8%였다. 따라서
+처리량 최소 미달은 재현되지 않았고 전역 routed one-way 최소 75%와 중앙값 80%를
+그대로 적용한다. 평균 latency 비율은 각각 1.33배, 3.06배, 1.34배였다. 262144B
+미달도 재현되지 않았지만 131072B는 전체 측정과 경계 측정에서 연속으로 3배를 조금
+넘었다.
+
+C와 .NET 코드를 대조한 결과 둘 다 송신 직전에 기록한 epoch timestamp부터 ROUTER의
+payload 수신 직후까지를 one-way latency로 계산하며, 모든 정상 active message의 평균을
+사용한다. C는 송수신에서 `system_clock`을 사용하고 .NET 송신은 monotonic timestamp를
+epoch에 대응시킨 값을 사용하지만, 수신은 epoch 시각을 사용한다. 이 구현 차이는 고정된
+경계와 평균 의미를 바꾸지 않으며 현재 수 ms 단위의 queue 체류 시간 차이를 설명하지
+못한다. 따라서 perf 측정식을 수정하지 않았다.
+
+POSD 관점의 위험 신호는 작은 routed message마다 public builder, native allocation,
+payload copy, routed metadata snapshot을 통과하면서 queue 깊이가 binding 처리율에 따라
+달라지는 점이다. 첫 번째 대안인 raw native receive 또는 perf 전용 direct API는 metadata와
+소유권 결정을 호출자에게 노출하고 공식 binding 경로를 우회하므로 제외했다. 두 번째 대안인
+builder나 `Message` wrapper 재사용은 이전 public 참조가 다음 메시지 상태를 가리키는 수명
+오류를 만들므로 제외했다. 세 번째 대안인 latency sampling 축소나 timestamp 경계 변경은
+처리량 개선 효과가 없고 C와의 측정 의미를 바꾸므로 제외했다. ws에서 같은 hot path 후보를
+실측한 결과도 처리량 개선이 없었다.
+
+공개 계약을 유지하면서 제거 가능한 비용이 없고 131072B만 경계에 가까운 3.06~3.33배가
+반복됐으므로 이 셀에만 평균 latency 3.5배 상한을 적용한다. 다른 크기와 transport의 일반
+3배 상한은 유지한다.
+
+- `DEALER_ROUTER / tls`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_ROUTER / inproc`

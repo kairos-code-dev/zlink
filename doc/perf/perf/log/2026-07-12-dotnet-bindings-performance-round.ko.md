@@ -1450,3 +1450,21 @@ one-way 목표를 낮추지 않고 `ROUTER_ROUTER / ipc / 65536B`에만 최소 7
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER_REQREP / tcp`
+
+### ROUTER_ROUTER_REQREP tcp 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C: `perf_c_single_linux_20260712_190318_core_9_0_dotnet_router_router_reqrep_tcp_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_190558_core_9_0_dotnet_router_router_reqrep_tcp_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 84.2%, 85.0%, 89.8%, 83.2%, 74.6%, 82.8%였다. 최소는
+74.6%, 크기 중앙값은 약 83.6%로 socket request/reply의 최소 50%와 중앙값 70%를
+통과했다. 평균 latency 비율은 약 1.08배, 1.09배, 1.04배, 1.17배, 1.32배,
+1.22배로 모두 일반 상한 3배 이내였다. 반복 처리량과 평균 latency 변동도 정책 한계
+이내여서 추가 개선은 필요하지 않았다.
+
+- `ROUTER_ROUTER_REQREP / tcp`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER_REQREP / ws`

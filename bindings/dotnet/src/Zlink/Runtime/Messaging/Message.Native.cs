@@ -70,7 +70,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     private static Message AllocateCoreValidated(int size)
     {
         var message = RentFromPool();
-        message.InitSizeValidated(size);
+        message.InitSizeOnInvalidMessage(size);
         return message;
     }
 
@@ -160,12 +160,10 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // HOT PATH: public construction boundaries validate size before entering
-    // this method; keep the native allocation path free of duplicate checks.
-    internal void InitSizeValidated(int size)
+    // HOT PATH: construction boundaries validate size and supply an invalid
+    // wrapper; keep the native allocation path free of duplicate checks.
+    internal void InitSizeOnInvalidMessage(int size)
     {
-        if (IsValid)
-            return;
         var rc = NativeMethods.zlink_msg_init_size(ref _msg, (nuint)size);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
@@ -377,7 +375,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         // Hot path: Message.From(...) feeds request/reply submit loops. Store
         // the caller snapshot directly in native message storage so submit can
         // move it without a second managed-to-native payload copy.
-        InitSizeValidated(data.Length);
+        InitSizeOnInvalidMessage(data.Length);
         if (data.Length != 0)
             CopyPayloadToStorage(data);
         _knownSize = data.Length;

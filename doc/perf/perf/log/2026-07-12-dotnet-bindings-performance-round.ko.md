@@ -294,6 +294,26 @@ tcp 256B 3회 중앙값은 1,189,460.0msg/s와 평균 latency 0.149ms였다. 직
 - report: `perf_dotnet_single_linux_20260712_092024_core_9_0_dotnet_pair_tcp256_pointer_message_stub_candidate_20260712.txt`
 - 최종 코드 변경: 없음
 
+### invalid Message 초기화 상태 분기 제거
+
+`InitSizeValidated`의 세 호출부는 모두 새 wrapper 또는 pool에서 반환된 invalid wrapper만
+전달하지만 메서드는 valid 상태이면 조용히 반환했다. 방어적 no-op를 유지하는 설계와 invalid
+사전 조건을 메서드 이름에 고정하는 설계를 비교했다. 후자를 선택해
+`InitSizeOnInvalidMessage`로 이름을 바꾸고 중복 상태 분기를 제거했다. size와 state 사전
+조건은 같은 `HOT PATH:` 주석에 기록했다.
+
+3회 측정은 평균 latency가 직전보다 11.4% 높아 5회로 재확인했다. 최종 5회 중앙값은
+1,212,121.0msg/s와 평균 latency 0.176ms로 직전 대비 처리량 +1.6%, 평균 latency +0.6%였다.
+
+- 3회: `perf_dotnet_single_linux_20260712_093113_core_9_0_dotnet_pair_tcp256_invalid_message_state_candidate_20260712.txt`
+- 5회: `perf_dotnet_single_linux_20260712_093144_core_9_0_dotnet_pair_tcp256_invalid_message_state_recheck_20260712.txt`
+- single/multi Release build: 경고 0, 오류 0
+- message 제한 테스트: 28개 통과
+- `Zlink.Tests`: 178개 통과
+
+기능·성능 회귀 없이 잘못된 호출을 정상 no-op처럼 숨기던 분기를 제거했으므로 POSD 개선으로
+채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.
+
 ### Message size 중복 검증 제거
 
 `Message.Allocate(size)`는 public 메서드, `AllocateCore`, `InitSize`에서 같은 음수 검증을

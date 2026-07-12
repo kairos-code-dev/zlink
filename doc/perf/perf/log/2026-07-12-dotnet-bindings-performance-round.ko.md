@@ -719,3 +719,21 @@ CPU idle 98.8~99.4%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_DEALER / tcp`
+
+### DEALER_DEALER tcp 완료
+
+CPU idle이 일시적으로 91~92%까지 낮아졌을 때는 시작하지 않고 기다렸다. idle이
+98.0~100%로 회복된 뒤 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_142111_core_9_0_dotnet_dealer_dealer_tcp_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_142356_core_9_0_dotnet_dealer_dealer_tcp_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 97.5%, 82.8%, 92.1%, 100.1%, 99.9%, 99.7%였다. 최소는
+82.8%, 크기 중앙값은 약 98.6%다. 평균 latency 비율은 0.98배, 0.56배,
+0.66배, 0.75배, 1.13배, 1.10배로 모두 일반 상한 3배 이내다. 처리량과 평균
+latency 목표를 첫 paired 측정에서 만족해 추가 개선은 필요하지 않았다.
+
+- `DEALER_DEALER / tcp`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_DEALER / ws`

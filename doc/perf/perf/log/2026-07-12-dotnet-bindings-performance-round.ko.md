@@ -1519,3 +1519,35 @@ latency 최대 비율은 약 1.13배로 일반 상한 3배 이내였다. 반복 
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER_REQREP / inproc`
+
+### ROUTER_ROUTER_REQREP inproc 변동성 재확인
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_192837_core_9_0_dotnet_router_router_reqrep_inproc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_193119_core_9_0_dotnet_router_router_reqrep_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 87.5%, 83.2%, 79.8%, 154.8%, 152.4%, 109.6%로 모든
+목표를 통과했다. 다만 대형 세 크기는 C와 .NET 양쪽에서 처리량 변동성 한계 10%를
+넘었다. 시스템 CPU idle 89%를 확인한 뒤 대형 세 셀을 다시 paired 측정했다.
+
+- C 대형 재측정: `perf_c_single_linux_20260712_193415_core_9_0_dotnet_router_router_reqrep_inproc_large_variability_paired_c_nopin_20260712.txt`
+- .NET 대형 재측정: `perf_dotnet_single_linux_20260712_193544_core_9_0_dotnet_router_router_reqrep_inproc_large_variability_paired_dotnet_nopin_20260712.txt`
+
+재측정 비율은 140.3%, 198.3%, 93.8%였다. C 131072B는 34.35K~92.37Kops/s,
+.NET 대형 셀도 반복별 queue 처리 구간이 달라 변동이 지속됐다. 두 구현 모두 같은
+request window, auto-HWM slot과 active 종료·drain 조건을 사용했고 report는 partial이나
+timeout 없이 complete였다. perf 의미나 message 수명 주기 차이는 확인되지 않았다.
+
+CPU pin을 추가하는 안은 공식 조건을 바꾸므로 제외했다. 대형 셀에만 HWM, window 또는
+duration을 다르게 적용하는 안은 request/reply workload를 특수화하므로 제외했다. 기존
+runner 의미를 유지하고 저부하 재측정 중앙값과 범위를 함께 기록하는 안을 채택했다.
+
+최종 판정은 소형 세 크기의 최초 값과 대형 세 크기의 재측정값을 사용한다. 처리량 최소는
+79.8%, 크기 중앙값은 약 90.7%다. 평균 latency 최대 비율은 약 0.98배로 일반 상한
+3배 이내다.
+
+- `ROUTER_ROUTER_REQREP / inproc`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER_REQREP / ipc`

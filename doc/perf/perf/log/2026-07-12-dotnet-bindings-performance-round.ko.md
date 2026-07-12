@@ -799,3 +799,21 @@ latency 목표를 첫 paired 측정에서 만족해 추가 개선은 필요하�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_DEALER / tls`
+
+### DEALER_DEALER tls 완료
+
+nice compiler 작업이 끝나고 CPU idle이 93.0%로 회복된 뒤 C와 .NET의 secure transport
+여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_150648_core_9_0_dotnet_dealer_dealer_tls_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_150928_core_9_0_dotnet_dealer_dealer_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 97.5%, 82.4%, 91.5%, 97.2%, 100.5%, 100.0%였다. 최소는
+82.4%, 크기 중앙값은 약 97.4%다. 평균 latency 최대 비율은 64B의 1.02배로
+모든 셀이 일반 상한 3배 이내다. 처리량과 평균 latency 목표를 첫 paired 측정에서
+만족해 추가 개선은 필요하지 않았다.
+
+- `DEALER_DEALER / tls`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_DEALER / inproc`

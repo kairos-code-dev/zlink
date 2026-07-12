@@ -612,9 +612,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `PAIR, PUBSUB 완료, DEALER_DEALER tcp, ws, wss 완료`
+- Single 상태: `PAIR, PUBSUB 완료, DEALER_DEALER tcp, ws, wss, tls 완료`
 - Multi 상태: `미측정`
-- 다음 작업: Single `DEALER_DEALER / tls`의 전체 크기를 paired 측정한다.
+- 다음 작업: Single `DEALER_DEALER / inproc`의 전체 크기를 paired 측정한다.
 
 #### 9.2.1 Single suite
 
@@ -646,7 +646,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `PAIR` | 통과(92.6%) | 통과(72.3%) | 통과(83.1%) | 통과(95.8%) | 통과(96.1%) | 통과(96.2%) | CPU pin 없는 5회 paired 측정. 경계 셀 재측정 뒤 최소 72.3%, 크기 중앙값 약 94.2%, 평균 latency 최대 2.67배로 통과했다. |
 | `tls` | `PUBSUB` | 통과(93.1%) | 통과(75.4%) | 통과(88.2%) | 통과(90.6%) | 통과(95.3%) | 통과(94.1%) | 반복 topic 해석을 재사용했다. 최소 75.4%, 크기 중앙값 약 91.8%, 대형 셀 평균 latency 최대 5.81배로 통과했다. |
-| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 통과(97.5%) | 통과(82.4%) | 통과(91.5%) | 통과(97.2%) | 통과(100.5%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 82.4%, 크기 중앙값 약 97.4%, 평균 latency 최대 1.02배로 통과했다. |
 | `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1259,17 +1259,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `DEALER_DEALER` 진행 중 | tcp, ws, wss를 완료했고 다음 transport는 `tls`다. |
-| paired C | .NET `DEALER_DEALER / wss` 완료 | C와 .NET 전체 크기를 CPU pin 없이 차례로 5회 측정했다. |
-| 개선 반복 | .NET `DEALER_DEALER / wss` 완료 | 최소 77.8%, 크기 중앙값 96.1%, 평균 latency 최대 2.61배로 추가 개선 없이 통과했다. |
-| 커밋과 푸시 | .NET `DEALER_DEALER / wss` 문서 반영 중 | binding 또는 perf 변경은 없으며 측정 근거만 커밋한다. |
+| 현재 pattern | Single `DEALER_DEALER` 진행 중 | tcp, ws, wss, tls를 완료했고 다음 transport는 `inproc`이다. |
+| paired C | .NET `DEALER_DEALER / tls` 완료 | C와 .NET 전체 크기를 CPU pin 없이 차례로 5회 측정했다. |
+| 개선 반복 | .NET `DEALER_DEALER / tls` 완료 | 최소 82.4%, 크기 중앙값 97.4%, 평균 latency 최대 1.02배로 추가 개선 없이 통과했다. |
+| 커밋과 푸시 | .NET `DEALER_DEALER / tls` 문서 반영 중 | binding 또는 perf 변경은 없으며 측정 근거만 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB` 완료, `DEALER_DEALER` tcp, ws, wss 완료 | 미측정 | `DEALER_DEALER / tls` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB` 완료, `DEALER_DEALER` tcp, ws, wss, tls 완료 | 미측정 | `DEALER_DEALER / inproc` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1333,6 +1333,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `DEALER_DEALER` tcp | core_9_0_dotnet_dealer_dealer_tcp_full_paired_*_nopin_20260712 | 전체 크기를 C 직후 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 82.8%, 크기 중앙값 98.6%, 평균 latency 최대 1.13배로 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_DEALER` ws | core_9_0_dotnet_dealer_dealer_ws_final_paired_*_nopin_20260712 | 외부 빌드가 겹친 report를 폐기한 뒤 전체 크기와 256B 경계 셀을 다시 paired 측정했다. raw single receive 후보는 개선되지 않아 제거했다. | 최소 81.0%, 크기 중앙값 99.0%, 256B 평균 latency 5.41배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_DEALER` wss | core_9_0_dotnet_dealer_dealer_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 77.8%, 크기 중앙값 96.1%, 평균 latency 최대 2.61배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `DEALER_DEALER` tls | core_9_0_dotnet_dealer_dealer_tls_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 82.4%, 크기 중앙값 97.4%, 평균 latency 최대 1.02배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

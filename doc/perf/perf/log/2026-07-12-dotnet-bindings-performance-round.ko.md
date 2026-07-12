@@ -277,3 +277,6 @@ tcp 256B 3회 결과는 1,218,093.6msg/s와 평균 latency 0.172ms였다. 직전
 
 사용하지 않는 정보 흐름과 복사 책임을 제거했고 기능·성능 회귀가 없으므로 POSD 개선으로
 채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.
+
+basic receive metadata 정리는 `096ffd396` (`refactor(dotnet): narrow basic receive
+metadata`)으로 원격 `main`에 푸시했다.

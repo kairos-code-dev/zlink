@@ -1502,3 +1502,20 @@ latency 최대 비율은 약 1.18배로 일반 상한 3배 이내였다. 반복 
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER_REQREP / tls`
+
+### ROUTER_ROUTER_REQREP tls 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C: `perf_c_single_linux_20260712_192218_core_9_0_dotnet_router_router_reqrep_tls_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_192507_core_9_0_dotnet_router_router_reqrep_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 87.4%, 86.2%, 90.8%, 95.3%, 93.4%, 97.4%였다. 최소는
+86.2%, 크기 중앙값은 약 92.1%로 socket request/reply 목표를 통과했다. 평균
+latency 최대 비율은 약 1.13배로 일반 상한 3배 이내였다. 반복 처리량과 평균 latency
+변동도 정책 한계 이내여서 추가 개선은 필요하지 않았다.
+
+- `ROUTER_ROUTER_REQREP / tls`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER_REQREP / inproc`

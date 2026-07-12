@@ -1551,3 +1551,36 @@ runner 의미를 유지하고 저부하 재측정 중앙값과 범위를 함께 
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER_REQREP / ipc`
+
+### ROUTER_ROUTER_REQREP ipc와 pattern 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_193802_core_9_0_dotnet_router_router_reqrep_ipc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_194039_core_9_0_dotnet_router_router_reqrep_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 85.8%, 87.0%, 93.0%, 80.5%, 73.0%, 84.7%로 모든
+목표를 통과했다. C의 소형 세 크기 처리량 변동이 10%를 넘어 CPU idle 94%에서
+소형 세 셀만 다시 paired 측정했다.
+
+- C 소형 재측정: `perf_c_single_linux_20260712_194325_core_9_0_dotnet_router_router_reqrep_ipc_small_variability_paired_c_nopin_20260712.txt`
+- .NET 소형 재측정: `perf_dotnet_single_linux_20260712_194452_core_9_0_dotnet_router_router_reqrep_ipc_small_variability_paired_dotnet_nopin_20260712.txt`
+
+재측정 비율은 91.6%, 85.9%, 92.4%였다. C와 .NET 64B 등 일부 반복 범위가
+10% 부근에서 지속됐지만 두 구현 모두 같은 request window, auto-HWM과 종료·drain 조건을
+사용했고 report는 partial이나 timeout 없이 complete였다. perf 의미와 message 수명 주기
+차이는 확인되지 않았다.
+
+CPU pin을 추가하는 안은 공식 조건을 바꾸므로 제외했다. 소형 셀에만 window, HWM 또는
+duration을 바꾸는 안은 IPC request/reply workload를 특수화하므로 제외했다. 기존 runner
+의미를 유지하고 저부하 재측정 중앙값과 범위를 기록하는 안을 채택했다.
+
+최종 판정은 소형 세 크기의 재측정값과 대형 세 크기의 최초 값을 사용한다. 처리량 최소는
+73.0%, 크기 중앙값은 약 85.3%다. 평균 latency 최대 비율은 약 1.33배로 일반 상한
+3배 이내다. Release `test_request_reply`의 11개 test도 모두 통과했다.
+
+- `ROUTER_ROUTER_REQREP / ipc`: 완료
+- `ROUTER_ROUTER_REQREP`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `SPOT / tcp`

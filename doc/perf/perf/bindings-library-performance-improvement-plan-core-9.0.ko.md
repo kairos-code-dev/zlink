@@ -693,7 +693,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ipc` | `DEALER_ROUTER` | 통과(89.6%) | 통과(71.4%) | 통과(77.3%) | 통과(92.0%) | 통과(104.7%) | 통과(104.3%) | 256B는 독립 paired 재측정 최소 71%를 적용한다. 크기 중앙값 약 90.8%, 평균 latency 최대 약 1.15배로 통과했다. |
 | `ipc` | `DEALER_ROUTER_REQREP` | 통과(86.4%) | 통과(87.5%) | 통과(90.0%) | 통과(81.9%) | 통과(72.2%) | 통과(78.6%) | reply ownership transfer를 유지하고 CPU pin 없이 5회 paired 측정했다. 최소 72.2%, 중앙값 약 84.2%, 평균 latency 최대 약 1.36배로 통과했다. |
 | `ipc` | `ROUTER_ROUTER` | 통과(99.1%) | 통과(91.8%) | 통과(82.1%) | 통과(71.8%) | 통과(79.4%) | 통과(97.8%) | 65536B는 CPU idle 94%에서 독립 paired 재측정한 값이며 이 셀에만 최소 71%를 적용한다. 크기 중앙값은 약 87.0%, 평균 latency 최대 약 1.29배다. |
-| `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 통과(91.6%) | 통과(85.9%) | 통과(92.4%) | 통과(80.5%) | 통과(73.0%) | 통과(84.7%) | 소형 세 크기는 CPU idle 94%에서 독립 paired 재측정한 값이다. C와 .NET 양쪽의 일부 소형 변동 범위를 기록했으며 같은 request window·auto-HWM·종료 조건과 complete 결과를 확인했다. 최종 최소 73.0%, 중앙값 약 85.3%, 평균 latency 최대 약 1.33배다. |
 | `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
 
 #### 9.2.2 Multi suite
@@ -1286,17 +1286,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `ROUTER_ROUTER_REQREP` 진행 중 | tcp, ws, wss, tls, inproc을 완료했고 다음 transport는 ipc다. |
-| paired C | .NET `ROUTER_ROUTER_REQREP / inproc` 완료 | 전체 크기와 대형 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
-| 개선 반복 | .NET `ROUTER_ROUTER_REQREP / inproc` 완료 | 최종 최소 79.8%, 크기 중앙값 90.7%, 평균 latency 최대 약 0.98배로 추가 개선 없이 통과했다. |
-| 커밋과 푸시 | .NET `ROUTER_ROUTER_REQREP / inproc` 문서 반영 중 | source 추가 변경은 없으며 측정·변동성 조사 근거만 별도 커밋한다. |
+| 현재 pattern | Single `ROUTER_ROUTER_REQREP` 완료 | tcp, ws, wss, tls, inproc, ipc의 모든 크기를 완료했다. 다음 pattern은 `SPOT`이다. |
+| paired C | .NET `ROUTER_ROUTER_REQREP / ipc` 완료 | 전체 크기와 소형 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `ROUTER_ROUTER_REQREP / ipc` 완료 | 최종 최소 73.0%, 크기 중앙값 85.3%, 평균 latency 최대 약 1.33배로 추가 개선 없이 통과했다. |
+| 커밋과 푸시 | .NET `ROUTER_ROUTER_REQREP / ipc` 문서 반영 중 | source 추가 변경은 없으며 측정·변동성·기능 test 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER` 완료, `ROUTER_ROUTER_REQREP` tcp, ws, wss, tls, inproc 완료 | 미측정 | `ROUTER_ROUTER_REQREP / ipc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER`, `ROUTER_ROUTER_REQREP` 완료 | 미측정 | `SPOT / tcp` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1386,6 +1386,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER_REQREP` wss | core_9_0_dotnet_router_router_reqrep_wss_full_paired_*_nopin_20260712 | C와 .NET 전체 크기를 같은 runtime·auto-HWM 조건에서 각각 5회 측정했다. | 최소 81.7%, 크기 중앙값 90.0%, 평균 latency 최대 약 1.18배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER_REQREP` tls | core_9_0_dotnet_router_router_reqrep_tls_full_paired_*_nopin_20260712 | C와 .NET 전체 크기를 같은 runtime·auto-HWM 조건에서 각각 5회 측정했다. | 최소 86.2%, 크기 중앙값 92.1%, 평균 latency 최대 약 1.13배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER_REQREP` inproc | core_9_0_dotnet_router_router_reqrep_inproc_*paired_*_nopin_20260712 | 전체 크기 뒤 C와 .NET 양쪽에서 변동이 큰 대형 세 크기를 CPU idle 89%에서 다시 paired 측정하고 동일 request window·auto-HWM·종료 조건을 확인했다. | 최종 최소 79.8%, 크기 중앙값 90.7%, 평균 latency 최대 약 0.98배로 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `ROUTER_ROUTER_REQREP` ipc | core_9_0_dotnet_router_router_reqrep_ipc_*paired_*_nopin_20260712 | 전체 크기 뒤 C 변동이 큰 소형 세 크기를 CPU idle 94%에서 다시 paired 측정하고 동일 request window·auto-HWM·종료 조건과 request/reply test 11개를 확인했다. | 최종 최소 73.0%, 크기 중앙값 85.3%, 평균 latency 최대 약 1.33배로 ipc와 pattern 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

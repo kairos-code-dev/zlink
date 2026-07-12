@@ -1238,3 +1238,40 @@ reply ownership transfer 개선을 유지하고 C와 .NET의 여섯 크기를 CP
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `ROUTER_ROUTER / tcp`
+
+### ROUTER_ROUTER tcp payload 의미 정렬
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_175359_core_9_0_dotnet_router_router_tcp_full_paired_c_nopin_20260712.txt`
+- .NET 변경 전: `perf_dotnet_single_linux_20260712_175650_core_9_0_dotnet_router_router_tcp_full_paired_dotnet_nopin_20260712.txt`
+
+변경 전 처리량 비율은 92.1%, 83.9%, 92.5%, 52.9%, 45.9%, 47.4%였다.
+대형 세 크기가 routed one-way 최소 75%에 미달했고 크기 중앙값도 약 68.0%였다.
+
+C 송신은 재사용 payload에 header를 기록한 뒤 payload 전체를 새 native message로 복사했다.
+.NET perf는 native storage를 할당했지만 29B header만 기록해 대형 allocation의 page와 cache
+작업을 native I/O thread로 옮겼다. 또한 active deadline을 receiver storage 준비 전에
+계산했다. 이는 앞서 `DEALER_ROUTER`에서 확인한 것과 같은 측정 의미 차이다.
+
+POSD 관점에서 raw native send를 추가하는 안은 공식 binding 경로를 우회하므로 제외했다.
+binding에 direct-send 옵션을 추가하는 안은 perf 결함을 public 인터페이스로 누출하므로
+제외했다. 기존 public send builder로 C와 동일한 재사용 payload 전체를 복사하고 receiver를
+먼저 준비하는 안은 새 계약 없이 workload만 일치시키므로 채택했다. 확정된 송신 구간에는
+전체 payload 복사가 유실되지 않도록 `HOT PATH:` 주석을 추가했다.
+
+131072B 제한 측정은 변경 전 27.61Kmsg/s에서 52.67Kmsg/s로 약 91% 개선됐다.
+이후 전체 크기를 5회 다시 측정했다.
+
+- .NET 최종: `perf_dotnet_single_linux_20260712_180047_core_9_0_dotnet_router_router_tcp_full_payload_final_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 105.6%, 91.2%, 82.8%, 81.2%, 78.7%, 96.6%였다. 최소는
+78.7%, 크기 중앙값은 약 93.9%로 routed one-way 목표를 통과했다. 평균 latency 최대
+비율은 65536B의 약 2.26배로 일반 상한 3배 이내였다.
+
+- Release build: 성공, warning과 error 없음
+- `test_router_multiple_dealers`: 5개 test 통과
+- `ROUTER_ROUTER / tcp`: 완료
+- binding 변경: 없음
+- perf 의미 정렬: payload 전체 복사, receiver 준비 후 active 시작
+- 다음 작업: `ROUTER_ROUTER / ws`

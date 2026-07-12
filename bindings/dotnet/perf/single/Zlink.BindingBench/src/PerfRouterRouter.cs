@@ -224,8 +224,6 @@ internal static class PerfRouterRouter
         out long receivedOut, out List<double> latencySamples)
     {
         _ = recvTimeoutMs;
-        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-
         long received = 0;
         Exception? sendError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
@@ -260,6 +258,8 @@ internal static class PerfRouterRouter
             return false;
         }
 
+        var receivedBuffer = Received.Create();
+
         // PERF_SINGLE_TEST_POLICY § 1.4: sender drops `senderDone` flag.
         // After active deadline it emits the wire-level stop token; the
         // receiver loop exits when it sees the token.
@@ -268,19 +268,21 @@ internal static class PerfRouterRouter
             try
             {
                 ulong seq = 1;
-                int payloadSize = payload.Length;
+                long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
                 while (true)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
                     if (nowTicks >= deadlineTicks)
                         break;
-                    using Message message = Message.Allocate(payloadSize);
-                    StampMetricHeader(message.AsSpan(), RunId, ActivePhase,
+                    // HOT PATH: C stamps and copies every byte of its reusable
+                    // payload into each native message. Keep page and cache
+                    // work on the same sender path for binding comparison.
+                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase,
                         msgSize, seq, EpochNsFromTimestamp(nowTicks));
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, targetRoutingId, message,
+                        if (PerfSocketIo.Send(sender, targetRoutingId, payload,
                                 SendFlags.None) == 0)
                             continue;
                     }
@@ -317,7 +319,6 @@ internal static class PerfRouterRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        var receivedBuffer = Received.Create();
         // PERF_SINGLE_TEST_POLICY § 1.4: blocking first recv per cycle, then
         // DontWait burst-drain. The phase ends purely when the wire-level stop
         // token arrives, matching C perf_router_router.cpp run_active_phase.

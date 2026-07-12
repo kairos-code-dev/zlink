@@ -143,14 +143,17 @@ void test_request_dealer_router_roundtrip ()
         assert (*request.request_seq () != 0u);
 
         zlink::message_t reply = make_request_message ("reply:ok");
-        request.reply ().message (reply).submit ();
+        auto reply_operation = request.reply ().message (reply);
+        assert (reply.valid ());
+        std::move (reply_operation).submit ();
+        assert (!reply.valid ());
     });
 
+    auto request_operation = dealer_socket.request ().message (request);
+    assert (request.valid ());
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request ()
-        .message (request)
-        .timeout (std::chrono::milliseconds (5000))
-        .async ();
+      std::move (request_operation).timeout (std::chrono::milliseconds (5000)).async ();
+    assert (!request.valid ());
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");

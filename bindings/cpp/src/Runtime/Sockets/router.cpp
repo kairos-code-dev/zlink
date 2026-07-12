@@ -67,7 +67,10 @@ service::request_operation_t router_socket_t::request (const routing_id_t &routi
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_routed_request;
     state_ptr->raw.socket = detail::native_handle (*this);
-    state_ptr->raw.target.first_rid = routing_id_;
+    // HOT PATH: routed request submission needs the native routing id only.
+    // Keep the same cached representation as routed send instead of copying
+    // the 256-byte public value into each operation state.
+    service::detail::cache_first_rid_native (state_ptr->raw.target, routing_id_);
     return service::request_operation_t (std::move (state_ptr));
 }
 

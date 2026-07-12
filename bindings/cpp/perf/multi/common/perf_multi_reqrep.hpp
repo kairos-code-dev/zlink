@@ -58,6 +58,7 @@ template <typename SocketT> class client_bench_t
         _transport (transport_),
         _msg_size (msg_size_),
         _endpoint (endpoint_),
+        _target_rid (zlink::routing_id_t::from (std::string ("SERVER"))),
         _settings (settings_),
         _ctx (),
         _slots (),
@@ -137,12 +138,12 @@ template <typename SocketT> class client_bench_t
             _monitors.reserve (_settings.clients);
             for (size_t i = 0; i < _settings.clients; ++i) {
                 std::unique_ptr<client_slot_t<SocketT>> slot (new client_slot_t<SocketT> ());
-                slot->socket.reset (new SocketT (_ctx.ctx ())); 
+                slot->socket.reset (new SocketT (_ctx.ctx ()));
                 if (!slot->socket || !slot->socket->valid ())
                     return false;
                 const std::string rid = std::string ("REQREP-") + std::to_string (i);
                 slot->socket->set_routing_id (zlink::routing_id_t::from (
-                  reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ())); 
+                  reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
                 if constexpr (std::is_same<SocketT, zlink::router_socket_t>::value)
                     slot->socket->options ().mandatory (true);
                 apply_benchmark_socket_options (*slot->socket, _settings, _transport);
@@ -211,9 +212,10 @@ template <typename SocketT> class client_bench_t
             };
             bool ok = false;
             if constexpr (std::is_same<SocketT, zlink::router_socket_t>::value) {
-                const zlink::routing_id_t target =
-                  zlink::routing_id_t::from (std::string ("SERVER"));
-                ok = std::move (slot_.socket->request (target))
+                // PERF_POLICY / C parity: the C reference builds the constant
+                // server routing id once per active client state, not once per
+                // request. Keep routing-id construction out of the measured loop.
+                ok = std::move (slot_.socket->request (_target_rid))
                        .message (request)
                        .timeout (std::chrono::milliseconds (std::max (1, _settings.rcvtimeo_ms)))
                        .flags (static_cast<int> (zlink::send_flags_t::dontwait))
@@ -255,6 +257,7 @@ template <typename SocketT> class client_bench_t
     const std::string _transport;
     const size_t _msg_size;
     const std::string _endpoint;
+    const zlink::routing_id_t _target_rid;
     const multi_bench_settings_t _settings;
     ctx_guard_t _ctx;
     std::vector<std::unique_ptr<client_slot_t<SocketT>>> _slots;
@@ -341,10 +344,13 @@ inline bool run_server (const config_t &config_,
                     break;
                 return false;
             }
-            if (received.parts ().empty () || !received.request_seq ().has_value ())
+            // PERF_POLICY / C parity: the reference server receives and echoes
+            // one native part. Use the public single-part view so the C++ case
+            // does not add vector materialization that is absent from C.
+            if (!received.is_single_part () || !received.request_seq ().has_value ())
                 continue;
             try {
-                zlink::message_t &part = received.parts ().front ();
+                zlink::message_t &part = received.first_part ();
                 std::move (received.reply ().message (part)).submit ();
             }
             catch (const zlink::submit_error_t &err) {

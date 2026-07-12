@@ -110,6 +110,57 @@ struct received_access_t
         return true;
     }
 
+    // HOT PATH: a single-part reply already has the native message and reply
+    // context needed for one part call. Keep vector construction and multipart
+    // iteration out of this path; submit_reply owns the multipart fallback.
+    static bool submit_direct_reply (received_t &received_,
+                                     message_t &part_,
+                                     submit_result_t &result_out_,
+                                     int &errno_out_)
+    {
+        if (!has_reply_context (received_))
+            return false;
+
+        void *handle = reinterpret_cast<void *> (received_._send_context_handle);
+        const uint64_t request_seq = *received_._request_seq;
+        const zlink_routing_id_t routing_id =
+          zlink::detail::routing_id_native_value (*received_._routing_id);
+        zlink_submit_result_t rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
+        switch (received_._send_context_kind) {
+            case received_t::send_context_kind_t::socket_rid:
+                rc = zlink_router_reply_part (handle, &routing_id, request_seq,
+                                              zlink::detail::native_handle (part_),
+                                              ZLINK_PART_FINAL);
+                break;
+            case received_t::send_context_kind_t::router_spot:
+                if (received_._spot_rid.has_value ()) {
+                    const zlink_routing_id_t spot_rid =
+                      zlink::detail::routing_id_native_value (*received_._spot_rid);
+                    rc = zlink_router_reply_spot_part (
+                      handle, &routing_id, &spot_rid, request_seq,
+                      zlink::detail::native_handle (part_), ZLINK_PART_FINAL);
+                }
+                break;
+            case received_t::send_context_kind_t::spot_spot:
+                if (received_._spot_rid.has_value ()) {
+                    const zlink_routing_id_t spot_rid =
+                      zlink::detail::routing_id_native_value (*received_._spot_rid);
+                    rc = zlink_spot_reply_spot_part (
+                      handle, &routing_id, &spot_rid, request_seq,
+                      zlink::detail::native_handle (part_), ZLINK_PART_FINAL);
+                }
+                break;
+            default:
+                break;
+        }
+
+        result_out_ = static_cast<submit_result_t> (rc);
+        errno_out_ = zlink_errno ();
+        if (result_out_ == submit_result_t::ok)
+            zlink::detail::mark_sent (part_);
+        return true;
+    }
+
     // Multipart send: reconstructs the native submit from the stored context.
     static bool
     submit_send (received_t &received_, std::vector<message_t> &parts_, send_flags_t flags_)

@@ -1710,3 +1710,46 @@ ws 한 transport의 전체 크기만 C 직후 C++ 순서로 5회 측정했다. C
 개별 셀 최소 80%와 중앙값 목표 85%를 모두 만족하므로 코드 변경 없이 ws를 완료한다.
 `MULTI_DEALER_ROUTER_REQREP` pattern을 닫고 다음 단위인
 `MULTI_ROUTER_ROUTER_REQREP / ws`로 이동한다.
+
+### MULTI_ROUTER_ROUTER_REQREP ws 개선 1차
+
+기존 65536B 75.1%와 131072B 56.8%가 상향한 최소 80%에 미달해 binding
+hot path를 조사했다. 위험 신호는 단일 part 요청과 응답이 multipart용 vector를
+거치는 점, 고정 server routing id를 요청마다 다시 만드는 점, reply가 이미 보유한
+native message를 다시 일반 경로로 변환하는 점이었다.
+
+두 설계를 비교했다. 첫 번째는 request state와 대형 message buffer에 별도 pool을
+추가하는 방식이었고, 두 번째는 기존 단일 part와 native message 경로를 직접 연결하되
+multipart fallback을 유지하는 방식이었다. 첫 번째 방식은 상태 수명과 동시성 책임을
+늘렸고 반복 측정에서 효과가 재현되지 않았다. 따라서 공개 API와 호출자 계약을 바꾸지
+않는 두 번째 방식을 채택했다. 확정한 분기에는 이후 리팩토링에서 다시 일반 경로로
+합쳐지지 않도록 `HOT PATH:` 주석을 남겼다.
+
+CPU idle 99% 전후를 확인하고 ws 여섯 크기를 C 직후 C++ 순서로 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_112736_core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_c_nopin_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_113240_core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_cpp_nopin_20260712.txt`
+
+처리량 비율은 90.9%, 88.0%, 87.4%, 85.5%, 69.2%, 76.4%였고 크기
+중앙값은 86.5%였다. 평균 latency 비율은 모두 2배 이내였다. 65536B 실행 하나에서
+12.8 Kops/s의 국소 급락이 있어 시스템이 유휴 상태로 돌아온 뒤 해당 셀만 다시 paired
+측정했다.
+
+- C: `perf_c_multi_linux_20260712_113548_core_9_0_cpp_multi_router_router_reqrep_ws65536_retained_boundary_paired_c_nopin_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_113651_core_9_0_cpp_multi_router_router_reqrep_ws65536_retained_boundary_paired_cpp_nopin_20260712.txt`
+
+재측정 중앙값은 C 60.386 Kops/s와 0.688ms, C++ 47.095 Kops/s와
+1.071ms다. 처리량 비율은 78.0%, 평균 latency 비율은 1.56배다. 따라서 중앙값
+목표와 latency 상한은 통과했지만 65536B와 131072B가 개별 셀 최소 80%에 미달해
+ws transport는 완료하지 않는다.
+
+request state의 thread-local·전역·lock-free pool, operation state를 callback 완료까지
+재사용하는 방식, contiguous client slot, lock-free 대형 message pool, 128KiB native
+할당 우회는 모두 재현 가능한 개선이 없거나 성능이 낮아져 제거했다. perf 측정 의미와
+공개 API는 변경하지 않았다.
+
+- `MULTI_ROUTER_ROUTER_REQREP / ws`: 미달
+- C++ binding 변경: 단일 part request/reply 직접 native 경로와 routing id 재사용
+- public API 변경: 없음
+- perf 변경: 고정 routing id 생성 위치와 단일 part 접근을 C와 같은 의미로 정렬
+- 다음 작업: 검증된 변경을 커밋·푸시한 뒤 ws 대형 두 셀 개선 계속

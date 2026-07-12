@@ -28,7 +28,7 @@ async_result_t<std::vector<message_t>> submit_request_part_awaitable (
       submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));
     if (rc != submit_result_t::ok) {
         const int err = zlink_errno ();
-        (void) zlink_msg_close (&native);
+        zlink::detail::restore_part_from_native (part_, native);
         throw submit_error_t (rc, err);
     }
 
@@ -54,7 +54,7 @@ bool submit_request_part_callback (message_t &part_,
       submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));
     if (rc != submit_result_t::ok) {
         const int err = zlink_errno ();
-        (void) zlink_msg_close (&native);
+        zlink::detail::restore_part_from_native (part_, native);
         if (flags_ == send_flags_t::dontwait && rc == submit_result_t::backpressured)
             return false;
         throw submit_error_t (rc, err);

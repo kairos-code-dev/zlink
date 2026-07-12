@@ -539,9 +539,10 @@ internal static class PerfReqRep
             if (!received.RequestSeq.HasValue)
                 continue;
 
-            using Message reply = Message.Allocate(payloadPart.Size);
-            payloadPart.AsReadOnlySpan().CopyTo(reply.AsSpan());
-            received.Reply().Message(reply).Submit();
+            // HOT PATH: the C replier transfers the received native message
+            // into the reply. Preserve that ownership transfer instead of
+            // adding a binding-only allocation and full-payload copy.
+            received.Reply().Message(payloadPart).Submit();
             Interlocked.Increment(ref serverReplied);
         }
     }

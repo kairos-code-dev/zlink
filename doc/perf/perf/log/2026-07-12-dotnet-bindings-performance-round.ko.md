@@ -1173,3 +1173,49 @@ secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `DEALER_ROUTER_REQREP / inproc`
+
+### DEALER_ROUTER_REQREP inproc reply 소유권 정렬
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_173323_core_9_0_dotnet_dealer_router_reqrep_inproc_full_paired_c_nopin_20260712.txt`
+- .NET 변경 전: `perf_dotnet_single_linux_20260712_173600_core_9_0_dotnet_dealer_router_reqrep_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+변경 전 처리량 비율은 84.7%, 75.9%, 65.6%, 54.1%, 82.0%, 37.3%였다.
+중앙값은 약 70.7%였지만 262144B가 최소 50%에 미달했고 평균 latency도 C의 약
+2.98배였다. C의 262144B가 131072B보다 빠른 모드가 반복되는지 확인하기 위해 이 셀을
+다시 paired 측정했다.
+
+- C 262144B: `perf_c_single_linux_20260712_173856_core_9_0_dotnet_dealer_router_reqrep_inproc262144_boundary_paired_c_nopin_20260712.txt`
+- .NET 262144B 변경 전: `perf_dotnet_single_linux_20260712_173928_core_9_0_dotnet_dealer_router_reqrep_inproc262144_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정도 C 50.00Kops/s와 .NET 18.53Kops/s로 37.1%였다. reply loop를 대조한
+결과 C는 수신한 native message를 `zlink_router_reply_part`로 이동하지만 .NET perf는
+별도 `Message`를 할당하고 payload 전체를 복사한 뒤 reply했다.
+
+POSD 관점에서 세 대안을 비교했다. public reply API에 zero-copy 옵션을 추가하는 안은 이미
+존재하는 소유권 전달 계약을 중복 노출하는 얕은 인터페이스라 제외했다. pinned buffer나 raw
+native reply를 추가하는 안은 수명과 native 세부 결정을 호출자에게 누출하므로 제외했다. 기존
+`Received.Reply()`에 수신 part를 직접 넘기는 안은 새 계약 없이 C와 같은 ownership transfer를
+사용하므로 채택했다. 확정된 reply 구간에는 이후 전체 payload 복사가 다시 생기지 않도록
+`HOT PATH:` 주석을 추가했다.
+
+262144B 제한 측정은 변경 전 18.53Kops/s에서 45.50Kops/s로 약 145% 개선됐고,
+평균 latency는 0.154ms에서 0.053ms로 낮아졌다. 변경 후 전체 크기를 5회 다시 측정했다.
+
+- .NET 최종: `perf_dotnet_single_linux_20260712_174119_core_9_0_dotnet_dealer_router_reqrep_inproc_transfer_final_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 84.6%, 81.8%, 78.7%, 151.7%, 250.6%, 97.8%였다. 최소는
+78.7%, 크기 중앙값은 약 91.2%, 평균 latency 최대 비율은 약 1.09배로 모든 목표를
+통과했다.
+
+tcp 대표 회귀 5회에서는 64B가 기존 227.33K에서 232.19Kops/s, 262144B가
+8.43K에서 9.80Kops/s로 개선됐다. 평균 latency도 각각 0.240ms와 0.298ms였다.
+
+- tcp 대표 회귀: `perf_dotnet_single_linux_20260712_174426_core_9_0_dotnet_dealer_router_reqrep_tcp_transfer_regression_dotnet_nopin_20260712.txt`
+- Release build: 성공, warning과 error 없음
+- `test_request_reply`: 11개 test 통과
+- `DEALER_ROUTER_REQREP / inproc`: 완료
+- binding 변경: 없음
+- perf 의미 정렬: 수신 message를 reply로 직접 이동
+- 다음 작업: `DEALER_ROUTER_REQREP / ipc`

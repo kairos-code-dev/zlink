@@ -1121,3 +1121,21 @@ CPU pin 없이 5회 측정했다.
 - binding 변경: 없음
 - perf 의미 정렬: C와 같은 최대 64개·768KiB pipeline budget
 - 다음 작업: `DEALER_ROUTER_REQREP / ws`
+
+### DEALER_ROUTER_REQREP ws 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_171422_core_9_0_dotnet_dealer_router_reqrep_ws_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_171706_core_9_0_dotnet_dealer_router_reqrep_ws_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 85.9%, 81.0%, 84.0%, 79.5%, 70.9%, 70.9%였다. 최소는
+70.9%, 크기 중앙값은 약 80.2%로 .NET socket request/reply 최소 50%와 중앙값
+70%를 모두 만족했다. 평균 latency 비율은 1.10배, 1.19배, 1.16배, 1.24배,
+1.39배, 1.40배로 일반 상한 3배 이내였다. 첫 paired 측정에서 모든 목표를 통과해
+추가 개선은 필요하지 않았다.
+
+- `DEALER_ROUTER_REQREP / ws`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `DEALER_ROUTER_REQREP / wss`

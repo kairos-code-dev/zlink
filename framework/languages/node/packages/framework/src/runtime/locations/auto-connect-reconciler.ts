@@ -3,7 +3,7 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   zlinkDefaultLocationOptions,
-  type IZLinkPeerLocationResolver,
+  type ZLinkPeerLocationResolver,
   type ZLinkLocationOptions,
   type ZLinkPeerLocation
 } from '../../contracts/Locations';
@@ -25,7 +25,7 @@ export interface ZLinkAutoConnectReconcilerOptions {
   readonly local: ZLinkAutoConnectLocal;
   readonly localRow?: ZLinkPeerLocation;
   readonly runtime: IZLinkAutoConnectPeerPublisher;
-  readonly peerResolver: IZLinkPeerLocationResolver;
+  readonly peerResolver: ZLinkPeerLocationResolver;
   readonly executor: IZLinkAutoConnectExecutor;
   readonly events?: ZLinkAutoConnectEventSink;
   readonly options?: ZLinkLocationOptions;
@@ -36,7 +36,7 @@ export class ZLinkAutoConnectReconciler {
   private readonly local: ZLinkAutoConnectLocal;
   private readonly localRow?: ZLinkPeerLocation;
   private readonly runtime: IZLinkAutoConnectPeerPublisher;
-  private readonly peerResolver: IZLinkPeerLocationResolver;
+  private readonly peerResolver: ZLinkPeerLocationResolver;
   private readonly executor: IZLinkAutoConnectExecutor;
   private readonly events?: ZLinkAutoConnectEventSink;
   private readonly options: Required<ZLinkLocationOptions>;

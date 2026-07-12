@@ -37,8 +37,8 @@ import { asArray, asString, toNumber } from './redis-values';
 import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
-  type IZLinkLocationChangeStampStore,
-  type IZLinkLocationStore,
+  type ZLinkLocationChangeStampStore,
+  type ZLinkLocationStore,
   type RoutingId,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
@@ -62,7 +62,7 @@ import {
   type ZLinkSpotLocationKey
 } from '@zlink-systems/framework';
 
-export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocationChangeStampStore {
+export class ZLinkRedisLocationStore implements ZLinkLocationStore, ZLinkLocationChangeStampStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
   private client?: RedisCommandClient;

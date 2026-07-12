@@ -13,7 +13,7 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFrameworkRegistrationOptions,
-  IZLinkLocationStore,
+  ZLinkLocationStore,
   ZLinkLocationOptions,
   ZLinkPublishContext,
   ZLinkPublisherCapabilityOptions,
@@ -204,7 +204,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   codecs(): ZLinkNestCodecRegistryBuilder;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
-  addLocationStore(store: IZLinkLocationStore): this;
+  addLocationStore(store: ZLinkLocationStore): this;
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>

@@ -1,8 +1,8 @@
 import {
   ZLinkLocationKind,
   zlinkDefaultLocationOptions,
-  type IZLinkLocationChangeStampStore,
-  type IZLinkLocationWatchStore,
+  type ZLinkLocationChangeStampStore,
+  type ZLinkLocationWatchStore,
   type ZLinkLocationChangeStampScope,
   type ZLinkLocationOptions
 } from '../../contracts/Locations';
@@ -14,8 +14,8 @@ export interface ZLinkAutoConnectLoopOptions {
   readonly reconciler: ZLinkAutoConnectReconciler;
   readonly local: ZLinkAutoConnectLocal;
   readonly options?: ZLinkLocationOptions;
-  readonly changeStampStore?: IZLinkLocationChangeStampStore;
-  readonly watchStore?: IZLinkLocationWatchStore;
+  readonly changeStampStore?: ZLinkLocationChangeStampStore;
+  readonly watchStore?: ZLinkLocationWatchStore;
   readonly leaseTracker?: ZLinkOwnerLeaseTracker;
   readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
@@ -25,8 +25,8 @@ export class ZLinkAutoConnectLoop {
   private readonly reconciler: ZLinkAutoConnectReconciler;
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly changeStampScope: ZLinkLocationChangeStampScope;
-  private readonly changeStampStore?: IZLinkLocationChangeStampStore;
-  private readonly watchStore?: IZLinkLocationWatchStore;
+  private readonly changeStampStore?: ZLinkLocationChangeStampStore;
+  private readonly watchStore?: ZLinkLocationWatchStore;
   private readonly leaseTracker?: ZLinkOwnerLeaseTracker;
   private readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;

@@ -24,16 +24,16 @@ import type {
   ZLinkSpotLocationKey
 } from './Models';
 
-export interface IZLinkLocationStore extends
-  IZLinkPeerLocationStore,
-  IZLinkSpotLocationStore,
-  IZLinkActorLocationStore,
-  IZLinkRouteLocationStore,
-  IZLinkOwnerLeaseStore {
+export interface ZLinkLocationStore extends
+  ZLinkPeerLocationStore,
+  ZLinkSpotLocationStore,
+  ZLinkActorLocationStore,
+  ZLinkRouteLocationStore,
+  ZLinkOwnerLeaseStore {
   removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
 }
 
-export interface IZLinkPeerLocationStore {
+export interface ZLinkPeerLocationStore {
   updatePeer(
     peer: ZLinkPeerLocation,
     intent: ZLinkLocationWriteIntent,
@@ -47,7 +47,7 @@ export interface IZLinkPeerLocationStore {
   listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface IZLinkSpotLocationStore {
+export interface ZLinkSpotLocationStore {
   updateSpot(
     spot: ZLinkSpotLocation,
     intent: ZLinkLocationWriteIntent,
@@ -66,7 +66,7 @@ export interface IZLinkSpotLocationStore {
   ): Promise<ZLinkLocationPage<ZLinkSpotLocation>>;
 }
 
-export interface IZLinkActorLocationStore {
+export interface ZLinkActorLocationStore {
   updateActor(
     actor: ZLinkActorLocation,
     intent: ZLinkLocationWriteIntent,
@@ -85,7 +85,7 @@ export interface IZLinkActorLocationStore {
   ): Promise<ZLinkLocationPage<ZLinkActorLocation>>;
 }
 
-export interface IZLinkRouteLocationStore {
+export interface ZLinkRouteLocationStore {
   updateRoute(
     route: ZLinkRouteLocation,
     intent: ZLinkLocationWriteIntent,
@@ -104,7 +104,7 @@ export interface IZLinkRouteLocationStore {
   ): Promise<ZLinkLocationPage<ZLinkRouteLocation>>;
 }
 
-export interface IZLinkOwnerLeaseStore {
+export interface ZLinkOwnerLeaseStore {
   renewOwnerLease(
     ownerId: string,
     nodeRid: RoutingId,
@@ -115,10 +115,10 @@ export interface IZLinkOwnerLeaseStore {
   listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot>;
 }
 
-export interface IZLinkLocationWatchStore {
+export interface ZLinkLocationWatchStore {
   watch(filter: ZLinkLocationWatchFilter, signal?: AbortSignal): AsyncIterable<ZLinkLocationChanged>;
 }
 
-export interface IZLinkLocationChangeStampStore {
+export interface ZLinkLocationChangeStampStore {
   getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint>;
 }

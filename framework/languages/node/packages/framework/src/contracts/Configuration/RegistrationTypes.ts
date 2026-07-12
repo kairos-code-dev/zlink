@@ -17,7 +17,7 @@ import type {
 } from '../../contracts';
 import type { ZLinkMessageSerializer } from '../Codecs';
 import type { ZLinkDispatchOptions } from '../Dispatch';
-import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
+import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 
 export interface ZLinkFrameworkRegistration {
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -45,7 +45,7 @@ export interface ZLinkFrameworkRegistration {
 
 export interface ZLinkLocationRegistration {
   readonly useInMemoryStores: boolean;
-  readonly storeInstance?: IZLinkLocationStore;
+  readonly storeInstance?: ZLinkLocationStore;
   readonly options: ZLinkLocationOptions;
 }
 
@@ -106,7 +106,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly monitoring?: ZLinkMonitoringOptions;
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
-    readonly storeInstance?: IZLinkLocationStore;
+    readonly storeInstance?: ZLinkLocationStore;
     readonly options?: ZLinkLocationOptions;
   };
 }

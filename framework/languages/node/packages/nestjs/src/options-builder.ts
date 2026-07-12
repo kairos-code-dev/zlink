@@ -8,7 +8,7 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFrameworkRegistrationOptions,
-  IZLinkLocationStore,
+  ZLinkLocationStore,
   ZLinkLocationOptions,
   ZLinkMessageSerializer,
   ZLinkSession,
@@ -98,7 +98,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return this;
   }
 
-  addLocationStore(store: IZLinkLocationStore): this {
+  addLocationStore(store: ZLinkLocationStore): this {
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
       locations: {

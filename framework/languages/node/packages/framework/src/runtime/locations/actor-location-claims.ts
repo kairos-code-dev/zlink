@@ -3,7 +3,7 @@ import {
   ZLinkLocationKind,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  type IZLinkActorLocationStore,
+  type ZLinkActorLocationStore,
   type ZLinkActorLocation
 } from '../../contracts/Locations';
 import { ZLinkSpotKind } from '../../contracts/Spots';
@@ -35,7 +35,7 @@ export class ZLinkActorLocationClaims {
 
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
-    private readonly actorStore: IZLinkActorLocationStore,
+    private readonly actorStore: ZLinkActorLocationStore,
     private readonly entrySpotMeshName: string
   ) {}
 

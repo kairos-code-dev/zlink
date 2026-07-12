@@ -58,7 +58,7 @@ import type {
   ZLinkLocationRuntime,
   ZLinkStoreLocationResolvers
 } from '../locations';
-import type { IZLinkLocationRuntimeQuery } from '../../contracts/Locations';
+import type { ZLinkLocationRuntimeQuery } from '../../contracts/Locations';
 import { ZLinkMonitoringRuntime } from './monitoring-runtime';
 import { ZLinkActorRuntimeOptionsFactory } from './actor-runtime-options-factory';
 import { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
@@ -74,7 +74,7 @@ import { rollbackRuntimeStart, stopRuntimeParts } from './runtime-shutdown';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
-  readonly locationRuntimeQuery?: IZLinkLocationRuntimeQuery;
+  readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -245,7 +245,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return this.state !== undefined;
   }
 
-  get locationRuntimeQuery(): IZLinkLocationRuntimeQuery | undefined {
+  get locationRuntimeQuery(): ZLinkLocationRuntimeQuery | undefined {
     return this.ensureLocationRuntime();
   }
 

@@ -2,7 +2,7 @@ import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
-  type IZLinkLocationRuntimeQuery
+  type ZLinkLocationRuntimeQuery
 } from '@zlink-systems/framework';
 import type { ServerOptions } from '../Configuration/server-options';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -10,7 +10,7 @@ import type { HttpRoute } from '../Support/types';
 
 export function createTopologyProbeEndpoints(
   options: ServerOptions,
-  locationQuery: IZLinkLocationRuntimeQuery,
+  locationQuery: ZLinkLocationRuntimeQuery,
   evidence: EvidenceStore,
   stop: () => void
 ): HttpRoute[] {

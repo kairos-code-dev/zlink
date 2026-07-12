@@ -320,18 +320,18 @@ test('framework error kind values and retriable defaults match the shared table'
 
 test('location contract declarations fix store resolver runtime query watch and row shapes', () => {
   const declarations = readTree(declarationsRoot);
-  const locationStore = declarationBody(declarations, 'IZLinkLocationStore');
+  const locationStore = declarationBody(declarations, 'ZLinkLocationStore');
   const actorLocation = declarationBody(declarations, 'ZLinkActorLocation');
   const actorKey = declarationBody(declarations, 'ZLinkActorLocationKey');
   const actorFilter = declarationBody(declarations, 'ZLinkActorLocationFilter');
   const changed = declarationBody(declarations, 'ZLinkLocationChanged');
-  const runtimeQuery = declarationBody(declarations, 'IZLinkLocationRuntimeQuery');
+  const runtimeQuery = declarationBody(declarations, 'ZLinkLocationRuntimeQuery');
 
-  assert.match(interfaceHeader(declarations, 'IZLinkLocationStore'), /extends\s+IZLinkPeerLocationStore,\s*IZLinkSpotLocationStore,\s*IZLinkActorLocationStore,\s*IZLinkRouteLocationStore,\s*IZLinkOwnerLeaseStore/);
+  assert.match(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends\s+ZLinkPeerLocationStore,\s*ZLinkSpotLocationStore,\s*ZLinkActorLocationStore,\s*ZLinkRouteLocationStore,\s*ZLinkOwnerLeaseStore/);
   assert.match(locationStore, /removeAllByOwner\(ownerId: string, signal\?: AbortSignal\): Promise<number>/);
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
-  assert.match(declarationBody(declarations, 'IZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
+  assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
   assert.match(declarationBody(declarations, 'ZLinkSpotRefResolver'), /resolveSpotRef\(\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
   assert.match(declarationBody(declarations, 'IZLinkActorAddressResolver'), /resolveActorSpotRef\(\s*actorId: string,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
   assert.match(declarationBody(declarations, 'SpotRef'), /readonly spotKind\?: ZLinkSpotKind/);

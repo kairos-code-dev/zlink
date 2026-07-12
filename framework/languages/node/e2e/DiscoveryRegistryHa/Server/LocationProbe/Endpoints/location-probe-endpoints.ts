@@ -2,14 +2,14 @@ import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
-  type IZLinkLocationStore
+  type ZLinkLocationStore
 } from '@zlink-systems/framework';
 import type { LocationProbeOptions } from '../Configuration/location-probe-options';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createLocationProbeEndpoints(
   options: LocationProbeOptions,
-  store: IZLinkLocationStore,
+  store: ZLinkLocationStore,
   stop: () => void
 ): readonly HttpRoute[] {
   return [

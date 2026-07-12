@@ -4,13 +4,13 @@ import {
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
   type IZLinkActorAddressResolver,
-  type IZLinkActorLocationStore,
-  type IZLinkLocationReadiness,
-  type IZLinkLocationRuntimeQuery,
-  type IZLinkPeerLocationResolver,
-  type IZLinkPeerLocationStore,
-  type IZLinkRouteLocationStore,
-  type IZLinkSpotLocationStore,
+  type ZLinkActorLocationStore,
+  type ZLinkLocationReadiness,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkPeerLocationResolver,
+  type ZLinkPeerLocationStore,
+  type ZLinkRouteLocationStore,
+  type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationKey,
   type ZLinkPeerLocation,
@@ -39,10 +39,10 @@ import {
 } from './lease-tracker';
 
 export interface ZLinkStoreLocationResolverStores {
-  readonly peerStore: IZLinkPeerLocationStore;
-  readonly spotStore: IZLinkSpotLocationStore;
-  readonly actorStore: IZLinkActorLocationStore;
-  readonly routeStore: IZLinkRouteLocationStore;
+  readonly peerStore: ZLinkPeerLocationStore;
+  readonly spotStore: ZLinkSpotLocationStore;
+  readonly actorStore: ZLinkActorLocationStore;
+  readonly routeStore: ZLinkRouteLocationStore;
 }
 
 export interface ZLinkLocationResolverEventSink {
@@ -59,7 +59,7 @@ export interface ZLinkStoreLocationResolversOptions {
 }
 
 export class ZLinkStoreLocationResolvers implements
-  IZLinkPeerLocationResolver,
+  ZLinkPeerLocationResolver,
   ZLinkSpotRefResolver,
   IZLinkActorAddressResolver {
   private readonly liveRows: ZLinkLiveRowFilter;
@@ -171,8 +171,8 @@ export class ZLinkStoreLocationResolvers implements
   }
 }
 
-export class ZLinkLocationReadiness implements IZLinkLocationReadiness {
-  constructor(private readonly query: IZLinkLocationRuntimeQuery) {}
+export class ZLinkLocationReadiness implements ZLinkLocationReadiness {
+  constructor(private readonly query: ZLinkLocationRuntimeQuery) {}
 
   async isPeerReady(
     meshName: string,

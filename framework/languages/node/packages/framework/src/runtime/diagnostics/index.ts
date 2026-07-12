@@ -1,5 +1,5 @@
 import type {
-  IZLinkLocationRuntimeQuery,
+  ZLinkLocationRuntimeQuery,
   ZLinkActorLocation,
   ZLinkActorLocationKey,
   ZLinkLocationKey,
@@ -100,7 +100,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
 
   constructor(
     private readonly registration: ZLinkPollingMonitoringRegistration,
-    private readonly query: IZLinkLocationRuntimeQuery,
+    private readonly query: ZLinkLocationRuntimeQuery,
     private readonly publisher: ZLinkRuntimeEventPublisherContract
   ) {
     validateSourceName(registration.sourceName);

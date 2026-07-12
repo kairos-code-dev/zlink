@@ -3,7 +3,7 @@ import type { ZLinkActorTransferAdapter, ZLinkSpot, ZLinkSpotMeshBuilder } from 
 import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
-import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
+import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import type { Type } from '../Common';
 import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSocketConfig } from './Configs';
@@ -18,7 +18,7 @@ export interface ZLinkFrameworkOptions {
   configureWorker(options: ZLinkWorkerOptions): this;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
-  addLocationStore(store: IZLinkLocationStore): this;
+  addLocationStore(store: ZLinkLocationStore): this;
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>

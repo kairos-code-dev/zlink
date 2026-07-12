@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { IZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
+import type { ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
 import { ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { parseServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
@@ -17,7 +17,7 @@ export async function startTopologyProbeHost(args: readonly string[]): Promise<v
   let stopping = false;
   const TopologyProbeModule = createTopologyProbeModule(options);
   const app = await NestFactory.createApplicationContext(TopologyProbeModule, { logger: false, abortOnError: false });
-  const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as IZLinkLocationRuntimeQuery;
+  const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(
     options.httpUrl,
     createTopologyProbeEndpoints(options, locationQuery, evidence, () => { stopping = true; })

@@ -16,7 +16,7 @@ import type {
   ZLinkSpotLocationFilter
 } from './Models';
 
-export interface IZLinkLocationRuntimeQuery {
+export interface ZLinkLocationRuntimeQuery {
   getStatus(signal?: AbortSignal): Promise<ZLinkLocationRuntimeStatus>;
   listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
   listSpotLocations(

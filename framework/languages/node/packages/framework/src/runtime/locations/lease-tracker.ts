@@ -1,12 +1,12 @@
 import {
   zlinkDefaultLocationOptions,
-  type IZLinkOwnerLeaseStore,
+  type ZLinkOwnerLeaseStore,
   type ZLinkOwnerLease
 } from '../../contracts/Locations';
 import type { ZLinkLocationOptions } from '../../contracts/Locations';
 
 export interface ZLinkOwnerLeaseTrackerOptions {
-  readonly store: IZLinkOwnerLeaseStore;
+  readonly store: ZLinkOwnerLeaseStore;
   readonly options?: ZLinkLocationOptions;
   readonly monotonicNowMs?: () => number;
 }
@@ -18,7 +18,7 @@ interface OwnerLeaseTrackerSnapshot {
 }
 
 export class ZLinkOwnerLeaseTracker {
-  private readonly store: IZLinkOwnerLeaseStore;
+  private readonly store: ZLinkOwnerLeaseStore;
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly monotonicNowMs: () => number;
   private snapshot?: OwnerLeaseTrackerSnapshot;

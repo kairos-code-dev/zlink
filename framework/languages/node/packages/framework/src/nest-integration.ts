@@ -14,7 +14,7 @@ export {
 } from './contracts/Configuration/RegistrationBuilderPolicy';
 
 import type {
-  IZLinkLocationRuntimeQuery,
+  ZLinkLocationRuntimeQuery,
   ZLinkActorClient,
   ZLinkActorManager,
   ZLinkBoundSessionFactory,
@@ -63,7 +63,7 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly channelRuntimeOptions: unknown;
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
-  readonly locationRuntimeQuery?: IZLinkLocationRuntimeQuery;
+  readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
   createLocationRefResolver(): ZLinkSpotRefResolver | undefined;
   start(): Promise<void>;
   stop(): Promise<void>;

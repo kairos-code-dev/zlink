@@ -28,7 +28,7 @@ import type {
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver
 } from '../Dispatch';
-import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
+import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import { ZLinkConfigurationException } from './ConfigurationException';
 import {
   RegistrationCodecRegistryBuilder,
@@ -103,7 +103,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return this;
   }
 
-  addLocationStore(store: IZLinkLocationStore): this {
+  addLocationStore(store: ZLinkLocationStore): this {
     this.options.locations ??= { options: {} };
     this.options.locations.storeInstance = store;
     return this;
@@ -490,7 +490,7 @@ interface MutableFrameworkRegistrationOptions {
 
 interface MutableLocationRegistrationOptions {
   useInMemoryStores?: boolean;
-  storeInstance?: IZLinkLocationStore;
+  storeInstance?: ZLinkLocationStore;
   options?: ZLinkLocationOptions;
 }
 

@@ -1,6 +1,6 @@
 import type { ActorRef, RoutingId } from '../../contracts/Common';
 import type {
-  IZLinkActorLocationStore,
+  ZLinkActorLocationStore,
   ZLinkActorLocation,
   ZLinkLocationWriteStatus
 } from '../../contracts/Locations';
@@ -36,7 +36,7 @@ export class ZLinkLocationLifecycle {
 
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
-    actorStore: IZLinkActorLocationStore,
+    actorStore: ZLinkActorLocationStore,
     entrySpotMeshName = ''
   ) {
     this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entrySpotMeshName);

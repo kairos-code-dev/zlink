@@ -1,7 +1,7 @@
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
-  type IZLinkLocationRuntimeQuery,
+  type ZLinkLocationRuntimeQuery,
   type ZLinkChannelClient
 } from '@zlink-systems/framework';
 import type { ProfileRes, ProfileReq } from '../../../Shared/messages';
@@ -10,7 +10,7 @@ import type { HttpRoute } from '../Support/http-server';
 
 export function createConsumerEndpoints(
   channel: ZLinkChannelClient,
-  locationQuery: IZLinkLocationRuntimeQuery,
+  locationQuery: ZLinkLocationRuntimeQuery,
   stop: () => void
 ): readonly HttpRoute[] {
   return [

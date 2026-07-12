@@ -1,7 +1,7 @@
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
-  type IZLinkLocationStore,
+  type ZLinkLocationStore,
   type ZLinkPeerLocation
 } from '@zlink-systems/framework';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
@@ -29,7 +29,7 @@ async function waitForTopology(config: DeliveryDispatchServerConfig, timeoutMs: 
 }
 
 async function waitForExpectedPeers(
-  store: IZLinkLocationStore,
+  store: ZLinkLocationStore,
   expected: readonly ExpectedPeer[],
   timeoutMs: number
 ): Promise<void> {
@@ -45,7 +45,7 @@ async function waitForExpectedPeers(
   throw new Error(`DeliveryDispatch topology was not ready: ${lastMissing.join(', ')}`);
 }
 
-async function missingPeers(store: IZLinkLocationStore, expected: readonly ExpectedPeer[]): Promise<readonly string[]> {
+async function missingPeers(store: ZLinkLocationStore, expected: readonly ExpectedPeer[]): Promise<readonly string[]> {
   const leases = await store.listOwnerLeases();
   const liveOwnerIds = new Set(
     leases.leases

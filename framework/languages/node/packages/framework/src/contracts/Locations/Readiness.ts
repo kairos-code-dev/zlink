@@ -1,7 +1,7 @@
 import type { RoutingId } from '../Common';
 import type { ZLinkLocationRole } from './Values';
 
-export interface IZLinkLocationReadiness {
+export interface ZLinkLocationReadiness {
   isPeerReady(
     meshName: string,
     role: ZLinkLocationRole,

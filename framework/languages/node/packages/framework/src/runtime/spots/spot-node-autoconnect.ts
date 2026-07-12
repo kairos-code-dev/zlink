@@ -1,6 +1,6 @@
 import type {
-  IZLinkLocationChangeStampStore,
-  IZLinkLocationWatchStore,
+  ZLinkLocationChangeStampStore,
+  ZLinkLocationWatchStore,
   ZLinkLocationOptions,
   ZLinkPeerLocation
 } from '../../contracts';
@@ -28,8 +28,8 @@ export interface ZLinkSpotNodeLocationAutoConnectContext {
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly resolver: ZLinkStoreLocationResolvers;
   readonly events?: ZLinkLocationEventSink;
-  readonly changeStampStore?: IZLinkLocationChangeStampStore;
-  readonly watchStore?: IZLinkLocationWatchStore;
+  readonly changeStampStore?: ZLinkLocationChangeStampStore;
+  readonly watchStore?: ZLinkLocationWatchStore;
 }
 
 export interface ZLinkSpotNodeAutoConnectCapability {
@@ -152,13 +152,13 @@ function spotPubEndpointOf(target: ZLinkAutoConnectTarget): string | undefined {
   return endpoint === undefined || endpoint.length === 0 ? undefined : endpoint;
 }
 
-function isLocationChangeStampStore(value: unknown): value is IZLinkLocationChangeStampStore {
+function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {
   return value !== null
     && typeof value === 'object'
     && typeof (value as { getChangeStamp?: unknown }).getChangeStamp === 'function';
 }
 
-function isLocationWatchStore(value: unknown): value is IZLinkLocationWatchStore {
+function isLocationWatchStore(value: unknown): value is ZLinkLocationWatchStore {
   return value !== null
     && typeof value === 'object'
     && typeof (value as { watch?: unknown }).watch === 'function';

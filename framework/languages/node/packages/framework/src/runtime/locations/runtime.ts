@@ -7,13 +7,13 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   zlinkDefaultLocationOptions,
-  type IZLinkActorLocationStore,
-  type IZLinkLocationRuntimeQuery,
-  type IZLinkLocationStore,
-  type IZLinkOwnerLeaseStore,
-  type IZLinkPeerLocationStore,
-  type IZLinkRouteLocationStore,
-  type IZLinkSpotLocationStore,
+  type ZLinkActorLocationStore,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkLocationStore,
+  type ZLinkOwnerLeaseStore,
+  type ZLinkPeerLocationStore,
+  type ZLinkRouteLocationStore,
+  type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
@@ -49,12 +49,12 @@ import {
 import type { ZLinkOwnershipLostEvent } from './lifecycle-runtime';
 
 export interface ZLinkLocationRuntimeStores {
-  readonly locationStore: IZLinkLocationStore;
-  readonly peerStore: IZLinkPeerLocationStore;
-  readonly spotStore: IZLinkSpotLocationStore;
-  readonly actorStore: IZLinkActorLocationStore;
-  readonly routeStore: IZLinkRouteLocationStore;
-  readonly ownerLeaseStore: IZLinkOwnerLeaseStore;
+  readonly locationStore: ZLinkLocationStore;
+  readonly peerStore: ZLinkPeerLocationStore;
+  readonly spotStore: ZLinkSpotLocationStore;
+  readonly actorStore: ZLinkActorLocationStore;
+  readonly routeStore: ZLinkRouteLocationStore;
+  readonly ownerLeaseStore: ZLinkOwnerLeaseStore;
 }
 
 export interface ZLinkLocationRuntimeOptions {
@@ -88,7 +88,7 @@ export interface ZLinkLocationEventSink {
   routeResolveMiss(key: ZLinkRouteLocationKey): void;
 }
 
-export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
+export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   readonly ownerId: string;
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly stores: ZLinkLocationRuntimeStores;

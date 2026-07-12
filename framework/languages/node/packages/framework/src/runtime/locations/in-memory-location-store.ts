@@ -3,8 +3,8 @@ import {
   ZLinkLocationKind,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  type IZLinkLocationChangeStampStore,
-  type IZLinkLocationStore,
+  type ZLinkLocationChangeStampStore,
+  type ZLinkLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
@@ -34,7 +34,7 @@ import {
   matchesSpotLocation
 } from '../../location-store-integration';
 
-export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLocationChangeStampStore {
+export class ZLinkInMemoryLocationStore implements ZLinkLocationStore, ZLinkLocationChangeStampStore {
   private readonly leases = new Map<string, ZLinkOwnerLease>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();

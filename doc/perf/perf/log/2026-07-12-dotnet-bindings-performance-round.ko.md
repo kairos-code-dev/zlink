@@ -280,3 +280,35 @@ tcp 256B 3회 결과는 1,218,093.6msg/s와 평균 latency 0.172ms였다. 직전
 
 basic receive metadata 정리는 `096ffd396` (`refactor(dotnet): narrow basic receive
 metadata`)으로 원격 `main`에 푸시했다.
+
+### pointer 전용 message interop 후보 기각
+
+`Message` 내부 필드를 `fixed`로 고정한 뒤 data, size, move를 pointer 전용 interop stub로
+호출하는 후보를 확인했다. 기존 `ref` stub를 유지하는 설계보다 interior reference 처리를
+명시할 수 있지만 같은 native export의 선언이 중복되고 호출부 pinning 책임도 늘어난다.
+
+tcp 256B 3회 중앙값은 1,189,460.0msg/s와 평균 latency 0.149ms였다. 직전 POSD 후보
+1,218,093.6msg/s보다 처리량이 2.35% 낮았다. throughput 회귀와 interop 선언 중복이 함께
+발생했으므로 후보를 전부 제거했다.
+
+- report: `perf_dotnet_single_linux_20260712_092024_core_9_0_dotnet_pair_tcp256_pointer_message_stub_candidate_20260712.txt`
+- 최종 코드 변경: 없음
+
+### Message size 중복 검증 제거
+
+`Message.Allocate(size)`는 public 메서드, `AllocateCore`, `InitSize`에서 같은 음수 검증을
+세 번 수행했다. private 계층마다 방어 검증을 유지하는 설계와 public 생성 경계에서 한 번
+검증한 뒤 내부 사전 조건을 이름으로 드러내는 설계를 비교했다. 후자를 선택해 내부 메서드를
+`AllocateCoreValidated`, `InitSizeValidated`로 명명하고 public 생성자와 `Allocate`에서만
+입력을 검증한다. 확정 hot path의 조건은 `HOT PATH:` 주석으로 남겼다.
+
+tcp 256B 3회 중앙값은 1,192,564.4msg/s와 평균 latency 0.175ms였다. 직전 결과 대비
+처리량 -2.1%, 평균 latency +1.7%로 회귀 gate 안이다.
+
+- report: `perf_dotnet_single_linux_20260712_092243_core_9_0_dotnet_pair_tcp256_validated_message_size_candidate_20260712.txt`
+- single/multi Release build: 경고 0, 오류 0
+- message 제한 테스트: 28개 통과
+- `Zlink.Tests`: 178개 통과
+
+성능 수치 향상은 없지만 검증 책임과 내부 사전 조건이 분명해졌고 기능·성능 회귀가 없으므로
+POSD 개선으로 채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.

@@ -33,7 +33,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     /// </exception>
     public Message(int size)
     {
-        InitSize(size);
+        if (size < 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
+        InitSizeValidated(size);
     }
 
     /// <summary>
@@ -104,7 +106,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         if (size < 0)
             throw new ArgumentOutOfRangeException(nameof(size));
-        return AllocateCore(size);
+        return AllocateCoreValidated(size);
     }
 
     /// <summary>

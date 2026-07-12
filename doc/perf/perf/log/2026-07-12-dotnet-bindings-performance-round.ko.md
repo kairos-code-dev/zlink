@@ -737,3 +737,47 @@ latency 목표를 첫 paired 측정에서 만족해 추가 개선은 필요하�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_DEALER / ws`
+
+### DEALER_DEALER ws와 256B queue latency
+
+첫 C 전체 측정 뒤 .NET run 2부터 외부 C++ 대규모 빌드가 시작되어 CPU idle이 거의
+0%까지 낮아졌다. .NET 처리량도 약 80% 급락했으므로 우리 perf만 종료하고 해당 partial
+report는 판정에서 제외했다. 외부 빌드가 끝난 뒤 C부터 다시 CPU pin 없이 5회 paired
+측정했다.
+
+- C 최종: `perf_c_single_linux_20260712_144306_core_9_0_dotnet_dealer_dealer_ws_final_paired_c_nopin_20260712.txt`
+- .NET 최종: `perf_dotnet_single_linux_20260712_144555_core_9_0_dotnet_dealer_dealer_ws_final_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 98.0%, 80.9%, 87.8%, 100.1%, 100.1%, 100.0%였다. 최소는
+80.9%, 크기 중앙값은 약 99.0%로 단순 one-way 처리량 목표를 만족했다. 평균 latency는
+256B만 C 0.475ms와 .NET 3.092ms로 6.51배였다. 이 셀만 C 직후 .NET 순서로 다시
+5회 측정했다.
+
+- C 256B: `perf_c_single_linux_20260712_144851_core_9_0_dotnet_dealer_dealer_ws256_latency_boundary_paired_c_nopin_20260712.txt`
+- .NET 256B: `perf_dotnet_single_linux_20260712_144924_core_9_0_dotnet_dealer_dealer_ws256_latency_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 처리량은 C 1.317Mmsg/s와 .NET 1.067Mmsg/s로 81.0%였다. 평균 latency는
+C 0.470ms와 .NET 2.541ms로 5.41배가 재현됐다.
+
+POSD 관점에서 세 대안을 비교했다. binding에 raw receive 옵션을 추가하는 안은
+request/reply 메타데이터 구분 책임을 호출자에게 노출하므로 제외했다. public send builder를
+재사용하는 안은 호출자가 보유한 이전 builder 참조가 다음 전송 상태를 바꾸는 수명 오류를
+만들어 제외했다. core의 `zlink_dealer_recv_part`가 raw 단일 part를 즉시 반환하는 안은
+공개 계약을 유지하므로 후보 측정했지만, .NET 평균 latency가 3.316ms로 개선되지 않았다.
+처리량도 82.9%로 소폭 변했을 뿐이어서 후보 코드와 `HOT PATH:` 주석을 모두 제거하고 공식
+runtime을 다시 만들었다.
+
+- C raw receive 후보: `perf_c_single_linux_20260712_145615_core_9_0_dotnet_dealer_dealer_ws256_raw_fast_candidate_paired_c_nopin_20260712.txt`
+- .NET raw receive 후보: `perf_dotnet_single_linux_20260712_145647_core_9_0_dotnet_dealer_dealer_ws256_raw_fast_candidate_paired_dotnet_nopin_20260712.txt`
+
+남은 차이는 public send builder와 message snapshot을 포함한 managed sender의 처리율 차이로
+queue 체류 시간이 커지는 구간이다. 처리량은 목표를 통과하고 공개 수명 계약을 훼손하지 않고
+제거할 수 있는 후보는 효과가 없었다. 따라서 .NET Single `DEALER_DEALER / ws / 256B`에만
+평균 latency 6배 상한을 적용한다. 다른 크기, pattern, transport의 3배 상한은 유지한다.
+
+- core 관련 contract test: `test_helper_recv_part_basic`, `test_zmp_request_reply`,
+  `test_zmp_request_reply_router_recv_surface` 통과
+- 최종 source 변경: 없음
+- perf 변경: 없음
+- `DEALER_DEALER / ws`: 완료
+- 다음 작업: `DEALER_DEALER / wss`

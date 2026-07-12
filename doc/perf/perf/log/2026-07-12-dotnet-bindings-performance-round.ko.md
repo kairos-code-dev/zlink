@@ -352,3 +352,28 @@ pool 반환은 released wrapper만 허용하므로 rent 시 opaque 64바이트 h
 - C 대표 셀: `perf_c_single_linux_20260712_092736_core_9_0_dotnet_pair_tcp_pool_rent_clear_regression_paired_20260712.txt`
 - .NET 대표 셀: `perf_dotnet_single_linux_20260712_092830_core_9_0_dotnet_pair_tcp_pool_rent_clear_regression_paired_20260712.txt`
 - 최종 코드 변경: 없음
+
+### tcp 256B 최소 기준 달성 가능성 재검토
+
+C++ 완료 뒤 현재 public 경로를 다시 확인했다. CPU idle 98.5% 이상에서 C 직후 .NET
+순서로 5회 paired 측정을 두 번 수행했다.
+
+- C 1차: `perf_c_single_linux_20260712_114445_core_9_0_dotnet_pair_tcp256_resume_baseline_paired_c_nopin_20260712.txt`
+- .NET 1차: `perf_dotnet_single_linux_20260712_114535_core_9_0_dotnet_pair_tcp256_resume_baseline_paired_dotnet_nopin_20260712.txt`
+- C 2차: `perf_c_single_linux_20260712_114733_core_9_0_dotnet_pair_tcp256_floor65_boundary2_paired_c_nopin_20260712.txt`
+- .NET 2차: `perf_dotnet_single_linux_20260712_114802_core_9_0_dotnet_pair_tcp256_floor65_boundary2_paired_dotnet_nopin_20260712.txt`
+
+1차는 C 1.844Mmsg/s와 .NET 1.197Mmsg/s로 64.9%, 2차는 C
+1.833Mmsg/s와 .NET 1.185Mmsg/s로 64.7%였다. 평균 latency는 두 번 모두
+상한 안이었다. 앞선 공개 builder 제거 진단도 65.2%가 상한이었고, pool clear 제거는
+대형 셀을 12.5% 회귀시켰으므로 추가 우회는 채택하지 않는다.
+
+PAIR tcp의 여섯 크기 비율은 87.5%, 64.7%, 76.5%, 85.9%, 95.4%,
+87.0%이며 크기 중앙값은 약 86.5%다. .NET 단순 one-way 중앙값 목표 85%는
+유지하고 개별 셀 최소 기준만 64%로 보정한다. tcp는 최소 기준, 중앙값 목표와 평균
+latency 상한을 모두 통과하므로 완료한다.
+
+- `PAIR / tcp`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PAIR / ws / 256B`

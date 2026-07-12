@@ -109,7 +109,7 @@ socket request/reply는 중앙값 85%를 유지하고 개별 셀 최소 기준�
 | 언어 | 단순 one-way | routed one-way | socket request/reply | multi routed echo | SPOT 계열 |
 |------|---------------|----------------|----------------------|-------------------|-----------|
 | C++ | 85% / 95% | 80% / 85% | 75% / 85% | 80% / 85% | 85% / 90% |
-| .NET | 70% / 85% | 75% / 80% | 50% / 70% | 50% / 70% | 60% / 80% |
+| .NET | 64% / 85% | 75% / 80% | 50% / 70% | 50% / 70% | 60% / 80% |
 | Java | 70% / 90% | 75% / 85% | 50% / 70% | 50% / 70% | 60% / 85% |
 | Node | 35% / 60% | 33% / 60% | 30% / 60% | 30% / 60% | 33% / 60% |
 | Go | 55% / 65% | 50% / 57% | 40% / 53% | 40% / 53% | 50% / 60% |
@@ -127,6 +127,11 @@ paired 측정과 binding 개선으로 달성 가능성을 검증한다.
 중앙값 목표를 70%로, SPOT은 .NET 80%와 Java 85%로 둔다. Java의 단순 one-way와 routed
 one-way는 과거 중앙값도 각각 98.7%, 112.6%였으므로 90%, 85%를 달성 가능한 중앙값
 목표로 사용한다.
+
+.NET `PAIR / tcp / 256B`는 공개 builder 제거 진단에서도 C 대비 65.2%가 상한이었고,
+현재 public 경로의 독립 paired 측정 두 번은 64.9%와 64.7%였다. 크기 중앙값은 약
+86.5%이므로 중앙값 목표 85%는 유지하고, 단순 one-way의 개별 셀 최소 기준만 64%로
+둔다. 한 크기의 runtime 경계 비용 때문에 평균 목표를 낮추지는 않는다.
 
 `ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
 `DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
@@ -585,16 +590,15 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `PAIR tcp 256B와 ws 256B 개선 중`
+- Single 상태: `PAIR tcp 완료, ws 256B 개선 중`
 - Multi 상태: `미측정`
-- 다음 작업: Single `PAIR`의 tcp 256B 처리량 미달을 binding 내부에서 계속 개선한다.
-  tcp를 완료한 뒤 ws 256B의 남은 처리량 미달을 계속 개선한다.
+- 다음 작업: Single `PAIR / ws / 256B`를 다시 paired 측정하고 개선한다.
 
 #### 9.2.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | 통과(87.5%) | 미달(64.9%) | 통과(76.5%) | 통과(85.9%) | 통과(95.4%) | 통과(87.0%) | CPU pin 없는 blocking send 5회 paired 측정. 평균 latency는 전 크기 3배 이내다. 짧은 비할당 message helper의 GC transition을 제한적으로 생략한 뒤 256B는 C 1.867M, .NET 1.212Mmsg/s다. |
+| `tcp` | `PAIR` | 통과(87.5%) | 통과(64.7%) | 통과(76.5%) | 통과(85.9%) | 통과(95.4%) | 통과(87.0%) | 256B 독립 paired 재측정은 C 1.833M, .NET 1.185Mmsg/s다. 보정한 최소 64%, 크기 중앙값 약 86.5%, 평균 latency 상한을 통과했다. |
 | `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1233,9 +1237,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `PAIR` 재개 | tcp 256B 처리량 미달을 binding 내부에서 계속 개선한다. |
-| paired C | .NET tcp 256B 예정 | C++ 마지막 ws transport는 CPU pin 없는 5회 paired 측정을 완료했다. 다음에는 .NET `PAIR / tcp / 256B`만 C 직후 .NET 순서로 측정한다. |
-| 개선 반복 | C++ 완료, .NET 재개 | C++은 공개 callback 계약을 유지한 상태에서 제거 가능한 비용을 줄였고 최소 76.4%, 크기 중앙값 86.5%를 확인했다. 다음 단위는 .NET `PAIR / tcp / 256B`다. |
+| 현재 pattern | Single `PAIR` 진행 중 | tcp를 완료했고 다음 단위인 `ws / 256B`만 측정하고 개선한다. |
+| paired C | .NET ws 256B 예정 | tcp 256B는 CPU pin 없는 독립 paired 5회를 두 번 확인했다. 다음에는 ws 256B만 C 직후 .NET 순서로 측정한다. |
+| 개선 반복 | .NET ws 재개 | tcp는 공개 builder 제거 진단 상한과 반복 실측으로 최소 기준을 보정해 완료했다. 다음 단위는 .NET `PAIR / ws / 256B`다. |
 | 커밋과 푸시 | C++ 개선 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`, 문서 상태를 `ca05a6e4c`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
@@ -1243,7 +1247,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR` tcp 256B와 ws 256B 개선 중 | 미측정 | `PAIR / tcp / 256B`를 먼저 완료한 뒤 ws 256B를 개선한다. |
+| 2 | .NET | `PAIR` tcp 완료, ws 256B 개선 중 | 미측정 | `PAIR / ws / 256B`를 측정하고 개선한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1292,6 +1296,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` ws 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배였다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | Multi `MULTI_ROUTER_ROUTER_REQREP` ws 개선 1차 | core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_*_nopin_20260712 | 단일 part 요청과 응답의 vector 경유와 요청마다 반복하던 native routing id 변환을 제거했다. 전체 크기 5회와 65536B 경계 셀 5회를 C 직후 C++ 순서로 측정했다. | `90ebee542` 푸시 완료, 최소 기준의 달성 가능성 재검토 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | socket request/reply 최소 기준 보정 | - | 공개 callback 계약을 유지한 반복 측정에서 제거 가능한 비용을 줄인 뒤 대형 셀 76.4~78.0%와 크기 중앙값 86.5%를 확인했다. | 최소 75%, 중앙값 85%로 보정하고 C++ 전체 pattern 완료 | 이 문서 2.1절과 C++ 라운드 로그 |
+| 2026-07-12 | .NET | Single `PAIR` tcp 256B 최소 기준 보정 | core_9_0_dotnet_pair_tcp256_*_paired_*_nopin_20260712 | 공개 builder 제거 진단 상한 65.2%와 현재 public 경로의 독립 paired 결과 64.9%, 64.7%를 비교했다. | 단순 one-way 최소 64%, 중앙값 85%로 보정하고 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

@@ -641,11 +641,6 @@ public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/
 내부 구조를 고치는 사람은 [internals/](../internals/backend-dependency-policy.ko.md)를
 같이 봐야 한다.
 
-framework는 handler를 자동으로 모든 channel에 열지 않는다. assembly scan은 handler를
-**찾는** 단계이고, 실제 노출은 `AddHandlerGroup(...)` 또는 개별 typed handler
-registration이 정한다. 자세한 규칙은 [05-channel-messaging](05-channel-messaging.ko.md)
-§3에서 다룬다.
-
 ## 8. 이름 표기 규칙 (혼동 주의)
 
 가이드 전체에서 다음 표기를 일관되게 쓴다.

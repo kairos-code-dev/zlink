@@ -163,7 +163,11 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_strerror(int errnum);
 
+    // HOT PATH: these marked message helpers are bounded, non-allocating, and
+    // cannot call managed code. Keep allocating init_size, close, and every
+    // potentially blocking transport call on the normal GC transition path.
     [LibraryImport(LibraryName)]
+    [SuppressGCTransition]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial int zlink_msg_init(ref ZlinkMsg msg);
 
@@ -181,6 +185,7 @@ internal static partial class NativeMethods
     internal static extern int zlink_msg_close(IntPtr msg);
 
     [LibraryImport(LibraryName)]
+    [SuppressGCTransition]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial int zlink_msg_move(ref ZlinkMsg dest,
         ref ZlinkMsg src);
@@ -190,6 +195,7 @@ internal static partial class NativeMethods
         ref ZlinkMsg src);
 
     [LibraryImport(LibraryName)]
+    [SuppressGCTransition]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial IntPtr zlink_msg_data(ref ZlinkMsg msg);
 
@@ -198,6 +204,7 @@ internal static partial class NativeMethods
     internal static extern IntPtr zlink_msg_data(IntPtr msg);
 
     [LibraryImport(LibraryName)]
+    [SuppressGCTransition]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial nuint zlink_msg_size(ref ZlinkMsg msg);
 

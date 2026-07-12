@@ -225,3 +225,34 @@ submission 상태도 검사한 뒤, `OperationSubmissionGuard.MarkSubmitted()` �
 
 처리량과 평균 latency 회귀 gate 안이고 중복 책임을 제거했으므로 성능 목표 통과와는 별개인
 POSD 개선으로 채택한다. tcp 256B 처리량 상태는 계속 `미달`이다.
+
+### 짧은 native message helper 전환 비용 개선
+
+메시지 한 건의 송수신에서 짧은 native message helper를 여러 번 호출한다. 모든 interop에
+GC transition 생략을 적용하는 설계는 allocation, free, blocking transport까지 안전 가정을
+넓히므로 제외했다. `zlink_msg_init`, `zlink_msg_move`, `zlink_msg_data`,
+`zlink_msg_size`처럼 할당하지 않고 관리 callback을 호출하지 않는 네 함수만 제한하는 설계를
+선택했다. `init_size`, `close`, send, receive는 정상 GC transition을 계속 사용한다.
+
+tcp 256B 3회 사전 측정은 1,210,014.0msg/s와 평균 latency 0.170ms였다. 최종 5회는
+C 직후 .NET을 CPU pin 없이 실행했다.
+
+- C: `perf_c_single_linux_20260712_090321_core_9_0_dotnet_pair_tcp256_short_native_transition_final_paired_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_090350_core_9_0_dotnet_pair_tcp256_short_native_transition_final_paired_20260712.txt`
+- C: 1,867,080.8msg/s, 평균 latency 13.390ms
+- .NET: 1,212,258.4msg/s, 평균 latency 0.164ms
+- C 대비 throughput: 64.93%
+- 개선 전 .NET 1,180,672.2msg/s 대비: +2.68%
+
+비대상 tcp 셀 3회 측정에서 64B, 64KiB, 256KiB는 개선됐고 1KiB는 -0.1%였다.
+128KiB 최초 3회 중앙값은 낮았지만 해당 셀을 C 직후 .NET으로 5회 재측정한 결과
+C 57,818.8msg/s, .NET 55,148.0msg/s로 95.4%였으며 평균 latency는 1.05배였다.
+
+- 비대상 셀: `perf_dotnet_single_linux_20260712_090429_core_9_0_dotnet_pair_tcp_short_native_transition_regression_20260712.txt`
+- C 128KiB: `perf_c_single_linux_20260712_090557_core_9_0_dotnet_pair_tcp131072_short_native_transition_regression_paired_20260712.txt`
+- .NET 128KiB: `perf_dotnet_single_linux_20260712_090627_core_9_0_dotnet_pair_tcp131072_short_native_transition_regression_paired_20260712.txt`
+- single/multi Release build: 경고 0, 오류 0
+- `Zlink.Tests`: 178개 통과
+
+확정 hot path와 제한 조건은 native 선언의 주석에 남겼다. 실제 처리량 개선과 회귀 gate를
+통과했으므로 변경을 채택하지만 tcp 256B는 70% 미만이라 계속 `미달`이다.

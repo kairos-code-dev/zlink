@@ -1263,7 +1263,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `PUBSUB` 진행 중 | tcp, ws, wss, tls를 완료했고 다음 transport는 `inproc`이다. |
 | paired C | .NET `PUBSUB / tls` 완료 | C와 .NET 전체 크기와 latency 경계 셀을 CPU pin 없이 차례로 5회 측정했다. |
 | 개선 반복 | .NET `PUBSUB / tls` 완료 | 반복 topic 문자열을 재사용해 평균 latency를 줄였다. 최종 최소 75.4%, 크기 중앙값 91.8%, 보정한 평균 latency 최대 5.81배다. |
-| 커밋과 푸시 | .NET `PUBSUB / tls` 커밋 예정 | topic cache와 측정·검증 근거만 커밋하고 원격 `main`에 푸시한다. |
+| 커밋과 푸시 | .NET `PUBSUB / tls` 완료 | topic cache와 측정·검증 근거를 `d6d568190`으로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1328,7 +1328,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `PUBSUB` tcp | core_9_0_dotnet_pubsub_tcp_blocking_*_paired_*_nopin_20260712 | C는 blocking publish였지만 .NET만 DontWait로 payload를 반복 생성·폐기하던 측정 의미 차이를 바로잡았다. | 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배로 tcp 완료, `9596ee94a` 푸시 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PUBSUB` ws | core_9_0_dotnet_pubsub_ws_full_paired_*_nopin_20260712 | blocking publish 의미를 유지하고 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 71.0%, 크기 중앙값 88.7%, 평균 latency 최대 1.34배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PUBSUB` wss | core_9_0_dotnet_pubsub_wss_full_paired_*_nopin_20260712 | secure transport에서 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 74.0%, 크기 중앙값 94.9%, 평균 latency 최대 1.25배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
-| 2026-07-12 | .NET | Single `PUBSUB` tls | core_9_0_dotnet_pubsub_tls_topic_cache_final_paired_*_nopin_20260712 | 동일 topic을 매번 UTF-8 string으로 만들던 subscriber 비용을 envelope 내부 cache로 제거했다. | 최소 75.4%, 크기 중앙값 91.8%, 대형 셀 평균 latency 최대 5.81배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PUBSUB` tls | core_9_0_dotnet_pubsub_tls_topic_cache_final_paired_*_nopin_20260712 | 동일 topic을 매번 UTF-8 string으로 만들던 subscriber 비용을 envelope 내부 cache로 제거했다. | 최소 75.4%, 크기 중앙값 91.8%, 대형 셀 평균 latency 최대 5.81배로 tls 완료, `d6d568190` 푸시 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

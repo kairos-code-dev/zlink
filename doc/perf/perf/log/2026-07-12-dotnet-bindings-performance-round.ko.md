@@ -651,5 +651,6 @@ cache-only 최종 전체 크기를 다시 paired 측정했다.
 - .NET single Release build: 경고 0, 오류 0
 - `Zlink.Tests`: optimization guard 문구 복구 뒤 178개 통과
 - public API 변경: 없음
+- commit: `d6d568190` (`perf(dotnet): reuse stable subscription topics`), 원격 `main` 푸시 완료
 - `PUBSUB / tls`: 완료
 - 다음 작업: `PUBSUB / inproc`

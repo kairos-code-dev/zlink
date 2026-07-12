@@ -699,3 +699,23 @@ envelope 내부에서 반복 topic 해석을 재사용하는 안은 이미 적�
 - binding 변경: 없음(topic cache는 `d6d568190`에 포함)
 - perf 변경: 없음
 - 다음 작업: `PUBSUB / ipc`
+
+### PUBSUB ipc와 pattern 완료
+
+CPU idle 98.8~99.4%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회
+측정했다. 두 실행 모두 `core/build/lib/libzlink.so.9.0.0`을 사용했다.
+
+- C: `perf_c_single_linux_20260712_141337_core_9_0_dotnet_pubsub_ipc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_141656_core_9_0_dotnet_pubsub_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 94.6%, 78.9%, 82.0%, 75.5%, 92.4%, 98.8%였다. 최소는
+75.5%, 크기 중앙값은 약 87.2%로 .NET 단순 one-way의 일반 최소 64%와 중앙값
+85%를 모두 만족한다. 평균 latency 비율은 1.07배, 0.75배, 0.50배, 1.28배,
+1.07배, 1.00배로 일반 상한 3배 이내다. 모든 크기가 첫 paired 측정에서 통과해
+추가 개선은 필요하지 않았다.
+
+- `PUBSUB / ipc`: 완료
+- `PUBSUB`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_DEALER / tcp`

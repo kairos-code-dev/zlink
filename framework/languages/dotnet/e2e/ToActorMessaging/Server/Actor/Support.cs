@@ -53,7 +53,14 @@ internal sealed class EvidenceStore(string path)
     {
         _items.Enqueue(evidence);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.AppendAllLines(path, [$"{evidence.Scenario}|{evidence.ActorId}|{evidence.Kind}|{evidence.Value}"]);
+        File.AppendAllLines(path,
+        [
+            $"{evidence.Scenario}|{evidence.ActorId}|{evidence.Kind}|{evidence.Value}"
+            + $"|node={evidence.NodeRid ?? "<none>"}"
+            + $"|generation={evidence.Generation?.ToString() ?? "<none>"}"
+            + $"|packet={evidence.PacketName ?? "<none>"}"
+            + $"|request={evidence.RequestId ?? "<none>"}"
+        ]);
     }
 
     public IReadOnlyList<ActorEvidence> All() => _items.ToArray();

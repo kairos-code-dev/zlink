@@ -25,16 +25,17 @@ internal static class RlB5DrainInflightScenario
         var slowProvider = await WaitForSlowStartAsync(providerA, providerB, slowMarker);
         var drainedProvider = slowProvider == "api-a" ? providerA : providerB;
         var healthyProvider = slowProvider == "api-a" ? "api-b" : "api-a";
-        var beforeDrain = (await drainedProvider.Get("/evidence").SubmitAsync<string[]>()).Body;
-
         await drainedProvider.Post("/admin/drain").SubmitRawAsync();
         await WaitForWeightAsync(drainedProvider, 0);
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer, slowProvider, "rl-b5-propagation", "RL-B5");
+        var beforeDrain = (await drainedProvider.Get("/evidence").SubmitAsync<string[]>()).Body;
 
         for (var i = 0; i < 12; i++)
         {
-            var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", $"rl-b5-drained-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+            var reply = await ProviderTrafficProbe.RequestWithoutRetryAsync(
+                consumer,
+                new ProfileReq("fast", $"rl-b5-drained-{i}"));
             ScenarioAssert.That(reply.ProviderRid == healthyProvider,
                 "RL-B5 drain did not block new requests to the drained provider.");
         }

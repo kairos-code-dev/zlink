@@ -26,7 +26,8 @@ public sealed record TopologyWaitReq(
     string RoutingId,
     string State,
     int ExpectedCount,
-    int TimeoutMilliseconds = 30000);
+    int TimeoutMilliseconds = 30000,
+    uint? ExpectedWeight = null);
 
 public sealed record RegistryHealthWaitReq(
     bool ExpectedHealthy,

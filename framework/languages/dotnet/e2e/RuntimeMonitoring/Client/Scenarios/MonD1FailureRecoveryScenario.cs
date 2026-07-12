@@ -28,6 +28,9 @@ internal static class MonD1FailureRecoveryScenario
             serviceBUri.Port,
             false,
             "MON-D1 expected service-b to stop.");
+        await WaitForProcessExitAsync(
+            options.ServiceBProcessId,
+            "MON-D1 expected the original service-b process to complete framework shutdown.");
 
         using var restartedService = StartServiceB(options);
         try
@@ -206,6 +209,31 @@ internal static class MonD1FailureRecoveryScenario
         catch (TimeoutException)
         {
             return false;
+        }
+    }
+
+    private static async Task WaitForProcessExitAsync(int processId, string failureMessage)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        using (process)
+        {
+            try
+            {
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (TimeoutException exception)
+            {
+                throw new InvalidOperationException(failureMessage, exception);
+            }
         }
     }
 }

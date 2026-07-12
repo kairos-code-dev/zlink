@@ -429,7 +429,7 @@ session_matches = [event for event in events
                    if event[2].get("label") == "session-1101"
                    and event[2].get("surface") == "StreamSession"
                    and event[2].get("packet") == "MatchBingoReq"
-                   and event[2].get("outcome") == "received"
+                   and event[2].get("phase") == "received"
                    and event[2].get("origin") == "application"]
 crossing = None
 for candidate in session_matches:
@@ -453,8 +453,8 @@ missing = [event for event in events
            if event[2].get("packet") == "ObservabilityMissingPacket"]
 missing_flows = {event[2]["flow"] for event in missing
                  if event[2].get("label") == "session-1101"
-                 and event[2].get("outcome") == "received"}
-if not any(event[2].get("outcome") == "error"
+                 and event[2].get("phase") == "received"}
+if not any(event[2].get("phase") == "error"
            and event[2].get("flow") in missing_flows for event in missing):
     raise SystemExit("OBS-A2: missing-packet received and error lines do not share one flow")
 
@@ -462,7 +462,7 @@ off_candidates = [event for event in events
                   if event[2].get("label") == "session-1101"
                   and event[2].get("surface") == "StreamSession"
                   and event[2].get("packet") == "MatchBingoReq"
-                  and event[2].get("outcome") == "received"
+                  and event[2].get("phase") == "received"
                   and event[2].get("flow") not in pre_off_flows]
 if len({event[2]["flow"] for event in off_candidates}) != 1:
     raise SystemExit("OBS-A3: off-node action did not create exactly one new connector flow")
@@ -477,7 +477,7 @@ if any(event[2].get("label", "").startswith("api-") for event in off_events):
 fanout_events = [event for event in events
                  if event[2].get("surface") == "SpotSubscription"
                  and event[2].get("packet") == "OrderProjectionUpdatedEvent"
-                 and event[2].get("outcome") == "received"]
+                 and event[2].get("phase") == "received"]
 fanout_by_flow = {}
 for event in fanout_events:
     fanout_by_flow.setdefault(event[2]["flow"], set()).add(event[2].get("label"))

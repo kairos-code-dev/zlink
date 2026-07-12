@@ -12,16 +12,27 @@ internal static class RlB4RuntimeDrainScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        var beforeDrain = (await providerB.Get("/evidence").SubmitAsync<string[]>()).Body;
         await providerB.Post("/admin/drain").SubmitRawAsync();
         await WaitForWeightAsync(providerB, 0);
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer, "api-b", "rl-b4-propagation", "RL-B4");
+        var retainedRows = (await consumer.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1, ExpectedWeight: 0))
+            .SubmitAsync<TopologyEntryRes[]>()).Body;
+        ScenarioAssert.That(
+            retainedRows.Length >= 1,
+            "RL-B4 runtime drain removed api-b's peer row instead of retaining it.");
+        ScenarioAssert.That(
+            retainedRows.All(row => row.Weight == 0),
+            "RL-B4 runtime drain did not publish api-b's zero weight.");
+        var beforeDrain = (await providerB.Get("/evidence").SubmitAsync<string[]>()).Body;
 
         for (var i = 0; i < 20; i++)
         {
             var marker = $"rl-b4-drained-{i}";
-            var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
+            var reply = await ProviderTrafficProbe.RequestWithoutRetryAsync(
+                consumer,
+                new ProfileReq("fast", marker));
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-B4 drained api-b received a new request.");
         }
 

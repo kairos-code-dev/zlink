@@ -177,6 +177,7 @@ start_server api-a "$PROVIDER_PROJECT" \
   --channel-endpoint "$API_A" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
+API_A_PID="${pids[$((${#pids[@]} - 1))]}"
 wait_health "$API_A_URL" api-a
 
 start_server api-b "$PROVIDER_PROJECT" \
@@ -206,6 +207,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --redis-container "$REDIS_CONTAINER" \
   --provider-a-url "$API_A_URL" \
+  --provider-a-process-id "$API_A_PID" \
   --provider-a-endpoint "$API_A" \
   --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
   --provider-b-url "$API_B_URL" \

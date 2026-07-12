@@ -5,7 +5,9 @@ namespace AutomaticTurnDispatch.Client.Scenarios;
 
 internal static class AtdA2AwaitTerminatorScenario
 {
-    public static async Task<string> RunAsync(IZlinkStreamConnector client, string spotRid)
+    public static async Task<string> RunAsync(
+        IZlinkStreamConnector client,
+        string spotRid)
     {
         var requestId = $"ATD-A2-{Guid.NewGuid():N}";
         client.Send(new AwaitMsg(requestId, 350, "corr-a2"))
@@ -34,4 +36,5 @@ internal static class AtdA2AwaitTerminatorScenario
         ]);
         return requestId;
     }
+
 }

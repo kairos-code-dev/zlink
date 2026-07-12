@@ -62,6 +62,11 @@ internal static class ConsumerHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
+        app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
+        {
+            lifetime.StopApplication();
+            return Results.Ok(new { status = "stopping" });
+        });
         app.MapGet("/query/status", async (
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
@@ -88,7 +93,8 @@ internal static class ConsumerHostFactory
                     .Select(peer => new PeerRowRes(
                         peer.NodeRid?.ToString(),
                         peer.Endpoint,
-                        peer.OwnerId))
+                        peer.OwnerId,
+                        peer.Draining))
                     .ToArray());
             }
             catch (Exception error)

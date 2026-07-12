@@ -14,6 +14,7 @@ LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
 ACTOR_PROJECT="$ROOT_DIR/Server/Actor/ToActorMessaging.Actor.csproj"
+SESSION_PROJECT="$ROOT_DIR/Server/Session/ToActorMessaging.Session.csproj"
 CALLER_PROJECT="$ROOT_DIR/Server/Caller/ToActorMessaging.Caller.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ToActorMessaging.Client.csproj"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
@@ -34,13 +35,18 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-pick_port() {
-  python3 - <<'PY'
+allocate_ports() {
+  python3 - "$1" <<'PY'
 import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
+import sys
+sockets = []
+for _ in range(int(sys.argv[1])):
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sockets.append(sock)
+print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
+for sock in sockets:
+    sock.close()
 PY
 }
 
@@ -104,16 +110,33 @@ PY
 }
 
 start_actor() {
+  local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" evidence="$6"
   setsid dotnet run --no-build --project "$ACTOR_PROJECT" -- \
-    --rid "$ACTOR_RID" \
-    --http-url "$ACTOR_URL" \
+    --rid "$rid" \
+    --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
-    --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
-    --evidence-file "$LOG_DIR/actor.evidence.log" \
+    --router-endpoint "tcp://127.0.0.1:$router_port" \
+    --pubsub-endpoint "tcp://127.0.0.1:$pubsub_port" \
+    --evidence-file "$evidence" \
     --log-dir "$LOG_DIR" \
-    >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
+    >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
+  pids+=("$!")
+}
+
+start_session() {
+  local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" stream_port="$6" evidence="$7"
+  setsid dotnet run --no-build --project "$SESSION_PROJECT" -- \
+    --rid "$rid" \
+    --http-url "$url" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --router-endpoint "tcp://127.0.0.1:$router_port" \
+    --pubsub-endpoint "tcp://127.0.0.1:$pubsub_port" \
+    --stream-endpoint "tcp://127.0.0.1:$stream_port" \
+    --evidence-file "$evidence" \
+    --log-dir "$LOG_DIR" \
+    >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
   pids+=("$!")
 }
 
@@ -125,6 +148,10 @@ start_caller() {
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
     --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
+    --actor-rid "$ACTOR_A_RID" \
+    --actor-router-endpoint "tcp://127.0.0.1:$ACTOR_A_ROUTER_PORT" \
+    --actor-b-rid "$ACTOR_B_RID" \
+    --actor-b-router-endpoint "tcp://127.0.0.1:$ACTOR_B_ROUTER_PORT" \
     --log-dir "$LOG_DIR" \
     >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
   pids+=("$!")
@@ -132,7 +159,10 @@ start_caller() {
 
 start_role() {
   case "$1" in
-    actor) start_actor ;;
+    actor-a) start_actor actor-a "$ACTOR_A_RID" "$ACTOR_A_URL" "$ACTOR_A_ROUTER_PORT" "$ACTOR_A_PUBSUB_PORT" "$LOG_DIR/actor-a.evidence.log" ;;
+    actor-b) start_actor actor-b "$ACTOR_B_RID" "$ACTOR_B_URL" "$ACTOR_B_ROUTER_PORT" "$ACTOR_B_PUBSUB_PORT" "$LOG_DIR/actor-b.evidence.log" ;;
+    session-a) start_session session-a "$SESSION_A_RID" "$SESSION_A_URL" "$SESSION_A_ROUTER_PORT" "$SESSION_A_PUBSUB_PORT" "$SESSION_A_STREAM_PORT" "$LOG_DIR/session-a.evidence.log" ;;
+    session-b) start_session session-b "$SESSION_B_RID" "$SESSION_B_URL" "$SESSION_B_ROUTER_PORT" "$SESSION_B_PUBSUB_PORT" "$SESSION_B_STREAM_PORT" "$LOG_DIR/session-b.evidence.log" ;;
     caller) start_caller ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
@@ -146,37 +176,53 @@ zlink_redis_start_scoped_assign \
   "$LOG_DIR"
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="zlink:e2e:to-actor:$(date +%s)-$$"
-ACTOR_RID="${TO_ACTOR_ACTOR_RID:-to-actor-owner}"
+ACTOR_A_RID="${TO_ACTOR_ACTOR_RID:-actor-a}"
+ACTOR_B_RID="actor-b"
+SESSION_A_RID="session-a"
+SESSION_B_RID="session-b"
 CALLER_RID="${TO_ACTOR_CALLER_RID:-to-actor-caller}"
 
-ACTOR_HTTP_PORT="$(pick_port)"
-CALLER_HTTP_PORT="$(pick_port)"
-ACTOR_ROUTER_PORT="$(pick_port)"
-ACTOR_PUBSUB_PORT="$(pick_port)"
-CALLER_ROUTER_PORT="$(pick_port)"
-CALLER_PUBSUB_PORT="$(pick_port)"
+read -r \
+  ACTOR_A_HTTP_PORT ACTOR_A_ROUTER_PORT ACTOR_A_PUBSUB_PORT \
+  ACTOR_B_HTTP_PORT ACTOR_B_ROUTER_PORT ACTOR_B_PUBSUB_PORT \
+  SESSION_A_HTTP_PORT SESSION_A_ROUTER_PORT SESSION_A_PUBSUB_PORT SESSION_A_STREAM_PORT \
+  SESSION_B_HTTP_PORT SESSION_B_ROUTER_PORT SESSION_B_PUBSUB_PORT SESSION_B_STREAM_PORT \
+  CALLER_HTTP_PORT CALLER_ROUTER_PORT CALLER_PUBSUB_PORT \
+  <<<"$(allocate_ports 17)"
 
-ACTOR_URL="http://127.0.0.1:$ACTOR_HTTP_PORT"
+ACTOR_A_URL="http://127.0.0.1:$ACTOR_A_HTTP_PORT"
+ACTOR_B_URL="http://127.0.0.1:$ACTOR_B_HTTP_PORT"
+SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
+SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
 
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
 dotnet build "$ACTOR_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CALLER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-mapfile -t SERVER_ROLES < <(ordered_roles actor caller)
+mapfile -t SERVER_ROLES < <(ordered_roles actor-a actor-b session-a session-b caller)
 for role in "${SERVER_ROLES[@]}"; do
   start_role "$role"
 done
 
-wait_health "$ACTOR_URL" actor
+wait_health "$ACTOR_A_URL" actor-a
+wait_health "$ACTOR_B_URL" actor-b
+wait_health "$SESSION_A_URL" session-a
+wait_health "$SESSION_B_URL" session-b
 wait_health "$CALLER_URL" caller
 sleep 5
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
-  --actor-url "$ACTOR_URL" \
+  --actor-url "$ACTOR_A_URL" \
+  --actor-b-url "$ACTOR_B_URL" \
   --caller-url "$CALLER_URL" \
+  --session-a-stream-endpoint "tcp://127.0.0.1:$SESSION_A_STREAM_PORT" \
+  --session-b-stream-endpoint "tcp://127.0.0.1:$SESSION_B_STREAM_PORT" \
+  --session-a-url "$SESSION_A_URL" \
+  --session-b-url "$SESSION_B_URL" \
   --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

@@ -64,7 +64,8 @@ internal static class PlayHostFactory
                 framework.AddRouteMeshChannel(externalSpotChannel)
                     .EnableServer(options.ExternalSpotEndpoint)
                     .EnableClient()
-                    .SetRoutingId(RoutingId.From(options.Rid));
+                    .SetRoutingId(RoutingId.From(options.Rid))
+                    .AddHandlerGroup("play");
             if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
                 framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
                     .EnableServer(options.ExternalClientEndpoint)

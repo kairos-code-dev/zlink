@@ -9,8 +9,10 @@ using Systems.Zlink;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Locations.Redis;
@@ -53,6 +55,8 @@ internal static class GatewayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
+            framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
+                .EnableClient(Require(options.ExternalSpotEndpoint, "--external-spot-endpoint"));
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
                 .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -80,7 +84,7 @@ internal static class GatewayHostFactory
             IZLinkSpotPublisherClient publisher,
             EvidenceStore evidence) =>
         {
-            publisher.Publish(
+            publisher.PublishSpot(
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))
@@ -92,6 +96,29 @@ internal static class GatewayHostFactory
                 request.SpotRid,
                 request.Marker,
                 evidence.Snapshot()));
+        });
+        app.MapPost("/channel/route-ping", async (
+            IZLinkRouteClient routes,
+            ControlPingReq request,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await routes.RequestToNode(
+                    SpotServiceNames.ExternalSpotChannel,
+                    RoutingId.From("play-a"),
+                    request)
+                .Async<ControlPingRes>(cancellationToken);
+            return Results.Ok(reply);
+        });
+        app.MapPost("/spot/route-state", async (
+            IZLinkRouteClient routes,
+            IZLinkSpotHandleResolver handles,
+            SpotStateRouteReq request,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await handles.ResolveRequiredAsync(request.SpotRid, cancellationToken);
+            var reply = await routes.RequestToSpot(target, new StateReq(request.Operation, request.Delta))
+                .Async<StateRes>(cancellationToken);
+            return Results.Ok(reply);
         });
         app.MapPost("/actor/push", async (
             ActorPushByActorReq request,
@@ -205,7 +232,8 @@ internal sealed record GatewayOptions(
     string? RedisEndpoint,
     string? RedisKeyPrefix,
     string? SpotRouterEndpoint,
-    string? SpotPubEndpoint)
+    string? SpotPubEndpoint,
+    string? ExternalSpotEndpoint)
 {
     public static GatewayOptions Parse(string[] args)
     {
@@ -238,6 +266,7 @@ internal sealed record GatewayOptions(
             values.GetValueOrDefault("redis-endpoint"),
             values.GetValueOrDefault("redis-key-prefix"),
             values.GetValueOrDefault("spot-router-endpoint"),
-            values.GetValueOrDefault("spot-pub-endpoint"));
+            values.GetValueOrDefault("spot-pub-endpoint"),
+            values.GetValueOrDefault("external-spot-endpoint"));
     }
 }

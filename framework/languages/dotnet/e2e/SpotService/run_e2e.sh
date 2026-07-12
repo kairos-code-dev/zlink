@@ -603,6 +603,7 @@ start_named_server() {
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --spot-router-endpoint "$GATEWAY_SPOT_ROUTER" \
         --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+        --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
         --evidence-file "$LOG_DIR/gateway.evidence.log" \
         --log-dir "$LOG_DIR"
       ;;
@@ -791,6 +792,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-c1-c2
   run_client sm-c3
   run_client sm-c5
+  run_client sm-f3-f5
   run_client sm-e4
   run_client sm-e1-f4
   run_client sm-e2-e3

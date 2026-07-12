@@ -61,10 +61,20 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
 
     public async Task WaitInitialProviderBExitedAsync()
     {
+        await WaitProcessExitedAsync(options.ProviderBProcessId);
+    }
+
+    public async Task WaitInitialProviderAExitedAsync()
+    {
+        await WaitProcessExitedAsync(options.ProviderAProcessId);
+    }
+
+    private static async Task WaitProcessExitedAsync(int processId)
+    {
         Process process;
         try
         {
-            process = Process.GetProcessById(options.ProviderBProcessId);
+            process = Process.GetProcessById(processId);
         }
         catch (ArgumentException)
         {

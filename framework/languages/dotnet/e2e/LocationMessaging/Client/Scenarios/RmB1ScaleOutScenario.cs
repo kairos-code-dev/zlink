@@ -42,8 +42,22 @@ internal static class RmB1ScaleOutScenario
             .Build();
 
         // Wait until the runtime query peer list reflects api-b's row before
-        // the verification traffic (doc RM-B1).
+        // waiting for the requester's reconciler to connect that row.
         await WaitForPeerRowAsync(requester, "api-b", expected: true);
+
+        var warmSeen = new HashSet<string>(StringComparer.Ordinal);
+        for (var attempt = 0; attempt < 100 && warmSeen.Count < 2; attempt++)
+        {
+            var warm = (await requester.Post("/profile/request")
+                .Body(new ProfileReq($"rm-b1-warm-{attempt}"))
+                .SubmitAsync<ProfileRes>()).Body;
+            warmSeen.Add(warm.ProviderRid);
+            if (warmSeen.Count < 2) await Task.Delay(150);
+        }
+
+        ScenarioAssert.That(
+            warmSeen.SetEquals(["api-a", "api-b"]),
+            "RM-B1 scale-out row never became a connected request target.");
 
         beforeA = await ReadEvidenceAsync(requester);
         var beforeB = await ReadEvidenceAsync(providerBClient);

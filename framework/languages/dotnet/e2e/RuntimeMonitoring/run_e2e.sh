@@ -183,7 +183,8 @@ setsid env ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERV
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/svc-b.stdout.log" 2>"$LOG_DIR/svc-b.stderr.log" &
-pids+=("$!")
+SERVICE_B_PID="$!"
+pids+=("$SERVICE_B_PID")
 wait_health "$SVC_B_URL" svc-b
 
 setsid env ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
@@ -220,6 +221,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --service-url "$SVC_URL" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-url "$SVC_B_URL" \
+  --service-b-process-id "$SERVICE_B_PID" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --throw-service-url "$THROW_URL" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \

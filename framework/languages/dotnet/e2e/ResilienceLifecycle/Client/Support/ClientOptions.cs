@@ -7,6 +7,7 @@ internal sealed record ClientOptions(
     string RedisKeyPrefix,
     string RedisContainer,
     string ProviderAUrl,
+    int ProviderAProcessId,
     string ProviderAEndpoint,
     string ProviderAEvidenceFile,
     string ProviderBUrl,
@@ -45,6 +46,9 @@ internal sealed record ClientOptions(
             values.TryGetValue("provider-a-url", out var providerAUrl) && !string.IsNullOrWhiteSpace(providerAUrl)
                 ? providerAUrl
                 : throw new ArgumentException("--provider-a-url is required."),
+            int.TryParse(Require(values, "provider-a-process-id"), out var providerAProcessId)
+                ? providerAProcessId
+                : throw new ArgumentException("--provider-a-process-id must be an integer."),
             Require(values, "provider-a-endpoint"),
             Require(values, "provider-a-evidence-file"),
             values.TryGetValue("provider-b-url", out var providerBUrl) && !string.IsNullOrWhiteSpace(providerBUrl)

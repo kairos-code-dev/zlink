@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using StoreFailure.Client.Support;
+using StoreFailure.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace StoreFailure.Client.Scenarios;
@@ -14,8 +16,66 @@ internal static class SfC2GracefulRemovalScenario
         ZLinkHttpClient consumer,
         ManagedProcess providerB)
     {
+        using var provider = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Build();
+        var drainTask = providerB.RequestDrainAsync();
+
+        await SfProbe.WaitPeersAsync(
+            consumer,
+            peers => peers.Any(row =>
+                string.Equals(row.Rid, "api-b", StringComparison.Ordinal) && row.Draining),
+            options.OwnerLeaseTtl,
+            "SF-C2: api-b did not publish its draining marker promptly.");
+
+        var drainingStatus = await SfProbe.GetStatusAsync(provider);
+        ScenarioAssert.That(
+            drainingStatus.OwnerLeaseHealthy,
+            "SF-C2: api-b stopped renewing its owner lease while drain was in progress.");
+
+        var propagationDeadline = DateTimeOffset.UtcNow
+                                  + options.StoreFailureGrace
+                                  + options.OwnerLeaseTtl;
+        var consecutiveSurvivorReplies = 0;
+        var probe = 0;
+        while (DateTimeOffset.UtcNow < propagationDeadline && consecutiveSurvivorReplies < 20)
+        {
+            try
+            {
+                var reply = await SfProbe.RequestAsync(
+                    consumer,
+                    $"sf-c2-propagation-{probe++}",
+                    timeoutMilliseconds: 1000);
+                consecutiveSurvivorReplies = reply.ProviderRid == "api-a"
+                    ? consecutiveSurvivorReplies + 1
+                    : 0;
+            }
+            catch (ZLinkFrameworkException) when (DateTimeOffset.UtcNow < propagationDeadline)
+            {
+                consecutiveSurvivorReplies = 0;
+            }
+        }
+
+        ScenarioAssert.That(
+            consecutiveSurvivorReplies == 20,
+            "SF-C2: the consumer did not exclude draining api-b within the propagation bound.");
+
+        for (var i = 0; i < 8; i++)
+        {
+            var reply = await SfProbe.RequestAsync(consumer, $"sf-c2-draining-{i}");
+            ScenarioAssert.That(
+                reply.ProviderRid == "api-a",
+                $"SF-C2: request {i} was assigned to draining provider '{reply.ProviderRid}'.");
+        }
+
+        var drainResult = await drainTask;
+        ScenarioAssert.That(
+            drainResult.Result == "drained" && drainResult.Reason is null,
+            $"SF-C2: framework drain ended as '{drainResult.Result}' ({drainResult.Reason}).");
+
+        // Drained is terminal only after owner cleanup. The row must therefore
+        // already be absent, allowing only query propagation after that result.
         var stopwatch = Stopwatch.StartNew();
-        await providerB.RequestShutdownAsync();
 
         await SfProbe.WaitPeersAsync(
             consumer,
@@ -30,9 +90,9 @@ internal static class SfC2GracefulRemovalScenario
             stopwatch.Elapsed < options.OwnerLeaseTtl,
             $"SF-C2: row removal took {stopwatch.Elapsed}, which does not beat the lease TTL.");
 
-        await providerB.StopAsync();
+        await providerB.RequestShutdownAsync();
+        await providerB.WaitForGracefulExitAsync();
 
-        await Task.Delay(options.PollingInterval * 4);
         for (var i = 0; i < 8; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-c2-{i}");

@@ -20,6 +20,7 @@ internal static class InvalidRegistrationScenario
             UseShellExecute = false
         };
         process.StartInfo.ArgumentList.Add("run");
+        process.StartInfo.ArgumentList.Add("--no-build");
         process.StartInfo.ArgumentList.Add("--project");
         process.StartInfo.ArgumentList.Add(options.InvalidServerProject);
         process.StartInfo.ArgumentList.Add("--");
@@ -33,9 +34,22 @@ internal static class InvalidRegistrationScenario
         process.StartInfo.ArgumentList.Add(options.LogDir);
         process.Start();
 
-        var completed = await Task.Run(() => process.WaitForExit(15_000));
-        File.WriteAllText(stdout, await process.StandardOutput.ReadToEndAsync());
-        var errorText = await process.StandardError.ReadToEndAsync();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        var completed = true;
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        catch (TimeoutException)
+        {
+            completed = false;
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+        }
+
+        File.WriteAllText(stdout, await stdoutTask);
+        var errorText = await stderrTask;
         File.WriteAllText(stderr, errorText);
 
         // A duplicate handler should stop the server before it becomes usable.

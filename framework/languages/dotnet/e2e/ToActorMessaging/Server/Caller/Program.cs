@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using Systems.Zlink;
 using ToActorMessaging.Caller;
 using ToActorMessaging.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Locations.Redis;
 
@@ -11,16 +13,21 @@ Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(options.HttpUrl);
+var cachedActors = new ConcurrentDictionary<string, ActorRef>(StringComparer.Ordinal);
+IZLinkEndpointConnections? actorConnections = null;
 builder.Services.AddZLinkFramework(framework =>
 {
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));
-    framework.AddSpotMesh("to-actor")
+    var spot = framework.AddSpotMesh("to-actor")
         .EnableRouter(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid))
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
+        .ConnectRouter(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint)
+        .ConnectRouter(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint)
         .EnablePubSub(options.PubSubEndpoint);
+    actorConnections = spot.RouterConnections;
 });
 
 var app = builder.Build();
@@ -33,10 +40,12 @@ app.MapPost("/send", async (
 {
     try
     {
-        var actor = await actorDirectory.FindAsync(request.ActorId, ct)
-                    ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Actor route '{request.ActorId}' was not found.");
+        var actor = request.Scenario.StartsWith("TA-B1", StringComparison.Ordinal)
+            ? new ActorRef(RoutingId.From(options.ActorRid), request.ActorId, 1)
+            : await actorDirectory.FindAsync(request.ActorId, ct)
+              ?? throw new ZLinkFrameworkException(
+                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                  $"Actor route '{request.ActorId}' was not found.");
         actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
             .Submit(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
@@ -54,10 +63,12 @@ app.MapPost("/request", async (
 {
     try
     {
-        var actor = await actorDirectory.FindAsync(request.ActorId, ct)
-                    ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Actor route '{request.ActorId}' was not found.");
+        var actor = request.Scenario.StartsWith("TA-B1", StringComparison.Ordinal)
+            ? new ActorRef(RoutingId.From(options.ActorRid), request.ActorId, 1)
+            : await actorDirectory.FindAsync(request.ActorId, ct)
+              ?? throw new ZLinkFrameworkException(
+                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                  $"Actor route '{request.ActorId}' was not found.");
         var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);
@@ -67,6 +78,61 @@ app.MapPost("/request", async (
     {
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "failed", error.Kind.ToString()));
     }
+});
+app.MapPost("/refs/{actorId}/capture", async (
+    string actorId,
+    IZLinkActorDirectory actorDirectory,
+    CancellationToken ct) =>
+{
+    var actor = await actorDirectory.FindAsync(actorId, ct)
+                ?? throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor route '{actorId}' was not found.");
+    cachedActors[actorId] = actor;
+    return Results.Ok(ActorRefSnapshot.From(actor));
+});
+app.MapGet("/directory/{actorId}", async (
+    string actorId,
+    IZLinkActorDirectory actorDirectory,
+    CancellationToken ct) =>
+{
+    var actor = await actorDirectory.FindAsync(actorId, ct);
+    return Results.Ok(new ActorRouteStatus(actorId, actor is not null));
+});
+app.MapPost("/cached/request", async (
+    ActorCallRequest request,
+    IZLinkActorClient actors,
+    CancellationToken ct) =>
+{
+    try
+    {
+        if (!cachedActors.TryGetValue(request.ActorId, out var actor))
+            throw new InvalidOperationException($"Actor ref '{request.ActorId}' was not captured.");
+        var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<ActorReply>(ct);
+        return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));
+    }
+    catch (ZLinkFrameworkException error)
+    {
+        return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "failed", error.Kind.ToString()));
+    }
+});
+app.MapPost("/route/disconnect", () =>
+{
+    var connections = actorConnections
+                      ?? throw new InvalidOperationException("Actor router connections are unavailable.");
+    connections.Disconnect(options.ActorRouterEndpoint);
+    connections.Disconnect(options.ActorBRouterEndpoint);
+    return Results.Ok(new { status = "disconnected" });
+});
+app.MapPost("/route/reconnect", () =>
+{
+    var connections = actorConnections
+                      ?? throw new InvalidOperationException("Actor router connections are unavailable.");
+    connections.Connect(options.ActorRouterEndpoint);
+    connections.Connect(options.ActorBRouterEndpoint);
+    return Results.Ok(new { status = "connected" });
 });
 app.MapPost("/shutdown", async (IHostApplicationLifetime lifetime) =>
 {
@@ -85,6 +151,10 @@ namespace ToActorMessaging.Caller
         string RedisKeyPrefix,
         string RouterEndpoint,
         string PubSubEndpoint,
+        string ActorRid,
+        string ActorRouterEndpoint,
+        string ActorBRid,
+        string ActorBRouterEndpoint,
         string LogDir)
     {
         public static ServerOptions Parse(string[] args, string role)
@@ -98,6 +168,10 @@ namespace ToActorMessaging.Caller
                 Get(values, "redis-key-prefix", "zlink:e2e:to-actor"),
                 Get(values, "router-endpoint", "tcp://127.0.0.1:0"),
                 Get(values, "pubsub-endpoint", "tcp://127.0.0.1:0"),
+                Get(values, "actor-rid", "to-actor-owner"),
+                Get(values, "actor-router-endpoint", "tcp://127.0.0.1:0"),
+                Get(values, "actor-b-rid", "actor-b"),
+                Get(values, "actor-b-router-endpoint", "tcp://127.0.0.1:0"),
                 logDir);
         }
 

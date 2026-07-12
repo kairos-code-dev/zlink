@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using StoreFailure.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 
 namespace StoreFailure.Server.Provider;
 
@@ -43,6 +44,17 @@ internal static class ProviderEndpoints
         {
             evidence.Clear();
             return Results.Ok(new { status = "cleared" });
+        });
+        app.MapPost("/drain", async (IZLinkDrainControl drain) =>
+        {
+            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+            return result switch
+            {
+                Drained => Results.Ok(new DrainResultRes("drained", null)),
+                ForceStopped forced => Results.Ok(
+                    new DrainResultRes("force_stopped", forced.Reason.ToString())),
+                _ => throw new InvalidOperationException("Unknown drain result.")
+            };
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

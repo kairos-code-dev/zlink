@@ -57,7 +57,9 @@ internal static class ConsumerHostFactory
                 var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
                 var matches = peers
                     .Where(peer => peer.NodeRid is { Size: > 0 } rid
-                                   && rid == RoutingId.From(request.RoutingId))
+                                   && rid == RoutingId.From(request.RoutingId)
+                                   && (request.ExpectedWeight is null
+                                       || peer.Weight == request.ExpectedWeight))
                     .ToArray();
                 var satisfied = request.ExpectedCount == 0
                     ? matches.Length == 0
@@ -67,7 +69,8 @@ internal static class ConsumerHostFactory
                         .Select(peer => new TopologyEntryRes(
                             peer.NodeRid?.ToString(),
                             peer.Endpoint,
-                            "Ready"))
+                            "Ready",
+                            peer.Weight))
                         .ToArray());
 
                 if (DateTimeOffset.UtcNow >= deadline)
@@ -77,6 +80,7 @@ internal static class ConsumerHostFactory
                 await Task.Delay(150);
             }
         });
+
         app.MapPost("/profile/request", async (
             ProfileReq request,
             IZLinkChannelClient channel) =>
@@ -259,4 +263,4 @@ internal sealed record ConsumerOptions(
             : throw new ArgumentException($"--{key} is required.");
 }
 
-internal sealed record TopologyEntryRes(string? RoutingId, string Endpoint, string State);
+internal sealed record TopologyEntryRes(string? RoutingId, string Endpoint, string State, uint Weight);

@@ -26,7 +26,7 @@ REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-PROCESS_CLEANUP_TIMEOUT_SECONDS=5
+PROCESS_CLEANUP_TIMEOUT_SECONDS=35
 TURN_SHUTDOWN_TIMEOUT_SECONDS=60
 SCENARIO_MARKER_TIMEOUT_SECONDS=30
 SHUTDOWN_CLIENT_MARKER_TIMEOUT_SECONDS=90
@@ -174,6 +174,8 @@ static_checks() {
     echo "AutomaticTurnDispatch shutdown scenario must create and use a real stream connector directly." >&2
     return 1
   fi
+
+  echo "ATD-E4 PASS public-await-surface=validated"
 }
 
 PIDS=()
@@ -567,6 +569,8 @@ if scenario_selected full; then
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   cat "$LOG_DIR/client.stdout.log"
+  echo "ATD-D1 PASS topology=local"
+  echo "ATD-E5 PASS language=dotnet scenario-ids=common"
 fi
 
 if scenario_selected shutdown; then

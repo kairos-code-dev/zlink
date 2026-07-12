@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using StoreFailure.Shared;
 using Zlink.HttpClient;
 
 namespace StoreFailure.Client.Support;
@@ -162,6 +163,7 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
 
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
+    private static readonly TimeSpan GracefulExitTimeout = TimeSpan.FromSeconds(35);
     private bool _shutdownRequested;
     private bool _stopped;
 
@@ -211,6 +213,37 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         _shutdownRequested = true;
     }
 
+    public async Task<DrainResultRes> RequestDrainAsync()
+    {
+        if (process.HasExited)
+            throw new InvalidOperationException("Cannot drain an exited process.");
+
+        using var http = ZLinkHttpClient.Create(healthUrl).Timeout(GracefulExitTimeout).Build();
+        return (await http.Post("/drain").SubmitAsync<DrainResultRes>()).Body;
+    }
+
+    public async Task WaitForGracefulExitAsync()
+    {
+        if (!_shutdownRequested)
+            throw new InvalidOperationException("Graceful shutdown must be requested before waiting for exit.");
+
+        using var exitWait = new CancellationTokenSource(GracefulExitTimeout);
+        try
+        {
+            await process.WaitForExitAsync(exitWait.Token);
+        }
+        catch (OperationCanceledException) when (exitWait.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Process did not complete graceful shutdown within {GracefulExitTimeout}.");
+        }
+
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"Gracefully stopped process exited with code {process.ExitCode}.");
+
+        _stopped = true;
+    }
+
     public async Task StopAsync()
     {
         if (_stopped) return;
@@ -229,7 +262,10 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
                 if (!process.HasExited) process.Kill(true);
             }
 
-        using var exitWait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        // The framework's public drain deadline is 30 seconds. The harness
+        // must allow that operation to finish instead of turning a normal
+        // shutdown into a SIGKILL while owner cleanup is still pending.
+        using var exitWait = new CancellationTokenSource(GracefulExitTimeout);
         try
         {
             await process.WaitForExitAsync(exitWait.Token);

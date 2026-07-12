@@ -10,7 +10,8 @@ public sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
+        if (flow.Outcome is not (ZLinkMessageFlowOutcome.Error or ZLinkMessageFlowOutcome.Dropped))
+            return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"

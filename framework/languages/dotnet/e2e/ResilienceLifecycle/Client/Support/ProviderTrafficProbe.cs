@@ -11,6 +11,46 @@ namespace ResilienceLifecycle.Client.Support;
 /// </summary>
 internal static class ProviderTrafficProbe
 {
+    public static async Task WaitUntilProviderExcludedAsync(
+        ZLinkHttpClient consumer,
+        string excludedProviderRid,
+        string markerPrefix,
+        string scenario)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var consecutiveSurvivorReplies = 0;
+        for (var probe = 0; consecutiveSurvivorReplies < 20; probe++)
+        {
+            try
+            {
+                var reply = (await consumer.Post("/profile/request/timeout/1000")
+                    .Body(new ProfileReq("fast", $"{markerPrefix}-{probe}"))
+                    .SubmitAsync<ProfileRes>(deadline.Token)).Body;
+                consecutiveSurvivorReplies = reply.ProviderRid == excludedProviderRid
+                    ? 0
+                    : consecutiveSurvivorReplies + 1;
+            }
+            catch (Exception) when (!deadline.IsCancellationRequested)
+            {
+                consecutiveSurvivorReplies = 0;
+            }
+
+            if (deadline.IsCancellationRequested) break;
+        }
+
+        if (consecutiveSurvivorReplies < 20)
+            throw new InvalidOperationException(
+                $"{scenario}: consumer did not converge after provider '{excludedProviderRid}' changed its runtime weight.");
+    }
+
+    public static async Task<ProfileRes> RequestWithoutRetryAsync(
+        ZLinkHttpClient consumer,
+        ProfileReq request,
+        CancellationToken cancellationToken = default) =>
+        (await consumer.Post("/profile/request/timeout/1000")
+            .Body(request)
+            .SubmitAsync<ProfileRes>(cancellationToken)).Body;
+
     public static async Task DriveUntilProviderServesAsync(
         ZLinkHttpClient consumer,
         ZLinkHttpClient provider,

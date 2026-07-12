@@ -64,6 +64,7 @@ internal static class RlC4RegistryOutageScenario
         await providerA.Post("/shutdown").SubmitRawAsync();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerA),
             "RL-C4 expected api-a restart after store recovery.");
+        await processes.WaitInitialProviderAExitedAsync();
         await processes.StartProviderAAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-a", "Ready", 1))

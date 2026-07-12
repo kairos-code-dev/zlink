@@ -77,6 +77,21 @@ PY
   return 1
 }
 
+wait_process_exit() {
+  local pid="$1"
+  local name="$2"
+  local attempts=$((LOCAL_READINESS_TIMEOUT_SECONDS * 10))
+  for _ in $(seq 1 "$attempts"); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      wait "$pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name process $pid to exit" >&2
+  return 1
+}
+
 start_node() {
   local rid="$1"
   local url="$2"
@@ -140,6 +155,7 @@ dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
 start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+NODE_A_PID="${pids[${#pids[@]}-1]}"
 start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM"
 start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_STREAM"
 
@@ -153,8 +169,8 @@ sleep 5
 
 if [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
-  run_client "ST-C2"
-  sleep 1
+  run_client "ST-B2"
+  wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_ROUTER_PORT="$(pick_port)"
   NODE_A_STREAM_PORT="$(pick_port)"
@@ -162,10 +178,11 @@ if [[ "$SCENARIO" == "all" ]]; then
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
   NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+  NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   sleep 5
-  run_client "ST-B2"
-  sleep 1
+  run_client "ST-C2"
+  wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_ROUTER_PORT="$(pick_port)"
   NODE_A_STREAM_PORT="$(pick_port)"
@@ -173,6 +190,7 @@ if [[ "$SCENARIO" == "all" ]]; then
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
   NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+  NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   sleep 5
   run_client "ST-C1"

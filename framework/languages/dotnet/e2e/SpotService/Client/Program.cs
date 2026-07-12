@@ -49,6 +49,7 @@ await (options.OperationGroup switch
     "sm-g1" => SmG1Scenario.RunAsync(options.PlayAUrl, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-q9" => SmQ9Scenario.RunAsync(multiA, multiB),
     "sm-f6" => SmF6Scenario.RunAsync(multiA, multiB),
+    "sm-f3-f5" => SmF3F5Scenario.RunAsync(playA, gateway),
     "sm-e1-f4" => RunE1F4Async(playA),
     "sm-e2-e3" => RunE2E3Async(playA),
     "sm-a7-a8-c4" => RunA7A8C4Async(playA, gateway),

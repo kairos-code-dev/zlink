@@ -32,7 +32,7 @@ internal static class MonC1DispatchFailureScenario
             throwServiceEvidence.Any(line => line.Contains("monitor-throw|", StringComparison.Ordinal)),
             "MON-C1 throwing monitor evidence missing.");
         ScenarioAssert.That(
-            throwStderr.Any(line => line.Contains("monitoring-event-dispatch", StringComparison.Ordinal))
+            throwStderr.Any(line => line.Contains("unhandled callback failed", StringComparison.Ordinal))
             && throwStderr.Any(line => line.Contains("monitoring dispatch failure for e2e", StringComparison.Ordinal)),
             "MON-C1 dispatch failure log evidence missing.");
         Console.WriteLine("scenario MON-C1 passed");
@@ -51,14 +51,14 @@ internal static class MonC1DispatchFailureScenario
         var stderrTask = trigger.Post("/logs/throw-stderr/wait")
             .Body(new EvidenceWaitReq(
                 [],
-                [["monitoring-event-dispatch"], ["monitoring dispatch failure for e2e"]]))
+                [["unhandled callback failed"], ["monitoring dispatch failure for e2e"]]))
             .SubmitAsync<string[]>();
 
         var evidence = (await evidenceTask).Body;
         var stderr = (await stderrTask).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("monitor-throw|", StringComparison.Ordinal))
-            && stderr.Any(line => line.Contains("monitoring-event-dispatch", StringComparison.Ordinal))
+            && stderr.Any(line => line.Contains("unhandled callback failed", StringComparison.Ordinal))
             && stderr.Any(line => line.Contains("monitoring dispatch failure for e2e", StringComparison.Ordinal)))
             return (evidence, stderr);
 

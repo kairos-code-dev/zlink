@@ -21,7 +21,7 @@ internal static class SpotFailureEndpoints
             var before = evidence.Snapshot();
             var failed = await FailsAsync(
                 routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
-                        new StateReq("noop", 0))
+                        new MissingSpotReq("sm-e1"))
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StateRes>().AsTask());
             await WaitUntilAsync(
@@ -43,7 +43,7 @@ internal static class SpotFailureEndpoints
                 try
                 {
                     routes.SendToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
-                            new StateMsg(request.Marker)).Submit(missingSendCts.Token);
+                            new MissingSpotMsg(request.Marker)).Submit(missingSendCts.Token);
                 }
                 catch (OperationCanceledException) when (missingSendCts.IsCancellationRequested)
                 {

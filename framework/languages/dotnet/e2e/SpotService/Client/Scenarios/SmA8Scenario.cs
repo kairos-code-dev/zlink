@@ -19,12 +19,18 @@ internal static class SmA8Scenario
             .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
             "SM-A8 worker spot route did not become ready.");
-        var worker = (await playA.Post("/spot/worker/start")
+        var workerTask = playA.Post("/spot/worker/start")
             .Body(new SpotWorkerStartReq(spotRid, "sm-a8-worker", 5000))
-            .SubmitAsync<WorkerStartRes>()).Body;
+            .SubmitAsync<WorkerStartRes>()
+            .AsTask();
+        _ = await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                [$"worker-start|rid=play-a|spot={spotRid}|marker=sm-a8-worker"]))
+            .SubmitAsync<string[]>();
         var duringWorker = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "add", 1))
             .SubmitAsync<StateRes>()).Body;
+        var worker = (await workerTask).Body;
         var completed = (await playA.Post("/spot/worker/complete")
             .Body(new SpotWorkerCompleteReq(spotRid, "sm-a8-worker"))
             .SubmitAsync<SpotWorkerCompleteRes>()).Body;

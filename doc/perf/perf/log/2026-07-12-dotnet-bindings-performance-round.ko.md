@@ -817,3 +817,22 @@ nice compiler 작업이 끝나고 CPU idle이 93.0%로 회복된 뒤 C와 .NET�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_DEALER / inproc`
+
+### DEALER_DEALER inproc 완료
+
+CPU idle이 85.1~90.4% 범위에서 안정적이고 한 프로세스가 CPU 하나를 독점하지 않는
+상태에서 C와 .NET의 local transport 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_151323_core_9_0_dotnet_dealer_dealer_inproc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_151605_core_9_0_dotnet_dealer_dealer_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 94.2%, 76.6%, 67.1%, 99.3%, 99.6%, 99.8%였다. 최소는
+67.1%, 크기 중앙값은 약 96.7%다. local transport 예외가 아닌 일반 단순 one-way
+최소 64%와 중앙값 85%를 적용해도 통과한다. 평균 latency 최대 비율은 1024B의
+2.09배로 일반 상한 3배 이내다. 모든 목표를 첫 paired 측정에서 만족해 추가 개선은
+필요하지 않았다.
+
+- `DEALER_DEALER / inproc`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_DEALER / ipc`

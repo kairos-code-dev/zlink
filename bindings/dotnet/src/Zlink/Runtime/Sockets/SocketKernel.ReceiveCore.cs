@@ -8,13 +8,14 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel
 {
-    private bool ReceiveBasicParts(int flags,
-        out byte[]? routingIdBytes, out Message? singlePart,
+    // HOT PATH: basic message receive intentionally discards source routing
+    // metadata. Routed receive helpers own that information; do not restore a
+    // routing-id allocation or copy to this path.
+    private bool ReceiveBasicParts(int flags, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
     {
         var nativeParts = Array.Empty<ZlinkMsg>();
         var nativePartCount = 0;
-        routingIdBytes = null;
         singlePart = null;
         parts = null;
         try
@@ -31,10 +32,10 @@ internal sealed partial class SocketKernel
                 var initialized = true;
                 var rc = (flags & DontWaitFlag) != 0
                     ? NativeMethods.zlink_recv_part_nowait(Handle,
-                        out var sourceRoutingId, ref part, out var hasMore,
+                        out _, ref part, out var hasMore,
                         flags)
                     : NativeMethods.zlink_recv_part(Handle,
-                        out sourceRoutingId, ref part, out hasMore, flags);
+                        out _, ref part, out hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
@@ -48,7 +49,6 @@ internal sealed partial class SocketKernel
                 }
 
                 initialized = false;
-                routingIdBytes ??= CopyRoutingIdBytes(sourceRoutingId);
                 if (hasMore == 0 && nativePartCount == 0)
                 {
                     // Pool-aware adoption: in routed echo workloads the

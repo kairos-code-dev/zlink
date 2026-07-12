@@ -256,3 +256,24 @@ C 57,818.8msg/s, .NET 55,148.0msg/s로 95.4%였으며 평균 latency는 1.05배�
 
 확정 hot path와 제한 조건은 native 선언의 주석에 남겼다. 실제 처리량 개선과 회귀 gate를
 통과했으므로 변경을 채택하지만 tcp 256B는 70% 미만이라 계속 `미달`이다.
+
+짧은 native helper 개선은 `bb325ccd7` (`perf(dotnet): trim short native message
+transitions`)로 원격 `main`에 푸시했다.
+
+### basic receive의 사용하지 않는 routing ID 제거
+
+`ReceiveBasicParts`는 source routing ID를 `byte[]`로 복사해 출력했지만 유일한 호출자는 항상
+그 값을 버렸다. 향후 사용을 예상해 범용 출력을 유지하는 설계와, routed metadata 책임을
+전용 routed receive helper에만 두는 설계를 비교했다. 후자를 선택해 basic receive의 사용하지
+않는 출력 parameter와 복사 호출을 제거했다. 리팩토링 때 이 비용이 다시 들어오지 않도록
+책임 경계를 `HOT PATH:` 주석에 기록했다.
+
+tcp 256B 3회 결과는 1,218,093.6msg/s와 평균 latency 0.172ms였다. 직전 결과 대비
+처리량은 +0.48%, 평균 latency는 +4.9%로 회귀 gate 안이다.
+
+- report: `perf_dotnet_single_linux_20260712_091351_core_9_0_dotnet_pair_tcp256_basic_receive_metadata_posd_candidate_20260712.txt`
+- single/multi Release build: 경고 0, 오류 0
+- `Zlink.Tests`: 178개 통과
+
+사용하지 않는 정보 흐름과 복사 책임을 제거했고 기능·성능 회귀가 없으므로 POSD 개선으로
+채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.

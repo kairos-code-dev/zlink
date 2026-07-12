@@ -161,8 +161,7 @@ internal sealed partial class SocketKernel
     private bool TryReceiveIntoMessageCore(Received result, int flags)
     {
         var allowNoData = (flags & DontWaitFlag) != 0;
-        if (!ReceiveBasicParts(flags, out _, out var singlePart,
-                out var parts,
+        if (!ReceiveBasicParts(flags, out var singlePart, out var parts,
                 allowNoData))
             return false;
         if (singlePart != null)

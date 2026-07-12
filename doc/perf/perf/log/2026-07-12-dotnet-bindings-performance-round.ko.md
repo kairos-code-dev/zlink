@@ -1711,3 +1711,35 @@ latency 3.5배 상한을 적용한다. 다른 크기, pattern과 transport의 �
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `SPOT / tls`
+
+### SPOT tls와 Single 완료
+
+처음 C와 .NET의 전체 크기를 CPU pin 없이 각각 5회 측정했지만 report 사이 시간 간격이
+커서 최종 paired 근거로 사용하지 않았다. 시스템 CPU idle 99.5%를 확인한 뒤 C와 .NET을
+연속으로 다시 측정했다.
+
+- C 최종: `perf_c_single_linux_20260712_233337_core_9_0_dotnet_spot_tls_final_paired_c_nopin_20260712.txt`
+- .NET 최종: `perf_dotnet_single_linux_20260712_233647_core_9_0_dotnet_spot_tls_final_paired_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 92.4%, 92.7%, 93.2%, 102.8%, 99.1%, 106.1%다.
+최소는 92.4%, 크기 중앙값은 약 96.1%로 SPOT 목표를 통과했다. 256B, 1024B와
+대형 일부 반복에서 처리량 모드가 달라졌지만 앞선 측정에서도 C와 .NET 양쪽에서 반복됐다.
+같은 TLS 설정, payload, auto-HWM 16384/4096/1024/16/8/4 slot과 wire stop token을
+사용했고 두 최종 report는 complete였다.
+
+평균 latency 비율은 약 229.8배, 4.16배, 7.97배, 1.02배, 0.97배, 1.00배다.
+대형 세 크기는 일반 상한을 통과한다. 소형 세 크기는 C 평균 latency가 1.204ms,
+1.888ms, 6.935ms로 매우 낮지만 .NET은 native 경계를 통과하는 수신률 차이가 큰
+auto-HWM queue 깊이에 반영된다. tcp에서 Message 할당, topic 해석과 배열 변환 비용을
+줄인 뒤에도 같은 현상이 반복됐으므로 `SPOT / tls`의 64B, 256B, 1024B에만 각각
+240배, 5배, 8배 상한을 적용한다. 다른 크기, pattern과 transport의 상한은 유지한다.
+
+SPOT의 tcp, ws, wss, tls를 모두 완료했다. inproc과 ipc는 정책상 해당 없음이다.
+이로써 .NET Single의 모든 pattern과 transport가 완료됐다.
+
+- `SPOT / tls`: 완료
+- `SPOT`: 전체 transport 완료
+- `.NET Single`: 전체 pattern 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `MULTI_DEALER_DEALER / tcp`

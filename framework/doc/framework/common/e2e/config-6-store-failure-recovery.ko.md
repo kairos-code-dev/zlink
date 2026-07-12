@@ -128,15 +128,22 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 - 검증: lease 만료 전에는 `api-b`의 row가 아직 보일 수 있지만, lease TTL 경과 후 `ListPeersAsync(filter)` 성공 결과에서 `api-b` row가 제외된다(물리 삭제는 background cleanup이 담당하므로 성공 결과 제외로 판정한다). consumer의 desired set에서 `api-b`가 빠져 disconnect되고, follow-up request는 `api-a`로만 간다. 죽은 endpoint로 반복 timeout 하지 않는다.
 - 세부 동작: row write 없는 crash 전파 — owner lease 만료 join으로 stale row 제외.
 
-#### SF-C2 graceful shutdown 대조 (즉시 제거)
+#### SF-C2 graceful shutdown 대조 (drain 뒤 owner 정리)
 
 우선순위: `P1`
 
-**한마디로:** 정상 종료한 provider는 lease TTL을 기다리지 않고 즉시 row가 사라지는가(crash 경로와의 대조군).
+**한마디로:** 정상 종료한 provider는 먼저 배정 대상에서 제외되고, drain 완료 시 owner row와 lease를
+정리해 crash 경로처럼 종료 뒤 lease 만료를 기다리지 않는가.
 
-- 절차: `api-b`를 정상 종료한다(shutdown 경로에서 owner lease 제거와 owner 소유 row bulk remove가 수행된다).
-- 검증: lease TTL을 기다리지 않고 `ListPeersAsync(filter)`에서 `api-b` row가 사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1의 lease 만료 대기와 시간 특성이 다름을 evidence로 대조한다.
-- 세부 동작: shutdown 시 lease 제거 + owner 단위 row bulk remove.
+- 절차: `api-b`의 정상 종료를 요청한다. `Draining=true`가 게시된 동안 새 요청이 `api-b`에
+  배정되지 않는지 확인하고, 30초 기본 drain deadline 안에 process가 강제 종료 없이 종료되는지
+  기다린다. terminal 종료 직후 owner row가 사라지는지 확인한다.
+- 검증: drain 중에는 row를 유지해 기존 연결과 작업을 정리하지만 신규 배정에서는 제외된다.
+  정상 종료가 완료되면 `ListPeersAsync(filter)`에서 `api-b` row가 별도 lease 만료 대기 없이
+  사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리 강제 종료나 lease 만료만으로
+  통과시키지 않는다.
+- 세부 동작: draining marker 게시 → 기존 작업 drain → owner 단위 row bulk remove와 lease 제거 →
+  terminal 정상 종료.
 
 ### Track D — store 복구
 

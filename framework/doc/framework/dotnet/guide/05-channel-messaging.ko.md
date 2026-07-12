@@ -1,14 +1,14 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: SPOT — room · stage · zone](05-spot.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵](04-feature-map.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 4. Channel Messaging — request · send · pub/sub
+# 5. Channel Messaging — request · send · pub/sub
 
 > 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)와
 > [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
-channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
+channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
 
 - **request/response** — 응답이 필요한 1:1 호출 (DEALER → ROUTER)
 - **one-way send** — 응답이 없는 단방향 명령 (DEALER → ROUTER)
@@ -16,8 +16,8 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 
 > 🔰 용어(channel·handler·client·codec 등)가 낯설면
 > [03-concepts §0](03-concepts.ko.md)의 한 줄 풀이를 먼저 본다.
-> 괄호 안 `DEALER → ROUTER`·`PUB / SUB` 는 하부 소켓 종류로, **어플리케이션이 직접 다루지
-> 않는다**(framework 가 channel 종류에 따라 자동 매핑).
+> 괄호 안 `DEALER → ROUTER`·`PUB / SUB`는 하부 소켓 종류로, **어플리케이션이 직접 다루지
+> 않는다**(framework가 channel 종류에 따라 자동 매핑).
 
 세 상호작용을 그림으로 먼저 잡으면 이렇다.
 
@@ -34,31 +34,31 @@ flowchart LR
 - **send** 는 **던지고 끝**이다(예: 캐시 무효화 통지).
 - **publish** 는 한 번 보내면 **구독한 모두**가 받는다(예: 도메인 이벤트 전파).
 
-## 0. gRPC 를 쓰던 웹 서비스라면
+## 0. gRPC를 쓰던 웹 서비스라면
 
-channel messaging 은 일반 웹·마이크로서비스 백엔드에서 **서비스 간 gRPC 를
-대체**하는 용도로 쓴다. 서비스마다 host:port 를 알리거나 앞단에
+channel messaging은 일반 웹·마이크로서비스 백엔드에서 **서비스 간 gRPC를
+대체**하는 용도로 쓴다. 서비스마다 host:port를 알리거나 앞단에
 gateway/로드밸런서를 둘 필요 없이, 논리 `channel name` + location store 자동 연결로 호출을 묶는다.
 `.proto` IDL·HTTP/2 전용 인프라·코드 생성 없이 DTO(record)와 typed handler 만으로
-gRPC 의 네 가지 호출 형태를 얻는다.
+gRPC의 네 가지 호출 형태를 얻는다.
 
 | gRPC 패턴 | ZLink 대체 | 이 가이드 |
 |-----------|------------|-----------|
 | Unary RPC | request/response | §2·§4 |
 | Unary `Empty` / fire-and-forget | one-way send | §2·§4 |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | §4 |
-| Client/Bidi streaming | STREAM session | [08-stream](08-stream.ko.md) |
-| 서비스 위치 조회(DNS/xDS) | location store 자동 연결 | [09-location](09-location.ko.md) |
+| Client/Bidi streaming | STREAM session | [09-stream](09-stream.ko.md) |
+| 서비스 위치 조회(DNS/xDS) | location store 자동 연결 | [10-location](10-location.ko.md) |
 | Interceptor | handler filter | §5 |
 | Deadline | request timeout | §4 |
 
 메시지 요청 경로로 보면 차이는 더 분명하다. gRPC 기반 내부 호출은 보통 client
-application 이 gRPC stub 으로 요청을 만들고, L7 로드밸런서 또는 service mesh sidecar 를
+application이 gRPC stub으로 요청을 만들고, L7 로드밸런서 또는 service mesh sidecar를
 통해 scale-out 된 서버 중 하나로 보낸다. deadline/retry 같은 호출 정책은 클라이언트
-코드나 gRPC channel 설정에 둔다. ZLink channel messaging 은 application 이 논리
-`channel name` 으로 요청하고, framework runtime 이 연결 가능한 서버 runtime 중 하나로
-직접 보낸다. 서버 선택은 중간 L7 계층이 아니라 ZLink 의 peer 선택이 맡는다. 기본은
-연결된 peer 사이의 균등 분배이고, peer weight 를 쓰면 새 요청을 받을 서버 비율을
+코드나 gRPC channel 설정에 둔다. ZLink channel messaging은 application이 논리
+`channel name`으로 요청하고, framework runtime이 연결 가능한 서버 runtime 중 하나로
+직접 보낸다. 서버 선택은 중간 L7 계층이 아니라 ZLink의 peer 선택이 맡는다. 기본은
+연결된 peer 사이의 균등 분배이고, peer weight를 쓰면 새 요청을 받을 서버 비율을
 조정하거나 특정 서버를 새 요청 후보에서 뺄 수 있다. 그래서 application 코드는 endpoint
 나 프록시 설정보다 **논리 channel 이름과 handler** 를 중심으로 작성된다.
 
@@ -93,11 +93,11 @@ flowchart LR
     GL --> GSR3 --> GS3
 ```
 
-이 구성에서 client application 은 보통 로드밸런서나 mesh 의 주소만 알고 요청한다.
-scale-out 된 서버 목록과 분산 처리는 로드밸런서나 mesh 가 맡고, 서버 안에서는 gRPC
-server runtime 이 service implementation 으로 요청을 전달한다.
+이 구성에서 client application은 보통 로드밸런서나 mesh의 주소만 알고 요청한다.
+scale-out 된 서버 목록과 분산 처리는 로드밸런서나 mesh가 맡고, 서버 안에서는 gRPC
+server runtime이 service implementation으로 요청을 전달한다.
 
-ZLink 구성에서는 framework runtime 이 연결된 서버 runtime 중 하나를 직접 고른다.
+ZLink 구성에서는 framework runtime이 연결된 서버 runtime 중 하나를 직접 고른다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -128,19 +128,19 @@ flowchart LR
     ZF -->|"직접 요청"| ZR3 --> ZH3
 ```
 
-`runtime peer set` 은 ZLink runtime 이 수동 endpoint 설정이나 location store 자동 연결로
+`runtime peer set`은 ZLink runtime이 수동 endpoint 설정이나 location store 자동 연결로
 유지하는 연결 후보 집합이다.
-메시지는 location store 나 외부 L7 계층을 거치지 않고 runtime 에서 서버 runtime 으로
-간다. 연결된 서버의 weight 가 모두 같으면 균등하게 분배되고, weight 가 다르면 더 큰
-weight 를 가진 서버가 새 요청 대상으로 더 자주 선택된다. weight 가 `0`인 서버는 기존
+메시지는 location store 나 외부 L7 계층을 거치지 않고 runtime에서 서버 runtime으로
+간다. 연결된 서버의 weight가 모두 같으면 균등하게 분배되고, weight가 다르면 더 큰
+weight를 가진 서버가 새 요청 대상으로 더 자주 선택된다. weight가 `0`인 서버는 기존
 연결은 유지하지만 새 outbound 후보에서는 빠진다.
 
-이 그림은 gRPC 와 ZLink 의 우열을 일반화하려는 비교가 아니다. gRPC 는 외부 공개 API,
-표준 RPC 계약, 조직 표준 tooling 이 중요할 때 여전히 좋은 선택이다. ZLink 가 강한
+이 그림은 gRPC와 ZLink의 우열을 일반화하려는 비교가 아니다. gRPC는 외부 공개 API,
+표준 RPC 계약, 조직 표준 tooling이 중요할 때 여전히 좋은 선택이다. ZLink가 강한
 지점은 내부 서비스 호출에서 **논리 channel 이름**, location store 기반 자동 연결,
-TCP 기반 비동기 메시징을 함께 쓸 때다. 별도 L7 로드밸런서나 sidecar 없이도 framework 가
-peer 목록을 보고 연결을 나누지만, 조직 보안 정책이나 외부 ingress 가 필요하면 기존
-mesh/LB 를 함께 둔다.
+TCP 기반 비동기 메시징을 함께 쓸 때다. 별도 L7 로드밸런서나 sidecar 없이도 framework가
+peer 목록을 보고 연결을 나누지만, 조직 보안 정책이나 외부 ingress가 필요하면 기존
+mesh/LB를 함께 둔다.
 
 ```mermaid
 sequenceDiagram
@@ -157,23 +157,23 @@ sequenceDiagram
 
     A->>C: RequestToChannel("orders", dto)
     C->>R: 연결된 peer 후보에 submit
-    R->>R: round-robin / weight 로 peer 선택
+    R->>R: round-robin / weight로 peer 선택
     R->>S: TCP 기반 비동기 송신
     S->>H: typed handler dispatch
     H-->>S: reply dto
     S-->>R: reply frame
-    R-->>C: correlation 으로 reply 매칭
+    R-->>C: correlation으로 reply 매칭
     C-->>A: await 결과 반환
 ```
 
 성능은 payload 크기, codec, 네트워크, peer 수, 배포 방식에 따라 달라진다. 이 장에서
-강조하는 핵심은 **호출 경로와 운영 컴포넌트를 줄일 수 있다**는 점이다. ZLink 는
-HTTP/2 프록시·stub·별도 broker 를 통과하는 구성을 줄이고, TCP 기반 비동기 channel 로
-request/reply 와 send 를 처리하기 때문에 내부 메시징 경로를 짧게 만들 수 있다.
-더 자세한 도입 판단과 gRPC 비교는 [13-grpc-alternative](13-grpc-alternative.ko.md)가
+강조하는 핵심은 **호출 경로와 운영 컴포넌트를 줄일 수 있다**는 점이다. ZLink는
+HTTP/2 프록시·stub·별도 broker를 통과하는 구성을 줄이고, TCP 기반 비동기 channel로
+request/reply와 send를 처리하기 때문에 내부 메시징 경로를 짧게 만들 수 있다.
+더 자세한 도입 판단과 gRPC 비교는 [14-grpc-alternative](14-grpc-alternative.ko.md)가
 다룬다.
 
-예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)` 가 다음과 같이 바뀐다.
+예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)`가 다음과 같이 바뀐다.
 
 ```csharp
 // 서버: handler 하나 (gRPC service 구현 대신)
@@ -198,13 +198,13 @@ var placed = await client
 ```
 
 이 호출 표면(`RequestToChannel`/`SendToChannel`/`Publish` + 종결자)은
-[12-interface-catalog](12-interface-catalog.ko.md) §1.6 의 계약 테스트
+[13-interface-catalog](13-interface-catalog.ko.md) §1.6의 계약 테스트
 `ChannelContracts.Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services`
 로 검증된다. 아래 본문 예제는 같은 표면을 profile/account/user 등 다른 웹 도메인으로
 보여 준다.
 
 > 비슷한 서비스를 새로 만들 때의 기술 선택 경계와 도입 판단은
-> [13-grpc-alternative](13-grpc-alternative.ko.md) 가 다룬다.
+> [14-grpc-alternative](14-grpc-alternative.ko.md)가 다룬다.
 
 ## 1. channel 종류
 
@@ -212,18 +212,18 @@ var placed = await client
 |-------------|-----------|------------|------|
 | `AddClientServerChannel` | ROUTER 서버 ← DEALER 클라이언트 | `EnableServer` / `EnableClient` | request, send |
 | `AddFanoutChannel` | PUB → SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
-| `AddRouteMesh` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
+| `AddRouteMeshChannel` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
 
-이 챕터 §2~§7 은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
-다룬다. 수평 확장은 client-server channel 에 여러 endpoint 를 연결하거나 location store
-자동 연결([09-location](09-location.ko.md))을 사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
-하므로 `IZLinkRouteClient` 와 route 전용 handler 를 쓴다.
+이 챕터 §2~§7은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
+다룬다. 수평 확장은 client-server channel에 여러 endpoint를 연결하거나 location store
+자동 연결([10-location](10-location.ko.md))을 사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId`를 함께 지정해야
+하므로 `IZLinkRouteClient`와 route 전용 handler를 쓴다.
 [§8](#8-client-server-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
 소켓 구조 그림은 [03-concepts §1](03-concepts.ko.md#1-channel--서버-간-연결).
 
 ## 2. handler 작성
 
-handler 는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
+handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
 
 ```csharp
 // request-response
@@ -272,36 +272,36 @@ public sealed class CacheRefreshedEventHandler
 }
 ```
 
-- handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore` 처럼). context 에서
-  service 를 꺼내는 service locator 패턴은 쓰지 않는다.
+- handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore`처럼). context에서
+  service를 꺼내는 service locator 패턴은 쓰지 않는다.
 - handler context(`ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext`)
   는 공통적으로 channel 이름·packet 이름·content type·연결 취소 토큰을 제공한다.
-  publish context 는 추가로 topic/source 를 제공한다.
-- handler class 는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class 에
-  주제별로 묶어도, packet 마다 class 를 따로 둬도 동작은 같다.
-- interface 기반 handler 는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`
+  publish context는 추가로 topic/source를 제공한다.
+- handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
+  주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
+- interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`
   의 payload, context, return 타입이 interface 계약과 맞지 않으면 컴파일이 실패한다.
 
 ### attribute 기반 메서드 handler
 
-인터페이스 대신 attribute 를 단 메서드로도 같은 handler 를 작성할 수 있다. 한
-class 에 여러 handler 메서드를 둘 때 편하다.
+인터페이스 대신 attribute를 단 메서드로도 같은 handler를 작성할 수 있다. 한
+class에 여러 handler 메서드를 둘 때 편하다.
 
 ```csharp
-[ZLinkHandlerGroup("api")]   // 이 class 의 메서드들을 "api" group 으로 묶어 channel 에 노출(§3)
+[ZLinkHandlerGroup("api")]   // 이 class의 메서드들을 "api" group으로 묶어 channel에 노출(§3)
 public sealed class UserHandlers
 {
     private readonly IZLinkFanoutClient _publisher;
     public UserHandlers(IZLinkFanoutClient publisher) => _publisher = publisher;
 
-    [ZLinkRequest]   // 메서드 attribute 가 handler 종류를 정한다(channel 이름은 안 받음)
+    [ZLinkRequest]   // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음)
     public ValueTask<GetUserReply> GetUserAsync(
         GetUserRequest request,            // 인자 순서 = (payload, context?, ct?) — context·토큰은 생략 가능
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
         => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
-    [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request 의 ValueTask<TReply> 와 대비.
+    [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request의 ValueTask<TReply> 와 대비.
     public async ValueTask RefreshCacheAsync(
         RefreshUserCacheCommand command,
         ZLinkSendContext context,
@@ -315,32 +315,32 @@ public sealed class UserHandlers
 }
 ```
 
-- 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context 와
+- 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context와
   토큰은 생략할 수 있다.
-- attribute 기반 handler 는 한 class 에 여러 request/send/publish 메서드를 묶기
+- attribute 기반 handler는 한 class에 여러 request/send/publish 메서드를 묶기
   쉽지만, interface 기반처럼 handler 계약을 컴파일 타임에 강하게 고정하지는 않는다.
-  잘못된 context 타입이나 반환 타입은 framework 의 scan/validation 또는 실행 단계에서
+  잘못된 context 타입이나 반환 타입은 framework의 scan/validation 또는 실행 단계에서
   드러날 수 있다.
-- `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 는 **channel 이름을 받지
+- `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]`는 **channel 이름을 받지
   않는다.** channel 매핑은 등록이 소유한다(§3).
 
 handler 작성 방식은 다음 기준으로 고른다.
 
 - handler 하나를 class 하나로 분리하고 타입 안전성을 우선하면 interface 기반을 쓴다.
-- 같은 주제의 handler 메서드를 한 class 에 여러 개 담고 싶으면 attribute 기반을 쓴다.
+- 같은 주제의 handler 메서드를 한 class에 여러 개 담고 싶으면 attribute 기반을 쓴다.
 - 샘플은 등록 방식을 게임별로 나눠 보여 준다 — **Bingo** 는 attribute +
   `AddHandlersFromAssemblyOf<...>` + `AddHandlerGroup(...)` **자동 등록**, **TicTacToe** 는
   `AddRequestHandler<T>()` **수동 등록**(§3 방법 A/B).
 
-## 3. handler 를 channel 에 노출하기
+## 3. handler를 channel에 노출하기
 
-framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않는다. **발견과
+framework는 발견한 handler를 모든 channel에 자동으로 열지 않는다. **발견과
 노출은 별개 단계**다.
 
 > **등록은 자동이 기본, 수동도 된다.** `[ZLinkHandlerGroup]` +
-> `AddHandlersFromAssemblyOf<...>` 로 **자동**(attribute scan) 등록하는 것이 기본이고 가장
-> 편하다(방법 A). 어떤 handler 가 매핑되는지 구성 코드에서 명시적으로 통제하고 싶으면
-> `AddRequestHandler<T>()` 등으로 **수동** 등록한다(방법 B). 둘 다 같은 dispatcher 로
+> `AddHandlersFromAssemblyOf<...>`로 **자동**(attribute scan) 등록하는 것이 기본이고 가장
+> 편하다(방법 A). 어떤 handler가 매핑되는지 구성 코드에서 명시적으로 통제하고 싶으면
+> `AddRequestHandler<T>()` 등으로 **수동** 등록한다(방법 B). 둘 다 같은 dispatcher로
 > 들어간다.
 
 ### 방법 A — group + AddHandlerGroup (여러 handler 묶음)
@@ -359,9 +359,9 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-- `[ZLinkHandlerGroup("api")]` 가 없는 class 는 어느 channel 에도 매핑되지
+- `[ZLinkHandlerGroup("api")]`가 없는 class는 어느 channel에도 매핑되지
   않는다(opt-in 표식).
-- 같은 group 을 여러 channel 에, 한 channel 에 여러 group 을 매핑할 수 있다.
+- 같은 group을 여러 channel에, 한 channel에 여러 group을 매핑할 수 있다.
 
 ### 방법 B — typed registration (개별 등록)
 
@@ -375,32 +375,33 @@ builder.Services.AddZLinkFramework(options =>
 }
 ```
 
-fanout channel 의 publish handler 는 builder 의 `AddPublishHandler<...>()` 또는
+fanout channel의 publish handler는 builder의 `AddPublishHandler<...>()` 또는
 group 매핑으로 등록한다.
 
-> **packet 이름 해석 순서:** ① builder 의 `PacketName(...)`/`packetName` 인자 → ②
+> **packet 이름 해석 순서:** ① handler 등록의 `packetName` 인자 → ②
 > payload 타입의 `[ZLinkPacket("...")]` → ③ 둘 다 없으면 타입 이름(`Type.Name`).
-> 같은 channel 안에서 `kind + packet 이름` 이 겹치면 **시작 단계에서 예외**다. 다른
-> channel 끼리는 같은 packet 이름을 재사용해도 된다.
+> packet 이름은 이렇게 **등록 시 한 번** 확정된다. 호출 call마다 다시 지정하는
+> 표면은 없다. 같은 channel 안에서 `kind + packet 이름`이 겹치면 **시작 단계에서
+> 예외**다. 다른 channel끼리는 같은 packet 이름을 재사용해도 된다.
 
 ### 잘못된 등록은 시작 단계에서 막힌다
 
-channel 종류가 handler 종류를 강제한다 — client/server 는 request·send 만, fanout 은
-publish 만 받는다. channel 이름은 종류별로 따로 관리되지 않고, framework 안에서 하나의
-이름 공간을 공유한다. 따라서 client/server channel 과 fanout channel 이 서로 다른
+channel 종류가 handler 종류를 강제한다 — client/server는 request·send만, fanout은
+publish만 받는다. channel 이름은 종류별로 따로 관리되지 않고, framework 안에서 하나의
+이름 공간을 공유한다. 따라서 client/server channel과 fanout channel이 서로 다른
 종류여도 같은 이름을 쓰면 안 된다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
 런타임에 조용히 무시되거나 잘못 라우팅되지 않고 **`AddZLinkFramework` 시작 단계에서
-`ZLinkConfigurationException` 으로 즉시 실패**한다. 즉 잘못된 설정은 빌드가 아니라
+`ZLinkConfigurationException`으로 즉시 실패**한다. 즉 잘못된 설정은 빌드가 아니라
 **부팅이 깨지므로** 운영에 나가기 전에 드러난다.
 
 | 잘못된 등록 | 시작 단계 예외 메시지 |
 |-------------|----------------------|
-| client/server channel 에 publish handler 등록 | `client/server channel '{name}' cannot register publish handlers` |
-| fanout channel 에 request/send handler 등록 | `fanout channel '{name}' cannot register send or request handlers` |
+| client/server channel에 publish handler 등록 | `client/server channel '{name}' cannot register publish handlers` |
+| fanout channel에 request/send handler 등록 | `fanout channel '{name}' cannot register send or request handlers` |
 | 종류가 달라도 같은 channel 이름을 중복 등록 | `Duplicate channel name '{name}'` |
-| 종류가 맞지 않는 handler 그룹 매핑(예: fanout 에 request 그룹) | `maps handler group '{group}' with incompatible handler kind` |
-| handler 를 노출했지만 받을 역할이 없음(server/subscriber 미등록) | `exposes handlers but does not enable server/subscriber capability` |
-| 같은 channel 에 `kind + packet 이름` 중복 | `Duplicate request/send/publish handler '{channel}:{packet}'` |
+| 종류가 맞지 않는 handler 그룹 매핑(예: fanout에 request 그룹) | `maps handler group '{group}' with incompatible handler kind` |
+| handler를 노출했지만 받을 역할이 없음(server/subscriber 미등록) | `exposes handlers but does not enable server/subscriber capability` |
+| 같은 channel에 `kind + packet 이름` 중복 | `Duplicate request/send/publish handler '{channel}:{packet}'` |
 
 ## 4. outbound 호출
 
@@ -413,7 +414,7 @@ public sealed class PriceService(IZLinkChannelClient client)
     {
         var reply = await client
             .RequestToChannel("price", new PriceRequest(symbol))
-            .Async<PriceReply>(ct);    // request: reply 타입은 payload 가 아니라 .Async<T> 에서 지정
+            .Async<PriceReply>(ct);    // request: reply 타입은 payload가 아니라 .Async<T> 에서 지정
         return reply.Price;
     }
 
@@ -425,15 +426,14 @@ public sealed class PriceService(IZLinkChannelClient client)
 ```
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
-- **`PacketName(...)` 과 `Timeout(...)` 은 선택적 override 종결자다.** packet name 은 기본적으로
-  payload 타입 이름으로, reply 대기 시간은 전역 기본 **30초**로 정해진다. 기본과 달라야 할 때만
-  이 종결자를 붙인다(어느 게 무엇을 바꾸는지·우선순위는 아래 예제 주석 참고). 둘 다 기본으로
-  충분하면 붙이지 않는다(샘플 메시징 호출은 모두 기본값). `Send`/`Publish` 는 응답을 기다리지
-  않으므로 request timeout 을 쓰지 않는다.
-- socket 은 호출마다 만드는 게 아니라 **startup 에 선언한 역할만큼만** 미리 만들어
-  둔다. 그래서 호출한 channel 에 client 역할이 등록돼 있지 않으면, 그 channel 용
-  socket 이 애초에 없으므로 `ZLinkConfigurationException` 으로 실패한다
-  (`IZLinkChannelClient` 자체는 항상 DI 에 등록되므로 주입은 되고, 검증은 호출
+- **`Timeout(...)`은 request 전용 선택 종결자다.** reply 대기 시간은 전역 기본
+  **30초**이고, 기본과 달라야 할 때만 붙인다(우선순위는 아래 예제 주석 참고).
+  `Send`/`Publish`는 응답을 기다리지 않으므로 timeout 표면 자체가 없다.
+- packet 이름은 호출 시점에 바꿀 수 없다. 등록 시(§4의 해석 순서) 한 번 확정된다.
+- socket은 호출마다 만드는 게 아니라 **startup에 선언한 역할만큼만** 미리 만들어
+  둔다. 그래서 호출한 channel에 client 역할이 등록돼 있지 않으면, 그 channel 용
+  socket이 애초에 없으므로 `ZLinkConfigurationException`으로 실패한다
+  (`IZLinkChannelClient` 자체는 항상 DI에 등록되므로 주입은 되고, 검증은 호출
   시점에 일어난다).
 
 기본과 달라야 할 때만 종결자를 붙인다:
@@ -445,7 +445,7 @@ await client
     .Async<PriceReply>(ct);
 // reply 대기 상한 결정 순서(앞이 우선):
 //   1) 호출별 .Timeout(...)
-//   2) channel builder 의 SetDefaultRequestTimeout(...)
+//   2) channel builder의 SetDefaultRequestTimeout(...)
 //   3) 전역 options.DefaultRequestTimeout (기본 30초)
 ```
 
@@ -459,24 +459,29 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
             // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
-            .Async(ct);
+            .Submit(ct);
 }
 ```
 
-- `Publish` 는 인자가 **3개**다: `channelName`, `topic`, `message`. topic 은 그 publish 에
-  붙는 분류 라벨이다.
-- publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**된다. framework 는 그
+- `Publish`는 인자가 **3개**다: `channelName`, `topic`, `message`. topic은 그 publish에
+  적용되는 분류 라벨이다.
+- publish 한 message는 **구독자 수와 무관하게 한 번만 인코딩**된다. framework는 그
   인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
   직렬화하지 않는다(framework 내부 최적화).
-- `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
+- `IZLinkFanoutClient`는 fanout channel에 publish 하는 DI client 이다.
 
-> **구독 연결.** 구독자는 `AddFanoutChannel(name).EnableSubscriber()` 로 채널을 구독한다.
-> store 자동 연결 없이 publisher 에 직접 붙을 때는 endpoint 를 주는 `EnableSubscriber(publisherEndpoint)`
+> **구독 연결.** 구독자는 `AddFanoutChannel(name).EnableSubscriber()`로 채널을 구독한다.
+> store 자동 연결 없이 publisher에 직접 연결할 때는 endpoint를 주는 `EnableSubscriber(publisherEndpoint)`
 > 오버로드를 쓴다.
 
-> **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic 을 지정하지 않고, 받은
-> 메시지의 `context.Topic` 을 handler 안에서 보고 처리/무시를 정한다. 즉 topic 으로 받을 메시지를
-> 미리 거르는 게 아니라, 받아서 `context.Topic` 으로 분기한다.
+> **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic을 지정하지 않고, 받은
+> 메시지의 `context.Topic`을 handler 안에서 보고 처리/무시를 정한다. 즉 topic으로 받을 메시지를
+> 미리 거르는 게 아니라, 받아서 `context.Topic`으로 분기한다.
+
+> **샘플에서 보기 — [DeliveryDispatch](samples/deliverydispatch-sample.ko.md).**
+> HTTP로 접수한 주문을 channel 호출로 배차 서버에 위임하고, 배송 상태 변화를 fanout
+> publish로 관제·고객 push 구독자에 전파한다. request/send/publish 세 표면이 한 업무
+> 흐름 안에서 함께 쓰이는 대표 예다.
 >
 > ```csharp
 > public ValueTask HandleAsync(EventNotify message, ZLinkPublishContext context, CancellationToken ct)
@@ -487,18 +492,18 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > }
 > ```
 
-> `Async(...)`/`Async<T>(...)` 의 완료는 transport 위임까지만 보장한다.
+> `Async(...)`/`Async<T>(...)`의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](03-concepts.ko.md) §6.2).
 
-> **pub/sub 는 replay 가 없다.** 구독자가 **아직 붙기 전**에 publish 된 메시지나, **끊겨 있는
+> **pub/sub는 replay가 없다.** 구독자가 **아직 붙기 전**에 publish 된 메시지나, **끊겨 있는
 > 동안** 지나간 메시지는 다시 받지 못한다(재연결해도 그 사이 것은 안 온다). 놓치면 안 되는 이벤트는
 > 별도 재동기화(예: 재연결 후 현재 상태를 한 번 request)로 메운다.
 
 ## 5. filter — 공통 처리
 
 ASP.NET Core HTTP middleware(`app.Use(...)`)는 HTTP 파이프라인 전용이라 ZLink
-handler 에는 적용되지 않는다. logging/validation/authorization/metrics 같은 공통
-처리는 `IZLinkHandlerFilter` 로 한다.
+handler에는 적용되지 않는다. logging/validation/authorization/metrics 같은 공통
+처리는 `IZLinkHandlerFilter`로 한다.
 
 ```csharp
 public sealed class LoggingFilter(ILogger<LoggingFilter> logger)
@@ -522,11 +527,11 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
+filter도 `new`가 아니라 .NET DI에서 resolve 된다.
 
 ## 6. 연결 제어
 
-수동 연결은 startup builder 에서 역할 단위로 설정한다.
+수동 연결은 startup builder에서 역할 단위로 설정한다.
 
 ```csharp
 // 등록 시점 수동 연결
@@ -535,24 +540,24 @@ options.AddClientServerChannel("profile")
     .EnableClient("tcp://10.0.10.16:7101");
 ```
 
-endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket 을 직접 제어하는
-handle 이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
+endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket을 직접 제어하는
+handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
 
-자동 연결 모드는 peer 목록의 소유권이 location store 에 있다. 서버가 새 endpoint 로
-다시 뜨면 store 의 peer row 가 갱신되고 client 연결이 따라간다 — 별도 조작이 필요
+자동 연결 모드는 peer 목록의 소유권이 location store에 있다. 서버가 새 endpoint로
+다시 뜨면 store의 peer row가 갱신되고 client 연결이 따라간다 — 별도 조작이 필요
 없다. 수동 연결은 설정을 바꾼 뒤 애플리케이션을 재시작해 다시 적용한다.
 
 ### 운영 drain / restore (런타임)
 
-유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 store 의 peer row 를 빼지 않고
+유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 store의 peer row를 빼지 않고
 **새 요청 수신만 멈추고 싶을 때** 가 있다. 이걸 위해 `IZLinkChannelRuntimeOptions`
-(DI singleton) 을 주입받아 channel 의 serving 역할을 런타임에 drain 한다.
+(DI singleton)을 주입받아 channel의 serving 역할을 런타임에 drain 한다.
 
-여기서 쓰는 `Weight` 는 drain 전용 플래그가 아니라, client-server channel 이 새
-메시지를 어느 peer 로 보낼지 고를 때 참고하는 **peer 가중치**다. 연결된 서버들의
-weight 가 모두 같으면 새 요청은 균등하게 round-robin 으로 분배된다. weight 가 서로
-다르면 더 큰 값을 가진 서버가 그 비율만큼 더 자주 선택된다. `0` 은 "연결은 유지하지만
-새 요청 후보에서는 제외"라는 뜻이고, `100` 은 기본 정상 serving 값이다.
+여기서 쓰는 `Weight`는 drain 전용 플래그가 아니라, client-server channel이 새
+메시지를 어느 peer로 보낼지 고를 때 참고하는 **peer 가중치**다. 연결된 서버들의
+weight가 모두 같으면 새 요청은 균등하게 round-robin으로 분배된다. weight가 서로
+다르면 더 큰 값을 가진 서버가 그 비율만큼 더 자주 선택된다. `0`은 "연결은 유지하지만
+새 요청 후보에서는 제외"라는 뜻이고, `100`은 기본 정상 serving 값이다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -580,9 +585,9 @@ flowchart LR
     DR --> DH
 ```
 
-위 예에서 server C 는 연결과 기존 in-flight 처리는 유지하지만 새 요청 후보에서는 빠진다.
-server A 와 server B 처럼 양수 weight 를 가진 peer 만 새 요청 후보가 되고, 두 값이 같으면
-균등하게 round-robin 으로 선택된다.
+위 예에서 server C는 연결과 기존 in-flight 처리는 유지하지만 새 요청 후보에서는 빠진다.
+server A와 server B처럼 양수 weight를 가진 peer만 새 요청 후보가 되고, 두 값이 같으면
+균등하게 round-robin으로 선택된다.
 
 ```csharp
 // 운영 admin 엔드포인트 (DI 주입). "orders" 는 이 앱이 등록한 client-server channel.
@@ -601,42 +606,42 @@ app.MapPost("/admin/channels/orders/restore",
     });
 ```
 
-- `Weight = 0`(drain) 은 serving socket 을 **닫지 않는다**. 이 서버를 새 outbound 후보에서
+- `Weight = 0`(drain)은 serving socket을 **닫지 않는다**. 이 서버를 새 outbound 후보에서
   빼라는 신호다. 이미 들어온 in-flight 요청은
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
-  store 의 peer row 도 그대로 남는다(graceful drain).
-- `Weight = 100` 으로 기본 정상 serving 상태로 복귀한다. `1..99` 로 두면 연결된 peer 의
+  store의 peer row도 그대로 남는다(graceful drain).
+- `Weight = 100`으로 기본 정상 serving 상태로 복귀한다. `1..99`로 두면 연결된 peer의
   분배 비율을 낮춘다(weighted).
-- 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
+- 같은 `Weight`를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
   `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):
 
 ```csharp
-// build-time 초기값: serving socket 의 시작 weight
+// build-time 초기값: serving socket의 시작 weight
 builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;
 
 // 같은 패턴 — channel 종류만 다르다
 options.RouteMeshChannel(name).ConfigureSocket();    // route mesh serving 역할 socket
 ```
-- drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer 가
-  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [10-monitoring](10-monitoring.ko.md))
-  으로 확인한다. `drain`/`restore` 라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
+- drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer가
+  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [11-monitoring](11-monitoring.ko.md))
+  으로 확인한다. `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
   에 이름을 붙여 노출하면 된다.
 
 ## 7. 직렬화 codec
 
-payload 직렬화 codec 은 framework 등록에서 활성화한다.
+payload 직렬화 codec은 framework 등록에서 활성화한다.
 
 ```csharp
 options.Codecs.Use(ZLinkProtobufCodec.Default);
 options.Codecs.Use(ZLinkMessagePackCodec.Default);
 ```
 
-payload 는 codec 이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
+payload는 codec이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
-기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer` 를 구현해
-content type 으로 등록한다. serializer 는 업무 객체 ↔ `Message`(byte payload) 변환만
-맡고, packet name 결정·codec 선택은 framework 가 그대로 처리한다. custom serializer 는
+기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer`를 구현해
+content type으로 등록한다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만
+맡고, packet name 결정·codec 선택은 framework가 그대로 처리한다. custom serializer는
 한 payload 타입에 대해 **둘 이상이 매칭하면** 구성 오류가 난다. 타입 조건 없이 모든
 타입을 받는 fallback serializer는 하나만 두고,
 타입 조건을 받는 serializer는 서로 겹치지
@@ -647,7 +652,7 @@ public sealed class AvroOrderSerializer : IZLinkMessageSerializer
 {
     private readonly Avro.Schema _schema = Avro.Schema.Parse(SchemaJson);
 
-    // serializer 의 책임은 business 객체 ↔ Message(byte payload) 변환뿐. packet name 결정·codec 선택은 framework.
+    // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐. packet name 결정·codec 선택은 framework.
     public Message Serialize(object value, Type type)
     {
         using var buffer = new MemoryStream();
@@ -666,14 +671,14 @@ public sealed class AvroOrderSerializer : IZLinkMessageSerializer
 options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro serializer를 한 번 등록한다.
 ```
 
-등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro 로 처리된다.
+등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다.
 다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ## 8. client-server 수평 확장
 
-처리량을 늘리려면 같은 client-server channel 이름으로 provider 를 여러 개 띄우고,
-호출 노드는 location store 자동 연결 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint 를 붙인다.
-호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)` 를 사용한다.
+처리량을 늘리려면 같은 client-server channel 이름으로 provider를 여러 개 실행하고,
+호출 노드는 location store 자동 연결 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint를 붙인다.
+호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)`를 사용한다.
 
 ```csharp
 // 처리 노드 A
@@ -685,14 +690,14 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 ```
 
 ```csharp
-// 호출 노드 — 여러 provider endpoint 를 같은 channel client 에 연결
+// 호출 노드 — 여러 provider endpoint를 같은 channel client에 연결
 {
     var channel = options.AddClientServerChannel("image.resize")
         .EnableClient("tcp://10.30.1.10:5600")
         .EnableClient("tcp://10.30.1.10:5601");
 }
 
-// 또는 location store 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
+// 또는 location store로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
 options.AddClientServerChannel("image.resize").EnableClient();
 ```
 
@@ -707,42 +712,42 @@ graph LR
 
 특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9)를 사용한다.
 
-> **provider 에 안정적 식별자 주기 — client-server 채널의 `SetRoutingId(...)`.** `SetRoutingId` 는
-> route mesh 전용이 아니다. client-server provider 에도 걸어 두면(`EnableServer(...).EnableClient().SetRoutingId(RoutingId.From(rid))`)
-> 그 노드가 **고정된 논리 id** 를 갖는다. provider 가 죽고 같은 rid 로 새로 떠도 location store 가 같은
-> 논리 id 의 새 endpoint 로 이어 주므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
+> **provider에 안정적 식별자 주기 — client-server 채널의 `SetRoutingId(...)`.** `SetRoutingId`는
+> route mesh 전용이 아니다. client-server provider에도 걸어 두면(`EnableServer(...).EnableClient().SetRoutingId(RoutingId.From(rid))`)
+> 그 노드가 **고정된 논리 id** 를 갖는다. provider가 죽고 같은 rid로 새로 떠도 location store가 같은
+> 논리 id의 새 endpoint로 이어 주므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
 > 프로세스 교체 후에도 라우팅을 이어 갈 때 쓴다.
 
 ## 9. route mesh — 주소 라우팅
 
-route mesh 는 `RoutingId` 로 **특정 주소를 지정해서 라우팅**한다(dealer 의 분산과
-대비). `EnableServer` 는 이 노드가 받을 endpoint 와 이 노드의 `RoutingId` 를 설정하고,
-`EnableClient` 는 다른 route node 로 나가는 연결을 설정한다. 한 노드가 둘 다 활성화할 수 있다.
-SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](05-spot.ko.md)).
+route mesh는 `RoutingId`로 **특정 주소를 지정해서 라우팅**한다(dealer의 분산과
+대비). `EnableServer`는 이 노드가 받을 endpoint와 이 노드의 `RoutingId`를 설정하고,
+`EnableClient`는 다른 route node로 나가는 연결을 설정한다. 한 노드가 둘 다 활성화할 수 있다.
+SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([06-spot](06-spot.ko.md)).
 
 ```csharp
 {
-    var routed = options.AddRouteMesh("tictactoe.router")
+    var routed = options.AddRouteMeshChannel("tictactoe.router")
         .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
         .EnableClient(peerRouterEndpoint)  // 다른 노드로 나가는 연결
-        .SetRoutingId(RoutingId.From(playRouterId)); // 이 노드의 논리 주소 — 다른 노드가 이 RoutingId 로 지목해 보낸다
+        .SetRoutingId(RoutingId.From(playRouterId)); // 이 노드의 논리 주소 — 다른 노드가 이 RoutingId로 지목해 보낸다
     routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
         "room.allocate");                  // 마지막 인자 = packet 이름
 }
 ```
 
-route mesh 로 직접 호출할 때는 일반 `IZLinkChannelClient` 가 아니라
-`IZLinkRouteClient` 를 주입받고, 호출마다 route channel 이름과 대상 `RoutingId` 를
-지정한다. `IZLinkRouteClient` 는 특정 channel 하나에 묶인 client 가 아니므로,
-route mesh channel 이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를 쓸지
+route mesh로 직접 호출할 때는 일반 `IZLinkChannelClient`가 아니라
+`IZLinkRouteClient`를 주입받고, 호출마다 route channel 이름과 대상 `RoutingId`를
+지정한다. `IZLinkRouteClient`는 특정 channel 하나에 묶인 client가 아니므로,
+route mesh channel이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를 쓸지
 분명하게 정한다.
 
 ```csharp
 var target = RoutingId.From("play-node-1");   // 보낼 대상 노드의 RoutingId
 
 var room = await routeClient
-    // 인자 = (route channel 이름, 대상 RoutingId, payload). client 가 channel 에 안 묶이므로 호출마다 channel 을 지정한다.
-    .Request("tictactoe.router", target, new AllocateRoom("alice"))
+    // 인자 = (route channel 이름, 대상 RoutingId, payload). client가 channel에 안 묶이므로 호출마다 channel을 지정한다.
+    .RequestToNode("tictactoe.router", target, new AllocateRoom("alice"))
     .Async<RoomAllocated>(ct);
 
 public sealed class AllocateRoomRouteHandler
@@ -756,9 +761,9 @@ public sealed class AllocateRoomRouteHandler
 }
 ```
 
-같은 route channel 로 반복 호출하면 application 코드에서 작은 wrapper 를 만들어 DI 에
-등록해도 된다. 이 wrapper 는 framework API 가 아니라 application 이 정한 이름이다. 그래서
-업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel 로
+같은 route channel로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 DI에
+등록해도 된다. 이 wrapper는 framework API가 아니라 application이 정한 이름이다. 그래서
+업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel로
 나가는지만 한 곳에 둔다.
 
 ```csharp
@@ -772,7 +777,7 @@ public sealed class PlayRoutes(IZLinkRouteClient routes) : IPlayRoutes
     public IZLinkRequestCall Request<TRequest>(
         RoutingId targetNodeRid,
         TRequest request)
-        => routes.Request("tictactoe.router", targetNodeRid, request);
+        => routes.RequestToNode("tictactoe.router", targetNodeRid, request);
 }
 
 builder.Services.AddSingleton<IPlayRoutes, PlayRoutes>();
@@ -785,7 +790,7 @@ graph LR
     C -->|"target routing id = B"| B["node B"]
 ```
 
-SPOT 과의 결합은 [05-spot](05-spot.ko.md) 에서 이어진다.
+SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
 ## 10. 통합 예제 — 서버 + outbound + pub/sub
 
@@ -846,7 +851,7 @@ public sealed class UserHandlers(IZLinkFanoutClient publisher)
         => publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .Async(ct);
+            .Submit(ct);
 }
 
 [ZLinkHandlerGroup("api.events")]
@@ -861,29 +866,29 @@ public sealed class UserCacheRefreshedEventHandler
 
 ## 11. 자주 막히는 곳
 
-- **handler 가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
-  않는다. `AddHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
-- **`ZLinkConfigurationException`** → channel 이 없거나 해당 역할이 없는
+- **handler가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
+  않는다. `AddHandlerGroup(...)` 또는 typed registration이 필요하다(§3).
+- **`ZLinkConfigurationException`** → channel이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
-  client 에 연결 경로 없음. fail-fast 다([03-concepts](03-concepts.ko.md) §4).
+  client에 연결 경로 없음. fail-fast 다([03-concepts](03-concepts.ko.md) §4).
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
-- **handler 없는 packet 으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
-  않은 packet 이름이 도착하면 **request 는 error reply 로 실패**(client 는 예외로 받음),
-  **send 는 조용히 drop** 된다. 다만 조용히 drop 된다는 말은 호출자에게 reply 가 없다는
-  뜻이지, 관측 흔적이 없다는 뜻은 아니다. message flow 로그/observer 를 켜 두면 dispatch
-  실패가 구조화 로그와 observer event 로 남고, 이유는 marker
-  (`HandlerMissing` / `ReplyError`·`Drop`)로 구분된다([10-monitoring](10-monitoring.ko.md)).
+- **handler 없는 packet으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
+  않은 packet 이름이 도착하면 **request는 error reply로 실패**(client는 예외로 받음),
+  **send는 조용히 drop** 된다. 다만 조용히 drop 된다는 말은 호출자에게 reply가 없다는
+  뜻이지, 관측 흔적이 없다는 뜻은 아니다. message flow 로그/observer를 켜 두면 dispatch
+  실패가 구조화 로그와 observer event로 남고, 이유는 marker
+  (`HandlerMissing` / `ReplyError`·`Drop`)로 구분된다([11-monitoring](11-monitoring.ko.md)).
 
 ## 12. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [12-interface-catalog](12-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
+- 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [13-interface-catalog](13-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 - dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
 - 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](samples/channel-messaging-samples.ko.md)
-- 다음 축: [05-spot](05-spot.ko.md)
+- 다음 축: [06-spot](06-spot.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: SPOT — room · stage · zone](05-spot.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵](04-feature-map.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -304,7 +304,7 @@ STREAM header 값은 connector runtime 내부에서 만든다. client 예제는 
   만들어 내는 `request_seq` 값이 결코 중복되면 안 된다.
 - 값 `0` 은 사용하지 않는다.
 
-metadata 는 `u16 meta_len + metadata bytes` 형태로 붙는다. metadata 는 header 크기
+metadata는 `u16 meta_len + metadata bytes` 형태로 이어진다. metadata는 header 크기
 제한 안에 모두 들어가야 하므로, trace id, locale, tenant id 처럼 작은 값만 넣는다.
 
 크기 제한은 다음과 같이 두 단계로 본다.

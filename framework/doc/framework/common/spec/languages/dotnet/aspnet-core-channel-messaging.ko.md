@@ -10,7 +10,7 @@
 
 ## 계약 기준
 
-SPOT route를 받는 channel은 local `ROUTER` receive loop 안에서 core
+SPOT route를 받는 route mesh channel은 local `ROUTER` receive loop 안에서 core
 `ISpotRouteBridge` handoff를 함께 사용한다. 일반 channel packet은 기존 channel
 dispatcher가 처리하고, SPOT relay packet만 bridge가 소비한다. outbound `DEALER`나
 route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접 attach하지
@@ -206,7 +206,7 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-route channel(`AddRouteMesh`)도 역할 단위로 읽는다. `EnableServer(endpoint)`는
+route channel(`AddRouteMeshChannel`)도 역할 단위로 읽는다. `EnableServer(endpoint)`는
 local `ROUTER` endpoint를 열고, `EnableClient()`는 store 에서 찾은 peer로
 outbound request/send를 보낸다. `EnableClient(endpoint)`는 bind 없이 수동 peer에
 연결하는 client-only channel을 만든다. store 가 등록되어 있어도 수동 peer를 함께
@@ -214,16 +214,11 @@ outbound request/send를 보낸다. `EnableClient(endpoint)`는 bind 없이 수�
 
 #### SPOT route 수신과 router-capable channel
 
-SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
+SPOT으로 들어오는 routed 메시지는 route mesh `ROUTER` 역할이 필요하다.
 `SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면
-
-대상 channel은 두 종류다.
-
-- `AddClientServerChannel`의 server `ROUTER`
-- `AddRouteMesh`의 route mesh `ROUTER`
-
-`AddFanoutChannel`은 router 역할이 없으므로 SPOT route 수신 대상이 아니다.
-외부에서 SPOT으로 들어가는 route는 RouteMesh 단일 경로로 정리된다.
+`AddRouteMeshChannel(...)`로 등록한 route mesh channel을 사용한다.
+client/server channel과 fanout channel은 SPOT route 수신 대상이 아니다. 외부에서
+SPOT으로 들어가는 route는 RouteMesh 단일 경로로 정리된다.
 
 #### 수동 연결은 channel이 아니라 역할 단위다
 
@@ -770,7 +765,7 @@ app.MapPost("/profiles/refresh", async (
 
 ### 5.4 routed channel transport helper
 
-`AddRouteMesh` 로 선언한 routed channel 의 위치는 actor, spot,
+`AddRouteMeshChannel` 로 선언한 routed channel 의 위치는 actor, spot,
 session actor dispatch[^session-actor-dispatch] 같은
 framework 기능이 내부 transport 로 쓴다.
 
@@ -1012,7 +1007,7 @@ channel 등록은 다음 조건을 host 시작 전에 검증한다.
 | 같은 channel 이름을 두 번 등록 | `ZLinkConfigurationException` |
 | server 또는 publisher의 빈 bind endpoint | `ZLinkConfigurationException` |
 | client/subscriber에 store도 manual endpoint도 없음 | `ZLinkConfigurationException` |
-| server에 request/send handler와 SPOT route acceptance가 모두 없음 | `ZLinkConfigurationException` |
+| server에 request/send handler가 없음 | `ZLinkConfigurationException` |
 | subscriber에 publish handler가 없음 | `ZLinkConfigurationException` |
 | client/server channel에 publish handler 등록 | `ZLinkConfigurationException` |
 | fanout channel에 request/send handler 등록 | `ZLinkConfigurationException` |
@@ -1057,8 +1052,9 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 |---------------|-----------|
 | `ChannelsTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 자동 연결(store)이나 수동 연결이 없으면 시작 전에 실패한다. |
-| `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
-| E2E Config 1 (`LocationMessaging`) | store 자동 연결 기반 client 가 request 와 send 를 실제 다중 프로세스에서 처리한다. |
+| `E2E:RM-A2` | 수동 endpoint 연결 경로에서 client request marker를 검증한다. |
+| `E2E:RM-C1` | client/server request와 send가 실제 프로세스 사이에서 모두 처리된다. |
+| `E2E:RM-A1` | store 자동 연결 기반 client가 request를 실제 다중 프로세스에서 처리한다. |
 | `ZLinkAsyncSubmitterTests.Async_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---
@@ -1083,7 +1079,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 
 [^autoconnect]: **location store 기반 자동 연결**은 각 서버가 자기 위치(peer row)를
     공유 store 에 등록하고, client 가 그 목록을 읽어 자동으로 연결하는 메커니즘이다.
-    수동 endpoint 관리가 필요 없다([09-location](../../../../dotnet/guide/09-location.ko.md)).
+    수동 endpoint 관리가 필요 없다([09-location](../../../../dotnet/guide/10-location.ko.md)).
 
 [^handler]: **handler** 는 들어온 메시지를 처리하는 사용자 코드다. request handler 는
     응답을 돌려주고, send handler 는 단방향으로 받기만 하며, event handler 는 publish 된

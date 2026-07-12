@@ -239,11 +239,11 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P2`
 
-**한마디로:** 같은 버전끼리 주고받는 error reply에 error code/message가 wire에 제대로 실려 왕복하는가(client는 message만, code는 raw/evidence로 확인).
+**한마디로:** 같은 버전끼리 주고받는 `Error(5)` reply에 error code/message가 wire에 제대로 실려 왕복하는가(client는 message만, code는 raw/evidence로 확인).
 
 - 절차: 같은 버전 provider/consumer 사이에서 다양한 public error를 발생시켜 error reply를 주고받는다.
-- 검증: error reply는 wire header에 error code/message를 싣는다 — **raw wire 키는 Web JSON camelCase `errorCode`/`errorMessage`**, 디코드된 .NET 속성명은 `ErrorCode`/`ErrorMessage`다. normal client는 `errorMessage` 기반 예외만 던지고 code는 노출하지 않으므로, client-side는 message 예외만 단언한다. code round-trip은 raw envelope/header(키 `errorCode`) 검사 또는 server-side evidence로 확인한다. dispatch `Reason`/`Action`은 wire에 실리지 않으므로 server observer evidence에서 확인한다. (버전 간 호환은 old/new 빌드 아티팩트·버전 매트릭스가 필요해 별도 harness 도입 시 확장.)
-- 세부 동작: error reply `ErrorCode`/`ErrorMessage` round-trip(동일 버전).
+- 검증: 실패 reply의 wire `message-kind`는 `Error=5`이고 header에 error code/message를 싣는다. 성공 reply는 `Response=2`이며 오류 필드를 싣지 않는다. 별도 `status` 필드는 없다. **raw wire 키는 Web JSON camelCase `errorCode`/`errorMessage`**, 디코드된 .NET 속성명은 `ErrorCode`/`ErrorMessage`다. normal client는 `errorMessage` 기반 예외만 던지고 code는 노출하지 않으므로, client-side는 message 예외만 단언한다. code round-trip은 raw envelope/header(키 `errorCode`) 검사 또는 server-side evidence로 확인한다. dispatch `Reason`/`Action`은 wire에 실리지 않으므로 server observer evidence에서 확인한다. 이전 event/status envelope를 받아들이는 호환 decoder는 검증 대상이 아니다.
+- 세부 동작: `Response=2`/`Error=5` 분리와 `ErrorCode`/`ErrorMessage` round-trip(동일 버전).
 
 #### RL-D5 지속 혼합 워크로드 soak
 

@@ -4,7 +4,7 @@
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
 축소하지 않고, 구현과 contract test를 정식 스펙에 맞춘다.
 
-검토 기준일은 2026-07-11이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
+검토 기준일은 2026-07-12이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
 ## 1. 판정 기준
 
@@ -37,7 +37,7 @@
 | route-mesh runtime options | 충족 | 없음 | 충족 | 없음 |
 | actor membership 상태 | 충족 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
 | actor join 결과 | 충족 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
-| 관측·운영(metrics/flow/drain) | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 |
+| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 |
 
 ## 3. Java/Kotlin
 
@@ -323,15 +323,21 @@ request, actor join과 worker의 yield 전용 타입은 source와 package에서 
 `IZLinkEndpointConnections`, sealed monitoring event와 typed packet identity 단일 소유도
 contract/unit/E2E 및 실제 package consumer로 검증한다.
 
+runtime metrics, flow correlation, graceful drain과 session closing도 정식 계약, package와
+Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다. 따라서 이 문서에서 추적하는
+`.NET` 구현 차이는 남아 있지 않다.
+
 ## 7. 문서 및 계약 검증 차이
 
-언어별 spec이 `common/spec/languages/<lang>/`로 이동했지만 일부 문서 계약 테스트는
-이전 `framework/<lang>/spec/` 경로를 읽는다. 그 결과 Node.js, Java와 `.NET` 문서
-회귀 검사가 실패한다. C++ 검사는 파일을 열지 못해도 실패하지 않아 잘못 통과한다.
+`.NET` 문서 회귀 검사는 `common/spec/`과 `common/spec/languages/dotnet/`의 정식 문서를
+직접 읽는다. 문서, active unit test, 실제 E2E scenario 또는 script 참조를 찾지 못하면 실패하며,
+현재 G0에서는 전체 15개 검사가 성공한다. 이 검사에는 모든 공통 E2E scenario ID가 active
+`.NET` fixture source와 all runner 항목에 연결되는지 확인하는 inventory 검증도 포함한다.
 
-이 항목은 public interface 구현 차이는 아니지만, 정식 spec을 검증하지 못하게 하므로
-코드 작업 단계에서 새 경로를 사용하도록 contract test를 수정하고 파일 열기 실패도
-검사 실패로 처리해야 한다.
+Java, Kotlin, Node.js와 C++는 각 언어 G0에서 같은 조건을 검증한다. 이전
+`framework/<lang>/spec/` 경로를 읽거나 파일을 열지 못해도 통과하는 검사가 남아 있으면 해당
+언어의 구현을 시작하기 전에 정식 경로와 fail-closed 검사로 바꾼다. 이 검증은 public interface
+차이가 아니라 정식 계약을 실제로 검사하는지 확인하는 gate다.
 
 ## 8. POSD public contract 변경 gap
 

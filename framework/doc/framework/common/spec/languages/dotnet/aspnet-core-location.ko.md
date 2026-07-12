@@ -4,7 +4,7 @@
 의미(위치 모델, owner lease, generation, 장애 중 마지막 연결 판단 유지, 자동 연결 규칙)는
 [공통 location runtime 스펙](../../location-runtime.ko.md)이 소유하고, 이
 문서는 .NET 표면(등록 API, 타입, DI)만 정의한다. 사용법 예제는
-[guide 09-location](../../../../dotnet/guide/09-location.ko.md)을 본다.
+[guide 09-location](../../../../dotnet/guide/10-location.ko.md)을 본다.
 
 ## 1. 등록 표면
 
@@ -12,7 +12,18 @@
 |-----|------|
 | `IZLinkFrameworkOptions.AddLocationStore(IZLinkLocationStore store)` | 하나의 물리 저장소 인스턴스를 등록한다. 이 인스턴스가 peer, spot, actor, route, owner lease 역할을 모두 맡는다. 같은 인스턴스가 `IZLinkLocationChangeStampStore`/`IZLinkLocationWatchStore` 도 구현하면 자동 인식된다. |
 | `IZLinkFrameworkOptions.UseInMemoryLocationStores()` | 단일 프로세스 개발·단위 테스트용 메모리 저장소를 등록한다. 여러 프로세스가 서로 위치를 공유해야 하는 배포에서는 쓰지 않는다. |
-| `IZLinkFrameworkOptions.ConfigureLocations()` → `ZLinkLocationOptions` | `HeartbeatInterval`, `OwnerLeaseTtl`, `PollingInterval`, `ListPageSize`, `StoreFailureGrace` |
+| `IZLinkFrameworkOptions.ConfigureLocations()` → `ZLinkLocationOptions` | `HeartbeatInterval`, `OwnerLeaseTtl`, `PollingInterval`, `ListPageSize`, `StoreFailureGrace`와 `MapSpotMeshToRouteChannel(...)`을 설정한다. |
+
+Spot 위치 row에는 Spot mesh 이름이 저장된다. route channel 이름이 Spot mesh 이름과 다르면
+시작 전에 다음 매핑을 등록한다. 매핑하지 않은 Spot mesh는 같은 이름의 route channel을
+사용한다. 등록하지 않은 Spot mesh나 route channel을 가리키는 매핑은 시작 검증에서 거부한다.
+
+```csharp
+var locations = options.ConfigureLocations();
+locations.MapSpotMeshToRouteChannel(
+    "game.stage",   // location row의 Spot mesh 이름
+    "game.route"); // 해당 Spot으로 전송할 때 사용하는 route channel
+```
 
 공식 Redis extension 은 `Zlink.Framework.Locations.Redis` 패키지의
 `ZLinkRedisLocationStore` 다. 옵션은 빌더 형식이다:
@@ -91,8 +102,11 @@ store 를 등록하면 아래 서비스가 DI 에 등록된다. 캐시가 없다
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `Zlink.Framework.UnitTests` location 계열 | 옵션/등록 검증, resolver가 오래된 row를 제외하는지, 자동 연결 차이 계산 규칙 |
-| `Zlink.Framework.ContractTests` store contract | in-memory 와 Redis 구현이 같은 store 계약 시나리오를 통과한다 |
-| E2E Config 1 (`LocationMessaging`) | store 기반 자동 연결·failover·scale 시나리오 |
-| E2E Config 6 (`StoreFailure`) | store 장애/복구, 장애 중 마지막 연결 판단 유지, owner lease 만료 |
+| `NodesAndServicesTests.AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance` | 하나의 store 인스턴스가 모든 location 역할로 등록된다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore` | 외부 store와 in-memory store를 함께 등록하면 시작 전에 실패한다. |
+| `LocationResolverTests.Rows_Of_Expired_Owner_Are_Not_Returned` | owner lease가 만료된 위치 row를 resolver가 반환하지 않는다. |
+| `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones` | 자동 연결이 새 peer를 연결하고 사라진 peer를 연결 집합에서 제거한다. |
+| `RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations` | in-memory와 Redis 구현이 같은 write status와 generation을 반환한다. |
+| `E2E:RM-A1`, `E2E:RM-A4`, `E2E:RM-B1`, `E2E:RM-B2` | store 기반 자동 연결, failover, scale-out과 scale-in을 실제 프로세스에서 검증한다. |
+| `E2E:SF-B1`, `E2E:SF-B2`, `E2E:SF-C1`, `E2E:SF-C2`, `E2E:SF-D3` | store 장애 중 연결 유지, 복구, owner lease 만료와 정상 종료 정리를 검증한다. |
 | `RegressionTests.DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery` | .NET sample 이 제거된 Registry/Discovery API 를 다시 사용하지 않는다 |

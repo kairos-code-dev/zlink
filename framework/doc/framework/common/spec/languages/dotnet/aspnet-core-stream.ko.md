@@ -301,7 +301,7 @@ handler 구현은 DI 를 사용할 수 있으며, runtime 은 등록된 handler 
   오류만 받는다.
 - `OnErrorAsync(...)` 가 받는 `ZLinkStreamError` 는 framework error category
   enum 을 먼저 준다. 필요할 때만 optional diagnostic detail 로 native errno 와
-  메시지를 함께 들고 있는 편이 자연스럽다.
+  메시지를 함께 포함하는 편이 자연스럽다.
 - server-to-client 압축은 `IZLinkSessionSendCall.Compress()` 또는
   `IZLinkSessionReplyCall.Compress()` builder 호출로 활성화한다.
 
@@ -425,9 +425,9 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
-| `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
-| `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
-| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+| `StreamSessionForcedCleanupTests.Stream_node_preserves_typed_routing_id_from_backend_callback` | transport callback에서 받은 typed routing id가 session dispatch까지 정보 손실 없이 전달된다. |
+| `E2E:SM-D7` | stream 인증과 dispatch가 실제 connector와 session node 사이에서 완료된다. |
+| `E2E:SM-D8` | stream 종료로 pending request가 실패하고 새 session의 인증과 bind 뒤 messaging이 재개된다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 body를 묶어 하나의 packet 단위로 자른다.

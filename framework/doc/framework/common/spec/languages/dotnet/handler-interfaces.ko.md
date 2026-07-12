@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/11-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
@@ -57,7 +57,7 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 | context | `IZLinkSessionContext` | stream session identity, client 응답, actor binding, close 제어 | 4.4 |
 | context | `IZLinkSessionClient` | session에서 client stream으로 send/reply | 4.4 |
 | context | `IZLinkSessionActors` | session에서 actor handle bind와 lookup 수행 | 4.4 |
-| value | `IZLinkSessionActor` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
+| value | `IZLinkSessionActor` | session이 actor dispatch target으로 보유한 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
@@ -108,7 +108,7 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 이만큼은 항상 받는다.
 
 실제 구현에서는 transport[^transport] 별 부가 정보가 따로 있다. 그 부가
-정보는 이 공통 context 를 파생한 별도 context 에 덧붙는 형태로 노출된다.
+정보는 이 공통 context를 파생한 별도 context에 포함하는 형태로 노출된다.
 
 ```csharp
 public interface IZLinkHandlerContext
@@ -130,7 +130,7 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 다 우겨 넣지 않고, 종류별로 별도 context 타입을 두어 노출한다.
 
 아래 표는 어떤 handler 가 어떤 context 타입을 받는지, 그 context 가 공통
-필드 외에 어떤 정보를 더 들고 있는지 정리한 것이다.
+필드 외에 어떤 정보를 더 포함하는지 정리한 것이다.
 
 | context 타입 | 사용처 | 추가 정보 |
 |-------------|--------|----------|
@@ -145,7 +145,7 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 일반 SPOT packet/request/subscription/timer handler 는 별도 per-call context 타입을
 받지 않는다. handler 는 `(TSpot spot, 메시지, CancellationToken)` 형태로 spot 인스턴스와
 메시지를 직접 받고, spot identity 는 아래의 `IZLinkSpotContext` 로 조회한다. per-call
-context 타입은 actor packet handler(위 두 타입)와 channel handler 계열에만 붙는다.
+context 타입은 actor packet handler(위 두 타입)와 channel handler 계열에만 적용된다.
 
 `SPOT` 객체 안에서는 외부 lookup 과 별개로, 현재 spot 자신의 identity 도
 조회할 수 있어야 한다. 이 문서에서는 별도의 `Self` wrapper 를 두지 않는다.
@@ -153,8 +153,8 @@ context 타입은 actor packet handler(위 두 타입)와 channel handler 계열
 노출한다.
 
 여기서 두 가지 context 의 역할이 다르다는 점에 유의한다. handler 호출마다
-따라붙는 `ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext` 는
-"이번 호출 한 건"에 대한 정보다. 반면 SPOT 객체가 들고 있는
+호출과 함께 전달되는 `ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext` 는
+"이번 호출 한 건"에 대한 정보다. 반면 SPOT 객체가 보유한
 `IZLinkSpotContext` 는 "이 spot 인스턴스 전체"에 대한 정보다.
 
 ## 4. Handler 인터페이스
@@ -960,8 +960,8 @@ spot.OnDispatchEvent((s, info) =>
 framework timer 는 이 dispatch enum 에 직접 묶이지 않는다. 동작 흐름은
 다음과 같다. runtime 이 생성한 managed `.NET` timer 가 tick 을 만들고,
 user Spot timer 는 그 tick 을 같은 spot execution context 안으로 enqueue 해서
-timer handler 를 호출한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지
-않고 별도 task 흐름에서 호출한다.
+timer handler 를 호출한다. Entry Spot timer 는 route packet, subscription,
+worker completion과 같은 Entry Spot 직렬 실행 줄에 enqueue해서 호출한다.
 
 `RequestToChannelAsync(...)` 의 completion 은 **항상 같은 spot execution
 context 안에서** 실행된다. 즉 임의의 thread 에서 promise 를 직접 완료하지
@@ -1609,7 +1609,7 @@ actor context 는 현재 client session 의 `SessionId` 만 조회값으로 노�
 session rid 와 binding token 은 actor 가 client 로 push 할 때 사용하는
 runtime 내부 metadata 다. 그래서 actor context 에는 드러내지 않는다.
 
-이유는 단순하다. application actor 코드가 session 위치값을 직접 들고 있으면,
+이유는 단순하다. application actor 코드가 session 위치값을 직접 보관하면,
 재접속 시 stale 상태로 빠지기 쉽기 때문이다. framework runtime 은 필요한
 session route 를 actor state 안에서 관리하고, actor code 에는 `BoundSession`
 만 노출한다.
@@ -2298,16 +2298,20 @@ public interface IZLinkClientServerChannelBuilder : IZLinkClientServerChannelOpt
 
     IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
 
-    IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>()
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(
+        string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
-    IZLinkClientServerChannelBuilder AddSendHandler<THandler>()
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler>(
+        string? packetName = null)
         where THandler : class;
 
-    IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>()
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(
+        string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
 
-    IZLinkClientServerChannelBuilder AddRequestHandler<THandler>()
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(
+        string? packetName = null)
         where THandler : class;
 
 }
@@ -2326,10 +2330,12 @@ public interface IZLinkFanoutChannelBuilder
 
     IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName);
 
-    IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>()
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(
+        string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
 
-    IZLinkFanoutChannelBuilder AddPublishHandler<THandler>()
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(
+        string? packetName = null)
         where THandler : class;
 }
 
@@ -2351,16 +2357,20 @@ public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteMeshChannelOptions
 
     IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName);
 
-    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>()
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>(
+        string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
-    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>()
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>(
+        string? packetName = null)
         where THandler : class;
 
-    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>()
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(
+        string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
 
-    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>()
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(
+        string? packetName = null)
         where THandler : class;
 
 
@@ -2411,6 +2421,22 @@ public interface IZLinkFrameworkOptions
     IZLinkSpotMeshBuilder AddSpotMesh(string channelName);
 
 }
+```
+
+`ConfigureLocations()`가 반환하는 옵션에는 Spot mesh와 route channel 이름이 다른 배포를
+위한 명시적 매핑이 포함된다. 매핑이 없으면 두 이름이 같다고 해석한다.
+
+```csharp
+public sealed class ZLinkLocationOptions
+{
+    public void MapSpotMeshToRouteChannel(
+        string spotMeshName,
+        string routeChannelName);
+}
+
+options.ConfigureLocations().MapSpotMeshToRouteChannel(
+    "game.stage",   // location store가 반환하는 Spot mesh 이름
+    "game.route"); // 실제 전송에 사용할 route channel 이름
 ```
 
 `DefaultRequestTimeout`의 기본값은 30초다. `ActorTransferForwardWindow`의 기본값은 5초이며,
@@ -2469,7 +2495,7 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
   - request/send outbound 호출용 `DEALER(client)` 역할을 연다.
 - `EnablePublisher(...)`
   - 일반 channel event publish 역할을 연다.
-  - 이 역할도 remote subscriber가 붙을 local bind endpoint가 필요하므로
+  - 이 역할도 remote subscriber가 연결될 local bind endpoint가 필요하므로
     builder 안에서 `Bind(...)`를 같이 지정해야 한다.
 - `EnableSubscriber(...)`
   - 일반 channel event subscribe 역할을 연다.
@@ -2838,8 +2864,8 @@ timer 를 그대로 노출하지 않는다.
 
 동작 흐름은 다음과 같다. framework runtime 이 managed timer 를 만든 뒤,
 각 tick 을 handler 실행 문맥으로 넘긴다. user Spot timer 는 spot 직렬 실행
-경로 (`ExecuteSerializedAsync(...)` 같은 것) 로 들어가고, Entry Spot timer 는
-Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. 그곳에서
+경로로 들어가고, Entry Spot timer 는 Entry Spot의 route packet, subscription,
+worker completion과 같은 직렬 실행 줄로 들어간다. 그곳에서
 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
 
 `ZLinkTimerTick` 은 timer 이름, handler 에 실제 전달된 callback 번호
@@ -2881,9 +2907,9 @@ timer 가 어떤 실행 문맥에서 callback 을 호출하는지가 핵심이�
   session 에서 actor 로 relay 되는 packet 은 두 단계로 처리된다. 먼저
   actor 별 순서를 보존한 뒤, 현재 actor 위치에 맞는 Entry Spot handler
   또는 user Spot 실행 queue 로 넘긴다.
-- Entry Spot timer callback 도 Entry Spot 전체 실행 줄에 묶지 않는다. 다만
-  같은 timer instance 안에서는 이전 callback 이 끝나기 전에 다음 callback 을
-  겹쳐 실행하지 않는다.
+- Entry Spot timer callback은 Entry Spot 전체 실행 줄에서 처리한다. 같은 timer
+  instance 안에서는 이전 callback이 끝나기 전에 다음 callback을 겹쳐 실행하지
+  않으며, route packet, subscription과 다른 Entry Spot callback과도 직렬 순서를 지킨다.
 
 ## 8. Handler Filter
 
@@ -2900,7 +2926,7 @@ public delegate ValueTask<object?> ZLinkHandlerDelegate(
     CancellationToken cancellationToken);
 
 // filter에 전달되는 호출 context.
-// 역직렬화된 message와 handler context를 함께 들고 다닌다.
+// 역직렬화된 message와 handler context를 함께 포함한다.
 public sealed class ZLinkHandlerInvocation
 {
     public object? Message { get; }
@@ -3044,7 +3070,7 @@ public interface IZLinkActorSpotHandleResolver
 ```
 
 - 조회 API 가 비동기인 이유는 저장소가 프로세스 밖(store)에 있기 때문이다.
-- 죽은 서버의 row 는 owner lease 만료 후 성공 결과에서 자동 제외된다.
+- 사용할 수 없는 서버의 row는 owner lease 만료 후 성공 결과에서 자동 제외된다.
 - 메시징 resolver는 불투명한 `SpotHandle`을 반환한다. handle이 내부 주소 snapshot과
   안전한 1회 갱신을 소유한다([spot 주소 메시징](../../spot-address-messaging.ko.md)).
 
@@ -3588,7 +3614,7 @@ host 시작 전에 검증한다. `SpotNode` 없이 actor factory만 등록하면
 `IZLinkActorContext.BoundSession`을 사용하고, 현재 binding이 없으면
 `ActorSessionNotBound`로 실패한다.
 
-local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
+local handler가 등록되는 channel의 의미는 다음과 같다. route prefix가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.
 
 channel 이름의 위치도 정해 둔다. handler class 나 method attribute 가
@@ -3639,6 +3665,8 @@ dispatch 실패는 `ZLinkMessageFlowEvent` 의 `Outcome` 이 `Error` 인 event �
 event 는 어느 channel 과 socket role 에서 실패가 났는지, 어느 routing id 와 관련되었는지,
 실패 이유와 runtime 이 선택한 처리 방식을 함께 담는다. native message 소유권이나 frame 참조는
 포함하지 않는다.
+`FlowId`와 nullable `FlowOrigin`은 하나의 optional pair다. `FlowId`가 빈 문자열인 event는
+`FlowOrigin == null`이고, flow가 있는 event는 두 값을 함께 제공한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -3665,8 +3693,8 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public API 표면에 남아 있다. |
 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | framework root type 이 test runtime 에서 발견되고 public 등록 표면이 조립된다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
-| `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
-| `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession` | Entry Spot actor request는 request handler 결과로만 응답하고 send handler나 session bind 경로로 바뀌지 않는다. |
+| `E2E:SM-D1` | local actor relay가 request handler의 reply를 stream session으로 전달한다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public API 표면에 다시 노출되지 않는다. |
 
 ## 16. 전체 public interface inventory와 구현 상태
@@ -3690,8 +3718,8 @@ public contract를 범위로 한다. HTTP client는 별도 component이므로
 | client Stream Connector | `IZlinkStreamConnector`, `IZlinkStreamLifecycleCall`, `IZlinkStreamSendCall`, `IZlinkStreamRequestCall`, `IZlinkStreamWaitCall`, `IZlinkStreamCompressionCodec`, `IZlinkStreamPayloadCodec`, `IZlinkStreamPacketNameResolver` |
 | location | `IZLinkLocationStore`, `IZLinkPeerLocationStore`, `IZLinkSpotLocationStore`, `IZLinkActorLocationStore`, `IZLinkRouteLocationStore`, `IZLinkOwnerLeaseStore`, `IZLinkLocationWatchStore`, `IZLinkLocationChangeStampStore`, `IZLinkLocationReadiness`, `IZLinkLocationRuntimeQuery`, `IZLinkPeerLocationResolver`, `IZLinkSpotHandleResolver`, `IZLinkActorSpotHandleResolver` |
 | codec | `IZLinkMessageSerializer`, `IZLinkCodecExtension`, `IZLinkCodecRegistryBuilder`, `IZLinkCodecRegistrar`, `IZLinkStreamCompressionBuilder` |
-| configuration | `IZLinkFrameworkOptions`, `IZLinkClientServerChannelBuilder`, `IZLinkRouteMeshChannelBuilder`, `IZLinkFanoutChannelBuilder`, `IZLinkStreamNodeBuilder`, `IZLinkSpotNodeBuilder`, `IZLinkClientServerChannelOptions`, `IZLinkRouteMeshChannelOptions`, `IZLinkChannelRuntimeOptions`, `IZLinkSocketConfig`, `IZLinkRouteConfig`, `IZLinkOutboundRouteConfig`, `IZLinkSpotPublisherConfig`, `IZLinkSpotSubscriberConfig`, `IZLinkEntrySpotOptions`, `IZLinkMetadataPolicyBuilder` |
-| dispatch와 monitoring | `IZLinkDispatchOptions`, `IZLinkUnhandledDispatchOptions`, `IZLinkDiagnosticsOptions`, `IZLinkMessageFlowObserver`, `IZLinkMessageFlowControl`, `IZLinkMonitoringOptions`, `IZLinkRuntimeEvent`, `IZLinkRuntimeEventHandler<TEvent>`, `IZLinkRuntimeEventPublisher` |
+| configuration | `IZLinkFrameworkOptions`, `IZLinkClientServerChannelBuilder`, `IZLinkRouteMeshChannelBuilder`, `IZLinkFanoutChannelBuilder`, `IZLinkStreamNodeBuilder`, `IZLinkSpotNodeBuilder`, `IZLinkSpotMeshBuilder`, `IZLinkClientServerChannelOptions`, `IZLinkRouteMeshChannelOptions`, `IZLinkChannelRuntimeOptions`, `IZLinkEndpointConnections`, `IZLinkSocketConfig`, `IZLinkRouteConfig`, `IZLinkOutboundRouteConfig`, `IZLinkSpotPublisherConfig`, `IZLinkSpotSubscriberConfig`, `IZLinkEntrySpotOptions`, `IZLinkMetadataPolicyBuilder` |
+| dispatch와 monitoring | `IZLinkDispatchOptions`, `IZLinkUnhandledDispatchOptions`, `IZLinkDiagnosticsOptions`, `IZLinkMessageFlowObserver`, `IZLinkMessageFlowControl`, `IZLinkMonitoringOptions`, `IZLinkRuntimeEvent`, `IZLinkRuntimeEventHandler<TEvent>`, `IZLinkRuntimeEventPublisher`, `IZLinkDrainControl` |
 | timer와 worker | `IZLinkTimer`, `IZLinkWorkerCall<TResult>`, `IZLinkWorkerOptions` |
 
 기존 본문에서 이름만 언급하고 전체 모양을 찾기 어려웠던 interface는 다음 시그니처를
@@ -4507,5 +4535,5 @@ public sealed class ZlinkStreamTypedRequestBuilder
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/11-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

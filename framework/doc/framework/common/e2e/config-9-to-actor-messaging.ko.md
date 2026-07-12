@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: Spot yield dispatch](config-8-automatic-turn-dispatch.ko.md) | [다음: Spot actor join/transfer](config-10-spot-actor-transfer.ko.md)
+[E2E 목차](README.ko.md) | [이전: 자동 turn dispatch](config-8-automatic-turn-dispatch.ko.md) | [다음: Spot actor join/transfer](config-10-spot-actor-transfer.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 9 — To-actor 메시징 배포
@@ -18,7 +18,7 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 - 다룬다: bind된 actor, bind되지 않은 actor, no-bind 전달 뒤 session bind가 생기는 actor,
   bind가 사라진 actor에 대한 to-actor send/request, bind 비오염, mailbox 인계, handler reply,
   actor 부재·stale location·route 미연결 실패 분류.
-- 여기서 다루지 않는다: actor 생성·join 자체의 기본 동작(Config 2), yield와 actor mailbox 격리(Config 8),
+- 여기서 다루지 않는다: actor 생성·join 자체의 기본 동작(Config 2), 비동기 handler와 actor mailbox 격리(Config 8),
   일반 channel location resolve(Config 1), store 장애·복구(Config 6), actor client API 설계.
 - 계약 근거: send-to-actor/request-to-actor는 `ActorRef`를 받고, send 완료는 actor owner의 로컬
   mailbox 인계 성공을 뜻한다. 실패 분류는 `ActorRouteNotFound`, `ActorLocationStale`,
@@ -115,7 +115,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 **한마디로:** live actor와 일치하지 않는 `ActorRef`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `ActorRouteNotFound`로 실패하는가.
 
 - 절차: 알려진 actor node/type/id 형식을 사용하되 live actor와 일치하지 않는 ref로 외부 caller 서버가 request와 send를 시도한다.
-- 검증: caller 서버는 `ActorRouteNotFound` 분류를 기록한다. actor 노드에는 해당 actor id의 handler evidence가 없다. actor location row가 새로 만들어지지 않는다. silent drop, auto-create, 메시지 파킹처럼 성공처럼 보이는 결과가 없어야 한다.
+- 검증: request는 caller 서버에서 `ActorRouteNotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 actor 노드에는 해당 actor id의 handler evidence가 없고 actor location row도 새로 만들어지지 않는다. auto-create나 메시지 파킹이 없어야 하며, 호출자가 actor 부재를 확인해야 하는 흐름은 request를 사용한다.
 - 세부 동작: actor row 없음 실패 분류.
 
 #### TA-B2 stale actor ref

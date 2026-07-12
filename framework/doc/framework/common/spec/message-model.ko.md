@@ -38,7 +38,7 @@ serializer 구현처럼 byte payload 경계를 직접 다루는 곳에서만 사
 
 이 구조는 권장 구현 세부가 아니라 framework adapter의 서버 간 메시지 계약이다.
 framework가 `DEALER/ROUTER`, routed channel, `SPOT` channel, internal actor dispatch,
-internal session proxy 경로로 서버 사이에 메시지를 보낼 때는 header와 payload를 하나의
+internal bound-session 경로로 서버 사이에 메시지를 보낼 때는 header와 payload를 하나의
 직렬화된 객체로 합치지 않는다.
 
 기본 part 의미는 아래와 같다.
@@ -81,9 +81,11 @@ payload part가 필요해질 수 있으므로, wire 수준에서는 `parts[2...]
 - metadata는 context에서 접근한다.
 - stream은 예외적으로 session packet과 connection, peer 정보가 먼저 보일 수 있다.
 
-반대로 outbound messaging API가 object를 직접 받아 내부 serializer를 호출하는 표면은
-공통 원칙에 맞지 않는다. 이런 표면은 codec 선택과 packet name 결정 규칙을
-`send/request/reply/join`마다 반복하게 만들고, 언어별 API가 서로 달라지게 만든다.
+outbound messaging API는 typed object를 받고 framework 내부 serializer를 호출하는
+표면을 기본으로 한다. 호출자가 이미 만든 byte payload나 `Message`를 전달하는 표면은
+raw transport, codec 구현, 검증 도구처럼 byte 경계를 직접 다뤄야 하는 경우에만 둔다.
+일반 application 호출부에서 codec 선택과 packet name 결정 규칙을
+`send/request/reply/join`마다 반복하지 않는다.
 
 ## 2.1 STREAM packet과의 경계
 
@@ -108,24 +110,40 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 
 | 필드 | 용도 |
 |------|------|
-| `message-kind` | request, response, command, event 구분. dispatch key 문맥은 `{request, command, event}` 셋. response는 client측 reply correlation 전용이라 dispatch key로 노출하지 않는다. |
+| `message-kind` | `Request=1`, `Response=2`, `Command=3`, `Publish=4`, `Error=5`로 고정한다. dispatch key 문맥은 `{Request, Command, Publish}` 셋이다. `Response`와 `Error`는 client측 reply correlation 전용이라 dispatch key로 노출하지 않는다. |
 | `channel` | 논리 channel 이름 |
 | `packet-name` | handler 선택에 쓰는 이름 |
 | `content-type` | payload codec 식별 |
 | `correlation-id` | 요청과 응답 연결 |
 | `deadline` 또는 `timeout` | 시간 제한 전달 |
-| `status` | 응답 상태 |
 | `error-code` | 공통 에러 코드 |
+| `error-message` | 실패 원인을 설명하는 문자열 |
 | `source` | 호출자 식별 정보 |
 | `target` | 필요할 때 명시적 대상 정보 |
 | `flow-id` | 여러 단계 호출과 메시지 경계를 잇는 전역 추적 정보. 정확한 생성·전파 계약은 [메시지 흐름 상관관계](flow-correlation.ko.md)가 소유한다. |
 | `causation-id` | 어떤 이전 메시지에서 파생됐는지 식별 |
 
 모든 framework message는 `message-kind`, `packet-name`과 `content-type`을 포함한다.
-channel 경로는 `channel`을 포함하고, request와 response는 같은 `correlation-id`를
-포함한다. response는 `status`를 포함하며 실패 response는 `error-code`도 포함한다.
-route가 대상을 명시해야 하는 경로만 `source`와 `target`을 포함한다. deadline,
-flow-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
+channel 경로는 `channel`을 포함하고, `Request`와 그 결과인 `Response` 또는 `Error`는
+같은 `correlation-id`를 포함한다. 성공 결과는 `Response`, 실패 결과는 `Error`로
+구분하며 별도의 `status` 필드는 두지 않는다. `error-code`와 `error-message`는
+`Error`에만 둔다. route가 대상을 명시해야 하는 경로만 `source`와 `target`을
+포함한다. deadline, flow-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
+
+`message-kind` 숫자와 필드 조합은 wire 계약이다. 수신자는 아래 조합을 유효한
+메시지로 처리하고, 그 밖의 조합은 protocol 오류로 처리한다.
+
+| `message-kind` | 숫자 | 용도 | 필드 제약 |
+|----------------|------|------|-----------|
+| `Request` | `1` | 응답을 요구하는 요청 | `correlation-id`가 필요하다. `error-code`와 `error-message`를 두지 않는다. |
+| `Response` | `2` | 성공한 요청의 결과 | 원래 요청과 같은 `correlation-id`가 필요하다. `error-code`와 `error-message`를 두지 않는다. |
+| `Command` | `3` | 응답을 요구하지 않는 전송 | reply로 처리하지 않는다. `error-code`와 `error-message`를 두지 않는다. |
+| `Publish` | `4` | 구독자에게 발행하는 메시지 | reply로 처리하지 않는다. `error-code`와 `error-message`를 두지 않는다. |
+| `Error` | `5` | 실패한 요청의 결과 | 원래 요청과 같은 `correlation-id`와 비어 있지 않은 `error-code`가 필요하다. `error-message`에는 호출자에게 전달할 실패 설명을 둘 수 있다. |
+
+값 `0`, `1..5` 밖의 값, `status` 필드, `Response`에 오류 필드를 넣은 형태,
+`Error`를 성공 payload처럼 사용하는 형태는 유효하지 않다. 이전의 `event` 이름이나
+성공·실패를 `status`로 구분하는 envelope를 함께 해석하는 호환 decoder도 두지 않는다.
 
 Spot worker offload에서 생긴 실패도 `error-code`에 보존한다. queue가 가득 찬 경우,
 timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `RequestFailed`로 뭉개지 않고
@@ -167,33 +185,40 @@ core protocol API만 제공한다.
 
 ### 5.1 request
 
-- `message-kind = request`
+- `message-kind = Request(1)`
 - `correlation-id` 필수
 - `packet-name` 필요
 - local `ROUTER(server)`가 받은 request는 `packet-name` 기준으로 handler에 dispatch한다
 
 ### 5.2 response
 
-- `message-kind = response`
+- 성공이면 `message-kind = Response(2)`
 - 같은 `correlation-id`를 되돌려 준다
-- 성공이면 `status`, 실패면 `status + error-code`를 함께 보낸다
-- outbound `DEALER(client)`가 받은 response는 일반 handler dispatch 대상이 아니라,
+- `status`, `error-code`, `error-message`를 넣지 않는다
+- outbound client가 받은 response는 일반 handler dispatch 대상이 아니라,
   먼저 보낸 request의 pending reply를 완료하는 데 쓴다
 
-### 5.3 command
+### 5.3 error
 
-- `message-kind = command`
+- 실패하면 `message-kind = Error(5)`
+- 같은 `correlation-id`와 비어 있지 않은 `error-code`를 되돌려 준다
+- 호출자에게 전달할 설명이 있으면 `error-message`에 넣는다
+- `Error`는 실패 reply이며 일반 handler dispatch 대상이 아니다
+
+### 5.4 command
+
+- `message-kind = Command(3)`
 - `packet-name` 필요
 - 응답 payload를 전제로 하지 않는다
 - local `ROUTER(server)`가 받은 command는 `packet-name` 기준으로 send handler에
   dispatch한다
 
-## 6. 이벤트의 기본 의미
+## 6. 발행 메시지의 기본 의미
 
-이벤트는 응답을 기대하지 않으므로 아래가 핵심이다.
+발행 메시지는 응답을 기대하지 않으므로 아래가 핵심이다.
 
-- `message-kind = event`
-- `packet-name` 또는 `event-name`
+- `message-kind = Publish(4)`
+- `packet-name` 필수
 - 선택적 metadata
 
 ## 7. stream에 대한 별도 메모
@@ -208,17 +233,18 @@ core protocol API만 제공한다.
 따라서 stream은 공통 message model을 일부 공유하더라도, framework 표면에서는
 별도 context와 handler 계약을 둘 가능성이 높다.
 
-여기서 중요한 점은 `STREAM`이 공용 `message-kind`에 새 값을 추가하지 않는다는
-점이다. 이 계약의 공용 `message-kind`는 `request`, `response`, `command`,
-`event` 네 가지로 고정하고, `STREAM`은 별도 session contract로 설명한다.
+여기서 중요한 점은 `STREAM`이 이 서버 간 envelope의 `message-kind`에 새 값을
+추가하지 않는다는 점이다. 서버 간 envelope의 값은 `Request`, `Response`, `Command`,
+`Publish`, `Error` 다섯 가지로 고정하고, `STREAM`은 별도 session contract로 설명한다.
 
 ## 8. 이 문서의 범위
 
 - 이 문서는 공용 logical message kind와 header 의미만 정한다.
 - header의 binary encoding 형식과 serializer 내부 규칙은 binding 또는 codec 확장
   문서에서 다룬다.
-- 표준 status code 체계와 payload 없는 메시지 표현은 현재 구현과 공개 계약이
-  필요로 할 때 별도 spec에서 다룬다.
+- payload 없는 메시지 표현은 현재 구현과 공개 계약이 필요로 할 때 별도 spec에서
+  다룬다. 응답 성공 여부를 나타내는 별도 status code 체계는 이 envelope에 추가하지
+  않는다.
 - `STREAM` monitor 이벤트를 session error로 어디까지 승격할지는 `STREAM` 바인딩
   문서에서 다룬다.
 

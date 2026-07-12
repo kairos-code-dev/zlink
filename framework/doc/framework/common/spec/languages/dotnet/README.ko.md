@@ -6,6 +6,8 @@
 전체 public interface와 attribute 시그니처의 기준은
 [handler-interfaces](handler-interfaces.ko.md)다. 기능별 계약은 같은 디렉토리의
 ASP.NET Core, actor, stream, location과 monitoring 문서에서 설명한다.
+[Stream Connector 공개 계약](stream-connector.ko.md)은 별도 client package의 lifecycle, dispatch,
+codec, transport와 종료 의미를 고정한다.
 
 [`public-contract.ko.md`](public-contract.ko.md)는 사람이 읽는 계약 문서와 실제 assembly·NuGet
 산출물 사이의 exact 검증 절차를 정의한다. `public-contract/api/`는 모든 public type과 member의
@@ -22,3 +24,10 @@ metadata의 정식 부속 명세다. 구현에서 자동으로 최신 상태를 
 
 다른 언어는 같은 취소 의미를 각 언어의 관례로 표현하며,
 `CancellationToken` 타입이나 인자 위치를 그대로 복제할 의무가 없다.
+
+## 회귀 테스트
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` | 정식 API snapshot과 source assembly의 모든 공개 서명이 일치한다. |
+| `RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods` | 각 상세 계약 문서의 회귀 test와 E2E scenario 참조가 현재 checkout에 실제로 존재한다. |

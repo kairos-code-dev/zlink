@@ -194,7 +194,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
 ```
 
 handler 는 transport raw header 를 직접 받지 않는다. Session route 와 binding
-token 같은 내부 값은 framework runtime 이 들고 있고 public handler 에 노출하지
+token 같은 내부 값은 framework runtime이 보유하고 public handler에 노출하지
 않는다. stream packet 이름과 전달 허용된 application metadata 는
 `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 로 전달된다.
 
@@ -437,7 +437,7 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 6.1 Actor-session binding 상태
 
-이 절은 actor 와 stream session 의 연결 정보를 누가 들고 있는지를 정리한다.
+이 절은 actor와 stream session의 연결 정보 소유 위치를 정리한다.
 
 framework 는 session route resolver 를 public 기본 표면으로 제공하지 않는다.
 session binding 은 다음 흐름에서 framework / core 가 갱신해 두는 내부
@@ -458,7 +458,7 @@ session route resolver 나 저장소 계약은 두지 않는다.
 
 ```csharp
 
-options.AddRouteMesh("backend")
+options.AddRouteMeshChannel("backend")
     .EnableServer(playEndpoint);
 
 spot.AddActorFactory<PlayActorFactory>("player");
@@ -756,24 +756,22 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 연동�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
-| `ActorDisconnectNotifyTests.ClientClose_Cleans_Session_Without_Actor_Disconnect_Callback` | client stream close 는 session binding cleanup 만 수행하고 Actor disconnect callback 을 호출하지 않는다. |
-| `ActorBindingTests.BindActorAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
-| `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote fallback 을 수행하지 않는다. |
-| `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `BoundSession.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
+| `E2E:SM-D2` | session callback에서 원격 actor request를 relay하고 reply를 같은 stream session으로 되돌린다. |
+| `E2E:SM-D5` | client close와 명시적 actor disconnect notification의 차이를 실제 lifecycle marker로 검증한다. |
+| `E2E:SM-D1` | local actor binding과 relay가 별도 원격 route fallback 없이 동작한다. |
+| `E2E:SM-D6` | bound session push가 지정한 client session에만 도달한다. |
 | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하고, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
-| `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_On_The_EntrySpot_Line` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다. |
-| `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
-| `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
-| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
+| `SerialExecutorTests.ActorDispatchMailbox_Runs_Waiters_In_Fifo_Order` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 등록 순서를 따른다. |
+| `E2E:SM-G2` | actor owner가 바뀐 뒤 대기 중이던 요청도 새 owner에서 처리되고 이전 위치로 전달되지 않는다. |
+| `E2E:SM-B7` | actor join 이후 packet dispatch가 현재 Spot lifecycle 순서로 실행된다. |
+| `E2E:SM-D8` | 이전 stream 종료 뒤 새 session에서 재인증·재bind하고 messaging을 재개한다. |
+| `StreamSessionForcedCleanupTests.Rejected_terminal_work_starts_disposal_and_releases_the_session_scope` | session 종료 작업이 queue에서 거절되어도 stream close와 session scope 정리가 완료된다. |
 | `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
 | `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
 | `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
 | `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `RunAsync(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
 | `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |
 | `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
-| `SerialExecutorTests.ActorDispatchMailbox_Runs_Waiters_In_Fifo_Order` | actor mailbox가 등록 순서를 유지한다. |
 | `RegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어, 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.

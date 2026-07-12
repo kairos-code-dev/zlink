@@ -494,7 +494,7 @@ assembly Zlink.Framework
     property System.Nullable<Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorReason> ErrorReason { get; init; } [nullability=read:nullable,write:nullable]
     property System.String? ErrorType { get; init; } [nullability=read:nullable,write:nullable]
     property System.String FlowId { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Eventing.ZLinkFlowOrigin FlowOrigin { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Nullable<Zlink.Framework.Contracts.Eventing.ZLinkFlowOrigin> FlowOrigin { get; init; } [nullability=read:nullable,write:nullable]
     property System.String? LocalRid { get; init; } [nullability=read:nullable,write:nullable]
     property Zlink.Framework.Contracts.Dispatch.ZLinkDispatchMessageKind MessageKind { get; init; } [nullability=read:not-null,write:not-null]
     property System.Nullable<System.Int64> MessageSize { get; init; } [nullability=read:nullable,write:nullable]
@@ -1319,6 +1319,7 @@ assembly Zlink.Framework
     property System.TimeSpan OwnerLeaseTtl { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan PollingInterval { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan StoreFailureGrace { get; set; } [nullability=read:not-null,write:not-null]
+    method System.Void MapSpotMeshToRouteChannel(System.String spotMeshName [nullability=read:not-null,write:not-null], System.String routeChannelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken>
     ctor ZLinkLocationOwnerToken(System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null])
     property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
@@ -1816,7 +1817,7 @@ assembly Zlink.Framework
     generic TMessage variance=in nullable=nullable
     method abstract System.Threading.Tasks.ValueTask HandleAsync(TSpot spot [nullability=read:not-null,write:not-null], TMessage? message [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Spots.IZLinkSpotPublisherClient
-    method abstract Zlink.Framework.Contracts.Channels.IZLinkPublishCall Publish<TEvent>(System.String channelName [nullability=read:not-null,write:not-null], System.String topic [nullability=read:not-null,write:not-null], TEvent? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Channels.IZLinkPublishCall PublishSpot<TEvent>(System.String channelName [nullability=read:not-null,write:not-null], System.String topic [nullability=read:not-null,write:not-null], TEvent? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TEvent variance=invariant nullable=nullable
   type interface Zlink.Framework.Contracts.Spots.IZLinkSpotRequestHandler<TSpot, TRequest, TReply>
     generic TSpot variance=invariant nullable=unspecified

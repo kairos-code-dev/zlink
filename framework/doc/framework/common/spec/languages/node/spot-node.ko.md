@@ -200,26 +200,26 @@ native facade 호출(`node.entrySpot()`, `setRoutingId(...)`)은 backend 어댑�
 
 ## Route 의미
 
-framework 가 core discovery route 를 노출할 때 Entry Spot 과 user Spot 을
-구분한다.
+framework가 운영용 spot location row를 노출할 때 Entry Spot과 user Spot을 구분한다.
 
 - Actor remote location 의 `currentSpotKind` 가 `Entry` 면 `currentSpotRid` 는
   Entry Spot rid 다.
 - Actor remote location 의 `currentSpotKind` 가 `User` 면 `currentSpotRid` 는 user
   Spot rid 다.
-- location runtime 이 만든 내부 spot route target 의 `spotKind` 도 core
-  `resolveSpot()` 결과를 보존한다.
+- location runtime이 만든 내부 spot route target의 `spotKind`도 owner lease가 유효한
+  spot location row의 값을 보존한다.
 
-Spot RID route 는 framework 가 관리하는 이름 색인이다. 이 색인은 Spot rid 를
-찾는 용도로만 사용한다. owner node rid 와 Spot kind 는 core `resolveSpot(spotRid)`
-결과를 source of truth 로 사용한다.
+Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
+용도로만 사용한다. owner node rid와 Spot kind는 location store에서 조회하고 owner
+lease가 유효한지 확인한 spot location row를 기준으로 사용한다. 이 조회와 유효성 판정은
+[공통 location runtime §5](../../location-runtime.ko.md#5-resolver-계약)를 따른다.
 
 ## 회귀 테스트
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `entrySpot.routingId` 로 지정한 routing id 가 native Entry Spot facade 에 적용되고 Entry Spot activation 의 `spotRid` 로 노출된다. |
-| `LocationRuntimeTests.SpotRefResolver_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route 는 Spot rid 만 찾는 색인으로 쓰고, resolver 가 core `resolveSpot()` 결과의 owner node rid 와 `SpotKind.User` 를 보존한다. |
+| `LocationRuntimeTests.SpotRefResolver_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route는 Spot rid만 찾는 색인으로 쓰고, resolver가 유효한 spot location row의 owner node rid와 `SpotKind.User`를 보존한다. |
 | `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관되게 동작한다(dotnet `CreateAsync` / `GetAsync`·`FindAsync` / `ListAsync` / `CloseAsync` 동등). |
 
 이름은 dotnet 회귀 테스트와 1:1 로 대응한다. node 구현은 같은 시나리오를 NestJS

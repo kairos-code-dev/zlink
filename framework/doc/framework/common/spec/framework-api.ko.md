@@ -45,7 +45,7 @@
 
 ### 2.1 서버 쪽
 
-- handler를 프레임워크 표준 등록 방식으로 붙인다.
+- handler를 프레임워크 표준 등록 방식으로 등록한다.
 - 요청 payload는 typed object로 받는다.
 - header metadata와 timeout 정보는 context에서 조회한다.
 - `send`는 응답 없는 handler, `request`는 응답 있는 handler로 설명할 수 있어야
@@ -215,10 +215,12 @@ connection의 복구를 반복 호출로 가리면 안 된다.
 구동 순서를 고정하는 장치가 아니라, zlink socket이 이미 연결 대상으로 가진 peer에 reply를 내보낼 수
 있는지 확인하는 readiness 대기다.
 
-route mesh server끼리는 location auto-connect가 pairwise initiator 규칙으로 한쪽 연결만 만든다.
-bind endpoint가 있는 server는 router row를 게시하고, endpoint가 없는 순수 route client만 dealer
-역할로 remote router에 연결한다. server가 router row와 endpoint 없는 dealer row를 동시에 게시해
-중복 연결을 만들면 stale peer-ready나 시작 순서 의존을 만들 수 있으므로 public contract에 맞지 않는다.
+RouteMesh의 모든 구성원은 endpoint 유무와 관계없이 router row 하나를 게시한다.
+endpoint가 없는 router는 수신 endpoint가 없으므로 pairwise 순서와 관계없이 endpoint가
+있는 remote router를 항상 dial한다. 양쪽 router에 endpoint가 있으면 pairwise initiator
+규칙으로 정한 한쪽만 dial한다. RouteMesh에 dealer row를 게시하거나 router/dealer 역할을
+동시에 게시하는 구성은 유효하지 않다. framework는 이전 dealer row를 읽는 호환 경로나
+socket 역할을 실행 중에 바꾸는 이중 역할을 두지 않는다.
 
 drain은 새 요청의 선택 대상에서 빠지는 의미다. 이미 받은 request의 handler 실행과 reply는 drain
 이후에도 완료되어야 한다. weight 변경, endpoint handover, owner 변경을 같은 사건으로 다루면
@@ -361,7 +363,7 @@ interface가 맞는 경우는 아래와 같다.
 - framework가 생성하거나 발급하고 application은 그 표면만 사용하는 handle, view,
   context, call builder다.
 - 내부 routing, lifecycle, native resource, lazy decode, 실행 문맥 같은 구현 의미가
-  함께 붙어 있다.
+  함께 포함되어 있다.
 - application이 callback이나 handler로 구현해서 framework가 호출하는 계약이다.
 - 여러 구현이 자연스럽거나, binding별 구현 차이를 숨겨야 한다.
 - 사용자가 직접 생성해서 저장하는 값이 아니라, framework 실행 흐름 안에서만 의미가
@@ -641,10 +643,9 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
 - spot timer 는 framework 가 만든 managed scheduler 를 사용한다. user Spot timer 는
-  같은 user Spot 실행 queue 에서 직렬화한다. Entry Spot timer 는 같은 timer instance 의
-  callback 이 겹치지 않는다는 점만 공통으로 고정한다. Entry Spot timer 를 Entry Spot
-  실행 줄에 묶을지는 언어별 runtime 정책에 맡기며, 언어별 feature map과 상세 문서에
-  기록한다.
+  같은 user Spot 실행 queue 에서 직렬화한다. Entry Spot timer 는 lifecycle, route,
+  subscription 같은 Entry callback과 동일한 Entry 실행 줄에서 직렬화한다. Entry actor
+  packet은 이 실행 줄이 아니라 actor별 mailbox에서 처리한다.
 - timer handler 는 callback 번호, 예정 시각, 시작 시각, 지연, 건너뛴 tick 수를
   담은 metadata 를 받는다. 늦은 tick 은 skip, bounded catch-up, fixed-delay 중
   하나의 정책으로 처리한다. hard realtime 보장은 제공하지 않는다.
@@ -656,16 +657,15 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 - actor join으로 현재 `Spot`이 바뀌면, join 완료 뒤의 actor dispatch는 새 `Spot`
   실행 문맥에서 처리되어야 한다. framework는 join 상태 갱신과 packet dispatch
   선택 사이의 경합을 막아야 한다.
-- actor 코드는 channel client 나 spot outbound 를 직접 고르지 않고,
-  actor context를 통해 channel request/send와 client stream reply/send를 수행한다.
-  context는 join 전에는 일반 channel client 경로를, join 후에는 현재 `Spot`에
-  route bridge channel socket 경로를 선택한다.
-- actor context는 stream 객체를 직접 노출하지 않고, client로 보내는 `Send(...)`와
-  request에 응답하는 `Reply(...)` 같은 의도 중심 API를 제공한다.
+- actor context는 현재 user Spot의 식별값, 현재 actor에 연결된 bound session,
+  `JoinSpot(...)`, `JoinEntrySpot(...)`을 제공한다. actor가 channel client, route bridge
+  socket 또는 stream 객체를 직접 고르지 않게 한다.
+- bound session은 현재 client로 보내는 one-way `Send(...)`와 연결 종료만 제공한다.
+  client를 향한 request/reply API나 session 위치 조회 API는 제공하지 않는다.
 - actor를 완전히 제거하는 public API는 Entry Spot context에만 둔다. user Spot
   context는 actor를 Entry Spot으로 되돌리는 `leaveActor` 의미의 API까지만 제공한다.
   application은 room/game/stage 정리가 끝난 뒤 user Spot에서 actor에 종료 표시를 남기고
-  `leaveActor`로 Entry Spot에 돌려보낸다. Entry Spot handler 또는 lifecycle callback은
+  `leaveActor`로 Entry Spot으로 이동한다. Entry Spot handler 또는 lifecycle callback은
   그 표시를 확인한 뒤 언어별 Entry Spot destroy API를 호출한다.
 - Entry Spot destroy API는 actor registry, actor-session binding, native actor ref를
   함께 정리한다. 이 작업은 actor 위치 이동이 아니므로 `onLeaveActor`나 다른 lifecycle
@@ -684,6 +684,11 @@ framework는 actor 생성, Spot 입장, 이탈과 actor 메시지 수신을 core
 위임해야 한다. 별도의 actor registry나 wire protocol을 공개 계약으로 중복 구현해서는
 안 된다.
 
+새 actor는 location runtime의 `NewClaim`을 먼저 얻은 실행만 활성화한다. framework는
+claim 성공 뒤 factory, `Configure()`, create lifecycle 순서로 진행하며, 같은 actor id의
+동시 생성에서 claim을 얻지 못한 실행은 application actor를 활성화하지 않는다
+([location runtime §4](location-runtime.ko.md#4-ownergeneration-규칙)).
+
 입장 요청을 받으면 framework는 요청을 application join handler에 전달하고, handler의
 허용 또는 거부 결과와 선택적 reply를 core 응답으로 변환한다. 입장이 완료된 actor의
 메시지는 해당 Spot의 직렬 실행 문맥에서 dispatch한다. actor join 요청과 actor 메시지
@@ -701,10 +706,10 @@ actor 생성, 입장과 이탈의 정확한 함수 이름, timeout 표현과 취
 
 user Spot 에서는 두 이벤트를 spot serial executor를 통해 직렬화된 실행 문맥 안에서
 처리하므로, actor join handler와 actor packet handler 사이에 동시성 경합이 없다.
-Entry Spot 도 같은 handler/callback 등록 표면을 제공하며, Entry Spot packet callback,
-actor packet callback, lifecycle callback, request continuation 을 Entry Spot 실행 줄에서
-직렬화한다. Entry Spot timer callback 은 같은 timer instance callback 이 겹치지 않는다는
-점만 공통으로 보장하고, Entry Spot 실행 줄에 묶을지는 언어별 runtime 정책에 맡긴다.
+Entry Spot도 같은 handler/callback 등록 표면을 제공한다. Entry Spot packet, lifecycle,
+route, subscription, timer callback과 해당 실행 줄에서 시작한 request continuation은
+Entry 실행 줄에서 직렬화한다. Entry actor packet은 actor별 mailbox에서 처리하므로 같은
+actor의 순서는 유지하면서 서로 다른 actor는 병렬로 실행할 수 있다.
 user Spot timer callback 은 packet, subscription, channel reply, actor packet 과 같은
 user Spot queue 에서 처리한다.
 

@@ -20,7 +20,7 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
   분리, source node down 전후 동작, location row commit 시점, moving 중 actor packet dispatch 차단,
   transfer adapter 미등록 기본 동작과 callback 실패, bound session 이전, **actor 이동 중 in-flight packet
   handoff(순서 보존·publish 전 replay·straggler forwarding과 mapping 축출·request reply correlation과 timeout)**.
-- 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), yield 후 mailbox 재개(Config 8),
+- 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), 비동기 handler 완료 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
 - 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. join 완료 신호는
   target `OnJoinedActor`이며, 성공 reply와 public actor location은 target `OnJoinedActor` 정상 완료

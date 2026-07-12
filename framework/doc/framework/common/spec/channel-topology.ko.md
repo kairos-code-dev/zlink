@@ -92,6 +92,12 @@ channel과 `SPOT` channel 위의 internal actor dispatch, internal session proxy
 multipart 계약으로 바꾸거나, 서버 간 multipart body를 stream frame처럼 단일 payload로
 합치는 방식은 둘 다 이 topology 정책에 맞지 않는다.
 
+RouteMesh는 일반 client-server channel과 socket 역할이 다르다. RouteMesh 구성원은
+endpoint가 있든 없든 모두 `ROUTER` 역할을 사용한다. endpoint가 없는 `ROUTER`는
+remote `ROUTER`를 항상 dial하고, 양쪽 모두 endpoint가 있으면 routing id에 따른
+pairwise initiator 한쪽만 dial한다. RouteMesh에 `DEALER`를 등록하거나 과거 row를
+위해 `ROUTER`와 `DEALER`를 함께 만드는 방식은 유효하지 않다.
+
 SPOT topology는 "`AddSpotMesh(channelName)` 등록이 node 묶음의 active channel
 view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
@@ -159,7 +165,7 @@ handler namespace는 inbound channel runtime 안에 둔다.
 기본 dispatch key는 아래 조합이다.
 
 - inbound `channel name`
-- message kind (`request`, `command`, `event`). dispatch key 어휘에는 `send`를 포함하지 않는다. response는 client측 reply correlation으로만 다루므로 dispatch key 집합에 두지 않는다.
+- message kind (`Request`, `Command`, `Publish`). dispatch key 어휘에는 `send`를 포함하지 않는다. `Response`와 `Error`는 client측 reply correlation으로만 다루므로 dispatch key 집합에 두지 않는다.
 - packet name
 
 따라서 같은 애플리케이션 안에서도 `api` channel의 `AuthenticateReq`와 `admin`
@@ -169,7 +175,7 @@ channel의 `AuthenticateReq`는 서로 다른 handler로 매핑할 수 있어야
 
 중복 검사는 실행 문맥 안에서만 수행한다. 일반 channel messaging에서는 같은
 `channel name + kind + packet name`에 handler가 둘 이상이면 startup 오류다. 여기서
-`kind`는 dispatch key 어휘인 `{request, command, event}` 중 하나다.
+`kind`는 dispatch key 어휘인 `{Request, Command, Publish}` 중 하나다.
 다른 channel에서 같은 `kind + packet name`을 다시 쓰는 것은 허용한다. routed
 channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, Entry Spot
 registry, user Spot registry를 namespace로 본다. actor 측 dispatch namespace의 정확한

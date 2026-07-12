@@ -157,17 +157,20 @@ builder.Services.AddZLinkFramework(options =>
   spot ref resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`AddSpotMesh` 는 SPOT channel 이름을 등록하고, 같은 프로세스의 단일
-`SpotNode` 를 함께 만든다. 그 노드가 맡는 역할은 다음과 같다.
+`AddSpotMesh` 는 SPOT channel 이름을 등록하고 그 channel을 소유하는
+`SpotNode` 하나를 만든다. 한 프로세스에서 이 함수를 여러 번 호출하면 channel별
+`SpotNode`가 각각 등록된다. 각 노드가 맡는 역할은 다음과 같다.
 
 
-같은 프로세스 안에는 하나의 `SpotNode` 만 둔다. `AddSpotMesh(channelName)` 의
-`channelName` 이 그 로컬 노드 이름으로도 쓰이므로, route·publish 소유 노드를
-따로 고르는 설정이 필요하지 않다.
+각 `SpotNode`는 `AddSpotMesh(channelName)`의 `channelName`을 로컬 노드 이름으로도
+사용하므로 route·publish 소유 노드를 따로 고르는 설정이 필요하지 않다. 여러
+`SpotNode`를 등록할 수 있지만 actor factory를 소유하는 노드는 프로세스에서 하나만
+허용한다. 둘 이상의 노드에 actor factory를 등록하면 actor 생성 소유자를 결정할 수
+없으므로 startup validation 오류다. actor factory가 없는 여러 노드는 허용한다.
 
-location store 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
-가 반환한 builder 에 바로 router, pub/sub, factory 를 설정한다. public 등록
-표면은 항상 `AddSpotMesh` 가 SPOT channel 이름과 단일 node 를 함께 소유하도록
+location store가 없는 로컬 노드도 `AddSpotMesh` 안에서 표현한다. 반환된 builder에
+바로 router, pub/sub, factory를 설정한다. public 등록 표면은 항상 각
+`AddSpotMesh` 호출이 SPOT channel 이름과 그 channel의 node 하나를 함께 소유하도록
 유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
@@ -393,7 +396,7 @@ builder.Services.AddZLinkFramework(options =>
   connect된 peer 집합을 대상으로 요청을 보내기 때문에, remote `RoutingId`를 별도
   파라미터로 받지 않는다.
 - `pub/sub` manual 연결에서 등록하는 주소는 다른 `SpotNode`의 mesh publish bind
-  주소다. local `SUB/XSUB`[^sub-xsub] 쪽이 그 주소로 붙는다.
+  주소다. local `SUB/XSUB`[^sub-xsub] 쪽이 그 주소로 연결된다.
 
 ### 4.3 Spot handle resolver
 
@@ -581,7 +584,7 @@ request, publish, subscribe 를 처리할 뿐이다.
 - 생성 요청이 넘긴 단일 `ZLinkMessage`를 `OnCreateAsync(...)`로 전달하는 경우
 - 이미 존재하는 `spotRid`라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
-여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
+여기서 중요한 점은 반환값이 장기적으로 보관할 spot instance handle이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing`/`Created`/`Rejected` 상태,
 create callback이 돌려준 선택적 reply `ZLinkMessage`면 충분하다. 이후 메시징은
 현재 channel publish 또는 route bridge channel socket을 통한 send / request 로 푸는
@@ -1031,27 +1034,24 @@ route send 와 actor send 는 Warning 로그와 metric, subscription 은 Debug �
 
 ## 11. Router channel route 수신
 
-`SpotHandle`의 내부 route channel은 실제 transport로 사용할 router-capable channel을
+`SpotHandle`의 내부 route channel은 실제 transport로 사용할 route mesh channel을
 가리켜야 한다. application은 이 값을 읽지 않는다. `SpotNode`가 그 channel에서 오는
-SPOT route를 받으려면 node builder에
-다음 구성을 둔다.
+SPOT route를 받으려면 node builder에 다음 구성을 둔다.
 
 ```csharp
 node.EnableRouter("tcp://0.0.0.0:9001");
 ```
 
+SPOT route ingress는 `AddRouteMeshChannel(...)`의 route mesh `ROUTER`만 사용한다.
+client/server channel과 fanout channel은 SPOT route ingress로 지정할 수 없다.
 
-- `AddClientServerChannel`의 server `ROUTER`
-- `AddRouteMesh`의 route mesh `ROUTER`
-
-수동 endpoint를 써야 하면 같은 표면 아래에서 명시한다.
-
-```csharp
-```
+수동 endpoint를 써야 하면 `AddRouteMeshChannel(...)`이 반환한 builder의
+`EnableServer(endpoint)`로 ingress `ROUTER` endpoint를 명시한다. outbound peer도
+수동으로 지정할 때는 같은 builder의 `EnableClient(endpoint)`를 사용한다.
 
 수동 endpoint가 없으면 framework 가 location store 의 peer row 를 읽어 자동 연결한다. 같은 route
 수신 관계에서 수동 연결과 store 자동 연결을 섞으면 startup validation 오류다.
-fanout channel은 router 역할이 없으므로 지정할 수 없다.
+client/server channel과 fanout channel은 이 route ingress 관계에 참여하지 않는다.
 
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel 로 사용할 수
@@ -1087,7 +1087,8 @@ SPOT 등록은 다음 조건을 host 시작 전에 검증한다.
 
 | 구성 | 결과 |
 |------|------|
-| 같은 process에서 둘 이상의 `AddSpotMesh(...)` 등록 | `ZLinkConfigurationException` |
+| 둘 이상의 SpotNode가 actor factory를 소유 | `ZLinkConfigurationException` |
+| actor factory가 없는 둘 이상의 `AddSpotMesh(...)` 등록 | 허용 |
 | 같은 Spot factory 타입 중복 | `ZLinkConfigurationException` |
 | 같은 Entry Spot 타입 중복 | `ZLinkConfigurationException` |
 | route bridge에 router-capable channel이 없음 | `ZLinkConfigurationException` |
@@ -1108,24 +1109,15 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes` | 같은 Spot factory 타입을 중복 등록하면 startup validation 예외가 난다. |
 | `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | location store 없이도 local-only SpotNode 구성은 시작할 수 있다. |
-| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `CloseAsync`와 scope 정리가 일관된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 종료 뒤에는 멈춘다. |
-| `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
-| `TimerTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책은 늦은 tick을 무제한 전달하지 않고 `SkippedTicks`로 드러낸다. |
-| `TimerTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책은 `MaxCatchUpTicks` 상한 안에서만 연속 실행한다. |
-| `TimerTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
-| `TimerTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
-| `TimerTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
-| `TimerTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
-| `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 runtime monitoring의 timer failure event로 기록된다. |
-| `TimerTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | `StopOnUnhandledException`이 켜진 timer는 첫 handler 예외 뒤 중단된다. |
-| `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
-| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `E2E:SM-A6` | Spot initialize와 명시적 close lifecycle이 실제 runtime에서 한 번씩 완료된다. |
+| `E2E:SM-E2` | Spot timer tick이 등록된 handler에 전달된다. |
+| `E2E:SM-E3` | idle timer가 Spot을 닫고 이후 요청이 실패해 timer와 lifecycle 종료를 함께 검증한다. |
+| `E2E:SM-E4` | timer overrun 정책이 늦은 tick을 계약에 맞게 제한한다. |
+| `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | handler 예외가 계속 실행되는 실패와 timer 중단 실패로 구분되어 monitoring event에 반영된다. |
+| `E2E:SM-C4` | 외부 Spot publisher client가 target SPOT channel로 publish한다. |
+| `E2E:SM-B7` | actor 생성, join과 packet dispatch가 현재 Spot lifecycle 순서로 실행된다. |
 | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하지만, 서로 다른 actor는 Entry Spot 직렬 실행 줄 때문에 시작이 막히지 않는다. native actor readable 경로와 같은 actor dispatch 경계에서도 actor별 mailbox 가 실행 순서의 기준이다. |
-| `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Serialized_On_EntrySpot_Line` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 직렬 실행 줄에서 실행된다. |
-| `TimerTests.EntrySpotTimer_Waits_For_EntrySpot_Callbacks` | Entry Spot timer callback이 같은 Entry Spot의 앞선 callback 완료 뒤 실행된다. |
-| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 같은 timer callback을 겹쳐 실행하지 않는다. |
+| `E2E:ATD-C2` | 같은 timer의 다음 tick은 이전 callback의 continuation과 완료 뒤 실행되어 재진입하지 않는다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.

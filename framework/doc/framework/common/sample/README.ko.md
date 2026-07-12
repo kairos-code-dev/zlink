@@ -85,19 +85,18 @@ full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, 
 full 구조라고 설명하면 안 된다. full 구조로 승격할 때는 먼저 해당 언어의 framework public API와
 공통 시나리오 문서가 요구하는 Spot owner 경계를 맞춘 뒤 sample regression을 갱신한다.
 
-## Spot yield dispatch 샘플 기준
+## Spot 자동 turn dispatch 샘플 기준
 
 Bingo의 Entry Spot match handler는 player actor 한 명의 입장 준비를 보여 주는 기준
 샘플이다. 이 흐름은 player actor의 방 배정과 room Spot join처럼 입장 준비에 필요한
 I/O를 기다린다. 언어별 sample의 방 배정 경로는 channel request일 수도 있고 Entry
 Spot 내부 allocator일 수도 있지만, await 전후에 Entry Spot의 room list나 match queue
 같은 공용 mutable state를 이어서 판단하지 않는 admission I/O라는 조건은 같다. 이 조건을
-만족하는 Bingo match 흐름에는 yield 계열 terminator를 사용한다.
-
-언어별 이름은 각 framework public API를 따른다. `.NET`은 `Yield(...)`, Java는
-`yield(...)`, Kotlin은 `yield(call, ...)`, Node.js는 `yield(...)`,
-C++은 `yield()`를 사용한다. TicTacToe의 game join처럼 handler가 게임 상태 흐름의
-일부로 바로 이어지는 코드는 기본 terminator를 유지한다.
+만족하는 Bingo match 흐름에서는 request의 단일 완료 terminator를 기다린다. framework는 대기 동안
+현재 실행 줄을 자동으로 반납하고 완료 뒤 원래 dispatcher 문맥에서 continuation을 재개한다.
+언어별 sample은 별도의 yield 계열 public API를 선택하지 않는다. TicTacToe의 game join처럼 handler가
+게임 상태 흐름의 일부로 바로 이어지는 코드도 같은 단일 terminator를 사용하며, 상태 직렬성은
+framework의 자동 turn 규칙을 따른다.
 
 ## 샘플 포팅 기준
 

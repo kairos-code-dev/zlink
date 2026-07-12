@@ -14,7 +14,7 @@ channel request를 보내는 부분만 본다.
 - `IZLinkChannelClient`는 다른 서버의 channel handler로 request를 보낸다.
 - 처음에는 외부 위치 저장소 없이 **수동 연결**로 endpoint를 직접 지정한다.
 
-등록 시그니처와 옵션 전체는 [04-channel-messaging](04-channel-messaging.ko.md)과
+등록 시그니처와 옵션 전체는 [05-channel-messaging](05-channel-messaging.ko.md)과
 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)이
 다룬다. 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)을 먼저 펼쳐 둔다.
 
@@ -52,22 +52,22 @@ sequenceDiagram
     Api-->>Client: HTTP 200 CreateGameHttpRes
 ```
 
-이 흐름에서 API 서버는 Play 서버 주소를 자동으로 찾지 않는다. 설정값으로 Play endpoint 를 읽어
+이 흐름에서 API 서버는 Play 서버 주소를 자동으로 찾지 않는다. 설정값으로 Play endpoint를 읽어
 `EnableClient(endpoint)`로 직접 연결한다. 처음 읽을 때는 이 방식이 가장 단순하다.
 
 > **이 장은 단순화한다.** 실제 `TicTacToe` 샘플은 Play 노드를 **여러 개**(`Play(0)`/`Play(1)`,
-> 설정 `PlayChannelEndpoints[]`) 띄우고, `CreateGameHttpHandler` 가 게임마다 owner Play 노드를
+> 설정 `PlayChannelEndpoints[]`) 실행하고, `CreateGameHttpHandler`가 게임마다 owner Play 노드를
 > 하나 골라 보낸다. 아래 코드는 흐름의 본질(HTTP→channel request→reply)을 보이려고 Play 노드 하나만
 > 쓰는 형태로 줄였다. 다중 노드·owner 선택의 전체 모습은 위 표의 실제 파일을 본다.
 
 ## 3. 메시지 계약
 
 메시지는 `Shared/Contracts/Messages.cs`에 있다. 아래는 이 장의 흐름에 필요한 **핵심 필드만 추린**
-형태다(실제 `CreateGameRes`/`CreateGameHttpRes` 에는 다중 Play 노드용 `PlayEndpoints`·`PlayNodes`,
+형태다(실제 `CreateGameRes`/`CreateGameHttpRes`에는 다중 Play 노드용 `PlayEndpoints`·`PlayNodes`,
 `RequiredLevel` 등 필드가 더 있다 — §2 단순화 참고).
 
 ```csharp
-// Http* = 외부 HTTP 경계 계약. 입력이 비어 올 수 있어 GameName 은 nullable.
+// Http* = 외부 HTTP 경계 계약. 입력이 비어 올 수 있어 GameName은 nullable.
 public sealed record CreateGameHttpReq(string? GameName);
 
 public sealed record CreateGameHttpRes(   // 실제 파일에는 필드가 더 있다(추려서 표시)
@@ -75,7 +75,7 @@ public sealed record CreateGameHttpRes(   // 실제 파일에는 필드가 더 �
     string OwnerPlayEndpoint,
     string GameName);
 
-// (Http 접두사 없음) = 서버 간 channel 계약(내부). 정규화 후라 GameName 은 non-null.
+// (Http 접두사 없음) = 서버 간 channel 계약(내부). 정규화 후라 GameName은 non-null.
 public sealed record CreateGameReq(string GameName);
 
 public sealed record CreateGameRes(       // 실제 파일에는 필드가 더 있다(추려서 표시)
@@ -98,11 +98,11 @@ builder.Services.AddZLinkFramework(options =>
 {
 
     options.AddClientServerChannel(SampleChannels.Play)
-        .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Play endpoint 를 설정으로 직접 지정
+        .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Play endpoint를 설정으로 직접 지정
 });
 
 var app = builder.Build();
-app.MapPost("/games", CreateGameHttpHandler.HandleAsync);   // HTTP 진입과 channel 은 별개 평면이다
+app.MapPost("/games", CreateGameHttpHandler.HandleAsync);   // HTTP 진입과 channel은 별개 평면이다
 ```
 
 `SampleChannels.Play` 값은 `"Play"`다. `EnableClient(endpoint)`는 수동 연결이다.
@@ -114,11 +114,11 @@ HTTP handler는 `IZLinkChannelClient`를 DI로 받고, `CreateGameReq`를 Play c
 ```csharp
 public static async Task<IResult> HandleAsync(
     CreateGameHttpReq request,
-    IZLinkChannelClient client,        // DI 로 주입(ASP.NET minimal API 파라미터 주입) — 호출부에서 안 넘긴다
+    IZLinkChannelClient client,        // DI로 주입(ASP.NET minimal API 파라미터 주입) — 호출부에서 안 넘긴다
     ILoggerFactory loggerFactory,
     CancellationToken cancellationToken)
 {
-    // 빈/공백이면 기본값으로 치환 → channel 계약 CreateGameReq 의 non-null GameName 을 만족시킨다.
+    // 빈/공백이면 기본값으로 치환 → channel 계약 CreateGameReq의 non-null GameName을 만족시킨다.
     var gameName = !string.IsNullOrWhiteSpace(request.GameName)
         ? request.GameName
         : SampleDefaults.GameName;
@@ -149,26 +149,26 @@ builder.Services.AddZLinkFramework(options =>
 {
 
     options.AddClientServerChannel(SampleChannels.Play)            // channel 이름은 API(client) 쪽과 반드시 일치
-        .EnableServer(settings.PlayChannelEndpoint)               // API 의 EnableClient 와 같은 endpoint 를 server 로 bind
-        .AddRequestHandler<CreateGameHandler>();                  // 그 server 가 부를 handler 등록
+        .EnableServer(settings.PlayChannelEndpoint)               // API의 EnableClient와 같은 endpoint를 server로 bind
+        .AddRequestHandler<CreateGameHandler>();                  // 그 server가 부를 handler 등록
 });
 ```
 
 `CreateGameHandler`는 `CreateGameReq`를 받아 room id와 stream endpoint를 돌려준다.
-실제 구현은 room SPOT을 만들기 때문에 [05-spot](05-spot.ko.md)에서 다시 이어진다.
+실제 구현은 room SPOT을 만들기 때문에 [06-spot](06-spot.ko.md)에서 다시 이어진다.
 
 ```csharp
 sealed class CreateGameHandler(
-    TicTacToeGameCreator games,                  // 생성자 의존성은 handler dispatch 시점에 DI 로 resolve
+    TicTacToeGameCreator games,                  // 생성자 의존성은 handler dispatch 시점에 DI로 resolve
     ILogger<CreateGameHandler> logger)
     : IZLinkRequestHandler<CreateGameReq, CreateGameRes>
 {
     public async ValueTask<CreateGameRes> HandleAsync(
         CreateGameReq request,
-        ZLinkRequestContext context,             // framework 가 주입하는 요청 메타(correlation 등)
+        ZLinkRequestContext context,             // framework가 주입하는 요청 메타(correlation 등)
         CancellationToken cancellationToken)
     {
-        // 실제론 여기서 room SPOT 을 만든다 — 그 흐름은 05-spot 으로 이어진다.
+        // 실제론 여기서 room SPOT을 만든다 — 그 흐름은 06-spot으로 이어진다.
         return await games.CreateAsync(request.GameName, cancellationToken);
     }
 }
@@ -189,11 +189,11 @@ client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `OwnerPl
 
 ## 7. 자동 연결의 위치
 
-이 장의 예제는 연결 관계를 눈으로 따라가기 쉽게 endpoint 를 직접 적는 **수동 연결**로
-설명했다. 실제 배포에서 서버가 늘고 주소가 바뀌는 환경이라면, endpoint 를 코드에 적지
+이 장의 예제는 연결 관계를 눈으로 따라가기 쉽게 endpoint를 직접 적는 **수동 연결**로
+설명했다. 실제 배포에서 서버가 늘고 주소가 바뀌는 환경이라면, endpoint를 코드에 적지
 않고 channel 이름만으로 연결 대상을 찾는 **location store 기반 자동 연결**을 쓴다 —
-store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으로 알리고 client 는 그걸 보고
-붙는다. [09-location](09-location.ko.md)에서 이어서 본다.
+store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으로 알리고 client는 그걸 보고
+연결된다. [10-location](10-location.ko.md)에서 이어서 본다.
 
 ## 8. 잘 안 될 때
 
@@ -209,9 +209,9 @@ store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으�
 | 하고 싶은 것 | 가는 곳 |
 |--------------|---------|
 | 표면 개념 정리(channel, 역할, DI) | [03-concepts](03-concepts.ko.md) |
-| request/send/pub-sub 전체 사용법 | [04-channel-messaging](04-channel-messaging.ko.md) |
-| room/stage 같은 동적 단위 | [05-spot](05-spot.ko.md) |
-| 외부 game/mobile client 받기 | [08-stream](08-stream.ko.md) |
+| request/send/pub-sub 전체 사용법 | [05-channel-messaging](05-channel-messaging.ko.md) |
+| room/stage 같은 동적 단위 | [06-spot](06-spot.ko.md) |
+| 외부 game/mobile client 받기 | [09-stream](09-stream.ko.md) |
 | 실행 가능한 전체 예제 | [guide/samples](samples/channel-messaging-samples.ko.md) |
 
 ---

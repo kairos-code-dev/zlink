@@ -579,10 +579,15 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 우선순위: `P2`
 
-**한마디로:** 같은 channel로 spot routing을 하면서도 그 channel의 일반 messaging이 그대로 돌고, spot node가 내려가도 channel 연결 자체는 살아 있는가.
+**한마디로:** 같은 channel로 spot routing을 하면서도 그 channel의 일반 messaging이 그대로 동작하고,
+target user Spot을 닫아도 channel 연결 자체는 유지되는가.
 
-- 절차: spot route ingress를 등록한 channel로 일반 channel request와 spot route request를 모두 보낸 뒤, 그 spot node를 종료한다. 이후 같은 channel로 일반 channel request를 다시 보낸다.
-- 검증: spot routing 중에도 일반 channel messaging이 정상이다. spot node 종료 뒤에도 channel socket은 살아 있어 일반 channel request가 계속 정상 동작한다(channel socket 소유권은 channel runtime에 있고, spot routing 사용/중단이 channel lifecycle을 좌우하지 않음).
+- 절차: spot route ingress를 등록한 channel로 일반 channel request와 spot route request를 모두 보낸 뒤,
+  public Spot manager로 target user Spot을 닫는다. 이후 닫힌 Spot 경로의 실패를 확인하고 같은 channel로
+  일반 channel request를 다시 보낸다.
+- 검증: spot routing 중에도 일반 channel messaging이 정상이다. target user Spot 종료 뒤에는 해당 Spot
+  경로만 실패하고 channel socket은 유지되어 일반 channel request가 계속 정상 동작한다. channel socket
+  소유권은 channel runtime에 있고, user Spot lifecycle이 channel lifecycle을 좌우하지 않는다.
 - 세부 동작: channel socket lifecycle이 spot route 사용과 독립.
 
 #### SM-F6 spot mesh 단독 구성의 target spot 도달 (route mesh 미등록)

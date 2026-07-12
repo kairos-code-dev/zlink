@@ -443,10 +443,10 @@ STREAM 샘플은 다음을 하나의 흐름으로 보여 준다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 정상 동작한다. |
-| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context의 close 샘플 의미가 그대로 유지된다. |
-| `TopologyTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서도 connected metadata가 한 번만 전달된다. |
-| `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 상황이 transport error로 보고된다. |
+| `E2E:SM-D7` | stream session의 인증, dispatch와 reply 흐름이 실제 connector에서 동작한다. |
+| `E2E:SM-D8` | session close 뒤 pending request 실패와 새 session 복구가 이어진다. |
+| `E2E:SM-D13` | heartbeat가 설정된 stream 연결이 유지된 뒤 request가 성공한다. |
+| `E2E:RL-B2` | 원격 프로세스가 종료된 in-flight 요청이 공개 오류로 끝나고 후속 요청이 복구된다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM`은 외부 클라이언트와 서버 사이를 잇는, 연결 지향적인 양방향 메시지 통로를 가리키는 ZLink 추상이다. 한 connection 위에서 여러 packet이 순서대로 오가는 구조다.

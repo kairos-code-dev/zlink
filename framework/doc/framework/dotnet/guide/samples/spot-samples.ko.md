@@ -266,18 +266,6 @@ public interface IZLinkSpotPublisherClient
         string topic,
         TEvent message);
 }
-
-public enum ZLinkDispatchMode
-{
-    Compiled = 1,
-    Dynamic = 2
-}
-
-public interface IZLinkDispatchOptions
-{
-    ZLinkDispatchMode SpotDispatchMode { get; set; }
-    ZLinkDispatchMode StreamDispatchMode { get; set; }
-}
 ```
 
 ## 3. 샘플 코드
@@ -466,7 +454,7 @@ builder.Services.AddZLinkFramework(options =>
   역할이다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
   publish bind 주소"라는 점에 유의한다.
 - 즉 `ConnectPeerPub(endpoint)` 는 local
-  `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 붙는다는 의미다.
+  `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 연결된다는 의미다.
 - `pub/sub` 와 spot publisher client 는 둘 다 endpoint 집합만 등록한다. 다만
   그 endpoint 집합 자체는 서로 다르다.
   - `pub/sub` 의 endpoint 는 peer `SpotNode` 의 mesh 주소다.
@@ -621,10 +609,10 @@ framework 내부 소유 정보이며 application contract로 다시 노출하지
 
 ### 3.1.3 outbound-only SPOT-aware 앱
 
-이 절은 local `SpotNode` 를 띄우지 않고 다른 노드로 호출만 보내는 앱의
+이 절은 local `SpotNode`를 실행하지 않고 다른 노드로 호출만 보내는 앱의
 표면을 다룬다.
 
-local `SpotNode` 나 local spot runtime 을 띄우지 않고, 다른 channel 이나 다른
+local `SpotNode`나 local spot runtime을 실행하지 않고, 다른 channel이나 다른
 spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 기본 outbound
 표면은 `IZLinkChannelClient` 다.
 
@@ -745,7 +733,7 @@ app.Run();
 
 ### 3.2 spot 객체
 
-이 절은 spot 객체가 어떤 모양으로 등록되고, 어떤 상태와 handler 를 들고
+이 절은 spot 객체가 어떤 모양으로 등록되고, 어떤 상태와 handler를 포함해
 있는지를 코드로 보여 준다.
 
 ```csharp
@@ -932,13 +920,6 @@ builder.Services.AddZLinkFramework(options =>
     spot.AddActorFactory<SampleWarriorActorFactory>("warrior");
     spot.AddActorFactory<SampleTraderActorFactory>("trader");
 
-    {
-        var dispatch = options.ConfigureDispatch();
-        dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled;
-        dispatch.StreamDispatchMode = ZLinkDispatchMode.Compiled;
-
-    }
-
     options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
@@ -1063,7 +1044,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
         SampleSendRoomChatCommand command,
         CancellationToken cancellationToken)
     {
-        // actor가 stream을 직접 들고 broadcast하지 않는다. 같은 room의 모든 actor는
+        // actor가 stream을 직접 참조해 broadcast하지 않는다. 같은 room의 모든 actor는
         // 각자 자기 Context.BoundSession 으로 client 에 push 한다.
         SampleRoomChatPushed pushed = new()
         {
@@ -1455,8 +1436,8 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
   - stream에서 packet을 받아 인증을 수행하고, actor factory를 고른 뒤 room
     join 전후를 이어 준다.
 - `SampleActor`
-  - `accountId`를 키로 살아 있는 논리 객체다.
-  - 현재 붙어 있는 `Stream`과 현재 속한 `Spot`을 직접 보유한다.
+  - `accountId`를 식별자로 사용하며 상태가 유지되는 논리 객체다.
+  - 현재 연결된 `Stream`과 현재 속한 `Spot`을 직접 보유한다.
 - `SampleSpot`
   - room이다.
   - actor table만 소유하며, stream 인증 로직은 알지 못한다.
@@ -1467,7 +1448,7 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
 2. `SampleSession`이 API 서버에 토큰 검증을 요청한다.
 3. 인증 결과에 담긴 `actorType`과 `accountId`로 `SampleActor`를 찾거나 새로
    만든다.
-4. 이미 다른 stream이 붙어 있던 경우, framework가 stale 여부를 확인한 뒤 현재
+4. 이미 다른 stream이 연결되어 있던 경우, framework가 stale 여부를 확인한 뒤 현재
    stream을 actor에 다시 attach한다.
 5. client가 `SampleJoinRoomRequest`를 보낸다.
 6. `SampleSession`은 room 정보를 actor packet으로 넘기고, actor 쪽 handler는
@@ -1626,7 +1607,7 @@ timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스
 이 샘플에서 timer 가 하는 일은 상태 publish 가 아니라 sweep 이다. 즉
 `LastSeenAt` 을 기준으로 오랫동안 조용했던 actor 를 찾아 정리하는 역할이다.
 
-- 현재 stream 이 붙어 있는 actor 가 idle timeout 을 넘기면 stream bind 를 푼다.
+- 현재 stream이 연결된 actor가 idle timeout을 넘기면 stream bind를 해제한다.
 - 이미 stream 이 끊긴 actor 는 reconnect grace 시간이 지나면 room 에서
   제거한다.
 
@@ -1766,7 +1747,7 @@ handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한
 않는다. packet 매핑의 기준은 header 의 **packet name**(`MessageName`)이다.
 
 packet name 은 codec 과 무관하게 같은 규칙으로 정해진다 — packet 타입에
-`[ZLinkPacket("...")]` 가 붙어 있으면 그 값을 쓰고, 없으면 그 packet 타입의 CLR 타입
+`[ZLinkPacket("...")]`이 적용되어 있으면 그 값을 쓰고, 없으면 그 packet 타입의 CLR 타입
 이름을 쓴다(`ZLinkMessageNameResolver`). protobuf 든 json 이든 결과 packet name 은
 같다.
 
@@ -1831,16 +1812,9 @@ dispatch key 로 등록한다.
 handler 경로는 room hot path 로 동작할 수 있다. 따라서 일반 channel messaging
 보다 더 강한 최적화 기준이 필요하다.
 
-이 문서는 이 선택을 framework 가 일방적으로 숨기지 않고, 사용자가 dispatch
-mode[^dispatch-mode] 로 직접 고를 수 있어야 한다고 본다.
-
-- `ZLinkDispatchMode.Compiled`
-  - registration 또는 warm-up 단계까지만 reflection을 허용한다.
-  - hot path에서는 cached delegate, prebuilt dispatch table, 미리 고른 actor
-    factory만 사용한다.
-- `ZLinkDispatchMode.Dynamic`
-  - late binding[^late-binding]과 실험 편의성을 우선한다.
-  - 관리용 handler나 초기 prototype에는 허용할 만한 모드다.
+handler를 찾고 호출하는 방법은 framework 내부 결정이다. 사용자가 dispatch 전략을 선택하거나
+Spot과 Stream에 서로 다른 최적화 mode를 지정하지 않는다. framework는 등록 단계에서 handler
+정보를 준비하고, 실행 중에는 같은 public 사용법으로 일관된 처리 의미를 제공해야 한다.
 
 - `AddPacket`, `AddSubscribe`, `AddTimer`는 registration 단계에서만 동작해야
   한다.
@@ -1899,19 +1873,17 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 종료, callback scope 정리가 동작한다. |
-| `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 `ZLinkMessage`로 `OnCreateAsync(...)`를 호출한다. |
-| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create request `ZLinkMessage`만 `OnCreateAsync(...)`로 전달된다. |
-| `ManagerTests.SpotManager_GetOrCreateAsync_Returns_Existing_Spot_For_Same_Type` | 같은 `spotRid`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환한다. |
-| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 프로세스 publish 샘플이 target SPOT channel에 도달한다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
+| `E2E:SM-A2` | user Spot 상태 변경 request가 같은 Spot instance에 반영된다. |
+| `E2E:SM-A6` | Spot initialize와 explicit close lifecycle이 정상 완료된다. |
+| `E2E:SM-C4` | 외부 프로세스의 Spot publisher client가 target channel에 publish한다. |
+| `E2E:SM-B7` | actor가 room 역할의 Spot에 join한 뒤 해당 lifecycle 순서로 dispatch된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 단위(예: room, stage 등)로 메시지를 라우팅하는 추상이다.
 [^spotnode]: `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^handler]: handler 는 특정 메시지(packet, subscribe event, timer tick 등)가 들어왔을 때 실제 로직을 실행하는 callback 클래스 또는 메서드를 뜻한다.
 [^channel]: channel 은 이름을 키로 삼아 메시지를 주고받는 논리적 통신 경로다. request / send 양방향과 publish / subscribe 양방향이 모두 channel 단위로 묶인다.
-[^actor]: actor 는 계정이나 식별자 단위로 살아 있는 논리 객체로, 상태와 행동을 함께 들고 있는 도메인 단위다.
+[^actor]: actor 는 계정이나 식별자 단위로 상태가 유지되는 논리 객체이며, 상태와 행동을 함께 캡슐화하는 도메인 단위다.
 [^session]: session 은 한 client 연결을 framework 안에서 다루기 위한 논리 단위이며, 인증과 packet dispatch의 첫 진입점이 된다.
 [^direct-routed]: direct routed 호출은 routing id 와 spot rid 를 명시적으로 묶어 특정 인스턴스로 바로 보내는 방식이다.
 [^resolver]: resolver 는 이름이나 id 같은 논리 식별자를 받아 실제 transport 위치(주소, routing id 등)로 변환해 주는 컴포넌트다.
@@ -1923,15 +1895,13 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 [^rid]: RID(RoutingId) 는 라우팅 계층이 peer 노드를 식별하기 위해 사용하는 바이트 식별자다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
 [^stream]: stream 은 client 와 framework 사이를 이어 주는 양방향 연결이다. 인증, packet 송수신, disconnect 처리가 stream 위에서 일어난다.
-[^stable-identity]: stable identity 는 연결이 끊기거나 다시 붙어도 변하지 않는 고정 식별자다. 보통 계정 id 처럼 시스템 외부에서 부여한다.
+[^stable-identity]: stable identity 는 연결이 끊기거나 다시 연결해도 변하지 않는 고정 식별자다. 보통 계정 id처럼 시스템 외부에서 부여한다.
 [^stale]: stale 은 더 이상 유효하지 않은 옛 상태를 가리킨다. stale disconnect 는 이미 새 연결로 교체된 옛 stream 의 disconnect 신호를 뜻한다.
 [^hot-path]: hot path 는 실행 빈도가 매우 높아 성능 최적화의 우선순위가 높은 코드 경로를 가리킨다.
 [^execution-context]: execution context 는 어떤 코드가 어떤 직렬화 보장 아래에서 실행되는지를 묶어 두는 실행 단위를 뜻한다. 같은 context 안에서는 lock 없이 상태에 접근할 수 있다.
 [^di]: DI(Dependency Injection) 는 객체가 필요로 하는 의존을 컨테이너가 대신 주입해 주는 방식이다. `.NET` 에서는 `IServiceProvider` 가 표준 진입점이다.
 [^lifecycle]: lifecycle 은 객체나 컴포넌트가 만들어져 동작하고 정리되는 단계별 흐름을 가리킨다(생성, 초기화, 실행, 종료 등).
 [^marker-interface]: marker interface 는 멤버 없이 타입을 식별하는 용도로만 사용하는 인터페이스다. 코드 생성된 타입에 직접 붙이기 어려운 경우가 많다.
-[^dispatch-mode]: dispatch mode 는 들어온 메시지를 handler 로 어떻게 연결할지를 정하는 전략 선택값이다. compiled 와 dynamic 처럼 reflection 허용 범위로 구분한다.
-[^late-binding]: late binding 은 호출 대상이나 타입을 컴파일 시점이 아니라 실행 시점에 결정하는 방식이다. 유연하지만 hot path 비용이 높다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

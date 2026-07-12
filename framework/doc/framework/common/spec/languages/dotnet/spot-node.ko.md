@@ -53,12 +53,13 @@ framework가 운영용 spot location row를 노출할 때 Entry Spot과 user Spo
 보존한다.
 
 Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
-용도로만 사용한다. owner node rid와 Spot kind는 core `ResolveSpot(spotRid)` 결과를
-source of truth로 사용한다.
+용도로만 사용한다. owner node rid와 Spot kind는 location store에서 조회하고 owner
+lease가 유효한지 확인한 spot location row를 기준으로 사용한다. 이 조회와 유효성 판정은
+[공통 location runtime §5](../../location-runtime.ko.md#5-resolver-계약)를 따른다.
 
 ## 회귀 테스트
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `ConfigureEntrySpot(...)`에서 지정한 routing id가 native Entry Spot facade에 적용되고 Entry Spot activation의 `SpotRid`로 노출된다. |
+| `E2E:SM-A1` | Entry Spot routing id를 사용한 request가 실제 Entry Spot handler에 도달한다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 제거된 route 계약이 public API 표면으로 다시 노출되지 않고 actor/session 계약은 유지된다. |

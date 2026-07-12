@@ -58,5 +58,6 @@ cd framework/languages/dotnet
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` | 정식 API snapshot과 source assembly의 모든 공개 서명이 일치한다. |
+| `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` | source build assembly만 대상으로 정식 API snapshot과 모든 공개 서명이 일치하는지 확인한다. package 산출물은 이 테스트의 범위가 아니다. |
 | `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions` | snapshot renderer가 nullable, accessor, generic, by-ref와 type 제약을 서로 다른 계약으로 기록한다. |
+| `SCRIPT:scripts/verify_packaged_contract.sh` | 정식 API snapshot, source build assembly, 실제 NuGet package assembly의 공개 서명을 세 방향으로 비교하고 package snapshot과 깨끗한 consumer 실행까지 검증한다. 실제 배포 package 계약의 최종 gate다. |

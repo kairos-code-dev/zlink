@@ -54,7 +54,7 @@ framework 는 위 모델 위에 `.NET` 다운 모양을 한 겹 더 얹어서 �
   callback handler 역시 일반 user Spot과 별도로 등록할 수 있어야 한다.
 
 호출하는 쪽에서는 actor 가 어느 노드의 어느 spot 에 있는지 알 필요가 없다.
-**`actorId`** 하나만 들고 부르면 된다. 실제 라우팅은 framework 가
+호출자는 **`actorId`** 하나만 제공하면 된다. 실제 라우팅은 framework 가
 application 이 등록한 resolver[^resolver] 에 위임한다.
 
 이 문서가 다루는 범위는 다음과 같다.
@@ -335,9 +335,9 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
 - Entry Spot destroy 는 `OnLeaveActorAsync(...)` 또는 다른 lifecycle callback 을 호출하지
   않고 actor 상태만 정리한다. 같은 actor instance 에 대한 중복 destroy 는 성공으로 끝난다.
-- **location store[^location-store] actor ref publish 는 user Spot join 성공 뒤에
-  갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
-  session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
+- **location store[^location-store] actor row와 actor ref는 actor 생성 과정에서
+  framework가 등록한다.** user Spot join 성공 뒤에는 같은 row의 현재 Spot 위치를
+  갱신한다. session bind / unbind 는 actor 위치 row를 새로 만들거나 지우지 않는다.
 
 ### 3.4 Entry Spot에서의 application 로직
 
@@ -914,7 +914,7 @@ sequenceDiagram
     Note over P,G: Play actor는 새 binding으로 push
 ```
 
-핵심은 다음과 같다. Play 서버의 actor 는 stream 을 직접 들고 있지 않다. 대신
+핵심은 다음과 같다. Play 서버의 actor는 stream을 직접 보관하지 않는다. 대신
 actor handler 는 **`IZLinkBoundSession`** 에 "현재 actor 의 client 로 message
 를 보내라" 고만 부탁한다. 다른 actor 의 client 로 보내야 하는 service 는 먼저
 그 actor 에 메시지를 보내고, 대상 actor handler 가 자기 `IZLinkBoundSession` 를 사용한다.
@@ -932,7 +932,7 @@ stream 연결을 향한 proxy 이므로 `Zlink.Framework.Contracts.Streams` 에 
 3. bound session owner 가 local 이면 해당 STREAM session 으로 바로 보내고, remote 이면
    owner gateway 로 내부 relay 를 보낸다.
 
-SessionRelay 내부 relay packet 은 application `AddRouteMesh` handler group 으로
+SessionRelay 내부 relay packet 은 application `AddRouteMeshChannel` handler group 으로
 노출되지 않는다. application route mesh channel 은 일반 routed messaging 용도로 남고,
 session actor relay 의 public 설정 조건이 아니다.
 
@@ -1128,15 +1128,16 @@ public interface IZLinkFrameworkOptions
 - actor 의 packet handler 와 lifecycle callback handler 는 Entry Spot 또는
   user Spot registry 에서 등록한다. attribute scan 과 그룹 매핑은 일반
   channel handler 전용이다.
-- actor 의 위치는 application 의 resolver 가 결정한다. framework 는 그
-  정보의 저장소를 소유하지 않는다.
+- application은 actor가 합류할 domain Spot을 선택한다. framework runtime은 실제 actor
+  owner, Entry/user Spot 위치와 generation을 location store에 기록하고 조회하며,
+  application에 transport 주소 선택이나 별도 위치 resolver 구현을 요구하지 않는다.
 - actor id 는 application identity[^identity] 다. 보통 인증 단계에서
   결정된다. framework 는 actor id 발급에 관여하지 않는다.
 - Play 서버의 actor 가 자기 client 에 push 를 보낼 때는 **반드시 actor
   context 의 `IZLinkBoundSession`** 를 거친다. 특정 actor id 의 client 로
   보내야 하는 application service 는 먼저 해당 actor 에 메시지를 보내고,
   그 actor handler 가 자기 `IZLinkBoundSession` 을 사용한다. actor 가 stream
-  socket 을 직접 들고 있는 구조가 아니다.
+  socket을 직접 보관하는 구조가 아니다.
 
 ## 13. 회귀 테스트
 
@@ -1152,18 +1153,18 @@ Actor 문서의 회귀 테스트 항목은 다음 흐름이 같은 public 표면
 - session bind
 - session actor dispatch
 
-이때 actor 가 어느 spot 에 붙어 있는지는 framework 가 관리한다. 사용자는 현재
+이때 actor가 어느 spot에 위치하는지는 framework가 관리한다. 사용자는 현재
 context 만 다룬다는 원칙을 함께 검증한다.
 
 | 테스트 케이스 | 확인 기준 |
 | --- | --- |
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
-| `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot의 actor packet handler와 lifecycle callback이 정상적으로 dispatch된다. |
+| `E2E:SM-B7` | actor 생성, user Spot join과 actor packet dispatch 순서가 실제 노드에서 이어진다. |
 | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 actor별 mailbox 순서를 따르며, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
-| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
-| `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
-| `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `E2E:SM-G2` | logical owner 변경 뒤 actor packet이 새 owner에서만 처리되어 이전 Spot으로 dispatch되지 않는다. |
+| `E2E:SM-D2` | stream session에서 원격 bound actor로 request가 전달되고 reply가 같은 session으로 돌아온다. |
+| `E2E:SM-D1` | local actor bind와 relay가 request/reply를 같은 session에서 완료한다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession` | Entry Spot actor request가 request handler 결과로 응답하고 send handler나 session bind 경로로 바뀌지 않는다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public API 표면에 다시 노출되지 않는다. |
 
 ---
@@ -1210,7 +1211,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `AddRouteMesh`로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `AddRouteMeshChannel`로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 `RoutingId`를 직접 지정한다. 자세한
     내용은
     [aspnet-core-channel-messaging.ko.md](aspnet-core-channel-messaging.ko.md)

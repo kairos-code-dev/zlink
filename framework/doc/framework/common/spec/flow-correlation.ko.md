@@ -206,6 +206,8 @@ struct message_flow_event_t {
 [Java §9](languages/java/spring-boot-monitoring.ko.md) ·
 [Node §11](languages/node/nestjs-monitoring.ko.md) ·
 [C++ §9](languages/cpp/cpp-monitoring.ko.md) · [Kotlin §8](languages/kotlin/handler-interfaces.ko.md).
+두 event 필드도 wire와 같은 optional pair다. `flow_id`가 없으면 `flow_origin`도 없고, `flow_id`가
+있으면 root `flow_origin`도 반드시 있다. 관측 경로는 둘 중 하나만 있는 불완전한 event를 내보내지 않는다.
 로그 토큰 `flow=`·`origin=`은 언어 간 바이트 동일([runtime-metrics §4.0](runtime-metrics.ko.md)).
 
 ## 9. 파싱 규약과 구현 상태
@@ -246,7 +248,7 @@ struct message_flow_event_t {
 
 | 언어 | 표면 |
 |------|------|
-| `.NET` | event `FlowId`/`FlowOrigin`; host는 기존 message-flow mode로, connector는 무설정으로 자동 생성; gateway 기본 sink 자동 배선 |
+| `.NET` | event `FlowId`/nullable `FlowOrigin` optional pair; host는 기존 message-flow mode로, connector는 무설정으로 자동 생성; gateway 기본 sink 자동 배선 |
 | Java/Kotlin | `ZLinkMessageFlowEvent`에 `flowId`/`flowOrigin`; connector 발원 무설정 생성; SLF4J 바인딩 기본 폴백 |
 | Node | flow 이벤트에 `flowId`/`flowOrigin`; connector 발원 무설정 생성; NestJS 부트스트랩에서 gateway sink 자동 주입 |
 | C++ (레퍼런스) | `message_flow_event_t`에 `flow_id`/`flow_origin`; connector 발원 무설정 생성; gateway tracer 기본 배선 |

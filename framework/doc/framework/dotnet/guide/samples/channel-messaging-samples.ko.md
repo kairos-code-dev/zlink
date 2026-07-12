@@ -766,9 +766,10 @@ app.MapPost("/profiles/get", async (
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
-| `LocationMessaging` E2E | location store 자동 연결 샘플의 request / send 흐름이 동작한다. |
-| `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
+| `E2E:RM-A2` | 수동 endpoint 연결을 사용하는 request 경로가 동작한다. |
+| `E2E:RM-C1` | client/server request와 send가 실제 프로세스 사이에서 완료된다. |
+| `E2E:RM-A1` | location store 자동 연결 샘플의 request 경로와 두 provider row를 검증한다. |
+| `E2E:PS-A1` | publish/subscribe 샘플 흐름이 실제 publisher와 subscriber 사이에서 동작한다. |
 
 ---
 

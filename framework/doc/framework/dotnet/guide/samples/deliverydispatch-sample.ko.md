@@ -175,9 +175,9 @@ fanout, 재배정 timer, 고객 stream push)을 이미 고정하고 있다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `LocationMessaging` E2E | DispatchApi/DispatchCenter/Courier 사이 channel request·send 가 location store 자동 연결로 동작한다. |
-| `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | 배송 상태 fanout 이 publisher/subscriber 로 전달된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timeout 재배정 timer 와 Spot lifecycle 정리가 framework timer 계약과 맞는다. |
+| `E2E:RM-C1` | DispatchApi/DispatchCenter/Courier와 같은 channel request·send가 location store 자동 연결로 동작한다. |
+| `E2E:PS-A1` | 배송 상태와 같은 fanout event가 publisher에서 subscriber로 전달된다. |
+| `RegressionTests.DeliveryDispatch_Runner_Reuses_External_Redis_And_Uses_Location_Store` | DeliveryDispatch runner가 timeout 재배정과 Spot lifecycle sample을 실제 구성으로 실행한다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 고객 stream push 와 request/reply correlation 이 유지된다. |
 
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.

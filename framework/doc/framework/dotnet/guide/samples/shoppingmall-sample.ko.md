@@ -157,10 +157,9 @@ lifecycle, route mesh request, projection read model 저장)을 이미 고정하
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 OrderId workflow Spot instance 가 최초 payload 로 한 번만 초기화된다. |
-| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | OrderWorkflow Spot 생성·조회·close·publish 가 framework runtime 으로 동작한다. |
-| `LocationMessaging` E2E | CommerceApi channel request·send 가 location store 자동 연결로 동작한다. |
-| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | projection 갱신 event publish 가 target channel 로 전달된다. |
+| `RegressionTests.ShoppingMall_Runner_Uses_Isolated_Docker_Redis_And_Redis_Stores` | ShoppingMall runner가 OrderWorkflow Spot과 Redis-backed 위치 구성을 실제 sample로 실행한다. |
+| `E2E:RM-A1`, `E2E:RM-C1` | CommerceApi가 사용하는 것과 같은 channel request·send가 location store 자동 연결로 동작한다. |
+| `E2E:SM-C4` | projection과 같은 외부 Spot publish가 target channel로 전달된다. |
 
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 단위(예: order workflow instance 등)로 메시지를 라우팅하는 추상이다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.

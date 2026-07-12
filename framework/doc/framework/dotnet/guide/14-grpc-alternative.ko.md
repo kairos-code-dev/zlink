@@ -1,84 +1,86 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 13. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
+# 14. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
-> ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
+> ZLink는 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
 > 수명, 동적 상태 단위(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
-> 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 있는지", "client 가
+> 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 있는지", "client가
 > 어디에 연결돼 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
 >
-> 이 챕터는 그 판단을 돕는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
-> sample이, 기능별 사용법은 04~09 챕터가 다룬다.
+> [01-overview §2](01-overview.ko.md)의 두 상황(실시간 게임 서버, 웹 서비스에
+> 실시간 기능 추가)이 "왜 필요한가"였다면, 이 챕터는 그 판단을 기술 선택
+> 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
+> sample이, 기능별 사용법은 05~12 챕터가 다룬다.
 
 ## 1. 한눈에 보는 사용처
 
-먼저 경계를 잡는다. **모노리스나 모듈러 모노리스로 충분하면 ZLink 를 먼저 넣지
-않는다.** 같은 프로세스 안의 모듈 호출은 함수 호출이면 되고, 서버 간 transport 가
-필요 없다. ZLink 는 여러 프로세스/서버로 나뉘어야 하는 이유가 생겼을 때, 그 사이의
+먼저 경계를 잡는다. **모노리스나 모듈러 모노리스로 충분하면 ZLink를 먼저 넣지
+않는다.** 같은 프로세스 안의 모듈 호출은 함수 호출이면 되고, 서버 간 transport가
+필요 없다. ZLink는 여러 프로세스/서버로 나뉘어야 하는 이유가 생겼을 때, 그 사이의
 통신·연결·라우팅·상태 dispatch 복잡도를 줄이는 도구다.
 
-| 상황 | ZLink 이 좋은 이유 | 쓰는 기능 |
+| 상황 | ZLink이 좋은 이유 | 쓰는 기능 |
 |------|--------------------|-----------|
 | 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel + location store |
 | 이벤트를 실시간으로 여러 서비스에 뿌림 | 별도 broker 없이 **transport fan-out** | fanout pub/sub |
 | 게임 room·채팅 room·ride zone 같은 동적 상태 단위 | **단일 실행 큐**로 lock 없는 직렬 상태 처리 | SPOT |
-| 모바일·게임 client 와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework 가 소유 | STREAM |
-| 연결 서버와 로직 서버를 분리 | actor id 기준 binding 으로 **재접속 이전성** | session actor dispatch |
+| 모바일·게임 client와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework가 소유 | STREAM |
+| 연결 서버와 로직 서버를 분리 | actor id 기준 binding으로 **재접속 이전성** | session actor dispatch |
 | **서로 다른 언어로 구현된 서비스끼리 호출** | 언어 중립 wire protocol + codec 위 같은 channel 계약으로 **상호 호출** | cross-language binding |
 | 초저지연 HFT·durable queue·외부 공개 API | **ZLink 주 영역 아님** | gRPC/REST/Kafka/FIX 유지 |
 
 ## 2. 무엇을 덜 고민하게 되나 — 개발 모델
 
-ZLink 의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 덜 고민한다"** 에 있다.
-어플리케이션은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework 가 가져간다.
+ZLink의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 덜 고민한다"** 에 있다.
+어플리케이션은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework가 가져간다.
 
-- **channel name 만 알고 호출한다** — 대상 host/port/stub 를 모른다.
-- **service location 과 peer 분배**는 location store 기반 자동 연결이 맡는다([09-location](09-location.ko.md)).
-- **request correlation 과 reply 대기**는 framework 가 맡는다.
-- **client 연결 수명과 packet framing** 은 STREAM 이 맡는다.
+- **channel name만 알고 호출한다** — 대상 host/port/stub를 모른다.
+- **service location과 peer 분배**는 location store 기반 자동 연결이 맡는다([10-location](10-location.ko.md)).
+- **request correlation과 reply 대기**는 framework가 맡는다.
+- **client 연결 수명과 packet framing** 은 STREAM이 맡는다.
 - **room/zone/symbol 상태 직렬성**은 SPOT 실행 큐가 맡는다.
-- **재접속 후 actor/session binding** 은 framework 가 이어 준다.
+- **재접속 후 actor/session binding** 은 framework가 이어 준다.
 - **handler/filter/DI 모델**이 `ASP.NET Core` 방식과 맞아 익숙하게 쓴다.
 
-> ZLink 은 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
-> correlation·dispatch 직렬성을 framework 가 가져가므로, 어플리케이션 코드가 transport
+> ZLink는 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
+> correlation·dispatch 직렬성을 framework가 가져가므로, 어플리케이션 코드가 transport
 > 설정이 아니라 **업무 흐름처럼** 보인다.
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
 
-ZLink 은 `.NET` 전용이 아니다. 호출 계약이 **언어 중립 wire protocol(ZMP) +
+ZLink는 `.NET` 전용이 아니다. 호출 계약이 **언어 중립 wire protocol(ZMP) +
 codec(protobuf/json/messagepack) + 논리 channel/packet 이름** 이라, 서로 다른
 언어로 구현된 서비스가 **같은 channel 위에서 상호 호출**한다. 예를 들어 게임
 시스템에서 **room 서버는 C++, API·매치메이킹 서버는 .NET 또는 Java** 로 두고 같은
 channel/spot 계약으로 메시징할 수 있다.
 
-- 언어 간 계약 = **packet 이름 + codec 으로 인코딩된 DTO**(교차 언어는 protobuf
-  권장, 또는 합의된 JSON/MessagePack 스키마). gRPC 처럼 service-stub 코드 생성이나
-  HTTP/2 를 강제하지 않는다 — payload 스키마만 공유하면 된다.
-- 각 언어 binding 은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
+- 언어 간 계약 = **packet 이름 + codec으로 인코딩된 DTO**(교차 언어는 protobuf
+  권장, 또는 합의된 JSON/MessagePack 스키마). gRPC처럼 service-stub 코드 생성이나
+  HTTP/2를 강제하지 않는다 — payload 스키마만 공유하면 된다.
+- 각 언어 binding은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
   그래서 handler 작성 언어가 달라도 wire 상으로는 같은 channel·packet 이다.
 
-> **다른 언어 binding.** `.NET` 이 reference 구현이며, 같은 channel/packet 계약을
-> 다른 언어 binding 이 자기 언어로 구현한다. 이 가이드는 `.NET` binding 기준이다.
-> cross-language 는 ZLink 의 **설계 목표**다 — 호출 계약이 binding 구현 언어와
+> **다른 언어 binding.** `.NET`이 reference 구현이며, 같은 channel/packet 계약을
+> 다른 언어 binding이 자기 언어로 구현한다. 이 가이드는 `.NET` binding 기준이다.
+> cross-language는 ZLink의 **설계 목표**다 — 호출 계약이 binding 구현 언어와
 > 무관하기 때문이다.
 
 ## 3. 이런 문제가 반복되면 ZLink 후보
 
-기술명보다 **증상**으로 판단한다. 아래가 반복되면 ZLink 가 후보다.
+기술명보다 **증상**으로 판단한다. 아래가 반복되면 ZLink가 후보다.
 
 - 서비스마다 gRPC stub·channel factory·deadline·서비스 위치 조회 설정이 반복된다.
-- Kubernetes L4 LB 로 gRPC 부하가 고르게 안 퍼져 mesh 를 고민한다.
-- 게임 room·채팅 room·ride zone 처럼 상태 단위를 lock 으로 보호하고 있다.
-- 재접속 때 client 가 어느 서버에 연결돼 있었는지 Redis 로 따로 관리한다.
-- 실시간 이벤트 fan-out 때문에 Kafka 를 쓰는데, 실제로는 replay 가 필요 없다.
-- 외부 client 연결·내부 서비스 호출·room 상태 처리가 서로 다른 framework 로 흩어져
+- Kubernetes L4 LB로 gRPC 부하가 고르게 안 퍼져 mesh를 고민한다.
+- 게임 room·채팅 room·ride zone처럼 상태 단위를 lock으로 보호하고 있다.
+- 재접속 때 client가 어느 서버에 연결돼 있었는지 Redis로 따로 관리한다.
+- 실시간 이벤트 fan-out 때문에 Kafka를 쓰는데, 실제로는 replay가 필요 없다.
+- 외부 client 연결·내부 서비스 호출·room 상태 처리가 서로 다른 framework로 흩어져
   있다.
 
-## 4. ZLink 이 하지 않는 것 — 경계
+## 4. ZLink이 하지 않는 것 — 경계
 
 장점이 선명하려면 경계도 분명해야 한다. 다음은 그대로 두는 게 맞다.
 
@@ -90,7 +92,7 @@ channel/spot 계약으로 메시징할 수 있다.
 | HFT 마이크로초 matching loop | Disruptor/Aeron/FIX 유지 |
 | 내부 `.NET` 서비스 통신 + 실시간 상태 dispatch | **ZLink 적합** |
 
-요지: ZLink 은 transport·dispatch 계층이지 **datastore·durable log·HFT 버스가
+요지: ZLink는 transport·dispatch 계층이지 **datastore·durable log·HFT 버스가
 아니다.** 분산 데이터 일관성(saga·outbox·idempotency)·영속·중복 제어 같은
 도메인 난제는 그대로 어플리케이션과 인프라가 책임진다.
 
@@ -111,24 +113,24 @@ channel/spot 계약으로 메시징할 수 있다.
 
 ## 6. 참고 — gRPC·service mesh 스택과의 비교
 
-§1 의 "내부 `.NET` 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
+§1의 "내부 `.NET` 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
 근거를 본다.
 
-### 6.1 gRPC 는 혼자 끝나지 않는다
+### 6.1 gRPC는 혼자 끝나지 않는다
 
 gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로덕션급"** 으로 만들려면
 공식 베스트프랙티스가 곧바로 추가 인프라를 요구한다는 점이다.
 
 - **channel/stub 재사용 강제.** "Always re-use stubs and channels when possible" —
-  호출마다 channel 을 만들면 지연이 크게 늘어 channel factory/pool 로 수명을 직접
+  호출마다 channel을 만들면 지연이 크게 늘어 channel factory/pool로 수명을 직접
   관리한다. ([grpc.io performance](https://grpc.io/docs/guides/performance/))
-- **deadline 을 매 호출에.** 단일 느린 RPC 가 상위 서비스를 막지 않도록 deadline 을
+- **deadline을 매 호출에.** 단일 느린 RPC가 상위 서비스를 막지 않도록 deadline을
   건다. ([Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/core/grpc/performance))
 - **기본 로드밸런서(L4)로는 gRPC 부하가 고르게 안 흩어진다.**
   - **L4 로드밸런서**란 네트워크 4계층(TCP) 수준에서, 즉 **"연결(connection)" 단위**로
     트래픽을 나누는 흔한 로드밸런서다. 새 연결이 들어올 때마다 여러 서버에 번갈아
     배정한다.
-  - 그런데 gRPC 는 **HTTP/2** 위에서 **연결 하나를 오래 열어 둔 채(long-lived
+  - 그런데 gRPC는 **HTTP/2** 위에서 **연결 하나를 오래 열어 둔 채(long-lived
     connection)** 그 연결에 여러 요청을 겹쳐 실어 보낸다. 이렇게 한 연결로 여러 호출을
     동시에 실어 나르는 것을 **multiplex(다중화)** 라고 한다.
   - 그래서 L4 로드밸런서 눈에는 **연결이 1개뿐**이라, 그 연결이 처음 붙은 **서버 한
@@ -136,20 +138,20 @@ gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로�
   - 고르게 나누려면 연결이 아니라 **요청(request) 하나하나를 보고 분배**해야 한다.
     이렇게 애플리케이션 7계층에서 요청 단위로 나누는 것을 **L7 분배**라고 한다.
   - 그래서 보통 아래 중 하나를 추가로 끌어온다.
-    - **client-side LB**: 클라이언트가 서버 목록을 들고 직접 번갈아 호출하는 방식.
+    - **client-side LB**: 클라이언트가 서버 목록을 보관하고 직접 번갈아 호출하는 방식.
     - **headless service**(Kubernetes): 서비스를 단일 가상 IP 하나가 아니라 **뒤에
       있는 각 파드의 IP 목록**으로 노출해, 클라이언트가 직접 골고루 분배하게 하는
       방식.
-    - **Envoy/Istio service mesh sidecar**: 각 서비스 옆에 자동으로 붙는 **프록시**가
+    - **Envoy/Istio service mesh sidecar**: 각 서비스와 함께 자동 배치되는 **프록시**가
       요청 단위(L7) 분배와 암호화(mTLS)를 대신 처리하는 방식.
-  - 정리하면, gRPC 를 여러 서버로 고르게 분산하려면 위와 같은 **별도 장치**가 거의
+  - 정리하면, gRPC를 여러 서버로 고르게 분산하려면 위와 같은 **별도 장치**가 거의
     항상 따라온다.
   ([Kubernetes 블로그](https://kubernetes.io/blog/2018/11/07/grpc-load-balancing-on-kubernetes-without-tears/))
 - **그 밖에** 서비스 위치 조회(Eureka/Consul/xDS), retry·hedging, `.proto` 파이프
-  라인, mTLS, 그리고 **이벤트 fan-out 은 또 별도 broker**(Kafka/NATS)로 간다.
+  라인, mTLS, 그리고 **이벤트 fan-out은 또 별도 broker**(Kafka/NATS)로 간다.
 
-위 셋째 항목(L4 로드밸런싱)을 그림으로 보면 차이가 분명하다. **L4 는 "연결"을 나누고,
-L7 은 "요청"을 나눈다.** gRPC 는 연결 하나를 오래 유지하므로, L7 분배 장치가 없으면
+위 셋째 항목(L4 로드밸런싱)을 그림으로 보면 차이가 분명하다. **L4는 "연결"을 나누고,
+L7은 "요청"을 나눈다.** gRPC는 연결 하나를 오래 유지하므로, L7 분배 장치가 없으면
 요청이 서버 한 대에 쏠린다.
 
 ```mermaid
@@ -170,7 +172,7 @@ flowchart LR
   L7 -->|"req"| D2["server C"]
 ```
 
-즉 "gRPC 를 쓴다"는 실제로 **gRPC + L7 LB(보통 mesh) + 서비스 위치 조회 + event broker +
+즉 "gRPC를 쓴다"는 실제로 **gRPC + L7 LB(보통 mesh) + 서비스 위치 조회 + event broker +
 proto 파이프라인**을 함께 운영한다는 뜻이다.
 
 ### 6.2 배치 구조 비교
@@ -218,9 +220,9 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
   +------------------+          +------------------+
 ```
 
-Envoy sidecar 와 mesh control plane(서비스 위치 조회·L7 LB·mTLS) 자리가 framework 와
-location store 한 겹으로 들어온다. broker 와 WS edge 는 요구가 단순한 실시간 전파·연결
-수용이면 fanout channel·STREAM 으로 흡수할 수 있고, 영속 큐·replay 나 HTTP edge
+Envoy sidecar와 mesh control plane(서비스 위치 조회·L7 LB·mTLS) 자리가 framework와
+location store 한 겹으로 들어온다. broker와 WS edge는 요구가 단순한 실시간 전파·연결
+수용이면 fanout channel·STREAM으로 흡수할 수 있고, 영속 큐·replay 나 HTTP edge
 정책이 필요하면 그대로 둔다.
 
 ### 6.3 한 번의 호출이 지나는 경로
@@ -243,29 +245,29 @@ sequenceDiagram
   autonumber
   participant A as order-service
   participant B as payment-service
-  Note over A: channel 위치는 location store row 로 해결됨
-  A->>B: RequestToChannel(payments, Charge) — framework 가 peer 분배
+  Note over A: channel 위치는 location store row로 해결됨
+  A->>B: RequestToChannel(payments, Charge) — framework가 peer 분배
   B-->>A: reply
 ```
 
 ### 6.4 접히는 항목 요약
 
-| gRPC 베스트프랙티스/필요 인프라 | ZLink 에서 | 비고 |
+| gRPC 베스트프랙티스/필요 인프라 | ZLink에서 | 비고 |
 |----------------------------------|------------|------|
-| "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
+| "stub/channel을 재사용하라" | `IZLinkChannelClient`가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + store 자동 연결이 peer 분배 | sidecar 불필요 |
-| interceptor | `IZLinkHandlerFilter` | [4](04-channel-messaging.ko.md) §5 |
-| 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
-| 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [10-monitoring](10-monitoring.ko.md) |
+| interceptor | `IZLinkHandlerFilter` | [5](05-channel-messaging.ko.md) §5 |
+| 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |
+| 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [11-monitoring](11-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
 ## 7. 더 보기
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../common/sample/README.ko.md)
 - `.NET` 실행 예제: [Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
-- 표면 매핑: [04-channel-messaging](04-channel-messaging.ko.md) §0, [12-interface-catalog](12-interface-catalog.ko.md) §1.6
-- 기능 선택 지도: [11-feature-map](11-feature-map.ko.md)
+- 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, [13-interface-catalog](13-interface-catalog.ko.md) §1.6
+- 기능 선택 지도: [04-feature-map](04-feature-map.ko.md)
 
 ### 참고 자료
 
@@ -277,5 +279,5 @@ sequenceDiagram
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

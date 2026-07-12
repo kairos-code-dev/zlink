@@ -74,7 +74,7 @@ framework는 이미 두 관측 표면을 가진다. 메트릭은 이 둘과 **�
 
 - 계기 이름은 `zlink.<surface>.<name>` 규약을 쓴다.
 - **계기 이름·라벨 키는 언어 간 바이트 동일**하다(§9, [X-1]). 이는 와이어/백엔드 식별자이므로
-  API 타입·메서드에 적용하는 케이싱 변환([01-overview §6](../dotnet/guide/01-overview.ko.md)) 대상이
+  API 타입·메서드에 적용하는 케이싱 변환([01-overview §8](../dotnet/guide/01-overview.ko.md)) 대상이
   아니다. Java에서 `zlinkActorCount`처럼 케이싱을 바꾸지 않는다.
 - 접미사 규칙(대시보드 사고 방지): **counter=복수 명사 또는 과거분사**(`transfers`, `reconnects`,
   `timeouts`), **gauge=단수 명사 또는 상태값**(`active`, `count`, `depth`), 시간 histogram은

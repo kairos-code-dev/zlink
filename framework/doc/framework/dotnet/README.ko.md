@@ -142,16 +142,17 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 | [guide/01-overview.ko.md](guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
 | [guide/02-getting-started.ko.md](guide/02-getting-started.ko.md) | 패키지부터 최소 예제 동작 확인까지 |
 | [guide/03-concepts.ko.md](guide/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
-| [guide/04-channel-messaging.ko.md](guide/04-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
-| [guide/05-spot.ko.md](guide/05-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
-| [guide/06-actor-spot.ko.md](guide/06-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
-| [guide/07-actor-session.ko.md](guide/07-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
-| [guide/08-stream.ko.md](guide/08-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
-| [guide/09-location.ko.md](guide/09-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
-| [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / location / spot runtime 이벤트 관찰 사용법 |
-| [guide/11-feature-map.ko.md](guide/11-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
-| [guide/12-interface-catalog.ko.md](guide/12-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [guide/13-grpc-alternative.ko.md](guide/13-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
+| [guide/04-feature-map.ko.md](guide/04-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
+| [guide/05-channel-messaging.ko.md](guide/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
+| [guide/06-spot.ko.md](guide/06-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
+| [guide/07-actor-spot.ko.md](guide/07-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
+| [guide/08-actor-session.ko.md](guide/08-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
+| [guide/09-stream.ko.md](guide/09-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
+| [guide/10-location.ko.md](guide/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
+| [guide/11-monitoring.ko.md](guide/11-monitoring.ko.md) | socket / location / spot runtime 이벤트 관찰 사용법 |
+| [guide/12-operations.ko.md](guide/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
+| [guide/13-interface-catalog.ko.md](guide/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
+| [guide/14-grpc-alternative.ko.md](guide/14-grpc-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
 
 ### 2.1 기준 문서 (interface catalog)
 

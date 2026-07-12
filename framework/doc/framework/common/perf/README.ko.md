@@ -21,10 +21,10 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 - stream connector가 많은 client 연결을 처리할 때 처리량과 지연 시간이 어떻게 변하는가.
 - session과 actor가 같은 서버에 있을 때와 다른 서버에 있을 때 비용 차이가 얼마나 나는가.
 - server 간 channel과 Spot messaging에서 request/reply 방식과 send/send 방식의 차이가 무엇인가.
-- Spot handler 안에서 remote request를 `Async`로 기다리는 경우와 `Yield`로 대기 coroutine을 양보하는
-  경우의 head-of-line blocking 차이가 얼마나 나는가.
-- Spot handler가 `runWorker(...)`로 local worker pool에 작업을 맡길 때, 기본 terminator로 기다리는
-  경우와 `Yield`로 기다리는 경우의 turn 점유·queue 진행성 차이가 얼마나 나는가.
+- Spot handler가 remote request의 `Async` 완료를 기다릴 때 framework의 자동 turn 관리로
+  head-of-line blocking이 얼마나 줄어드는가.
+- Spot handler가 `runWorker(...)`로 local worker pool에 작업을 맡기고 완료를 기다릴 때 자동 turn
+  관리가 queue 진행성과 continuation 재개 비용에 어떤 영향을 주는가.
 - payload 크기가 1 KiB에서 4 KiB로 커졌을 때 처리량과 지연 시간이 어떻게 변하는가.
 - client runner, server process, framework dispatch, codec, transport 중 병목 후보가 어디인지
   evidence로 분리할 수 있는가.
@@ -44,7 +44,7 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 | connector → session → remote actor echo | session 서버와 actor 서버가 분리된 구조의 비용 측정 | 1 KiB | 4 KiB |
 | channel → remote Spot echo | server 간 channel에서 remote Spot으로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
 | remote Spot → channel echo | remote Spot에서 channel server로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
-| Spot execution Async/Yield echo | Spot handler의 remote request `Async`/`Yield` 대기 비용과 `runWorker(...)` local worker pool offload `Async`/`Yield` 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
+| Spot automatic-turn echo | Spot handler의 remote request `Async` 대기와 `runWorker(...)` local worker pool offload 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
 | actor client(no-bind) → actor echo | session 없는 server 측 caller가 `ActorRef`로 직접 send/request하는 비용 측정 | 4 KiB | 1 KiB |
 | publish → subscriber fanout | publisher 하나가 여러 subscriber에게 이벤트를 뿌릴 때 fanout 처리량과 delivery latency 측정 | 1 KiB | 4 KiB |
 
@@ -114,11 +114,11 @@ shell runner에서는 아래 long option을 지원해야 한다.
 | `--payload-sizes` | `1024,4096` | 여러 payload 크기를 순서대로 실행 |
 | `--inflight` | `1` | client당 동시 요청 또는 미완료 echo 수 |
 | `--connect-concurrency` | `256` | 동시에 연결을 시도하는 connector 수 |
-| `--spot-count` | `16` | Spot execution 시나리오에서 부하를 분산할 Spot RID 개수. `spot-yield-contention`은 이 값과 무관하게 `1`로 고정한다 |
+| `--spot-count` | `16` | Spot execution 시나리오에서 부하를 분산할 Spot RID 개수. `spot-await-contention`은 이 값과 무관하게 `1`로 고정한다 |
 | `--subscriber-count` | `8` | pub/sub 시나리오에서 fanout을 받는 subscriber process 수 |
 | `--worker-task-millis` | `5` | Spot worker offload 시나리오에서 `runWorker(...)`가 수행할 고정 비용 blocking 작업 시간 |
 | `--worker-pool-size` | `8` | Spot worker offload 시나리오에서 framework worker pool의 최대 thread 수 |
-| `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `yield-request`, `no-await`, `publish`, `worker-offload-async`, `worker-offload-yield` 중 하나 |
+| `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `no-await`, `publish`, `worker-offload` 중 하나 |
 | `--codec` | `json` | payload codec. 시나리오가 고정하면 override하지 않는다 |
 | `--output` | `perf-results/<run-id>` | 결과 파일 디렉토리 |
 | `--run-id` | timestamp | 로그와 결과를 묶는 실행 id |
@@ -193,7 +193,7 @@ process이므로, `/perf/reset`·`/perf/stats`도 subscriber마다 따로 호출
 
 `spot` role의 `spotRids`는 Spot server가 미리 만들어 둔 Spot RID 목록이며, 길이는 `--spot-count`와
 같다. client는 connector마다 이 목록을 순서대로 나눠 맡아 요청을 여러 Spot RID로 분산한다.
-`spot-yield-contention`은 `--spot-count 1`을 강제하므로 이 목록의 첫 번째 값만 사용하고, 모든
+`spot-await-contention`은 `--spot-count 1`을 강제하므로 이 목록의 첫 번째 값만 사용하고, 모든
 connector가 같은 Spot RID로 요청을 보낸다. 여러 Spot RID로 부하를 나누는 시나리오와 단일 Spot RID에
 집중하는 시나리오는 이 목록 길이 하나로 구분되어야 하며, 언어별 구현이 임의로 RID 수를 정하면 안 된다.
 
@@ -221,11 +221,9 @@ framework/languages/<lang>/perf/
 |   |   |-- S2sSpotToChannelRequestEchoScenario.*
 |   |   |-- S2sSpotToChannelSendSendEchoScenario.*
 |   |   |-- SpotAsyncRequestEchoScenario.*
-|   |   |-- SpotYieldRequestEchoScenario.*
-|   |   |-- SpotYieldContentionScenario.*
+|   |   |-- SpotAwaitContentionScenario.*
 |   |   |-- SpotNoAwaitEchoScenario.*
-|   |   |-- SpotWorkerOffloadAsyncEchoScenario.*
-|   |   |-- SpotWorkerOffloadYieldEchoScenario.*
+|   |   |-- SpotWorkerOffloadEchoScenario.*
 |   |   |-- ActorNoBindRequestEchoScenario.*
 |   |   |-- ActorNoBindSendSendEchoScenario.*
 |   |   `-- PubSubFanoutEchoScenario.*
@@ -347,8 +345,8 @@ thread pool queue 같은 언어별 runner 상태를 기록한다. client process
 | `Session` | stream session, remote actor relay, request reply 처리 | connector → session → remote actor |
 | `Actor` | actor/Entry Spot 또는 actor owner Spot, echo actor handler | remote actor echo, actor client no-bind echo |
 | `Channel` | channel request/send handler, trigger endpoint | channel ↔ Spot |
-| `Spot` | Spot factory, Spot handler, timer가 필요하면 perf 전용 timer | Spot ↔ channel, Async/Yield |
-| `RemoteEcho` | Spot execution 시나리오에서 Spot handler가 호출하는 단순 channel echo server | Async/Yield remote request |
+| `Spot` | Spot factory, Spot handler, timer가 필요하면 perf 전용 timer | Spot ↔ channel, automatic turn |
+| `RemoteEcho` | Spot execution 시나리오에서 Spot handler가 호출하는 단순 channel echo server | 자동 turn 관리가 적용되는 remote request |
 | `ActorCaller` | session을 만들지 않는 외부 caller, actor client의 `SendToActor`/`RequestToActor` 호출 실행 | actor client no-bind echo |
 | `Publisher` | publish channel server, `EventPublish`/`Publish(...).Async()` 공개 API로 이벤트 발행 | publish fanout |
 | `Subscriber` | subscribe handler, 수신 event를 evidence/metric으로 기록 | publish fanout |
@@ -543,11 +541,9 @@ scenario class 또는 file 이름은 아래 canonical 이름을 따른다.
 | `s2s-spot-to-channel-request-echo` | `S2sSpotToChannelRequestEchoScenario` |
 | `s2s-spot-to-channel-send-send-echo` | `S2sSpotToChannelSendSendEchoScenario` |
 | `spot-async-request-echo` | `SpotAsyncRequestEchoScenario` |
-| `spot-yield-request-echo` | `SpotYieldRequestEchoScenario` |
-| `spot-yield-contention` | `SpotYieldContentionScenario` |
+| `spot-await-contention` | `SpotAwaitContentionScenario` |
 | `spot-no-await-echo` | `SpotNoAwaitEchoScenario` |
-| `spot-worker-offload-async-echo` | `SpotWorkerOffloadAsyncEchoScenario` |
-| `spot-worker-offload-yield-echo` | `SpotWorkerOffloadYieldEchoScenario` |
+| `spot-worker-offload-echo` | `SpotWorkerOffloadEchoScenario` |
 | `actor-no-bind-request-echo` | `ActorNoBindRequestEchoScenario` |
 | `actor-no-bind-send-send-echo` | `ActorNoBindSendSendEchoScenario` |
 | `pubsub-fanout-echo` | `PubSubFanoutEchoScenario` |
@@ -687,8 +683,9 @@ Spot server가 channel server에 send로 echo 요청을 보내고, channel serve
 ### 10.7 `spot-async-request-echo`
 
 client는 Spot server에 trigger 요청을 보낸다. Spot handler는 remote echo channel server에 request를
-보내고 `Async` 방식으로 reply를 기다린 뒤 client-visible completion을 기록한다. 이 시나리오는
-Spot handler가 remote I/O를 기다리는 동안 Spot job 흐름을 얼마나 점유하는지 측정한다.
+보내고 단일 `Async` terminator로 reply를 기다린 뒤 client-visible completion을 기록한다. framework는
+대기 동안 Spot turn을 자동으로 반납하고 reply가 도착하면 원래 dispatcher 문맥에서 continuation을
+재개한다. 이 시나리오는 이 자동 관리 경로의 비용과 queue 진행성을 측정한다.
 
 | 항목 | 값 |
 |------|----|
@@ -697,45 +694,29 @@ Spot handler가 remote I/O를 기다리는 동안 Spot job 흐름을 얼마나 �
 | mode | `async-request` |
 | Spot 배치 | `--spot-count`개 Spot RID로 요청 분산 |
 | 측정 단위 | Spot handler echo completion |
-| 비교 목적 | Spot handler 내부 `Async` remote request 대기 비용 |
+| 비교 목적 | Spot handler 내부 remote request 대기의 자동 turn 관리 비용과 queue 진행성 |
 
-### 10.8 `spot-yield-request-echo`
-
-`spot-async-request-echo`와 같은 remote echo channel server를 사용한다. 차이는 Spot handler가 remote
-request reply를 기다릴 때 `Yield` 계열 terminator를 사용한다는 점이다. `Yield`는 대기 중인 coroutine을
-멈춘 채 Spot queue의 다음 job을 진행할 수 있게 하는 기능이므로, 이 시나리오는 처리량뿐 아니라 queue
-진행성과 resume latency를 함께 본다.
-
-| 항목 | 값 |
-|------|----|
-| 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
-| payload | 대표 1 KiB, 함께 4 KiB |
-| mode | `yield-request` |
-| Spot 배치 | `--spot-count`개 Spot RID로 요청 분산 |
-| 측정 단위 | Spot handler echo completion |
-| 비교 목적 | Spot handler 내부 `Yield` remote request 대기 비용과 queue 진행성 |
-
-### 10.9 `spot-yield-contention`
+### 10.8 `spot-await-contention`
 
 하나의 Spot RID에 많은 요청을 집중시킨다. handler는 remote echo channel server에 request를 보내고
-`Yield`로 대기한다. 같은 조건의 `spot-async-request-echo` 결과와 비교해서 head-of-line blocking이
-줄었는지 확인한다.
+단일 `Async` terminator로 대기한다. 같은 조건에서 여러 Spot RID로 분산하는
+`spot-async-request-echo` 결과와 비교해 자동 turn 관리가 단일 mailbox의 head-of-line blocking을
+얼마나 줄이는지 확인한다.
 
 | 항목 | 값 |
 |------|----|
 | 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
 | payload | 대표 1 KiB, 함께 4 KiB |
-| mode | `yield-request` |
+| mode | `async-request` |
 | Spot 배치 | `--spot-count 1` 고정 |
 | 측정 단위 | 단일 Spot RID echo completion |
-| 비교 목적 | 단일 Spot에 요청이 몰릴 때 `Yield`가 queue 진행을 풀어 주는지 측정 |
+| 비교 목적 | 단일 Spot에 요청이 몰릴 때 자동 turn 관리가 queue 진행을 유지하는지 측정 |
 
 이 시나리오는 `--spot-count 1`로 고정해서 여러 Spot RID로 부하를 분산하지 않는다. 여러 Spot으로
-분산하면 `Yield`의 queue 진행성 효과와 owner 분산 효과가 섞이기 때문이다. 같은 조건의
-`spot-async-request-echo`/`spot-yield-request-echo`와 비교할 때는 두 실행 모두 같은 `--spot-count`
-값을 써야 하며, 그중 하나만 `--spot-count 1`로 바꾸면 이 시나리오와 구분이 사라진다.
+분산하면 자동 turn 관리의 queue 진행성 효과와 owner 분산 효과가 섞이기 때문이다. 비교할 때는
+payload, in-flight, remote echo server를 같게 유지하고 Spot RID 개수만 다르게 한다.
 
-### 10.10 `spot-no-await-echo`
+### 10.9 `spot-no-await-echo`
 
 Spot handler가 remote request를 호출하지 않고 payload를 바로 echo한다. 이 baseline은 Spot dispatch와
 payload 검증 비용만 보기 위한 기준이다.
@@ -746,17 +727,18 @@ payload 검증 비용만 보기 위한 기준이다.
 | payload | 대표 1 KiB, 함께 4 KiB |
 | mode | `no-await` |
 | 측정 단위 | Spot handler echo completion |
-| 비교 목적 | `Async`/`Yield` 비교를 위한 Spot dispatch baseline |
+| 비교 목적 | 자동 turn 대기 경로와 비교하기 위한 Spot dispatch baseline |
 
 Spot execution 시나리오의 handler는 공유 mutable state를 request 전후에 이어서 판단하지 않는다.
-`Yield`는 대기 중 Spot의 다른 job이 진행될 수 있으므로, admission I/O나 단순 echo처럼 request 전후
-상태 동기화 위험이 없는 흐름만 측정한다.
+자동 turn 관리 중 다른 job이 진행될 수 있으므로, admission I/O나 단순 echo처럼 request 전후
+공유 상태를 이어서 판단하지 않는 흐름만 측정한다.
 
-### 10.11 `spot-worker-offload-async-echo`
+### 10.10 `spot-worker-offload-echo`
 
 client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker(...)`(언어별
 `RunWorker`/`runWorker`/`run_worker`)로 고정 비용 blocking 작업을 framework worker pool에 맡기고,
-기본(non-yield) terminator로 완료를 기다린 뒤 client-visible completion을 기록한다. `RemoteEcho`
+단일 완료 terminator로 기다린 뒤 client-visible completion을 기록한다. framework는 worker 완료를
+기다리는 동안 Spot turn을 자동으로 반납한다. `RemoteEcho`
 서버는 필요 없다 — 이 축은 remote I/O가 아니라 local worker pool로의 offload 비용을 잰다. worker
 작업 자체는 `--worker-task-millis`로 고정한 busy-wait 또는 sleep이며, 언어별로 임의의 CPU 작업을
 넣지 않는다.
@@ -765,36 +747,17 @@ client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker
 |------|----|
 | 서버 구성 | `SpotServer` |
 | payload | 대표 1 KiB, 함께 4 KiB |
-| mode | `worker-offload-async` |
+| mode | `worker-offload` |
 | worker 설정 | `--worker-task-millis`, `--worker-pool-size` |
 | 측정 단위 | Spot handler echo completion |
-| 비교 목적 | Spot handler가 기본 terminator로 worker pool 완료를 기다릴 때 turn 점유 비용 |
+| 비교 목적 | worker pool 완료 대기의 자동 turn 관리와 worker→Spot continuation 재개 비용 |
 | 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
 
-### 10.12 `spot-worker-offload-yield-echo`
+이 시나리오는 `config-8-automatic-turn-dispatch.ko.md`의 ATD-A4가 검증하는 worker offload 대기
+경로를 같은 조건에서 측정한다. 여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용
+worker thread pool offload다. 여러 프로세스에 작업을 분산하는 별도 공개 계약을 뜻하지 않는다.
 
-`spot-worker-offload-async-echo`와 같은 worker 작업을 쓰지만, Spot handler가 `runWorker(...)`
-완료를 `Yield` terminator로 기다린다. `Yield`는 대기 중 같은 Spot의 다른 job이 진행될 수 있게
-하므로, 이 시나리오는 처리량뿐 아니라 queue 진행성과 worker 완료 후 resume latency를 함께 본다.
-`config-8-automatic-turn-dispatch.ko.md`의 YD-A4(worker offload yield)가 검증하는 기능을 같은 조건에서
-perf로 재는 것이며, e2e가 이미 확인한 기능(순서 보장 등)을 다시 단언하지 않는다.
-
-| 항목 | 값 |
-|------|----|
-| 서버 구성 | `SpotServer` |
-| payload | 대표 1 KiB, 함께 4 KiB |
-| mode | `worker-offload-yield` |
-| worker 설정 | `--worker-task-millis`, `--worker-pool-size` |
-| 측정 단위 | Spot handler echo completion |
-| 비교 목적 | worker pool 완료 대기 중 `Yield`가 Spot queue 진행을 풀어 주는지, worker→Spot mailbox 재개 비용 |
-| 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
-
-같은 조건의 `spot-worker-offload-async-echo`와 비교할 때는 두 실행 모두 같은
-`--worker-task-millis`, `--worker-pool-size`, payload, in-flight 조건을 써야 한다.
-여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용 worker thread pool
-offload다. 여러 프로세스에 작업을 분산하는 별도 공개 계약을 뜻하지 않는다.
-
-### 10.13 `actor-no-bind-request-echo`
+### 10.11 `actor-no-bind-request-echo`
 
 session이 없는 `ActorCaller` server가 actor client의 `RequestToActor` 호출로 미리 얻은 `ActorRef`에
 request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCaller`에 보내며, 측정
@@ -813,7 +776,7 @@ request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCa
 이 시나리오는 언제나 bind되지 않은 actor를 대상으로 한다. `config-9-to-actor-messaging.ko.md`의 bind
 상태 매트릭스(TA-A1~A4)는 기능 검증이 목적이므로 perf에서 다시 만들지 않는다.
 
-### 10.14 `actor-no-bind-send-send-echo`
+### 10.12 `actor-no-bind-send-send-echo`
 
 `ActorCaller` server가 `SendToActor`로 `ActorRef`에 echo 요청을 보내고, actor handler가 같은
 `ActorCaller`로 send 응답을 보낸다. `SendToActor` 자체의 await 완료(resolve 성공 + 로컬 mailbox
@@ -828,7 +791,7 @@ request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCa
 | 비교 목적 | session bind 없이 양방향 send로 actor에 접근할 때 최대 처리량과 로컬 인계 비용 |
 | 실패 분류 | `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`를 `errors.byKind`에 구분 기록 |
 
-### 10.15 `pubsub-fanout-echo`
+### 10.13 `pubsub-fanout-echo`
 
 `Publisher` server가 고정된 하나의 topic으로 이벤트를 연속 발행하고, `--subscriber-count`개의
 `Subscriber` server가 같은 이벤트를 받는다. client는 benchmark trigger만 `Publisher`에 보내며,
@@ -933,8 +896,8 @@ subscriber별로 연속 수신 여부를 검증하는 유일한 키다. `topic`�
 | `actor.localHandoff.latency.p99Ms` | ms | `SendToActor` await 완료(로컬 mailbox 인계)까지 걸린 시간 p99 |
 | `spot.mailboxDepth.max` | count | 측정 중 관측된 Spot mailbox 최대 depth |
 | `spot.mailboxDepth.mean` | count | 측정 중 관측된 Spot mailbox 평균 depth |
-| `spot.yieldedCoroutines` | count | `Yield`로 대기한 coroutine 수 |
-| `spot.resumedCoroutines` | count | reply 수신 후 재개된 coroutine 수 |
+| `spot.suspendedTurns` | count | framework가 비동기 완료를 기다리며 자동으로 반납한 Spot turn 수 |
+| `spot.resumedTurns` | count | 완료 뒤 원래 dispatcher 문맥에서 재개된 Spot turn 수 |
 | `spot.resumeLatency.p95Ms` | ms | reply 수신 가능 시점부터 coroutine 재개까지 p95 |
 | `spot.resumeLatency.p99Ms` | ms | reply 수신 가능 시점부터 coroutine 재개까지 p99 |
 | `spot.remoteRequestRtt.p95Ms` | ms | Spot handler가 호출한 remote request RTT p95 |
@@ -945,8 +908,8 @@ subscriber별로 연속 수신 여부를 검증하는 유일한 키다. `topic`�
 | `worker.pool.queueWaitLatency.p99Ms` | ms | `runWorker(...)` 제출부터 worker thread가 집어들 때까지 p99 |
 | `worker.taskLatency.p95Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p95 |
 | `worker.taskLatency.p99Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p99 |
-| `worker.resumeLatency.p95Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p95 (`Yield`만 해당) |
-| `worker.resumeLatency.p99Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p99 (`Yield`만 해당) |
+| `worker.resumeLatency.p95Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p95 |
+| `worker.resumeLatency.p99Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p99 |
 | `messages.published` | count | publisher가 measured phase 동안 발행한 event 수 |
 | `fanout.subscriberCount` | count | 이 실행에 참여한 subscriber process 수 |
 | `fanout.deliveryRatio` | ratio(0~1) | subscriber별 (수신한 고유 sequence 수 / `messages.published`) 중 최솟값 |
@@ -1280,9 +1243,9 @@ C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindi
 7. `channel-echo-only`와 `spot-local-echo` baseline을 구현한다.
 8. channel → Spot request, channel → Spot send/send를 구현한다.
 9. Spot → channel request, Spot → channel send/send를 구현한다.
-10. `spot-no-await-echo`, `spot-async-request-echo`, `spot-yield-request-echo`를 구현한다.
-11. `spot-yield-contention`으로 단일 Spot RID 집중 부하를 구현한다.
-12. `spot-worker-offload-async-echo`, `spot-worker-offload-yield-echo`를 구현한다. `RemoteEcho`
+10. `spot-no-await-echo`, `spot-async-request-echo`를 구현한다.
+11. `spot-await-contention`으로 단일 Spot RID 집중 부하를 구현한다.
+12. `spot-worker-offload-echo`를 구현한다. `RemoteEcho`
     서버 없이 `SpotServer`만으로 `runWorker(...)` 완료를 기다리는 경로이므로 10~11단계와 독립적으로
     진행할 수 있다.
 13. actor client를 제공하는 모든 framework 언어는 `actor-no-bind-request-echo`,
@@ -1333,10 +1296,9 @@ runner를 다른 host 또는 여러 host에 분산한다.
 - measured phase 안에서 로그를 매 메시지마다 남기지 않는다. 오류와 집계 metric만 남긴다.
 - readiness를 고정 sleep으로만 판단하지 않는다.
 - request 방식과 send/send 방식을 in-flight 제한 없이 비교하지 않는다.
-- `Async`와 `Yield`를 서로 다른 remote echo server, payload, in-flight 조건에서 비교하지 않는다.
-- worker offload `Async`와 `Yield`를 서로 다른 `--worker-task-millis`나 `--worker-pool-size`
-  조건에서 비교하지 않는다.
-- `Yield` 성능 시나리오에서 request 전후 공유 mutable state를 이어서 판단하는 업무 로직을 넣지 않는다.
+- 자동 turn 시나리오와 baseline을 서로 다른 remote echo server, payload, in-flight 조건에서 비교하지 않는다.
+- worker offload 조건을 실행마다 다른 `--worker-task-millis`나 `--worker-pool-size`로 바꾸지 않는다.
+- 자동 turn 성능 시나리오에서 request 전후 공유 mutable state를 이어서 판단하는 업무 로직을 넣지 않는다.
 - payload 검증을 생략하지 않는다. 잘못된 echo가 빠르게 성공한 것처럼 보이면 결과가 무의미하다.
 - 실패한 메시지를 latency percentile에 섞지 않는다. 실패는 별도 error metric으로 기록한다.
 - 오래된 build 산출물이나 debug build 결과를 release 성능 수치로 기록하지 않는다.
@@ -1349,9 +1311,9 @@ runner를 다른 host 또는 여러 host에 분산한다.
 - 각 scenario가 `1 KiB`와 `4 KiB` payload, 기본 connection 수를 따른다.
 - client/server metrics가 공통 result schema로 저장된다.
 - `request`와 `send-send`가 같은 in-flight 기준으로 실행된다.
-- Spot `Async`와 `Yield` 시나리오가 같은 remote echo server, payload, in-flight 기준으로 실행된다.
-- Spot worker offload `Async`와 `Yield` 시나리오가 같은 `--worker-task-millis`, `--worker-pool-size`,
-  payload, in-flight 기준으로 실행된다.
+- Spot 자동 turn 시나리오와 baseline이 같은 remote echo server, payload, in-flight 기준으로 실행된다.
+- Spot worker offload 시나리오가 고정된 `--worker-task-millis`, `--worker-pool-size`, payload,
+  in-flight 기준으로 실행된다.
 - `pubsub-fanout-echo`는 모든 `Subscriber` process의 metrics가 개별 파일로 수집되고, `fanout.deliveryRatio`가
   결과에 기록된다.
 - server metrics endpoint가 warmup 후 reset되고 measured phase 후 snapshot된다.

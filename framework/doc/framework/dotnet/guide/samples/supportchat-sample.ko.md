@@ -212,9 +212,9 @@ idle timer, client connector)을 이미 고정하고 있다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | Session gateway 경로에서 customer/agent request 가 bound actor dispatch 와 sequence 로 맞물려 처리된다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | 두 actor 가 같은 conversation Spot 에 join·move·submit 으로 참여한다. |
-| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | conversation idle timer 진행과 close 시 lifecycle 정리가 framework timer 계약과 맞는다. |
+| `RegressionTests.SupportChat_Runner_Uses_Isolated_Docker_Redis_And_Location_Store` | SupportChat runner가 Session, actor와 conversation Spot을 실제 다중 프로세스 구성으로 실행한다. |
+| `E2E:SM-D2` | Session gateway request가 remote bound actor로 전달되고 reply가 같은 session으로 돌아온다. |
+| `E2E:SM-E3` | idle timer가 conversation Spot을 닫고 이후 요청이 실패한다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | client connector 의 request/reply correlation 과 bound push 수신이 유지된다. |
 
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.

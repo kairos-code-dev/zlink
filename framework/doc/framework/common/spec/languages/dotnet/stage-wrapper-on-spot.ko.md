@@ -166,8 +166,8 @@ wrapper 문서가 말해야 하는 것은 "같은 `Spot` 상태는 같은 실행
 - join 된 actor 로 들어가는 모든 packet 은 **같은 `Spot` 실행 문맥** 으로 다시
   모아서 처리한다.
 
-actor 가 `Spot` 에 붙었다는 것은 단순히 membership table 에 등록되었다는
-뜻만이 아니다. 그 actor 에 대한 후속 packet, disconnect, timer 후속 작업까지
+actor 가 `Spot` membership에 등록되었다는 것은 단순히 membership table에 row가
+생겼다는 뜻만은 아니다. 그 actor 에 대한 후속 packet, disconnect, timer 후속 작업까지
 모두 그 `Spot` 이 소유한 실행 문맥으로 다시 들어온다는 의미를 포함한다.
 
 내부 처리 흐름은 보통 다음 순서로 읽는 편이 가장 자연스럽다.
@@ -198,7 +198,7 @@ joined actor session packet
 ```
 
 이 모델에서 핵심은 다음과 같다. actor packet 처리를 session callback thread 에서
-곧장 실행하지 않는다. session callback 은 actor 가 어느 `Spot` 에 붙어 있는지
+곧장 실행하지 않는다. session callback 은 actor 가 어느 `Spot` 에 등록되어 있는지
 확인하고, packet 을 그 `Spot` 이 소유한 실행 문맥으로 넘기는 역할까지만
 책임진다. 실제 actor packet 처리는 반드시 `Spot` 실행 문맥 안에서만 일어난다.
 
@@ -287,8 +287,9 @@ framework 의 `Context.AddTimer<THandler>(...)` 는 native timer handle 을
 를 spot lifecycle / DI 모델에 붙여 주는 wrapper 로 읽는 편이 맞다.
 
 timer tick 이 발생하면 framework 가 그 tick 을 user Spot 의 같은 spot execution
-context 안으로 enqueue 한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지
-않는다. 그 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+context 안으로 enqueue 한다. Entry Spot timer 는 lifecycle, route, subscription과 같은
+Entry 실행 줄에 enqueue한다. Entry actor packet만 actor별 mailbox에서 별도로 처리한다.
+그 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
 `IZLinkTimer.CancelAsync()` 는 이 managed timer loop 를 멈추고 정리하는 고수준
 timer handle 이다.
 
@@ -307,7 +308,7 @@ framework 가 만든 per-spot scope[^per-spot-scope] 에서 resolve 한다. 사�
 
 여기서 더 중요한 것은 timer handler 가 어느 실행 문맥에서 도는가다.
 `Context.AddTimer<THandler>(...)` 로 등록한 user Spot timer handler 는 같은 spot
-실행 문맥에서 돈다. room, stage, match 상태처럼 권위 상태를 바꾸는 작업은 이
+실행 문맥에서 동작한다. room, stage, match 상태처럼 권위 상태를 바꾸는 작업은 이
 직렬 실행 문맥 안에서 처리해야 한다.
 
 timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간표의 tick
@@ -330,7 +331,7 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 `IZLinkSpot.OnCreateAsync(ZLinkMessage request, ...)` 가 이를 받는다. `Stage` 전용 typed
 metadata wrapper 는 그 위에 올릴 별도 상위 확장 후보다.
 
-예를 들면 `playhouse` 의 stage 생성은 보통 다음 정보를 함께 들고 들어간다.
+예를 들면 `playhouse`의 stage 생성은 보통 다음 정보를 함께 전달한다.
 
 - 어느 play node에 만들지
 - stage type
@@ -393,7 +394,7 @@ public interface IStageSpotManager
 이 절은 `stageId` 만으로 stage 위치를 찾아낼 helper 가 어디에 있어야 하는지를
 정리한다.
 
-`Stage wrapper` 를 실제로 사용하는 응용은 보통 `stageId` 만 들고 있는 경우가
+`Stage wrapper` 를 실제로 사용하는 응용은 보통 `stageId` 만 알고 있는 경우가
 많다.
 
 상위 계층에는 다음 중 하나가 필요하다.
@@ -448,9 +449,9 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 stage 역할의 spot 실행 문맥 안에서 packet이 처리된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | stage tick으로 쓰는 timer가 spot 종료 후 정확히 멈춘다. |
-| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·종료에 필요한 spot manager와 scope 정리가 정상 동작한다. |
+| `E2E:SM-B7` | actor join 뒤 stage 역할의 Spot에서 packet이 lifecycle 순서에 맞게 처리된다. |
+| `E2E:SM-E3` | stage tick으로 쓰는 timer가 Spot 종료 뒤 추가 callback을 만들지 않는다. |
+| `E2E:SM-A5` | application stage wrapper가 Spot request, timer와 lifecycle을 public API로 실행한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^stage]: `Stage`는 `playhouse`에서 게임 룸 같은 상위 실행 단위를 표현하는 모델이다. 단일 실행 문맥과 membership, lifecycle 같은 상위 개념을 함께 가진다.

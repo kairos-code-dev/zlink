@@ -175,9 +175,9 @@ instance, client stream notify)을 이미 고정하고 있다. GameQuest 는 act
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | gameplay action event 가 fanout 구독으로 QuestMission 에 전달된다. |
-| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 PlayerId PlayerQuest Spot instance 가 한 번만 초기화된다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | quest Spot 의 actor 참여·submit 흐름이 SpotExecutionContext 로 동작한다. |
+| `E2E:PS-A1` | gameplay action과 같은 fanout event가 publisher에서 subscriber로 전달된다. |
+| `RegressionTests.GameQuest_Runner_Uses_Isolated_Docker_Redis_And_Stream_Actions` | GameQuest runner가 PlayerQuest Spot과 stream action을 실제 sample에서 실행한다. |
+| `E2E:SM-B7` | quest Spot의 actor 참여와 packet dispatch가 현재 Spot lifecycle 순서로 동작한다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | GameApi WebSocket(stream) notify 와 request/reply correlation 이 유지된다. |
 
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 단위(예: player quest, room 등)로 메시지를 라우팅하는 추상이다.

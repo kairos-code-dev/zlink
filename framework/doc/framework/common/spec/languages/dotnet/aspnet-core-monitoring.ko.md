@@ -42,16 +42,17 @@ framework 표면에서 함께 받을 수 있어야 한다.
 
 이 문서는 다음 규칙을 기본으로 둔다.
 
-- event kind 는 enum 으로 둔다.
-- 실제 callback payload 는 record struct 로 둔다.
+- socket event 종류는 필터 등록에 사용하는 enum 으로 둔다.
+- callback event 는 source별 추상 record 아래의 sealed record variant로 구분한다.
 - socket 은 하부 monitor 를 그대로 감싼다.
 - location / spot 은 polling[^polling] 으로 상태를 읽고 직전 상태와 비교해서 event 를 합성한다.
 - timer handler failure 는 polling interval 을 기다리지 않고 즉시 발행한다.
 - location 상태는 `IZLinkLocationRuntimeQuery` 결과와 location runtime event 로 조회한다.
 - application 은 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해서 이벤트를 받는다.
 
-enum 하나만으로는 충분하지 않다. 운영 코드에서는 event 종류뿐 아니라 source 이름,
-endpoint, routing id, snapshot 본문도 함께 필요하기 때문이다.
+socket 필터 enum 하나만으로 callback payload를 표현하지 않는다. 운영 코드에서는 event 종류뿐
+아니라 source 이름, endpoint, routing id, snapshot 본문도 함께 필요하기 때문이다. location과
+spot callback은 variant의 타입 자체가 event 종류를 나타내므로 nullable payload 조합이 생기지 않는다.
 
 ## 3. 등록 모델
 
@@ -87,13 +88,13 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.Disconnected);
 
     monitor.AddSpotEvents(
-        "stage-node",
+        "game.stage",
         TimeSpan.FromSeconds(1));
 });
 ```
 
-`AddZLinkMonitoring(...)` 은 source 등록만 맡는다. 즉 실제 socket, spot source 는
-같은 애플리케이션에 `AddZLinkFramework(...)` 또는
+`AddZLinkMonitoring(...)`은 source 등록만 맡는다. 실제 socket과 spot source는 같은
+애플리케이션의 `AddZLinkFramework(...)`에서 먼저 등록해야 한다.
 
 여기서 한 가지 짚어 둘 점이 있다. 일반 channel 역할[^capability] 과 SPOT mesh 는
 각자 monitoring source 이름을 가진다.
@@ -105,7 +106,7 @@ source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
   - 예: `profile.server`, `profile.client`
 - spot
   - spot node 등록 이름
-  - 예: `stage-node`
+  - 예: `game.stage`
 
 ## 4. 인터페이스 계약
 
@@ -142,9 +143,10 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
 }
 ```
 
-socket, location, spot 은 각각 framework 가 소유한 event kind enum 과 record
-payload 를 가진다. backend 의 raw monitor enum 이나 status 값이 필요하면,
-event 안의 optional diagnostic detail 로만 노출한다.
+socket은 framework가 소유한 filter enum과 event record를 가진다. location과 spot은
+각 event 계열의 추상 record 아래에 sealed record variant를 두며, variant 생성자에 필요한
+payload를 넣는다. backend의 raw monitor enum이나 status 값이 필요하면 framework가 소유한
+진단 타입으로 변환해 노출한다.
 
 이 "optional diagnostic" 도 framework 가 소유한 타입으로 다시 감싼다. 즉
 backend `.NET` binding 의 `MonitorEventType`, `ServiceEventType`, `SubjectKind`,
@@ -214,18 +216,18 @@ public sealed class LocationRuntimeMonitor
         ZLinkLocationRuntimeEvent @event,
         CancellationToken cancellationToken)
     {
-        switch (@event.Event)
+        switch (@event)
         {
-            case ZLinkLocationRuntimeEventKind.StatusChanged:
+            case ZLinkLocationRuntimeEvent.StatusChanged statusChanged:
                 _logger.LogInformation(
                     "location store status changed: {Healthy}",
-                    @event.Status?.StoreHealthy);
+                    statusChanged.Status.StoreHealthy);
                 break;
 
-            case ZLinkLocationRuntimeEventKind.TopologyChanged:
+            case ZLinkLocationRuntimeEvent.TopologyChanged topologyChanged:
                 _logger.LogInformation(
                     "location topology changed: {Count}",
-                    @event.Topology?.Count ?? 0);
+                    topologyChanged.Topology.Count);
                 break;
         }
 
@@ -254,30 +256,38 @@ public sealed class StageNodeMonitor
         ZLinkSpotEvent @event,
         CancellationToken cancellationToken)
     {
-        switch (@event.Event)
+        switch (@event)
         {
-            case ZLinkSpotEventKind.PeersChanged:
+            case ZLinkSpotEvent.PeersChanged peersChanged:
                 _logger.LogInformation(
                     "spot peers changed: {Source} peers={Count}",
-                    @event.SourceName,
-                    @event.Peers?.Count ?? 0);
+                    peersChanged.SourceName,
+                    peersChanged.Peers.Count);
                 break;
 
-            case ZLinkSpotEventKind.SubjectsChanged:
+            case ZLinkSpotEvent.SubjectsChanged subjectsChanged:
                 _logger.LogInformation(
                     "spot subjects changed: {Source} subjects={Count}",
-                    @event.SourceName,
-                    @event.Subjects?.Count ?? 0);
+                    subjectsChanged.SourceName,
+                    subjectsChanged.Subjects.Count);
                 break;
 
-            case ZLinkSpotEventKind.TimerHandlerFailed:
-            case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
+            case ZLinkSpotEvent.TimerHandlerFailed failed:
                 _logger.LogError(
                     "spot timer failed: {Source} {Timer} {Handler} {Exception}",
-                    @event.SourceName,
-                    @event.TimerDiagnostic?.TimerName,
-                    @event.TimerDiagnostic?.HandlerType,
-                    @event.TimerDiagnostic?.ExceptionType);
+                    failed.SourceName,
+                    failed.Diagnostic.TimerName,
+                    failed.Diagnostic.HandlerType,
+                    failed.Diagnostic.ExceptionType);
+                break;
+
+            case ZLinkSpotEvent.TimerStoppedAfterUnhandledException stopped:
+                _logger.LogError(
+                    "spot timer stopped: {Source} {Timer} {Handler} {Exception}",
+                    stopped.SourceName,
+                    stopped.Diagnostic.TimerName,
+                    stopped.Diagnostic.HandlerType,
+                    stopped.Diagnostic.ExceptionType);
                 break;
         }
 
@@ -379,6 +389,11 @@ Monitoring 문서의 항목은 다음을 확인한다.
 |---------------|-----------|
 | `CoverageCriticalRuntimeTests.MonitoringEventMapper_MapsAndFiltersSocketEvents` | socket runtime event 를 public monitoring event 로 매핑하고 내부 event 는 밖으로 내보내지 않는다. |
 | `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | timer handler 예외가 계속 실행되는 실패와 timer 중단 실패를 구분해 typed event 로 만들어진다. |
+| `MonitoringTests.AddZLinkMonitoring_RequiresPositivePollingIntervals` | Spot과 location runtime polling interval이 0보다 커야 한다. |
+| `MonitoringTests.MonitoringSourceValidator_RequiresLocationRuntimeForLocationSources` | location source를 등록했지만 location runtime이 없으면 시작 전에 거부한다. |
+| `MonitoringTests.AddZLinkMonitoring_Throws_WhenSpotSourceDoesNotMatchRegisteredSpotNode` | Spot source 이름이 등록된 SpotNode 이름과 정확히 일치하지 않으면 시작 전에 거부한다. |
+| `MonitoringTests.AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery` | Spot source는 자동으로 추가되지 않으며 명시한 SpotNode 이름만 등록한다. |
+| `MonitoringTests.SpotPollingEventDiff_EmitsSealedVariantsOnlyForChangedSnapshotParts` | 최초 snapshot과 후속 차이를 sealed Spot event variant로 정확히 발행한다. |
 
 ## 9. 메시지 흐름 추적 (dispatch 관측)
 
@@ -395,7 +410,7 @@ observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
 |-----------|---------------------|
 | 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
 | outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
-| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, 오류 필드 |
+| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, `FlowId`, nullable `FlowOrigin`, 오류 필드 |
 | observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
 | 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
 | 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
@@ -424,7 +439,8 @@ builder.Services.AddZLinkFramework(options =>
   미지정 + 앱 로거 sink 있으면 통합, 둘 다 없으면 표준 에러스트림 폴백.
 - 출력은 카테고리 `zlink.framework.dispatch` + 구조화 필드(phase/surface/kind/packet/channel/
   topic/corr/src/spot/actor/size/node)로 나가 콜렉터가 정규식 파싱 없이 ingest할 수 있다.
-- `Off`일 때는 이벤트를 생성조차 하지 않아(호출부 가드 + lazy) 운영 성능에 영향이 없다.
+- `Off`이고 explicit observer도 없을 때는 log event를 생성하지 않는다(호출부 가드 + lazy).
+  explicit observer를 등록한 경우에는 로그 모드와 별개로 observer에 전달할 event를 발행한다.
 
 ### 9.3 런타임 토글
 
@@ -498,7 +514,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | 공통 개념 | `.NET` |
 |-----------|--------|
 | 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
-| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
+| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
 
 ```csharp
 options.ConfigureDispatch()
@@ -507,6 +523,8 @@ options.ConfigureDispatch()
 
 - 생성은 트레이싱 모드 게이트, **전파(echo)는 무조건**이라 off 노드를 지나도 흐름이 끊기지 않는다
   (공통 §2.2).
+- 두 필드는 하나의 optional pair다. `FlowId`가 빈 문자열이면 `FlowOrigin`은 `null`이고, `FlowId`가
+  있으면 `FlowOrigin`도 반드시 있다. 로그와 observer event도 이 불변식을 유지한다.
 - stream/actor gateway 로거는 부트스트랩에서 **자동 배선**된다(공통 §7). 명시 주입이 우선하되, 없을
   때 침묵 대신 기본 sink로 폴백 — "조용한 무로그"를 기본에서 제거한다. 게이팅은 불변(배선 ≠ 출력,
   `Off`면 완전 침묵).

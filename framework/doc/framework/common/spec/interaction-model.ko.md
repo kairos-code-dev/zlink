@@ -64,6 +64,10 @@
 - `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명한다.
+- RouteMesh의 모든 구성원은 endpoint 유무와 관계없이 `ROUTER` 역할을 사용한다.
+  endpoint가 없는 구성원은 다른 `ROUTER`를 항상 dial하고, 양쪽 모두 endpoint가
+  있으면 pairwise initiator 규칙으로 한쪽만 dial한다. RouteMesh에 `DEALER` 역할을
+  섞는 구성은 유효하지 않다.
 - SPOT 쪽은 routed 호출보다 route bridge channel socket을 통한
   `SendToChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 - caller가 위치값을 이미 알고 있더라도, 기본 application public API 표면에서는
@@ -164,7 +168,8 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 - 같은 이유로 channel messaging에서 일반 message dispatch는 local `ROUTER`
   ingress를 기준으로 설명하는 편이 맞다. outbound `DEALER` 수신은 우선 reply
   correlation 경로로 처리한다.
-- `dealer-dealer`는 현재 목표 범위에 넣지 않는다.
+- `dealer-dealer`는 현재 목표 범위에 넣지 않는다. RouteMesh도 `ROUTER` 구성원끼리
+  연결하며, endpoint가 없는 구성원을 `DEALER`로 바꾸지 않는다.
 - `SPOT`은 event 전파의 핵심 토대이지만, 필요할 때는 request/reply의 내부
   운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다
   상호작용 의미를 먼저 드러내야 한다.

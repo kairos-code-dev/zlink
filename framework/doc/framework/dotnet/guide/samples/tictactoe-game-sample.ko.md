@@ -175,8 +175,8 @@ adapter가 담당한다. source `TransferOutAsync`가 반환한 `ZLinkMessage`�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot[^entry-spot]과 room Spot actor handler가 각각 정상 동작한다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | room으로 이동한 뒤에는 이전 room으로 stale dispatch가 발생하지 않는다. |
+| `RegressionTests.Bingo_And_TicTacToe_Samples_Implement_Actor_Lifecycle_Spec` | Entry Spot과 room Spot actor lifecycle 사용 코드가 공통 계약을 따른다. |
+| `E2E:SM-G2` | room owner가 바뀐 뒤에는 이전 room owner로 stale dispatch가 발생하지 않는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 게임 클라이언트 역할의 connector request/reply 계약이 그대로 유지된다. |
 | `RegressionTests.TicTacToe_SessionGateway_Sample_Is_Removed` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다. |
 

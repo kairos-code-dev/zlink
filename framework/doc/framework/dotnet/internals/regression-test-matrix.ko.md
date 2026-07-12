@@ -33,7 +33,7 @@
 | test mode | debug, release |
 
 현재 저장소의 기본 빌드(`ZLinkFrameworkTargetFrameworks` 기본값)는 `net8.0` 단일 TFM
-이므로, 회귀 테스트는 `net8.0` 으로 돌린다. `net10.0` 은 아래처럼 회귀 matrix 보고용
+이므로, 회귀 테스트는 `net8.0`으로 실행한다. `net10.0`은 아래처럼 회귀 matrix 보고용
 multi-target 빌드에서 추가로 다룬다.
 
 - 현재 저장소의 기본 빌드는 `net8.0` 단일 TFM 이다.
@@ -198,6 +198,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 ## 6. Stream Regression 항목
 
+별도 client package의 정확한 lifecycle, dispatch, transport와 observer 계약은
+[.NET Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)을
+따른다.
+
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | 같은 node에 session 중복 등록 | `unit` | startup validation 예외 |
@@ -239,16 +243,18 @@ runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
 registration, lifecycle, DI, monitoring 계층을 더 쌓는다. 그래서 플랫폼 gate 는
 backend gate 와 별도로 유지한다.
 
-## 9. Spot yield dispatch regression
+## 9. Automatic turn dispatch regression
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SerialExecutorTests` yield 관련 항목 | 기본 `Async(...)` serial gate를 유지하고, `Yield(...)`가 completion 전 다른 mailbox 작업을 실행하게 한다. |
-| `WorkerPoolTests` await 관련 항목 | `RunWorker(...).Async(...)` 완료 뒤 원래 실행 줄로 돌아온다. |
-| `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id` | actor `JoinSpot`/`JoinEntrySpot` call object가 `Yield(...)`와 typed reply overload를 public contract로 제공한다. |
-| `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport` | bound session send call object가 `Yield(...)`를 public contract로 제공한다. |
-| `ChannelContracts` yield surface 항목 | channel send/publish와 route request에는 `Yield` surface가 노출되지 않는다. |
-| `Bingo.Server.Play.csproj` build | Bingo `MatchBingoActorHandler` sample이 API request와 room `JoinSpot`에 `Yield(...)`를 사용해도 compile된다. |
+| `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes` | 일반 callback은 완료될 때까지 같은 실행 줄의 다음 작업을 시작하지 않는다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line` | request, join 또는 worker의 `Async(...)`를 기다리는 동안 관련 없는 다음 작업을 실행하고 continuation은 원래 실행 줄에서 재개한다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Fault_Cleans_Pending_Turn` | 비동기 작업 실패 뒤 pending turn을 정리하고 실행 줄을 계속 사용할 수 있다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Cancellation_Cleans_Pending_Turn` | 비동기 작업 취소 뒤 pending turn을 정리하고 다음 작업을 실행한다. |
+| `WorkerPoolTests.RunWorker_Async_Returns_Result_From_Pool_Thread` | `RunWorker(...).Async(...)`가 worker 결과를 반환하고 호출자의 실행 문맥 복귀를 framework가 관리한다. |
+| `ChannelContracts.Route_request_call_does_not_expose_yield_terminator` | route request는 단일 `Async(...)` 완료 terminator만 공개한다. |
+| `E2E:ATD-B3` | actor join을 기다리는 동안 다른 actor 요청이 먼저 완료되고 join continuation이 원래 actor mailbox로 돌아온다. |
+| `E2E:ATD-A4` | worker 완료를 기다리는 동안 Spot turn을 반납하고 continuation이 원래 Spot mailbox에서 재개된다. |
 
 ## 10. 문서별 회귀 테스트 단락
 

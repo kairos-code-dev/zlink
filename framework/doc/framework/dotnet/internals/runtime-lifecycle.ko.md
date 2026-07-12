@@ -59,7 +59,7 @@ channel과 stream 책임 spec을 따른다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `HostTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 시작과 종료가 backend context의 생성과 정리를 함께 수행한다. |
+| `E2E:RL-C1` | 여러 framework host를 생성하고 종료한 뒤 follow-up request가 성공해 host lifecycle 정리를 검증한다. |
 | `LocationRuntimeTests.Shutdown_Removes_Owner_Lease_Then_Bulk_Removes_Rows` | location 종료가 owner lease와 row를 정해진 순서로 정리한다. |
 | `ZLinkAsyncSubmitterTests.DisposeAsync_FailsPendingItems` | runtime dispose가 pending submit을 남겨 두지 않는다. |
 

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: Channel Messaging — request · send · pub/sub](04-channel-messaging.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](04-feature-map.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 3. 핵심 개념
@@ -8,10 +8,10 @@
 > 인터페이스의 정식 정의는 [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
-ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
+ZLink framework는 **다섯 가지 핵심 개념**으로 선다:
 **channel · spot · actor · stream · location**. 나머지 챕터는 전부 이
-다섯의 변주다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5 에서 다섯
-개념을 차례로 본다. §6 은 이들을 받치는 실행·구성 모델이다.
+다섯의 변주다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5에서 다섯
+개념을 차례로 본다. §6은 이들을 받치는 실행·구성 모델이다.
 
 ## 0. 용어 빠르게 잡기
 
@@ -21,33 +21,33 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | 용어 | 한 줄 풀이 |
 |------|-----------|
 | **channel(채널)** | 서버 간 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
-| **역할(capability)** | 한 channel 에서 이 앱이 맡는 일 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
-| **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core` 의 컨트롤러 액션과 같은 위치 |
+| **역할(capability)** | 한 channel에서 이 앱이 맡는 일 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
+| **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core`의 컨트롤러 액션과 같은 위치 |
 | **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkChannelClient`) |
 | **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
 | **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
 | **codec(코덱)** | payload(메시지 본문)를 바이트로 **직렬화/역직렬화**하는 방식(json·protobuf·messagepack) |
-| **SPOT(스팟)** | room/zone 처럼 **동적으로 생겼다 사라지는 상태 단위**. 한 SPOT 의 콜백은 **한 줄로 직렬** 실행돼 lock 이 필요 없다 |
-| **actor(액터)** | **ID 로 식별되는 상태 보유 객체**. 같은 ID 로 온 메시지는 늘 같은 인스턴스가 처리 |
-| **Entry Spot** | actor 가 생성 직후 머무는 **기본 실행 위치** |
-| **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework 가 관리 |
+| **SPOT(스팟)** | room/zone처럼 **동적으로 생겼다 사라지는 상태 단위**. 한 SPOT의 콜백은 **한 줄로 직렬** 실행돼 lock이 필요 없다 |
+| **actor(액터)** | **ID로 식별되는 상태 보유 객체**. 같은 ID로 온 메시지는 늘 같은 인스턴스가 처리 |
+| **Entry Spot** | actor가 생성 직후 머무는 **기본 실행 위치** |
+| **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework가 관리 |
 | **session(세션)** | STREAM 연결 하나에 대응하는 **서버 측 객체** |
-| **location store(위치 저장소)** | channel·SPOT 같은 논리 이름을 실제 endpoint 로 풀기 위한 외부 저장소 |
+| **location store(위치 저장소)** | channel·SPOT 같은 논리 이름을 실제 endpoint로 풀기 위한 외부 저장소 |
 | **RoutingId** | 노드·스팟의 **논리 주소**(특정 인스턴스를 가리키는 식별자) |
-| **correlation(상관)** | 요청과 그 응답을 **짝지어 주는** 식별 정보. framework 가 자동 처리 |
+| **correlation(상관)** | 요청과 그 응답을 **짝지어 주는** 식별 정보. framework가 자동 처리 |
 | **deadline / timeout** | 응답을 **얼마나 기다릴지**의 상한 시간 |
 | **DI / lifecycle** | `ASP.NET Core` 의존성 주입 + hosted service **시작/종료** 수명 관리 |
-| **mesh / sidecar**(비교용) | 서비스 옆에 붙어 라우팅·분배를 대신하는 **별도 프록시**(Envoy/Istio). ZLink 는 이게 없어도 된다 |
+| **mesh / sidecar**(비교용) | 서비스와 함께 배치되어 라우팅·분배를 대신하는 **별도 프록시**(Envoy/Istio). ZLink는 이게 없어도 된다 |
 
 ## 1. channel — 서버 간 연결
 
-channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
+channel은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
 `"orders"` 같은 이름으로 부른다. 현재 공개 표면에서는 server/publisher 역할이 자기
-endpoint 를 명시하고, client/subscriber 역할은 수동 연결을 쓰거나 별도 location runtime
-설계가 확정된 뒤 이름 기반 연결을 사용한다. 배포 값(주소·topology)은 handler 가 아니라
+endpoint를 명시하고, client/subscriber 역할은 수동 연결을 쓰거나 별도 location runtime
+설계가 확정된 뒤 이름 기반 연결을 사용한다. 배포 값(주소·topology)은 handler가 아니라
 **channel 등록**이 소유하므로,
-`[ZLinkRequest]` 같은 attribute 는 channel 이름을 인자로 받지 않는다.
+`[ZLinkRequest]` 같은 attribute는 channel 이름을 인자로 받지 않는다.
 
 **channel 종류(kind)** — 서버 간 연결 방식이 다르다:
 
@@ -55,11 +55,11 @@ endpoint 를 명시하고, client/subscriber 역할은 수동 연결을 쓰거�
 |------|------|-----------|
 | client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 연결된다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| route mesh | `AddRouteMesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (`SpotNode` 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
+| route mesh | `AddRouteMesh` | router ↔ router — routing id로 특정 주소에 라우팅 (`SpotNode`가 이 route mesh로 구성된다: [06-spot](06-spot.ko.md)) |
 
-**소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
+**소켓 구조 한눈에** — 어떤 소켓이 어떻게 연결되는지가 네 종류의 차이다.
 
-- **client-server** — ROUTER 서버 **하나**에 DEALER 클라이언트 **여럿**이 붙는 비대칭 구조.
+- **client-server** — ROUTER 서버 **하나**에 DEALER 클라이언트 **여럿**이 연결되는 비대칭 구조.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -79,7 +79,7 @@ graph LR
     P --> S3["subscriber C<br/>SUB"]
 ```
 
-- **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). `SpotNode` 가 이 구조로 구성된다.
+- **route mesh** — ROUTER끼리 연결되어, **routing id로 지정한 주소에만** 보낸다(분산 아님). `SpotNode`가 이 구조로 구성된다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -88,28 +88,28 @@ graph LR
     R -->|"routing id = B"| B["node B<br/>ROUTER"]
 ```
 
-**역할(capability)** — 한 channel 에서 이 앱이 맡는 일:
+**역할(capability)** — 한 channel에서 이 앱이 맡는 일:
 
 | 역할 | 의미 | 비고 |
 |------|------|------|
-| `EnableServer(endpoint)` | 이 channel 의 request/send 를 local handler 가 받는다 | endpoint 인자 필수 |
-| `EnableClient()` | 이 channel 로 request/send 를 내보낸다 | outbound 전용 앱 가능 |
-| `EnablePublisher(endpoint)` | 이 channel 로 이벤트를 publish 한다 | endpoint 인자 필수 |
-| `EnableSubscriber()` | 이 channel 의 이벤트를 구독한다 | |
+| `EnableServer(endpoint)` | 이 channel의 request/send를 local handler가 받는다 | endpoint 인자 필수 |
+| `EnableClient()` | 이 channel로 request/send를 내보낸다 | outbound 전용 앱 가능 |
+| `EnablePublisher(endpoint)` | 이 channel로 이벤트를 publish 한다 | endpoint 인자 필수 |
+| `EnableSubscriber()` | 이 channel의 이벤트를 구독한다 | |
 
-한 channel 이 여러 역할을 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를 구독).
-server/publisher 는 외부가 접근할 endpoint 가 필요하므로 `EnableServer(endpoint)`·
-`EnablePublisher(endpoint)` 에 endpoint 를 직접 넘기고, client/subscriber 는 필요 없다. request/send/pub-sub 사용법과 handler 노출·연결
-제어 전체는 [04-channel-messaging](04-channel-messaging.ko.md)이 다룬다.
+한 channel이 여러 역할을 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를 구독).
+server/publisher는 외부가 접근할 endpoint가 필요하므로 `EnableServer(endpoint)`·
+`EnablePublisher(endpoint)`에 endpoint를 직접 넘기고, client/subscriber는 필요 없다. request/send/pub-sub 사용법과 handler 노출·연결
+제어 전체는 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
 
-> **주의:** channel 이름과 handler **group 이름**은 서로 다른 namespace 다. group 은
-> 코드 안 논리 묶음(`"api"`)이고, channel 은 배포 식별자(`"tictactoe.api"`)다.
+> **주의:** channel 이름과 handler **group 이름**은 서로 다른 namespace 다. group은
+> 코드 안 논리 묶음(`"api"`)이고, channel은 배포 식별자(`"tictactoe.api"`)다.
 
 ## 2. spot — 상태 단위
 
-spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 단위**다. 한 spot 에
-들어오는 packet · timer · actor 콜백은 **한 줄로 직렬 실행**되므로, spot 이 소유한
-상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler 와 다르다(§6).
+spot은 room/zone/stage처럼 **동적으로 생겼다 사라지는 상태 단위**다. 한 spot에
+들어오는 packet · timer · actor 콜백은 **한 줄로 직렬 실행**되므로, spot이 소유한
+상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler와 다르다(§6).
 
 | | channel handler | SPOT handler |
 |---|---|---|
@@ -117,8 +117,8 @@ spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 단
 | 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 SPOT 안에서는 직렬 실행 |
 | 상태 | 공유 상태를 직접 멤버에 두지 않음 | SPOT이 상태를 직접 소유 |
 
-한 SPOT 에 들어오는 모든 일은 **단일 큐**를 통과해 한 줄로 처리된다 — 그래서 상태에
-lock 이 없다.
+한 SPOT에 들어오는 모든 일은 **단일 큐**를 통과해 한 줄로 처리된다 — 그래서 상태에
+lock이 없다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -129,12 +129,12 @@ graph LR
     Q --> ST["SPOT 상태<br/>(lock 불필요)"]
 ```
 
-상세(등록·lifecycle·timer·outbound)는 [05-spot](05-spot.ko.md).
+상세(등록·lifecycle·timer·outbound)는 [06-spot](06-spot.ko.md).
 
-## 3. actor — ID 로 식별되는 상태 객체
+## 3. actor — ID로 식별되는 상태 객체
 
-actor 는 **ID 로 식별되는 상태 보유 객체**다. 같은 ID 로 온 메시지는 늘 같은
-인스턴스가 처리한다. 외부 client session 을 actor 에 바인딩하면 **연결 서버(세션)와
+actor는 **ID로 식별되는 상태 보유 객체**다. 같은 ID로 온 메시지는 늘 같은
+인스턴스가 처리한다. 외부 client session을 actor에 바인딩하면 **연결 서버(세션)와
 로직 서버(actor)를 분리**할 수 있다 — 연결을 받는 노드와 도메인 로직을 도는 노드를
 나누는 패턴이다.
 
@@ -148,12 +148,12 @@ graph LR
     RT -->|id=7| A7["actor 7"]
 ```
 
-상세는 [06-actor-spot](06-actor-spot.ko.md).
+상세는 [07-actor-spot](07-actor-spot.ko.md).
 
 ## 4. stream — 외부 client 연결
 
-stream 은 모바일·게임 같은 **외부 client 와의 연결 지향 양방향 채널**이다. 서버
-간 channel(§1)과 달리 연결 수명·재연결·heartbeat 를 framework 가 관리하고, 연결
+stream은 모바일·게임 같은 **외부 client와의 연결 지향 양방향 채널**이다. 서버
+간 channel(§1)과 달리 연결 수명·재연결·heartbeat를 framework가 관리하고, 연결
 하나가 서버 측 **session** 객체에 대응한다.
 
 ```mermaid
@@ -163,20 +163,20 @@ graph LR
     SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
 ```
 
-상세는 [08-stream](08-stream.ko.md).
+상세는 [09-stream](09-stream.ko.md).
 
 ## 5. location — 주소 해석
 
 앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
 배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(peer row)를
-store 에 자동 등록하고, client 는 channel 이름만으로 store 에서 상대를 찾아 연결한다.
-서버가 늘고 줄면 연결도 따라간다 — 사용법은 [09-location](09-location.ko.md), 계약은
+store에 자동 등록하고, client는 channel 이름만으로 store에서 상대를 찾아 연결한다.
+서버가 늘고 줄면 연결도 따라간다 — 사용법은 [10-location](10-location.ko.md), 계약은
 [공통 스펙](../../common/spec/location-runtime.ko.md)이 다룬다.
 
-store 없이 endpoint 를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
-소규모 고정 배포, [04-channel-messaging §6](04-channel-messaging.ko.md)). 같은 역할에서
+store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
+소규모 고정 배포, [05-channel-messaging §6](05-channel-messaging.ko.md)). 같은 역할에서
 두 방식을 섞을 수는 없다.
-이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide 에서
+이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide에서
 다룬다.
 
 ## 6. 보조 — 실행·구성 모델
@@ -192,11 +192,11 @@ store 없이 endpoint 를 역할 등록에 직접 적는 수동 연결도 그대
   (`[ZLinkHandlerGroup]` + `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 메서드)으로
   작성하고, 의존성은 **생성자 주입**으로 받는다. 수명은 **transient**(요청마다 새로),
   실행은 채널별 **async 수신 루프**에서(HTTP 핸들러는 `ASP.NET Core` 요청 파이프라인)
-  돈다. 그래서 가변 도메인 상태를 핸들러 멤버에 두지 않는다.
-- **SPOT 핸들러** — spot 클래스(`IZLinkSpot`)의 메서드가 아니라, 그 spot 에
-  **바인딩된 별도 핸들러 class** 다. spot 용 핸들러 인터페이스를 구현하고, 그 spot 의
-  `Configure()` 에서 등록한다(어떤 인터페이스·API 가 무엇을 맡는지는 아래 예제 주석 참고).
-  같은 SPOT 안에서는 **전체 직렬 실행**이라 상태에 lock 이 필요 없다.
+  실행된다. 그래서 가변 도메인 상태를 핸들러 멤버에 두지 않는다.
+- **SPOT 핸들러** — spot 클래스(`IZLinkSpot`)의 메서드가 아니라, 그 spot에
+  **바인딩된 별도 핸들러 class** 다. spot 용 핸들러 인터페이스를 구현하고, 그 spot의
+  `Configure()`에서 등록한다(어떤 인터페이스·API가 무엇을 맡는지는 아래 예제 주석 참고).
+  같은 SPOT 안에서는 **전체 직렬 실행**이라 상태에 lock이 필요 없다.
 
 ```csharp
 // SPOT 핸들러는 대상 spot 타입을 첫 제네릭 인자로 받는 별도 class 다.
@@ -208,22 +208,22 @@ public sealed class GetStateHandler
 }
 // (이 밖에 IZLinkSpotPacketHandler<TSpot, TMessage> = send packet, IZLinkSpotTimerHandler<TSpot> = timer)
 
-public void Configure()   // 등록은 그 spot 의 Configure() 안에서 한다
+public void Configure()   // 등록은 그 spot의 Configure() 안에서 한다
 {
     Context.Handlers.AddPacket<GetStateHandler>();              // send/request packet 핸들러 등록
-    Context.Handlers.AddActorPacket<MoveHandler, RoomActor>(); // actor 가 보낸 packet 핸들러 등록 (actor 사용 시)
+    Context.Handlers.AddActorPacket<MoveHandler, RoomActor>(); // actor가 보낸 packet 핸들러 등록 (actor 사용 시)
 }
 ```
 
 | | 채널/HTTP 핸들러 | entry spot | room spot |
 |---|---|---|---|
 | 기반 | 독립 class (interface/attribute) | `IZLinkSpot` 구현 | `IZLinkSpot` 구현 |
-| 수명 | transient (요청마다) | `SpotNode` 와 동일 (영속) | 상태 단위와 동일 (영속) |
+| 수명 | transient (요청마다) | `SpotNode`와 동일 (영속) | 상태 단위와 동일 (영속) |
 | 실행 | 비동기 (채널별 수신 루프·HTTP 파이프라인) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
 | 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
 | 계약 | interface 구현 / attribute 메서드 | `Configure()` + `Context.Handlers` 등록 | `Configure()` + `Context.Handlers` 등록 |
-| DI | 생성자 주입 | `IZLinkSpotContext` 로 채널 client 연결 | `IZLinkSpotContext` 로 채널 client 연결 |
+| DI | 생성자 주입 | `IZLinkSpotContext`로 채널 client 연결 | `IZLinkSpotContext`로 채널 client 연결 |
 
 **실행 모델 비교** — 같은 3개 요청이 두 핸들러에서 어떻게 도는가:
 
@@ -253,7 +253,7 @@ graph TB
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
-    subgraph EV ["SPOT event 마다 async task 하나"]
+    subgraph EV ["SPOT event마다 async task 하나"]
         E1["message A"]
         E2["timer tick"]
         E3["message B"]
@@ -269,7 +269,7 @@ graph LR
 ```
 
 채널/HTTP 핸들러는 요청마다 새 인스턴스로 비동기 처리되니 핸들러 멤버에 가변 상태를 두면
-경합이 난다. SPOT 핸들러는 단일 큐로 **한 번에 하나씩** 처리하니 상태에 lock 이
+경합이 난다. SPOT 핸들러는 단일 큐로 **한 번에 하나씩** 처리하니 상태에 lock이
 필요 없다. 다만 직렬 실행은 "스레드 하나를 계속 점유한다"는 뜻이 아니다. SPOT의
 event(message·timer)는 각각 task가 되어 소수의 worker 스레드에 다중화되고,
 `await`에 걸린 task는 스레드를 **놓는다**(blocking 아님). 그래서 스레드 몇 개로
@@ -278,38 +278,38 @@ event(message·timer)는 각각 task가 되어 소수의 worker 스레드에 다
 Entry Spot과 user/domain Spot은 둘 다 순서 보장을 제공하지만, 메시지가 들어오는 경로와
 실행 기준이 다르다. user/domain Spot은 `spotRid`로 주소 지정되는 도메인 상태 단위이고,
 Entry Spot의 actor packet은 대상 actor mailbox 기준으로 처리된다. 자세한 차이는
-[05-spot](05-spot.ko.md)의 실행 직렬화 설명에서 다룬다.
+[06-spot](06-spot.ko.md)의 실행 직렬화 설명에서 다룬다.
 
 가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
-보장은 [05-spot](05-spot.ko.md), 채널 핸들러 노출은 [04-channel-messaging](04-channel-messaging.ko.md).
+보장은 [06-spot](06-spot.ko.md), 채널 핸들러 노출은 [05-channel-messaging](05-channel-messaging.ko.md).
 
-**handler 노출은 명시적이다** — 두 방법 중 하나로 channel 에 붙인다(방법별 코드는 아래 주석 참고).
+**handler 노출은 명시적이다** — 두 방법 중 하나로 channel에 붙인다(방법별 코드는 아래 주석 참고).
 
 ```csharp
-// 방법 A — attribute 로 묶고 group 이름으로 붙인다
-[ZLinkHandlerGroup("api")]                  // 이 class 의 핸들러 메서드들을 "api" group 으로 묶는다
+// 방법 A — attribute로 묶고 group 이름으로 붙인다
+[ZLinkHandlerGroup("api")]                  // 이 class의 핸들러 메서드들을 "api" group으로 묶는다
 public sealed class ApiHandlers { /* [ZLinkRequest] / [ZLinkSend] 메서드들 */ }
 
 options.AddClientServerChannel("orders")
-    .AddHandlerGroup("api");                // 위 group 을 이 channel 에 노출
+    .AddHandlerGroup("api");                // 위 group을 이 channel에 노출
 
-// 방법 B — 핸들러 타입을 channel 에 개별 등록
+// 방법 B — 핸들러 타입을 channel에 개별 등록
 options.AddClientServerChannel("orders")
     .AddRequestHandler<GetOrderHandler>();  // 핸들러 하나씩 직접 등록
 ```
 
-다음 구성 오류는 lazy first-call 로 미루지 않고 **host startup 에서
+다음 구성 오류는 lazy first-call로 미루지 않고 **host startup에서
 즉시** 예외로 막힌다: channel 이름 중복, 같은 channel 안 `kind + packet name` 중복,
 client 역할에 자동 연결(store)·수동 연결 둘 다 없음, 허용되지 않는 handler 반환형.
 
 ### 6.2 실행 모델 — `async`/`await`, `ValueTask`
 
-프레임워크 전반의 비동기 값은 `ValueTask` / `ValueTask<T>` 로 표현된다. handler 와
+프레임워크 전반의 비동기 값은 `ValueTask` / `ValueTask<T>`로 표현된다. handler와
 outbound 호출은 비동기 경계를 가진다. send/push는 one-way `Submit(...)` 호출로 표현하고,
-송신 수락과 backpressure 처리는 framework 내부 책임으로 둔다. request 의
-`Async<TReply>(...)` 는 **remote reply 가 도착할 때까지 기다려** 그 reply 를 돌려준다.
-`RequestToChannel(...).Timeout(...)` 은 그 **reply 대기 시간**의 상한을 정한다. 규칙은 하나다 —
+송신 수락과 backpressure 처리는 framework 내부 책임으로 둔다. request의
+`Async<TReply>(...)`는 **remote reply가 도착할 때까지 기다려** 그 reply를 돌려준다.
+`RequestToChannel(...).Timeout(...)`은 그 **reply 대기 시간**의 상한을 정한다. 규칙은 하나다 —
 **런타임(핸들러) 스레드에서는 `await`, blocking(`.Result`/`.GetAwaiter().GetResult()`)은
 테스트·클라이언트 시나리오에서만.**
 
@@ -317,18 +317,18 @@ outbound 호출은 비동기 경계를 가진다. send/push는 one-way `Submit(.
 public async ValueTask<CreateGameReply> HandleAsync (
     CreateGameRequest request, ZLinkRequestContext context, CancellationToken ct)
 {
-    // 런타임(핸들러) 스레드 — await 로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
+    // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
     var room = await _client
         .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
-        .Async<CreateRoomReply>(ct);   // request → remote reply 가 도착할 때까지 await 로 대기, 그 reply 를 받는다
+        .Async<CreateRoomReply>(ct);   // request → remote reply가 도착할 때까지 await로 대기, 그 reply를 받는다
     return new CreateGameReply (room.RoomId, room.GameName);
 }
 ```
 
 채널 핸들러는 채널별 async 수신 루프에서, HTTP 핸들러는 `ASP.NET Core` 요청
-파이프라인에서 실행된다. 핸들러가 `await` 에 도달하면 async 상태 머신만 멈추고(suspend)
-실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §6.1 처럼 단일 큐로 직렬
-실행돼, 같은 SPOT 큐는 그 handler 완료 전까지 다음 callback 을 시작하지 않는다.
+파이프라인에서 실행된다. 핸들러가 `await`에 도달하면 async 상태 머신만 멈추고(suspend)
+실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §6.1처럼 단일 큐로 직렬
+실행돼, 같은 SPOT 큐는 그 handler 완료 전까지 다음 callback을 시작하지 않는다.
 
 아래 타임라인은 같은 흐름을 시간순으로 본 것이다. A가 `await`로 suspend 되면 같은
 스레드가 즉시 B를 처리하고, A는 응답이 오면 resume 된다.
@@ -357,14 +357,14 @@ sequenceDiagram
 ```
 
 그래서 비동기 호출을 콜백 없이 **동기식 코드처럼 위에서 아래로** 쓰면서도, worker
-몇 개로 수많은 동시 요청을 처리한다. 같은 코드를 `.Result` 로 막으면 스레드 하나가
+몇 개로 수많은 동시 요청을 처리한다. 같은 코드를 `.Result`로 막으면 스레드 하나가
 통째로 잠들기 때문에 핸들러 안에서 금지한다. 실패는 `await` 경로에서
 예외로 던져진다.
 
 ### 6.3 host 수명주기
 
-framework runtime 은 `ASP.NET Core` 의 **hosted service** 로 host 시작/종료에 묶인다.
-channel·SPOT·STREAM runtime 은 startup 에서 등록한 역할을 보고 생성되어 shutdown 에서
+framework runtime은 `ASP.NET Core`의 **hosted service** 로 host 시작/종료에 묶인다.
+channel·SPOT·STREAM runtime은 startup에서 등록한 역할을 보고 생성되어 shutdown에서
 정리된다.
 
 ```mermaid
@@ -383,32 +383,32 @@ stateDiagram-v2
     stopping --> [*]
 ```
 
-- **구성 단계** — `app.Run()` 전에 모든 선언을 끝낸다. 잘못된 구성은 §6.1 처럼 host
-  startup 에서 예외로 거부된다.
+- **구성 단계** — `app.Run()` 전에 모든 선언을 끝낸다. 잘못된 구성은 §6.1처럼 host
+  startup에서 예외로 거부된다.
 - **종료** — host shutdown 신호가 오면 hosted service `stop()` → channel/SPOT/STREAM
   runtime 정리 순으로 내려간다.
-- 백그라운드 작업은 표준 `IHostedService` 로 같은 수명주기에 편입시킨다.
+- 백그라운드 작업은 표준 `IHostedService`로 같은 수명주기에 편입시킨다.
 
 ### 6.4 구성: DI 컨테이너 · 구성 표면 지도
 
-- **DI 컨테이너** — handler·client·filter 는 모두 `ASP.NET Core` 의 **동일한 DI
+- **DI 컨테이너** — handler·client·filter는 모두 `ASP.NET Core`의 **동일한 DI
   컨테이너**에서 생성자 주입으로 만들어진다. 별도 컨테이너를 두지 않고
-  `builder.Services` 에 그대로 등록한다.
+  `builder.Services`에 그대로 등록한다.
 - **구성 표면 지도** — 어디서 무엇을 선언하는지:
 
   | 표면 | 역할 | 다루는 장 |
   |------|------|-----------|
   | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM 선언 | 4~8장 |
-  | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](04-channel-messaging.ko.md) |
-  | runtime event handler | monitoring event 관찰 | [9장](10-monitoring.ko.md) |
+  | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](05-channel-messaging.ko.md) |
+  | runtime event handler | monitoring event 관찰 | [9장](11-monitoring.ko.md) |
 
 ## 7. 더 깊이
 
-- request/send/pub-sub 전체 사용법: [04-channel-messaging](04-channel-messaging.ko.md)
+- request/send/pub-sub 전체 사용법: [05-channel-messaging](05-channel-messaging.ko.md)
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
-- 기능 선택 기준: [11-feature-map](11-feature-map.ko.md)
+- 기능 선택 기준: [04-feature-map](04-feature-map.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: Channel Messaging — request · send · pub/sub](04-channel-messaging.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](04-feature-map.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -44,13 +44,15 @@ weight를 다르게 준 provider를 따로 띄운다(공유 provider는 기본 w
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix로 격리한다. 별도 registry process는 띄우지 않는다. |
 | provider (api 노드) | 2 (`api-a`, `api-b`) | 두 channel 종류를 함께 노출한다: ① location store 자동 연결을 쓰는 **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh**(`AddRouteMesh`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
-| consumer | 시나리오별 | client-server는 location store 기반 자동 연결(endpoint 모름) 또는 명시 endpoint 여러 개로 붙는다. route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). |
+| consumer | 시나리오별 | client-server는 location store 기반 자동 연결(endpoint 모름) 또는 명시 endpoint 여러 개로 연결한다. route mesh는 자신이 `ROUTER` route node가 되어, 필요하면 `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 연결한다. endpoint가 없는 `ROUTER`도 유효하며 remote peer를 항상 dial한다. 양쪽에 endpoint가 있으면 pairwise initiator 한쪽만 dial한다. |
 
 client-server channel provider는 자기 logical routing id(`api-a`, `api-b`)와 channel
 endpoint를 담은 peer location row를 framework lifecycle이 store에 자동 upsert한다. 그래서
 consumer는 channel 이름만 알면 되고, 실제 endpoint는 location store에서 resolve된다. 수동
 row update/remove API는 이 config에서 사용하지 않는다(위치는 자동 lifecycle로만 갱신된다).
-route mesh는 location store 자동 연결을 쓰지 않고 peer endpoint로 직접 묶는다.
+이 config의 route mesh는 location store 자동 연결을 쓰지 않고 peer endpoint를 직접
+설정한다. RouteMesh 구성원은 모두 `ROUTER`이며 `DEALER` row나 호환 socket 역할을
+사용하지 않는다.
 
 store 등록은 각 역할의 `*HostFactory`에서 바로 보이게 둔다.
 

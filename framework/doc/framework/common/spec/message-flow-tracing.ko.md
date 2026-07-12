@@ -95,7 +95,8 @@ class message_flow_observer_t { virtual void on_message_flow(const message_flow_
 
 > `flow_id`·`flow_origin`은 [메시지 흐름 상관관계](flow-correlation.ko.md) 확장이 소유하는 additive
 > 필드다. correlation_id가 channel/route/stream 경계에서만 1급인 한계(§7·§8)를, flow_id가 spot/actor
-> 경계와 fleet 전역까지 관통해 보완한다. 이 확장을 쓰지 않으면 두 필드는 비어 있고 나머지 계약은 그대로다.
+> 경계와 fleet 전역까지 관통해 보완한다. 두 필드는 하나의 optional pair라서 항상 함께 채우거나 함께
+> 비운다. 이 확장을 쓰지 않으면 두 필드는 비어 있고 나머지 계약은 그대로다.
 
 **옵저버 계약**(모든 언어 동일):
 

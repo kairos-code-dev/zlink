@@ -98,7 +98,7 @@ target Spot 으로 직접 request 하는 별도 public client 는 사용하지 �
 ## 4. Entry Spot 역할
 
 `BingoEntrySpot` 은 match room 에 들어가기 전의 lobby 역할을 한다. actor 는
-Play 서버의 SpotNode 에 붙으면 먼저 Entry Spot 에 위치한다. Entry Spot 은 actor
+Play 서버의 SpotNode 에 등록되면 먼저 Entry Spot 에 위치한다. Entry Spot 은 actor
 가 어느 room 으로 들어갈지 결정하기 전의 공통 관문이다.
 
 이 샘플에서 Entry Spot 은 다음 기능을 맡는다.
@@ -342,10 +342,10 @@ matching 흐름은 다음과 같다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session gateway 경로에서 request/reply sequence 가 actor dispatch 와 맞물려 동작한다. |
-| `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot 과 user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않는다. |
-| `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot actor handler 와 user Spot actor handler 가 각각 등록되어 dispatch 된다. |
-| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | room timer 기반 진행과 spot lifecycle 정리가 framework timer 계약과 맞는다. |
+| `RegressionTests.Bingo_Runner_Uses_Isolated_Docker_Redis` | Bingo runner가 실제 다중 프로세스 sample과 전용 Redis를 실행하도록 고정한다. |
+| `RegressionTests.Bingo_And_TicTacToe_Samples_Implement_Actor_Lifecycle_Spec` | Bingo의 actor 생성·join·destroy 코드가 공통 lifecycle 계약을 따른다. |
+| `E2E:SM-D2` | session gateway에서 원격 actor request와 reply가 같은 stream session으로 이어진다. |
+| `E2E:SM-E2` | room 진행에 사용하는 timer tick이 framework handler에 전달된다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | client connector request/reply correlation 이 유지된다. |
 | `RegressionTests.Bingo_Uses_Framework_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플이 sample-only metadata store 없이 framework 기본 API 를 사용한다. |
 

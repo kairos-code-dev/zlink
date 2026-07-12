@@ -408,3 +408,20 @@ CPU idle 98.7~100%에서 해당 셀만 다시 paired 측정했다.
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PAIR / wss`
+
+### PAIR wss 완료
+
+CPU idle 98.7~99.1%를 확인하고 secure transport 여섯 크기를 C 직후 .NET
+순서로 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_120420_core_9_0_dotnet_pair_wss_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_120649_core_9_0_dotnet_pair_wss_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 87.6%, 73.0%, 91.9%, 91.4%, 90.5%, 98.0%였다.
+최소는 73.0%, 크기 중앙값은 약 91.7%, 평균 latency 최대 비율은 1.54배다.
+처리량과 평균 latency 목표를 모두 만족해 코드 변경 없이 wss를 완료한다.
+
+- `PAIR / wss`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PAIR / tls`

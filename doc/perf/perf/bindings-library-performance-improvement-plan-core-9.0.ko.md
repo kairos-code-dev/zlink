@@ -590,9 +590,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `PAIR tcp와 ws 완료, wss 측정 예정`
+- Single 상태: `PAIR tcp, ws, wss 완료, tls 측정 예정`
 - Multi 상태: `미측정`
-- 다음 작업: Single `PAIR / wss`의 전체 크기를 paired 측정한다.
+- 다음 작업: Single `PAIR / tls`의 전체 크기를 paired 측정한다.
 
 #### 9.2.1 Single suite
 
@@ -614,6 +614,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 통과(87.6%) | 통과(73.0%) | 통과(91.9%) | 통과(91.4%) | 통과(90.5%) | 통과(98.0%) | CPU pin 없는 5회 paired 측정. 최소 73.0%, 크기 중앙값 약 91.7%, 평균 latency 최대 1.54배로 통과했다. |
 | `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1237,9 +1238,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `PAIR` 진행 중 | tcp와 ws를 완료했고 다음 단위인 `wss` 전체 크기를 측정한다. |
-| paired C | .NET wss 예정 | ws 전체 크기와 131072B latency 경계 셀을 CPU pin 없이 C 직후 .NET 순서로 5회 측정했다. |
-| 개선 반복 | .NET wss 측정 예정 | ws는 코드 변경 없이 최소 68.6%, 크기 중앙값 91.8%, 평균 latency 상한을 통과했다. |
+| 현재 pattern | Single `PAIR` 진행 중 | tcp, ws, wss를 완료했고 다음 단위인 `tls` 전체 크기를 측정한다. |
+| paired C | .NET tls 예정 | wss 전체 크기를 CPU pin 없이 C 직후 .NET 순서로 5회 측정했다. |
+| 개선 반복 | .NET tls 측정 예정 | wss는 코드 변경 없이 최소 73.0%, 크기 중앙값 91.7%, 평균 latency 상한을 통과했다. |
 | 커밋과 푸시 | C++ 개선 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`, 문서 상태를 `ca05a6e4c`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
@@ -1247,7 +1248,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR` tcp와 ws 완료, wss 예정 | 미측정 | `PAIR / wss` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR` tcp, ws, wss 완료, tls 예정 | 미측정 | `PAIR / tls` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1298,6 +1299,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | socket request/reply 최소 기준 보정 | - | 공개 callback 계약을 유지한 반복 측정에서 제거 가능한 비용을 줄인 뒤 대형 셀 76.4~78.0%와 크기 중앙값 86.5%를 확인했다. | 최소 75%, 중앙값 85%로 보정하고 C++ 전체 pattern 완료 | 이 문서 2.1절과 C++ 라운드 로그 |
 | 2026-07-12 | .NET | Single `PAIR` tcp 256B 최소 기준 보정 | core_9_0_dotnet_pair_tcp256_*_paired_*_nopin_20260712 | 공개 builder 제거 진단 상한 65.2%와 현재 public 경로의 독립 paired 결과 64.9%, 64.7%를 비교했다. | 단순 one-way 최소 64%, 중앙값 85%로 보정하고 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` ws | core_9_0_dotnet_pair_ws_*_paired_*_nopin_20260712 | 전체 크기를 C 직후 .NET 순서로 5회 측정하고 131072B 평균 latency를 해당 셀 paired 5회로 다시 확인했다. | 최소 68.6%, 크기 중앙값 91.8%, 평균 latency 최대 2.28배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PAIR` wss | core_9_0_dotnet_pair_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 5회 측정했다. | 최소 73.0%, 크기 중앙값 91.7%, 평균 latency 최대 1.54배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

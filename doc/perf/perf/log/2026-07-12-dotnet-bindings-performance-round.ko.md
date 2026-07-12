@@ -517,3 +517,47 @@ ipc와 `PAIR` pattern을 완료한다.
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PUBSUB / tcp`
+
+### PUBSUB tcp의 publish backpressure 의미 수정
+
+CPU idle 99%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C 최초: `perf_c_single_linux_20260712_125404_core_9_0_dotnet_pubsub_tcp_full_paired_c_nopin_20260712.txt`
+- .NET 최초: `perf_dotnet_single_linux_20260712_125706_core_9_0_dotnet_pubsub_tcp_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 92.5%, 73.7%, 80.7%, 24.1%, 18.3%, 18.1%였다.
+64KiB 이상에서 .NET bandwidth가 약 1.35GB/s로 일정해 payload 생성과 폐기 경로를
+조사했다. C는 blocking publish를 사용해 socket HWM에서 자연 backpressure를 받지만,
+.NET perf만 `DontWait`를 사용했다. HWM이 찰 때마다 새 native payload를 만들고 실패한
+메시지를 닫아 측정 시간과 memory bandwidth를 소비했으며, 이는 C 기준과 다른 workload다.
+
+POSD 관점에서 C를 nonblocking으로 바꾸는 안과 .NET을 blocking으로 맞추는 안을 비교했다.
+첫 번째 안은 확정된 C 기준과 single one-way 정책의 의미를 바꾸므로 제외했다. 두 번째 안은
+기존 public builder와 `Message` snapshot 계약을 그대로 사용하면서 perf가 선택한 send flag만
+C와 맞춘다. 따라서 .NET helper의 책임을 이름에 드러내고 blocking publish를 사용하도록
+수정했다. 리팩토링으로 nonblocking 경로가 다시 들어오지 않도록 이유와 측정 의미를
+`HOT PATH:` 주석에 기록했다.
+
+64KiB를 C 직후 .NET으로 5회 측정해 후보 효과를 확인했다.
+
+- C 후보: `perf_c_single_linux_20260712_130115_core_9_0_dotnet_pubsub_tcp65536_blocking_candidate_paired_c_nopin_20260712.txt`
+- .NET 후보: `perf_dotnet_single_linux_20260712_130149_core_9_0_dotnet_pubsub_tcp65536_blocking_candidate_paired_dotnet_nopin_20260712.txt`
+
+.NET은 20.6Kmsg/s에서 84.9Kmsg/s로 약 4.1배 개선됐고 C 대비 92.0%였다. 평균
+latency는 C의 0.51배였다. 이후 별도 framework 검증이 CPU를 사용할 때는 기다리고,
+idle 99~100%를 세 번 확인한 뒤 전체 크기를 다시 paired 측정했다.
+
+- C 최종: `perf_c_single_linux_20260712_130333_core_9_0_dotnet_pubsub_tcp_blocking_final_paired_c_nopin_20260712.txt`
+- .NET 최종: `perf_dotnet_single_linux_20260712_130646_core_9_0_dotnet_pubsub_tcp_blocking_final_paired_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 92.0%, 77.5%, 83.1%, 97.2%, 97.4%, 97.8%다. 최소는
+77.5%, 크기 중앙값은 약 94.6%, 평균 latency 최대 비율은 1.07배로 모든 gate를
+통과했다. 최초 결과와 비교하면 대형 세 크기의 .NET throughput은 각각 약 4.2배, 5.9배,
+6.1배다.
+
+- .NET single Release build: 경고 0, 오류 0
+- `Zlink.Tests`: 178개 통과
+- public API 변경: 없음
+- binding runtime 변경: 없음
+- `PUBSUB / tcp`: 완료
+- 다음 작업: `PUBSUB / ws`

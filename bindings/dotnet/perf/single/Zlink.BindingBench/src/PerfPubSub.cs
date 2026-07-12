@@ -182,7 +182,7 @@ internal static class PerfPubSub
             seq++;
             try
             {
-                if (!TryPublishActiveMessage(sender, Topic, payload,
+                if (!PublishActiveMessageBlocking(sender, Topic, payload,
                         "[single-pubsub]"))
                     continue;
             }

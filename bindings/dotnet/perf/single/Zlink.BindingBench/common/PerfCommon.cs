@@ -177,18 +177,15 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static bool TryPublishActiveMessage(IPublisherSocket socket,
+    internal static bool PublishActiveMessageBlocking(IPublisherSocket socket,
         string topic, ReadOnlySpan<byte> buffer, string tag)
     {
         try
         {
-            return PerfSocketIo.Publish(socket, topic, buffer,
-                SendFlags.DontWait) > 0;
-        }
-        catch (ZlinkException ex)
-            when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
-        {
-            return false;
+            // HOT PATH: C PUBSUB uses blocking publish so socket HWM applies
+            // backpressure. DontWait would repeatedly allocate and discard
+            // payloads while full, changing both the workload and throughput.
+            return PerfSocketIo.Publish(socket, topic, buffer) > 0;
         }
         catch (Exception ex)
         {

@@ -836,3 +836,23 @@ CPU idle이 85.1~90.4% 범위에서 안정적이고 한 프로세스가 CPU 하�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_DEALER / ipc`
+
+### DEALER_DEALER ipc와 pattern 완료
+
+VBCS compiler가 약 217% CPU를 사용할 때는 시작하지 않고, 사용률이 낮아지고 CPU idle이
+93.0%로 회복된 뒤 C와 .NET의 local transport 여섯 크기를 CPU pin 없이 차례로 5회
+측정했다.
+
+- C: `perf_c_single_linux_20260712_152037_core_9_0_dotnet_dealer_dealer_ipc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_152318_core_9_0_dotnet_dealer_dealer_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 97.5%, 78.8%, 86.3%, 100.2%, 100.1%, 100.0%였다. 최소는
+78.8%, 크기 중앙값은 약 98.7%다. 평균 latency 최대 비율은 64B의 1.48배로
+모든 셀이 일반 상한 3배 이내다. 처리량과 평균 latency 목표를 첫 paired 측정에서
+만족해 추가 개선은 필요하지 않았다.
+
+- `DEALER_DEALER / ipc`: 완료
+- `DEALER_DEALER`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_ROUTER / tcp`

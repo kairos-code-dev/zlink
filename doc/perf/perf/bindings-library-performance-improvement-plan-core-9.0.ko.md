@@ -107,8 +107,8 @@ Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측
 | 언어 | 단순 one-way | routed one-way | socket request/reply | multi routed echo | SPOT 계열 |
 |------|---------------|----------------|----------------------|-------------------|-----------|
 | C++ | 85% / 95% | 80% / 85% | 80% / 85% | 80% / 85% | 85% / 90% |
-| .NET | 70% / 85% | 75% / 80% | 50% / 63% | 50% / 63% | 60% / 70% |
-| Java | 70% / 85% | 75% / 80% | 50% / 63% | 50% / 63% | 60% / 70% |
+| .NET | 70% / 85% | 75% / 80% | 50% / 70% | 50% / 70% | 60% / 80% |
+| Java | 70% / 90% | 75% / 85% | 50% / 70% | 50% / 70% | 60% / 85% |
 | Node | 35% / 60% | 33% / 60% | 30% / 60% | 30% / 60% | 33% / 60% |
 | Go | 55% / 65% | 50% / 57% | 40% / 53% | 40% / 53% | 50% / 60% |
 | Rust | 85% / 95% | 70% / 85% | 70% / 85% | 70% / 85% | 85% / 90% |
@@ -119,6 +119,12 @@ Node의 과거 size 중앙값은 pattern 그룹에 따라 55.3~91.8%였다. 아�
 60%로 둔다. Python의 과거 full matrix는 공개 계약 복구 전 결과이므로 목표를 낮추는
 근거로 쓰지 않으며 Node와 같은 60% 중앙값 목표에서 시작한다. 이후 현재 core 9.0.0의
 paired 측정과 binding 개선으로 달성 가능성을 검증한다.
+
+.NET의 과거 size 중앙값은 multi routed echo 66.1%, SPOT 87.0%였고 Java는 각각
+69.8%, 91.1%였다. 이 값도 최적화 한계가 아니므로 request/reply와 multi routed echo의
+중앙값 목표를 70%로, SPOT은 .NET 80%와 Java 85%로 둔다. Java의 단순 one-way와 routed
+one-way는 과거 중앙값도 각각 98.7%, 112.6%였으므로 90%, 85%를 달성 가능한 중앙값
+목표로 사용한다.
 
 `ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
 `DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
@@ -545,7 +551,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `MULTI_STREAM` | 통과(101.8%) | 통과(100.6%) | 통과(98.8%) | 해당 없음 | 통과(100.6%) | 해당 없음 | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.06배로 통과했다. |
 | `ws` | `MULTI_DEALER_DEALER` | 통과(88.3%) | 통과(98.8%) | 통과(105.4%) | 통과(125.3%) | 통과(99.7%) | 통과(99.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.13배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER` | 통과(93.1%) | 통과(91.0%) | 통과(92.4%) | 통과(91.4%) | 통과(92.9%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.10배로 통과했다. |
-| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(91.1%) | 통과(91.7%) | 통과(96.8%) | 통과(92.7%) | 통과(89.6%) | 미달(79.8%) | 상향한 80% 최소 기준을 적용해 131072B 셀을 다시 연다. |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(92.7%) | 통과(86.0%) | 통과(92.6%) | 통과(95.1%) | 통과(99.6%) | 통과(81.0%) | CPU pin 없는 5회 paired 재측정. 최소 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER` | 통과(83.4%) | 통과(84.8%) | 통과(89.5%) | 통과(83.3%) | 통과(82.4%) | 통과(90.4%) | CPU pin 없는 5회 paired 측정. 65536B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.22배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 통과(89.5%) | 통과(87.3%) | 통과(94.7%) | 통과(87.2%) | 미달(72.1%) | 미달(73.3%) | 상향한 80% 최소 기준을 적용해 대형 두 셀을 다시 연다. |
 | `ws` | `MULTI_PUBSUB` | 통과(94.1%) | 통과(88.1%) | 통과(91.7%) | 통과(95.8%) | 통과(93.9%) | 통과(86.9%) | pooled storage 상한에 in-flight block을 포함해 fan-out의 외부 buffer 확장을 제한했다. 131072B 최종 5회에서 평균 latency 0.36배로 통과했다. |
@@ -1225,9 +1231,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | request/reply와 multi routed echo에 같은 최소 80%, 중앙값 85% 목표를 적용해 재검토한다. |
-| 현재 pattern | Multi `DEALER_ROUTER_REQREP` 진행 중 | tcp는 재측정에서 최소 84.3%와 size 중앙값 88.7%로 통과했다. 다음 transport인 ws를 측정한다. |
-| paired C | tcp 완료, ws 예정 | CPU pin 없이 tcp 한 transport만 C와 C++ 순서로 5회 측정했다. ws도 같은 방식으로 진행한다. |
-| 개선 반복 | C++ 재개 | tcp는 코드 변경 없이 통과했다. ws를 완료한 뒤 `MULTI_ROUTER_ROUTER_REQREP` ws 순서로 진행한다. .NET `PAIR` 개선은 C++를 다시 완료할 때까지 보류한다. |
+| 현재 pattern | Multi `ROUTER_ROUTER_REQREP` 진행 중 | `DEALER_ROUTER_REQREP`의 tcp와 ws는 재측정에서 모두 통과했다. 다음 재개 항목인 ws를 측정한다. |
+| paired C | 앞 pattern 완료, ws 예정 | CPU pin 없이 `DEALER_ROUTER_REQREP` tcp와 ws를 C 직후 C++ 순서로 5회 측정했다. 다음 pattern도 ws 하나만 진행한다. |
+| 개선 반복 | C++ 재개 | `DEALER_ROUTER_REQREP`은 코드 변경 없이 완료했다. `ROUTER_ROUTER_REQREP` ws를 완료한 뒤 C++ 상태를 다시 닫는다. .NET `PAIR` 개선은 그 뒤 재개한다. |
 | 커밋과 푸시 | 최신 채택분 완료 | 기존 C++ 채택분과 .NET 채택분은 원격 `main`에 푸시되어 있다. 새 C++ 개선도 검증 후 관련 변경과 측정 근거만 커밋·푸시한다. |
 
 ### 10.3 언어 진행 상태
@@ -1280,6 +1286,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | request/reply 목표 상향 | - | 완료된 C++ request/reply 144개 셀의 p10 88.9%와 중앙값 96.3%를 참고해 routed 계열의 C++ 목표를 최소 80%, 중앙값 85%로 맞췄다. Rust는 별도 언어 목표로 분리했다. | Multi 대형 메시지 5개 셀 재개 | 이 문서 2.1절과 9.1.2절 |
 | 2026-07-12 | 전체 | throughput 판정 방식 정리 | - | 과거 결과는 참고 자료로만 사용하고 언어별 최소 기준과 pattern·transport별 size 중앙값 목표를 분리했다. 산술평균은 기록하되 판정에는 사용하지 않는다. | 언어별 달성 가능한 목표로 분리 | 이 문서 2.1절 |
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` tcp 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_tcp_target80_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 84.3%, size 중앙값 88.7%, 평균 latency 최대 1.83배였다. | tcp 통과, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | 전체 | managed 언어 중앙값 목표 상향 | - | 낮은 과거 값을 최적화 한계로 쓰지 않고 Node/Python은 모든 pattern 60%, .NET/Java request/reply와 multi routed echo는 70%, SPOT은 각각 80%와 85%로 중앙값 목표를 올렸다. | 최소 기준과 중앙값 목표 분리 유지 | 이 문서 2.1절 |
+| 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` ws 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배였다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

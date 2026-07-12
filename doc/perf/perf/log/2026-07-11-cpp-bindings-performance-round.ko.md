@@ -1694,3 +1694,19 @@ one-way, socket request/reply, multi routed echo는 현재 측정에서 비슷�
 
 개별 셀 최소 80%와 중앙값 목표 85%를 모두 만족하므로 코드 변경 없이 tcp를 완료한다.
 다음 단위는 같은 pattern의 ws transport다.
+
+### MULTI_DEALER_ROUTER_REQREP ws
+
+ws 한 transport의 전체 크기만 C 직후 C++ 순서로 5회 측정했다. CPU pin은 사용하지
+않았고 두 report는 같은 `63ec13aaa`와 core 9.0.0 runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_095548_core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_100052_core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712.txt`
+
+64, 256, 1024, 4096, 65536, 131072B 처리량 비율은 각각 92.7%, 86.0%, 92.6%,
+95.1%, 99.6%, 81.0%였다. 최소 비율은 81.0%, size 중앙값은 92.7%, 산술평균은
+91.2%였다. 평균 latency 최대 비율은 1.72배였다.
+
+개별 셀 최소 80%와 중앙값 목표 85%를 모두 만족하므로 코드 변경 없이 ws를 완료한다.
+`MULTI_DEALER_ROUTER_REQREP` pattern을 닫고 다음 단위인
+`MULTI_ROUTER_ROUTER_REQREP / ws`로 이동한다.

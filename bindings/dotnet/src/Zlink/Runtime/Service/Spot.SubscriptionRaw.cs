@@ -59,7 +59,7 @@ internal sealed partial class Spot : ISpot
         }
     }
 
-    private bool ReceiveSpotSubscribedParts(
+    private unsafe bool ReceiveSpotSubscribedParts(
         int flags, byte[] topicBuffer, out RoutingIdSnapshot routingId,
         out int topicLength, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
@@ -84,10 +84,17 @@ internal sealed partial class Spot : ISpot
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
                 var initialized = true;
-                var rc = NativeMethods.zlink_spot_subscribe_part(Handle,
-                    out var sourceRoutingId, topicBuffer,
-                    (nuint)topicBuffer.Length, out var nativeTopicLength, ref part,
-                    out var hasMore, flags);
+                int rc;
+                IntPtr sourceRoutingId;
+                nuint nativeTopicLength;
+                int hasMore;
+                fixed (byte* topicPtr = topicBuffer)
+                {
+                    rc = NativeMethods.zlink_spot_subscribe_part_buffer(Handle,
+                        out sourceRoutingId, topicPtr,
+                        (nuint)topicBuffer.Length, out nativeTopicLength,
+                        ref part, out hasMore, flags);
+                }
                 if (rc != 0)
                 {
                     if (initialized)

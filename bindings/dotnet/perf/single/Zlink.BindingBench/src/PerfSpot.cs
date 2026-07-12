@@ -315,13 +315,14 @@ internal static class PerfSpot
         sent = false;
         StampMetricHeader(payload.AsSpan(), RunId, phase, msgSize, seq,
             EpochNs());
-        using var message = new Message(payload.AsSpan());
         try
         {
-            sent = publisher.Publish(Topic)
-                .Message(message)
-                .Flags(SendFlags.DontWait)
-                .Submit();
+            // HOT PATH: use the same pool-backed public Message path as the
+            // other .NET single binding benchmarks. Constructing a new
+            // managed Message wrapper for every SPOT publish adds GC delay
+            // that the established binding-perf workload does not include.
+            sent = PerfSocketIo.Publish(publisher, Topic, payload,
+                SendFlags.DontWait) > 0;
             return true;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.NativeErrno)

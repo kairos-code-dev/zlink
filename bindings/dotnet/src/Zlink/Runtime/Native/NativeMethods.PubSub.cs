@@ -29,20 +29,18 @@ internal static partial class NativeMethods
         out IntPtr sourceRoutingId, out int subscribed, byte[] topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut, int flags);
 
-    [DllImport(LibraryName, EntryPoint = "zlink_spot_publish_part",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_publish_part_utf8(IntPtr spot,
+    // HOT PATH: SPOT publish crosses this boundary for every message. Keep the
+    // cached UTF-8 topic as an already-pinned pointer and use a generated stub.
+    [LibraryImport(LibraryName, EntryPoint = "zlink_spot_publish_part")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static unsafe partial int zlink_spot_publish_part_utf8(IntPtr spot,
         byte* topicId, ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_subscribe_part(IntPtr spot,
-        out IntPtr sourceRoutingId, byte[] topicIdBuffer,
-        nuint topicIdCapacity, out nuint topicIdLenOut,
-        ref ZlinkMsg part, out int hasMore, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_spot_subscribe_part",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_subscribe_part_buffer(
+    // HOT PATH: callers reuse and pin the topic buffer, avoiding array
+    // marshalling on every subscribed message.
+    [LibraryImport(LibraryName, EntryPoint = "zlink_spot_subscribe_part")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static unsafe partial int zlink_spot_subscribe_part_buffer(
         IntPtr spot, out IntPtr sourceRoutingId, byte* topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut,
         ref ZlinkMsg part, out int hasMore, int flags);

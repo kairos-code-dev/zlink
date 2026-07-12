@@ -11,6 +11,9 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            activation.Flow.CaptureEnabled);
         cancellationToken.ThrowIfCancellationRequested();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             activation.ChannelName,
@@ -18,17 +21,25 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             topic,
             message,
             activation.Codecs);
+        var accepted = activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken);
+        if (activation.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+            activation.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowOutcome.Sent,
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                _messageName,
+                activation.ChannelName,
+                topic,
+                SpotRid: activation.SpotRid.ToString()));
         ZLinkUnawaitedSubmit.Observe(
-            SubmitAsync(parts, cancellationToken),
-            "spot publish submit");
+            RecordPublishedAsync(accepted),
+            "spot publish submit",
+            activation.ErrorSink);
     }
 
-    private async ValueTask SubmitAsync(
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+    private static async ValueTask RecordPublishedAsync(ValueTask accepted)
     {
-        await activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken)
-            .ConfigureAwait(false);
+        await accepted.ConfigureAwait(false);
         ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 }
@@ -36,7 +47,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
 internal sealed class ZLinkSpotPublisherClientService(ZLinkFrameworkRuntime runtime)
     : IZLinkSpotPublisherClient
 {
-    public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
+    public IZLinkPublishCall PublishSpot<TEvent>(string channelName, string topic, TEvent message)
     {
         return new ZLinkExternalSpotPublishCall<TEvent>(runtime, channelName, topic, message);
     }
@@ -52,28 +63,19 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        using (var operation = runtime.EnterOperation())
-            runtime.GetSpotPublisherBundle(channelName);
-        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot publish submit");
-    }
-
-    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
-    {
         using var operation = runtime.EnterOperation();
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
-            runtime.Flow.GenerationEnabled);
+            runtime.Flow.CaptureEnabled);
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName;
-        var correlationId = Guid.NewGuid().ToString("N");
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,
             packetName,
             topic,
             message,
-            runtime.Registration.Codecs,
-            correlationId);
+            runtime.Registration.Codecs);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
@@ -83,14 +85,23 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 packetName,
                 channelName,
                 topic,
-                correlationId));
+                SpotRid: bundle.Spot.RoutingId.ToString()));
 
-        await (bundle.Submitter
+        var accepted = (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
             .Async(
                 parts,
                 pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+        ZLinkUnawaitedSubmit.Observe(
+            RecordPublishedAsync(accepted),
+            "spot publish submit",
+            runtime.ErrorSink);
+    }
+
+    private static async ValueTask RecordPublishedAsync(ValueTask accepted)
+    {
+        await accepted.ConfigureAwait(false);
         ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 }

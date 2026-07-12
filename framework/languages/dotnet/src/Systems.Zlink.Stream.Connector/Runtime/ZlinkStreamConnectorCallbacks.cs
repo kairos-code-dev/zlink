@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamConnectorCallbacks(
@@ -7,14 +5,39 @@ internal sealed class ZlinkStreamConnectorCallbacks(
     ZlinkStreamDispatchMode dispatchMode,
     int maxPendingDispatchCallbacks)
 {
-    private readonly ConcurrentQueue<QueuedCallback> _dispatchQueue = new();
+    private readonly object _dispatchGate = new();
+    private readonly LinkedList<QueuedCallback> _dispatchQueue = new();
     private readonly object _gate = new();
     private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? _connectionStateChanged;
     private Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? _disconnected;
     private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
+    private bool _accepting = true;
     private int _pendingDispatchCount;
+    private int _reservedRequestCallbacks;
 
     public int PendingDispatchCount => Volatile.Read(ref _pendingDispatchCount);
+
+    public bool IsCurrentCallback => ZlinkStreamCallbackExecutionContext.IsActiveCallbackFor(this);
+
+    public IDisposable EnterCallback() => ZlinkStreamCallbackExecutionContext.EnterCallback(this);
+
+    public void Complete()
+    {
+        lock (_dispatchGate)
+        {
+            _accepting = false;
+            _dispatchQueue.Clear();
+            _reservedRequestCallbacks = 0;
+            Volatile.Write(ref _pendingDispatchCount, 0);
+        }
+
+        lock (_gate)
+        {
+            _connectionStateChanged = null;
+            _disconnected = null;
+            _errorReceived = null;
+        }
+    }
 
     public void AddErrorReceived(Func<ZlinkStreamError, CancellationToken, ValueTask>? handler)
     {
@@ -68,74 +91,108 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 
     public async ValueTask PublishErrorAsync(ZlinkStreamError error, CancellationToken cancellationToken)
     {
-        var handler = SnapshotErrorReceived();
-        if (handler is not null)
-            await DispatchUserCallbackAsync(
-                    async dispatchedToken =>
-                    {
-                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
-                        await handler(error, dispatchedToken).ConfigureAwait(false);
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false);
+        var handlers = SnapshotErrorReceived();
+        await DispatchSubscribersAsync(
+                handlers,
+                async (handler, dispatchedToken) =>
+                {
+                    using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                    await handler(error, dispatchedToken).ConfigureAwait(false);
+                },
+                cancellationToken,
+                true)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchSubscribersAsync<THandler>(
+        IReadOnlyList<THandler> handlers,
+        Func<THandler, CancellationToken, ValueTask> invoke,
+        CancellationToken cancellationToken,
+        bool reportErrors)
+        where THandler : Delegate
+    {
+        if (handlers.Count == 0) return;
+
+        await DispatchUserCallbackAsync(
+                async dispatchedToken =>
+                {
+                    foreach (var handler in handlers)
+                        await InvokeUserCallbackAsync(
+                                token => invoke(handler, token),
+                                dispatchedToken,
+                                reportErrors)
+                            .ConfigureAwait(false);
+                },
+                cancellationToken,
+                reportErrors: false)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyDisconnectedAsync(
         ZlinkStreamCloseReason closeReason,
         CancellationToken cancellationToken)
     {
-        var disconnected = SnapshotDisconnected();
-        if (disconnected is not null)
-            await DispatchUserCallbackAsync(
-                    async dispatchedToken =>
-                    {
-                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
-                        await disconnected(new ZlinkStreamDisconnected(closeReason), dispatchedToken)
-                            .ConfigureAwait(false);
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false);
+        var handlers = SnapshotDisconnected();
+        await DispatchSubscribersAsync(
+                handlers,
+                async (handler, dispatchedToken) =>
+                {
+                    using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                    await handler(new ZlinkStreamDisconnected(closeReason), dispatchedToken)
+                        .ConfigureAwait(false);
+                },
+                cancellationToken,
+                true)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyConnectionStateChangedAsync(
         ZlinkStreamConnectionStateChanged change,
         CancellationToken cancellationToken)
     {
-        var handler = SnapshotConnectionStateChanged();
-        if (handler is not null)
-            await DispatchUserCallbackAsync(
-                    async dispatchedToken =>
-                    {
-                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
-                        await handler(change, dispatchedToken).ConfigureAwait(false);
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false);
+        var handlers = SnapshotConnectionStateChanged();
+        await DispatchSubscribersAsync(
+                handlers,
+                async (handler, dispatchedToken) =>
+                {
+                    using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                    await handler(change, dispatchedToken).ConfigureAwait(false);
+                },
+                cancellationToken,
+                true)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DispatchUserCallbackAsync(
         Func<CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken,
-        bool runWhenDropped = false)
+        bool reportErrors = true)
     {
         ArgumentNullException.ThrowIfNull(callback);
 
         if (dispatchMode == ZlinkStreamDispatchMode.Immediate)
         {
-            await InvokeUserCallbackAsync(callback, cancellationToken, true)
+            await InvokeUserCallbackAsync(callback, cancellationToken, reportErrors)
                 .ConfigureAwait(false);
             return;
         }
 
-        Enqueue(callback, true, runWhenDropped);
+        EnqueueDroppable(callback, reportErrors);
     }
 
     public async ValueTask DispatchAsync(CancellationToken cancellationToken)
     {
-        while (_dispatchQueue.TryDequeue(out var queued))
+        while (true)
         {
-            Interlocked.Decrement(ref _pendingDispatchCount);
             cancellationToken.ThrowIfCancellationRequested();
+            QueuedCallback queued;
+            lock (_dispatchGate)
+            {
+                if (_dispatchQueue.First is not { } first) return;
+                queued = first.Value;
+                _dispatchQueue.RemoveFirst();
+                Volatile.Write(ref _pendingDispatchCount, _dispatchQueue.Count);
+            }
             await InvokeUserCallbackAsync(queued.Callback, cancellationToken, queued.ReportErrors)
                 .ConfigureAwait(false);
         }
@@ -147,54 +204,54 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         Func<ZlinkStreamError, TResult> failure,
         Action<TResult> callback)
     {
-        taskRunner.RunDetached(
-            async _ =>
-            {
-                try
+        var reserved = ReserveRequestCallback();
+        try
+        {
+            taskRunner.RunDetached(
+                async _ =>
                 {
-                    var reply = await request().ConfigureAwait(false);
-                    await DispatchUserCallbackAsync(
-                            _ =>
-                            {
-                                using var flow = ZlinkStreamFlowContext.Enter(reply.FlowId, reply.FlowOrigin);
-                                callback(reply.Error is { } error
-                                    ? failure(error)
-                                    : success(reply.Payload!));
-                                return ValueTask.CompletedTask;
-                            },
-                            CancellationToken.None,
-                            true)
-                        .ConfigureAwait(false);
-                }
-                catch (ZlinkStreamException ex)
-                {
-                    await DispatchUserCallbackAsync(
-                            _ =>
-                            {
-                                callback(failure(ex.Error));
-                                return ValueTask.CompletedTask;
-                            },
-                            CancellationToken.None,
-                            true)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    var error = new ZlinkStreamError(
-                        ZlinkStreamErrorCode.SendFailed,
-                        ex.Message,
-                        ex);
-                    await DispatchUserCallbackAsync(
-                            _ =>
-                            {
-                                callback(failure(error));
-                                return ValueTask.CompletedTask;
-                            },
-                            CancellationToken.None,
-                            true)
-                        .ConfigureAwait(false);
-                }
-            });
+                    Func<CancellationToken, ValueTask> completion;
+                    try
+                    {
+                        var reply = await request().ConfigureAwait(false);
+                        completion = _ =>
+                        {
+                            using var flow = ZlinkStreamFlowContext.Enter(reply.FlowId, reply.FlowOrigin);
+                            callback(reply.Error is { } error
+                                ? failure(error)
+                                : success(reply.Payload!));
+                            return ValueTask.CompletedTask;
+                        };
+                    }
+                    catch (ZlinkStreamException ex)
+                    {
+                        completion = _ =>
+                        {
+                            callback(failure(ex.Error));
+                            return ValueTask.CompletedTask;
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        var error = new ZlinkStreamError(
+                            ZlinkStreamErrorCode.SendFailed,
+                            ex.Message,
+                            ex);
+                        completion = _ =>
+                        {
+                            callback(failure(error));
+                            return ValueTask.CompletedTask;
+                        };
+                    }
+
+                    await DispatchRequestCompletionAsync(completion, reserved).ConfigureAwait(false);
+                });
+        }
+        catch
+        {
+            ReleaseRequestCallbackReservation(reserved);
+            throw;
+        }
     }
 
     private async ValueTask InvokeUserCallbackAsync(
@@ -202,7 +259,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         CancellationToken cancellationToken,
         bool reportErrors)
     {
-        using var permit = ZlinkStreamCallbackInvocationPermit.EnterCurrentWorker();
+        using var permit = ZlinkStreamCallbackExecutionContext.EnterCallback(this);
         try
         {
             await callback(cancellationToken).ConfigureAwait(false);
@@ -220,76 +277,132 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         Exception exception,
         CancellationToken cancellationToken)
     {
-        var handler = SnapshotErrorReceived();
-        if (handler is null) return;
+        var handlers = SnapshotErrorReceived();
+        if (handlers.Count == 0) return;
 
         var error = new ZlinkStreamError(
             ZlinkStreamErrorCode.UserCallbackFailed,
             "User callback failed.",
             exception);
 
-        if (dispatchMode == ZlinkStreamDispatchMode.Immediate)
+        await DispatchSubscribersAsync(
+                handlers,
+                (handler, dispatchedToken) => handler(error, dispatchedToken),
+                cancellationToken,
+                false)
+            .ConfigureAwait(false);
+    }
+
+    private bool ReserveRequestCallback()
+    {
+        if (dispatchMode == ZlinkStreamDispatchMode.Immediate) return false;
+
+        lock (_dispatchGate)
         {
-            await InvokeUserCallbackAsync(
-                    dispatchedToken => handler(error, dispatchedToken),
-                    cancellationToken,
-                    false)
-                .ConfigureAwait(false);
+            ObjectDisposedException.ThrowIf(!_accepting, this);
+            while (_dispatchQueue.Count + _reservedRequestCallbacks >= maxPendingDispatchCallbacks)
+                if (!TryDropOldestDroppableLocked())
+                    throw ZlinkStreamConnector.Error(
+                        ZlinkStreamErrorCode.SendFailed,
+                        "Connector request callback queue is full.");
+
+            _reservedRequestCallbacks++;
+            return true;
+        }
+    }
+
+    private async ValueTask DispatchRequestCompletionAsync(
+        Func<CancellationToken, ValueTask> callback,
+        bool reserved)
+    {
+        if (!reserved)
+        {
+            await InvokeUserCallbackAsync(callback, CancellationToken.None, true).ConfigureAwait(false);
             return;
         }
 
-        Enqueue(
-            dispatchedToken => handler(error, dispatchedToken),
-            false,
-            false);
+        lock (_dispatchGate)
+        {
+            _reservedRequestCallbacks--;
+            if (!_accepting) return;
+            _dispatchQueue.AddLast(new QueuedCallback(callback, true, true));
+            Volatile.Write(ref _pendingDispatchCount, _dispatchQueue.Count);
+        }
     }
 
-    private void Enqueue(
+    private void EnqueueDroppable(
         Func<CancellationToken, ValueTask> callback,
-        bool reportErrors,
-        bool runWhenDropped)
+        bool reportErrors)
     {
-        _dispatchQueue.Enqueue(new QueuedCallback(callback, reportErrors, runWhenDropped));
-        var count = Interlocked.Increment(ref _pendingDispatchCount);
-        while (count > maxPendingDispatchCallbacks && _dispatchQueue.TryDequeue(out var dropped))
+        lock (_dispatchGate)
         {
-            count = Interlocked.Decrement(ref _pendingDispatchCount);
-            if (dropped.RunWhenDropped)
-                taskRunner.RunDetached(
-                    async token => await InvokeUserCallbackAsync(
-                            dropped.Callback,
-                            token,
-                            dropped.ReportErrors)
-                        .ConfigureAwait(false));
+            if (!_accepting) return;
+            while (_dispatchQueue.Count + _reservedRequestCallbacks >= maxPendingDispatchCallbacks)
+                if (!TryDropOldestDroppableLocked()) return;
+
+            _dispatchQueue.AddLast(new QueuedCallback(callback, reportErrors, false));
+            Volatile.Write(ref _pendingDispatchCount, _dispatchQueue.Count);
         }
     }
 
-    private Func<ZlinkStreamError, CancellationToken, ValueTask>? SnapshotErrorReceived()
+    private void ReleaseRequestCallbackReservation(bool reserved)
     {
-        lock (_gate)
+        if (!reserved) return;
+
+        lock (_dispatchGate)
         {
-            return _errorReceived;
+            if (_reservedRequestCallbacks > 0) _reservedRequestCallbacks--;
         }
     }
 
-    private Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? SnapshotDisconnected()
+    private bool TryDropOldestDroppableLocked()
+    {
+        for (var current = _dispatchQueue.First; current is not null; current = current.Next)
+        {
+            if (current.Value.Required) continue;
+            _dispatchQueue.Remove(current);
+            Volatile.Write(ref _pendingDispatchCount, _dispatchQueue.Count);
+            return true;
+        }
+
+        return false;
+    }
+
+    private IReadOnlyList<Func<ZlinkStreamError, CancellationToken, ValueTask>> SnapshotErrorReceived()
     {
         lock (_gate)
         {
-            return _disconnected;
+            return Snapshot(_errorReceived);
         }
     }
 
-    private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? SnapshotConnectionStateChanged()
+    private IReadOnlyList<Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>> SnapshotDisconnected()
     {
         lock (_gate)
         {
-            return _connectionStateChanged;
+            return Snapshot(_disconnected);
         }
+    }
+
+    private IReadOnlyList<Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>>
+        SnapshotConnectionStateChanged()
+    {
+        lock (_gate)
+        {
+            return Snapshot(_connectionStateChanged);
+        }
+    }
+
+    private static IReadOnlyList<THandler> Snapshot<THandler>(THandler? handlers)
+        where THandler : Delegate
+    {
+        if (handlers is null) return Array.Empty<THandler>();
+
+        return handlers.GetInvocationList().Cast<THandler>().ToArray();
     }
 
     private readonly record struct QueuedCallback(
         Func<CancellationToken, ValueTask> Callback,
         bool ReportErrors,
-        bool RunWhenDropped);
+        bool Required);
 }

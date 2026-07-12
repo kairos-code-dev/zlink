@@ -133,34 +133,23 @@ internal sealed class ZLinkActorSessionRouteLifecycle(
                     if (!_pending.TryDequeue(out change)) return;
                 }
 
-                while (true)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try
-                    {
-                        if (change.ActorId is { } actorId)
-                            await BindAsync(
-                                    change.SessionRid,
-                                    actorId,
-                                    change.OwnerNodeRid,
-                                    cancellationToken)
-                                .ConfigureAwait(false);
-                        else
-                            await RemoveAsync(change.SessionRid, cancellationToken).ConfigureAwait(false);
-                        break;
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception exception)
-                    {
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
-                            $"actor session route reconciliation retry: {exception.Message}");
-                        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                }
+                await ZLinkReconciliationRunner.RunAsync(
+                        async token =>
+                        {
+                            if (change.ActorId is { } actorId)
+                                await BindAsync(
+                                        change.SessionRid,
+                                        actorId,
+                                        change.OwnerNodeRid,
+                                        token)
+                                    .ConfigureAwait(false);
+                            else
+                                await RemoveAsync(change.SessionRid, token).ConfigureAwait(false);
+                        },
+                        exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"actor session route reconciliation retry: {exception.Message}"),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         finally

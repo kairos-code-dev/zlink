@@ -7,11 +7,17 @@ internal sealed class ZLinkBackendSocketMonitorWrapper(ISocketMonitor nativeMoni
         nativeMonitor.OnEvent(monitorEvent => handler(monitorEvent.ToFramework()));
     }
 
-    public ZLinkBackendSocketMonitorEvent Recv()
+    public bool TryRecv(out ZLinkBackendSocketMonitorEvent monitorEvent)
     {
-        return (nativeMonitor.Recv(RecvFlags.DontWait)
-                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData))
-            .ToFramework();
+        var nativeEvent = nativeMonitor.Recv(RecvFlags.DontWait);
+        if (nativeEvent is null)
+        {
+            monitorEvent = default;
+            return false;
+        }
+
+        monitorEvent = nativeEvent.ToFramework();
+        return true;
     }
 
     public ValueTask DisposeAsync()

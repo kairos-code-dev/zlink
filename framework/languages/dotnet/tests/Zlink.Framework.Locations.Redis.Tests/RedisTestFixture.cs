@@ -89,11 +89,44 @@ public sealed class RedisTestFixture : IAsyncLifetime
     /// <summary>Creates a store over an isolated key prefix so tests cannot
     /// observe each other's rows.</summary>
     public ZLinkRedisLocationStore CreateStore() =>
-        new(new ZLinkRedisLocationOptions
+        CreateStore(out _);
+
+    public ZLinkRedisLocationStore CreateStore(out string keyPrefix)
+    {
+        keyPrefix = $"{RunKeyPrefix}:{Interlocked.Increment(ref _storeIndex)}";
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
         {
             ConnectionString = ConnectionString,
-            KeyPrefix = $"{RunKeyPrefix}:{Interlocked.Increment(ref _storeIndex)}"
+            KeyPrefix = keyPrefix
         });
+    }
+
+    public Task<bool> DeleteKeyAsync(string key) =>
+        _cleanupConnection!.GetDatabase().KeyDeleteAsync(key);
+
+    public async Task<long> DeletePrefixAsync(string prefix)
+    {
+        long removed = 0;
+        foreach (var endpoint in _cleanupConnection!.GetEndPoints())
+        {
+            var server = _cleanupConnection.GetServer(endpoint);
+            var keys = new List<RedisKey>();
+            await foreach (var key in server.KeysAsync(pattern: prefix + "*")) keys.Add(key);
+            if (keys.Count > 0) removed += await _cleanupConnection.GetDatabase().KeyDeleteAsync([.. keys]);
+        }
+        return removed;
+    }
+
+    public async Task<long> CountPrefixAsync(string prefix)
+    {
+        long count = 0;
+        foreach (var endpoint in _cleanupConnection!.GetEndPoints())
+        {
+            var server = _cleanupConnection.GetServer(endpoint);
+            await foreach (var _ in server.KeysAsync(pattern: prefix + "*")) count++;
+        }
+        return count;
+    }
 }
 
 [CollectionDefinition(Name)]

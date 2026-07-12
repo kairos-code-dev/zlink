@@ -17,12 +17,11 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         await host.StartAsync();
 
         var client = host.Services.GetRequiredService<IZLinkRouteClient>();
-        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
-            Task.Run(() => client.SendToNode(
-                    "missing",
-                    RoutingId.From("01"),
-                    "ping")
-                .Submit()));
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            client.SendToNode(
+                "missing",
+                RoutingId.From("01"),
+                "ping").Submit());
 
         Assert.Contains("Route channel 'missing' is not registered", exception.Message, StringComparison.Ordinal);
         await host.StopAsync();
@@ -38,8 +37,8 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         await host.StartAsync();
 
         var client = host.Services.GetRequiredService<IZLinkChannelClient>();
-        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
-            Task.Run(() => client.SendToChannel("missing", "ping").Submit()));
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            client.SendToChannel("missing", "ping").Submit());
 
         Assert.Contains("Channel client 'missing' is not registered", exception.Message, StringComparison.Ordinal);
         await host.StopAsync();
@@ -215,6 +214,24 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenSameChannelHandlerIsMappedAndExplicit()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer("tcp://127.0.0.1:7101");
+                channel.AddHandlerGroup("validation-request");
+                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
+            }));
+
+        Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenMappedGroupAndTypedHandlerExposeSameRoutePacket()
     {
         var services = new ServiceCollection();
@@ -233,6 +250,54 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             }));
 
         Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenSameRouteHandlerIsMappedAndExplicit()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
+                var channel = options.AddRouteMeshChannel("backend");
+                channel.EnableServer("tcp://127.0.0.1:7101");
+                channel.AddHandlerGroup("validation-route");
+                channel.AddRequestHandler<TestRouteRequestHandler, TestRouteRequest, TestRouteReply>();
+            }));
+
+        Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_ChannelAndRouteUseTheSameExplicitPacketIdentityPolicy()
+    {
+        var channelServices = new ServiceCollection();
+        var channelException = Assert.Throws<ZLinkConfigurationException>(() =>
+            channelServices.AddZLinkFramework(options =>
+            {
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer("tcp://127.0.0.1:7101");
+                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>("shared");
+                channel.AddRequestHandler<AlternateTestChannelRequestHandler, TestChannelRequest, TestChannelReply>(
+                    "shared");
+            }));
+
+        var routeServices = new ServiceCollection();
+        var routeException = Assert.Throws<ZLinkConfigurationException>(() =>
+            routeServices.AddZLinkFramework(options =>
+            {
+                var route = options.AddRouteMeshChannel("backend");
+                route.EnableServer("tcp://127.0.0.1:7201");
+                route.AddRequestHandler<TestRouteRequestHandler, TestRouteRequest, TestRouteReply>("shared");
+                route.AddRequestHandler<AlternateTestRouteRequestHandler, TestRouteRequest, TestRouteReply>("shared");
+            }));
+
+        Assert.Contains("Duplicate request handler 'profile:shared'", channelException.Message,
+            StringComparison.Ordinal);
+        Assert.Contains("Duplicate routed request handler 'backend:shared'", routeException.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -307,7 +307,7 @@ internal static class ZLinkEnvelopeCodec
         return JsonSerializer.SerializeToUtf8Bytes(value, valueType, ZLinkJsonSerializerOptions.Default);
     }
 
-    private static string ResolveContentType(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
+    internal static string ResolveContentType(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
     {
         if (body is null || bodyType is null) return JsonContentType;
 
@@ -400,6 +400,28 @@ internal static class ZLinkEnvelopeCodec
             throw new ZLinkEnvelopeProtocolException(
                 header,
                 "ZLink envelope flow origin is invalid.");
+
+        var isReplyCorrelated = header.Kind is ZLinkMessageKind.Request
+            or ZLinkMessageKind.Response
+            or ZLinkMessageKind.Error;
+        if (isReplyCorrelated && string.IsNullOrWhiteSpace(header.CorrelationId))
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                $"ZLink {header.Kind} envelope requires a correlation id.");
+
+        if (header.Kind == ZLinkMessageKind.Error)
+        {
+            if (string.IsNullOrWhiteSpace(header.ErrorCode))
+                throw new ZLinkEnvelopeProtocolException(
+                    header,
+                    "ZLink Error envelope requires a non-empty error code.");
+        }
+        else if (header.ErrorCode is not null || header.ErrorMessage is not null)
+        {
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope error fields are valid only for Error messages.");
+        }
     }
 
     private static ZLinkEnvelopeHeader InvalidProtocolHeader() => new(
@@ -424,6 +446,9 @@ internal static class ZLinkEnvelopeCodec
 
         return (header.FlowId, origin);
     }
+
+    public static bool CanCorrelateReply(ZLinkEnvelopeHeader header) =>
+        !string.IsNullOrWhiteSpace(header.CorrelationId);
 
     public static string ProtocolErrorMessageName(ZLinkEnvelopeHeader header) =>
         string.IsNullOrWhiteSpace(header.MessageName)

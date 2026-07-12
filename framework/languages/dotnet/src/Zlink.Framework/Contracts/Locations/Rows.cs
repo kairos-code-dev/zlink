@@ -27,10 +27,9 @@ public sealed record ZLinkSpotLocation(
     DateTimeOffset UpdatedAt);
 
 /// <summary>
-/// Current location of one actor. <see cref="LocationKind"/> is the spot
-/// kind where the actor lives; there is no separate SpotKind field.
-/// <see cref="ActorRef"/> is null only after claim and before publish, and
-/// runtime query does not expose rows in that state.
+/// Current location of one actor. <see cref="LocationKind"/> identifies the
+/// kind of Spot containing the actor. A null <see cref="ActorRef"/> means
+/// that no routable actor reference is available.
 /// </summary>
 public sealed record ZLinkActorLocation(
     string ActorId,

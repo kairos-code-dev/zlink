@@ -9,6 +9,28 @@ public sealed class LocationContracts
         new(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Location_options_expose_one_explicit_spot_mesh_to_route_channel_mapping_method()
+    {
+        var method = Assert.Single(
+            typeof(ZLinkLocationOptions).GetMethods(),
+            static candidate => candidate.Name == nameof(ZLinkLocationOptions.MapSpotMeshToRouteChannel));
+        Assert.Equal(typeof(void), method.ReturnType);
+        Assert.Equal(
+            new[] { typeof(string), typeof(string) },
+            method.GetParameters().Select(static parameter => parameter.ParameterType).ToArray());
+
+        var options = new ZLinkLocationOptions();
+        options.MapSpotMeshToRouteChannel("game.stage", "game.route");
+        options.MapSpotMeshToRouteChannel("game.stage", "game.route"); // 같은 선언은 멱등이다.
+        Assert.Throws<InvalidOperationException>(() =>
+            options.MapSpotMeshToRouteChannel("game.stage", "other.route"));
+        Assert.Throws<ArgumentException>(() =>
+            options.MapSpotMeshToRouteChannel(" ", "game.route"));
+        Assert.Throws<ArgumentException>(() =>
+            options.MapSpotMeshToRouteChannel("game.stage", " "));
+    }
+
+    [Fact]
     [ContractExample(
         typeof(IZLinkActorLocationStore),
         typeof(IZLinkOwnerLeaseStore))]
@@ -114,24 +136,22 @@ public sealed class LocationContracts
         typeof(IZLinkPeerLocationResolver),
         typeof(IZLinkSpotHandleResolver),
         typeof(IZLinkActorSpotHandleResolver))]
-    public async Task Resolvers_are_cacheless_lookup_surfaces_returning_addresses()
+    public async Task Peer_reads_are_live_and_messaging_resolvers_return_opaque_handles()
     {
         var resolver = new ExampleLocationResolver();
 
-        // Every read reaches the store; there is no freshness knob because
-        // there is no resolver cache (spot-address messaging draft).
+        // Peer discovery is a live store read rather than a retained messaging handle.
         var peers = await resolver.ListLivePeersAsync(
             new ZLinkPeerLocationFilter(MeshName: "play"));
         Assert.Single(peers);
 
-        // Messaging lookups return spot addresses the caller holds and
-        // re-resolves on failure; an entry spot address has
-        // NodeRid == SpotRid.
-        var spotAddress = await resolver.ResolveSpotHandleAsync(RoutingId.From("spot-1"));
-        Assert.Null(spotAddress);
+        // Messaging lookup returns an opaque handle. The framework, not the caller,
+        // owns its location snapshot updates and the safe request refresh rule.
+        var spotHandle = await resolver.ResolveSpotHandleAsync(RoutingId.From("spot-1"));
+        Assert.Null(spotHandle);
 
-        var actorAddress = await resolver.ResolveActorSpotHandleAsync("actor-1");
-        Assert.Null(actorAddress);
+        var actorSpotHandle = await resolver.ResolveActorSpotHandleAsync("actor-1");
+        Assert.Null(actorSpotHandle);
 
         Assert.Empty(typeof(SpotHandle).GetConstructors());
 

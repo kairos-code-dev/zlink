@@ -6,13 +6,48 @@ namespace Zlink.Framework.UnitTests;
 public sealed class SerialExecutorTests
 {
     [Fact]
+    public async Task SerialExecutionQueue_Dispose_Joins_The_Drain_Epilogue_Before_Disposing_Its_Gate()
+    {
+        var exceptions = new ConcurrentQueue<Exception>();
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
+        try
+        {
+            for (var iteration = 0; iteration < 100; iteration++)
+            {
+                var runner = new ZLinkRuntimeTaskRunner(errorSink, CancellationToken.None);
+                var queue = new ZLinkSerialExecutionQueue(
+                    runner,
+                    errorSink,
+                    CancellationToken.None);
+                Assert.True(queue.TryPost(
+                    static _ => ValueTask.CompletedTask,
+                    out var item));
+
+                await item.Completion;
+                await queue.DisposeAsync();
+                await runner.StopAsync();
+            }
+
+            Assert.DoesNotContain(
+                exceptions,
+                static exception => exception is ObjectDisposedException);
+        }
+        finally
+        {
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
+        }
+    }
+
+    [Fact]
     public async Task StreamSessionSerialExecutor_Continues_After_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
-            await using var executor = new ZLinkStreamSessionSerialExecutor(new object());
+            await using var executor = new ZLinkStreamSessionSerialExecutor(new object(), errorSink);
             var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             Assert.True(executor.Enqueue(() => throw new InvalidOperationException("stream failure")));
@@ -27,7 +62,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -64,7 +99,7 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task SerialExecutionQueue_Cancellation_Detaches_NonCooperative_Callback()
+    public async Task SerialExecutionQueue_Cancellation_Joins_NonCooperative_Callback()
     {
         using var stop = new CancellationTokenSource();
         await using var queue = CreateQueue(stop.Token);
@@ -82,22 +117,106 @@ public sealed class SerialExecutorTests
 
         stop.Cancel();
         queue.Complete();
-        await queue.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+        var disposeTask = queue.DisposeAsync().AsTask();
+        await Task.Delay(50);
+        Assert.False(disposeTask.IsCompleted);
 
         release.TrySetResult();
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Cancellation_Joins_Cooperative_Callback()
+    {
+        using var stop = new CancellationTokenSource();
+        await using var queue = CreateQueue(stop.Token);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async cancellationToken =>
+            {
+                started.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    cancellationObserved.TrySetResult();
+                    throw;
+                }
+            },
+            out _));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        stop.Cancel();
+        queue.Complete();
+        await queue.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+
+        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Suspended_Cancellation_Joins_Callback()
+    {
+        using var stop = new CancellationTokenSource();
+        await using var queue = CreateQueue(stop.Token);
+        var operationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var operation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCallback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async cancellationToken =>
+            {
+                var turn = ZLinkSerialTurn.Current
+                           ?? throw new InvalidOperationException("serial turn was not available");
+                try
+                {
+                    await turn.AwaitFrameworkCallAsync(
+                            async _ =>
+                            {
+                                operationStarted.TrySetResult();
+                                await operation.Task.ConfigureAwait(false);
+                            },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch when (cancellationToken.IsCancellationRequested)
+                {
+                    cancellationObserved.TrySetResult();
+                    await releaseCallback.Task.ConfigureAwait(false);
+                }
+            },
+            out _));
+        await operationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        stop.Cancel();
+        queue.Complete();
+        var disposeTask = queue.DisposeAsync().AsTask();
+        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await Task.Delay(50);
+        Assert.False(disposeTask.IsCompleted);
+
+        releaseCallback.TrySetResult();
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(1));
+        operation.TrySetResult();
     }
 
     [Fact]
     public async Task SpotSerialExecutor_Continues_After_Queued_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
             await using var executor = new ZLinkSpotSerialExecutor(
                 null!,
                 static () => false,
-                CancellationToken.None);
+                CancellationToken.None,
+                errorSink);
             var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             executor.Queue(static (_, _) => throw new InvalidOperationException("spot failure"));
@@ -112,7 +231,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -120,13 +239,15 @@ public sealed class SerialExecutorTests
     public async Task SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
             await using var executor = new ZLinkSpotSerialExecutor(
                 null!,
                 static () => false,
-                CancellationToken.None);
+                CancellationToken.None,
+                errorSink);
 
             var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync(
                 static (_, _) => throw new InvalidOperationException("spot execute failure"),
@@ -137,7 +258,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -145,10 +266,11 @@ public sealed class SerialExecutorTests
     public async Task SerialExecutionQueue_RunAsync_Propagates_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
-            await using var queue = CreateQueue(CancellationToken.None);
+            await using var queue = CreateQueue(CancellationToken.None, errorSink: errorSink);
 
             var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => queue.RunAsync(
                 static _ => throw new InvalidOperationException("queue failure"),
@@ -159,7 +281,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -336,10 +458,11 @@ public sealed class SerialExecutorTests
     public async Task SerialExecutionQueue_AutomaticTurn_Fault_Cleans_Pending_Turn()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
-            await using var queue = CreateQueue(CancellationToken.None);
+            await using var queue = CreateQueue(CancellationToken.None, errorSink: errorSink);
             var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var failIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -390,7 +513,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -398,10 +521,11 @@ public sealed class SerialExecutorTests
     public async Task SerialExecutionQueue_AutomaticTurn_Cancellation_Cleans_Pending_Turn()
     {
         var exceptions = new ConcurrentQueue<Exception>();
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
-            await using var queue = CreateQueue(CancellationToken.None);
+            await using var queue = CreateQueue(CancellationToken.None, errorSink: errorSink);
             var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancelIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -450,7 +574,7 @@ public sealed class SerialExecutorTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+            errorSink.UnhandledCallbackException -= exceptions.Enqueue;
         }
     }
 
@@ -619,9 +743,10 @@ public sealed class SerialExecutorTests
 
     private static ZLinkSerialExecutionQueue CreateQueue(
         CancellationToken executionToken,
-        int capacity = 4096)
+        int capacity = 4096,
+        ZLinkRuntimeErrorSink? errorSink = null)
     {
-        var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink ??= new ZLinkRuntimeErrorSink();
         return new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, executionToken),
             errorSink,

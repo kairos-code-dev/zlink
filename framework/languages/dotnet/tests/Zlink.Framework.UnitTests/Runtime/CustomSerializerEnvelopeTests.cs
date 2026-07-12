@@ -22,7 +22,7 @@ public sealed class CustomSerializerEnvelopeTests
             "orders",
             nameof(Probe),
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
+            "request-1",
             null,
             null,
             null,
@@ -277,7 +277,7 @@ public sealed class CustomSerializerEnvelopeTests
             "orders",
             nameof(Probe),
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
+            "request-1",
             null,
             null,
             null,
@@ -355,6 +355,22 @@ public sealed class CustomSerializerEnvelopeTests
         Assert.Throws<InvalidOperationException>(() => codecs.SingleCustomSerializer());
     }
 
+    [Fact]
+    public void Received_Message_Keeps_The_Codec_Snapshot_From_Its_Creation()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+        using var payload = Message.From("AVRO:original");
+        var received = ZLinkMessage.FromEnvelopePayload("application/avro", payload, codecs);
+
+        codecs.AddSerializer("application/avro", new ReplacementSerializer());
+        using var laterPayload = Message.From("AVRO:later");
+        var later = ZLinkMessage.FromEnvelopePayload("application/avro", laterPayload, codecs);
+
+        Assert.Equal(new Probe("original"), received.Decode<Probe>());
+        Assert.Equal(new Probe("replacement"), later.Decode<Probe>());
+    }
+
     private static ZLinkEnvelopeHeader CreateHeader(string messageName)
     {
         return new ZLinkEnvelopeHeader(
@@ -362,7 +378,7 @@ public sealed class CustomSerializerEnvelopeTests
             "orders",
             messageName,
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
+            "request-1",
             null,
             null,
             null,
@@ -454,6 +470,15 @@ public sealed class CustomSerializerEnvelopeTests
             var value = text.StartsWith("AVRO:", StringComparison.Ordinal) ? text["AVRO:".Length..] : text;
             return new Probe(value);
         }
+    }
+
+    private sealed class ReplacementSerializer : IZLinkMessageSerializer
+    {
+        public ZLinkEncodedPayload Serialize(object value, Type type) =>
+            ZLinkEncodedPayload.From("replacement"u8.ToArray());
+
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type) =>
+            new Probe("replacement");
     }
 
     private sealed class MarkerCodecExtension : IZLinkCodecExtension

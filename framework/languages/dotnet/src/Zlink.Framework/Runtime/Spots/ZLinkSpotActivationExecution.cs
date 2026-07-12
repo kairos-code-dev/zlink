@@ -17,10 +17,37 @@ internal sealed partial class ZLinkSpotActivation
         _stopSource.Cancel();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        TaskCompletionSource completion;
+        lock (_lifecycleGate)
+        {
+            if (_finalization is not null) return new ValueTask(_finalization);
 
+            Volatile.Write(ref _disposed, 1);
+            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _finalization = completion.Task;
+        }
+
+        _ = CompleteFinalizationAsync(completion);
+        return new ValueTask(completion.Task);
+    }
+
+    private async Task CompleteFinalizationAsync(TaskCompletionSource completion)
+    {
+        try
+        {
+            await FinalizeAsync().ConfigureAwait(false);
+            completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async Task FinalizeAsync()
+    {
         var failures = new List<Exception>();
         Capture(RequestStop);
         await CaptureAsync(_timers.DisposeAsync).ConfigureAwait(false);
@@ -28,9 +55,9 @@ internal sealed partial class ZLinkSpotActivation
         await CaptureAsync(_outbound.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(NativeSpot.DisposeAsync).ConfigureAwait(false);
         Capture(_stopSource.Dispose);
+        await CaptureAsync(_handlerInstances.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
         ThrowFailures(failures);
-        return;
 
         async ValueTask CaptureAsync(Func<ValueTask> cleanup)
         {

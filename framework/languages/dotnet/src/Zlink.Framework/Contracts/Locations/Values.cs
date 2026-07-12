@@ -15,10 +15,8 @@ public enum ZLinkLocationAutoConnectType
 }
 
 /// <summary>
-/// Matches the core discovery uint16_t service_role values. Value 1 is the
-/// reserved slot for the removed gateway role; numeric values are serialized
-/// on the wire and in Redis row JSON, so they must not change.
-/// Store keys use the internal canonical string codec.
+/// Numeric values are part of the serialized location contract and must remain
+/// stable. Value 1 is reserved and is not a valid role.
 /// </summary>
 public enum ZLinkLocationRole : ushort
 {

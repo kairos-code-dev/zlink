@@ -24,7 +24,7 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
         _compress = true;
     }
 
-    public void Write(
+    public ZlinkStreamHeader Write(
         Func<ZlinkStreamCodec, ZlinkStreamHeaderFlags, string, ZlinkStreamMetadata, ZlinkStreamHeader> createHeader,
         Func<Message, bool> write,
         string errorMessage)
@@ -44,5 +44,6 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
 
         var header = createHeader(encoded.Codec, flags, _messageName, _metadata);
         ZLinkStreamFrameWriter.Write(write, header, payload.Span, errorMessage);
+        return header;
     }
 }

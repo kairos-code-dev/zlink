@@ -22,6 +22,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"SPOT node '{spotNode.SpotNodeName}' must enable router or pub/sub capability.");
 
+        if (spotNode.Router is null && spotNode.ActorFactories.Count > 0)
+            throw new ZLinkConfigurationException(
+                $"SPOT node '{spotNode.SpotNodeName}' requires router capability when actor factories are registered.");
+
         if (spotNode.Router is { } router)
         {
             router.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(

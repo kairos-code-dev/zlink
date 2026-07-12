@@ -58,7 +58,7 @@ internal sealed class ZLinkActorDispatchRouter(
         using var flow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         var actorId = actor.ActorId;
         var state = actorSessions.GetOrCreate(actor.ActorId);
@@ -87,7 +87,7 @@ internal sealed class ZLinkActorDispatchRouter(
         using var flow = ZLinkFlowContext.Enter(
             null,
             null,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Lifecycle);
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
@@ -111,7 +111,7 @@ internal sealed class ZLinkActorDispatchRouter(
         using var flow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         return await state.ExecuteDispatchAsync(
                 header,

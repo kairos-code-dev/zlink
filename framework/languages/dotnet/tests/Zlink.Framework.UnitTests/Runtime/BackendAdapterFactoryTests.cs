@@ -23,10 +23,59 @@ public sealed class BackendAdapterFactoryTests
         Assert.IsType<ZLinkBackendRouterSocketWrapper>(router);
         Assert.IsType<ZLinkBackendPublisherSocketWrapper>(publisher);
         Assert.IsType<ZLinkBackendSubscriberSocketWrapper>(subscriber);
-        await using var completionPump = dealer.CreateRequestCompletionPump();
         await using var monitor = factory.CreateMonitoringAdapter().OpenSocketMonitor(dealer);
         await AssertSpotBackendAsync(channelAdapter, spotAdapter);
         await AssertStreamBackendAsync(channelAdapter, streamAdapter);
+    }
+
+    [Fact]
+    public async Task Dealer_Request_Completes_Through_Binding_Progress_Without_Framework_Poll_Worker()
+    {
+        var factory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = factory.CreateChannelAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var dealer = channelAdapter.CreateDealerSocket(context);
+        await using var router = channelAdapter.CreateRouterSocket(context);
+        var endpoint = $"inproc://binding-progress-{Guid.NewGuid():N}";
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+        var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using (var request = Message.From("request"))
+        {
+            Assert.True(dealer.Request(
+                request,
+                (result, parts) =>
+                {
+                    try
+                    {
+                        if (result != RequestResult.Ok)
+                        {
+                            completion.TrySetException(new InvalidOperationException($"Request failed: {result}."));
+                            return;
+                        }
+
+                        completion.TrySetResult(Assert.Single(parts).GetString());
+                    }
+                    finally
+                    {
+                        ZLinkMessageParts.DisposeAll(parts);
+                    }
+                },
+                SendFlags.None,
+                TimeSpan.FromSeconds(2)));
+        }
+
+        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
+        using (var reply = Message.From("reply"))
+            router.Reply(
+                Assert.IsType<RoutingId>(received.RoutingId),
+                Assert.IsType<ulong>(received.RequestSeq),
+                reply);
+
+        Assert.Equal("reply", await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Null(typeof(ZLinkFrameworkRuntime).Assembly.GetType(
+            "Zlink.Framework.Runtime.Messaging.ZLinkRequestCompletionPump"));
     }
 
     private static async Task AssertSpotBackendAsync(
@@ -58,6 +107,21 @@ public sealed class BackendAdapterFactoryTests
     }
 
     [Fact]
+    public async Task Dealer_PeerWeight_RoundTrips_Through_The_Binding_Option()
+    {
+        var factory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = factory.CreateChannelAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var dealer = channelAdapter.CreateDealerSocket(context);
+
+        Assert.Equal(ZLinkSocketConfig.DefaultPeerWeight, dealer.GetPeerWeight());
+        dealer.SetPeerWeight(0);
+        Assert.Equal(0, dealer.GetPeerWeight());
+        dealer.SetPeerWeight(ZLinkSocketConfig.DefaultPeerWeight);
+        Assert.Equal(ZLinkSocketConfig.DefaultPeerWeight, dealer.GetPeerWeight());
+    }
+
+    [Fact]
     public async Task SpotNode_EntrySpot_IsSingleton_UnderConcurrentFirstAccess()
     {
         var factory = new ZLinkDotNetBackendAdapterFactory();
@@ -72,5 +136,20 @@ public sealed class BackendAdapterFactoryTests
         var entrySpots = await Task.WhenAll(accesses);
 
         Assert.All(entrySpots, entrySpot => Assert.Same(entrySpots[0], entrySpot));
+    }
+
+    private static async Task<Received> ReceiveAsync(
+        IZLinkBackendRouterSocket router,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var received = router.Recv(RecvFlags.DontWait);
+            if (received is not null) return received;
+            await Task.Delay(5);
+        }
+
+        throw new TimeoutException("Router did not receive the request.");
     }
 }

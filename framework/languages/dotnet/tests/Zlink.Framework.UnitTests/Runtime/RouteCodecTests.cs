@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
@@ -48,7 +49,7 @@ public sealed class RouteCodecTests
             "play",
             "Probe",
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
+            "route-request-1",
             null,
             null,
             null,
@@ -196,6 +197,40 @@ public sealed class RouteCodecTests
     }
 
     [Fact]
+    public async Task Route_Send_Uses_Monotonic_Correlation_And_Logs_Target_As_SourceRid()
+    {
+        var loggerFactory = new RecordingLoggerFactory();
+        await using var services = new ServiceCollection()
+            .AddSingleton<ILoggerFactory>(loggerFactory)
+            .BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        var router = new RecordingRouter();
+        await using var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+        var calls = new ZLinkRouteChannelCalls(
+            services,
+            null,
+            registration,
+            "play.route",
+            router,
+            submitter);
+        var target = RoutingId.From("target-node");
+
+        await calls.SubmitSendAsync(target, "RouteProbe", new RouteProbe("payload"), CancellationToken.None);
+
+        var header = Assert.IsType<ZLinkEnvelopeHeader>(router.SentHeader);
+        Assert.Matches("^[0-9a-f]+$", Assert.IsType<string>(header.CorrelationId));
+        var log = Assert.Single(loggerFactory.Messages);
+        Assert.Contains("phase=sent", log, StringComparison.Ordinal);
+        Assert.Contains($"corr={header.CorrelationId}", log, StringComparison.Ordinal);
+        Assert.Contains($"src={target}", log, StringComparison.Ordinal);
+        Assert.DoesNotContain("peerRid=target-node", log, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RouterProbe_AllowsNonInitiatorRidAddressedSendOverInboundIdentity()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -224,17 +259,44 @@ public sealed class RouteCodecTests
     }
 
     private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime()
+        => CreateRouteChannelRuntime(new RecordingRouter());
+
+    private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime(RecordingRouter router)
     {
         var services = new ServiceCollection().BuildServiceProvider();
         return new ZLinkRouteChannelRuntime(
             services,
             new ZLinkFrameworkRegistration(),
             new ZLinkRouteChannelRegistration { RouterChannelId = "route-test" },
-            new RecordingRouter(),
+            router,
             new ZLinkRouteHandlerRegistry([]),
             null,
             CancellationToken.None,
-            new object());
+            new object(),
+            errorSink: new ZLinkRuntimeErrorSink());
+    }
+
+    [Fact]
+    public async Task Route_Runtime_Concurrent_Dispose_Callers_Share_Router_Cleanup()
+    {
+        var failure = new InvalidOperationException("router cleanup failed");
+        var router = new RecordingRouter { BlockDispose = true, DisposeFailure = failure };
+        var runtime = CreateRouteChannelRuntime(router);
+
+        var first = runtime.DisposeAsync().AsTask();
+        await router.DisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = runtime.DisposeAsync().AsTask();
+
+        Assert.Same(first, second);
+        Assert.False(second.IsCompleted);
+        router.AllowDispose.TrySetResult();
+        var firstFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => first.WaitAsync(TimeSpan.FromSeconds(5)));
+        var secondFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => second.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Same(failure, firstFailure);
+        Assert.Same(firstFailure, secondFailure);
+        Assert.Equal(1, router.DisposeCount);
     }
 
     private static async Task SendUntilReceivedAsync(
@@ -357,13 +419,27 @@ public sealed class RouteCodecTests
 
     private sealed class RecordingRouter : IZLinkBackendRouterSocket
     {
+        private int _disposeCount;
+        public bool BlockDispose { get; init; }
+        public Exception? DisposeFailure { get; init; }
+        public TaskCompletionSource DisposeStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource AllowDispose { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
+        public ZLinkEnvelopeHeader? SentHeader { get; private set; }
+
         public string? ReplyContentType { get; private set; }
 
         public string? ReplyBody { get; private set; }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            return ValueTask.CompletedTask;
+            Interlocked.Increment(ref _disposeCount);
+            DisposeStarted.TrySetResult();
+            if (BlockDispose) await AllowDispose.Task.ConfigureAwait(false);
+            if (DisposeFailure is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(DisposeFailure).Throw();
         }
 
         public void Bind(string endpoint)
@@ -445,12 +521,18 @@ public sealed class RouteCodecTests
 
         public bool Send(RoutingId routingId, Message message, SendFlags flags)
         {
-            throw new NotSupportedException();
+            _ = routingId;
+            _ = flags;
+            SentHeader = ZLinkEnvelopeCodec.DecodeHeader(message);
+            return true;
         }
 
         public bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags)
         {
-            throw new NotSupportedException();
+            _ = routingId;
+            _ = flags;
+            SentHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            return true;
         }
 
         public bool Request(
@@ -505,6 +587,37 @@ public sealed class RouteCodecTests
             ReplyContentType = ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType;
             ReplyBody = parts[1].GetString();
         }
+    }
+
+    private sealed class RecordingLoggerFactory : ILoggerFactory
+    {
+        public List<string> Messages { get; } = [];
+
+        public void AddProvider(ILoggerProvider provider) => _ = provider;
+
+        public ILogger CreateLogger(string categoryName)
+        {
+            Assert.Equal(ZLinkMessageFlowTracer.LoggerCategory, categoryName);
+            return new RecordingLogger(Messages);
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class RecordingLogger(List<string> messages) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) => messages.Add(formatter(state, exception));
     }
 
     private sealed class RecordingConnectRouter : IZLinkBackendRouterSocket

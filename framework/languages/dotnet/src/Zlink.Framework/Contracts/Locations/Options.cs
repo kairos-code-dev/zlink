@@ -1,14 +1,14 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Location runtime policy options. Store implementations never read these;
-/// the framework applies heartbeat and polling policy on top of the
-/// registered stores. Resolvers have no cache: every resolve reads the
-/// store. A resolved spot handle retains its logical key and the framework
-/// refreshes its address according to the spot-address messaging contract.
+/// Location runtime policy options. A resolve observes the current location
+/// state. A resolved spot handle retains its logical key and refreshes its
+/// address according to the spot-address messaging contract.
 /// </summary>
 public sealed class ZLinkLocationOptions
 {
+    private readonly Dictionary<string, string> _spotRouterChannels = new(StringComparer.Ordinal);
+
     /// <summary>Owner lease renewal period. One write per runtime instance
     /// per interval; location rows are never written by heartbeat.</summary>
     public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(5);
@@ -25,9 +25,31 @@ public sealed class ZLinkLocationOptions
     /// <see cref="ZLinkPageRequest"/>.</summary>
     public int ListPageSize { get; set; } = 1000;
 
-    /// <summary>Grace boundary for store failure handling. Existing ready
-    /// connections stay alive while the transport stays alive; after this
-    /// time, auto connect must not start new outbound connects until the
-    /// store recovers.</summary>
+    /// <summary>Grace boundary for location-state failures. Existing ready
+    /// connections remain available; after this time, auto connect does not
+    /// start new outbound connections until location state recovers.</summary>
     public TimeSpan StoreFailureGrace { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Maps a Spot mesh name from location rows to the route channel
+    /// used to reach that mesh. If no mapping is registered, the Spot mesh
+    /// name is used as the route channel name.</summary>
+    public void MapSpotMeshToRouteChannel(string spotMeshName, string routeChannelName)
+    {
+        if (string.IsNullOrWhiteSpace(spotMeshName))
+            throw new ArgumentException("Spot mesh name must not be empty.", nameof(spotMeshName));
+        if (string.IsNullOrWhiteSpace(routeChannelName))
+            throw new ArgumentException("Route channel name must not be empty.", nameof(routeChannelName));
+
+        if (_spotRouterChannels.TryGetValue(spotMeshName, out var existing))
+        {
+            if (!string.Equals(existing, routeChannelName, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Spot mesh '{spotMeshName}' is already mapped to route channel '{existing}'.");
+            return;
+        }
+
+        _spotRouterChannels.Add(spotMeshName, routeChannelName);
+    }
+
+    internal IReadOnlyDictionary<string, string> SpotRouterChannels => _spotRouterChannels;
 }

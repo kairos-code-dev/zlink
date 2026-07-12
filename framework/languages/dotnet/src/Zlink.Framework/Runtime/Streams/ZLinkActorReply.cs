@@ -50,18 +50,27 @@ internal sealed class ZLinkActorReply(
             ZlinkStreamMetadata.Empty);
     }
 
-    public byte[] ToFrame(ZlinkStreamHeader requestHeader)
+    public ZlinkStreamHeader CreateResponseHeader(ZlinkStreamHeader requestHeader)
     {
         if (requestHeader.RequestSeq is not { } requestSeq)
             throw new InvalidOperationException("Actor reply frame requires a request sequence.");
 
-        var responseHeader = ZLinkStreamReplyHeaders.CreateForRequest(
+        return ZLinkStreamReplyHeaders.CreateForRequest(
             requestHeader,
             Kind,
             Codec,
             Flags,
             requestSeq,
             Metadata);
+    }
+
+    public byte[] ToFrame(ZlinkStreamHeader requestHeader)
+    {
+        return EncodeFrame(CreateResponseHeader(requestHeader));
+    }
+
+    public byte[] EncodeFrame(ZlinkStreamHeader responseHeader)
+    {
         return ZLinkStreamFrameCodec.Encode(
             ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
             Payload);

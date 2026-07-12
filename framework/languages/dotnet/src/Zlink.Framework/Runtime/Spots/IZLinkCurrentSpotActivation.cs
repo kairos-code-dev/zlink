@@ -4,9 +4,15 @@ internal interface IZLinkCurrentSpotActivation
 {
     string ChannelName { get; }
 
+    RoutingId SpotRid { get; }
+
     TimeSpan DefaultRequestTimeout { get; }
 
     ZLinkCodecRegistryBuilder Codecs { get; }
+
+    ZLinkMessageFlowTracer Flow { get; }
+
+    IZLinkRuntimeErrorSink ErrorSink { get; }
 
     IZLinkSpotOutbound Outbound { get; }
 

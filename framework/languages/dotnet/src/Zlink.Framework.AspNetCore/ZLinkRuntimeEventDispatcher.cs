@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.AspNetCore;
 
-internal sealed class ZLinkRuntimeEventDispatcher(IServiceScopeFactory scopeFactory) : IZLinkRuntimeEventPublisher
+internal sealed class ZLinkRuntimeEventDispatcher(
+    IServiceScopeFactory scopeFactory,
+    IServiceProvider services) : IZLinkRuntimeEventPublisher
 {
     public async ValueTask PublishAsync<TEvent>(
         TEvent @event,
@@ -23,7 +25,8 @@ internal sealed class ZLinkRuntimeEventDispatcher(IServiceScopeFactory scopeFact
             }
             catch (Exception exception)
             {
-                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(exception);
+                services.GetService<ZLinkFrameworkRuntime>()?
+                    .TryReportUnhandledCallbackException(exception);
             }
     }
 }

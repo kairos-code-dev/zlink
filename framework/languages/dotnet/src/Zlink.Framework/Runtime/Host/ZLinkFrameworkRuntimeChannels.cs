@@ -30,7 +30,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _topologyQuery?.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
     }
 
-    internal async ValueTask SubmitRouteSendAsync<TMessage>(
+    internal ValueTask SubmitRouteSendAsync<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         string packetName,
@@ -40,30 +40,20 @@ internal sealed partial class ZLinkFrameworkRuntime
         using var operation = EnterOperation();
         // Route channel sends target node rids only; spot-addressed
         // traffic goes through the address-based spot outbound instead
-        // (spot-address messaging draft §6).
+        // (spot-address messaging contract §6).
         var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        try
-        {
-            await routeChannel.SubmitSendAsync(
-                    targetNodeRid,
-                    packetName,
-                    message,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (ZLinkFrameworkException exception) when (
-            exception.Kind == ZLinkFrameworkErrorKind.RouteNotConnected && known == false)
-        {
-            // The mesh does not know this rid at all: the address is stale
-            // or wrong, not merely unconverged. Retrying the send cannot
-            // help; the caller must re-resolve.
+        if (known == false)
             throw CreateUnknownRouteTargetException(
                 routerChannelId,
                 targetNodeRid,
-                $"packet '{packetName}'",
-                exception);
-        }
+                $"packet '{packetName}'");
+
+        return routeChannel.SubmitSendAsync(
+            targetNodeRid,
+            packetName,
+            message,
+            cancellationToken);
     }
 
     internal async ValueTask<TReply> SubmitRouteRequestAsync<TRequest, TReply>(
@@ -90,9 +80,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         catch (ZLinkFrameworkException exception) when (
             exception.Kind == ZLinkFrameworkErrorKind.RouteNotConnected && known == false)
         {
-            // The mesh does not know this rid at all: the address is stale
-            // or wrong, not merely unconverged. Retrying the request cannot
-            // help; the caller must re-resolve.
+            // The mesh does not know this rid at all: the internal snapshot is
+            // stale or wrong, not merely unconverged. Surface the typed result so
+            // the owning SpotHandle can apply its bounded refresh rule.
             throw CreateUnknownRouteTargetException(
                 routerChannelId,
                 targetNodeRid,
@@ -101,28 +91,49 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
     }
 
-    internal async ValueTask SendToSpotViaRouterChannelAsync(
+    internal ValueTask SendToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        using var operation = EnterOperation();
         try
         {
-            using var operation = EnterOperation();
             if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
                 throw CreateUnknownRouteTargetException(
                     routerChannelId,
                     targetNodeRid,
                     $"SPOT '{targetSpotRid}'");
 
-            await _spotRouteRouter.SendAsync(
+            var accepted = _spotRouteRouter.SendAsync(
                 routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
                 parts,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+            if (!accepted.IsCompletedSuccessfully)
+                return AwaitAndDisposeSpotSendAsync(accepted, parts);
+
+            accepted.GetAwaiter().GetResult();
+            ZLinkMessageParts.DisposeAll(parts);
+            return ValueTask.CompletedTask;
+        }
+        catch
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            throw;
+        }
+    }
+
+    private static async ValueTask AwaitAndDisposeSpotSendAsync(
+        ValueTask accepted,
+        IReadOnlyList<Message> parts)
+    {
+        try
+        {
+            await accepted.ConfigureAwait(false);
         }
         finally
         {

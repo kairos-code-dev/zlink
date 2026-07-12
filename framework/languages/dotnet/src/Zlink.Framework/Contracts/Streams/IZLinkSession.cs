@@ -90,9 +90,9 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall Compress();
 
     /// <summary>
-    /// Submits the session send. The cancellation token is checked before the
-    /// frame is written; once the synchronous stream write starts it cannot be
-    /// interrupted by this token.
+    /// Submits the session send. Input validation and nonblocking local
+    /// transport acceptance complete before this method returns. A full or
+    /// unavailable transport is reported immediately.
     /// </summary>
     void Submit(CancellationToken cancellationToken = default);
 }

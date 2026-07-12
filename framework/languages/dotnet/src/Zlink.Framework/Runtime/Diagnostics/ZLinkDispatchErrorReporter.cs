@@ -11,13 +11,30 @@ internal sealed class ZLinkDispatchErrorReporter(
     // Success-path tracer companion: every surface already receives a reporter, so
     // exposing the flow tracer here wires all dispatch sites without threading a new
     // parameter. It shares the live options, logger, and generation-owned observer pump.
-    public ZLinkMessageFlowTracer Flow { get; } = new(options, logger, runtime, observerPump);
+    public ZLinkMessageFlowTracer Flow { get; } = new(
+        options,
+        logger,
+        runtime,
+        observerPump,
+        observerPump?.ErrorSink);
 
     public void Report(ZLinkDispatchFailure error)
     {
-        if (Flow.Enabled(ZLinkMessageFlowOutcome.Error))
+        Report(error, ZLinkMessageFlowOutcome.Error);
+    }
+
+    internal void ReportDropped(ZLinkDispatchFailure error)
+    {
+        Report(error, ZLinkMessageFlowOutcome.Dropped);
+    }
+
+    private void Report(
+        ZLinkDispatchFailure error,
+        ZLinkMessageFlowOutcome outcome)
+    {
+        if (Flow.Enabled(outcome))
             Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Error,
+                outcome,
                 error.Surface,
                 error.MessageKind,
                 error.PacketName,

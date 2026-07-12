@@ -1,9 +1,9 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Peer list read surface for auto connect. Every read reaches the store
-/// and joins owner liveness; there is no resolver cache. Diagnostics use
-/// <see cref="IZLinkLocationRuntimeQuery"/> instead.
+/// Returns peers whose owners are currently live and that match the supplied
+/// filter. Each call reflects the current location state. Diagnostics use
+/// <see cref="IZLinkLocationRuntimeQuery"/>.
 /// </summary>
 public interface IZLinkPeerLocationResolver
 {
@@ -37,9 +37,9 @@ public interface IZLinkSpotHandleResolver
 }
 
 /// <summary>
-/// Messaging lookup: actor id to the full address of the spot that contains it
-/// (the entry spot address for ENTRY_SPOT actors, the user spot address for
-/// USER_SPOT actors).
+/// Resolves an actor id to an opaque handle for its current spot. The framework
+/// keeps the handle's location snapshot current and applies the same safe request
+/// refresh rule as a handle resolved directly by spot id.
 /// </summary>
 public interface IZLinkActorSpotHandleResolver
 {

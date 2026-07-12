@@ -1,8 +1,7 @@
 namespace Zlink.Framework.Contracts.Configuration;
 
-// Per-kind 옵션 인터페이스: 빌더의 ConfigureXxx() 표면을 추출한 것. build-time(빌더가 상속)과
-// runtime(IZLinkChannelRuntimeOptions 가 반환) 이 같은 인터페이스를 공유한다. 같은 인터페이스라도
-// runtime impl 은 live socket backing 이라 startup 전용 속성 set 은 오류로 거부한다.
+// Build-time and runtime configuration use the same option contracts. Runtime
+// changes are accepted only for properties whose public contract allows them.
 public interface IZLinkClientServerChannelOptions
 {
     IZLinkSocketConfig ConfigureServerSocket();
@@ -148,15 +147,13 @@ public interface IZLinkSpotNodeBuilder
 
     /// <summary>
     /// Role-oriented name for <see cref="RouterConnections"/>. Both
-    /// properties expose the same router capability and connection state;
-    /// this does not create a separate channel-client socket.
+    /// properties expose the same logical connection set.
     /// </summary>
     IZLinkEndpointConnections ChannelClientConnections { get; }
 
     /// <summary>
     /// Role-oriented name for <see cref="PubSubConnections"/>. Both
-    /// properties expose the same peer-publisher endpoint state; this does
-    /// not create a separate publisher socket.
+    /// properties expose the same logical connection set.
     /// </summary>
     IZLinkEndpointConnections PublisherConnections { get; }
 

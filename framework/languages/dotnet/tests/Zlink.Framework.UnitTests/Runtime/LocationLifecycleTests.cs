@@ -11,7 +11,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Create_Claims_Before_Activation_And_Loser_Never_Activates()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var activatedB = 0;
@@ -85,7 +85,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Activation_Failure_Rolls_The_Claim_Back()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -99,21 +99,26 @@ public sealed class LocationLifecycleTests
 
         // The rolled-back key is claimable again, by anyone.
         Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
-        var reclaim = await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
-        Assert.Equal(ZLinkActorClaimStatus.Claimed, reclaim.Status);
+        var reclaim = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
+            ActorType,
+            ActorId,
+            RoutingId.From("node-a"),
+            deactivate: null,
+            activate: static _ => ValueTask.FromResult("reclaimed"),
+            CancellationToken.None);
+        Assert.Equal("reclaimed", reclaim.Activated);
     }
 
     [Fact]
     public async Task Actor_Activation_Failure_Reconciles_A_Failed_Claim_Remove()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var actorStore = new ControlledActorStore(fixture.Store)
         {
             RemoveFailure = new InvalidOperationException("remove failed")
         };
         var node = await fixture.NodeAsync("node-a", actorStore);
-        using var lifecycle = node.Lifecycle;
+        await using var lifecycle = node.Lifecycle;
 
         var failure = await Assert.ThrowsAsync<AggregateException>(async () =>
             await node.ActorOwnership.ExecuteActorClaimThenActivateAsync<string>(
@@ -132,19 +137,20 @@ public sealed class LocationLifecycleTests
 
         Assert.False(node.ActorOwnership.OwnsActor(ActorId));
         Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
-        var reclaim = await node.ActorOwnership.ClaimActorAsync(
+        var reclaim = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             ActorType,
             ActorId,
             RoutingId.From("node-a"),
-            null,
+            deactivate: null,
+            activate: static _ => ValueTask.FromResult("reclaimed"),
             CancellationToken.None);
-        Assert.Equal(ZLinkActorClaimStatus.Claimed, reclaim.Status);
+        Assert.Equal("reclaimed", reclaim.Activated);
     }
 
     [Fact]
     public async Task Actor_AlreadyOwned_Does_Not_Activate_A_Second_Instance()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
         var key = new ZLinkActorLocationKey(ActorId);
 
@@ -180,13 +186,11 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Join_And_Leave_Renew_Location_Kind_And_Keep_The_Generation()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
         var key = new ZLinkActorLocationKey(ActorId);
 
-        var claim = await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
-        Assert.Equal(ZLinkActorClaimStatus.Claimed, claim.Status);
+        await CreateTrackedActorAsync(node);
         var claimed = await fixture.Store.ResolveActorAsync(key);
         var generation = claimed!.Generation;
 
@@ -212,12 +216,11 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Release_And_Spot_Release_Remove_Their_Rows_With_The_Owner_Token()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
         var spotRid = RoutingId.From("spot-7");
 
-        await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
+        await CreateTrackedActorAsync(node);
         await node.ActorOwnership.ReleaseActorAsync(ActorId);
         Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
 
@@ -239,14 +242,13 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Concurrent_Releases_Await_The_Same_Store_Outcome()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var controlled = new ControlledActorStore(fixture.Store)
         {
             RemoveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
         };
         var node = await fixture.NodeAsync("node-a", controlled);
-        await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
+        await CreateTrackedActorAsync(node);
 
         var first = node.ActorOwnership.ReleaseActorAsync(ActorId).AsTask();
         await controlled.RemoveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -266,11 +268,10 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Failed_Renew_Does_Not_Become_The_Base_Of_The_Next_Write()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var controlled = new ControlledActorStore(fixture.Store);
         var node = await fixture.NodeAsync("node-a", controlled);
-        await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
+        await CreateTrackedActorAsync(node);
 
         controlled.RejectNextRenew = true;
         await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
@@ -292,14 +293,13 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Release_Waits_For_The_Preceding_Renew_And_Uses_Its_Committed_Generation()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var controlled = new ControlledActorStore(fixture.Store)
         {
             RenewGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
         };
         var node = await fixture.NodeAsync("node-a", controlled);
-        await node.ActorOwnership.ClaimActorAsync(
-            ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
+        await CreateTrackedActorAsync(node);
 
         var renew = node.ActorOwnership.NotifyActorJoinedSpotAsync(
             ActorId,
@@ -321,7 +321,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Spot_Restart_On_Same_Node_Takes_Over_The_Live_Row()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var original = await fixture.NodeAsync("node-a");
         var restarted = await fixture.NodeAsync("node-a");
         var spotRid = RoutingId.From("spot-7");
@@ -362,7 +362,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Spot_Claim_From_Different_Node_Does_Not_Take_Over_A_Live_Row()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var spotRid = RoutingId.From("spot-7");
@@ -396,22 +396,18 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task OwnershipLost_Deactivates_The_Hosted_Actor_Exactly_Once()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var deactivated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var claim = await nodeA.ActorOwnership.ClaimActorAsync(
-            ActorType,
-            ActorId,
-            RoutingId.From("node-a"),
-            deactivate: _ =>
+        await CreateTrackedActorAsync(
+            nodeA,
+            _ =>
             {
                 deactivated.TrySetResult();
                 return ValueTask.CompletedTask;
-            },
-            CancellationToken.None);
-        Assert.Equal(ZLinkActorClaimStatus.Claimed, claim.Status);
+            });
 
         // Node B fences the row away (unplanned takeover). Node A only
         // learns about it when its next write comes back IgnoredStale.
@@ -434,31 +430,24 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
-    public async Task LocationLifecycle_StopWaitsForOwnershipLossDeactivation()
+    public async Task LocationLifecycle_DisposeAsync_WaitsForOwnershipLossDeactivation_And_IsIdempotent()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await nodeA.ActorOwnership.ClaimActorAsync(
-            ActorType,
-            ActorId,
-            RoutingId.From("node-a"),
-            async cancellationToken =>
+        var releaseDeactivation = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await CreateTrackedActorAsync(
+            nodeA,
+            async _ =>
             {
                 started.TrySetResult();
-                try
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                }
-                finally
-                {
-                    completed.TrySetResult();
-                }
-            },
-            CancellationToken.None);
+                await releaseDeactivation.Task;
+                completed.TrySetResult();
+            });
         await nodeB.Runtime.WriteActorAsync(
             InMemoryLocationStoreTests.Actor("ignored", 0),
             ZLinkLocationWriteIntent.Takeover);
@@ -467,14 +456,21 @@ public sealed class LocationLifecycleTests
             await nodeA.ActorOwnership.NotifyActorJoinedSpotAsync(ActorId, RoutingId.From("spot-1")));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        await nodeA.Lifecycle.PauseBackgroundWorkAsync();
+        var firstDispose = nodeA.Lifecycle.DisposeAsync().AsTask();
+        var secondDispose = nodeA.Lifecycle.DisposeAsync().AsTask();
+        Assert.Same(firstDispose, secondDispose);
+        await Task.Delay(30);
+        Assert.False(firstDispose.IsCompleted);
+
+        releaseDeactivation.TrySetResult();
+        await firstDispose.WaitAsync(TimeSpan.FromSeconds(5));
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
     public async Task Spot_Handle_Resolver_Uses_The_Row_And_Misses_When_The_Lease_Expires()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
         var spotRid = RoutingId.From("spot-9");
 
@@ -513,7 +509,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Session_Route_Binds_Rebinds_With_Takeover_And_Removes()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var sessionRid = RoutingId.From("session-1");
@@ -538,7 +534,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task ActorSessionRouteLifecycle_SerializesBindAndRemove_AndRetriesRemoveFailure()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var releaseBind = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var routeStore = new ControlledRouteStore(fixture.Store)
         {
@@ -567,7 +563,7 @@ public sealed class LocationLifecycleTests
     [Fact]
     public async Task Actor_Reconnect_Refreshes_The_Location_And_Only_Rebinds_The_Session()
     {
-        var fixture = await LifecycleFixture.CreateAsync();
+        await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var nodeC = await fixture.NodeAsync("node-c");
@@ -644,8 +640,25 @@ public sealed class LocationLifecycleTests
         Assert.Equal(nodeC.Runtime.OwnerId, after.OwnerId);
     }
 
-    private sealed class LifecycleFixture
+    private static async ValueTask CreateTrackedActorAsync(
+        LifecycleNode node,
+        Func<CancellationToken, ValueTask>? deactivate = null)
     {
+        var activation = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
+            ActorType,
+            ActorId,
+            RoutingId.From("node-a"),
+            deactivate,
+            static _ => ValueTask.FromResult(new object()),
+            CancellationToken.None);
+        Assert.NotNull(activation.Activated);
+        Assert.Null(activation.ExistingLocation);
+    }
+
+    private sealed class LifecycleFixture : IAsyncDisposable
+    {
+        private readonly List<LifecycleNode> _nodes = [];
+
         private LifecycleFixture(
             ZLinkInMemoryLocationStore store,
             ManualTimeProvider time,
@@ -702,7 +715,23 @@ public sealed class LocationLifecycleTests
                 observed);
             var query = new ZLinkLocationRuntimeQueryService(
                 Options, Store, Store, Store, Store, tracker, runtime, observed);
-            return new LifecycleNode(runtime, resolvers, query, new ZLinkLocationLifecycle(runtime, resolvers));
+            var node = new LifecycleNode(
+                runtime,
+                resolvers,
+                query,
+                new ZLinkLocationLifecycle(runtime, resolvers));
+            _nodes.Add(node);
+            return node;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            for (var index = _nodes.Count - 1; index >= 0; index--)
+            {
+                await _nodes[index].Lifecycle.DisposeAsync();
+                await _nodes[index].Runtime.DisposeAsync();
+            }
+            _nodes.Clear();
         }
     }
 

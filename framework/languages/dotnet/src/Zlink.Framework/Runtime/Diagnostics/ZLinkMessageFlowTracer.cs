@@ -5,8 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Zlink.Framework.Runtime.Diagnostics;
 
 // Success-path message-flow tracer — the twin of ZLinkDispatchErrorReporter for
-// received/dispatched/replied/sent/reply_received/error transitions, keyed by
-// correlation id.
+// received/dispatched/replied/sent/reply_received/error transitions.
 //
 // PERFORMANCE: callers MUST guard event construction with Enabled(outcome) so that an
 // "off" dispatch pays nothing but a volatile mode read (a C# lambda would heap-
@@ -14,25 +13,31 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 //     if (tracer.Enabled(outcome)) tracer.Trace(new ZLinkMessageFlowEvent(...));
 internal sealed class ZLinkMessageFlowTracer
 {
+    internal const string LoggerCategory = "zlink.framework.dispatch";
+
     private readonly ILogger _logger;
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly ZLinkMessageFlowObserverPump? _observerPump;
     private readonly ZLinkFrameworkRuntime? _runtime;
+    private readonly IZLinkRuntimeErrorSink? _errorSink;
 
     public ZLinkMessageFlowTracer(
         ZLinkDispatchOptionsModel options,
         ILogger? logger = null,
         ZLinkFrameworkRuntime? runtime = null,
-        ZLinkMessageFlowObserverPump? observerPump = null)
+        ZLinkMessageFlowObserverPump? observerPump = null,
+        IZLinkRuntimeErrorSink? errorSink = null)
     {
         _options = options;
         _runtime = runtime;
         _observerPump = observerPump;
+        _errorSink = errorSink;
         _logger = logger ?? ZLinkStandardErrorLogger.Instance;
     }
 
-    public bool GenerationEnabled =>
-        _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off;
+    public bool CaptureEnabled =>
+        _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off
+        || ObserverEnabled;
 
     // Cheap mode gate (relaxed/volatile read of the live mode). Build the event only
     // after this returns true.
@@ -47,11 +52,10 @@ internal sealed class ZLinkMessageFlowTracer
         var observerEnabled = ObserverEnabled;
         if (!logEnabled && !observerEnabled) return;
 
+        flow = NormalizeFlowPair(flow);
         if (string.IsNullOrEmpty(flow.FlowId))
         {
             var current = ZLinkFlowContext.Current;
-            if (current is null && GenerationEnabled)
-                current = ZLinkFlowContext.Create(ZLinkFlowOrigin.Application);
             if (current is { } value)
                 flow = flow with { FlowId = value.FlowId, FlowOrigin = value.Origin };
         }
@@ -59,7 +63,7 @@ internal sealed class ZLinkMessageFlowTracer
         // Sampling thins healthy traffic; dropped transitions always pass through.
         var logSampled = logEnabled
                          && (flow.Outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
-                             || Sample(flow.FlowId));
+                             || Sample(ZLinkTraceFormat.FlowIdKey(flow) ?? string.Empty));
         if (!logSampled && !observerEnabled) return;
 
         if (logSampled)
@@ -70,7 +74,7 @@ internal sealed class ZLinkMessageFlowTracer
             }
             catch (Exception ex)
             {
-                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+                ReportUnhandledCallbackException(ex);
             }
         }
 
@@ -85,8 +89,19 @@ internal sealed class ZLinkMessageFlowTracer
     private bool ObserverEnabled =>
         _options.MessageFlowObserver is not null || _options.MessageFlowObserverType is not null;
 
+    private void ReportUnhandledCallbackException(Exception exception)
+    {
+        if (_errorSink is not null)
+            _errorSink.ReportUnhandledCallbackException(exception);
+        else
+            _runtime?.TryReportUnhandledCallbackException(exception);
+    }
+
     internal bool ShouldLog(ZLinkMessageFlowOutcome outcome) =>
         (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
+
+    internal static ILogger CreateLogger(ILoggerFactory? factory, ILogger? fallback = null) =>
+        factory?.CreateLogger(LoggerCategory) ?? fallback ?? ZLinkStandardErrorLogger.Instance;
 
     private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)
     {
@@ -127,14 +142,18 @@ internal sealed class ZLinkMessageFlowTracer
         // structured key/value fields (so collectors ingest without parsing).
         if (diagnostics.LogFile is { } path)
         {
-            ZLinkTraceFileWriter.Write(path, ZLinkTraceFormat.FlowLine(flow, diagnostics.Label, size));
+            ZLinkTraceFileWriter.Write(
+                path,
+                ZLinkTraceFormat.FlowLine(flow, diagnostics.Label, size),
+                _errorSink,
+                _runtime);
             return;
         }
 
         if (!_logger.IsEnabled(LogLevel.Information)) return;
 
         _logger.LogInformation(
-            "message flow outcome={Outcome} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} flow={Flow} origin={Origin} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
+            "phase={Phase} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} flow={Flow} origin={Origin} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
             ZLinkTraceFormat.OutcomeKey(flow.Outcome),
             flow.Surface,
             flow.MessageKind,
@@ -143,8 +162,8 @@ internal sealed class ZLinkMessageFlowTracer
             flow.ChannelName,
             flow.Topic,
             flow.CorrelationId,
-            flow.FlowId,
-            flow.FlowOrigin.ToString().ToLowerInvariant(),
+            ZLinkTraceFormat.FlowIdKey(flow),
+            ZLinkTraceFormat.FlowOriginKey(flow),
             flow.SourceRid,
             flow.LocalRid,
             flow.PeerRid,
@@ -156,6 +175,14 @@ internal sealed class ZLinkMessageFlowTracer
             flow.ErrorType,
             flow.ErrorMessage,
             size);
+    }
+
+    private static ZLinkMessageFlowEvent NormalizeFlowPair(ZLinkMessageFlowEvent flow)
+    {
+        var hasFlowId = !string.IsNullOrEmpty(flow.FlowId);
+        var hasFlowOrigin = flow.FlowOrigin is not null;
+        if (hasFlowId == hasFlowOrigin) return flow;
+        return flow with { FlowId = string.Empty, FlowOrigin = null };
     }
 }
 
@@ -189,7 +216,11 @@ internal static class ZLinkTraceFileWriter
 {
     private static readonly object Gate = new();
 
-    public static void Write(string path, string line)
+    public static void Write(
+        string path,
+        string line,
+        IZLinkRuntimeErrorSink? errorSink,
+        ZLinkFrameworkRuntime? runtime)
     {
         try
         {
@@ -203,7 +234,10 @@ internal static class ZLinkTraceFileWriter
         }
         catch (Exception ex)
         {
-            ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+            if (errorSink is not null)
+                errorSink.ReportUnhandledCallbackException(ex);
+            else
+                runtime?.TryReportUnhandledCallbackException(ex);
         }
     }
 }
@@ -215,7 +249,7 @@ internal static class ZLinkTraceFormat
     public static string FlowLine(ZLinkMessageFlowEvent flow, string? label, long? size)
     {
         var builder = new StringBuilder("message flow");
-        Append(builder, "outcome", OutcomeKey(flow.Outcome));
+        Append(builder, "phase", OutcomeKey(flow.Outcome));
         Append(builder, "surface", flow.Surface.ToString());
         Append(builder, "kind", flow.MessageKind.ToString());
         Append(builder, "label", label);
@@ -223,8 +257,8 @@ internal static class ZLinkTraceFormat
         Append(builder, "channel", flow.ChannelName);
         Append(builder, "topic", flow.Topic);
         Append(builder, "corr", flow.CorrelationId);
-        Append(builder, "flow", flow.FlowId);
-        Append(builder, "origin", flow.FlowOrigin.ToString().ToLowerInvariant());
+        Append(builder, "flow", FlowIdKey(flow));
+        Append(builder, "origin", FlowOriginKey(flow));
         Append(builder, "src", flow.SourceRid);
         Append(builder, "localRid", flow.LocalRid);
         Append(builder, "peerRid", flow.PeerRid);
@@ -254,6 +288,16 @@ internal static class ZLinkTraceFormat
             _ => outcome.ToString().ToLowerInvariant()
         };
     }
+
+    public static string? FlowIdKey(ZLinkMessageFlowEvent flow) =>
+        !string.IsNullOrEmpty(flow.FlowId) && flow.FlowOrigin is not null
+            ? flow.FlowId
+            : null;
+
+    public static string? FlowOriginKey(ZLinkMessageFlowEvent flow) =>
+        FlowIdKey(flow) is not null
+            ? flow.FlowOrigin!.Value.ToString().ToLowerInvariant()
+            : null;
 
     private static void Append(StringBuilder builder, string key, string? value)
     {

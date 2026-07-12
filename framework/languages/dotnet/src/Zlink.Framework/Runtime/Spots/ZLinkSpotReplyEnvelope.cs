@@ -2,6 +2,26 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotReplyEnvelope
 {
+    public static IReadOnlyList<Message> EncodeActorJoinReplyParts(
+        string channelName,
+        string messageName,
+        object? reply,
+        Type? replyType,
+        ZLinkCodecRegistryBuilder? codecs = null)
+    {
+        var replyHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Command,
+            channelName,
+            messageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null);
+        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType, codecs);
+    }
+
     public static IReadOnlyList<Message> EncodeResponseParts(
         string channelName,
         string messageName,

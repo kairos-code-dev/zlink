@@ -5,26 +5,52 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
     private readonly ZLinkSerialExecutionQueue _queue;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly object _stopGate = new();
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+    private Task _stopCancellation = Task.CompletedTask;
     private bool _stopSourceDisposed;
+    private bool _stopSourceFinalizing;
 
-    public ZLinkStreamSessionSerialExecutor(object executionOwner)
+    public ZLinkStreamSessionSerialExecutor(
+        object executionOwner,
+        IZLinkRuntimeErrorSink errorSink)
     {
-        var errorSink = new ZLinkRuntimeErrorSink();
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token, executionOwner),
             errorSink,
             _stopSource.Token);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
     {
         RequestStop();
         await _queue.DisposeAsync().ConfigureAwait(false);
+        Task cancellation;
         lock (_stopGate)
         {
-            if (_stopSourceDisposed) return;
-            _stopSource.Dispose();
-            _stopSourceDisposed = true;
+            _stopSourceFinalizing = true;
+            cancellation = _stopCancellation;
+        }
+        try
+        {
+            await cancellation.ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_stopGate)
+            {
+                if (!_stopSourceDisposed)
+                {
+                    _stopSource.Dispose();
+                    _stopSourceDisposed = true;
+                }
+            }
         }
     }
 
@@ -38,7 +64,8 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
         _queue.Complete();
         lock (_stopGate)
         {
-            if (!_stopSourceDisposed) _stopSource.Cancel();
+            if (_stopSourceDisposed || _stopSourceFinalizing || _stopSource.IsCancellationRequested) return;
+            _stopCancellation = _stopSource.CancelAsync();
         }
     }
 

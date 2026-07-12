@@ -49,15 +49,6 @@ internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
             _state.Metadata,
             _state.Compress);
 
-        _ = SubmitAsync(frame, cancellationToken).AsTask();
-    }
-
-    private async ValueTask SubmitAsync(
-        ZlinkStreamOutboundFrame frame,
-        CancellationToken cancellationToken)
-    {
-        await _connector.SendFrameAsync(
-            frame,
-            cancellationToken).ConfigureAwait(false);
+        _connector.SubmitFrame(frame, cancellationToken);
     }
 }

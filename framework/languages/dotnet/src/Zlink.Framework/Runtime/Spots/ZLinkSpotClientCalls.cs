@@ -50,11 +50,6 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 {
     public void Submit(CancellationToken cancellationToken = default)
     {
-        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot client submit");
-    }
-
-    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
-    {
         cancellationToken.ThrowIfCancellationRequested();
         // One-way sends use the current snapshot once and never retry; a
         // retry could duplicate a packet that was already delivered.
@@ -64,13 +59,13 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             activation.ChannelName,
             ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        await activation.OutboundEndpoint.SendToSpotAsync(
+        var accepted = activation.OutboundEndpoint.SendToSpotAsync(
                 snapshot.RouterChannelId,
                 snapshot.NodeRid,
                 snapshot.SpotRid,
                 parts,
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
+        ZLinkUnawaitedSubmit.Observe(accepted, "spot client submit", activation.ErrorSink);
     }
 }
 
@@ -146,7 +141,8 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         ZLinkUnawaitedSubmit.Observe(
             activation.OutboundEndpoint.SendToChannelAsync(channelName, parts, cancellationToken),
-            "spot channel submit");
+            "spot channel submit",
+            activation.ErrorSink);
     }
 }
 

@@ -34,8 +34,6 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
 internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
-    IAsyncDisposable CreateRequestCompletionPump();
-
     void SetRoutingId(RoutingId routingId);
 
     void OnSendReady(Action handler);
@@ -157,7 +155,7 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 {
     void SetTlsServer(string certPath, string keyPath, bool requireClientCert);
 
-    void OnFramedPacket(Action<string, Message, Message> handler);
+    void OnFramedPacket(Action<RoutingId, Message, Message> handler);
 
     bool Send(
         RoutingId routingId,
@@ -194,5 +192,5 @@ internal interface IZLinkBackendSocketMonitor : IAsyncDisposable
 {
     void OnEvent(Action<ZLinkBackendSocketMonitorEvent> handler);
 
-    ZLinkBackendSocketMonitorEvent Recv();
+    bool TryRecv(out ZLinkBackendSocketMonitorEvent monitorEvent);
 }

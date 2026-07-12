@@ -1,3 +1,5 @@
+using Systems.Zlink.Stream.Connector.Runtime;
+
 namespace Zlink.Framework.Runtime.Messaging;
 
 internal static class ZLinkClientCallCodec
@@ -12,13 +14,20 @@ internal static class ZLinkClientCallCodec
         bool includeCorrelationId = true,
         bool includeDeadline = true)
     {
+        if (kind is ZLinkMessageKind.Response or ZLinkMessageKind.Error)
+            throw new ArgumentOutOfRangeException(
+                nameof(kind),
+                kind,
+                "Client call envelopes can only initiate commands, requests, or publishes.");
+
         var flow = ZLinkFlowContext.Current;
+        var correlationRequired = kind == ZLinkMessageKind.Request;
         return new ZLinkEnvelopeHeader(
             kind,
             channelName,
             messageName,
             ZLinkEnvelopeCodec.DefaultContentType,
-            includeCorrelationId ? Guid.NewGuid().ToString("N") : null,
+            includeCorrelationId || correlationRequired ? ZlinkStreamCorrelation.Next() : null,
             includeDeadline && timeout is { } value ? DateTimeOffset.UtcNow.Add(value) : null,
             topic,
             null,

@@ -78,6 +78,20 @@ public sealed class SpotAutoRegistrationScannerTests
     {
         public IZLinkSpotContext Context => throw new NotSupportedException();
 
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            string actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+
+        public ValueTask OnJoinedActorAsync(
+            AutoActor actor,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnLeaveActorAsync(
+            AutoActor actor,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
         [ZLinkSpotRequest(PacketName = "room.attribute.request")]
         public ValueTask<AutoActorReply> RequestAsync(
             AutoActorRequest request,
@@ -96,11 +110,18 @@ public sealed class SpotAutoRegistrationScannerTests
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            _ = admission;
             _ = request;
             _ = cancellationToken;
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
         }
+
+        public ValueTask OnJoinedActorAsync(
+            AutoActor actor,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnLeaveActorAsync(
+            AutoActor actor,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private sealed class AutoActor(string actorId) : IZLinkActor

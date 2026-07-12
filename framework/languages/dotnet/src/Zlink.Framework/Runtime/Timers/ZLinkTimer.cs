@@ -6,6 +6,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
 {
     private readonly Task _pump;
     private readonly CancellationTokenSource _stopSource;
+    private readonly object _lifecycleGate = new();
+    private Task? _finalization;
     private int _disposed;
 
     public ZLinkTimer(
@@ -31,11 +33,57 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
-    public async ValueTask CancelAsync()
+    public ValueTask CancelAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        return new ValueTask(GetOrStartFinalization());
+    }
 
-        _stopSource.Cancel();
+    public ValueTask DisposeAsync()
+    {
+        return CancelAsync();
+    }
+
+    private Task GetOrStartFinalization()
+    {
+        TaskCompletionSource completion;
+        lock (_lifecycleGate)
+        {
+            if (_finalization is not null) return _finalization;
+
+            Volatile.Write(ref _disposed, 1);
+            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _finalization = completion.Task;
+        }
+
+        _ = CompleteFinalizationAsync(completion);
+        return completion.Task;
+    }
+
+    private async Task CompleteFinalizationAsync(TaskCompletionSource completion)
+    {
+        try
+        {
+            await FinalizeAsync().ConfigureAwait(false);
+            completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async Task FinalizeAsync()
+    {
+        List<Exception>? failures = null;
+        try
+        {
+            _stopSource.Cancel();
+        }
+        catch (Exception exception)
+        {
+            (failures ??= []).Add(exception);
+        }
+
         try
         {
             await _pump.ConfigureAwait(false);
@@ -43,15 +91,23 @@ internal sealed class ZLinkTimer : IZLinkTimer
         catch (OperationCanceledException) when (_stopSource.IsCancellationRequested)
         {
         }
-        finally
+        catch (Exception exception)
+        {
+            (failures ??= []).Add(exception);
+        }
+
+        try
         {
             _stopSource.Dispose();
         }
-    }
+        catch (Exception exception)
+        {
+            (failures ??= []).Add(exception);
+        }
 
-    public ValueTask DisposeAsync()
-    {
-        return CancelAsync();
+        if (failures is [var failure])
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
     private static Task RunAsync(

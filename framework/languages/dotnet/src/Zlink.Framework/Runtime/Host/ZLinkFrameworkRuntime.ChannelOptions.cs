@@ -1,8 +1,12 @@
+using Zlink.Framework.Runtime.Locations;
+
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal IZLinkClientServerChannelOptions ResolveClientServerRuntimeOptions(string channelName)
+    internal IZLinkClientServerChannelOptions ResolveClientServerRuntimeOptions(
+        string channelName,
+        ZLinkLocationAutoConnectHost? autoConnect)
     {
         return ExecuteOperation(() =>
         {
@@ -16,7 +20,15 @@ internal sealed partial class ZLinkFrameworkRuntime
                     || bundle.Socket is not IZLinkBackendWeightedSocket weighted)
                     throw new ZLinkConfigurationException(
                         $"Channel '{channelName}' server role is not initialized or does not support weight.");
-                serverSocket = new ZLinkLiveSocketConfig(this, weighted, server.SocketConfig);
+                serverSocket = new ZLinkLiveSocketConfig(
+                    this,
+                    weighted,
+                    server.SocketConfig,
+                    weight => autoConnect?.SetLocalWeight(
+                        ZLinkLocationAutoConnectType.ClientServer,
+                        channel.ChannelName,
+                        ZLinkLocationRole.Router,
+                        (uint)weight));
                 serverRouting = new ZLinkFrozenRouteConfig(server.RoutingConfig);
             }
 
@@ -34,7 +46,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         });
     }
 
-    internal IZLinkSocketConfig ResolveRouteMeshSocketConfig(string channelName)
+    internal IZLinkSocketConfig ResolveRouteMeshSocketConfig(
+        string channelName,
+        ZLinkLocationAutoConnectHost? autoConnect)
     {
         return ExecuteOperation(() =>
         {
@@ -47,7 +61,15 @@ internal sealed partial class ZLinkFrameworkRuntime
                 throw new ZLinkConfigurationException(
                     $"Route mesh channel '{channelName}' has no serving role on this node.");
 
-            return new ZLinkLiveSocketConfig(this, routeRuntime.ServingSocket, registration.SocketConfig);
+            return new ZLinkLiveSocketConfig(
+                this,
+                routeRuntime.ServingSocket,
+                registration.SocketConfig,
+                weight => autoConnect?.SetLocalWeight(
+                    ZLinkLocationAutoConnectType.RouteMesh,
+                    registration.RouterChannelId,
+                    ZLinkLocationRole.Router,
+                    (uint)weight));
         });
     }
 

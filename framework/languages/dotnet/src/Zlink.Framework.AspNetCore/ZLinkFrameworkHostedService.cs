@@ -17,7 +17,7 @@ internal sealed class ZLinkFrameworkHostedService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (monitoringRegistration is not null)
-            new ZLinkMonitoringSourceValidator(monitoringRegistration).PreflightSocketSources(runtime);
+            new ZLinkMonitoringSourceValidator(monitoringRegistration).PreflightFrameworkSources(runtime);
 
         if (locationRuntime is not null)
             await locationRuntime.StartAsync(

@@ -13,6 +13,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private readonly ZlinkStreamHeaderCodec _headerCodec;
     private readonly ZlinkStreamInboundObserverDispatcher _inboundObservers;
     private readonly ZlinkStreamConnectorLifecycle _lifecycle;
+    private readonly ZlinkStreamOneWaySubmitQueue _oneWaySubmits;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
 
@@ -28,6 +29,13 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private int _disposed;
 
     internal ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
+        : this(options, token => ZlinkStreamTransportFactory.ConnectAsync(options, token))
+    {
+    }
+
+    internal ZlinkStreamConnector(
+        ZlinkStreamConnectorOptions options,
+        Func<CancellationToken, ValueTask<IZlinkStreamConnection>> connectTransport)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ZlinkStreamConnectorOptionsValidator.Validate(options);
@@ -47,13 +55,23 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _compressionCodec = CreateCompressionCodec(options);
 
         _nameResolver = options.NameResolver;
-        _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner, _callbacks);
+        _lifecycle = new ZlinkStreamConnectorLifecycle(
+            options,
+            _pending,
+            _taskRunner,
+            _callbacks,
+            connectTransport);
         _frameSender = new ZlinkStreamFrameSender(
             options,
             _headerCodec,
             _compressionCodec,
             _sendGate,
             () => _lifecycle.Connection);
+        _oneWaySubmits = new ZlinkStreamOneWaySubmitQueue(
+            _taskRunner,
+            _callbacks,
+            (frame, cancellationToken) =>
+                ((IZlinkStreamConnectorInternal)this).SendFrameAsync(frame, cancellationToken));
         _receiveDispatcher = new ZlinkStreamReceiveDispatcher(
             _headerCodec,
             _pending,
@@ -186,11 +204,19 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.SendFailed)
+        catch (ZlinkStreamException ex)
         {
             await _lifecycle.HandleTransportErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
             throw;
         }
+    }
+
+    void IZlinkStreamConnectorInternal.SubmitFrame(
+        ZlinkStreamOutboundFrame frame,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        _oneWaySubmits.Submit(frame, cancellationToken);
     }
 
     async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(
@@ -221,6 +247,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         TimeSpan timeout,
         Action<ZlinkStreamResult> callback)
     {
+        ThrowIfDisposed();
         _callbacks.QueueRequestCallback(
             () => RequestEncodedCoreAsync(name, payload, metadata, compress, timeout, CancellationToken.None),
             reply => ZlinkStreamResult.Success(),
@@ -236,6 +263,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         TimeSpan timeout,
         Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback)
     {
+        ThrowIfDisposed();
         _callbacks.QueueRequestCallback(
             () => RequestEncodedCoreAsync(name, payload, metadata, compress, timeout, CancellationToken.None),
             ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success,
@@ -245,7 +273,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     public ValueTask DisposeAsync()
     {
-        if (_lifecycle.IsCurrentCallback)
+        if (_callbacks.IsCurrentCallback)
             throw new InvalidOperationException(
                 "DisposeAsync cannot run inside a connector callback. Use Close.Async in the callback and dispose the connector externally after the callback returns.");
 
@@ -270,13 +298,18 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private async Task FinalizeAfterStartAsync(Task started)
     {
         await started.ConfigureAwait(false);
+        _oneWaySubmits.Complete();
         try
         {
             await _lifecycle.CloseAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
-            _lifetimeCts.Cancel();
+            await _oneWaySubmits.WaitForCompletionAsync().ConfigureAwait(false);
+            await _lifetimeCts.CancelAsync().ConfigureAwait(false);
+            await _taskRunner.StopAndDrainAsync().ConfigureAwait(false);
+            _callbacks.Complete();
+            _inboundObservers.Dispose();
             _sendGate.Dispose();
             _lifecycle.Dispose();
             _lifetimeCts.Dispose();
@@ -321,16 +354,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(timeout);
-            try
-            {
-                await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, timeoutCts.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.SendFailed)
-            {
-                await _lifecycle.HandleTransportErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
-                throw;
-            }
+            await _oneWaySubmits.SendAsync(frame, timeoutCts.Token)
+                .ConfigureAwait(false);
 
             var pendingCompletion = await _pending.WaitAsync(pending, timeoutCts.Token).ConfigureAwait(false);
             var replyHeader = pendingCompletion.Header;

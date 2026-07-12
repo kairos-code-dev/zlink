@@ -51,13 +51,16 @@ internal sealed class ZLinkSubmitQueue
         return false;
     }
 
-    public IReadOnlyList<PendingSubmit> DisposeAll()
+    public void Complete()
+    {
+        lock (_gate) _disposed = true;
+    }
+
+    public IReadOnlyList<PendingSubmit> DrainAll()
     {
         PendingSubmit[] remaining;
         lock (_gate)
         {
-            if (_disposed) return Array.Empty<PendingSubmit>();
-
             _disposed = true;
             remaining = _pending.ToArray();
             _pending.Clear();

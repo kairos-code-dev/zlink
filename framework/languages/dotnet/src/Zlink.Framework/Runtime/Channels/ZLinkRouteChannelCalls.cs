@@ -25,8 +25,9 @@ internal sealed class ZLinkRouteChannelCalls
         _codecs = frameworkRegistration.Codecs;
         _flow = new ZLinkMessageFlowTracer(
             frameworkRegistration.DispatchOptions,
-            services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRouteChannelCalls>(),
-            runtime);
+            ZLinkMessageFlowTracer.CreateLogger(services.GetService<ILoggerFactory>()),
+            runtime,
+            errorSink: runtime?.ErrorSink);
     }
 
     public ValueTask SubmitSendAsync<TMessage>(
@@ -37,7 +38,7 @@ internal sealed class ZLinkRouteChannelCalls
     {
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
-            _flow.GenerationEnabled);
+            _flow.CaptureEnabled);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _routerChannelId,
@@ -65,7 +66,7 @@ internal sealed class ZLinkRouteChannelCalls
     {
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
-            _flow.GenerationEnabled);
+            _flow.CaptureEnabled);
         var parts = PrependHeader(header, payloadParts);
 
         TraceRouteSent(
@@ -86,7 +87,7 @@ internal sealed class ZLinkRouteChannelCalls
     {
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
-            _flow.GenerationEnabled);
+            _flow.CaptureEnabled);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             _routerChannelId,
@@ -128,7 +129,7 @@ internal sealed class ZLinkRouteChannelCalls
     {
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
-            _flow.GenerationEnabled);
+            _flow.CaptureEnabled);
         var parts = PrependHeader(header, payloadParts);
 
         TraceRouteSent(
@@ -167,7 +168,7 @@ internal sealed class ZLinkRouteChannelCalls
             packetName,
             _routerChannelId,
             CorrelationId: correlationId,
-            PeerRid: targetNodeRid.ToString(),
+            SourceRid: targetNodeRid.ToString(),
             SocketRole: "router"));
     }
 
@@ -185,7 +186,7 @@ internal sealed class ZLinkRouteChannelCalls
             packetName,
             _routerChannelId,
             CorrelationId: correlationId,
-            PeerRid: targetNodeRid.ToString(),
+            SourceRid: targetNodeRid.ToString(),
             SocketRole: "router"));
     }
 

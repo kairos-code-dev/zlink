@@ -1,3 +1,4 @@
+using Systems.Zlink.Stream.Connector.Runtime;
 using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -54,7 +55,7 @@ internal sealed class ZLinkBoundSessionService(
         }
     }
 
-    internal async ValueTask SendBoundSessionAsync<TMessage>(
+    internal void SubmitBoundSession<TMessage>(
         string actorId,
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
@@ -63,18 +64,46 @@ internal sealed class ZLinkBoundSessionService(
     {
         using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
+        _ = ResolveSessionRoute(actorId);
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.CaptureEnabled);
         var frame = CreateBoundSessionFrame(
             packetName,
             metadata,
             message,
             runtime.Registration.Codecs);
+        TraceSent(actorId, packetName, frame);
         if (ZLinkBoundSessionDispatchScope.TryDefer(
                 actorId,
                 ct => SendFrameWithRetryAsync(actorId, frame, ct)))
             return;
 
-        await SendFrameWithRetryAsync(actorId, frame, cancellationToken)
-            .ConfigureAwait(false);
+        using var frameMessage = Message.From(frame);
+        if (!runtime.SendActorBoundSession(
+                actorId,
+                new[] { frameMessage },
+                SendFlags.DontWait))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                "Actor bound session send was not accepted by the local transport.",
+                true);
+    }
+
+    private void TraceSent(string actorId, string? packetName, byte[] frame)
+    {
+        if (!runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent)) return;
+        if (!ZLinkStreamFrameCodec.TryDecode(frame, out var headerBytes, out _))
+            throw new InvalidOperationException("Actor bound session frame is invalid.");
+
+        var header = ZLinkStreamProtocolDefaults.DecodeHeader(headerBytes.ToArray());
+        runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+            ZLinkMessageFlowOutcome.Sent,
+            ZLinkDispatchErrorSurface.StreamSession,
+            ZLinkDispatchMessageKind.Send,
+            packetName,
+            CorrelationId: header.CorrelationId,
+            ActorId: actorId));
     }
 
     private async ValueTask SendFrameWithRetryAsync(
@@ -102,7 +131,12 @@ internal sealed class ZLinkBoundSessionService(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (runtime.TryGetActorBoundSession(actorId, out var route)) return ValueTask.FromResult(route);
+        return ValueTask.FromResult(ResolveSessionRoute(actorId));
+    }
+
+    private ZLinkActorBoundSession ResolveSessionRoute(string actorId)
+    {
+        if (runtime.TryGetActorBoundSession(actorId, out var route)) return route;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorSessionNotBound,
@@ -124,7 +158,7 @@ internal sealed class ZLinkBoundSessionService(
             null,
             packetName ?? throw new InvalidOperationException("Packet name is required."),
             ToStreamMetadata(metadata),
-            ZLinkStreamCorrelation.Next());
+            ZlinkStreamCorrelation.Next());
         return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span,
             encoded.Payload.Span);
     }
@@ -176,17 +210,11 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "bound session submit");
-    }
-
-    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
-    {
-        await service.SendBoundSessionAsync(
-                actorId,
-                ZLinkMessageNameResolver.ResolveFromMessage(message),
-                _metadata,
-                message,
-                cancellationToken)
-            .ConfigureAwait(false);
+        service.SubmitBoundSession(
+            actorId,
+            ZLinkMessageNameResolver.ResolveFromMessage(message),
+            _metadata,
+            message,
+            cancellationToken);
     }
 }

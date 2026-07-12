@@ -105,10 +105,21 @@ public readonly record struct ZLinkSocketEvent(
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
 
-public abstract record ZLinkLocationRuntimeEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkLocationRuntimeEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkLocationRuntimeEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record StatusChanged(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -139,10 +150,21 @@ public readonly record struct ZLinkAutoConnectDesiredSetChange(
     IReadOnlyList<string> ConnectedEndpoints,
     IReadOnlyList<string> DisconnectedEndpoints);
 
-public abstract record ZLinkLocationPeerEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkLocationPeerEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkLocationPeerEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record RowUpdated(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -160,10 +182,21 @@ public abstract record ZLinkLocationPeerEvent(
         ZLinkAutoConnectDesiredSetChange Change) : ZLinkLocationPeerEvent(SourceName, Timestamp);
 }
 
-public abstract record ZLinkLocationSpotEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkLocationSpotEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkLocationSpotEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record RowUpdated(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -181,10 +214,21 @@ public abstract record ZLinkLocationSpotEvent(
         ZLinkSpotLocationKey Key) : ZLinkLocationSpotEvent(SourceName, Timestamp);
 }
 
-public abstract record ZLinkLocationActorEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkLocationActorEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkLocationActorEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record RowUpdated(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -202,10 +246,21 @@ public abstract record ZLinkLocationActorEvent(
         ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
 }
 
-public abstract record ZLinkLocationRouteEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkLocationRouteEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkLocationRouteEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record RowUpdated(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -233,10 +288,21 @@ public readonly record struct ZLinkSpotTimerDiagnostic(
     string ExceptionType,
     string ExceptionMessage);
 
-public abstract record ZLinkSpotEvent(
-    string SourceName,
-    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+public abstract record ZLinkSpotEvent : IZLinkRuntimeEvent
 {
+    private protected ZLinkSpotEvent(string sourceName, DateTimeOffset timestamp)
+    {
+        SourceName = sourceName;
+        Timestamp = timestamp;
+    }
+
+    public string SourceName { get; init; }
+
+    public DateTimeOffset Timestamp { get; init; }
+
+    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
+        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
+
     public sealed record StatusChanged(
         string SourceName,
         DateTimeOffset Timestamp,

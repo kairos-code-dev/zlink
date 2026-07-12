@@ -4,19 +4,19 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
     private readonly HashSet<string> _autoConnections = new(StringComparer.Ordinal);
     private readonly object _connectionGate = new();
+    private readonly object _disposeGate = new();
     private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
     private int _disposed;
+    private Task? _disposeTask;
 
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
         ZLinkAsyncSubmitter? submitter = null,
-        IAsyncDisposable? completionPump = null,
         RoutingId localRid = default,
         string? socketRole = null)
     {
         Socket = socket;
         Submitter = submitter;
-        CompletionPump = completionPump;
         LocalRid = localRid.Size > 0 ? localRid.ToString() : null;
         SocketRole = socketRole;
     }
@@ -25,23 +25,36 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public ZLinkAsyncSubmitter? Submitter { get; }
 
-    public IAsyncDisposable? CompletionPump { get; }
-
     public string? LocalRid { get; }
 
     public string? SocketRole { get; }
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         var failures = new ZLinkFailureCollector();
         if (Submitter is not null)
             await failures.CaptureAsync(Submitter.DisposeAsync).ConfigureAwait(false);
-
-        if (CompletionPump is not null)
-            await failures.CaptureAsync(CompletionPump.DisposeAsync).ConfigureAwait(false);
 
         await failures.CaptureAsync(Socket.DisposeAsync).ConfigureAwait(false);
         failures.Capture(ReceiveGate.Dispose);

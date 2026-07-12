@@ -30,7 +30,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
     private readonly ZLinkDrainAdmissionGate _admission;
     private readonly IZLinkDrainExecutor _executor;
     private readonly IZLinkRuntimeEventPublisher? _events;
-    private readonly Func<bool> _flowGenerationEnabled;
+    private readonly Func<bool> _flowCaptureEnabled;
     private readonly ILogger<ZLinkDrainCoordinator>? _logger;
     private readonly object _gate = new();
     private readonly TaskCompletionSource<ZLinkDrainResult> _terminal =
@@ -43,13 +43,13 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
         ZLinkDrainAdmissionGate admission,
     IZLinkDrainExecutor executor,
     IZLinkRuntimeEventPublisher? events,
-    Func<bool>? flowGenerationEnabled = null,
+    Func<bool>? flowCaptureEnabled = null,
     ILogger<ZLinkDrainCoordinator>? logger = null)
     {
         _admission = admission;
         _executor = executor;
         _events = events;
-        _flowGenerationEnabled = flowGenerationEnabled ?? AlwaysDisabled;
+        _flowCaptureEnabled = flowCaptureEnabled ?? AlwaysDisabled;
         _logger = logger;
         _metricRegistration = ZLinkRuntimeMetrics.RegisterDrainState(
             () => Volatile.Read(ref _state));
@@ -97,7 +97,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
         using var flow = ZLinkFlowContext.Enter(
             null,
             null,
-            _flowGenerationEnabled(),
+            _flowCaptureEnabled(),
             ZLinkFlowOrigin.Lifecycle);
         var metricStarted = ZLinkRuntimeMetrics.StartDrain();
         ZLinkDrainResult result;

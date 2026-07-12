@@ -1,9 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotHandlerInvoker(
-    IServiceProvider services,
+    ZLinkScopedHandlerInstanceOwner handlerInstances,
     object spot,
     ZLinkCodecRegistryBuilder codecs,
     IZlinkStreamCompressionCodec? compressionCodec)
@@ -177,7 +178,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
     {
         if (header.Metadata.Count == 0) return ZLinkMessageMetadata.Empty;
 
-        var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
+        var policy = handlerInstances.Services.GetRequiredService<IZLinkMessageMetadataPolicy>();
         Dictionary<string, string>? application = null;
 
         foreach (var (key, value) in header.Metadata.Values)
@@ -353,6 +354,6 @@ internal sealed class ZLinkSpotHandlerInvoker(
     {
         return handlerType.IsInstanceOfType(spot)
             ? spot
-            : ActivatorUtilities.GetServiceOrCreateInstance(services, handlerType);
+            : handlerInstances.Resolve(handlerType);
     }
 }

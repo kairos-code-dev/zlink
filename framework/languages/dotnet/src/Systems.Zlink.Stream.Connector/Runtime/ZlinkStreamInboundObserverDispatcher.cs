@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
-internal sealed class ZlinkStreamInboundObserverDispatcher
+internal sealed class ZlinkStreamInboundObserverDispatcher : IDisposable
 {
     private readonly ZlinkStreamConnectorCallbacks _callbacks;
     private readonly object _gate = new();
@@ -15,6 +15,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
     private int _dropReportPending;
     private ObserverRegistration? _observers;
     private int _queuedCount;
+    private int _disposed;
 
     public ZlinkStreamInboundObserverDispatcher(
         ZlinkStreamTaskRunner taskRunner,
@@ -31,16 +32,35 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
     public IDisposable Add(Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer)
     {
         ArgumentNullException.ThrowIfNull(observer);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        StartDrain();
 
         var registration = new ObserverRegistration(this, observer);
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             registration.Next = _observers;
             _observers = registration;
         }
 
-        StartDrain();
         return registration;
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        lock (_gate)
+        {
+            _observers = null;
+        }
+
+        while (_queue.TryDequeue(out _))
+        {
+        }
+
+        Volatile.Write(ref _queuedCount, 0);
+        _signal.Dispose();
     }
 
     public void Enqueue(ZlinkStreamHeader header, ReadOnlyMemory<byte> wirePayload)
@@ -118,6 +138,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
 
                     try
                     {
+                        using var callback = _callbacks.EnterCallback();
                         await observer.InvokeAsync(observation, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex)
@@ -131,8 +152,17 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
 
     private void StartDrain()
     {
-        if (Interlocked.Exchange(ref _drainStarted, 1) == 0)
+        if (Interlocked.Exchange(ref _drainStarted, 1) != 0) return;
+
+        try
+        {
             _taskRunner.RunDetached(DrainAsync);
+        }
+        catch
+        {
+            Volatile.Write(ref _drainStarted, 0);
+            throw;
+        }
     }
 
     private void ReportDropped()

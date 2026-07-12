@@ -9,16 +9,20 @@ namespace Zlink.Framework.Runtime.Messaging;
 /// </summary>
 internal static class ZLinkUnawaitedSubmit
 {
-    private static readonly ZLinkRuntimeErrorSink Sink = new();
-
-    public static void Observe(ValueTask task, string operationName)
+    public static void Observe(
+        ValueTask task,
+        string operationName,
+        IZLinkRuntimeErrorSink errorSink)
     {
         if (task.IsCompletedSuccessfully) return;
 
-        _ = ObserveAsync(task, operationName);
+        _ = ObserveAsync(task, operationName, errorSink);
     }
 
-    private static async Task ObserveAsync(ValueTask task, string operationName)
+    private static async Task ObserveAsync(
+        ValueTask task,
+        string operationName,
+        IZLinkRuntimeErrorSink errorSink)
     {
         try
         {
@@ -29,7 +33,7 @@ internal static class ZLinkUnawaitedSubmit
         }
         catch (Exception exception)
         {
-            Sink.ReportRuntimeTaskException(operationName, exception);
+            errorSink.ReportRuntimeTaskException(operationName, exception);
         }
     }
 }

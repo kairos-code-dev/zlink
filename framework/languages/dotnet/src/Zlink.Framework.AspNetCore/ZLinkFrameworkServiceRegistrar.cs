@@ -130,9 +130,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkDrainAdmissionGate>(),
                 provider.GetRequiredService<IZLinkDrainExecutor>(),
                 provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
-                () => provider.GetRequiredService<ZLinkFrameworkRegistration>()
-                    .DispatchOptions.Diagnostics.EffectiveMessageFlow
-                    != ZLinkMessageFlowLogMode.Off,
+                () => provider.GetRequiredService<ZLinkFrameworkRuntime>().Flow.CaptureEnabled,
                 provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
         services.TryAddSingleton<IZLinkDrainControl>(static provider =>
             provider.GetRequiredService<ZLinkDrainCoordinator>());
@@ -156,7 +154,8 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkChannelClient>(static provider =>
             provider.GetRequiredService<ZLinkChannelClient>());
         services.AddSingleton<IZLinkChannelRuntimeOptions>(static provider => new ZLinkChannelRuntimeOptions(
-            provider.GetRequiredService<ZLinkFrameworkRuntime>()));
+            provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+            provider.GetService<ZLinkLocationAutoConnectHost>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkFanoutClient>();
@@ -188,7 +187,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                     provider.GetService<ZLinkStoreLocationResolvers>()));
         }
 
-        if (HasSpotNode(registration) && registration.Locations.Enabled)
+        if (HasRouterSpotNode(registration) && registration.Locations.Enabled)
         {
             services.AddSingleton<ZLinkActorClient>();
             services.AddSingleton<IZLinkActorClient>(static provider =>
@@ -235,9 +234,15 @@ internal static class ZLinkFrameworkServiceRegistrar
         return registration.SpotNodes.Count > 0;
     }
 
+    private static bool HasRouterSpotNode(ZLinkFrameworkRegistration registration)
+    {
+        return registration.SpotNodes.Values.Any(static spotNode => spotNode.Router is not null);
+    }
+
     private static bool HasActorCapableSpotNode(ZLinkFrameworkRegistration registration)
     {
-        return registration.SpotNodes.Values.Any(static spotNode => spotNode.ActorFactories.Count > 0);
+        return registration.SpotNodes.Values.Any(static spotNode =>
+            spotNode.Router is not null && spotNode.ActorFactories.Count > 0);
     }
     private static IServiceCollection AddLocationRuntime(
         this IServiceCollection services,
@@ -249,8 +254,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(locations.Options);
         if (locations.StoreInstance is { } store)
         {
-            // One physical store instance serves every store role (draft
-            // 20.2); optional contracts on the same instance come along.
+            services.AddSingleton<IHostedService>(_ => new ZLinkLocationStoreInstanceOwner(store));
             services.AddSingleton(store);
             services.AddSingleton<IZLinkPeerLocationStore>(store);
             services.AddSingleton<IZLinkSpotLocationStore>(store);
@@ -293,6 +297,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         // The emitter is enabled only when AddZLinkMonitoring registered
         // location sources and the dispatcher; otherwise every emit is a
         // no-op and location flows pay nothing.
+        services.AddSingleton(new ZLinkSpotRouterChannelMap(registration.Locations.Options));
         services.AddSingleton<ZLinkSpotHandleRegistry>();
         services.AddSingleton(static provider => new ZLinkLocationEventEmitter(
             provider.GetService<ZLinkMonitoringRegistration>(),
@@ -319,7 +324,8 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
             provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
             provider.GetRequiredService<ZLinkSpotMeshLocationResolver>(),
-            provider.GetRequiredService<ZLinkSpotHandleRegistry>()));
+            provider.GetRequiredService<ZLinkSpotHandleRegistry>(),
+            provider.GetRequiredService<ZLinkSpotRouterChannelMap>()));
         services.AddSingleton<IZLinkSpotHandleResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
         services.AddSingleton<IZLinkActorSpotHandleResolver>(
@@ -374,4 +380,43 @@ internal static class ZLinkFrameworkServiceRegistrar
         return services;
     }
 
+}
+
+internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
+    : IHostedService, IAsyncDisposable
+{
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+
+    public IZLinkLocationStore Store { get; } = store;
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync()
+    {
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
+        if (Store is IAsyncDisposable asyncDisposable)
+            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+        else if (Store is IDisposable disposable)
+            disposable.Dispose();
+    }
 }

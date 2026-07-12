@@ -1,3 +1,5 @@
+using Systems.Zlink.Stream.Connector.Runtime;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal abstract class ZLinkSessionStreamCallBase<TMessage>(
@@ -21,10 +23,10 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         return this;
     }
 
-    protected ValueTask Execute(CancellationToken cancellationToken)
+    protected void Execute(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _builder.Write(
+        var header = _builder.Write(
             (codec, flags, messageName, metadata) => CreateHeader(
                 codec,
                 flags,
@@ -33,8 +35,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
                 context.CurrentDispatchHeader),
             context.Write,
             "Client stream send failed.");
-
-        return ValueTask.CompletedTask;
+        context.TraceWritten(header);
     }
 
     protected abstract ZlinkStreamHeader CreateHeader(
@@ -62,7 +63,7 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = Execute(cancellationToken).AsTask();
+        Execute(cancellationToken);
     }
 
     protected override ZlinkStreamHeader CreateHeader(
@@ -80,7 +81,7 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
             null,
             messageName,
             metadata,
-            ZLinkStreamCorrelation.Next());
+            ZlinkStreamCorrelation.Next());
     }
 }
 
@@ -101,7 +102,7 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = Execute(cancellationToken).AsTask();
+        Execute(cancellationToken);
     }
 
     protected override ZlinkStreamHeader CreateHeader(

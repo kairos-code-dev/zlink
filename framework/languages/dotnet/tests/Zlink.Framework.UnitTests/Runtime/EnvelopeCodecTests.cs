@@ -6,6 +6,32 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class EnvelopeCodecTests
 {
     [Fact]
+    public void Request_envelope_keeps_protocol_correlation_when_observation_is_disabled()
+    {
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            "channel",
+            "request",
+            includeCorrelationId: false,
+            includeDeadline: false);
+
+        Assert.False(string.IsNullOrWhiteSpace(header.CorrelationId));
+        using var encoded = ZLinkEnvelopeCodec.EncodeHeader(header);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(5)]
+    public void Client_call_envelope_rejects_reply_kinds_that_require_the_request_correlation(
+        int kind)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ZLinkClientCallCodec.CreateEnvelope(
+            (ZLinkMessageKind)kind,
+            "channel",
+            "reply"));
+    }
+
+    [Fact]
     public void Envelope_requires_marker_and_roundtrips_flow_fields()
     {
         var flowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d";
@@ -34,6 +60,69 @@ public sealed class EnvelopeCodecTests
         using var missingMarker = Message.From(
             "{\"Kind\":3,\"ChannelName\":\"play\",\"MessageName\":\"Move\",\"ContentType\":\"application/json\"}");
         Assert.Throws<ZLinkEnvelopeProtocolException>(() => ZLinkEnvelopeCodec.DecodeHeader(missingMarker));
+    }
+
+    [Theory]
+    [InlineData(1, null, null, null)]
+    [InlineData(2, null, null, null)]
+    [InlineData(5, "request-1", null, "failed")]
+    [InlineData(3, null, "Invalid", null)]
+    [InlineData(4, null, null, "failed")]
+    public void Envelope_rejects_noncanonical_kind_field_combinations(
+        int kind,
+        string? correlationId,
+        string? errorCode,
+        string? errorMessage)
+    {
+        var header = new ZLinkEnvelopeHeader(
+            (ZLinkMessageKind)kind,
+            "play",
+            "Move",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            correlationId,
+            null,
+            null,
+            errorCode,
+            errorMessage);
+
+        Assert.Throws<ZLinkEnvelopeProtocolException>(() => ZLinkEnvelopeCodec.EncodeHeader(header));
+    }
+
+    [Fact]
+    public void Envelope_accepts_the_five_canonical_kind_numbers()
+    {
+        Assert.Equal(
+            new[] { 1, 2, 3, 4, 5 },
+            Enum.GetValues<ZLinkMessageKind>().Select(static kind => (int)kind).ToArray());
+
+        foreach (var header in new[]
+                 {
+                     Header(ZLinkMessageKind.Request, "request-1"),
+                     Header(ZLinkMessageKind.Response, "request-1"),
+                     Header(ZLinkMessageKind.Command),
+                     Header(ZLinkMessageKind.Publish),
+                     Header(ZLinkMessageKind.Error, "request-1", "RequestFailed")
+                 })
+        {
+            using var encoded = ZLinkEnvelopeCodec.EncodeHeader(header);
+            Assert.Equal(header.Kind, ZLinkEnvelopeCodec.DecodeHeader(encoded).Kind);
+        }
+
+        return;
+
+        static ZLinkEnvelopeHeader Header(
+            ZLinkMessageKind kind,
+            string? correlationId = null,
+            string? errorCode = null) => new(
+            kind,
+            "play",
+            "Move",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            correlationId,
+            null,
+            null,
+            errorCode,
+            errorCode is null ? null : "failed");
     }
 
     [Fact]

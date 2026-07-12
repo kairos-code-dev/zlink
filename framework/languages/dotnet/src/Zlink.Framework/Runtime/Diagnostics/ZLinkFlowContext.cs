@@ -48,9 +48,6 @@ internal static class ZLinkFlowContext
         return Enter(current?.FlowId, current?.Origin, createIfAbsent, origin);
     }
 
-    public static ZLinkFlowValue Create(ZLinkFlowOrigin origin) =>
-        new(ZlinkStreamFlowId.Create(), origin);
-
     internal sealed class State(ZLinkFlowValue value)
     {
         public bool Active { get; set; } = true;

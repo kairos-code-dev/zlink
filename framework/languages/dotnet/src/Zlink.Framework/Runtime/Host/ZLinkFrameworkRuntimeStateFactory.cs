@@ -21,6 +21,7 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
                 context,
                 registration,
                 frameworkRuntime.Services,
+                frameworkRuntime.PrepareErrorSink(),
                 frameworkRuntime.ExecutionOwner);
             await channels.InitializeInboundChannelsAsync(state, channelAdapter).ConfigureAwait(false);
             await channels.InitializePublisherChannelsAsync(state, channelAdapter).ConfigureAwait(false);
@@ -35,7 +36,10 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
             ZLinkFrameworkDebugLog.Startup(error);
             var failures = new ZLinkFailureCollector(error);
             if (state is not null)
+            {
                 await failures.CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
+                frameworkRuntime.DetachErrorSink(state.ErrorSink);
+            }
             else if (context is not null)
                 await failures.CaptureAsync(context.DisposeAsync).ConfigureAwait(false);
             failures.ThrowIfAny();

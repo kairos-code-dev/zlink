@@ -240,11 +240,29 @@ public sealed partial class StreamConnectorTests
         await server;
     }
 
+    [Fact]
+    public void TestMetricReaderRetainsOnlyABoundedSnapshot()
+    {
+        var metrics = ConnectorMetrics.BeginScope();
+        for (var index = 0; index < ConnectorMetricCollector.MaxRetainedSamples * 2; index++)
+            ZlinkStreamRuntimeMetrics.RecordReconnectAttempt();
+
+        Assert.Equal(
+            ConnectorMetricCollector.MaxRetainedSamples,
+            metrics.Count("zlink.stream.reconnects"));
+        Assert.InRange(
+            ConnectorMetrics.StoredSampleCount,
+            1,
+            ConnectorMetricCollector.MaxRetainedSamples);
+    }
+
     private sealed class ConnectorMetricCollector
     {
+        internal const int MaxRetainedSamples = 4096;
         private static readonly AsyncLocal<bool> ThrowCurrentMeasurement = new();
         private readonly ConcurrentDictionary<string, Instrument> _instruments = new(StringComparer.Ordinal);
-        private readonly ConcurrentQueue<MetricSample> _samples = new();
+        private readonly object _samplesGate = new();
+        private readonly Queue<MetricSample> _samples = new();
         private readonly MeterListener _listener = new();
         private long _nextSequence;
 
@@ -263,6 +281,14 @@ public sealed partial class StreamConnectorTests
 
         public MetricScope BeginScope() => new(this, Interlocked.Read(ref _nextSequence));
 
+        public int StoredSampleCount
+        {
+            get
+            {
+                lock (_samplesGate) return _samples.Count;
+            }
+        }
+
         public IDisposable ThrowOnMeasurement()
         {
             ThrowCurrentMeasurement.Value = true;
@@ -276,8 +302,13 @@ public sealed partial class StreamConnectorTests
             Assert.Equal(instrumentType, instrument.GetType());
         }
 
-        private IReadOnlyList<MetricSample> Samples(string name, long afterSequence) =>
-            _samples.Where(sample => sample.Sequence > afterSequence && sample.Name == name).ToArray();
+        private IReadOnlyList<MetricSample> Samples(string name, long afterSequence)
+        {
+            lock (_samplesGate)
+                return _samples
+                    .Where(sample => sample.Sequence > afterSequence && sample.Name == name)
+                    .ToArray();
+        }
 
         private void Record<T>(
             Instrument instrument,
@@ -290,11 +321,15 @@ public sealed partial class StreamConnectorTests
 
             var copiedTags = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var tag in tags) copiedTags[tag.Key] = tag.Value?.ToString() ?? string.Empty;
-            _samples.Enqueue(new MetricSample(
-                Interlocked.Increment(ref _nextSequence),
-                instrument.Name,
-                measurement,
-                copiedTags));
+            lock (_samplesGate)
+            {
+                _samples.Enqueue(new MetricSample(
+                    Interlocked.Increment(ref _nextSequence),
+                    instrument.Name,
+                    measurement,
+                    copiedTags));
+                while (_samples.Count > MaxRetainedSamples) _samples.Dequeue();
+            }
             if (ThrowCurrentMeasurement.Value)
                 throw new InvalidOperationException("metrics listener failed");
         }

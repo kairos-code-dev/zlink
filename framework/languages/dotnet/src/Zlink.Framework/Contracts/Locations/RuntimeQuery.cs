@@ -1,9 +1,9 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Operational read surface for tools and self-checks. Every query reads
-/// the store directly without a cache. List methods return live rows only;
-/// stale observations are exposed by topology and summary queries.
+/// Operational read surface for tools and self-checks. Each query observes
+/// the current location state. List methods return live rows only; topology
+/// and summary queries also identify stale observations.
 /// </summary>
 public interface IZLinkLocationRuntimeQuery
 {

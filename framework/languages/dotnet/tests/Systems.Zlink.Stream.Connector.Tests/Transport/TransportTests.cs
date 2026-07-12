@@ -44,6 +44,20 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task StreamCloseFailureStillDisposesTcpClient()
+    {
+        using var tcp = new TcpClient();
+        var failure = new InvalidOperationException("expected stream dispose failure");
+        var connection = new StreamConnection(tcp, new FaultingDisposeStream(failure));
+
+        var observed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await connection.CloseAsync(CancellationToken.None));
+
+        Assert.Same(failure, observed);
+        Assert.Null(tcp.Client);
+    }
+
+    [Fact]
     public async Task TcpSendUsesHeaderPayloadFrame()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -340,5 +354,10 @@ public sealed partial class StreamConnectorTests
             () => connector.State == ZlinkStreamConnectionState.Disconnected,
             TimeSpan.FromSeconds(5));
         await server;
+    }
+
+    private sealed class FaultingDisposeStream(Exception failure) : MemoryStream
+    {
+        public override ValueTask DisposeAsync() => ValueTask.FromException(failure);
     }
 }

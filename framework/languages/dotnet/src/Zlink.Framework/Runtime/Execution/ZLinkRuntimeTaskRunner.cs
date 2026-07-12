@@ -165,8 +165,9 @@ internal sealed class ZLinkRuntimeTaskRunner
         Exception exception)
     {
         ZLinkFrameworkDebugLog.TaskFailure(name, exception);
-        ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(exception);
     }
+
+    internal IZLinkRuntimeErrorSink ErrorSink => _errorSink;
 
     private sealed record TaskState(
         ZLinkRuntimeTaskRunner Runner,

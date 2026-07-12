@@ -19,14 +19,17 @@ internal readonly record struct ZLinkActorClaimActivation<TActor>(
 
 internal sealed class ZLinkActorOwnershipCoordinator(
     ZLinkLocationRuntime runtime,
-    ZLinkStoreLocationResolvers resolver) : IZLinkActorLocationLifecycle, IDisposable, IAsyncDisposable
+    ZLinkStoreLocationResolvers resolver) : IZLinkActorLocationLifecycle, IAsyncDisposable
 {
     private readonly object _gate = new();
+    private readonly object _disposeStartGate = new();
     private readonly SemaphoreSlim _backgroundDrainGate = new(1, 1);
     private readonly Dictionary<string, TrackedActor> _actors = new(StringComparer.Ordinal);
+    private readonly HashSet<TrackedActor> _trackedActors = [];
     private CancellationTokenSource _reconciliationStop = new();
     private bool _backgroundStopping;
     private int _disposed;
+    private Task? _disposeTask;
 
     public async ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
         string actorType,
@@ -38,7 +41,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         ZLinkActorClaimMode claimMode = ZLinkActorClaimMode.NewOwner)
         where TActor : class
     {
-        var claim = await ClaimActorAsync(actorType, actorId, nodeRid, deactivate, claimMode, cancellationToken)
+        var claim = await ClaimActorCoreAsync(actorType, actorId, nodeRid, deactivate, claimMode, cancellationToken)
             .ConfigureAwait(false);
         switch (claim.Status)
         {
@@ -77,24 +80,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         }
     }
 
-    public async ValueTask<ZLinkActorClaimResult> ClaimActorAsync(
-        string actorType,
-        string actorId,
-        RoutingId nodeRid,
-        Func<CancellationToken, ValueTask>? deactivate,
-        CancellationToken cancellationToken)
-    {
-        return await ClaimActorAsync(
-                actorType,
-                actorId,
-                nodeRid,
-                deactivate,
-                ZLinkActorClaimMode.NewOwner,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask<ZLinkActorClaimResult> ClaimActorAsync(
+    private async ValueTask<ZLinkActorClaimResult> ClaimActorCoreAsync(
         string actorType,
         string actorId,
         RoutingId nodeRid,
@@ -171,9 +157,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             case ZLinkLocationWriteStatus.Stored:
                 lock (_gate)
                 {
-                    _actors[canonical] = new TrackedActor(
+                    var tracked = new TrackedActor(
                         row with { Generation = result.Generation },
                         deactivate);
+                    _actors[canonical] = tracked;
+                    _trackedActors.Add(tracked);
                 }
 
                 return new ZLinkActorClaimResult(ZLinkActorClaimStatus.Claimed, null);
@@ -389,26 +377,12 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     {
         try
         {
-            while (!stopToken.IsCancellationRequested)
-            {
-                try
-                {
-                    await ReleaseActorAsync(actorId, stopToken).ConfigureAwait(false);
-                    return;
-                }
-                catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"failed actor activation claim release retry for '{actorId}': {exception.Message}");
-                }
-
-                await Task.Delay(TimeSpan.FromMilliseconds(100), stopToken)
-                    .ConfigureAwait(false);
-            }
+            await ZLinkReconciliationRunner.RunAsync(
+                    token => ReleaseActorAsync(actorId, token),
+                    exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"failed actor activation claim release retry for '{actorId}': {exception.Message}"),
+                    stopToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
         {
@@ -424,18 +398,34 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         }
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _reconciliationStop.Cancel();
+        lock (_disposeStartGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task DisposeCoreAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            _reconciliationStop.Cancel();
+        Interlocked.Exchange(ref _disposed, 1);
+        _reconciliationStop.Cancel();
         await DrainBackgroundWorkCoreAsync().ConfigureAwait(false);
+
+        TrackedActor[] trackedActors;
+        lock (_gate)
+        {
+            trackedActors = _trackedActors.ToArray();
+            _actors.Clear();
+            _trackedActors.Clear();
+        }
+
+        foreach (var tracked in trackedActors)
+        {
+            await tracked.WriteGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            tracked.WriteGate.Dispose();
+        }
+
         _reconciliationStop.Dispose();
+        _backgroundDrainGate.Dispose();
     }
 
     internal ValueTask PauseBackgroundWorkAsync()

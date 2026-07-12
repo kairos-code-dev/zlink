@@ -86,6 +86,24 @@ public sealed class AutoConnectReconcilerTests
         Assert.True(row.Draining);
     }
 
+    [Fact]
+    public async Task Runtime_weight_change_renews_the_existing_local_row()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Reconciler.TickAsync();
+
+        fixture.Reconciler.SetLocalWeight(0);
+        await fixture.Reconciler.TickAsync();
+
+        var row = Assert.Single(await fixture.Store.ListPeersAsync(
+            new ZLinkPeerLocationFilter(
+                MeshName: "play",
+                Role: ZLinkLocationRole.Dealer,
+                Endpoint: "tcp://l:1")));
+        Assert.Equal(0u, row.Weight);
+        Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
+    }
+
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]

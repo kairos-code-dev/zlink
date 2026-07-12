@@ -1,7 +1,46 @@
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.AspNetCore;
+
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class RuntimeConcurrencyBoundaryTests
 {
+    [Fact]
+    public async Task RuntimeEventHandlerFailure_DoesNotEscapeAfterRuntimeStops()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IZLinkRuntimeEventHandler<TestRuntimeEvent>, ThrowingRuntimeEventHandler>();
+        services.AddZLinkFramework(_ => { });
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        await runtime.StartAsync(CancellationToken.None);
+        await runtime.StopAsync(CancellationToken.None);
+
+        await provider.GetRequiredService<IZLinkRuntimeEventPublisher>()
+            .PublishAsync(new TestRuntimeEvent(), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task RuntimeEventHandlerFailure_DoesNotEscapeWhenRuntimeStopsDuringDispatch()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<BlockingRuntimeEventHandlerState>();
+        services.AddScoped<IZLinkRuntimeEventHandler<TestRuntimeEvent>, BlockingThrowingRuntimeEventHandler>();
+        services.AddZLinkFramework(_ => { });
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var state = provider.GetRequiredService<BlockingRuntimeEventHandlerState>();
+        await runtime.StartAsync(CancellationToken.None);
+
+        var publish = provider.GetRequiredService<IZLinkRuntimeEventPublisher>()
+            .PublishAsync(new TestRuntimeEvent(), CancellationToken.None).AsTask();
+        await state.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await runtime.StopAsync(CancellationToken.None);
+        state.Release.TrySetResult();
+
+        await publish.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [Fact]
     public async Task BoundSessionDeferredScope_DrainsOperationAddedWhileAnotherOperationIsRunning()
     {
@@ -199,5 +238,38 @@ public sealed class RuntimeConcurrencyBoundaryTests
         await scope.DrainAsync(CancellationToken.None);
         Assert.Equal(2, attempts);
         Assert.Equal(["first", "second"], order);
+    }
+
+    private sealed record TestRuntimeEvent : IZLinkRuntimeEvent
+    {
+        public string SourceName => "test";
+
+        public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
+    }
+
+    private sealed class ThrowingRuntimeEventHandler : IZLinkRuntimeEventHandler<TestRuntimeEvent>
+    {
+        public ValueTask HandleAsync(TestRuntimeEvent @event, CancellationToken cancellationToken) =>
+            ValueTask.FromException(new InvalidOperationException("handler failed"));
+    }
+
+    private sealed class BlockingRuntimeEventHandlerState
+    {
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingThrowingRuntimeEventHandler(BlockingRuntimeEventHandlerState state)
+        : IZLinkRuntimeEventHandler<TestRuntimeEvent>
+    {
+        public async ValueTask HandleAsync(TestRuntimeEvent @event, CancellationToken cancellationToken)
+        {
+            state.Entered.TrySetResult();
+            await state.Release.Task.WaitAsync(cancellationToken);
+            throw new InvalidOperationException("handler failed after runtime stop");
+        }
     }
 }

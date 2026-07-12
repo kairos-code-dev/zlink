@@ -48,16 +48,13 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
 {
     public void Submit(CancellationToken cancellationToken = default)
     {
-        using (var operation = runtime.EnterOperation())
-            runtime.GetRouteChannel(routerChannelId);
-        ZLinkUnawaitedSubmit.Observe(
-            runtime.SubmitRouteSendAsync(
+        var accepted = runtime.SubmitRouteSendAsync(
                 routerChannelId,
                 targetNodeRid,
                 ZLinkMessageNameResolver.ResolveFromMessage(message),
                 message,
-                cancellationToken),
-            "route send submit");
+                cancellationToken);
+        ZLinkUnawaitedSubmit.Observe(accepted, "route send submit", runtime.ErrorSink);
     }
 }
 
@@ -96,13 +93,9 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
 {
     public void Submit(CancellationToken cancellationToken = default)
     {
-        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "route spot send submit");
-    }
-
-    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
-    {
         cancellationToken.ThrowIfCancellationRequested();
-        await SubmitToSnapshotAsync(target.Snapshot, cancellationToken).ConfigureAwait(false);
+        var accepted = SubmitToSnapshotAsync(target.Snapshot, cancellationToken);
+        ZLinkUnawaitedSubmit.Observe(accepted, "route spot send submit", runtime.ErrorSink);
     }
 
     private ValueTask SubmitToSnapshotAsync(

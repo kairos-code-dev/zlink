@@ -35,6 +35,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkStreamRuntimeManager _streams;
     private readonly object _workerPoolGate = new();
     private ZLinkMessageFlowTracer? _flow;
+    private ZLinkRuntimeErrorSink? _generationErrorSink = new();
     private int _lifecyclePhase;
     private ZLinkFrameworkRuntimeState? _state;
     private ZLinkWorkerPool? _workerPool;
@@ -51,6 +52,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         ZLinkHandlerDispatcher dispatcher)
     {
         Services = services;
+        _actorBoundSessions = new ZLinkActorBoundSessionRegistry(this);
         _backendAdapterFactory = backendAdapterFactory;
         Registration = registration;
         _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
@@ -87,8 +89,26 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     // send/request/publish), built once. Inbound surfaces use the reporter's Flow.
     internal ZLinkMessageFlowTracer Flow => _flow ??= new ZLinkMessageFlowTracer(
         Registration.DispatchOptions,
-        Services.GetService<ILogger<ZLinkFrameworkRuntime>>(),
+        ZLinkMessageFlowTracer.CreateLogger(Services.GetService<ILoggerFactory>()),
         this);
+
+    internal ZLinkRuntimeErrorSink ErrorSink => Volatile.Read(ref _generationErrorSink)
+                                                 ?? throw new InvalidOperationException(
+                                                     "The framework runtime error sink is not active.");
+
+    internal ZLinkRuntimeErrorSink PrepareErrorSink()
+    {
+        var current = Volatile.Read(ref _generationErrorSink);
+        if (current is not null) return current;
+        var created = new ZLinkRuntimeErrorSink();
+        return Interlocked.CompareExchange(ref _generationErrorSink, created, null) ?? created;
+    }
+
+    internal void DetachErrorSink(ZLinkRuntimeErrorSink errorSink) =>
+        Interlocked.CompareExchange(ref _generationErrorSink, null, errorSink);
+
+    internal void TryReportUnhandledCallbackException(Exception exception) =>
+        Volatile.Read(ref _generationErrorSink)?.ReportUnhandledCallbackException(exception);
 
     internal IServiceProvider Services { get; }
 
@@ -406,6 +426,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
         if (state is not null)
             await CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
+        if (state is not null) DetachErrorSink(state.ErrorSink);
         Capture(ResetActorRuntimeGeneration);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);

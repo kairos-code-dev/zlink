@@ -13,6 +13,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource;
     private readonly ZLinkAsyncSubmitter _submitter;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
 
     public ZLinkRouteChannelRuntime(
@@ -24,15 +26,18 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         IZLinkRouteInternalPacketDispatcher? internalPackets,
         CancellationToken stopToken,
         object executionOwner,
-        ZLinkFrameworkRuntime? frameworkRuntime = null)
+        ZLinkFrameworkRuntime? frameworkRuntime = null,
+        IZLinkRuntimeErrorSink? errorSink = null)
     {
         _registration = registration;
         _router = router;
         var internalPacketDispatcher = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
         var codecs = frameworkRegistration.Codecs;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
+        errorSink ??= frameworkRuntime?.ErrorSink
+                      ?? throw new InvalidOperationException("Route channel runtime requires a runtime error sink.");
         _taskRunner = new ZLinkRuntimeTaskRunner(
-            new ZLinkRuntimeErrorSink(),
+            errorSink,
             _stopSource.Token,
             executionOwner);
         _submitter = new ZLinkAsyncSubmitter(
@@ -60,10 +65,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 internalPacketDispatcher,
                 new ZLinkDispatchErrorReporter(
                     frameworkRegistration.DispatchOptions,
-                    services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkDispatchErrorReporter>(),
+                    ZLinkMessageFlowTracer.CreateLogger(services.GetService<ILoggerFactory>()),
                     frameworkRuntime),
                 frameworkRuntime,
-                services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRoutePacketDispatcher>()));
+                services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRoutePacketDispatcher>()),
+            errorSink);
     }
 
     public string RouterChannelId => _registration.RouterChannelId;
@@ -73,7 +79,13 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     internal void RequestStop() => _stopSource.Cancel();
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
     {
         var failures = new List<Exception>();
         Capture(RequestStop);

@@ -21,7 +21,7 @@ internal sealed class ZLinkSubmitOperationFactory(
     public PendingSubmit CreateRequest<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
-        TaskCompletionSource<T> completion)
+        ZLinkRequestCompletion<T> completion)
     {
         return PendingSubmit.CreateRequest(parts, trySubmit, ResolveDeadlineOrThrow(parts), wake, completion);
     }

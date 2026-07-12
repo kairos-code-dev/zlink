@@ -65,9 +65,10 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     ///     Gets the number of received messages with <paramref name="name" />.
     /// </summary>
     /// <remarks>
-    ///     The count includes messages that may already have been handled by a
-    ///     callback or consumed by a wait operation, so it is intended for
-    ///     diagnostics and scenario assertions rather than production flow control.
+    ///     The count represents messages still retained in the bounded unread
+    ///     history. A wait operation removes the message it consumes. The value is
+    ///     intended for diagnostics and scenario assertions rather than production
+    ///     flow control.
     /// </remarks>
     int ReceivedCount(string name);
 

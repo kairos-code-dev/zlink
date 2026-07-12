@@ -6,7 +6,8 @@ internal sealed class ZLinkRouteReceivePump(
     IZLinkBackendRouterSocket router,
     Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
     string routerChannelId,
-    ZLinkRoutePacketDispatcher dispatcher)
+    ZLinkRoutePacketDispatcher dispatcher,
+    IZLinkRuntimeErrorSink errorSink)
 {
     private readonly object _dispatchGate = new();
     private readonly HashSet<Task> _dispatchTasks = [];
@@ -120,7 +121,7 @@ internal sealed class ZLinkRouteReceivePump(
                 }
                 catch (Exception ex)
                 {
-                    ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+                    errorSink.ReportUnhandledCallbackException(ex);
                 }
             },
             CancellationToken.None);

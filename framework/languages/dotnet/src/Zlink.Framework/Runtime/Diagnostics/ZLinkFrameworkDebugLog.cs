@@ -17,6 +17,12 @@ internal static class ZLinkFrameworkDebugLog
         if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_TASKS")) Write($"[zlink-framework] task '{taskName}' failed: {exception}");
     }
 
+    public static void UnhandledCallbackFailure(Exception exception)
+    {
+        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_TASKS"))
+            Write($"[zlink-framework] unhandled callback failed: {exception}");
+    }
+
     private static bool IsEnabled(string variableName)
     {
         return Environment.GetEnvironmentVariable(variableName) == "1";

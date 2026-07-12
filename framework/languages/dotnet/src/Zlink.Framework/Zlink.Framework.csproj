@@ -21,4 +21,15 @@
         <Compile Include="../Shared/ZLinkCanonicalLocationKeyFormatter.cs"
                  Link="Internal/ZLinkCanonicalLocationKeyFormatter.cs"/>
     </ItemGroup>
+
+    <Target Name="PinStreamConnectorPackageDependency"
+            AfterTargets="_GetProjectReferenceVersions">
+        <ItemGroup>
+            <_ProjectReferencesWithVersions
+                Update="@(_ProjectReferencesWithVersions)"
+                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'">
+                <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+            </_ProjectReferencesWithVersions>
+        </ItemGroup>
+    </Target>
 </Project>

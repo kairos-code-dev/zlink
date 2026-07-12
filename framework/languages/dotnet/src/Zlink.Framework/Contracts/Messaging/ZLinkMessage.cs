@@ -5,7 +5,7 @@ namespace Zlink.Framework.Contracts.Messaging;
 
 public sealed class ZLinkMessage
 {
-    private readonly ZLinkCodecRegistryBuilder? _codecs;
+    private readonly ZLinkCodecRegistrySnapshot? _codecs;
     private readonly Type? _declaredType;
     private readonly ReadOnlyMemory<byte> _payload;
     private readonly object? _value;
@@ -20,7 +20,7 @@ public sealed class ZLinkMessage
         ReadOnlyMemory<byte> payload,
         string? contentType,
         ZlinkStreamCodec? streamCodec,
-        ZLinkCodecRegistryBuilder? codecs)
+        ZLinkCodecRegistrySnapshot? codecs)
     {
         _payload = payload;
         ContentType = contentType;
@@ -60,28 +60,10 @@ public sealed class ZLinkMessage
     {
         if (_declaredType is not null)
         {
-            var header = new ZLinkEnvelopeHeader(
-                ZLinkMessageKind.Request,
-                string.Empty,
-                string.Empty,
-                ZLinkEnvelopeCodec.DefaultContentType,
-                null,
-                null,
-                null,
-                null,
-                null);
-            var parts = ZLinkEnvelopeCodec.EncodeParts(header, _value, _declaredType, codecs);
-            try
-            {
-                var resolvedHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
-                return new EncodedZLinkMessage(
-                    resolvedHeader.ContentType,
-                    ZLinkEncodedPayload.From(parts[1].AsReadOnlyMemory()));
-            }
-            finally
-            {
-                ZLinkMessageParts.DisposeAll(parts);
-            }
+            using var payload = ZLinkEnvelopeCodec.EncodeBody(_value, _declaredType, codecs);
+            return new EncodedZLinkMessage(
+                ZLinkEnvelopeCodec.ResolveContentType(_value, _declaredType, codecs),
+                ZLinkEncodedPayload.From(payload.AsReadOnlyMemory()));
         }
 
         return new EncodedZLinkMessage(
@@ -99,12 +81,13 @@ public sealed class ZLinkMessage
         ReadOnlyMemory<byte> payload,
         ZLinkCodecRegistryBuilder codecs)
     {
-        var contentType = codecs.TryResolveStreamContentType(codec, out var resolved)
+        var snapshot = codecs.Snapshot();
+        var contentType = snapshot.TryResolveStreamContentType(codec, out var resolved)
             ? resolved
             : codec == ZlinkStreamCodec.Json
                 ? ZLinkEnvelopeCodec.DefaultContentType
                 : null;
-        return new ZLinkMessage(payload, contentType, codec, codecs);
+        return new ZLinkMessage(payload, contentType, codec, snapshot);
     }
 
     internal static ZLinkMessage FromEnvelopePayload(
@@ -112,7 +95,11 @@ public sealed class ZLinkMessage
         Message payload,
         ZLinkCodecRegistryBuilder codecs)
     {
-        return new ZLinkMessage(payload.AsReadOnlyMemory().ToArray(), contentType, null, codecs);
+        return new ZLinkMessage(
+            payload.AsReadOnlyMemory().ToArray(),
+            contentType,
+            null,
+            codecs.Snapshot());
     }
 
     private object? Decode(Type targetType)

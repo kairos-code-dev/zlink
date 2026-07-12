@@ -8,9 +8,32 @@ public sealed class BackendMonitorWrapperTests
         var monitor = new RecordingSocketMonitor(null);
         var wrapper = new ZLinkBackendSocketMonitorWrapper(monitor);
 
-        var error = Assert.Throws<ZlinkRecvException>(() => wrapper.Recv());
+        var received = wrapper.TryRecv(out _);
 
-        Assert.Equal(ZlinkRecvException.ErrorCode.NoData, error.Result);
+        Assert.False(received);
+        Assert.Equal(RecvFlags.DontWait, monitor.LastRecvFlags);
+    }
+
+    [Fact]
+    public void BackendMonitorWrapper_Maps_Available_Event()
+    {
+        var nativeEvent = new MonitorEvent(
+            MonitorEventType.Connected,
+            7,
+            RoutingId.From("peer-a"),
+            "tcp://127.0.0.1:5001",
+            "tcp://127.0.0.1:5002");
+        var monitor = new RecordingSocketMonitor(nativeEvent);
+        var wrapper = new ZLinkBackendSocketMonitorWrapper(monitor);
+
+        var received = wrapper.TryRecv(out var monitorEvent);
+
+        Assert.True(received);
+        Assert.Equal(ZLinkSocketNativeEventType.Connected, monitorEvent.NativeEvent);
+        Assert.Equal(nativeEvent.Value, monitorEvent.Value);
+        Assert.Equal(nativeEvent.RoutingId, monitorEvent.RoutingId);
+        Assert.Equal(nativeEvent.LocalAddr, monitorEvent.LocalAddr);
+        Assert.Equal(nativeEvent.RemoteAddr, monitorEvent.RemoteAddr);
         Assert.Equal(RecvFlags.DontWait, monitor.LastRecvFlags);
     }
 

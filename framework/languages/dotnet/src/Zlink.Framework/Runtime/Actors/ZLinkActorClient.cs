@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Systems.Zlink.Stream.Connector.Runtime;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -19,52 +20,29 @@ internal sealed class ZLinkActorClient(
         return new ZLinkActorRequestCall<TRequest>(this, actor, request);
     }
 
-    private async ValueTask SendAsync<TMessage>(
+    private void SubmitSend<TMessage>(
         ActorRef actor,
         string packetName,
         TMessage message,
         CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.CaptureEnabled);
+        cancellationToken.ThrowIfCancellationRequested();
+        var nodeRuntime = runtime.GetActorClientSpotNodeRuntime();
+        EnsureRouteAvailable(nodeRuntime, actor);
+        var node = nodeRuntime.Node;
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
             null,
             packetName,
             message);
-        await SubmitActorSendAsync(actor.ToBackend(), parts, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask<TReply> RequestAsync<TRequest, TReply>(
-        ActorRef actor,
-        string packetName,
-        TRequest request,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        using var operation = runtime.EnterOperation(countAsRequest: true);
-        var parts = CreatePacketParts(
-            ZlinkStreamMessageKind.Request,
-            new ZlinkStreamRequestSeq(1),
-            packetName,
-            request);
-        return await SubmitActorRequestAsync<TReply>(
-                actor.ToBackend(),
-                parts,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask SubmitActorSendAsync(
-        ZLinkBackendActorRef actor,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        var node = await GetActorSpotNodeAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!node.SendToActor(actor, parts, SendFlags.None))
+            TraceSent(actor, packetName, parts, ZLinkDispatchMessageKind.ActorSend);
+            if (!node.SendToActor(actor.ToBackend(), parts, SendFlags.DontWait))
             {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RouteNotConnected,
@@ -82,13 +60,60 @@ internal sealed class ZLinkActorClient(
         }
     }
 
+    private async ValueTask<TReply> RequestAsync<TRequest, TReply>(
+        ActorRef actor,
+        string packetName,
+        TRequest request,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken)
+    {
+        using var operation = runtime.EnterOperation(countAsRequest: true);
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.CaptureEnabled);
+        var nodeRuntime = await GetActorSpotNodeAsync(cancellationToken).ConfigureAwait(false);
+        EnsureRouteAvailable(nodeRuntime, actor);
+        var node = nodeRuntime.Node;
+        var parts = CreatePacketParts(
+            ZlinkStreamMessageKind.Request,
+            new ZlinkStreamRequestSeq(1),
+            packetName,
+            request);
+        TraceSent(actor, packetName, parts, ZLinkDispatchMessageKind.ActorRequest);
+        return await SubmitActorRequestAsync<TReply>(
+                node,
+                actor.ToBackend(),
+                parts,
+                timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private void TraceSent(
+        ActorRef actor,
+        string packetName,
+        IReadOnlyList<Message> parts,
+        ZLinkDispatchMessageKind messageKind)
+    {
+        if (!runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent)) return;
+
+        var header = ZLinkStreamProtocolDefaults.DecodeHeader(parts[0].AsReadOnlyMemory());
+        runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+            ZLinkMessageFlowOutcome.Sent,
+            ZLinkDispatchErrorSurface.SpotActor,
+            messageKind,
+            packetName,
+            CorrelationId: header.CorrelationId,
+            ActorId: actor.ActorId));
+    }
+
     private async ValueTask<TReply> SubmitActorRequestAsync<TReply>(
+        IZLinkBackendSpotNode node,
         ZLinkBackendActorRef actor,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var node = await GetActorSpotNodeAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<Message> reply;
         try
         {
@@ -122,16 +147,25 @@ internal sealed class ZLinkActorClient(
         }
     }
 
-    private async ValueTask<IZLinkBackendSpotNode> GetActorSpotNodeAsync(
+    private async ValueTask<ZLinkSpotNodeRuntime> GetActorSpotNodeAsync(
         CancellationToken cancellationToken)
     {
-        var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
-        lock (state.SyncRoot)
-        {
-            return state.SpotNodes.Values.FirstOrDefault()?.Node
-                   ?? throw new ZLinkConfigurationException(
-                       "Actor client requires a configured SPOT node.");
-        }
+        await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
+        return runtime.GetActorClientSpotNodeRuntime();
+    }
+
+    private static void EnsureRouteAvailable(
+        ZLinkSpotNodeRuntime node,
+        ActorRef actor)
+    {
+        if (actor.NodeRid == node.Node.RoutingId
+            || !node.IsExplicitManualRouterRouteDisconnected(actor.NodeRid))
+            return;
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RouteNotConnected,
+            $"Actor route to node '{actor.NodeRid}' is not connected.",
+            true);
     }
 
     private static IReadOnlyList<Message> CreatePacketParts<TMessage>(
@@ -147,7 +181,7 @@ internal sealed class ZLinkActorClient(
             requestSeq,
             packetName,
             ZlinkStreamMetadata.Empty,
-            ZLinkStreamCorrelation.Next());
+            ZlinkStreamCorrelation.Next());
         var payload = ZLinkEnvelopeCodec.EncodeJsonBytes(message, message?.GetType() ?? typeof(TMessage));
         return
         [
@@ -249,13 +283,11 @@ internal sealed class ZLinkActorClient(
     {
         public void Submit(CancellationToken cancellationToken = default)
         {
-            ZLinkUnawaitedSubmit.Observe(
-                client.SendAsync(
-                    actor,
-                    ZLinkMessageNameResolver.ResolveFromMessage(message),
-                    message,
-                    cancellationToken),
-                "actor submit");
+            client.SubmitSend(
+                actor,
+                ZLinkMessageNameResolver.ResolveFromMessage(message),
+                message,
+                cancellationToken);
         }
     }
 

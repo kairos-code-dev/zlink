@@ -22,6 +22,11 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         CancellationToken cancellationToken)
     {
         var payload = DecodeJoinPayload(joinRequest);
+        using var currentFlow = ZLinkFlowContext.Enter(
+            payload.FlowId,
+            payload.FlowOrigin,
+            runtime.Flow.CaptureEnabled,
+            ZLinkFlowOrigin.Inbound);
         if (!actorJoins.TryResolve(out var descriptor) || descriptor is null)
         {
             ReplyRejected(joinRequest, payload.MessageName, "no-join-handler", LogLevel.Debug);
@@ -109,10 +114,9 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             return;
         }
 
-        var replyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+        var replyParts = ZLinkSpotReplyEnvelope.EncodeActorJoinReplyParts(
             channelName,
             payload.MessageName,
-            null,
             result.Reply,
             typeof(ZLinkMessage),
             runtime.Registration.Codecs);
@@ -144,6 +148,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                         envelope.ContentType,
                         request,
                         runtime.Registration.Codecs),
+                    null,
+                    null,
                     null);
             }
             catch
@@ -157,12 +163,15 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                     ZLinkEnvelopeCodec.DefaultContentType,
                     joinRequest.Parts[0],
                     runtime.Registration.Codecs),
+                null,
+                null,
                 null);
         }
 
+        ZLinkEnvelopeHeader? header = null;
         try
         {
-            var header = ZLinkEnvelopeCodec.DecodeHeader(joinRequest.Parts);
+            header = ZLinkEnvelopeCodec.DecodeHeader(joinRequest.Parts);
             if (joinRequest.Parts.Count <= 1)
                 throw new InvalidOperationException("Actor join request body part is missing.");
 
@@ -173,15 +182,22 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                     header.ContentType,
                     joinRequest.Parts[1],
                     runtime.Registration.Codecs),
-                null);
+                null,
+                header.FlowId,
+                header.FlowOrigin);
         }
         catch (Exception ex)
         {
+            var validFlow = header is null
+                ? (FlowId: (string?)null, FlowOrigin: (ZLinkFlowOrigin?)null)
+                : ZLinkEnvelopeCodec.ValidFlow(header);
             return new JoinPayload(
                 true,
                 typeof(Message).Name,
                 ZLinkMessage.Empty,
-                ex);
+                ex,
+                validFlow.FlowId,
+                validFlow.FlowOrigin);
         }
     }
 
@@ -193,6 +209,12 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         Exception? exception = null,
         Type? actorType = null)
     {
+        var errorReason = reason switch
+        {
+            "payload-decode-failed" => ZLinkDispatchErrorReason.PayloadDecodeFailed,
+            "handler-exception" or "join-commit-failed" => ZLinkDispatchErrorReason.HandlerException,
+            _ => ZLinkDispatchErrorReason.HandlerMissing
+        };
         ZLinkMessageFlowLogger.Rejected(
             _logger,
             level,
@@ -209,7 +231,17 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             "Request",
             exception,
             actorType?.Name,
-            dispatchErrors?.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error) ?? true);
+            writeLog: dispatchErrors is null);
+        dispatchErrors?.Report(new ZLinkDispatchFailure(
+            ZLinkDispatchErrorSurface.SpotActor,
+            ZLinkDispatchMessageKind.Request,
+            errorReason,
+            ZLinkDispatchErrorAction.ReplyError,
+            messageName,
+            channelName,
+            SpotRid: joinRequest.TargetSpotRid.ToHex(),
+            ActorId: joinRequest.TargetActor.ActorId,
+            Exception: exception));
         using var emptyReply = Message.From(ReadOnlySpan<byte>.Empty);
         nativeSpot.ReplyActorJoin(joinRequest, 1, emptyReply);
     }
@@ -218,5 +250,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         bool UsesEnvelope,
         string MessageName,
         ZLinkMessage Request,
-        Exception? Error);
+        Exception? Error,
+        string? FlowId,
+        ZLinkFlowOrigin? FlowOrigin);
 }

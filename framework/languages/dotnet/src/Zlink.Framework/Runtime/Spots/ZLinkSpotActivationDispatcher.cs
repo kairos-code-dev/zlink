@@ -37,9 +37,10 @@ internal sealed class ZLinkSpotActivationDispatcher
         this.actors = actors;
         this.subscriptions = subscriptions;
         this.handlerInvoker = handlerInvoker;
-        var flowLogger = runtime.Services.GetService<ILoggerFactory>()
-            ?.CreateLogger<ZLinkSpotActivationDispatcher>();
-        _logger = flowLogger ?? NullLogger<ZLinkSpotActivationDispatcher>.Instance;
+        var loggerFactory = runtime.Services.GetService<ILoggerFactory>();
+        var flowLogger = ZLinkMessageFlowTracer.CreateLogger(loggerFactory);
+        _logger = loggerFactory?.CreateLogger<ZLinkSpotActivationDispatcher>()
+                  ?? NullLogger<ZLinkSpotActivationDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             runtime.Registration.DispatchOptions,
             flowLogger,

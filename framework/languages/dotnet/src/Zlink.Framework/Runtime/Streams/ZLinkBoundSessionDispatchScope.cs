@@ -2,6 +2,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
 {
+    private const int MaxDeferredOperations = 4096;
     private static readonly AsyncLocal<ZLinkBoundSessionDispatchScope?> CurrentScope = new();
     private readonly string _actorId;
     private readonly object _gate = new();
@@ -52,6 +53,8 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
         lock (scope._gate)
         {
             if (scope._drained) return false;
+            if (scope._deferredOperations.Count >= MaxDeferredOperations)
+                throw new InvalidOperationException("Bound-session deferred submit queue is full.");
             scope._deferredOperations.Enqueue(operationAsync);
             return true;
         }

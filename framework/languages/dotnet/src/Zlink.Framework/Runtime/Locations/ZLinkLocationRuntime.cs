@@ -10,7 +10,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// row: subscribers must stop advertising and deactivate the local
 /// instance (ownership-loss rule).
 /// </summary>
-internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
+internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 {
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkLocationStore _locationStore;
@@ -22,6 +22,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly object _disposeStartGate = new();
     private ZLinkLocationRuntimeHealth _health = new(false, null, null, null);
     private CancellationTokenSource? _heartbeatCts;
     private Task? _heartbeatLoop;
@@ -29,6 +30,8 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     private string _ownerId = Guid.NewGuid().ToString("n");
     private bool _started;
     private bool _ownerCleanedForDrain;
+    private int _disposeState;
+    private Task? _disposeTask;
 
     internal ZLinkLocationRuntime(
         ZLinkLocationOptions options,
@@ -69,9 +72,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         RoutingId nodeRid,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposingOrDisposed();
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ThrowIfDisposingOrDisposed();
             if (_started) return;
 
             _nodeRid = nodeRid;
@@ -137,6 +142,10 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
                         .ConfigureAwait(false);
                     await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception exception)
             {
@@ -210,23 +219,31 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             CancellationToken.None);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await StopAsync().ConfigureAwait(false);
-        _lifecycleGate.Dispose();
+        lock (_disposeStartGate)
+        {
+            if (_disposeTask is not null) return new ValueTask(_disposeTask);
+            Volatile.Write(ref _disposeState, 1);
+            return new ValueTask(_disposeTask = DisposeCoreAsync());
+        }
     }
 
-    /// <summary>
-    /// Synchronous dispose only cancels the heartbeat loop. Graceful
-    /// shutdown (lease removal and bulk row removal) runs in StopAsync via
-    /// the hosted service; blocking on store calls here could deadlock a
-    /// synchronous container teardown.
-    /// </summary>
-    public void Dispose()
+    private async Task DisposeCoreAsync()
     {
-        _heartbeatCts?.Cancel();
-        _heartbeatCts?.Dispose();
-        _heartbeatCts = null;
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _disposeState, 2);
+        }
+    }
+
+    private void ThrowIfDisposingOrDisposed()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
     }
 
     internal async ValueTask<ZLinkLocationWriteResult> WritePeerAsync(

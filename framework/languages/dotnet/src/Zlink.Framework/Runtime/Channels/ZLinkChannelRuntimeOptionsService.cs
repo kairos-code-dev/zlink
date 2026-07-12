@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Locations;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 // live serving socket 을 backing 으로 하는 IZLinkSocketConfig. Weight 는 socket 에서 read/write 하고,
@@ -6,7 +8,8 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkLiveSocketConfig(
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendWeightedSocket socket,
-    IZLinkSocketConfig recipe) : IZLinkSocketConfig
+    IZLinkSocketConfig recipe,
+    Action<int>? weightChanged = null) : IZLinkSocketConfig
 {
     // Weight set/get 는 admin 스레드 등 receive loop 와 다른 스레드에서 호출될 수 있다. native 옵션
     // 접근은 core 의 socket public-API lock(socket_public_api_lock_scope_t, setsockopt 경로)을 거치며,
@@ -21,6 +24,8 @@ internal sealed class ZLinkLiveSocketConfig(
             runtime.ExecuteOperation(() =>
             {
                 socket.SetPeerWeight(value);
+                recipe.Weight = value;
+                weightChanged?.Invoke(value);
                 return true;
             });
         }
@@ -200,18 +205,20 @@ internal sealed class ZLinkRouteMeshRuntimeOptions(IZLinkSocketConfig socket)
     }
 }
 
-internal sealed class ZLinkChannelRuntimeOptions(ZLinkFrameworkRuntime runtime)
+internal sealed class ZLinkChannelRuntimeOptions(
+    ZLinkFrameworkRuntime runtime,
+    ZLinkLocationAutoConnectHost? autoConnect)
     : IZLinkChannelRuntimeOptions
 {
     public IZLinkClientServerChannelOptions ClientServerChannel(string channelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
-        return runtime.ResolveClientServerRuntimeOptions(channelName);
+        return runtime.ResolveClientServerRuntimeOptions(channelName, autoConnect);
     }
 
     public IZLinkRouteMeshChannelOptions RouteMeshChannel(string channelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
-        return new ZLinkRouteMeshRuntimeOptions(runtime.ResolveRouteMeshSocketConfig(channelName));
+        return new ZLinkRouteMeshRuntimeOptions(runtime.ResolveRouteMeshSocketConfig(channelName, autoConnect));
     }
 }

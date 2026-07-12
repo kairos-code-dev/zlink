@@ -7,20 +7,24 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private const int DefaultCapacity = 4096;
 
     private readonly object _gate = new();
+    private readonly object _disposeGate = new();
     private readonly ZLinkSubmitOperationFactory _operationFactory;
     private readonly ZLinkSubmitQueue _pending;
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
     private readonly object _submitGate = new();
     private readonly Func<bool>? _failFastNotConnected;
+    private TaskCompletionSource? _activeDrainCompletion;
+    private Task? _disposeTask;
     private bool _draining;
+    private bool _accepting = true;
 
     /// <summary>
     /// <paramref name="failFastNotConnected"/>: when it returns true,
     /// NotConnected submit failures fail immediately instead of retrying
     /// until the writability timeout. Rid-addressed router paths managed by
     /// auto-connect opt in so a stale or unconverged target surfaces as a
-    /// typed error the caller can act on (spot-address messaging draft §7);
+    /// typed error the caller can act on (spot-address messaging contract §7);
     /// dealer and pub sockets keep the connect-window buffering.
     /// </summary>
     public ZLinkAsyncSubmitter(
@@ -40,7 +44,46 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        var remaining = _pending.DisposeAll();
+        Task disposeTask;
+        TaskCompletionSource? startDispose = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                startDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeAfterStartAsync(startDispose.Task);
+            }
+
+            disposeTask = _disposeTask;
+        }
+
+        startDispose?.TrySetResult();
+        return new ValueTask(disposeTask);
+    }
+
+    private async Task DisposeAfterStartAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
+
+        Task activeDrain;
+        lock (_submitGate)
+        {
+            Volatile.Write(ref _accepting, false);
+            _pending.Complete();
+        }
+
+        lock (_gate)
+            activeDrain = _activeDrainCompletion?.Task ?? Task.CompletedTask;
+
+        await activeDrain.ConfigureAwait(false);
+
+        // Entering this gate after the drain completes also joins an immediate
+        // submission that began before admission was closed.
+        lock (_submitGate)
+        {
+        }
+
+        var remaining = _pending.DrainAll();
 
         foreach (var item in remaining)
             try
@@ -52,7 +95,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 item.Dispose();
             }
 
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask Async(
@@ -84,7 +126,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     public ValueTask<T> SubmitRequestAsync<T>(
         Message message,
         Func<Message, Action<T>, Action<Exception>, bool> trySubmit,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<T>? discardResult = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(trySubmit);
@@ -92,19 +135,21 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return SubmitRequestCoreAsync<T>(
             new SingleMessageParts(message),
             (parts, onResult, onError) => trySubmit(parts[0], onResult, onError),
-            cancellationToken);
+            cancellationToken,
+            discardResult);
     }
 
     public ValueTask<T> SubmitRequestAsync<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<T>? discardResult = null)
     {
         ArgumentNullException.ThrowIfNull(parts);
         ArgumentNullException.ThrowIfNull(trySubmit);
         EnsureNotEmpty(parts);
 
-        return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken);
+        return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken, discardResult);
     }
 
     private ValueTask SubmitCommandAsync(
@@ -129,9 +174,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             {
                 ownsParts = false;
                 ZLinkMessageParts.DisposeAll(parts);
-                return ValueTask.FromException(ZLinkRequestFailureMapper.CreateSubmitException(
+                throw ZLinkRequestFailureMapper.CreateSubmitException(
                     submitError,
-                    "ZLink command submit"));
+                    "ZLink command submit");
             }
 
             var pending = _operationFactory.CreateCommand(parts, trySubmit);
@@ -148,32 +193,36 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
-    private ValueTask<T> SubmitRequestCoreAsync<T>(
+    private async ValueTask<T> SubmitRequestCoreAsync<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<T>? discardResult)
     {
         var ownsParts = true;
+        using var completion = new ZLinkRequestCompletion<T>(
+            cancellationToken,
+            _stopToken,
+            discardResult,
+            Drain);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             _stopToken.ThrowIfCancellationRequested();
 
-            var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-
             bool Submit(IReadOnlyList<Message> pending)
             {
                 return trySubmit(
                     pending,
-                    result => completion.TrySetResult(result),
-                    exception => completion.TrySetException(exception));
+                    completion.Complete,
+                    completion.Fail);
             }
 
             if (TrySubmitNow(parts, Submit, out var retryableFailure))
             {
                 ownsParts = false;
                 ZLinkMessageParts.DisposeAll(parts);
-                return new ValueTask<T>(completion.Task);
+                return await completion.Task.ConfigureAwait(false);
             }
 
             if (retryableFailure is ZlinkSubmitException submitError
@@ -181,10 +230,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             {
                 ownsParts = false;
                 ZLinkMessageParts.DisposeAll(parts);
-                completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
+                completion.Fail(ZLinkRequestFailureMapper.CreateSubmitException(
                     submitError,
                     "ZLink request submit"));
-                return new ValueTask<T>(completion.Task);
+                return await completion.Task.ConfigureAwait(false);
             }
 
             var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
@@ -192,7 +241,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
             ownsParts = false;
             EnqueuePending(pendingSubmit, cancellationToken);
-            return new ValueTask<T>(completion.Task);
+            return await completion.Task.ConfigureAwait(false);
         }
         catch
         {
@@ -227,11 +276,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     private void Drain()
     {
+        TaskCompletionSource drainCompletion;
         lock (_gate)
         {
-            if (_draining) return;
+            if (_draining || !Volatile.Read(ref _accepting)) return;
 
             _draining = true;
+            drainCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeDrainCompletion = drainCompletion;
         }
 
         try
@@ -286,7 +338,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             lock (_gate)
             {
                 _draining = false;
+                if (ReferenceEquals(_activeDrainCompletion, drainCompletion))
+                    _activeDrainCompletion = null;
             }
+            drainCompletion.TrySetResult();
         }
     }
 
@@ -297,6 +352,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         lock (_submitGate)
         {
+            ObjectDisposedException.ThrowIf(!_accepting, this);
             retryableFailure = null;
             IReadOnlyList<Message>? attempt = null;
             try

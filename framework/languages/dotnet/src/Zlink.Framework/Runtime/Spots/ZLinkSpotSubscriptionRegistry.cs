@@ -94,7 +94,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             using var invalidFlow = ZLinkFlowContext.Enter(
                 null,
                 null,
-                dispatchErrors.Flow.GenerationEnabled,
+                dispatchErrors.Flow.CaptureEnabled,
                 ZLinkFlowOrigin.Inbound);
             CreateScope("<unknown>", message.Topic)
                 .Dropped(
@@ -118,7 +118,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             using var invalidFlow = ZLinkFlowContext.Enter(
                 validFlow.FlowId,
                 validFlow.FlowOrigin,
-                dispatchErrors.Flow.GenerationEnabled,
+                dispatchErrors.Flow.CaptureEnabled,
                 ZLinkFlowOrigin.Inbound);
             CreateScope(
                     protocolError.Header.MessageName,
@@ -137,7 +137,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
-            dispatchErrors.Flow.GenerationEnabled,
+            dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
 
         ZLinkRuntimeMetrics.RecordFanoutReceived(message.Topic);

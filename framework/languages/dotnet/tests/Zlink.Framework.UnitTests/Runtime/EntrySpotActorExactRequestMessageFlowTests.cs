@@ -1,0 +1,148 @@
+using Microsoft.Extensions.DependencyInjection;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
+using Zlink.Framework.Runtime.Backend.Contracts;
+
+namespace Zlink.Framework.UnitTests.Runtime;
+
+public sealed partial class EntrySpotActorDispatchTests
+{
+    [Fact]
+    public async Task Flowless_Actor_Stream_Ingress_Creates_One_Inbound_Flow_For_Join_And_Reply()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            messageFlowMode: ZLinkMessageFlowLogMode.KeyTransitions,
+            includeJoinTarget: true);
+        try
+        {
+            var createdActor = await runtime.CreateActorAsync("flow-actor", "probe");
+            var actor = Assert.IsType<ProbeActor>(createdActor.Actor);
+            var actorRef = Assert.Single(node.CreatedActors);
+            var target = await runtime.CreateAsync<JoinTargetSpot>();
+            var probe = runtime.Services.GetRequiredService<FlowJoinProbe>();
+            probe.TargetSpotRid = target.SpotRid;
+
+            Assert.Null(ZLinkFlowContext.Current);
+            await DispatchEntryActorPartsAsync(
+                runtime,
+                CreateActorRequestParts(
+                    actorRef,
+                    "flow-join",
+                    "join-request",
+                    requestId: 91,
+                    flags: 1),
+                CancellationToken.None);
+
+            Assert.Null(ZLinkFlowContext.Current);
+            Assert.Equal("flow-actor", actor.ActorId);
+            var joinFlow = Assert.IsType<ZLinkFlowValue>(probe.JoinFlow);
+            Assert.True(ZlinkStreamFlowId.IsValid(joinFlow.FlowId));
+            Assert.Equal(ZLinkFlowOrigin.Inbound, joinFlow.Origin);
+
+            var reply = Assert.Single(node.NoBindReplies);
+            var decoded = DecodeReplyFrame<ProbeReply>(Assert.Single(reply.Parts));
+            Assert.Equal(ZlinkStreamMessageKind.Response, decoded.Header.Kind);
+            Assert.Equal("join-request:flow-actor", decoded.Payload.Value);
+            Assert.Equal(joinFlow.FlowId, decoded.Header.FlowId);
+            Assert.Equal(ZlinkStreamFlowOrigin.Inbound, decoded.Header.FlowOrigin);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Spot_Actor_Request_Ingress_Emits_Received_Then_Replied_With_The_Wire_Identity()
+    {
+        var node = new CapturingSpotNode();
+        var observer = new CapturingMessageFlowObserver();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(
+            node,
+            observer,
+            messageFlowMode: ZLinkMessageFlowLogMode.KeyTransitions);
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+            await DispatchEntryActorPartsAsync(
+                runtime,
+                CreateExactActorRequestParts(actorRef),
+                CancellationToken.None);
+
+            for (var attempt = 0;
+                 attempt < 100 && CountExactActorRequestEvents(observer, actor.ActorId) < 2;
+                 attempt++)
+                await Task.Delay(5);
+
+            var events = observer.Events
+                .Where(flow => flow.Surface == ZLinkDispatchErrorSurface.SpotActor
+                               && flow.MessageKind == ZLinkDispatchMessageKind.ActorRequest
+                               && flow.ActorId == actor.ActorId)
+                .ToArray();
+            Assert.Equal(2, events.Length);
+            Assert.Equal(
+                [ZLinkMessageFlowOutcome.Received, ZLinkMessageFlowOutcome.Replied],
+                events.Select(flow => flow.Outcome));
+            Assert.All(events, flow =>
+            {
+                Assert.Equal(ExactActorFlowId, flow.FlowId);
+                Assert.Equal(ZLinkFlowOrigin.Application, flow.FlowOrigin);
+                Assert.Equal("corr-1", flow.CorrelationId);
+            });
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static int CountExactActorRequestEvents(
+        CapturingMessageFlowObserver observer,
+        string actorId)
+    {
+        return observer.Events.Count(flow =>
+            flow.Surface == ZLinkDispatchErrorSurface.SpotActor
+            && flow.MessageKind == ZLinkDispatchMessageKind.ActorRequest
+            && flow.ActorId == actorId);
+    }
+
+    private static IReadOnlyList<ZLinkBackendActorPart> CreateExactActorRequestParts(
+        ZLinkBackendActorRef actorRef)
+    {
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq
+            | ZlinkStreamHeaderFlags.HasCorrelationId
+            | ZlinkStreamHeaderFlags.HasFlowId,
+            new ZlinkStreamRequestSeq(7),
+            "request",
+            ZlinkStreamMetadata.Empty,
+            "corr-1",
+            ExactActorFlowId,
+            ZlinkStreamFlowOrigin.Application);
+        return
+        [
+            new ZLinkBackendActorPart(
+                actorRef,
+                RoutingId.From("source-node"),
+                RoutingId.From("source-session"),
+                77,
+                1,
+                Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
+                true),
+            new ZLinkBackendActorPart(
+                actorRef,
+                RoutingId.From("source-node"),
+                RoutingId.From("source-session"),
+                77,
+                1,
+                Message.From(ZLinkEnvelopeCodec.EncodeJsonBytes("exact", typeof(string))),
+                false)
+        ];
+    }
+
+    private const string ExactActorFlowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2e";
+}

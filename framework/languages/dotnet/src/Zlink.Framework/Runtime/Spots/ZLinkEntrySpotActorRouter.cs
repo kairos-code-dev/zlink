@@ -55,6 +55,9 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                 || descriptor is null)
                 continue;
 
+            var flow = CreateActorRequestFlow(actor, header);
+            flow.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Received);
+
             // A caller inside the actor's dispatch turn (the dispatch
             // router) must not re-enter the mailbox — that deadlocks the
             // actor. Turnless callers (the entry pump) still serialize
@@ -80,6 +83,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                             countAsPendingRequest: true,
                             cancellationToken)
                         .ConfigureAwait(false);
+                flow.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);
                 return new EntrySpotActorReplyDispatchResult(true, reply);
             }
             catch (Exception ex)
@@ -98,6 +102,21 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         }
 
         return new EntrySpotActorReplyDispatchResult(false, null);
+    }
+
+    private static ZLinkDispatchFlowScope CreateActorRequestFlow(
+        IZLinkActor actor,
+        ZlinkStreamHeader header)
+    {
+        return new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotActor,
+            "SpotActor",
+            ZLinkDispatchMessageKind.ActorRequest,
+            "ActorRequest",
+            header.Name,
+            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            actorId: actor.ActorId,
+            actorType: actor.GetType().FullName);
     }
 
     public async ValueTask NotifyJoinedAsync(

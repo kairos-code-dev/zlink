@@ -7,6 +7,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     private const int DefaultCapacity = 4096;
     private readonly int _capacity;
     private readonly object _admissionGate = new();
+    private readonly object _disposeGate = new();
 
     private readonly TaskCompletionSource _drained =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -28,6 +29,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private int _completed;
     private int _disposed;
+    private Task? _disposeTask;
     private int _drainScheduled;
     private int _pendingCount;
 
@@ -47,9 +49,27 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             : throw new ArgumentOutOfRangeException(nameof(capacity));
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         Complete();
         try
         {
@@ -72,7 +92,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             if (Interlocked.Exchange(ref _completed, 1) != 0) return;
             _queue.Writer.TryComplete();
         }
-        if (Volatile.Read(ref _pendingCount) == 0) _drained.TrySetResult();
+        TrySignalDrained();
     }
 
     public ValueTask<ZLinkSerialWorkItem> PostAsync(
@@ -193,7 +213,10 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         if (!await _drainGate.WaitAsync(0, CancellationToken.None).ConfigureAwait(false))
         {
             Volatile.Write(ref _drainScheduled, 0);
-            if (_queue.Reader.TryPeek(out _)) ScheduleDrain();
+            if (_queue.Reader.TryPeek(out _))
+                ScheduleDrain();
+            else
+                TrySignalDrained();
 
             return;
         }
@@ -206,7 +229,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                     ZLinkRuntimeMetrics.RecordSpotQueueStarted(
                         _spotMetricKind,
                         item.MetricEnqueuedTimestamp);
-                var turn = new ZLinkSerialTurn(PostResume);
+                var turn = new ZLinkSerialTurn(PostResume, _executionToken);
                 var result = await item.InvokeAsync(
                     ReportHandlerException,
                     _executionToken,
@@ -228,7 +251,10 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         }
 
         Volatile.Write(ref _drainScheduled, 0);
-        if (_queue.Reader.TryPeek(out _)) ScheduleDrain();
+        if (_queue.Reader.TryPeek(out _))
+            ScheduleDrain();
+        else
+            TrySignalDrained();
     }
 
     private void ReportHandlerException(Exception exception)
@@ -247,8 +273,15 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     private void CompletePendingItem()
     {
-        if (Interlocked.Decrement(ref _pendingCount) == 0
-            && Volatile.Read(ref _completed) != 0)
+        _ = Interlocked.Decrement(ref _pendingCount);
+        TrySignalDrained();
+    }
+
+    private void TrySignalDrained()
+    {
+        if (Volatile.Read(ref _pendingCount) == 0
+            && Volatile.Read(ref _completed) != 0
+            && Volatile.Read(ref _drainScheduled) == 0)
             _drained.TrySetResult();
     }
 

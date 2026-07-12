@@ -4,15 +4,17 @@ namespace Zlink.Framework.Runtime.Locations;
 /// Owns the location lifecycle subdomains for this runtime and routes
 /// ownership-loss events to the subdomain that tracks the affected row kind.
 /// </summary>
-internal sealed class ZLinkLocationLifecycle : IDisposable, IAsyncDisposable
+internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
 {
     private readonly ZLinkLocationRuntime _runtime;
     private readonly object _backgroundGate = new();
+    private readonly object _disposeStartGate = new();
     private readonly SemaphoreSlim _backgroundDrainGate = new(1, 1);
     private readonly HashSet<Task> _backgroundTasks = [];
     private CancellationTokenSource _backgroundStop = new();
     private bool _backgroundStopping;
     private int _disposed;
+    private Task? _disposeTask;
 
     internal ZLinkLocationLifecycle(
         ZLinkLocationRuntime runtime,
@@ -31,29 +33,24 @@ internal sealed class ZLinkLocationLifecycle : IDisposable, IAsyncDisposable
 
     internal ZLinkSpotLocationLifecycle SpotLocations { get; }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _runtime.OwnershipLost -= OnOwnershipLost;
-        lock (_backgroundGate)
-        {
-            _backgroundStopping = true;
-            _backgroundStop.Cancel();
-        }
-        ActorOwnership.Dispose();
+        lock (_disposeStartGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task DisposeCoreAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            _runtime.OwnershipLost -= OnOwnershipLost;
-        await PauseBackgroundWorkCoreAsync().ConfigureAwait(false);
+        Interlocked.Exchange(ref _disposed, 1);
+        _runtime.OwnershipLost -= OnOwnershipLost;
+        await PauseBackgroundWorkCoreAsync(pauseActorOwnership: false).ConfigureAwait(false);
         await ActorOwnership.DisposeAsync().ConfigureAwait(false);
         _backgroundStop.Dispose();
+        _backgroundDrainGate.Dispose();
     }
 
     internal ValueTask PauseBackgroundWorkAsync()
-        => PauseBackgroundWorkCoreAsync();
+        => PauseBackgroundWorkCoreAsync(pauseActorOwnership: true);
 
     internal void ResumeBackgroundWork()
     {
@@ -99,7 +96,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable, IAsyncDisposable
             TryRunBackground(deactivate);
     }
 
-    private async ValueTask PauseBackgroundWorkCoreAsync()
+    private async ValueTask PauseBackgroundWorkCoreAsync(bool pauseActorOwnership)
     {
         await _backgroundDrainGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
@@ -115,7 +112,8 @@ internal sealed class ZLinkLocationLifecycle : IDisposable, IAsyncDisposable
             }
 
             if (tasks.Length != 0) await Task.WhenAll(tasks).ConfigureAwait(false);
-            await ActorOwnership.PauseBackgroundWorkAsync().ConfigureAwait(false);
+            if (pauseActorOwnership)
+                await ActorOwnership.PauseBackgroundWorkAsync().ConfigureAwait(false);
 
             lock (_backgroundGate)
             {

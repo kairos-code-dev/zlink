@@ -16,15 +16,18 @@ internal sealed class ZLinkLocationAddressResolvers :
     private readonly ZLinkStoreLocationResolvers _rows;
     private readonly ZLinkSpotMeshLocationResolver _spots;
     private readonly ZLinkSpotHandleRegistry _handles;
+    private readonly ZLinkSpotRouterChannelMap _routerChannels;
 
     internal ZLinkLocationAddressResolvers(
         ZLinkStoreLocationResolvers rows,
         ZLinkSpotMeshLocationResolver spots,
-        ZLinkSpotHandleRegistry handles)
+        ZLinkSpotHandleRegistry handles,
+        ZLinkSpotRouterChannelMap? routerChannels = null)
     {
         _rows = rows;
         _spots = spots;
         _handles = handles;
+        _routerChannels = routerChannels ?? new ZLinkSpotRouterChannelMap(new ZLinkLocationOptions());
     }
 
     public async ValueTask<SpotHandle?> ResolveSpotHandleAsync(
@@ -54,8 +57,8 @@ internal sealed class ZLinkLocationAddressResolvers :
             return null;
         }
 
-        // An entry spot's address is the node itself (draft §4); a user
-        // spot actor addresses its user spot.
+        // Entry actors use their node's Entry Spot snapshot; actors in a user
+        // Spot use that Spot's current snapshot.
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
             ct => RefreshActorAsync(actorId, ct));
@@ -81,20 +84,31 @@ internal sealed class ZLinkLocationAddressResolvers :
         return row is null ? null : ToSnapshot(row);
     }
 
-    private static ZLinkSpotHandleSnapshot ToSnapshot(ZLinkSpotLocation row)
-        => new(row.MeshName, row.NodeRid, row.SpotRid, row.Generation);
+    private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkSpotLocation row)
+        => new(_routerChannels.Resolve(row.MeshName), row.NodeRid, row.SpotRid, row.Generation, row.SpotKind);
 
-    internal static ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
+    internal ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
         => row.LocationKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
-            ? new ZLinkSpotHandleSnapshot(row.SpotMeshName, row.NodeRid, row.NodeRid, row.Generation)
-            : new ZLinkSpotHandleSnapshot(row.SpotMeshName, row.NodeRid, row.SpotRid.Value, row.Generation);
+            ? new ZLinkSpotHandleSnapshot(
+                _routerChannels.Resolve(row.SpotMeshName),
+                row.NodeRid,
+                row.NodeRid,
+                row.Generation,
+                ZLinkSpotKind.Entry)
+            : new ZLinkSpotHandleSnapshot(
+                _routerChannels.Resolve(row.SpotMeshName),
+                row.NodeRid,
+                row.SpotRid.Value,
+                row.Generation,
+                ZLinkSpotKind.User);
 }
 
 internal readonly record struct ZLinkSpotHandleSnapshot(
     string RouterChannelId,
     RoutingId NodeRid,
     RoutingId SpotRid,
-    long Generation);
+    long Generation,
+    ZLinkSpotKind SpotKind = ZLinkSpotKind.User);
 
 internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 {

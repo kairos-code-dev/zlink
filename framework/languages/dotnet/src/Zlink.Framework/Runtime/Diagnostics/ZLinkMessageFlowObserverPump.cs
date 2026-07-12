@@ -8,11 +8,15 @@ internal sealed class ZLinkMessageFlowObserverPump(
     IServiceProvider services,
     ZLinkRuntimeTaskRunner taskRunner) : IAsyncDisposable
 {
+    internal IZLinkRuntimeErrorSink ErrorSink => taskRunner.ErrorSink;
+
     private readonly AsyncServiceScope _scope = services.CreateAsyncScope();
     private readonly Channel<ZLinkMessageFlowEvent> _events = Channel.CreateBounded<ZLinkMessageFlowEvent>(
         new BoundedChannelOptions(1024)
         {
-            FullMode = BoundedChannelFullMode.DropOldest,
+            // Preserve events that were already accepted. When the observer is
+            // slower than dispatch, the event being submitted is the one dropped.
+            FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
             SingleWriter = false
         },
@@ -30,6 +34,8 @@ internal sealed class ZLinkMessageFlowObserverPump(
             }));
     private IZLinkMessageFlowObserver? _observer;
     private bool _ownsObserver;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
     private int _draining;
     private int _disposed;
 
@@ -40,9 +46,27 @@ internal sealed class ZLinkMessageFlowObserverPump(
         return true;
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         while (_events.Reader.TryRead(out _))
         {
         }
@@ -85,7 +109,7 @@ internal sealed class ZLinkMessageFlowObserverPump(
                 }
                 catch (Exception exception)
                 {
-                    ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(exception);
+                    taskRunner.ErrorSink.ReportUnhandledCallbackException(exception);
                 }
             }
 

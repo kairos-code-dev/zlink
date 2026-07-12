@@ -105,6 +105,39 @@ public sealed class LocationRuntimeTests
     }
 
     [Fact]
+    public async Task StopAsync_Propagates_Caller_Cancellation_And_Remains_Safe_To_Dispose()
+    {
+        var inner = new ZLinkInMemoryLocationStore();
+        var ownerStore = new CancelingOwnerCleanupStore(inner);
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions
+            {
+                HeartbeatInterval = TimeSpan.FromHours(1),
+                OwnerLeaseTtl = TimeSpan.FromHours(2)
+            },
+            inner,
+            inner,
+            inner,
+            inner,
+            inner,
+            ownerStore);
+        await runtime.StartAsync(RoutingId.From("cancel-stop-node"));
+        using var cancellation = new CancellationTokenSource();
+
+        var stop = runtime.StopAsync(cancellation.Token).AsTask();
+        await ownerStore.RemovalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stop);
+        Assert.False(runtime.GetHealthSnapshot().Healthy);
+        Assert.Equal(1, ownerStore.RenewCalls);
+
+        await runtime.StopAsync(CancellationToken.None);
+        await runtime.DisposeAsync();
+        Assert.Equal(1, ownerStore.RenewCalls);
+    }
+
+    [Fact]
     public async Task Drain_Cleanup_Failure_Keeps_Lease_Heartbeat_Until_Retry_Succeeds()
     {
         var inner = new ZLinkInMemoryLocationStore();
@@ -131,6 +164,40 @@ public sealed class LocationRuntimeTests
 
         await runtime.CleanupOwnerForDrainAsync(CancellationToken.None);
         Assert.Empty((await inner.ListOwnerLeasesAsync()).Leases);
+        await runtime.StopAsync();
+    }
+
+    [Fact]
+    public async Task Drain_Cleanup_Removes_Every_Owner_Row_And_The_Owner_Lease()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions(),
+            store,
+            store,
+            store,
+            store,
+            store,
+            store);
+        await runtime.StartAsync(RoutingId.From("node-drain"));
+        await runtime.WriteActorAsync(
+            InMemoryLocationStoreTests.Actor("ignored", 0),
+            ZLinkLocationWriteIntent.NewClaim);
+        await runtime.WriteSpotAsync(
+            InMemoryLocationStoreTests.Spot("ignored", "spot-drain"),
+            ZLinkLocationWriteIntent.NewClaim);
+        await runtime.WritePeerAsync(
+            InMemoryLocationStoreTests.Peer("ignored"),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        await runtime.CleanupOwnerForDrainAsync(CancellationToken.None);
+
+        Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+        Assert.Null(await store.ResolveSpotAsync(
+            new ZLinkSpotLocationKey("play", RoutingId.From("spot-drain"))));
+        Assert.Empty(await store.ListPeersAsync(
+            new ZLinkPeerLocationFilter(MeshName: "play")));
         await runtime.StopAsync();
     }
 
@@ -173,11 +240,106 @@ public sealed class LocationRuntimeTests
     }
 
     [Fact]
-    public void InMemory_Registration_Resolves_Resolvers_Query_And_Shared_Store()
+    public async Task DisposeAsync_WaitsForInFlightHeartbeatBeforeCleaningOwnerResources()
+    {
+        var inner = new ZLinkInMemoryLocationStore();
+        var store = new BlockingHeartbeatStore(inner);
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions
+            {
+                HeartbeatInterval = TimeSpan.FromMilliseconds(5),
+                OwnerLeaseTtl = TimeSpan.FromSeconds(15)
+            },
+            inner,
+            inner,
+            inner,
+            inner,
+            inner,
+            store);
+        await runtime.StartAsync(RoutingId.From("dispose-node"));
+        await store.HeartbeatStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var firstDispose = runtime.DisposeAsync().AsTask();
+        var secondDispose = runtime.DisposeAsync().AsTask();
+        await Task.Delay(25);
+        Assert.False(firstDispose.IsCompleted);
+        Assert.False(secondDispose.IsCompleted);
+
+        store.ReleaseHeartbeat.TrySetResult();
+        await Task.WhenAll(firstDispose, secondDispose).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, store.RenewCalls);
+        Assert.Empty((await inner.ListOwnerLeasesAsync()).Leases);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_PreventsQueuedStartFromCreatingANewRuntimeGeneration()
+    {
+        var inner = new ZLinkInMemoryLocationStore();
+        var store = new BlockingHeartbeatStore(inner);
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions
+            {
+                HeartbeatInterval = TimeSpan.FromMilliseconds(5),
+                OwnerLeaseTtl = TimeSpan.FromSeconds(15)
+            },
+            inner,
+            inner,
+            inner,
+            inner,
+            inner,
+            store);
+        await runtime.StartAsync(RoutingId.From("dispose-race-node"));
+        await store.HeartbeatStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var stop = runtime.StopAsync().AsTask();
+        await Task.Delay(25);
+        Assert.False(stop.IsCompleted);
+        var queuedStart = runtime.StartAsync(RoutingId.From("forbidden-generation")).AsTask();
+        var dispose = runtime.DisposeAsync().AsTask();
+        var repeatedDispose = runtime.DisposeAsync().AsTask();
+        Assert.Same(dispose, repeatedDispose);
+
+        store.ReleaseHeartbeat.TrySetResult();
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => queuedStart);
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, store.RenewCalls);
+        Assert.Empty((await inner.ListOwnerLeasesAsync()).Leases);
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+            await runtime.StartAsync(RoutingId.From("after-dispose")));
+    }
+
+    [Fact]
+    public async Task SynchronousServiceProviderDispose_CannotSilentlyPartiallyDisposeLocationRuntime()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions(),
+            store,
+            store,
+            store,
+            store,
+            store,
+            store);
+        var provider = new ServiceCollection()
+            .AddSingleton(_ => runtime)
+            .BuildServiceProvider();
+        _ = provider.GetRequiredService<ZLinkLocationRuntime>();
+
+        var failure = Assert.Throws<InvalidOperationException>(provider.Dispose);
+        Assert.Contains("IAsyncDisposable", failure.Message, StringComparison.Ordinal);
+
+        await runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task InMemory_Registration_Resolves_Resolvers_Query_And_Shared_Store()
     {
         var services = new ServiceCollection();
         services.AddZLinkFramework(options => options.UseInMemoryLocationStores());
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<IZLinkPeerLocationResolver>());
         Assert.NotNull(provider.GetRequiredService<IZLinkSpotHandleResolver>());
@@ -237,6 +399,77 @@ public sealed class LocationRuntimeTests
             string ownerId,
             CancellationToken cancellationToken = default) =>
             inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);
+
+        public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ListOwnerLeasesAsync(cancellationToken);
+    }
+
+    private sealed class BlockingHeartbeatStore(IZLinkOwnerLeaseStore inner) : IZLinkOwnerLeaseStore
+    {
+        private int _renewCalls;
+
+        public TaskCompletionSource HeartbeatStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseHeartbeat { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int RenewCalls => Volatile.Read(ref _renewCalls);
+
+        public async ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
+            string ownerId,
+            RoutingId nodeRid,
+            TimeSpan leaseTtl,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _renewCalls) == 2)
+            {
+                HeartbeatStarted.TrySetResult();
+                await ReleaseHeartbeat.Task.ConfigureAwait(false);
+            }
+
+            return await inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public ValueTask<bool> RemoveOwnerLeaseAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);
+
+        public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ListOwnerLeasesAsync(cancellationToken);
+    }
+
+    private sealed class CancelingOwnerCleanupStore(IZLinkOwnerLeaseStore inner) : IZLinkOwnerLeaseStore
+    {
+        private int _renewCalls;
+
+        public TaskCompletionSource RemovalStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int RenewCalls => Volatile.Read(ref _renewCalls);
+
+        public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
+            string ownerId,
+            RoutingId nodeRid,
+            TimeSpan leaseTtl,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _renewCalls);
+            return inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken);
+        }
+
+        public async ValueTask<bool> RemoveOwnerLeaseAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default)
+        {
+            RemovalStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            return false;
+        }
 
         public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
             CancellationToken cancellationToken = default) =>

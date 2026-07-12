@@ -5,6 +5,39 @@ namespace Zlink.Framework.UnitTests;
 public sealed class AutoConnectLoopTests
 {
     [Fact]
+    public async Task Repeated_Dispose_Callers_Share_AutoConnect_Loop_Finalization()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+        var local = new ZLinkAutoConnectLocal(
+            ZLinkLocationAutoConnectType.ClientServer,
+            "dispose",
+            ZLinkLocationRole.Dealer,
+            NodeRid: null,
+            Endpoint: string.Empty);
+        var reconciler = new ZLinkAutoConnectReconciler(
+            local,
+            null,
+            runtime,
+            resolvers,
+            new NullExecutor(),
+            options,
+            time);
+        var loop = new ZLinkAutoConnectLoop(reconciler, local, options, timeProvider: time);
+
+        var first = loop.DisposeAsync().AsTask();
+        var second = loop.DisposeAsync().AsTask();
+
+        Assert.Same(first, second);
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task Unchanged_Change_Stamp_Skips_The_List_Query()
     {
         var time = new ManualTimeProvider();

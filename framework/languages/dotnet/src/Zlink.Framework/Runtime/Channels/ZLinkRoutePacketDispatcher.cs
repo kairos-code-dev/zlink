@@ -41,7 +41,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
-            dispatchErrors.Flow.GenerationEnabled,
+            dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
 
         CreateScope(
@@ -305,11 +305,14 @@ internal sealed class ZLinkRoutePacketDispatcher(
     {
         var header = protocolError.Header;
         var isRequest = received.RequestSeq.HasValue;
+        var canReply = isRequest
+                       && received.RoutingId.HasValue
+                       && ZLinkEnvelopeCodec.CanCorrelateReply(header);
         var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
         using var flow = ZLinkFlowContext.Enter(
             validFlow.FlowId,
             validFlow.FlowOrigin,
-            dispatchErrors.Flow.GenerationEnabled,
+            dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.RouteMeshChannel,
@@ -317,7 +320,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send,
             ZLinkDispatchErrorReason.InvalidFrame,
-            isRequest
+            canReply
                 ? ZLinkDispatchErrorAction.ReplyError
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
@@ -325,7 +328,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
             SourceRid: received.RoutingId?.ToString(),
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
-        if (!isRequest || received.RoutingId is not { } sourceRid) return;
+        if (!canReply || received.RoutingId is not { } sourceRid) return;
 
         ZLinkChannelReplyWriter.ReplyEnvelope(
             router,

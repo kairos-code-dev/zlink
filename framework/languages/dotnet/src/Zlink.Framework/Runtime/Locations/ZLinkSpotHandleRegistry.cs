@@ -1,7 +1,9 @@
 namespace Zlink.Framework.Runtime.Locations;
 
-internal sealed class ZLinkSpotHandleRegistry
+internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerChannels = null)
 {
+    private readonly ZLinkSpotRouterChannelMap _routerChannels =
+        routerChannels ?? new ZLinkSpotRouterChannelMap(new ZLinkLocationOptions());
     private readonly object _gate = new();
     private readonly Dictionary<string, List<WeakReference<ZLinkResolvedSpotHandle>>> _actors =
         new(StringComparer.Ordinal);
@@ -15,7 +17,12 @@ internal sealed class ZLinkSpotHandleRegistry
 
     internal void UpdateSpot(ZLinkSpotLocation row)
         => Apply(_spots, new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), handle => handle.Update(
-            new ZLinkSpotHandleSnapshot(row.MeshName, row.NodeRid, row.SpotRid, row.Generation)));
+            new ZLinkSpotHandleSnapshot(
+                _routerChannels.Resolve(row.MeshName),
+                row.NodeRid,
+                row.SpotRid,
+                row.Generation,
+                row.SpotKind)));
 
     internal void RemoveSpot(ZLinkSpotLocationKey key, long generation)
         => Apply(_spots, key, handle => handle.Invalidate(generation));
@@ -28,7 +35,22 @@ internal sealed class ZLinkSpotHandleRegistry
 
     internal void UpdateActor(ZLinkActorLocation row)
         => Apply(_actors, row.ActorId, handle => handle.Update(
-            ZLinkLocationAddressResolvers.ToSnapshot(row)));
+            ToSnapshot(row)));
+
+    private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
+        => row.LocationKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
+            ? new ZLinkSpotHandleSnapshot(
+                _routerChannels.Resolve(row.SpotMeshName),
+                row.NodeRid,
+                row.NodeRid,
+                row.Generation,
+                ZLinkSpotKind.Entry)
+            : new ZLinkSpotHandleSnapshot(
+                _routerChannels.Resolve(row.SpotMeshName),
+                row.NodeRid,
+                row.SpotRid.Value,
+                row.Generation,
+                ZLinkSpotKind.User);
 
     internal void RemoveActor(ZLinkActorLocationKey key, long generation)
         => Apply(_actors, key.ActorId, handle => handle.Invalidate(generation));

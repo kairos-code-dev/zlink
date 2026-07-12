@@ -74,7 +74,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         }
     }
 
-    public async ValueTask SendToChannelAsync(
+    public ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
@@ -82,12 +82,12 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         using var operation = runtime.EnterOperation();
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        await (bundle.Submitter
+        return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
             .Async(
                 parts,
                 pending => dealer.Send(pending, SendFlags.DontWait),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
     }
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -107,14 +107,13 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             cancellationToken);
     }
 
-    public async ValueTask PublishCurrentAsync(
+    public ValueTask PublishCurrentAsync(
         string topic,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
-        await outbound.PublishCurrentAsync(topic, parts, cancellationToken)
-            .ConfigureAwait(false);
+        return outbound.PublishCurrentAsync(topic, parts, cancellationToken);
     }
 
     public ValueTask SendToSpotAsync(

@@ -133,6 +133,54 @@ public sealed class RequestFailureMappingTests
     }
 
     [Fact]
+    public async Task SpotRouteNativeReply_CancellationDisposesLateOkReply()
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var completion = new ZLinkNativeReplyCompletion<RequestResult>(cancellation.Token);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completion.Task);
+
+        using var lateReply = Message.From("late-route-cancellation-reply");
+        completion.Complete(RequestResult.Ok, [lateReply]);
+
+        Assert.Throws<ObjectDisposedException>(() => lateReply.AsReadOnlySpan());
+    }
+
+    [Fact]
+    public async Task SpotRouteNativeReply_TimeoutDisposesLateOkReply()
+    {
+        using var completion = new ZLinkNativeReplyCompletion<RequestResult>(
+            CancellationToken.None,
+            TimeSpan.Zero,
+            "route request timed out");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => completion.Task);
+
+        using var lateReply = Message.From("late-route-timeout-reply");
+        completion.Complete(RequestResult.Ok, [lateReply]);
+
+        Assert.Throws<ObjectDisposedException>(() => lateReply.AsReadOnlySpan());
+    }
+
+    [Fact]
+    public async Task SpotRouteNativeReply_NormalWinnerTransfersOwnershipAndDisposesDuplicateReply()
+    {
+        using var completion = new ZLinkNativeReplyCompletion<RequestResult>(CancellationToken.None);
+        using var winner = Message.From("route-winner");
+        using var duplicate = Message.From("route-duplicate");
+
+        completion.Complete(RequestResult.Ok, [winner]);
+        var result = await completion.Task;
+        completion.Complete(RequestResult.Ok, [duplicate]);
+
+        Assert.Equal(RequestResult.Ok, result.Result);
+        Assert.Same(winner, Assert.Single(result.Reply));
+        Assert.Equal("route-winner", winner.GetString());
+        Assert.Throws<ObjectDisposedException>(() => duplicate.AsReadOnlySpan());
+    }
+
+    [Fact]
     public async Task SubmitRequestAsync_Fails_NotConnected_Without_Timeout()
     {
         await using var submitter = new ZLinkAsyncSubmitter(

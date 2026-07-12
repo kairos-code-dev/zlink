@@ -7,16 +7,23 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
+    private Task? _disposeTask;
+    private bool _closed;
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        ZLinkSpotPublisherBundle[] publishers;
         lock (_gate)
         {
-            publishers = _publisherBundles.Values.ToArray();
+            if (_disposeTask is not null) return new ValueTask(_disposeTask);
+            _closed = true;
+            var publishers = _publisherBundles.Values.ToArray();
             _publisherBundles.Clear();
+            return new ValueTask(_disposeTask = DisposeCoreAsync(publishers));
         }
+    }
 
+    private static async Task DisposeCoreAsync(ZLinkSpotPublisherBundle[] publishers)
+    {
         foreach (var publisher in publishers) await publisher.DisposeAsync();
     }
 
@@ -24,6 +31,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     {
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_closed, this);
             if (_publisherBundles.TryGetValue(channelName, out var existing)) return existing;
 
             var bundle = CreatePublisherBundle();

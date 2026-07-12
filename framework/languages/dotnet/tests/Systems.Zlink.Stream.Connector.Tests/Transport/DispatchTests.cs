@@ -158,7 +158,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task ManualDispatchOverflowStillDeliversRequestCallbacks()
+    public async Task ManualRequestCallbackAdmission_Is_Bounded_And_Never_Falls_Back_To_A_Background_Thread()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -168,21 +168,129 @@ public sealed partial class StreamConnectorTests
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
-            for (var index = 1; index <= 2; index++)
+            var request = await ReadPacketAsync(stream);
+            var requestHeader = headerCodec.Decode(request.Header);
+            var responseHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Response,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                requestHeader.RequestSeq,
+                "reply.one",
+                ZlinkStreamMetadata.Empty);
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(responseHeader).ToArray(),
+                [1]);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxPendingDispatchCallbacks = 1
+        });
+        var callbackThread = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await connector.Connect.Async();
+
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }))
+            .PacketName("request.one")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
             {
-                var request = await ReadPacketAsync(stream);
-                var requestHeader = headerCodec.Decode(request.Header);
-                var responseHeader = new ZlinkStreamHeader(
+                Assert.True(result.IsSuccess);
+                callbackThread.SetResult(Environment.CurrentManagedThreadId);
+            });
+
+        var full = Assert.Throws<ZlinkStreamException>(() =>
+            connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 2 }))
+                .PacketName("request.two")
+                .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> _) => { }));
+        Assert.Equal(ZlinkStreamErrorCode.SendFailed, full.Error.Code);
+        Assert.Contains("queue is full", full.Error.Message, StringComparison.Ordinal);
+
+        await server;
+        await WaitUntilAsync(
+            () => connector.PendingDispatchCount == 1,
+            TimeSpan.FromSeconds(15));
+        Assert.False(callbackThread.Task.IsCompleted);
+
+        var dispatchThread = Environment.CurrentManagedThreadId;
+        await connector.Dispatch.Async();
+
+        Assert.Equal(dispatchThread, await callbackThread.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, connector.PendingDispatchCount);
+    }
+
+    [Fact]
+    public async Task Cancelled_Manual_Dispatch_Does_Not_Remove_A_Reserved_Request_Callback()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var request = await ReadPacketAsync(stream);
+            var requestHeader = headerCodec.Decode(request.Header);
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
                     ZlinkStreamMessageKind.Response,
                     ZlinkStreamCodec.Raw,
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     requestHeader.RequestSeq,
-                    $"reply.{index}",
-                    ZlinkStreamMetadata.Empty);
-                await WritePacketAsync(
-                    stream,
-                    headerCodec.Encode(responseHeader).ToArray(),
-                    [(byte)index]);
+                    "reply.cancel",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                [1]);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxPendingDispatchCallbacks = 1
+        });
+        var callbackThread = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await connector.Connect.Async();
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }))
+            .PacketName("request.cancel")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
+            {
+                Assert.True(result.IsSuccess);
+                callbackThread.SetResult(Environment.CurrentManagedThreadId);
+            });
+
+        await server;
+        await WaitUntilAsync(() => connector.PendingDispatchCount == 1, TimeSpan.FromSeconds(15));
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => connector.Dispatch.Async(canceled.Token).AsTask());
+
+        Assert.Equal(1, connector.PendingDispatchCount);
+        Assert.False(callbackThread.Task.IsCompleted);
+        var dispatchThread = Environment.CurrentManagedThreadId;
+        await connector.Dispatch.Async();
+        Assert.Equal(dispatchThread, await callbackThread.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task Close_Queues_The_Reserved_Request_Failure_Until_Manual_Dispatch()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var requestRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            _ = await ReadPacketAsync(stream);
+            requestRead.SetResult();
+            var buffer = new byte[1];
+            while (await stream.ReadAsync(buffer) != 0)
+            {
             }
         });
 
@@ -192,54 +300,70 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             MaxPendingDispatchCallbacks = 1
         });
-        var results = new List<byte>();
-        var resultsGate = new object();
+        var callback = new TaskCompletionSource<(int Thread, ZlinkStreamResult Result)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         await connector.Connect.Async();
-
         connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }))
-            .PacketName("request.one")
-            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
-            {
-                if (result.IsSuccess)
-                    lock (resultsGate)
-                    {
-                        results.Add(1);
-                    }
-            });
-        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 2 }))
-            .PacketName("request.two")
-            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
-            {
-                if (result.IsSuccess)
-                    lock (resultsGate)
-                    {
-                        results.Add(2);
-                    }
-            });
+            .PacketName("request.close")
+            .Submit(result => callback.SetResult((Environment.CurrentManagedThreadId, result)));
+        await requestRead.Task.WaitAsync(TimeSpan.FromSeconds(15));
 
-        await server;
-        await WaitUntilAsync(
-            () => connector.PendingDispatchCount == 1 && ResultCount() >= 1,
-            TimeSpan.FromSeconds(15));
+        await connector.Close.Async();
+        await server.WaitAsync(TimeSpan.FromSeconds(15));
+        await WaitUntilAsync(() => connector.PendingDispatchCount == 1, TimeSpan.FromSeconds(15));
+        Assert.False(callback.Task.IsCompleted);
+
+        var dispatchThread = Environment.CurrentManagedThreadId;
         await connector.Dispatch.Async();
-        await WaitUntilAsync(
-            () => ResultCount() == 2,
-            TimeSpan.FromSeconds(15));
+        var completion = await callback.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(dispatchThread, completion.Thread);
+        Assert.False(completion.Result.IsSuccess);
+        Assert.Equal(ZlinkStreamErrorCode.Disconnected, completion.Result.Error?.Code);
+    }
 
-        lock (resultsGate)
+    [Fact]
+    public async Task Dispose_Drains_Blocked_Manual_Request_And_Does_Not_Strand_Its_Callback()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var requestRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
         {
-            Assert.Equal([1, 2], results.Order().ToArray());
-        }
-
-        Assert.Equal(0, connector.PendingDispatchCount);
-
-        int ResultCount()
-        {
-            lock (resultsGate)
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            _ = await ReadPacketAsync(stream);
+            requestRead.SetResult();
+            var buffer = new byte[1];
+            while (await stream.ReadAsync(buffer) != 0)
             {
-                return results.Count;
             }
-        }
+        });
+
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            DispatchMode = ZlinkStreamDispatchMode.Manual,
+            MaxPendingDispatchCallbacks = 1
+        });
+        var callbackCount = 0;
+        await connector.Connect.Async();
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }))
+            .PacketName("request.dispose")
+            .Submit((ZlinkStreamResult _) => Interlocked.Increment(ref callbackCount));
+        await requestRead.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        var firstDispose = connector.DisposeAsync().AsTask();
+        var secondDispose = connector.DisposeAsync().AsTask();
+        Assert.Same(firstDispose, secondDispose);
+        await Task.WhenAll(firstDispose, secondDispose).WaitAsync(TimeSpan.FromSeconds(15));
+        await server.WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(0, Volatile.Read(ref callbackCount));
+        Assert.Equal(0, connector.PendingDispatchCount);
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        Assert.Equal(0, Volatile.Read(ref callbackCount));
     }
 
     [Fact]

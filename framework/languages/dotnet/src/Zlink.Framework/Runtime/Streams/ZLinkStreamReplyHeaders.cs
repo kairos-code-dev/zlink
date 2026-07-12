@@ -17,6 +17,8 @@ internal static class ZLinkStreamReplyHeaders
             requestSeq,
             requestHeader.Name,
             metadata,
-            requestHeader.CorrelationId);
+            requestHeader.CorrelationId,
+            requestHeader.FlowId,
+            requestHeader.FlowOrigin);
     }
 }

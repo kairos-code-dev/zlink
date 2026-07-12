@@ -122,18 +122,66 @@ public sealed class EventingContracts
 
         var flow = typeof(ZLinkMessageFlowEvent);
         Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowId))!.PropertyType);
-        Assert.Equal(typeof(ZLinkFlowOrigin), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
+        Assert.Equal(
+            typeof(ZLinkFlowOrigin?),
+            flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
+        var emptyFlow = new ZLinkMessageFlowEvent(
+            ZLinkMessageFlowOutcome.Received,
+            ZLinkDispatchErrorSurface.Channel,
+            ZLinkDispatchMessageKind.Send);
+        Assert.Equal(string.Empty, emptyFlow.FlowId);
+        Assert.Null(emptyFlow.FlowOrigin);
         var flowConstructor = Assert.Single(flow.GetConstructors());
         var flowParameters = flowConstructor.GetParameters();
         Assert.Equal(18, flowParameters.Length);
         Assert.All(flowParameters.Skip(3), static parameter => Assert.True(parameter.HasDefaultValue));
         Assert.All(flowParameters.Skip(3), static parameter => Assert.Null(parameter.DefaultValue));
 
+        AssertClosedEventUnion(
+            typeof(ZLinkLocationRuntimeEvent),
+            "ServiceSummaryChanged", "StatusChanged", "StoreFailure", "StoreRecovered", "TopologyChanged");
+        AssertClosedEventUnion(
+            typeof(ZLinkLocationPeerEvent),
+            "DesiredSetChanged", "RowRemoved", "RowUpdated");
+        AssertClosedEventUnion(
+            typeof(ZLinkLocationSpotEvent),
+            "ResolveMiss", "RowRemoved", "RowUpdated");
+        AssertClosedEventUnion(
+            typeof(ZLinkLocationActorEvent),
+            "ResolveMiss", "RowRemoved", "RowUpdated");
+        AssertClosedEventUnion(
+            typeof(ZLinkLocationRouteEvent),
+            "ResolveMiss", "RowRemoved", "RowUpdated");
+        AssertClosedEventUnion(
+            typeof(ZLinkSpotEvent),
+            "PeersChanged", "StatusChanged", "SubjectsChanged", "TimerHandlerFailed",
+            "TimerStoppedAfterUnhandledException");
+
         var now = DateTimeOffset.UtcNow;
         var drainEvent = new ZLinkDrainEvent(now, ZLinkDrainState.Draining);
         Assert.Equal(now, drainEvent.Timestamp);
         Assert.Equal(ZLinkDrainState.Draining, drainEvent.State);
         Assert.Equal("drain", drainEvent.SourceName);
+    }
+
+    private static void AssertClosedEventUnion(Type root, params string[] expectedVariants)
+    {
+        Assert.True(root.IsAbstract);
+        var constructors = root.GetConstructors(
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic);
+        Assert.DoesNotContain(constructors, static constructor => constructor.IsPublic);
+        var constructor = Assert.Single(constructors.Where(candidate =>
+            candidate.GetParameters() is var parameters
+            && (parameters.Length != 1 || parameters[0].ParameterType != root)));
+        Assert.True(constructor.IsFamilyAndAssembly);
+        var variants = root
+            .GetNestedTypes(System.Reflection.BindingFlags.Public)
+            .OrderBy(static type => type.Name, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expectedVariants.Order(StringComparer.Ordinal), variants.Select(static type => type.Name));
+        Assert.All(variants, static variant => Assert.True(variant.IsSealed));
     }
 
     private static void AssertEnumValues<TEnum>(params (string Name, int Value)[] expected)

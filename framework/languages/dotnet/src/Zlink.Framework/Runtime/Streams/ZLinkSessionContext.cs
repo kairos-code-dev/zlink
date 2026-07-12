@@ -6,7 +6,6 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     private readonly ZLinkSessionClientContext _client;
     private readonly Func<ValueTask> _closeAsync;
     private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
-    private readonly ZLinkSessionRequestTracker _requests = new();
     private readonly IZLinkStream _stream;
     private ZLinkSessionDispatchContext? _currentDispatch;
     private ZLinkSessionStreamTransport? _transport;
@@ -29,7 +28,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     }
 
     private ZLinkSessionStreamTransport Transport
-        => _transport ??= new ZLinkSessionStreamTransport(_stream);
+        => _transport ??= new ZLinkSessionStreamTransport(_stream, TraceWritten);
 
     internal ZLinkFrameworkRuntime Runtime { get; }
 
@@ -109,16 +108,32 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         _currentDispatch = null;
     }
 
-    internal bool TryCompleteResponse(
-        ZlinkStreamHeader header,
-        Message payload)
-    {
-        return _requests.TryCompleteResponse(header, payload);
-    }
-
     internal bool Write(Message payload)
     {
         return Transport.Write(payload);
+    }
+
+    internal void TraceWritten(ZlinkStreamHeader header)
+    {
+        var outcome = header.Kind is ZlinkStreamMessageKind.Response or ZlinkStreamMessageKind.Error
+            ? ZLinkMessageFlowOutcome.Replied
+            : ZLinkMessageFlowOutcome.Sent;
+        var flow = Runtime.Flow;
+        if (!flow.Enabled(outcome)) return;
+
+        var messageKind = header.Kind switch
+        {
+            ZlinkStreamMessageKind.Response => ZLinkDispatchMessageKind.Response,
+            ZlinkStreamMessageKind.Error => ZLinkDispatchMessageKind.Error,
+            _ => ZLinkDispatchMessageKind.Send
+        };
+        flow.Trace(new ZLinkMessageFlowEvent(
+            outcome,
+            ZLinkDispatchErrorSurface.StreamSession,
+            messageKind,
+            header.Name,
+            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            SourceRid: RoutingId?.ToString()));
     }
 
     internal ValueTask ReplyActorRawAsync(

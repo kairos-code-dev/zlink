@@ -207,25 +207,65 @@ internal sealed partial class ZLinkActorSessionManager
             operationName,
             async cancellationToken =>
             {
-                while (true)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try
-                    {
-                        await ExecuteActorTeardownAttemptAsync(state, nativeActor, cancellationToken)
-                            .ConfigureAwait(false);
-                        return;
-                    }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
-                    {
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
-                            $"{operationName} retry for '{state.ActorId}': {exception.Message}");
-                    }
-
-                    await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                await ZLinkReconciliationRunner.RunAsync(
+                        token => ExecuteActorTeardownAttemptAsync(state, nativeActor, token),
+                        exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"{operationName} retry for '{state.ActorId}': {exception.Message}"),
+                        cancellationToken,
+                        static exception => exception is OperationCanceledException)
+                    .ConfigureAwait(false);
             });
+    }
+
+    internal async ValueTask CompensateUncommittedNativeActorAsync(
+        IZLinkBackendSpotNode node,
+        ZLinkBackendActorRef nativeActor,
+        string operationName)
+    {
+        try
+        {
+            await DestroyUncommittedNativeActorAttemptAsync(node, nativeActor, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception cleanupFailure)
+        {
+            var scheduled = runtime.TryRunDetached(
+                operationName,
+                async cancellationToken =>
+                {
+                    await ZLinkReconciliationRunner.RunAsync(
+                            token => DestroyUncommittedNativeActorAttemptAsync(node, nativeActor, token),
+                            exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                                $"{operationName} retry for '{nativeActor.ActorId}': {exception.Message}"),
+                            cancellationToken,
+                            static exception => exception is OperationCanceledException)
+                        .ConfigureAwait(false);
+                });
+            throw new InvalidOperationException(
+                scheduled
+                    ? $"Actor '{nativeActor.ActorId}' admission cleanup is quarantined until native destruction can be reconciled."
+                    : $"Actor '{nativeActor.ActorId}' admission cleanup failed after runtime reconciliation stopped.",
+                cleanupFailure);
+        }
+    }
+
+    private async ValueTask DestroyUncommittedNativeActorAttemptAsync(
+        IZLinkBackendSpotNode node,
+        ZLinkBackendActorRef nativeActor,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await node.DestroyActorAsync(
+                    nativeActor,
+                    runtime.Registration.DefaultRequestTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZlinkRequestException exception)
+            when (exception.Result == ZlinkRequestException.ErrorCode.NotFound)
+        {
+        }
     }
 
     /// <summary>

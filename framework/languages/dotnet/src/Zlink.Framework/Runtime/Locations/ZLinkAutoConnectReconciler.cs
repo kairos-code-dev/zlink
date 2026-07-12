@@ -43,6 +43,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private long _recoveryDeferUntil;
     private bool _ownerCleanupStarted;
     private long _discoveredPeerCount;
+    private long _pendingLocalWeight = -1;
 
     /// <summary>
     /// <paramref name="localRow"/> is null for a dial-only capability that
@@ -99,10 +100,21 @@ internal sealed class ZLinkAutoConnectReconciler
         Interlocked.Exchange(ref _peerMetricRegistration, null)?.Dispose();
     }
 
+    internal void SetLocalWeight(uint weight)
+    {
+        Volatile.Write(ref _pendingLocalWeight, weight);
+    }
+
     internal bool HasPendingTargets
     {
         get
         {
+            var pendingWeight = Volatile.Read(ref _pendingLocalWeight);
+            if (_localRow is { } localRow
+                && pendingWeight >= 0
+                && localRow.Weight != (uint)pendingWeight)
+                return true;
+
             foreach (var (key, desired) in _lastDesired)
                 if (!_active.TryGetValue(key, out var active)
                     || RequiresHandover(active, desired)) return true;
@@ -166,6 +178,14 @@ internal sealed class ZLinkAutoConnectReconciler
     private async ValueTask TickCoreAsync(CancellationToken cancellationToken)
     {
         if (_ownerCleanupStarted) return;
+        var pendingWeight = Volatile.Read(ref _pendingLocalWeight);
+        if (_localRow is { } localRow
+            && pendingWeight >= 0
+            && localRow.Weight != (uint)pendingWeight)
+        {
+            _localRow = localRow with { Weight = (uint)pendingWeight };
+            _localPublished = false;
+        }
         // Publish (or re-publish after recovery) the local row before
         // reading the list, so peers observing the store during our
         // recovery window can already see us.

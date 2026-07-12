@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -16,16 +17,19 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
     private readonly ZLinkSpotPacketRegistry _packets = new();
     private readonly ZLinkFrameworkRuntime _runtime;
+    private readonly ZLinkScopedHandlerInstanceOwner _handlerInstances;
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkSpotSerialExecutor _serial;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private readonly ZLinkSpotTimerRegistry _timers;
+    private readonly object _lifecycleGate = new();
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
     private int _disposed;
     private int _closingInvoked;
     private ZLinkSpotHandlerInvoker? _handlerInvoker;
+    private Task? _finalization;
     private IZLinkSpot? _spot;
 
     public ZLinkSpotActivation(
@@ -39,8 +43,9 @@ internal sealed partial class ZLinkSpotActivation :
         TimeSpan? sendTimeout)
     {
         _runtime = runtime;
-        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.GenerationEnabled);
+        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
         _scope = scope;
+        _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         NativeSpot = nativeSpot;
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
@@ -60,7 +65,8 @@ internal sealed partial class ZLinkSpotActivation :
             this,
             () => IsDisposed,
             _stopSource.Token,
-            () => runtime.Flow.GenerationEnabled);
+            runtime.ErrorSink,
+            () => runtime.Flow.CaptureEnabled);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,
@@ -77,6 +83,8 @@ internal sealed partial class ZLinkSpotActivation :
 
     public IZLinkSpot Spot => _spot
                               ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
+
+    public IZLinkRuntimeErrorSink ErrorSink => _runtime.ErrorSink;
 
     private ZLinkSpotHandlerInvoker HandlerInvoker => _handlerInvoker
                                                       ?? throw new InvalidOperationException(
@@ -95,6 +103,8 @@ internal sealed partial class ZLinkSpotActivation :
     public TimeSpan DefaultRequestTimeout { get; }
 
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
+
+    ZLinkMessageFlowTracer IZLinkCurrentSpotActivation.Flow => _runtime.Flow;
 
     public IZLinkSpotHandlerRegistry Handlers { get; }
 

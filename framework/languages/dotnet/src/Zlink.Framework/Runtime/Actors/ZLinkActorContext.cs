@@ -71,6 +71,9 @@ internal sealed class ZLinkActorJoinSpotCall(
     private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.CaptureEnabled);
         var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);

@@ -14,6 +14,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotNodeCatalog _spots;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+    private bool _stopSourceDisposed;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
     private int _entrySpotMetricActive;
@@ -36,7 +39,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         Registration = registration;
         Node = node;
         _taskRunner = new ZLinkRuntimeTaskRunner(
-            new ZLinkRuntimeErrorSink(),
+            runtime.ErrorSink,
             _stopSource.Token,
             runtime.ExecutionOwner);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
@@ -63,13 +66,35 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal ZLinkSpotNodeRegistration Registration { get; }
 
+    internal bool IsExplicitManualRouterRouteDisconnected(RoutingId targetNodeRid)
+    {
+        if (Registration.Router is not
+            {
+                AcquisitionMode: ZLinkPeerAcquisitionMode.Manual
+            } router)
+            return false;
+
+        var targetEndpoints = router.PeerRoutingIds
+            .Where(pair => pair.Value == targetNodeRid)
+            .Select(pair => pair.Key)
+            .ToArray();
+        if (targetEndpoints.Length == 0) return false;
+
+        var configuredEndpoints = router.ManualConnections.ListConnections();
+        return targetEndpoints.All(endpoint => !configuredEndpoints.Contains(endpoint, StringComparer.Ordinal));
+    }
+
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
     internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
 
     internal void RequestStop()
     {
-        _stopSource.Cancel();
+        lock (_disposeGate)
+        {
+            if (_stopSourceDisposed) return;
+            _stopSource.Cancel();
+        }
         _spots.RequestStop();
         _entrySpotActivation?.RequestStop();
     }
@@ -89,7 +114,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
     {
         var failures = new List<Exception>();
         await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
@@ -99,7 +130,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(DisposeEntrySpotAsync).ConfigureAwait(false);
         await CaptureAsync(Node.DisposeAsync).ConfigureAwait(false);
-        Capture(_stopSource.Dispose);
+        Capture(() =>
+        {
+            lock (_disposeGate)
+            {
+                if (_stopSourceDisposed) return;
+                _stopSource.Dispose();
+                _stopSourceDisposed = true;
+            }
+        });
         if (failures.Count == 1)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
         if (failures.Count > 1) throw new AggregateException(failures);

@@ -159,11 +159,11 @@ public sealed partial class RegressionTests
         }
 
         var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "aspnet-core-actor.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "06-actor-spot.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
-        Assert.Contains("lifecycle callback 을", actorGuide, StringComparison.Ordinal);
+        Assert.Contains("lifecycle callback을", actorGuide, StringComparison.Ordinal);
         Assert.Contains("호출하지 않고 native actor ref", actorGuide, StringComparison.Ordinal);
         Assert.Empty(offenders.Order(StringComparer.Ordinal));
     }

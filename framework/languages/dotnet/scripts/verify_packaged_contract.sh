@@ -42,6 +42,9 @@ PACKAGE_IDS=(
   Zlink.Framework.Locations.Redis
   Systems.Zlink.Stream.Connector
 )
+OUT_OF_SCOPE_PACKABLE_PROJECTS=(
+  src/Zlink.HttpClient/Zlink.HttpClient.csproj
+)
 
 packable_projects=()
 mapfile -t all_projects < <(rg --files "$DOTNET_ROOT" -g '*.csproj' | sort)
@@ -52,7 +55,17 @@ for project_path in "${all_projects[@]}"; do
     -property:Configuration=Release)"
   case "$is_packable" in
     true)
-      packable_projects+=("${project_path#"$DOTNET_ROOT/"}")
+      relative_project="${project_path#"$DOTNET_ROOT/"}"
+      out_of_scope=0
+      for excluded_project in "${OUT_OF_SCOPE_PACKABLE_PROJECTS[@]}"; do
+        if [[ "$relative_project" == "$excluded_project" ]]; then
+          out_of_scope=1
+          break
+        fi
+      done
+      if [[ "$out_of_scope" == "0" ]]; then
+        packable_projects+=("$relative_project")
+      fi
       ;;
     false)
       ;;
@@ -139,6 +152,13 @@ mkdir -p "$WORK_DIR/package-snapshots"
 dotnet run --project "$INSPECTOR_DIR/PackageInspector.csproj" \
   --configuration Release -- \
   "$VERSION" "$WORK_DIR/package-snapshots" "$PACKAGE_DIR"/*.nupkg
+
+framework_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.package.txt"
+exact_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
+grep -Fxq "$exact_connector_dependency" "$framework_snapshot" || {
+  echo "Zlink.Framework must pin the connector package to the exact framework package version." >&2
+  exit 1
+}
 
 if [[ -n "$SNAPSHOT_OUTPUT" ]]; then
   mkdir -p "$SNAPSHOT_OUTPUT/packages"

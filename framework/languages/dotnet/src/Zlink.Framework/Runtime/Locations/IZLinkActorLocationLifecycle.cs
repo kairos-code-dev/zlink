@@ -12,13 +12,6 @@ internal interface IZLinkActorLocationLifecycle
         ZLinkActorClaimMode claimMode = ZLinkActorClaimMode.NewOwner)
         where TActor : class;
 
-    ValueTask<ZLinkActorClaimResult> ClaimActorAsync(
-        string actorType,
-        string actorId,
-        RoutingId nodeRid,
-        Func<CancellationToken, ValueTask>? deactivate,
-        CancellationToken cancellationToken);
-
     ValueTask PublishActorRefAsync(
         string actorId,
         ActorRef actorRef,

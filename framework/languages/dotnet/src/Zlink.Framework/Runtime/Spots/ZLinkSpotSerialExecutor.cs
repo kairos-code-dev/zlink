@@ -4,20 +4,20 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
 {
     private readonly ZLinkSpotActivation _activation;
     private readonly Func<bool> _isDisposed;
-    private readonly Func<bool> _flowGenerationEnabled;
+    private readonly Func<bool> _flowCaptureEnabled;
     private readonly ZLinkSerialExecutionQueue _queue;
 
     public ZLinkSpotSerialExecutor(
         ZLinkSpotActivation activation,
         Func<bool> isDisposed,
         CancellationToken stopToken,
-        Func<bool>? flowGenerationEnabled = null,
+        IZLinkRuntimeErrorSink errorSink,
+        Func<bool>? flowCaptureEnabled = null,
         object? executionOwner = null)
     {
         _activation = activation;
         _isDisposed = isDisposed;
-        _flowGenerationEnabled = flowGenerationEnabled ?? AlwaysDisabled;
-        var errorSink = new ZLinkRuntimeErrorSink();
+        _flowCaptureEnabled = flowCaptureEnabled ?? AlwaysDisabled;
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(
                 errorSink,
@@ -68,7 +68,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         using var flow = ZLinkFlowContext.Enter(
             null,
             null,
-            _flowGenerationEnabled(),
+            _flowCaptureEnabled(),
             ZLinkFlowOrigin.Lifecycle);
         await ExecuteOperationAsync(operation, null, cancellationToken).ConfigureAwait(false);
     }

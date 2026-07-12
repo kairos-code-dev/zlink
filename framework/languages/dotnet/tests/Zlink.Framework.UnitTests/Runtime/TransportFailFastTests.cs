@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Runtime.Diagnostics;
@@ -55,12 +56,14 @@ public sealed class TransportFailFastTests
     {
         Exception? seen = null;
         Action<Exception> handler = exception => seen = exception;
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += handler;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += handler;
         try
         {
             ZLinkUnawaitedSubmit.Observe(
                 ValueTask.FromException(new InvalidOperationException("submit died")),
-                "test submit");
+                "test submit",
+                errorSink);
 
             for (var i = 0; i < 100 && seen is null; i++)
             {
@@ -71,7 +74,7 @@ public sealed class TransportFailFastTests
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= handler;
+            errorSink.UnhandledCallbackException -= handler;
         }
     }
 
@@ -80,18 +83,71 @@ public sealed class TransportFailFastTests
     {
         Exception? seen = null;
         Action<Exception> handler = exception => seen = exception;
-        ZLinkRuntimeErrorSink.UnhandledCallbackException += handler;
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        errorSink.UnhandledCallbackException += handler;
         try
         {
             ZLinkUnawaitedSubmit.Observe(
                 ValueTask.FromException(new OperationCanceledException()),
-                "test submit");
+                "test submit",
+                errorSink);
 
             Assert.Null(seen);
         }
         finally
         {
-            ZLinkRuntimeErrorSink.UnhandledCallbackException -= handler;
+            errorSink.UnhandledCallbackException -= handler;
         }
+    }
+
+    [Fact]
+    public async Task Runtime_Error_Sinks_Are_Isolated_And_Stop_Delivery_After_Shutdown()
+    {
+        await using var providerA = CreateServices();
+        await using var providerB = CreateServices();
+        var runtimeA = CreateRuntime(providerA);
+        var runtimeB = CreateRuntime(providerB);
+        await runtimeA.StartAsync(CancellationToken.None);
+        await runtimeB.StartAsync(CancellationToken.None);
+        var sinkA = runtimeA.ErrorSink;
+        var sinkB = runtimeB.ErrorSink;
+        var seenA = new List<string>();
+        var seenB = new List<string>();
+        sinkA.UnhandledCallbackException += exception => seenA.Add(exception.Message);
+        sinkB.UnhandledCallbackException += exception => seenB.Add(exception.Message);
+
+        sinkA.ReportHandlerException(new InvalidOperationException("runtime-a"));
+        sinkB.ReportHandlerException(new InvalidOperationException("runtime-b"));
+
+        Assert.Equal(["runtime-a"], seenA);
+        Assert.Equal(["runtime-b"], seenB);
+
+        await runtimeA.StopAsync(CancellationToken.None);
+        sinkA.ReportHandlerException(new InvalidOperationException("after-stop"));
+        sinkB.ReportHandlerException(new InvalidOperationException("runtime-b-still-active"));
+
+        Assert.Equal(["runtime-a"], seenA);
+        Assert.Equal(["runtime-b", "runtime-b-still-active"], seenB);
+        await runtimeB.StopAsync(CancellationToken.None);
+    }
+
+    private static ServiceProvider CreateServices()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new ZLinkFrameworkRegistration());
+        return services.BuildServiceProvider();
+    }
+
+    private static ZLinkFrameworkRuntime CreateRuntime(ServiceProvider services)
+    {
+        var registration = services.GetRequiredService<ZLinkFrameworkRegistration>();
+        return new ZLinkFrameworkRuntime(
+            services,
+            new ZLinkDotNetBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
     }
 }

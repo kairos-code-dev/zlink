@@ -334,23 +334,12 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkBackendActorRef nativeActor,
         CancellationToken cancellationToken)
     {
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                await teardownActor(state, nativeActor, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"actor creation compensation retry for '{actorId}': {exception.Message}");
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
-                .ConfigureAwait(false);
-        }
+        await ZLinkReconciliationRunner.RunAsync(
+                token => teardownActor(state, nativeActor, token),
+                exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"actor creation compensation retry for '{actorId}': {exception.Message}"),
+                cancellationToken,
+                static exception => exception is OperationCanceledException)
+            .ConfigureAwait(false);
     }
 }

@@ -2,6 +2,12 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
+    private readonly SemaphoreSlim _actorLifecycleGate = new(1, 1);
+    private readonly Dictionary<ZLinkBackendActorRef, IActor> _ownedActors = [];
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+    private bool _disposed;
+
     public RoutingId RoutingId => nativeSpotNode.RoutingId;
 
     public void SetRoutingId(RoutingId routingId)
@@ -99,8 +105,42 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
 
     public ZLinkBackendActorRef CreateActor(string actorId, Message createRequest)
     {
-        var actor = nativeSpotNode.CreateActor(actorId, createRequest);
-        return EnsureConcreteActorRef(actor.Ref.ToBackend(), actorId);
+        _actorLifecycleGate.Wait();
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            IActor? actor = null;
+            try
+            {
+                actor = nativeSpotNode.CreateActor(actorId, createRequest);
+                var actorRef = EnsureConcreteActorRef(actor.Ref.ToBackend(), actorId);
+                if (!_ownedActors.TryAdd(actorRef, actor))
+                    throw new InvalidOperationException(
+                        $"Actor handle '{actorRef.ActorId}' generation '{actorRef.Generation}' is already owned.");
+
+                actor = null;
+                return actorRef;
+            }
+            catch (Exception createFailure)
+            {
+                if (actor is null) throw;
+
+                try
+                {
+                    actor.Dispose();
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException(createFailure, cleanupFailure);
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            _actorLifecycleGate.Release();
+        }
     }
 
     public ZLinkBackendActorRef? ActorLookup(string actorId)
@@ -199,10 +239,27 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        await nativeSpotNode.DestroyActor(actor.ToNative())
-            .Timeout(timeout)
-            .Async(cancellationToken)
-            .ConfigureAwait(false);
+        await _actorLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_ownedActors.TryGetValue(actor, out var ownedActor))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ownedActor.Close(timeout);
+                _ownedActors.Remove(actor);
+                return;
+            }
+
+            await nativeSpotNode.DestroyActor(actor.ToNative())
+                .Timeout(timeout)
+                .Async(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _actorLifecycleGate.Release();
+        }
     }
 
     public bool SendActorBoundSession(
@@ -296,6 +353,46 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
 
     public ValueTask DisposeAsync()
     {
-        return nativeSpotNode.DisposeAsync();
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        await _actorLifecycleGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            var failures = new List<Exception>();
+            foreach (var actor in _ownedActors.Values)
+                try
+                {
+                    await actor.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            _ownedActors.Clear();
+
+            try
+            {
+                await nativeSpotNode.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+
+            if (failures.Count == 1)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count > 1) throw new AggregateException(failures);
+        }
+        finally
+        {
+            _actorLifecycleGate.Release();
+        }
     }
 }

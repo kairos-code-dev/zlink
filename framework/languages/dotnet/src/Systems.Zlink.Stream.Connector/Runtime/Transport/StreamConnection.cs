@@ -18,7 +18,13 @@ internal sealed class StreamConnection(TcpClient tcpClient, System.IO.Stream str
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
-        await stream.DisposeAsync().ConfigureAwait(false);
-        tcpClient.Dispose();
+        try
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            tcpClient.Dispose();
+        }
     }
 }

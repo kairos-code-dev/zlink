@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Runtime.Handlers;
 using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -9,6 +10,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly ZLinkSessionContext _context;
     private readonly ZLinkMessageFlowTracer _flow;
     private readonly ZLinkStreamSessionLiveness _liveness;
+    private readonly ZLinkScopedHandlerInstanceOwner _handlerInstances;
     private IZLinkSession _handler = null!;
     private readonly Action<string> _removeSession;
     private readonly ZLinkFrameworkRuntime _runtime;
@@ -17,17 +19,22 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly IZLinkBackendStreamSocket _socket;
     private readonly object _disposeGate = new();
     private readonly object _terminalGate = new();
+    private readonly object _transportCloseGate = new();
     private int _connected;
     private readonly TaskCompletionSource<bool> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _transportClosed =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _terminalCallbackStop = new();
+    private Task _terminalCallbackCancellation = Task.CompletedTask;
+    private bool _terminalCallbackStopDisposed;
+    private bool _terminalCallbackStopFinalizing;
     private TerminalClose? _terminalClose;
+    private Task? _transportCloseTask;
     private Task? _disposeTask;
     private int _streamMetricActive;
     private int _terminalSucceeded = 1;
-    private int _retainApplicationScope;
+    private int _suppressTerminalCallbacks;
 
     public static async ValueTask<ZLinkStreamSessionRuntime> CreateAsync(
         IServiceProvider services,
@@ -79,13 +86,15 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         _socket = socket;
         _removeSession = removeSession;
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs, transport);
         _flow = new ZLinkMessageFlowTracer(
             _runtime.Registration.DispatchOptions,
-            scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>(),
-            _runtime);
+            ZLinkMessageFlowTracer.CreateLogger(scope.ServiceProvider.GetService<ILoggerFactory>()),
+            _runtime,
+            errorSink: _runtime.ErrorSink);
         _liveness = new ZLinkStreamSessionLiveness(timeProvider);
-        var handlers = new ZLinkSessionHandlerRegistry(scope.ServiceProvider);
+        var handlers = new ZLinkSessionHandlerRegistry(_handlerInstances);
         _context = new ZLinkSessionContext(
             _runtime,
             Stream,
@@ -93,7 +102,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             CloseAsync,
             CloseByProxyAsync);
         Handlers = handlers;
-        _serial = new ZLinkStreamSessionSerialExecutor(_runtime.ExecutionOwner);
+        _serial = new ZLinkStreamSessionSerialExecutor(_runtime.ExecutionOwner, _runtime.ErrorSink);
     }
 
     public ZLinkManagedStream Stream { get; }
@@ -122,6 +131,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     {
         var failures = new ZLinkFailureCollector();
         await failures.CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        await failures.CaptureAsync(DisposeTerminalCallbackStopAsync).ConfigureAwait(false);
+        await failures.CaptureAsync(_handlerInstances.DisposeAsync).ConfigureAwait(false);
         await failures.CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
         failures.ThrowIfAny();
     }
@@ -130,7 +141,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     {
         var failures = new ZLinkFailureCollector();
         await failures.CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        await failures.CaptureAsync(DisposeTerminalCallbackStopAsync).ConfigureAwait(false);
         await failures.CaptureAsync(() => _context.CleanupAsync(CancellationToken.None)).ConfigureAwait(false);
+        await failures.CaptureAsync(_handlerInstances.DisposeAsync).ConfigureAwait(false);
         await failures.CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
         failures.ThrowIfAny();
     }
@@ -152,19 +165,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 RecordStreamClosedMetric(Volatile.Read(ref _terminalClose)!.Reason);
             else
                 MarkTerminalFailed();
-            await CaptureAsync(InvokeDisconnectedLifecycleAsync).ConfigureAwait(false);
+            if (Volatile.Read(ref _suppressTerminalCallbacks) == 0)
+                await CaptureAsync(InvokeDisconnectedLifecycleAsync).ConfigureAwait(false);
         }
-        if (Volatile.Read(ref _retainApplicationScope) == 0)
-            await CaptureAsync(() => AwaitCleanupAsync(
-                    _context.CleanupAsync(_terminalCallbackStop.Token),
-                    "stream-session-context-cleanup"))
-                .ConfigureAwait(false);
+        await CaptureAsync(DisposeTerminalCallbackStopAsync).ConfigureAwait(false);
+        await CaptureAsync(() => _context.CleanupAsync(CancellationToken.None)).ConfigureAwait(false);
         Capture(() => _removeSession(Stream.SessionId));
-        if (Volatile.Read(ref _retainApplicationScope) == 0)
-            await CaptureAsync(() => AwaitCleanupAsync(
-                    _scope.DisposeAsync(),
-                    "stream-session-scope-dispose"))
-                .ConfigureAwait(false);
+        await CaptureAsync(_handlerInstances.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
         if (failures.Count > 0) MarkTerminalFailed();
         _completion.TrySetResult(
             failures.Count == 0 && Volatile.Read(ref _terminalSucceeded) != 0);
@@ -264,16 +272,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 () => CompleteAfterTransportClosedAsync(notifyDisconnected: true)))
             return;
 
-        try
-        {
-            await Stream.CloseAsync().ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
-        }
-        catch
-        {
-            _transportClosed.TrySetResult(false);
-            throw;
-        }
+        await CloseTransportAsync().ConfigureAwait(false);
     }
 
     public async ValueTask CloseByProxyAsync(CancellationToken cancellationToken)
@@ -284,16 +283,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 () => CompleteAfterTransportClosedAsync(notifyDisconnected: false)))
             return;
 
-        try
-        {
-            await Stream.CloseAsync().AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
-        }
-        catch
-        {
-            _transportClosed.TrySetResult(false);
-            throw;
-        }
+        await CloseTransportAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     internal async ValueTask<bool> CloseForDrainAsync(CancellationToken cancellationToken)
@@ -333,8 +323,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 MarkTerminalFailed();
             }
 
-            await Stream.CloseAsync().ConfigureAwait(false);
-            transportClosed = true;
+            transportClosed = await TryCloseTransportAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -384,21 +373,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             using var currentFlow = ZLinkFlowContext.Enter(
                 decoded.FlowId,
                 decoded.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
-                _flow.GenerationEnabled,
+                _flow.CaptureEnabled,
                 ZLinkFlowOrigin.Inbound);
-
-            if (_context.TryCompleteResponse(decoded, payload))
-            {
-                if (_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
-                    _flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.ReplyReceived,
-                        ZLinkDispatchErrorSurface.StreamSession,
-                        ZLinkDispatchMessageKind.Response,
-                        decoded.Name,
-                        CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
-
-                return;
-            }
 
             if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
                 _flow.Trace(new ZLinkMessageFlowEvent(
@@ -422,13 +398,12 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                         _runtime.Registration.StreamCompressionCodec),
                     cancellationToken);
 
-                if (_flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
+                if (!decoded.RequestSeq.HasValue
+                    && _flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
                     _flow.Trace(new ZLinkMessageFlowEvent(
                         ZLinkMessageFlowOutcome.Dispatched,
                         ZLinkDispatchErrorSurface.StreamSession,
-                        decoded.RequestSeq.HasValue
-                            ? ZLinkDispatchMessageKind.Request
-                            : ZLinkDispatchMessageKind.Send,
+                        ZLinkDispatchMessageKind.Send,
                         decoded.Name,
                         CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
             }
@@ -480,15 +455,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         catch
         {
         }
-        try
-        {
-            await Stream.CloseAsync().ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
-        }
-        catch
-        {
-            _transportClosed.TrySetResult(false);
-        }
+        _ = await TryCloseTransportAsync().ConfigureAwait(false);
         await CompleteSessionAsync(
                 new ZLinkStreamError(
                     ZLinkStreamSessionError.Internal,
@@ -510,29 +477,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         catch
         {
         }
-        try
-        {
-            await Stream.CloseAsync().ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
-        }
-        catch
-        {
-            _transportClosed.TrySetResult(false);
-        }
+        _ = await TryCloseTransportAsync().ConfigureAwait(false);
         await CompleteSessionAsync(null, notifyDisconnected: true).ConfigureAwait(false);
     }
 
     private async ValueTask CloseForTransportErrorAsync(Exception error)
     {
-        try
-        {
-            await Stream.CloseAsync().ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
-        }
-        catch
-        {
-            _transportClosed.TrySetResult(false);
-        }
+        _ = await TryCloseTransportAsync().ConfigureAwait(false);
 
         await CompleteSessionAsync(
                 new ZLinkStreamError(
@@ -551,20 +502,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     internal async ValueTask ForceCloseForShutdownAsync()
     {
         ClaimCloseForDisposal();
-        Volatile.Write(ref _retainApplicationScope, 1);
-        _terminalCallbackStop.Cancel();
+        Volatile.Write(ref _suppressTerminalCallbacks, 1);
+        RequestTerminalCallbackStop();
         _serial.ForceStop();
         MarkTerminalFailed();
-        _transportClosed.TrySetResult(false);
         _completion.TrySetResult(false);
-        try
-        {
-            await Stream.CloseAsync().ConfigureAwait(false);
+        if (await TryCloseTransportAsync().ConfigureAwait(false))
             RecordStreamClosedMetric(Volatile.Read(ref _terminalClose)!.Reason);
-        }
-        catch
-        {
-        }
     }
 
     internal void ConfirmNodeTransportDisposed()
@@ -582,18 +526,17 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             MarkTerminalFailed();
 
         Exception? callbackFailure = null;
-        if (Volatile.Read(ref _retainApplicationScope) == 0
+        if (Volatile.Read(ref _suppressTerminalCallbacks) == 0
             && error is { } streamError)
             try
             {
                 using var flow = ZLinkFlowContext.Enter(
                     null,
                     null,
-                    _flow.GenerationEnabled,
+                    _flow.CaptureEnabled,
                     ZLinkFlowOrigin.Lifecycle);
                 await InvokeTerminalCallbackAsync(
-                        cancellationToken => _handler.OnErrorAsync(streamError, cancellationToken),
-                        "stream-session-error-callback")
+                        cancellationToken => _handler.OnErrorAsync(streamError, cancellationToken))
                     .ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -601,7 +544,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 callbackFailure = exception;
             }
 
-        if (notifyDisconnected && Volatile.Read(ref _retainApplicationScope) == 0)
+        if (notifyDisconnected && Volatile.Read(ref _suppressTerminalCallbacks) == 0)
             try
             {
                 await InvokeDisconnectedLifecycleAsync().ConfigureAwait(false);
@@ -616,7 +559,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
         ZLinkUnawaitedSubmit.Observe(
             DisposeAsync(),
-            $"stream-session-dispose:{Stream.SessionId}");
+            $"stream-session-dispose:{Stream.SessionId}",
+            _runtime.ErrorSink);
 
         if (callbackFailure is not null)
         {
@@ -629,24 +573,35 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     private bool TryScheduleTerminal(string reason, Func<ValueTask> finalWork)
     {
+        var rejected = false;
         lock (_terminalGate)
         {
             if (_terminalClose is not null) return false;
 
-            _terminalClose = new TerminalClose(reason);
+            _terminalClose = new TerminalClose(reason, DisposeOwnsClose: false);
             if (_serial.EnqueueFinal(finalWork)) return true;
 
-            _terminalClose = null;
-            return false;
+            _terminalClose = new TerminalClose(reason, DisposeOwnsClose: true);
+            rejected = true;
         }
+
+        if (rejected)
+        {
+            MarkTerminalFailed();
+            ZLinkUnawaitedSubmit.Observe(
+                DisposeAsync(),
+                $"stream-session-rejected-terminal-dispose:{Stream.SessionId}",
+                _runtime.ErrorSink);
+        }
+        return false;
     }
 
     private bool ClaimCloseForDisposal()
     {
         lock (_terminalGate)
         {
-            if (_terminalClose is not null) return false;
-            _terminalClose = new TerminalClose("transport_error");
+            if (_terminalClose is { } terminalClose) return terminalClose.DisposeOwnsClose;
+            _terminalClose = new TerminalClose("transport_error", DisposeOwnsClose: true);
             return true;
         }
     }
@@ -695,7 +650,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         using var flow = ZLinkFlowContext.Enter(
             null,
             null,
-            _flow.GenerationEnabled,
+            _flow.CaptureEnabled,
             ZLinkFlowOrigin.Lifecycle);
         await _handler.OnConnectedAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -705,11 +660,10 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         using var flow = ZLinkFlowContext.Enter(
             null,
             null,
-            _flow.GenerationEnabled,
+            _flow.CaptureEnabled,
             ZLinkFlowOrigin.Lifecycle);
         await InvokeTerminalCallbackAsync(
-                _handler.OnDisconnectedAsync,
-                "stream-session-disconnected-callback")
+                _handler.OnDisconnectedAsync)
             .ConfigureAwait(false);
     }
 
@@ -717,21 +671,52 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     {
         try
         {
-            await Stream.CloseAsync().ConfigureAwait(false);
-            _transportClosed.TrySetResult(true);
+            await CloseTransportAsync().ConfigureAwait(false);
             return true;
         }
         catch
         {
-            _transportClosed.TrySetResult(false);
             return false;
         }
     }
 
-    private async ValueTask InvokeTerminalCallbackAsync(
-        Func<CancellationToken, ValueTask> callback,
-        string operationName)
+    private Task CloseTransportAsync()
     {
+        TaskCompletionSource? owner = null;
+        Task closeTask;
+        lock (_transportCloseGate)
+        {
+            if (_transportCloseTask is not null) return _transportCloseTask;
+            if (_transportClosed.Task.IsCompletedSuccessfully
+                && _transportClosed.Task.Result)
+                return Task.CompletedTask;
+            owner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            closeTask = _transportCloseTask = owner.Task;
+        }
+
+        _ = CloseTransportCoreAsync(owner);
+        return closeTask;
+    }
+
+    private async Task CloseTransportCoreAsync(TaskCompletionSource completion)
+    {
+        try
+        {
+            await Stream.CloseAsync().ConfigureAwait(false);
+            _transportClosed.TrySetResult(true);
+            completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            _transportClosed.TrySetResult(false);
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async ValueTask InvokeTerminalCallbackAsync(
+        Func<CancellationToken, ValueTask> callback)
+    {
+        _terminalCallbackStop.Token.ThrowIfCancellationRequested();
         var operation = callback(_terminalCallbackStop.Token);
         if (operation.IsCompletedSuccessfully) return;
 
@@ -742,24 +727,50 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_terminalCallbackStop.IsCancellationRequested)
         {
-            ZLinkUnawaitedSubmit.Observe(new ValueTask(task), operationName);
-            throw;
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_terminalCallbackStop.IsCancellationRequested)
+            {
+            }
         }
     }
 
-    private async ValueTask AwaitCleanupAsync(ValueTask cleanup, string operationName)
+    private void RequestTerminalCallbackStop()
     {
-        if (cleanup.IsCompletedSuccessfully) return;
+        lock (_terminalGate)
+        {
+            if (_terminalCallbackStopDisposed
+                || _terminalCallbackStopFinalizing
+                || _terminalCallbackStop.IsCancellationRequested)
+                return;
+            _terminalCallbackCancellation = _terminalCallbackStop.CancelAsync();
+        }
+    }
 
-        var task = cleanup.AsTask();
+    private async ValueTask DisposeTerminalCallbackStopAsync()
+    {
+        Task cancellation;
+        lock (_terminalGate)
+        {
+            _terminalCallbackStopFinalizing = true;
+            cancellation = _terminalCallbackCancellation;
+        }
         try
         {
-            await task.WaitAsync(_terminalCallbackStop.Token).ConfigureAwait(false);
+            await cancellation.ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (_terminalCallbackStop.IsCancellationRequested)
+        finally
         {
-            ZLinkUnawaitedSubmit.Observe(new ValueTask(task), operationName);
-            throw;
+            lock (_terminalGate)
+            {
+                if (!_terminalCallbackStopDisposed)
+                {
+                    _terminalCallbackStop.Dispose();
+                    _terminalCallbackStopDisposed = true;
+                }
+            }
         }
     }
 
@@ -792,5 +803,5 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                };
     }
 
-    private sealed record TerminalClose(string Reason);
+    private sealed record TerminalClose(string Reason, bool DisposeOwnsClose);
 }

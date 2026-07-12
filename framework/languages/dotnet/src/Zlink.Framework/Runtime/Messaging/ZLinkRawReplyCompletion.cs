@@ -18,20 +18,4 @@ internal static class ZLinkRawReplyCompletion
         ZLinkMessageParts.DisposeAll(reply);
         fail(ZLinkRequestFailureMapper.CreateCompletionException(result, operationName));
     }
-
-    public static void Complete(
-        RequestResult result,
-        IReadOnlyList<Message> reply,
-        TaskCompletionSource<IReadOnlyList<Message>> completion,
-        string operationName)
-    {
-        if (result == RequestResult.Ok)
-        {
-            completion.TrySetResult(reply);
-            return;
-        }
-
-        ZLinkMessageParts.DisposeAll(reply);
-        completion.TrySetException(ZLinkRequestFailureMapper.CreateCompletionException(result, operationName));
-    }
 }

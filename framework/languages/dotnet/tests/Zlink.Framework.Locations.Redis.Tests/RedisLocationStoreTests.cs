@@ -528,6 +528,72 @@ public sealed class RedisLocationStoreTests
         Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
     }
 
+    [Fact]
+    public void Every_Write_Operation_Has_One_Atomic_Lua_Script()
+    {
+        var scripts = new[]
+        {
+            ZLinkRedisLocationScripts.Write,
+            ZLinkRedisLocationScripts.Remove,
+            ZLinkRedisLocationScripts.RemoveAllByOwner,
+            ZLinkRedisLocationScripts.RenewLease,
+            ZLinkRedisLocationScripts.RemoveLease
+        };
+
+        Assert.All(scripts, script =>
+        {
+            Assert.Contains("redis.call", script, StringComparison.Ordinal);
+            Assert.DoesNotContain("MULTI", script, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("EXEC", script, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
+    public void Hash_Tagged_Prefix_Keeps_Every_Derived_Key_In_The_Same_Cluster_Slot()
+    {
+        var keys = new ZLinkRedisLocationKeys("zlink:{app-a}");
+
+        Assert.All(
+            new[]
+            {
+                keys.RowHashKey("peer", "row").ToString(),
+                keys.GenerationKey("peer", "row").ToString(),
+                keys.KindIndexKey("peer").ToString(),
+                keys.LeaseKey("owner").ToString(),
+                keys.LeaseIndexKey().ToString(),
+                keys.StampKey("peer", "play")
+            },
+            key => Assert.Contains("{app-a}", key, StringComparison.Ordinal));
+    }
+
+    [SkippableFact]
+    public async Task Deleted_Change_Stamp_Falls_Back_To_The_Intact_Full_Row_Snapshot()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore(out var prefix);
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
+        var scope = new ZLinkLocationChangeStampScope(ZLinkLocationKind.Peer, "play");
+        await store.UpdatePeerAsync(TestRows.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        Assert.True(await store.GetChangeStampAsync(scope) > 0);
+
+        Assert.True(await _fixture.DeleteKeyAsync($"{prefix}:stamp:peer:play"));
+        Assert.Equal(0, await store.GetChangeStampAsync(scope));
+        Assert.Single(await store.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play")));
+    }
+
+    [SkippableFact]
+    public async Task Dedicated_Run_Prefix_Cleanup_Removes_Every_Derived_Key()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore(out var prefix);
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
+        await store.UpdatePeerAsync(TestRows.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        Assert.True(await _fixture.CountPrefixAsync(prefix) > 0);
+
+        Assert.True(await _fixture.DeletePrefixAsync(prefix) > 0);
+        Assert.Equal(0, await _fixture.CountPrefixAsync(prefix));
+    }
+
     /// <summary>Creates an isolated store and starts the lease setup; tests
     /// must await the returned task before writing rows.</summary>
     private ZLinkRedisLocationStore CreateStoreWithLiveOwnersAsync(

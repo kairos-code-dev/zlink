@@ -5,6 +5,7 @@ internal sealed class ZLinkSerialTurn
     private static readonly AsyncLocal<ZLinkSerialTurn?> CurrentTurn = new();
 
     private readonly Func<ZLinkSerialTurn, Action, bool> _postResume;
+    private readonly CancellationToken _executionToken;
     private Task? _ownerTask;
 
     private TaskCompletionSource _suspended =
@@ -12,9 +13,12 @@ internal sealed class ZLinkSerialTurn
 
     private int _suspendSignaled;
 
-    public ZLinkSerialTurn(Func<ZLinkSerialTurn, Action, bool> postResume)
+    public ZLinkSerialTurn(
+        Func<ZLinkSerialTurn, Action, bool> postResume,
+        CancellationToken executionToken)
     {
         _postResume = postResume;
+        _executionToken = executionToken;
     }
 
     public static ZLinkSerialTurn? Current => CurrentTurn.Value;
@@ -65,7 +69,13 @@ internal sealed class ZLinkSerialTurn
         }
         finally
         {
-            await AwaitResumePermitAsync().ConfigureAwait(false);
+            // Execution cancellation terminates this turn. Posting a resume
+            // after the queue has begun completion races the closed writer
+            // and adds a scheduler hop before callback cleanup can run.
+            // The owning work item still joins the callback task, so cleanup
+            // remains part of queue disposal without re-entering a dead turn.
+            if (!_executionToken.IsCancellationRequested)
+                await AwaitResumePermitAsync().ConfigureAwait(false);
         }
     }
 
@@ -84,7 +94,8 @@ internal sealed class ZLinkSerialTurn
         }
         finally
         {
-            await AwaitResumePermitAsync().ConfigureAwait(false);
+            if (!_executionToken.IsCancellationRequested)
+                await AwaitResumePermitAsync().ConfigureAwait(false);
         }
     }
 

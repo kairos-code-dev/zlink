@@ -8,7 +8,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal ZLinkActorStragglerForwarder ActorStragglerForwarder
         => _actorStragglerForwarder;
-    private static readonly ZLinkActorBoundSessionRegistry ActorBoundSessions = new();
+    private readonly ZLinkActorBoundSessionRegistry _actorBoundSessions;
 
     internal ValueTask<ZLinkActorJoinResult> JoinActorAsync(
         RoutingId spotRid,
@@ -443,26 +443,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
 
         actorState.Handoff.Quarantine(request.HandoffId);
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                await RollbackPreparedTransferredActorAsync(
-                        actorState,
-                        cancellationToken,
-                        startTeardownReconciliation: false)
-                    .ConfigureAwait(false);
-                return;
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"expired actor handoff rollback retry for '{request.ActorId}': {exception.Message}");
-                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
+        await ZLinkReconciliationRunner.RunAsync(
+                token => RollbackPreparedTransferredActorAsync(
+                    actorState,
+                    token,
+                    startTeardownReconciliation: false),
+                exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"expired actor handoff rollback retry for '{request.ActorId}': {exception.Message}"),
+                cancellationToken,
+                static exception => exception is OperationCanceledException)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask RollbackPreparedTransferredActorAsync(
@@ -932,12 +922,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        if (GetActorSpotNode() is not { } node)
-        {
-            await NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
+        var node = GetActorClientSpotNode();
 
         await NotifyRemoteActorDisconnectedAsync(
                 state,
@@ -1000,7 +985,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         GetOrCreateActorState(actorId).BindSession(sessionNodeRid, sessionRid, bindingToken);
-        ActorBoundSessions.Register(this, actorId, sessionRid, bindingToken);
+        _actorBoundSessions.Register(actorId, sessionRid, bindingToken);
         LocationLifecycle?.ActorSessionRoutes.OnActorSessionBound(
             sessionRid,
             actorId,
@@ -1013,7 +998,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         NotifyActorSessionRouteUnbound(actorId, bindingToken);
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
-        ActorBoundSessions.Unregister(this, actorId, bindingToken);
+        _actorBoundSessions.Unregister(actorId, bindingToken);
     }
 
     internal void RemoveActorSessionBinding(
@@ -1025,7 +1010,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         NotifyActorSessionRouteUnbound(actorId, bindingToken);
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
-        ActorBoundSessions.Unregister(this, actorId, bindingToken);
+        _actorBoundSessions.Unregister(actorId, bindingToken);
     }
 
     private void NotifyActorSessionRouteUnbound(string actorId, string bindingToken)
@@ -1039,7 +1024,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal void CleanupActorSessionsForSession(RoutingId sessionRid)
     {
-        ActorBoundSessions.Cleanup(sessionRid);
+        _actorBoundSessions.Cleanup(sessionRid);
     }
 
     internal bool TryGetActorBoundSession(
@@ -1054,7 +1039,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         _actorSessionManager.ResetGeneration();
         _actorHandoffAdmissions.ResetGeneration();
         _sessionBindings.ResetGeneration();
-        ActorBoundSessions.UnregisterRuntime(this);
+        _actorBoundSessions.Clear();
     }
 
     internal bool SendActorBoundSession(
@@ -1063,6 +1048,23 @@ internal sealed partial class ZLinkFrameworkRuntime
         SendFlags flags)
     {
         var state = GetOrCreateActorState(actorId);
+        if (state.TryGetBoundSession(out var session))
+        {
+            if (TryGetSessionActorContext(actorId, session.BindingToken, out var context))
+            {
+                if (parts.Count != 1)
+                    throw new InvalidOperationException(
+                        "A local actor bound-session send requires one encoded stream frame.");
+                return context.Write(parts[0]);
+            }
+
+            if (!ZLinkActorBoundSessionBindingToken.IsNative(session.BindingToken))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                    $"Actor '{actorId}' no longer has the selected local session binding.",
+                    true);
+        }
+
         var node = GetActorSpotNode()
                    ?? throw new ZLinkFrameworkException(
                        ZLinkFrameworkErrorKind.ActorSessionNotBound,

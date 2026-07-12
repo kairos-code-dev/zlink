@@ -14,6 +14,7 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
     private readonly Dictionary<Type, (string ContentType, IZLinkMessageSerializer Serializer)> _serializerByType = [];
     private (string ContentType, IZLinkMessageSerializer Serializer)? _singleFallbackSerializer;
     private bool _fallbackSerializerAmbiguous;
+    private ZLinkCodecRegistrySnapshot _snapshot = ZLinkCodecRegistrySnapshot.Empty;
 
     public IReadOnlyDictionary<string, IZLinkMessageSerializer> Serializers =>
         _serializers.ToDictionary(entry => entry.Key, entry => entry.Value.Serializer,
@@ -48,6 +49,7 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
         var normalized = contentType.Trim();
         _streamCodecsByContentType[normalized] = codec;
         _contentTypesByStreamCodec[codec] = normalized;
+        RefreshSnapshot();
     }
 
     private void AddSerializer(
@@ -65,6 +67,7 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
         _serializers[normalized] = new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
         _serializerByType.Clear();
         RefreshFallbackSerializerCache();
+        RefreshSnapshot();
     }
 
     /// <summary>
@@ -153,6 +156,8 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
         return _contentTypesByStreamCodec.TryGetValue(codec, out contentType!);
     }
 
+    internal ZLinkCodecRegistrySnapshot Snapshot() => Volatile.Read(ref _snapshot);
+
     private sealed record RegisteredSerializer(
         IZLinkMessageSerializer Serializer,
         Func<Type, bool> CanSerialize,
@@ -178,4 +183,40 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
             _singleFallbackSerializer = (entry.Key, entry.Value.Serializer);
         }
     }
+
+    private void RefreshSnapshot()
+    {
+        var serializers = _serializers.ToDictionary(
+            entry => entry.Key,
+            entry => entry.Value.Serializer,
+            StringComparer.OrdinalIgnoreCase);
+        var contentTypes = new Dictionary<ZlinkStreamCodec, string>(_contentTypesByStreamCodec);
+        Volatile.Write(ref _snapshot, new ZLinkCodecRegistrySnapshot(serializers, contentTypes));
+    }
+}
+
+internal sealed class ZLinkCodecRegistrySnapshot(
+    IReadOnlyDictionary<string, IZLinkMessageSerializer> serializers,
+    IReadOnlyDictionary<ZlinkStreamCodec, string> contentTypesByStreamCodec)
+{
+    internal static ZLinkCodecRegistrySnapshot Empty { get; } = new(
+        new Dictionary<string, IZLinkMessageSerializer>(StringComparer.OrdinalIgnoreCase),
+        new Dictionary<ZlinkStreamCodec, string>());
+
+    internal bool TryGetSerializer(string contentType, out IZLinkMessageSerializer serializer)
+    {
+        if (!string.IsNullOrEmpty(contentType)
+            && serializers.TryGetValue(contentType, out var found))
+        {
+            serializer = found;
+            return true;
+        }
+
+        serializer = null!;
+        return false;
+    }
+
+    internal bool TryResolveStreamContentType(
+        ZlinkStreamCodec codec,
+        out string contentType) => contentTypesByStreamCodec.TryGetValue(codec, out contentType!);
 }

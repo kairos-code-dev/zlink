@@ -136,7 +136,7 @@ public sealed class SpotContracts
         var reply = await localClient.RequestToSpot(null!, new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
-        publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Submit();
+        publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit();
 
         Assert.Equal(ZLinkSpotCreateState.Created, created.State);
         Assert.Equal("room-1", reply.RoomId);
@@ -723,7 +723,7 @@ public sealed class SpotContracts
 
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient
     {
-        public IZLinkPublishCall Publish<TEvent>(
+        public IZLinkPublishCall PublishSpot<TEvent>(
             string channelName,
             string topic,
             TEvent message)

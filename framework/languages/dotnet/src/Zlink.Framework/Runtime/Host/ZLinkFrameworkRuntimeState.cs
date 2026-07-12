@@ -2,16 +2,21 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 {
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+
     public ZLinkFrameworkRuntimeState(
         IZLinkBackendContext context,
         ZLinkFrameworkRegistration registration,
         IServiceProvider services,
+        ZLinkRuntimeErrorSink errorSink,
         object executionOwner)
     {
         Context = context;
         Registration = registration;
+        ErrorSink = errorSink;
         TaskRunner = new ZLinkRuntimeTaskRunner(
-            new ZLinkRuntimeErrorSink(),
+            ErrorSink,
             StopTokenSource.Token,
             executionOwner,
             ownsSupervisor: true);
@@ -30,6 +35,8 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
     public CancellationTokenSource StopTokenSource { get; } = new();
 
     public ZLinkRuntimeTaskRunner TaskRunner { get; }
+
+    public ZLinkRuntimeErrorSink ErrorSink { get; }
 
     public ZLinkMessageFlowObserverPump MessageFlowObservers { get; }
 
@@ -71,43 +78,68 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         foreach (var node in SpotNodes.Values) node.CancelActiveOperations();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+        {
+            if (_disposeTask is not null) return new ValueTask(_disposeTask);
+
+            RuntimeResources resources;
+            lock (SyncRoot)
+            {
+                resources = new RuntimeResources(
+                    SpotNodes.Values.ToArray(),
+                    RouteChannels.Values.ToArray(),
+                    StreamNodes.Values.ToArray(),
+                    ClientBundles.Values.ToArray(),
+                    PublisherBundles.Values.ToArray(),
+                    SubscriberBundles.Values.ToArray(),
+                    ServerBundles.Values.ToArray(),
+                    ListenerTasks.ToArray());
+            }
+
+            return new ValueTask(_disposeTask = DisposeCoreAsync(resources));
+        }
+    }
+
+    private async Task DisposeCoreAsync(RuntimeResources resources)
     {
         var failures = new List<Exception>();
-        foreach (var node in SpotNodes.Values)
+        foreach (var node in resources.SpotNodes)
             await CaptureAsync(node.CloseLifecycleAsync).ConfigureAwait(false);
 
         Capture(StopTokenSource.Cancel);
-        foreach (var node in SpotNodes.Values) Capture(node.RequestStop);
-        foreach (var route in RouteChannels.Values) Capture(route.RequestStop);
-        foreach (var stream in StreamNodes.Values) Capture(stream.RequestStop);
+        foreach (var node in resources.SpotNodes) Capture(node.RequestStop);
+        foreach (var route in resources.RouteChannels) Capture(route.RequestStop);
+        foreach (var stream in resources.StreamNodes) Capture(stream.RequestStop);
 
         await CaptureAsync(TaskRunner.StopAsync).ConfigureAwait(false);
         await CaptureAsync(MessageFlowObservers.DisposeAsync).ConfigureAwait(false);
 
-        foreach (var node in SpotNodes.Values)
+        foreach (var node in resources.SpotNodes)
             await CaptureAsync(() => DisposeSafelyAsync(node)).ConfigureAwait(false);
 
-        foreach (var routed in RouteChannels.Values)
+        foreach (var routed in resources.RouteChannels)
             await CaptureAsync(() => DisposeSafelyAsync(routed)).ConfigureAwait(false);
 
-        foreach (var stream in StreamNodes.Values)
+        foreach (var stream in resources.StreamNodes)
             await CaptureAsync(() => DisposeSafelyAsync(stream)).ConfigureAwait(false);
 
-        foreach (var bundle in ClientBundles.Values)
+        foreach (var bundle in resources.ClientBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        foreach (var bundle in PublisherBundles.Values)
+        foreach (var bundle in resources.PublisherBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        foreach (var bundle in SubscriberBundles.Values)
+        foreach (var bundle in resources.SubscriberBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        foreach (var bundle in ServerBundles.Values)
+        foreach (var bundle in resources.ServerBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        await CaptureAsync(WaitForListenerTasksAsync).ConfigureAwait(false);
+        await CaptureAsync(() => WaitForListenerTasksAsync(resources.ListenerTasks)).ConfigureAwait(false);
 
+        Capture(ErrorSink.Dispose);
         Capture(StopTokenSource.Dispose);
         await CaptureAsync(() => DisposeSafelyAsync(Context)).ConfigureAwait(false);
 
@@ -141,13 +173,13 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         }
     }
 
-    private async ValueTask WaitForListenerTasksAsync()
+    private static async ValueTask WaitForListenerTasksAsync(Task[] listenerTasks)
     {
-        if (ListenerTasks.Count == 0) return;
+        if (listenerTasks.Length == 0) return;
 
         try
         {
-            await Task.WhenAll(ListenerTasks);
+            await Task.WhenAll(listenerTasks);
         }
         catch (OperationCanceledException)
         {
@@ -159,6 +191,16 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         {
         }
     }
+
+    private sealed record RuntimeResources(
+        ZLinkSpotNodeRuntime[] SpotNodes,
+        ZLinkRouteChannelRuntime[] RouteChannels,
+        ZLinkStreamNodeRuntime[] StreamNodes,
+        ZLinkChannelRuntimeBundle[] ClientBundles,
+        ZLinkChannelRuntimeBundle[] PublisherBundles,
+        ZLinkChannelRuntimeBundle[] SubscriberBundles,
+        ZLinkChannelRuntimeBundle[] ServerBundles,
+        Task[] ListenerTasks);
 
     private static async ValueTask DisposeSafelyAsync(IAsyncDisposable disposable)
     {

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -25,7 +26,9 @@ internal sealed class ZLinkChannelPacketDispatcher
         var resolvedLogger = logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.DispatchOptions,
-            logger,
+            runtime is null
+                ? logger
+                : ZLinkMessageFlowTracer.CreateLogger(runtime.Services.GetService<ILoggerFactory>(), logger),
             runtime);
         _commandPipeline = new ZLinkChannelCommandDispatchPipeline(
             handlerRegistry,
@@ -102,7 +105,7 @@ internal sealed class ZLinkChannelPacketDispatcher
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
             _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
@@ -165,7 +168,7 @@ internal sealed class ZLinkChannelPacketDispatcher
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
 
         if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
@@ -224,11 +227,12 @@ internal sealed class ZLinkChannelPacketDispatcher
     {
         var header = protocolError.Header;
         var isRequest = received.RequestSeq.HasValue;
+        var canReply = isRequest && ZLinkEnvelopeCodec.CanCorrelateReply(header);
         var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
         using var flow = ZLinkFlowContext.Enter(
             validFlow.FlowId,
             validFlow.FlowOrigin,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         _dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.Channel,
@@ -236,14 +240,14 @@ internal sealed class ZLinkChannelPacketDispatcher
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send,
             ZLinkDispatchErrorReason.InvalidFrame,
-            isRequest
+            canReply
                 ? ZLinkDispatchErrorAction.ReplyError
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
             channelName,
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
-        if (!isRequest) return;
+        if (!canReply) return;
 
         ZLinkChannelReplyWriter.ReplyRequest(
             router,
@@ -265,7 +269,7 @@ internal sealed class ZLinkChannelPacketDispatcher
         using var invalidFlow = ZLinkFlowContext.Enter(
             validFlow.FlowId,
             validFlow.FlowOrigin,
-            _dispatchErrors.Flow.GenerationEnabled,
+            _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         _dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.Channel,

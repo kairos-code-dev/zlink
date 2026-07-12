@@ -8,7 +8,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var globalSpotFactories = new HashSet<Type>();
         var channelHandlerEndpoints = registration.ScannedHandlerCatalog.ChannelEndpoints;
         var routeHandlerEndpoints = registration.ScannedHandlerCatalog.RouteEndpoints;
-        var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
+        var handlerExposure = ZLinkHandlerExposureCatalog.Build(channelHandlerEndpoints, routeHandlerEndpoints);
 
         ValidateDispatchOptions(registration.DispatchOptions);
 
@@ -18,8 +18,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateChannel(
                 channel,
                 registration.Locations.Enabled,
-                handlerGroups,
-                channelHandlerEndpoints);
+                handlerExposure);
 
         foreach (var streamNode in registration.StreamNodes.Values) ValidateStreamNode(streamNode, registration);
 
@@ -27,8 +26,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateRouteChannel(
                 routed,
                 registration.Locations.Enabled,
-                handlerGroups,
-                routeHandlerEndpoints);
+                handlerExposure);
 
         foreach (var spotNode in registration.SpotNodes.Values)
             ValidateSpotNode(
@@ -61,46 +59,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             || options.Diagnostics.SampleRate > 1.0d)
             throw new ZLinkConfigurationException(
                 "Diagnostics SampleRate must be between 0.0 and 1.0.");
-    }
-
-    private static IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> BuildHandlerGroupCatalog(
-        IReadOnlyList<ZLinkHandlerEndpointDescriptor> channelHandlerEndpoints,
-        IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> routeHandlerEndpoints)
-    {
-        var groups = new Dictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>>(StringComparer.Ordinal);
-        foreach (var endpoint in channelHandlerEndpoints)
-        foreach (var group in endpoint.Groups)
-            AddHandlerGroupCatalogEntry(
-                groups,
-                group,
-                new ZLinkHandlerGroupCatalogEntry(
-                    ZLinkHandlerEndpointSurface.Channel,
-                    endpoint.Kind));
-
-        foreach (var endpoint in routeHandlerEndpoints)
-        foreach (var group in endpoint.Groups)
-            AddHandlerGroupCatalogEntry(
-                groups,
-                group,
-                new ZLinkHandlerGroupCatalogEntry(
-                    ZLinkHandlerEndpointSurface.Route,
-                    endpoint.Kind));
-
-        return groups;
-    }
-
-    private static void AddHandlerGroupCatalogEntry(
-        IDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> groups,
-        string group,
-        ZLinkHandlerGroupCatalogEntry entry)
-    {
-        if (!groups.TryGetValue(group, out var entries))
-        {
-            entries = [];
-            groups.Add(group, entries);
-        }
-
-        entries.Add(entry);
     }
 
     private static void ValidateStreamNode(

@@ -42,7 +42,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
             using var currentFlow = ZLinkFlowContext.Enter(
                 header.FlowId,
                 header.FlowOrigin,
-                dispatchErrors.Flow.GenerationEnabled,
+                dispatchErrors.Flow.CaptureEnabled,
                 ZLinkFlowOrigin.Inbound);
             var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
             var kind = header.Kind == ZLinkMessageKind.Request
@@ -203,11 +203,12 @@ internal sealed class ZLinkSpotRouteDispatcher(
         var header = protocolError.Header;
         var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
         var isRequest = received.RequestSeq.HasValue;
+        var canReply = isRequest && ZLinkEnvelopeCodec.CanCorrelateReply(header);
         var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
         using var flow = ZLinkFlowContext.Enter(
             validFlow.FlowId,
             validFlow.FlowOrigin,
-            dispatchErrors.Flow.GenerationEnabled,
+            dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotRoute,
@@ -215,7 +216,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send,
             ZLinkDispatchErrorReason.InvalidFrame,
-            isRequest
+            canReply
                 ? ZLinkDispatchErrorAction.ReplyError
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
@@ -223,7 +224,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
             SpotRid: dispatchSpotRid,
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
-        if (!isRequest) return;
+        if (!canReply) return;
 
         var replyParts = ZLinkSpotReplyEnvelope.EncodeProtocolErrorParts(
             channelName,

@@ -17,16 +17,31 @@ public sealed class ZLinkRedisLocationStore :
     private readonly ZLinkRedisLocationOptions _options;
     private readonly ZLinkRedisLocationKeys _keys;
     private readonly ZLinkRedisLocationCommands _commands;
+    private readonly Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> _connect;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
-    private ConnectionMultiplexer? _connection;
+    private readonly object _disposeGate = new();
+    private IZLinkRedisConnection? _connection;
+    private Task? _disposeTask;
+    private TaskCompletionSource? _operationsDrained;
+    private int _activeOperations;
+    private int _disposed;
 
     public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options)
+        : this(options, ConnectAsync)
+    {
+    }
+
+    internal ZLinkRedisLocationStore(
+        ZLinkRedisLocationOptions options,
+        Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> connect)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(connect);
         options.Validate();
         _options = options;
         _keys = new ZLinkRedisLocationKeys(options.KeyPrefix);
         _commands = new ZLinkRedisLocationCommands(_keys);
+        _connect = connect;
     }
 
     /// <summary>
@@ -69,10 +84,22 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        var members = await database.SetMembersAsync(_keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag)).ConfigureAwait(false);
-        var rows = await ZLinkRedisLocationRows.LoadAsync(database, _keys, ZLinkRedisLocationKinds.Peer, members).ConfigureAwait(false);
-        return rows.Where(row => ZLinkLocationFilterMatcher.Matches(row, filter)).ToArray();
+        return await ExecuteAsync(
+                async database =>
+                {
+                    var members = await database.SetMembersAsync(
+                            _keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag))
+                        .ConfigureAwait(false);
+                    var rows = await ZLinkRedisLocationRows.LoadAsync(
+                            database,
+                            _keys,
+                            ZLinkRedisLocationKinds.Peer,
+                            members)
+                        .ConfigureAwait(false);
+                    return rows.Where(row => ZLinkLocationFilterMatcher.Matches(row, filter)).ToArray();
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     // ----- spot store ------------------------------------------------------
@@ -182,8 +209,9 @@ public sealed class ZLinkRedisLocationStore :
         TimeSpan leaseTtl,
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.RenewOwnerLeaseAsync(database, ownerId, nodeRid, leaseTtl)
+        return await ExecuteAsync(
+                database => _commands.RenewOwnerLeaseAsync(database, ownerId, nodeRid, leaseTtl),
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -191,23 +219,29 @@ public sealed class ZLinkRedisLocationStore :
         string ownerId,
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.RemoveOwnerLeaseAsync(database, ownerId).ConfigureAwait(false);
+        return await ExecuteAsync(
+                database => _commands.RemoveOwnerLeaseAsync(database, ownerId),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<long> RemoveAllByOwnerAsync(
         string ownerId,
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.RemoveAllByOwnerAsync(database, ownerId).ConfigureAwait(false);
+        return await ExecuteAsync(
+                database => _commands.RemoveAllByOwnerAsync(database, ownerId),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.ListOwnerLeasesAsync(database).ConfigureAwait(false);
+        return await ExecuteAsync(
+                _commands.ListOwnerLeasesAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     // ----- change stamp store ----------------------------------------------
@@ -216,19 +250,56 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkLocationChangeStampScope scope,
         CancellationToken cancellationToken = default)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.GetChangeStampAsync(database, scope).ConfigureAwait(false);
+        return await ExecuteAsync(
+                database => _commands.GetChangeStampAsync(database, scope),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        var connection = Interlocked.Exchange(ref _connection, null);
-        if (connection is not null)
+        Task disposeTask;
+        TaskCompletionSource? startDispose = null;
+        lock (_disposeGate)
         {
-            await connection.DisposeAsync().ConfigureAwait(false);
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                startDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(startDispose.Task);
+            }
+
+            disposeTask = _disposeTask;
         }
 
-        _connectGate.Dispose();
+        startDispose?.TrySetResult();
+        return new ValueTask(disposeTask);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
+        Task? operationsDrained;
+        lock (_disposeGate)
+        {
+            operationsDrained = _activeOperations == 0
+                ? null
+                : (_operationsDrained ??= new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+
+        if (operationsDrained is not null) await operationsDrained.ConfigureAwait(false);
+
+        var connection = _connection;
+        _connection = null;
+        try
+        {
+            if (connection is not null) await connection.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectGate.Dispose();
+        }
     }
 
     // ----- shared write/read paths -----------------------------------------
@@ -240,8 +311,10 @@ public sealed class ZLinkRedisLocationStore :
         CancellationToken cancellationToken)
         where TRow : class
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.WriteAsync(database, kind, row, intent).ConfigureAwait(false);
+        return await ExecuteAsync(
+                database => _commands.WriteAsync(database, kind, row, intent),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<ZLinkLocationWriteResult> RemoveAsync(
@@ -251,8 +324,10 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken)
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        return await _commands.RemoveAsync(database, tag, rowKey, meshName, owner).ConfigureAwait(false);
+        return await ExecuteAsync(
+                database => _commands.RemoveAsync(database, tag, rowKey, meshName, owner),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<TRow?> ResolveAsync<TRow>(
@@ -261,11 +336,17 @@ public sealed class ZLinkRedisLocationStore :
         CancellationToken cancellationToken)
         where TRow : class
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        var fields = await database.HashGetAsync(
-            _keys.RowHashKey(kind.Tag, rowKey),
-            ZLinkRedisLocationRows.Fields).ConfigureAwait(false);
-        return ZLinkRedisLocationRows.Materialize(kind, fields);
+        return await ExecuteAsync(
+                async database =>
+                {
+                    var fields = await database.HashGetAsync(
+                            _keys.RowHashKey(kind.Tag, rowKey),
+                            ZLinkRedisLocationRows.Fields)
+                        .ConfigureAwait(false);
+                    return ZLinkRedisLocationRows.Materialize(kind, fields);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<ZLinkLocationPage<TRow>> ListPageAsync<TRow>(
@@ -275,31 +356,48 @@ public sealed class ZLinkRedisLocationStore :
         CancellationToken cancellationToken)
         where TRow : class
     {
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        RedisValue[] members;
-        string? continuation = null;
-        if (page.PageSize <= 0)
-        {
-            // No page size means the framework layer chose "unbounded", the
-            // same contract the in-memory store applies.
-            members = await database.SetMembersAsync(_keys.KindIndexKey(kind.Tag)).ConfigureAwait(false);
-        }
-        else
-        {
-            // The continuation token is the opaque SSCAN cursor; COUNT is a
-            // hint, so pages are approximately PageSize rows before the
-            // client-side field filter is applied.
-            var cursor = page.ContinuationToken ?? "0";
-            var scan = (RedisResult[])(await database.ExecuteAsync(
-                "SSCAN", _keys.KindIndexKey(kind.Tag), cursor, "COUNT", page.PageSize)
-                .ConfigureAwait(false))!;
-            var nextCursor = (string)scan[0]!;
-            members = (RedisValue[])scan[1]!;
-            continuation = nextCursor == "0" ? null : nextCursor;
-        }
+        return await ExecuteAsync(
+                async database =>
+                {
+                    RedisValue[] members;
+                    string? continuation = null;
+                    if (page.PageSize <= 0)
+                    {
+                        // No page size means the framework layer chose "unbounded", the
+                        // same contract the in-memory store applies.
+                        members = await database.SetMembersAsync(_keys.KindIndexKey(kind.Tag))
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // The continuation token is the opaque SSCAN cursor; COUNT is a
+                        // hint, so pages are approximately PageSize rows before the
+                        // client-side field filter is applied.
+                        var cursor = page.ContinuationToken ?? "0";
+                        var scan = (RedisResult[])(await database.ExecuteAsync(
+                                "SSCAN", _keys.KindIndexKey(kind.Tag), cursor, "COUNT", page.PageSize)
+                            .ConfigureAwait(false))!;
+                        var nextCursor = (string)scan[0]!;
+                        members = (RedisValue[])scan[1]!;
+                        continuation = nextCursor == "0" ? null : nextCursor;
+                    }
 
-        var rows = await ZLinkRedisLocationRows.LoadAsync(database, _keys, kind, members).ConfigureAwait(false);
-        return new ZLinkLocationPage<TRow>(rows.Where(matches).ToArray(), continuation);
+                    var rows = await ZLinkRedisLocationRows.LoadAsync(database, _keys, kind, members)
+                        .ConfigureAwait(false);
+                    return new ZLinkLocationPage<TRow>(rows.Where(matches).ToArray(), continuation);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<TResult> ExecuteAsync<TResult>(
+        Func<IDatabase, ValueTask<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        using var lease = EnterOperation();
+        cancellationToken.ThrowIfCancellationRequested();
+        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        return await operation(database).ConfigureAwait(false);
     }
 
     private async ValueTask<IDatabase> GetDatabaseAsync(CancellationToken cancellationToken)
@@ -313,8 +411,7 @@ public sealed class ZLinkRedisLocationStore :
         await _connectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var connection = _connection ??= await ConnectionMultiplexer
-                .ConnectAsync(_options.BuildConfiguration())
+            var connection = _connection ??= await _connect(_options.BuildConfiguration())
                 .ConfigureAwait(false);
             return connection.GetDatabase();
         }
@@ -324,4 +421,54 @@ public sealed class ZLinkRedisLocationStore :
         }
     }
 
+    private OperationLease EnterOperation()
+    {
+        lock (_disposeGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            _activeOperations++;
+            return new OperationLease(this);
+        }
+    }
+
+    private void ExitOperation()
+    {
+        TaskCompletionSource? drained = null;
+        lock (_disposeGate)
+        {
+            _activeOperations--;
+            if (_activeOperations == 0 && Volatile.Read(ref _disposed) != 0)
+            {
+                drained = _operationsDrained;
+                _operationsDrained = null;
+            }
+        }
+
+        drained?.TrySetResult();
+    }
+
+    private sealed class OperationLease(ZLinkRedisLocationStore owner) : IDisposable
+    {
+        private ZLinkRedisLocationStore? _owner = owner;
+
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.ExitOperation();
+    }
+
+    private static async ValueTask<IZLinkRedisConnection> ConnectAsync(ConfigurationOptions options) =>
+        new ZLinkStackExchangeRedisConnection(
+            await ConnectionMultiplexer.ConnectAsync(options).ConfigureAwait(false));
+
+}
+
+internal interface IZLinkRedisConnection : IAsyncDisposable
+{
+    IDatabase GetDatabase();
+}
+
+internal sealed class ZLinkStackExchangeRedisConnection(ConnectionMultiplexer connection)
+    : IZLinkRedisConnection
+{
+    public IDatabase GetDatabase() => connection.GetDatabase();
+
+    public ValueTask DisposeAsync() => connection.DisposeAsync();
 }

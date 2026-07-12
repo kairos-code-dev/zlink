@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
 /// Default resolvers reading the registered stores. Every read reaches the
-/// store — there is no resolver cache (spot-address messaging draft §8) —
+/// store — there is no resolver cache (location runtime contract §8) —
 /// and joins owner liveness plus the monotonic generation guard before a
 /// row counts as live. Spot and actor rows are exposed internally for the
 /// address resolvers and lifecycle flows; the public messaging surfaces

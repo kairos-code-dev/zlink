@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Runtime.Transport;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
@@ -628,15 +630,16 @@ public sealed partial class StreamConnectorTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await connector.Close.Async(canceled.Token));
         await server.WaitAsync(TimeSpan.FromSeconds(5));
-        var closed = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(ZlinkStreamConnectionState.Closed, connector.State);
-        Assert.Equal(ZlinkStreamCloseReason.ClientClose, closed.CloseReason);
+        Assert.False(disconnected.Task.IsCompleted);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await connector.Close.Async(canceled.Token));
 
         releaseWorker.TrySetResult();
         await connector.Close.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var closed = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ZlinkStreamCloseReason.ClientClose, closed.CloseReason);
     }
 
     [Fact]
@@ -681,6 +684,771 @@ public sealed partial class StreamConnectorTests
         await connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         await server.WaitAsync(TimeSpan.FromSeconds(5));
         await connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ManualCallbacksRejectDisposeUntilDispatchCallbackReturns()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var framesWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var headerCodec = new ZlinkStreamHeaderCodec();
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "manual-dispose",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                Array.Empty<byte>());
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Error,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "manual-error",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "{\"message\":\"manual error\"}"u8.ToArray());
+            framesWritten.TrySetResult();
+            var buffer = new byte[1];
+            Assert.Equal(0, await stream.ReadAsync(buffer, 0, buffer.Length));
+        });
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Manual,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var stateRejected = new TaskCompletionSource<InvalidOperationException>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var typedRejected = new TaskCompletionSource<InvalidOperationException>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var errorRejected = new TaskCompletionSource<InvalidOperationException>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ConnectionStateChanged += async (change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Connecting)
+                await CaptureDisposeRejectionAsync(stateRejected);
+        };
+        using var subscription = connector.On("manual-dispose", async (_, _) =>
+            await CaptureDisposeRejectionAsync(typedRejected));
+        connector.ErrorReceived += async (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.RemoteError)
+                await CaptureDisposeRejectionAsync(errorRejected);
+        };
+
+        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await framesWritten.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => connector.ReceivedCount("manual-dispose") == 1 && connector.PendingDispatchCount >= 4,
+            TimeSpan.FromSeconds(5));
+        await connector.Dispatch.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        foreach (var rejection in new[] { stateRejected.Task, typedRejected.Task, errorRejected.Task })
+        {
+            var exception = await rejection.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("Close.Async", exception.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(ZlinkStreamConnectionState.Connected, connector.State);
+        await connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+
+        async ValueTask CaptureDisposeRejectionAsync(
+            TaskCompletionSource<InvalidOperationException> completion)
+        {
+            try
+            {
+                await connector.DisposeAsync();
+            }
+            catch (InvalidOperationException ex)
+            {
+                completion.TrySetResult(ex);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DetachedRequestCompletionCallbackRejectsDisposeUntilCallbackReturns()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var request = await ReadPacketAsync(stream);
+            var requestHeader = new ZlinkStreamHeaderCodec().Decode(request.Header);
+            var responseHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Response,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                requestHeader.RequestSeq,
+                "detached-dispose-response",
+                ZlinkStreamMetadata.Empty);
+            await WritePacketAsync(
+                stream,
+                new ZlinkStreamHeaderCodec().Encode(responseHeader).ToArray(),
+                Array.Empty<byte>());
+            var buffer = new byte[1];
+            Assert.Equal(0, await stream.ReadAsync(buffer, 0, buffer.Length));
+        });
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var rejected = new TaskCompletionSource<InvalidOperationException>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, Array.Empty<byte>()))
+            .PacketName("detached-dispose-request")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
+            {
+                _ = result;
+                try
+                {
+                    _ = connector.DisposeAsync();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    rejected.TrySetResult(ex);
+                }
+            });
+
+        var exception = await rejected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("Close.Async", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(ZlinkStreamConnectionState.Connected, connector.State);
+
+        await connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SharedCloseWaitsForTerminalCallbacksAndSupportsSelfClose()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = ObserveClientCloseAsync(listener);
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var releaseTerminal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closedEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnectedSelfClose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new List<string>();
+        connector.ConnectionStateChanged += async (change, _) =>
+        {
+            if (change.Current != ZlinkStreamConnectionState.Closed) return;
+
+            lock (order) order.Add("closed");
+            closedEntered.TrySetResult();
+            await releaseTerminal.Task;
+            await connector.Close.Async();
+        };
+        connector.Disconnected += async (_, _) =>
+        {
+            lock (order) order.Add("disconnected");
+            await connector.Close.Async();
+            disconnectedSelfClose.TrySetResult();
+        };
+
+        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var firstClose = connector.Close.Async().AsTask();
+        await closedEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var repeatedClose = connector.Close.Async().AsTask();
+        var dispose = connector.DisposeAsync().AsTask();
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await connector.Close.Async(canceled.Token));
+        Assert.False(firstClose.IsCompleted);
+        Assert.False(repeatedClose.IsCompleted);
+        Assert.False(dispose.IsCompleted);
+
+        releaseTerminal.TrySetResult();
+        await firstClose.WaitAsync(TimeSpan.FromSeconds(5));
+        await repeatedClose.WaitAsync(TimeSpan.FromSeconds(5));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        await disconnectedSelfClose.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "closed", "disconnected" }, order);
+    }
+
+    [Fact]
+    public async Task SharedCloseFaultIsObservedByRepeatedCloseAndDispose()
+    {
+        var closeFailure = new InvalidOperationException("expected transport close failure");
+        var connection = new FaultingCloseConnection(closeFailure);
+        var connector = new ZlinkStreamConnector(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+            },
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
+
+        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var first = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await connector.Close.Async());
+        var repeated = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await connector.Close.Async());
+        var disposed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await connector.DisposeAsync());
+
+        Assert.Same(closeFailure, first);
+        Assert.Same(first, repeated);
+        Assert.Same(first, disposed);
+        Assert.Equal(1, connection.CloseCount);
+    }
+
+    [Fact]
+    public async Task OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously()
+    {
+        var connection = new BlockingWriteConnection();
+        await using var connector = new ZlinkStreamConnector(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+            },
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
+        await connector.Connect.Async();
+
+        Submit(0);
+        await connection.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        for (var index = 1; index <= 4096; index++) Submit(index);
+
+        var full = Assert.Throws<ZlinkStreamException>(() => Submit(4097));
+        Assert.Equal(ZlinkStreamErrorCode.SendFailed, full.Error.Code);
+        Assert.Contains("queue is full", full.Error.Message, StringComparison.Ordinal);
+
+        connection.ReleaseWrite.TrySetResult();
+        return;
+
+        void Submit(int value)
+        {
+            connector.Send(new ZlinkStreamEncodedPayload(
+                    ZlinkStreamCodec.Raw,
+                    BitConverter.GetBytes(value)))
+                .PacketName("bounded.send")
+                .Submit();
+        }
+    }
+
+    [Fact]
+    public async Task RequestQueueWaitsForEarlierAcceptedOneWaySend()
+    {
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var callbacks = new ZlinkStreamConnectorCallbacks(
+            taskRunner,
+            ZlinkStreamDispatchMode.Immediate,
+            32);
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new List<byte>();
+        var queue = new ZlinkStreamOneWaySubmitQueue(
+            taskRunner,
+            callbacks,
+            async (frame, _) =>
+            {
+                var value = frame.PayloadBytes.Span[0];
+                lock (order) order.Add(value);
+                if (value != 1) return;
+                firstEntered.TrySetResult();
+                await releaseFirst.Task;
+            });
+
+        queue.Submit(
+            new ZlinkStreamOutboundFrame(ReadOnlyMemory<byte>.Empty, new byte[] { 1 }),
+            CancellationToken.None);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var requestWrite = queue.SendAsync(
+                new ZlinkStreamOutboundFrame(ReadOnlyMemory<byte>.Empty, new byte[] { 2 }),
+                CancellationToken.None)
+            .AsTask();
+
+        Assert.False(requestWrite.IsCompleted);
+        releaseFirst.TrySetResult();
+        await requestWrite.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new byte[] { 1, 2 }, order);
+
+        queue.Complete();
+        await queue.WaitForCompletionAsync();
+        shutdown.Cancel();
+    }
+
+    [Fact]
+    public async Task CallerCancellationDoesNotInterruptAnInProgressFrameWrite()
+    {
+        using var shutdown = new CancellationTokenSource();
+        using var caller = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var callbacks = new ZlinkStreamConnectorCallbacks(
+            taskRunner,
+            ZlinkStreamDispatchMode.Immediate,
+            32);
+        var writeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedWrites = 0;
+        var queue = new ZlinkStreamOneWaySubmitQueue(
+            taskRunner,
+            callbacks,
+            async (_, _) =>
+            {
+                writeEntered.TrySetResult();
+                await releaseWrite.Task;
+                Interlocked.Increment(ref completedWrites);
+            });
+
+        var callerWait = queue.SendAsync(
+                new ZlinkStreamOutboundFrame(ReadOnlyMemory<byte>.Empty, new byte[] { 1 }),
+                caller.Token)
+            .AsTask();
+        await writeEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        caller.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await callerWait);
+
+        releaseWrite.TrySetResult();
+        await queue.SendAsync(
+            new ZlinkStreamOutboundFrame(ReadOnlyMemory<byte>.Empty, new byte[] { 2 }),
+            CancellationToken.None);
+        Assert.Equal(2, Volatile.Read(ref completedWrites));
+
+        queue.Complete();
+        await queue.WaitForCompletionAsync();
+        shutdown.Cancel();
+    }
+
+    [Fact]
+    public async Task TransportErrorCloseFaultCompletesTerminalWorkAndStartsReconnect()
+    {
+        var closeFailure = new InvalidOperationException("expected transport close failure");
+        var firstConnection = new FaultingCloseConnection(closeFailure);
+        var secondConnection = new RecordingCloseConnection();
+        var reconnectStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var connectCount = 0;
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var pending = new ZlinkStreamPendingRequests();
+        var callbacks = new ZlinkStreamConnectorCallbacks(taskRunner, ZlinkStreamDispatchMode.Immediate, 32);
+        var lifecycle = new ZlinkStreamConnectorLifecycle(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions
+                {
+                    InitialDelay = TimeSpan.FromMilliseconds(1),
+                    MaxDelay = TimeSpan.FromMilliseconds(1),
+                    BackoffFactor = 1.0,
+                    MaxAttempts = 1
+                }
+            },
+            pending,
+            taskRunner,
+            callbacks,
+            _ =>
+            {
+                if (Interlocked.Increment(ref connectCount) == 1)
+                    return ValueTask.FromResult<IZlinkStreamConnection>(firstConnection);
+
+                reconnectStarted.TrySetResult();
+                return ValueTask.FromResult<IZlinkStreamConnection>(secondConnection);
+            });
+        var states = new List<ZlinkStreamConnectionState>();
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        callbacks.AddConnectionStateChanged((change, _) =>
+        {
+            lock (states) states.Add(change.Current);
+            return ValueTask.CompletedTask;
+        });
+        callbacks.AddDisconnected((closed, _) =>
+        {
+            disconnected.TrySetResult(closed);
+            return ValueTask.CompletedTask;
+        });
+        await lifecycle.ConnectAsync(
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            _ => ValueTask.CompletedTask,
+            () => { },
+            CancellationToken.None);
+        var request = pending.Create();
+        var pendingCompletion = pending.WaitAsync(request, CancellationToken.None).AsTask();
+
+        var observed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await lifecycle.HandleTransportErrorAsync(
+                new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "transport failed")));
+
+        Assert.Same(closeFailure, observed);
+        Assert.True(pendingCompletion.IsCompleted);
+        var pendingFailure = await Assert.ThrowsAsync<ZlinkStreamException>(async () => await pendingCompletion);
+        Assert.Equal(ZlinkStreamErrorCode.Disconnected, pendingFailure.Error.Code);
+        Assert.Equal(
+            ZlinkStreamCloseReason.TransportError,
+            (await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5))).CloseReason);
+        await reconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => lifecycle.State == ZlinkStreamConnectionState.Connected,
+            TimeSpan.FromSeconds(5));
+        Assert.Contains(ZlinkStreamConnectionState.Reconnecting, states);
+        Assert.Equal(1, firstConnection.CloseCount);
+
+        await lifecycle.CloseAsync(CancellationToken.None);
+        lifecycle.Dispose();
+        shutdown.Cancel();
+        Assert.Equal(1, secondConnection.CloseCount);
+    }
+
+    [Fact]
+    public async Task ServerCloseFaultStillReportsCallbacksAndFailsPendingRequest()
+    {
+        var closeFailure = new InvalidOperationException("expected server-close transport failure");
+        var connection = new FaultingCloseConnection(closeFailure);
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var pending = new ZlinkStreamPendingRequests();
+        var callbacks = new ZlinkStreamConnectorCallbacks(taskRunner, ZlinkStreamDispatchMode.Immediate, 32);
+        var lifecycle = new ZlinkStreamConnectorLifecycle(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+            },
+            pending,
+            taskRunner,
+            callbacks,
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var callbackFailures = new List<ZlinkStreamError>();
+        callbacks.AddErrorReceived((error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.UserCallbackFailed)
+                lock (callbackFailures) callbackFailures.Add(error);
+            return ValueTask.CompletedTask;
+        });
+        callbacks.AddConnectionStateChanged((change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Disconnected)
+                throw new InvalidOperationException("expected state callback failure");
+            return ValueTask.CompletedTask;
+        });
+        callbacks.AddDisconnected((closed, _) =>
+        {
+            disconnected.TrySetResult(closed);
+            throw new InvalidOperationException("expected disconnected callback failure");
+        });
+        await lifecycle.ConnectAsync(
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            _ => ValueTask.CompletedTask,
+            () => { },
+            CancellationToken.None);
+        var request = pending.Create();
+        var pendingCompletion = pending.WaitAsync(request, CancellationToken.None).AsTask();
+
+        var observed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await lifecycle.HandleServerCloseAsync(
+                ZlinkStreamCloseReason.ServerDrain,
+                "server drain"));
+
+        Assert.Same(closeFailure, observed);
+        Assert.Equal(ZlinkStreamConnectionState.Disconnected, lifecycle.State);
+        Assert.True(pendingCompletion.IsCompleted);
+        await Assert.ThrowsAsync<ZlinkStreamException>(async () => await pendingCompletion);
+        Assert.Equal(
+            ZlinkStreamCloseReason.ServerDrain,
+            (await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5))).CloseReason);
+        Assert.Equal(2, callbackFailures.Count);
+        Assert.Equal(1, connection.CloseCount);
+
+        await lifecycle.CloseAsync(CancellationToken.None);
+        lifecycle.Dispose();
+        shutdown.Cancel();
+        Assert.Equal(1, connection.CloseCount);
+    }
+
+    [Fact]
+    public async Task ReceiveEofCloseFailureDisconnectsOnceAndPreservesReconnectedSession()
+    {
+        var closeFailure = new InvalidOperationException("expected EOF close failure");
+        var firstConnection = new FaultingCloseConnection(closeFailure);
+        var secondConnection = new RecordingCloseConnection();
+        var connectCount = 0;
+        var receiveCount = 0;
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var callbacks = new ZlinkStreamConnectorCallbacks(taskRunner, ZlinkStreamDispatchMode.Immediate, 32);
+        var lifecycle = new ZlinkStreamConnectorLifecycle(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions
+                {
+                    InitialDelay = TimeSpan.FromMilliseconds(1),
+                    MaxDelay = TimeSpan.FromMilliseconds(1),
+                    BackoffFactor = 1.0,
+                    MaxAttempts = 1
+                }
+            },
+            new ZlinkStreamPendingRequests(),
+            taskRunner,
+            callbacks,
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(
+                Interlocked.Increment(ref connectCount) == 1 ? firstConnection : secondConnection));
+        var disconnectCount = 0;
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameDecodeErrors = 0;
+        callbacks.AddDisconnected((closed, _) =>
+        {
+            Interlocked.Increment(ref disconnectCount);
+            disconnected.TrySetResult(closed);
+            return ValueTask.CompletedTask;
+        });
+        callbacks.AddErrorReceived((error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed)
+                Interlocked.Increment(ref frameDecodeErrors);
+            return ValueTask.CompletedTask;
+        });
+
+        await lifecycle.ConnectAsync(
+            token => Interlocked.Increment(ref receiveCount) == 1
+                ? Task.CompletedTask
+                : Task.Delay(Timeout.InfiniteTimeSpan, token),
+            _ => ValueTask.CompletedTask,
+            () => { },
+            CancellationToken.None);
+        var closed = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => lifecycle.State == ZlinkStreamConnectionState.Connected &&
+                  ReferenceEquals(lifecycle.Connection, secondConnection),
+            TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ZlinkStreamCloseReason.TransportError, closed.CloseReason);
+        Assert.Equal(1, disconnectCount);
+        Assert.Equal(0, frameDecodeErrors);
+        Assert.Equal(1, firstConnection.CloseCount);
+        Assert.Same(secondConnection, lifecycle.Connection);
+
+        await lifecycle.CloseAsync(CancellationToken.None);
+        lifecycle.Dispose();
+        shutdown.Cancel();
+        Assert.Equal(1, secondConnection.CloseCount);
+    }
+
+    [Fact]
+    public async Task ReceiveServerCloseFaultIsNotReclassifiedAsFrameDecodeFailure()
+    {
+        var closeFailure = new InvalidOperationException("expected server close failure");
+        var connection = new FaultingCloseConnection(closeFailure);
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var callbacks = new ZlinkStreamConnectorCallbacks(taskRunner, ZlinkStreamDispatchMode.Immediate, 32);
+        ZlinkStreamConnectorLifecycle? lifecycle = null;
+        lifecycle = new ZlinkStreamConnectorLifecycle(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+            },
+            new ZlinkStreamPendingRequests(),
+            taskRunner,
+            callbacks,
+            _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
+        var disconnectCount = 0;
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var frameDecodeErrors = 0;
+        callbacks.AddDisconnected((closed, _) =>
+        {
+            Interlocked.Increment(ref disconnectCount);
+            disconnected.TrySetResult(closed);
+            return ValueTask.CompletedTask;
+        });
+        callbacks.AddErrorReceived((error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed)
+                Interlocked.Increment(ref frameDecodeErrors);
+            return ValueTask.CompletedTask;
+        });
+
+        await lifecycle.ConnectAsync(
+            token => lifecycle!.HandleServerCloseAsync(
+                    ZlinkStreamCloseReason.ServerDrain,
+                    "server drain",
+                    token)
+                .AsTask(),
+            _ => ValueTask.CompletedTask,
+            () => { },
+            CancellationToken.None);
+        var closed = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ZlinkStreamCloseReason.ServerDrain, closed.CloseReason);
+        Assert.Equal(ZlinkStreamConnectionState.Disconnected, lifecycle.State);
+        Assert.Equal(1, disconnectCount);
+        Assert.Equal(0, frameDecodeErrors);
+        Assert.Equal(1, connection.CloseCount);
+
+        await lifecycle.CloseAsync(CancellationToken.None);
+        lifecycle.Dispose();
+        shutdown.Cancel();
+    }
+
+    [Fact]
+    public async Task AsyncStateSubscribersRunInRegistrationOrderAndCanSelfClose()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = ObserveClientCloseAsync(listener);
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new List<string>();
+        connector.ConnectionStateChanged += async (change, _) =>
+        {
+            if (change.Current != ZlinkStreamConnectionState.Connected) return;
+
+            lock (order) order.Add("first-enter");
+            firstEntered.TrySetResult();
+            await releaseFirst.Task;
+            await connector.Close.Async();
+            lock (order) order.Add("first-exit");
+        };
+        connector.ConnectionStateChanged += (change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Connected)
+            {
+                lock (order) order.Add("second");
+                secondEntered.TrySetResult();
+            }
+
+            return ValueTask.CompletedTask;
+        };
+
+        var connect = connector.Connect.Async().AsTask();
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(secondEntered.Task.IsCompleted);
+
+        releaseFirst.TrySetResult();
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await connect);
+        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await connector.Close.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "first-enter", "first-exit", "second" }, order);
+    }
+
+    [Fact]
+    public async Task SubscriberFailureReportsOnceAndContinuesRemainingSubscribers()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var serverRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await serverRelease.Task;
+        });
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var order = new List<string>();
+        var secondStateSubscriber = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reported = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ErrorReceived += async (error, _) =>
+        {
+            if (error.Code != ZlinkStreamErrorCode.UserCallbackFailed) return;
+            lock (order) order.Add("error-first");
+            await Task.Yield();
+            throw new InvalidOperationException("secondary error handler failure");
+        };
+        connector.ErrorReceived += (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.UserCallbackFailed)
+            {
+                lock (order) order.Add("error-second");
+                reported.TrySetResult(error);
+            }
+
+            return ValueTask.CompletedTask;
+        };
+        connector.ConnectionStateChanged += (change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Connecting)
+            {
+                lock (order) order.Add("state-first");
+                throw new InvalidOperationException("primary subscriber failure");
+            }
+
+            return ValueTask.CompletedTask;
+        };
+        connector.ConnectionStateChanged += (change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Connecting)
+            {
+                lock (order) order.Add("state-second");
+                secondStateSubscriber.TrySetResult();
+            }
+
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await secondStateSubscriber.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ZlinkStreamErrorCode.UserCallbackFailed, error.Code);
+        Assert.Equal(
+            new[] { "state-first", "error-first", "error-second", "state-second" },
+            order);
+
+        serverRelease.TrySetResult();
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -746,20 +1514,45 @@ public sealed partial class StreamConnectorTests
             Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
         });
         var callbackCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callbackFailure = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reportedErrors = new List<ZlinkStreamError>();
         connector.Disconnected += async (_, _) =>
         {
-            await connector.Close.Async();
-            callbackCompleted.TrySetResult();
+            try
+            {
+                await connector.Close.Async();
+                callbackCompleted.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                callbackFailure.TrySetResult(exception);
+                throw;
+            }
+        };
+        connector.ErrorReceived += (error, _) =>
+        {
+            lock (reportedErrors) reportedErrors.Add(error);
+            return ValueTask.CompletedTask;
         };
 
         await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         await server.WaitAsync(TimeSpan.FromSeconds(5));
         await WaitUntilAsync(
-            () => connector.State == ZlinkStreamConnectionState.Disconnected,
+            () => connector.State == ZlinkStreamConnectionState.Disconnected &&
+                  connector.PendingDispatchCount >= 1,
             TimeSpan.FromSeconds(5));
         await connector.Dispatch.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-        await callbackCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
+        var callbackException = callbackFailure.Task.IsCompleted
+            ? await callbackFailure.Task
+            : null;
+        Assert.True(
+            callbackCompleted.Task.IsCompleted,
+            callbackException is not null
+                ? $"Disconnected callback Close failed: {callbackException}"
+                : "Disconnected callback was not dispatched.");
+        Assert.False(callbackFailure.Task.IsCompleted);
+        lock (reportedErrors) Assert.Empty(reportedErrors);
         Assert.Equal(ZlinkStreamConnectionState.Closed, connector.State);
     }
 
@@ -809,6 +1602,80 @@ public sealed partial class StreamConnectorTests
                 name,
                 ZlinkStreamMetadata.Empty)).ToArray(),
             Array.Empty<byte>());
+    }
+
+    private sealed class FaultingCloseConnection(Exception closeFailure) : IZlinkStreamConnection
+    {
+        public int CloseCount { get; private set; }
+
+        public bool CanWriteSegments => true;
+
+        public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken)
+        {
+            CloseCount++;
+            return ValueTask.FromException(closeFailure);
+        }
+    }
+
+    private sealed class RecordingCloseConnection : IZlinkStreamConnection
+    {
+        public int CloseCount { get; private set; }
+
+        public bool CanWriteSegments => true;
+
+        public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken)
+        {
+            CloseCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class BlockingWriteConnection : IZlinkStreamConnection
+    {
+        public TaskCompletionSource WriteStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseWrite { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool CanWriteSegments => true;
+
+        public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public async ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken)
+        {
+            WriteStarted.TrySetResult();
+            await ReleaseWrite.Task.WaitAsync(cancellationToken);
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken)
+        {
+            ReleaseWrite.TrySetResult();
+            return ValueTask.CompletedTask;
+        }
     }
 
     [Fact]

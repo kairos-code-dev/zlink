@@ -5,8 +5,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateChannel(
         ZLinkChannelRegistration channel,
         bool autoConnectConfigured,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
-        IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
+        ZLinkHandlerExposureCatalog handlerExposure)
     {
         ValidateChannelShape(channel);
 
@@ -46,62 +45,31 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             channel.Subscriber.ManualConnections.Freeze(channel.Subscriber.AcquisitionMode);
         }
 
-        ValidateChannelHandlerExposure(channel, handlerGroups, scannedEndpoints);
+        var exposedKinds = handlerExposure.ValidateChannel(channel);
+        ValidateChannelHandlerCapabilities(channel, exposedKinds);
     }
 
-    private static void ValidateChannelHandlerExposure(
+    private static void ValidateChannelHandlerCapabilities(
         ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
-        IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
+        IReadOnlySet<ZLinkMessageKind> exposedKinds)
     {
         switch (channel.AutoConnectType)
         {
             case ZLinkAutoConnectType.ClientServer:
-                ValidateClientServerHandlerExposure(channel, handlerGroups);
+                ValidateClientServerHandlerExposure(channel, exposedKinds);
                 break;
             case ZLinkAutoConnectType.Fanout:
-                ValidateFanoutHandlerExposure(channel, handlerGroups);
+                ValidateFanoutHandlerExposure(channel, exposedKinds);
                 break;
         }
-
-        ValidateUniqueChannelHandlers(
-            channel.ChannelName,
-            ZLinkMessageKind.Command,
-            "send",
-            channel.SendHandlers);
-        ValidateUniqueChannelHandlers(
-            channel.ChannelName,
-            ZLinkMessageKind.Request,
-            "request",
-            channel.RequestHandlers);
-        ValidateUniqueChannelHandlers(
-            channel.ChannelName,
-            ZLinkMessageKind.Publish,
-            "publish",
-            channel.PublishHandlers);
-        ValidateChannelHandlerConflicts(channel, scannedEndpoints);
     }
 
     private static void ValidateClientServerHandlerExposure(
         ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
+        IReadOnlySet<ZLinkMessageKind> exposedKinds)
     {
-        ValidateMappedGroups(
-            channel,
-            handlerGroups,
-            new HashSet<ZLinkMessageKind>
-            {
-                ZLinkMessageKind.Command,
-                ZLinkMessageKind.Request
-            });
-
-        var hasHandlerExposure = channel.SendHandlers.Count > 0
-                                 || channel.RequestHandlers.Count > 0
-                                 || ChannelGroupsExposeAny(
-                                     channel,
-                                     handlerGroups,
-                                     ZLinkMessageKind.Command,
-                                     ZLinkMessageKind.Request);
+        var hasHandlerExposure = exposedKinds.Contains(ZLinkMessageKind.Command)
+                                 || exposedKinds.Contains(ZLinkMessageKind.Request);
 
         if (hasHandlerExposure && channel.Server is null)
             throw new ZLinkConfigurationException(
@@ -119,15 +87,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
     private static void ValidateFanoutHandlerExposure(
         ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
+        IReadOnlySet<ZLinkMessageKind> exposedKinds)
     {
-        ValidateMappedGroups(
-            channel,
-            handlerGroups,
-            new HashSet<ZLinkMessageKind> { ZLinkMessageKind.Publish });
-
-        var hasHandlerExposure = channel.PublishHandlers.Count > 0
-                                 || ChannelGroupsExposeAny(channel, handlerGroups, ZLinkMessageKind.Publish);
+        var hasHandlerExposure = exposedKinds.Contains(ZLinkMessageKind.Publish);
 
         if (hasHandlerExposure && channel.Subscriber is null)
             throw new ZLinkConfigurationException(
@@ -140,115 +102,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (channel.SendHandlers.Count > 0 || channel.RequestHandlers.Count > 0)
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' cannot register send or request handlers.");
-    }
-
-    private static void ValidateMappedGroups(
-        ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
-        IReadOnlySet<ZLinkMessageKind> allowedKinds)
-    {
-        foreach (var group in channel.HandlerGroups)
-        {
-            if (!handlerGroups.TryGetValue(group, out var entries))
-                throw new ZLinkConfigurationException(
-                    $"channel '{channel.ChannelName}' maps unknown handler group '{group}'.");
-
-            foreach (var entry in entries)
-                if (entry.Surface != ZLinkHandlerEndpointSurface.Channel
-                    || !allowedKinds.Contains(entry.Kind))
-                    throw new ZLinkConfigurationException(
-                        $"channel '{channel.ChannelName}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
-        }
-    }
-
-    private static bool ChannelGroupsExposeAny(
-        ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
-        params ZLinkMessageKind[] kinds)
-    {
-        return channel.HandlerGroups.Any(group =>
-            handlerGroups.TryGetValue(group, out var groupEntries)
-            && groupEntries.Any(entry =>
-                entry.Surface == ZLinkHandlerEndpointSurface.Channel
-                && kinds.Contains(entry.Kind)));
-    }
-
-    private static void ValidateUniqueChannelHandlers(
-        string channelName,
-        ZLinkMessageKind kind,
-        string label,
-        IReadOnlyList<ZLinkChannelHandlerRegistration> handlers)
-    {
-        var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
-        foreach (var handler in handlers)
-        {
-            var packetName = handler.PacketName
-                             ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
-            if (!keys.Add((kind, packetName)))
-                throw new ZLinkConfigurationException(
-                    $"Duplicate {label} handler '{channelName}:{packetName}'.");
-        }
-    }
-
-    private static void ValidateChannelHandlerConflicts(
-        ZLinkChannelRegistration channel,
-        IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
-    {
-        var exposed = new Dictionary<(ZLinkMessageKind Kind, string PacketName), Type>();
-
-        foreach (var endpoint in scannedEndpoints)
-        {
-            if (endpoint.Groups.Count == 0
-                || !endpoint.Groups.Any(channel.HandlerGroups.Contains))
-                continue;
-
-            AddExposedChannelHandler(
-                channel.ChannelName,
-                exposed,
-                endpoint.Kind,
-                endpoint.MessageName,
-                endpoint.DeclaringType);
-        }
-
-        foreach (var handler in channel.SendHandlers)
-            AddExposedChannelHandler(
-                channel.ChannelName,
-                exposed,
-                ZLinkMessageKind.Command,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType);
-
-        foreach (var handler in channel.RequestHandlers)
-            AddExposedChannelHandler(
-                channel.ChannelName,
-                exposed,
-                ZLinkMessageKind.Request,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType);
-
-        foreach (var handler in channel.PublishHandlers)
-            AddExposedChannelHandler(
-                channel.ChannelName,
-                exposed,
-                ZLinkMessageKind.Publish,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType);
-    }
-
-    private static void AddExposedChannelHandler(
-        string channelName,
-        IDictionary<(ZLinkMessageKind Kind, string PacketName), Type> exposed,
-        ZLinkMessageKind kind,
-        string packetName,
-        Type handlerType)
-    {
-        var key = (kind, packetName);
-        if (exposed.TryGetValue(key, out var existing)
-            && existing != handlerType)
-            throw new ZLinkConfigurationException(
-                $"channel '{channelName}' maps duplicate {kind} handler packet '{packetName}'.");
-
-        exposed[key] = handlerType;
     }
 
     private static void ValidateChannelShape(ZLinkChannelRegistration channel)

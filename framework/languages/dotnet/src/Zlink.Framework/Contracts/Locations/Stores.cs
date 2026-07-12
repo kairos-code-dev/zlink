@@ -151,9 +151,9 @@ public interface IZLinkOwnerLeaseStore
 }
 
 /// <summary>
-/// Optional. When a store implementation also implements this interface the
-/// framework wakes reconcile and cache invalidation from change events.
-/// Event loss is tolerated: polling remains the correctness path.
+/// Optional change notification capability. Notifications can make location
+/// changes visible before the next polling interval. Event loss is tolerated:
+/// polling remains the correctness path.
 /// </summary>
 public interface IZLinkLocationWatchStore
 {

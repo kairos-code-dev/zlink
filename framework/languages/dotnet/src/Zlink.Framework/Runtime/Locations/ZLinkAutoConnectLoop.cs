@@ -19,6 +19,8 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _wake = new(0, 1);
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private Task? _watch;
@@ -107,7 +109,13 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
     {
         Exception? failure = null;
         try

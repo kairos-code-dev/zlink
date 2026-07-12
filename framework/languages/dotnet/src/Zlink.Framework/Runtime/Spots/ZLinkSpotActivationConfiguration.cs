@@ -64,7 +64,7 @@ internal sealed partial class ZLinkSpotActivation
             ZLinkSpotActorHandlerSurface.UserSpot,
             spot.GetType());
         _handlerInvoker = new ZLinkSpotHandlerInvoker(
-            _scope.ServiceProvider,
+            _handlerInstances,
             spot,
             _runtime.Registration.Codecs,
             _runtime.Registration.StreamCompressionCodec);

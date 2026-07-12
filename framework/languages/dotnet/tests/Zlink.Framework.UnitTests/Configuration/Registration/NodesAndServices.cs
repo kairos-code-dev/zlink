@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System.Reflection;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Handlers;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Streams;
 
@@ -212,6 +215,22 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             }));
 
         Assert.Contains("Duplicate actor factory 'warrior'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenActorFactoryNodeHasNoRouterCapability()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("actor-node")
+                    .EnablePubSub("tcp://127.0.0.1:6102")
+                    .AddActorFactory<TestActorFactory>("warrior");
+            }));
+
+        Assert.Contains("requires router capability", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -446,8 +465,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         var context = new TestSessionPacketContext();
-        var registry = new ZLinkSessionHandlerRegistry(scope.ServiceProvider);
+        var registry = new ZLinkSessionHandlerRegistry(handlerInstances);
         registry.BindContext(context);
         registry.AddHandler<TestSessionPacketHandler>();
         registry.Bind();
@@ -465,11 +485,40 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public async Task SessionHandlerRegistry_Reuses_Unregistered_Handler_And_Disposes_It_On_Disconnect()
+    {
+        var lifetime = new AsyncSessionHandlerLifetime();
+        using var provider = new ServiceCollection()
+            .AddSingleton(lifetime)
+            .BuildServiceProvider();
+        var handlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
+        var context = new TestSessionPacketContext();
+        var registry = new ZLinkSessionHandlerRegistry(handlerInstances);
+        registry.BindContext(context);
+        registry.AddHandler<AsyncDisposableSessionPacketHandler>();
+        registry.Bind();
+
+        await registry.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(AsyncDisposableSessionPacketMessage)),
+            ZLinkMessage.From(new AsyncDisposableSessionPacketMessage()));
+        await registry.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(AsyncDisposableSessionPacketMessage)),
+            ZLinkMessage.From(new AsyncDisposableSessionPacketMessage()));
+
+        Assert.Equal(2, lifetime.Invocations.Count);
+        Assert.Same(lifetime.Invocations[0], lifetime.Invocations[1]);
+        await handlerInstances.DisposeAsync();
+        await handlerInstances.DisposeAsync();
+        Assert.Equal(1, lifetime.DisposeCount);
+    }
+
+    [Fact]
     public async Task SessionHandlerRegistry_AutoRegisters_Compatible_Typed_Handlers_From_Assembly()
     {
         using var provider = new ServiceCollection().BuildServiceProvider();
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
         var context = new TestSessionPacketContext();
-        var registry = new ZLinkSessionHandlerRegistry(provider);
+        var registry = new ZLinkSessionHandlerRegistry(handlerInstances);
         registry.BindContext(context);
         registry.AddScannedHandlers(ZLinkScannedSessionHandlerScanner.Scan(
             typeof(TestSessionPacketHandler).Assembly,
@@ -488,9 +537,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     public async Task SessionHandlerRegistry_Invokes_Attributed_Method_On_Active_Session()
     {
         using var provider = new ServiceCollection().BuildServiceProvider();
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
         var context = new TestSessionPacketContext();
         var session = new TestHeaderSession(context);
-        var registry = new ZLinkSessionHandlerRegistry(provider);
+        var registry = new ZLinkSessionHandlerRegistry(handlerInstances);
         registry.BindContext(context);
         registry.BindSession(session);
         registry.AddScannedHandlers(ZLinkScannedSessionHandlerScanner.Scan(
@@ -548,13 +598,15 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var candidates = registration.ScannedHandlerCatalog.SessionHandlers;
 
         var firstContext = new TestSessionPacketContext();
-        var first = new ZLinkSessionHandlerRegistry(provider);
+        await using var firstHandlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
+        var first = new ZLinkSessionHandlerRegistry(firstHandlerInstances);
         first.BindContext(firstContext);
         first.AddScannedHandlers(candidates);
         first.Bind();
 
         var secondContext = new TestSessionPacketContext();
-        var second = new ZLinkSessionHandlerRegistry(provider);
+        await using var secondHandlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
+        var second = new ZLinkSessionHandlerRegistry(secondHandlerInstances);
         second.BindContext(secondContext);
         second.AddScannedHandlers(candidates);
         second.Bind();
@@ -618,7 +670,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             .AddScoped<DuplicateSessionPacketHandler>()
             .AddScoped<SecondDuplicateSessionPacketHandler>()
             .BuildServiceProvider();
-        var registry = new ZLinkSessionHandlerRegistry(provider);
+        var handlerInstances = new ZLinkScopedHandlerInstanceOwner(provider);
+        var registry = new ZLinkSessionHandlerRegistry(handlerInstances);
         registry.BindContext(new DuplicateSessionPacketContext());
         registry.AddHandler<DuplicateSessionPacketHandler>();
 
@@ -684,7 +737,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance()
+    public async Task AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance()
     {
         var services = new ServiceCollection();
         var backing = new ZLinkInMemoryLocationStore();
@@ -697,7 +750,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.AddLocationStore(backing);
         });
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         Assert.Same(backing, provider.GetRequiredService<IZLinkPeerLocationStore>());
         Assert.Same(backing, provider.GetRequiredService<IZLinkSpotLocationStore>());
@@ -727,5 +780,71 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             }));
         Assert.Contains("AddLocationStore", inMemoryConflict.Message, StringComparison.Ordinal);
 
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Validates_SpotMesh_To_RouteChannel_Mapping()
+    {
+        var valid = new ServiceCollection();
+        valid.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("game.stage").EnablePubSub("inproc://mapped-spot");
+            options.AddRouteMeshChannel("game.route").EnableClient("inproc://mapped-route");
+            options.ConfigureLocations().MapSpotMeshToRouteChannel("game.stage", "game.route");
+        });
+
+        var unknownSpot = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("game.route").EnableClient("inproc://mapped-route");
+                options.ConfigureLocations().MapSpotMeshToRouteChannel("missing", "game.route");
+            }));
+        Assert.Contains("unknown Spot mesh 'missing'", unknownSpot.Message, StringComparison.Ordinal);
+
+        var unknownRoute = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("game.stage").EnablePubSub("inproc://mapped-spot");
+                options.ConfigureLocations().MapSpotMeshToRouteChannel("game.stage", "missing");
+            }));
+        Assert.Contains("unknown route channel 'missing'", unknownRoute.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AddLocationStore_Instance_Is_Disposed_Exactly_Once_By_The_Host_Provider()
+    {
+        var store = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
+        var tracker = (TrackedLocationStoreProxy)(object)store;
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options => options.AddLocationStore(store));
+        var provider = services.BuildServiceProvider();
+
+        Assert.Same(store, provider.GetRequiredService<IZLinkLocationStore>());
+        Assert.Same(store, provider.GetRequiredService<IZLinkOwnerLeaseStore>());
+        _ = provider.GetServices<IHostedService>().ToArray();
+        await provider.DisposeAsync();
+
+        Assert.Equal(1, tracker.DisposeCount);
+    }
+
+    private interface ITrackedLocationStore : IZLinkLocationStore, IAsyncDisposable;
+
+    private class TrackedLocationStoreProxy : DispatchProxy
+    {
+        private readonly ZLinkInMemoryLocationStore _inner = new();
+
+        public int DisposeCount { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.NotNull(targetMethod);
+            if (targetMethod.DeclaringType == typeof(IAsyncDisposable))
+            {
+                DisposeCount++;
+                return ValueTask.CompletedTask;
+            }
+
+            return targetMethod.Invoke(_inner, args);
+        }
     }
 }

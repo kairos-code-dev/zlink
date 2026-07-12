@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -16,7 +17,8 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot, codecs, compressionCodec);
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
+        var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, entrySpot, codecs, compressionCodec);
         await invoker.InvokeActorPacketAsync(
                 descriptor,
                 actor,
@@ -34,7 +36,8 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot, codecs, compressionCodec);
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
+        var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, entrySpot, codecs, compressionCodec);
         return await invoker.InvokeActorPacketForReplyAsync(
                 descriptor,
                 actor,

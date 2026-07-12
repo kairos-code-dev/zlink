@@ -1,3 +1,5 @@
+using Systems.Zlink.Stream.Connector.Runtime;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorEntrySpotJoinCoordinator(
@@ -22,14 +24,10 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                            $"Actor '{actor.ActorId}' does not have a native Actor ref.");
         var previousActivation = actorState.LiveActivation;
 
-        var tcs = new TaskCompletionSource<(ZLinkBackendActorJoinEntrySpotResult Result, IReadOnlyList<Message> Reply)>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var reg = cancellationToken.Register(
-            static s => ((TaskCompletionSource<(ZLinkBackendActorJoinEntrySpotResult, IReadOnlyList<Message>)>)s!)
-                .TrySetCanceled(),
-            tcs);
+        using var completion = new ZLinkNativeReplyCompletion<ZLinkBackendActorJoinEntrySpotResult>(
+            cancellationToken);
 
-        var correlationId = Guid.NewGuid().ToString("N");
+        var correlationId = ZlinkStreamCorrelation.Next();
         if (flow.Enabled(ZLinkMessageFlowOutcome.Sent))
             flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
@@ -49,14 +47,14 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     actorRef,
                     spotNodeRid,
                     nativeRequest,
-                    (result, reply) => tcs.TrySetResult((result, reply)),
+                    completion.Complete,
                     registration.DefaultRequestTimeout))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"Actor entry SPOT join submit failed for '{actor.ActorId}'.");
         }
 
-        var (result, replyParts) = await tcs.Task.ConfigureAwait(false);
+        var (result, replyParts) = await completion.Task.ConfigureAwait(false);
         if (result.Result == RequestResult.NotConnected)
         {
             ZLinkMessageParts.DisposeAll(replyParts);
@@ -196,7 +194,12 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         ZLinkMessage joinRequest,
         CancellationToken cancellationToken)
     {
+        var activation = targetNode.EntrySpotActivation
+                         ?? throw new ZLinkFrameworkException(
+                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                             $"Actor entry SPOT join target node '{targetNode.Node.RoutingId}' does not have an Entry Spot activation.");
         var localTargetRef = targetNode.Node.ActorLookup(actor.ActorId);
+        var createdHere = localTargetRef is null;
         ZLinkBackendActorRef targetRef;
         if (localTargetRef is { } existing)
         {
@@ -208,17 +211,43 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             targetRef = targetNode.Node.CreateActor(actor.ActorId, emptyCreateRequest);
         }
 
-        var activation = targetNode.EntrySpotActivation
-                         ?? throw new ZLinkFrameworkException(
-                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                             $"Actor entry SPOT join target node '{targetRef.NodeRid}' does not have an Entry Spot activation.");
-        var admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
-            ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
-                .ConfigureAwait(false)
-            : ZLinkSpotActorJoinResult.Reject();
+        ZLinkSpotActorJoinResult admission;
+        try
+        {
+            admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
+                ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
+                    .ConfigureAwait(false)
+                : ZLinkSpotActorJoinResult.Reject();
+        }
+        catch (Exception admissionFailure)
+        {
+            if (createdHere)
+                try
+                {
+                    await actorSessionManager.CompensateUncommittedNativeActorAsync(
+                            targetNode.Node,
+                            targetRef,
+                            "local-entry-spot-admission")
+                        .ConfigureAwait(false);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException(admissionFailure, cleanupFailure);
+                }
+            throw;
+        }
+
         var reply = CopyReply(admission.Reply);
         if (!admission.Accepted)
+        {
+            if (createdHere)
+                await actorSessionManager.CompensateUncommittedNativeActorAsync(
+                        targetNode.Node,
+                        targetRef,
+                        "local-entry-spot-rejection")
+                    .ConfigureAwait(false);
             return new ZLinkActorJoinResult.Rejected(reply);
+        }
 
         actorState.BindNativeActorRef(targetRef);
         await NotifyManagedEntrySpotJoinLifecycleAsync(

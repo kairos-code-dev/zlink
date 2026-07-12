@@ -3,19 +3,18 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkSpotRouteRouterDispatcher(
     Func<ZLinkFrameworkRuntimeState> getState)
 {
-    public async ValueTask SendAsync(
+    public ValueTask SendAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        await ResolveTarget(routerChannelId, targetNodeRid).SendAsync(
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return ResolveTarget(routerChannelId, targetNodeRid).SendAsync(
+            targetNodeRid,
+            targetSpotRid,
+            parts,
+            cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestAsync(
@@ -127,7 +126,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                     targetNodeRid,
                     targetSpotRid,
                     parts,
-                    SendFlags.None))
+                    SendFlags.DontWait))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"{sourceLabel} for route channel '{routerChannelId}' is not ready for SPOT send.");
@@ -142,15 +141,16 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            using var completion = new ZLinkSpotRouteRequestCompletion(
-                timeout,
+            using var completion = new ZLinkNativeReplyCompletion<RequestResult>(
                 cancellationToken,
+                timeout,
                 "SPOT node router request timed out.");
             if (!entrySpot.RequestToSpot(
                     targetNodeRid,
                     targetSpotRid,
                     parts,
-                    (result, reply) => completion.Complete(
+                    (result, reply) => CompleteRouteRequest(
+                        completion,
                         result,
                         reply,
                         $"SpotNode router '{routerChannelId}' SPOT request failed with result '{result}'."),
@@ -160,7 +160,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"SpotNode router '{routerChannelId}' is not ready for SPOT request.");
 
-            return await completion.WaitAsync().ConfigureAwait(false);
+            var (_, reply) = await completion.Task.ConfigureAwait(false);
+            return reply;
         }
     }
 
@@ -169,7 +170,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     {
         // Remote spot delivery over a route channel uses the bridge relay
         // framing exclusively: it is the only spot inbound the receiving
-        // pump dispatches (spot-address messaging draft §6).
+        // pump dispatches (spot-address messaging contract §6).
         public ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
@@ -193,9 +194,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            using var completion = new ZLinkSpotRouteRequestCompletion(
-                timeout,
+            using var completion = new ZLinkNativeReplyCompletion<RequestResult>(
                 cancellationToken,
+                timeout,
                 $"SPOT route bridge request to '{targetSpotRid}' timed out.");
             if (!routeChannel.TryRequestViaSpotRouteBridge(
                         targetNodeRid,
@@ -216,7 +217,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                                 return;
                             }
 
-                            completion.Complete(
+                            CompleteRouteRequest(
+                                completion,
                                 result,
                                 reply,
                                 $"SPOT route bridge request failed with result '{result}'.");
@@ -225,73 +227,26 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 throw new ZLinkConfigurationException(
                     $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
 
-            return await completion.WaitAsync().ConfigureAwait(false);
+            var (_, reply) = await completion.Task.ConfigureAwait(false);
+            return reply;
         }
     }
 
-    private sealed class ZLinkSpotRouteRequestCompletion : IDisposable
+    private static void CompleteRouteRequest(
+        ZLinkNativeReplyCompletion<RequestResult> completion,
+        RequestResult result,
+        IReadOnlyList<Message> reply,
+        string failureMessage)
     {
-        private readonly TaskCompletionSource<IReadOnlyList<Message>> _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly CancellationTokenRegistration _cancellationRegistration;
-        private readonly CancellationTokenSource _timeoutSource = new();
-        private readonly CancellationTokenRegistration _timeoutRegistration;
-
-        public ZLinkSpotRouteRequestCompletion(
-            TimeSpan timeout,
-            CancellationToken cancellationToken,
-            string timeoutMessage)
+        if (result == RequestResult.Ok)
         {
-            _timeoutSource.CancelAfter(timeout);
-            _timeoutRegistration = _timeoutSource.Token.Register(
-                static state =>
-                {
-                    var (completion, message) =
-                        ((TaskCompletionSource<IReadOnlyList<Message>>, string))state!;
-                    completion.TrySetException(new TimeoutException(message));
-                },
-                (_completion, timeoutMessage));
-            _cancellationRegistration = cancellationToken.Register(
-                static state =>
-                {
-                    var (completion, token) =
-                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
-                    completion.TrySetCanceled(token);
-                },
-                (_completion, cancellationToken));
+            completion.Complete(result, reply);
+            return;
         }
 
-        public void Complete(
-            RequestResult result,
-            IReadOnlyList<Message> reply,
-            string failureMessageFormat)
-        {
-            ZLinkRawReplyCompletion.Complete(
-                result,
-                reply,
-                _completion,
-                failureMessageFormat);
-        }
-
-        public void Fail(
-            Exception exception,
-            IReadOnlyList<Message> reply)
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-            _completion.TrySetException(exception);
-        }
-
-        public async ValueTask<IReadOnlyList<Message>> WaitAsync()
-        {
-            return await _completion.Task.ConfigureAwait(false);
-        }
-
-        public void Dispose()
-        {
-            _cancellationRegistration.Dispose();
-            _timeoutRegistration.Dispose();
-            _timeoutSource.Dispose();
-        }
+        completion.Fail(
+            ZLinkRequestFailureMapper.CreateCompletionException(result, failureMessage),
+            reply);
     }
 
 }

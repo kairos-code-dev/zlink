@@ -4,11 +4,11 @@ internal sealed class PendingSubmit : IDisposable
 {
     private readonly IPendingSubmitCompletion _completion;
     private readonly Action _wake;
-    private CancellationTokenRegistration _cancellationRegistration;
+    private CancellationTokenRegistration _callerCancellationRegistration;
     private int _completed;
     private Timer? _deadlineTimer;
     private Exception? _lastSubmitFailure;
-    private CancellationTokenSource? _linkedCancellation;
+    private CancellationTokenRegistration _stopCancellationRegistration;
 
     private PendingSubmit(
         IReadOnlyList<Message> parts,
@@ -36,13 +36,13 @@ internal sealed class PendingSubmit : IDisposable
 
     public Task Task => _completion.Task;
 
-    public bool IsCompleted => Volatile.Read(ref _completed) != 0;
+    public bool IsCompleted => Volatile.Read(ref _completed) != 0 || _completion.Task.IsCompleted;
 
     public void Dispose()
     {
         _deadlineTimer?.Dispose();
-        _cancellationRegistration.Dispose();
-        _linkedCancellation?.Dispose();
+        _callerCancellationRegistration.Dispose();
+        _stopCancellationRegistration.Dispose();
         foreach (var part in Parts) part.Dispose();
     }
 
@@ -67,14 +67,14 @@ internal sealed class PendingSubmit : IDisposable
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
         Action wake,
-        TaskCompletionSource<T> completion)
+        ZLinkRequestCompletion<T> completion)
     {
         return new PendingSubmit(
             parts,
             trySubmit,
             deadline,
             wake,
-            new TypedPendingSubmitCompletion<T>(completion),
+            new RequestPendingSubmitCompletion<T>(completion),
             false);
     }
 
@@ -89,11 +89,11 @@ internal sealed class PendingSubmit : IDisposable
         if (Interlocked.Exchange(ref _completed, 1) == 0) _completion.TrySetResult(result);
     }
 
-    public void TryCancel()
+    public void TryCancel(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _completed, 1) == 0)
         {
-            _completion.TrySetCanceled();
+            _completion.TrySetCanceled(cancellationToken);
             _wake();
         }
     }
@@ -147,35 +147,23 @@ internal sealed class PendingSubmit : IDisposable
 
     private void RegisterCancellation(CancellationToken cancellationToken, CancellationToken stopToken)
     {
-        var hasCallerCancellation = cancellationToken.CanBeCanceled;
-        var hasStopCancellation = stopToken.CanBeCanceled;
-        if (!hasCallerCancellation && !hasStopCancellation) return;
-
-        if (hasCallerCancellation && hasStopCancellation)
-        {
-            _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                stopToken);
-            RegisterCancellation(_linkedCancellation.Token);
-            return;
-        }
-
-        RegisterCancellation(hasCallerCancellation ? cancellationToken : stopToken);
+        _callerCancellationRegistration = RegisterCancellation(cancellationToken);
+        _stopCancellationRegistration = RegisterCancellation(stopToken);
     }
 
-    private void RegisterCancellation(CancellationToken token)
+    private CancellationTokenRegistration RegisterCancellation(CancellationToken token)
     {
         if (token.IsCancellationRequested)
         {
-            TryCancel();
-            return;
+            TryCancel(token);
+            return default;
         }
 
-        _cancellationRegistration = token.Register(static state =>
+        return token.Register(static state =>
         {
-            var item = (PendingSubmit)state!;
-            item.TryCancel();
-        }, this);
+            var cancellation = (CancellationState)state!;
+            cancellation.Submit.TryCancel(cancellation.Token);
+        }, new CancellationState(this, token));
     }
 
     private interface IPendingSubmitCompletion
@@ -184,7 +172,7 @@ internal sealed class PendingSubmit : IDisposable
 
         void TrySetResult(object? result);
 
-        void TrySetCanceled();
+        void TrySetCanceled(CancellationToken cancellationToken);
 
         void TrySetException(Exception exception);
     }
@@ -199,9 +187,9 @@ internal sealed class PendingSubmit : IDisposable
             source.TrySetResult(result);
         }
 
-        public void TrySetCanceled()
+        public void TrySetCanceled(CancellationToken cancellationToken)
         {
-            source.TrySetCanceled();
+            source.TrySetCanceled(cancellationToken);
         }
 
         public void TrySetException(Exception exception)
@@ -210,24 +198,26 @@ internal sealed class PendingSubmit : IDisposable
         }
     }
 
-    private sealed class TypedPendingSubmitCompletion<T>(TaskCompletionSource<T> source)
+    private sealed class RequestPendingSubmitCompletion<T>(ZLinkRequestCompletion<T> completion)
         : IPendingSubmitCompletion
     {
-        public Task Task => source.Task;
+        public Task Task => completion.Task;
 
         public void TrySetResult(object? result)
         {
-            source.TrySetResult((T)result!);
+            throw new InvalidOperationException("Request submissions complete only from their native callback.");
         }
 
-        public void TrySetCanceled()
+        public void TrySetCanceled(CancellationToken cancellationToken)
         {
-            source.TrySetCanceled();
+            completion.Cancel(cancellationToken);
         }
 
         public void TrySetException(Exception exception)
         {
-            source.TrySetException(exception);
+            completion.Fail(exception);
         }
     }
+
+    private sealed record CancellationState(PendingSubmit Submit, CancellationToken Token);
 }

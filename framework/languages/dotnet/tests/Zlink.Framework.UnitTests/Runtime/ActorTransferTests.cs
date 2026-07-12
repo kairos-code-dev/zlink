@@ -1,11 +1,110 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Codecs;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class ActorTransferTests
 {
+    [Fact]
+    public async Task Transfer_admission_commit_and_target_continuation_keep_one_root_flow()
+    {
+        const string flowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d";
+        var codecs = new ZLinkCodecRegistryBuilder();
+        IReadOnlyList<Message> admissionParts;
+        IReadOnlyList<Message> commitParts;
+        using (ZLinkFlowContext.Enter(
+                   flowId,
+                   ZLinkFlowOrigin.Application,
+                   createIfAbsent: false,
+                   ZLinkFlowOrigin.Inbound))
+        {
+            admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
+                ZLinkClientCallCodec.CreateEnvelope(
+                    ZLinkMessageKind.Request,
+                    "actor-route",
+                    ZLinkRemoteActorJoinPackets.AdmissionPacketName,
+                    TimeSpan.FromSeconds(1)),
+                "actor-1",
+                "player",
+                "handoff-1",
+                DateTimeOffset.UtcNow.AddSeconds(1),
+                RoutingId.From("source-spot"),
+                RoutingId.From("source-node"),
+                ZLinkMessage.From("admission"),
+                codecs);
+            commitParts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
+                ZLinkClientCallCodec.CreateEnvelope(
+                    ZLinkMessageKind.Request,
+                    "actor-route",
+                    ZLinkRemoteActorJoinPackets.CommitPacketName,
+                    TimeSpan.FromSeconds(1)),
+                "actor-1",
+                "player",
+                "handoff-1",
+                RoutingId.From("source-spot"),
+                RoutingId.From("source-node"),
+                null,
+                default,
+                ZLinkMessage.From("state"),
+                ZLinkMessage.From("join"),
+                [],
+                codecs);
+        }
+
+        Assert.Null(ZLinkFlowContext.Current);
+        ZLinkEnvelopeHeader? targetContinuation = null;
+        var targetIngress = new List<(string Packet, ZLinkFlowValue Flow)>();
+        var options = new ZLinkDispatchOptionsModel();
+        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        var dispatcher = new ZLinkSpotRouteDispatcher(
+            "actor-route",
+            "target-spot",
+            new ZLinkSpotPacketRegistry(),
+            static () => throw new InvalidOperationException("Only internal transfer packets are expected."),
+            codecs,
+            new ZLinkDispatchErrorReporter(options),
+            (_, header, _) =>
+            {
+                var current = Assert.IsType<ZLinkFlowValue>(ZLinkFlowContext.Current);
+                targetIngress.Add((header.MessageName, current));
+                if (header.MessageName == ZLinkRemoteActorJoinPackets.CommitPacketName)
+                {
+                    using var encoded = ZLinkEnvelopeCodec.EncodeHeader(
+                        ZLinkClientCallCodec.CreateEnvelope(
+                            ZLinkMessageKind.Command,
+                            "actor-route",
+                            "target-continuation"));
+                    targetContinuation = ZLinkEnvelopeCodec.DecodeHeader(encoded);
+                }
+                return ValueTask.FromResult(true);
+            });
+
+        try
+        {
+            await dispatcher.DispatchAsync(CreateRoutedReceived(admissionParts), CancellationToken.None);
+            await dispatcher.DispatchAsync(CreateRoutedReceived(commitParts), CancellationToken.None);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(admissionParts);
+            ZLinkMessageParts.DisposeAll(commitParts);
+        }
+
+        Assert.Equal(
+            [ZLinkRemoteActorJoinPackets.AdmissionPacketName, ZLinkRemoteActorJoinPackets.CommitPacketName],
+            targetIngress.Select(entry => entry.Packet));
+        Assert.All(targetIngress, entry =>
+        {
+            Assert.Equal(flowId, entry.Flow.FlowId);
+            Assert.Equal(ZLinkFlowOrigin.Application, entry.Flow.Origin);
+        });
+        Assert.Equal(flowId, targetContinuation?.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, targetContinuation?.FlowOrigin);
+        Assert.Null(ZLinkFlowContext.Current);
+    }
+
     [Fact]
     public async Task TransferRegistry_Invokes_CustomAdapter_With_TargetActorContext()
     {
@@ -64,6 +163,62 @@ public sealed class ActorTransferTests
 
         Assert.Equal("transfer-state", ZLinkRemoteActorJoinPackets.DecodeTransferState(decoded, codecs).Decode<string>());
         Assert.Equal("join-request", ZLinkRemoteActorJoinPackets.DecodeJoinRequestPayload(decoded, codecs).Decode<string>());
+    }
+
+    [Fact]
+    public void Handoff_completion_envelope_preserves_the_current_flow()
+    {
+        using var flow = ZLinkFlowContext.Enter(null, null, true, ZLinkFlowOrigin.Lifecycle);
+        var expected = Assert.IsType<ZLinkFlowValue>(ZLinkFlowContext.Current);
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            "router",
+            ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName,
+            TimeSpan.FromSeconds(5));
+        var parts = ZLinkRemoteActorJoinPackets.EncodeHandoffCompletionRequest(
+            header,
+            "actor-1",
+            "handoff-1",
+            RoutingId.From("source-spot"),
+            RoutingId.From("source-node"),
+            RoutingId.From("target-spot"),
+            []);
+        try
+        {
+            var decoded = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            Assert.Equal(expected.FlowId, decoded.FlowId);
+            Assert.Equal(expected.Origin, decoded.FlowOrigin);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    private static Received CreateRoutedReceived(IReadOnlyList<Message> parts)
+    {
+        using var context = global::Systems.Zlink.Zlink.CreateContext();
+        using var node = context.CreateSpotNode();
+        using var sender = node.CreateSpot();
+        using var receiver = node.CreateSpot();
+        var nodeRid = RoutingId.From("transfer-node");
+        var senderRid = RoutingId.From("transfer-source");
+        var receiverRid = RoutingId.From("transfer-target");
+        node.SetRoutingId(nodeRid);
+        sender.SetRoutingId(senderRid);
+        receiver.SetRoutingId(receiverRid);
+        sender.SendToSpot(nodeRid, receiverRid).Messages(parts).Submit();
+
+        var received = Received.Create();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (receiver.RecvRouted(received, RecvFlags.DontWait)) return received;
+            Thread.Sleep(5);
+        }
+
+        received.Dispose();
+        throw new TimeoutException("Timed out creating a routed transfer packet.");
     }
 
     private sealed class TransferActorAdapter : IZLinkActorTransferAdapter<TransferActor>

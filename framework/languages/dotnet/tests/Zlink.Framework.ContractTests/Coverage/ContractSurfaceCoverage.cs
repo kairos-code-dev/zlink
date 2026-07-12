@@ -45,6 +45,24 @@ public sealed class ContractSurfaceCoverage
     }
 
     [Fact]
+    public void Redis_Extension_Remains_A_Separate_Package_Without_A_Backend_Specific_Registration_API()
+    {
+        var framework = typeof(IZLinkFrameworkOptions).Assembly;
+        var redis = typeof(ZLinkRedisLocationStore).Assembly;
+
+        Assert.NotSame(framework, redis);
+        Assert.DoesNotContain(
+            framework.GetReferencedAssemblies(),
+            reference => reference.Name == "StackExchange.Redis");
+        Assert.DoesNotContain(
+            framework.GetExportedTypes(),
+            type => type.Namespace?.Contains("Redis", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(
+            framework.GetExportedTypes().SelectMany(static type => type.GetMethods()),
+            method => method.Name.Contains("Redis", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Every_public_contract_interface_has_a_scenario_example()
     {
         var exportedContracts = typeof(IZLinkFrameworkOptions).Assembly

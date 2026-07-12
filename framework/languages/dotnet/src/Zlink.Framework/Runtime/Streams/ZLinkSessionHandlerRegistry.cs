@@ -1,9 +1,9 @@
 using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
+internal sealed class ZLinkSessionHandlerRegistry(ZLinkScopedHandlerInstanceOwner handlerInstances)
     : IZLinkSessionHandlerRegistry
 {
     private readonly Dictionary<string, ZLinkSessionPacketHandlerDescriptor> _handlers =
@@ -41,7 +41,7 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
                       ?? throw new InvalidOperationException("Session handler registry is not bound to a session.");
 
         await handler.HandleAsync(
-                services,
+                handlerInstances,
                 _session,
                 context,
                 dispatch,
@@ -136,7 +136,7 @@ internal sealed class ZLinkAttributedSessionPacketHandlerDescriptor<TMessage>(
     : ZLinkSessionPacketHandlerDescriptor(sessionType, typeof(TMessage), packetName)
 {
     public override async ValueTask HandleAsync(
-        IServiceProvider services,
+        ZLinkScopedHandlerInstanceOwner handlerInstances,
         IZLinkSession? session,
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
@@ -176,7 +176,7 @@ internal abstract class ZLinkSessionPacketHandlerDescriptor(
     public string PacketName { get; } = packetName;
 
     public abstract ValueTask HandleAsync(
-        IServiceProvider services,
+        ZLinkScopedHandlerInstanceOwner handlerInstances,
         IZLinkSession? session,
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
@@ -243,14 +243,14 @@ internal sealed class ZLinkSessionPacketHandlerDescriptor<TSessionContext, TMess
     }
 
     public override async ValueTask HandleAsync(
-        IServiceProvider services,
+        ZLinkScopedHandlerInstanceOwner handlerInstances,
         IZLinkSession? session,
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        var handler = ActivatorUtilities.GetServiceOrCreateInstance<THandler>(services);
+        var handler = handlerInstances.Resolve<THandler>();
         await handler.HandleAsync(
                 (TSessionContext)context,
                 dispatch,

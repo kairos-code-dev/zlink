@@ -37,7 +37,7 @@ internal sealed class ZLinkMonitoringSourceValidator(
         return Task.CompletedTask;
     }
 
-    public void PreflightSocketSources(ZLinkFrameworkRuntime? frameworkRuntime)
+    public void PreflightFrameworkSources(ZLinkFrameworkRuntime? frameworkRuntime)
     {
         if (frameworkRuntime is null) return;
 
@@ -51,6 +51,11 @@ internal sealed class ZLinkMonitoringSourceValidator(
                     $"Socket monitoring source '{source.SourceName}' is not registered.");
             }
         }
+
+        foreach (var source in registration.SpotSources.Values)
+            if (!frameworkRuntime.Registration.SpotNodes.ContainsKey(source.SourceName))
+                throw new ZLinkConfigurationException(
+                    $"SPOT node '{source.SourceName}' is not registered.");
     }
 
     private static bool HasCapability(

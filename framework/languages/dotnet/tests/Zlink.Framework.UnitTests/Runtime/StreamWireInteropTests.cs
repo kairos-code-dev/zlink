@@ -11,6 +11,33 @@ namespace Zlink.Framework.UnitTests;
 public sealed class StreamWireInteropTests
 {
     [Fact]
+    public void Reply_header_echoes_request_correlation_and_root_flow()
+    {
+        var request = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(7),
+            "order.place",
+            ZlinkStreamMetadata.Empty,
+            "corr-request",
+            "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d",
+            ZlinkStreamFlowOrigin.Application);
+
+        var reply = ZLinkStreamReplyHeaders.CreateForRequest(
+            request,
+            ZlinkStreamMessageKind.Response,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            request.RequestSeq!.Value,
+            ZlinkStreamMetadata.Empty);
+
+        Assert.Equal(request.CorrelationId, reply.CorrelationId);
+        Assert.Equal(request.FlowId, reply.FlowId);
+        Assert.Equal(request.FlowOrigin, reply.FlowOrigin);
+    }
+
+    [Fact]
     public void CoreAndConnectorHeaderCodecs_EncodeSameBytes()
     {
         var header = CreateHeader();

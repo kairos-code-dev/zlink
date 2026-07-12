@@ -55,8 +55,13 @@ internal sealed class ZLinkSerialWorkItem
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             if (callbackTask is not null)
-                _ = ObserveAfterCancellationAsync(callbackTask, onUnhandledException);
-            _completion.TrySetCanceled(cancellationToken);
+                await CompleteAfterCancellationAsync(
+                        callbackTask,
+                        cancellationToken,
+                        onUnhandledException)
+                    .ConfigureAwait(false);
+            else
+                _completion.TrySetCanceled(cancellationToken);
             return ZLinkSerialWorkItemResult.Completed;
         }
         catch (Exception ex)
@@ -68,8 +73,9 @@ internal sealed class ZLinkSerialWorkItem
         }
     }
 
-    private static async Task ObserveAfterCancellationAsync(
+    private async Task CompleteAfterCancellationAsync(
         Task callbackTask,
+        CancellationToken cancellationToken,
         Action<Exception> onUnhandledException)
     {
         try
@@ -82,6 +88,10 @@ internal sealed class ZLinkSerialWorkItem
         catch (Exception exception)
         {
             onUnhandledException(exception);
+        }
+        finally
+        {
+            _completion.TrySetCanceled(cancellationToken);
         }
     }
 
@@ -97,9 +107,11 @@ internal sealed class ZLinkSerialWorkItem
         }
         catch (OperationCanceledException cancellation)
         {
-            _completion.TrySetException(cancellation);
-            _ = _completion.Task.Exception;
-            _ = ObserveAfterCancellationAsync(callbackTask, onUnhandledException);
+            await CompleteAfterCancellationAsync(
+                    callbackTask,
+                    cancellation.CancellationToken,
+                    onUnhandledException)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {

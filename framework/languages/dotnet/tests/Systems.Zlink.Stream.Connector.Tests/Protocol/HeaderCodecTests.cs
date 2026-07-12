@@ -104,6 +104,7 @@ public sealed partial class StreamConnectorTests
             null);
         var header = codec.Decode(frame.HeaderBytes);
 
+        Assert.False(string.IsNullOrWhiteSpace(header.CorrelationId));
         Assert.True(ZlinkStreamFlowId.IsValid(header.FlowId));
         Assert.Equal(ZlinkStreamFlowOrigin.Application, header.FlowOrigin);
         Assert.Equal(codec.Encode(header).ToArray(), codec.Encode(header).ToArray());

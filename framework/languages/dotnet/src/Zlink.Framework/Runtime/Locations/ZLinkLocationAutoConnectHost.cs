@@ -25,7 +25,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly List<ZLinkAutoConnectReconciler> _reconcilers = [];
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ZLinkAutoConnectReconciler>
         _routeMeshReconcilers = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<
+        (ZLinkLocationAutoConnectType Type, string MeshName, ZLinkLocationRole Role),
+        ZLinkAutoConnectReconciler> _localReconcilers = new();
+    private readonly object _disposeGate = new();
     private int _disposed;
+    private Task? _disposeTask;
 
     internal ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
@@ -244,9 +249,27 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
@@ -317,6 +340,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             local, row, _runtime, _peers, executor, _options, _time, _events);
         reconciler.RegisterPeerMetric();
         _reconcilers.Add(reconciler);
+        _localReconcilers[(type, meshName, role)] = reconciler;
         if (type == ZLinkLocationAutoConnectType.RouteMesh)
             _routeMeshReconcilers[meshName] = reconciler;
         _loops.Add(new ZLinkAutoConnectLoop(
@@ -328,6 +352,16 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         return _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
             ? reconciler.KnowsPeer(nodeRid)
             : null;
+    }
+
+    internal void SetLocalWeight(
+        ZLinkLocationAutoConnectType type,
+        string meshName,
+        ZLinkLocationRole role,
+        uint weight)
+    {
+        if (_localReconcilers.TryGetValue((type, meshName, role), out var reconciler))
+            reconciler.SetLocalWeight(weight);
     }
 
     private static RoutingId? RidOrNull(RoutingId routingId) =>

@@ -84,8 +84,27 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal IZLinkBackendSpotNode? GetActorSpotNode()
     {
         return _state?.SpotNodes.Values
-            .SingleOrDefault(static node => node.Registration.ActorFactories.Count > 0)
+            .SingleOrDefault(static node =>
+                node.Registration.Router is not null
+                && node.Registration.ActorFactories.Count > 0)
             ?.Node;
+    }
+
+    internal IZLinkBackendSpotNode GetActorClientSpotNode()
+    {
+        return GetActorClientSpotNodeRuntime().Node;
+    }
+
+    internal ZLinkSpotNodeRuntime GetActorClientSpotNodeRuntime()
+    {
+        var state = GetOrStartState();
+        lock (state.SyncRoot)
+        {
+            return state.SpotNodes.Values
+                       .FirstOrDefault(static node => node.Registration.Router is not null)
+                   ?? throw new ZLinkConfigurationException(
+                       "Actor client requires a router-capable SPOT node.");
+        }
     }
 
     internal ValueTask<bool> TrySubmitEntrySpotActorAsync(

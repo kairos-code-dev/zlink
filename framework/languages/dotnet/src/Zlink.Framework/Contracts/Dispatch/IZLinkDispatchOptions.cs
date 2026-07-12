@@ -78,7 +78,7 @@ public sealed record ZLinkMessageFlowEvent(
 {
     public string FlowId { get; init; } = string.Empty;
 
-    public ZLinkFlowOrigin FlowOrigin { get; init; } = ZLinkFlowOrigin.Inbound;
+    public ZLinkFlowOrigin? FlowOrigin { get; init; }
 }
 
 public interface IZLinkUnhandledDispatchOptions

@@ -94,7 +94,7 @@ internal sealed class ZLinkActorInboundPipeline(
             frame.Header.FlowOrigin is { } streamOrigin
                 ? (ZLinkFlowOrigin)(byte)streamOrigin
                 : null,
-            runtime.Flow.GenerationEnabled,
+            runtime.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
         if (allowCapture && state.Handoff.TryCapture(frame)) return;
@@ -313,25 +313,12 @@ internal sealed class ZLinkActorInboundPipeline(
         string operation,
         Func<CancellationToken, ValueTask> finalize)
     {
-        while (true)
-        {
-            runtime.ShutdownToken.ThrowIfCancellationRequested();
-            try
-            {
-                await finalize(runtime.ShutdownToken).ConfigureAwait(false);
-                return;
-            }
-            catch (OperationCanceledException) when (runtime.ShutdownToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                ZLinkFrameworkDebugLog.SpotDiscovery($"{operation} retry: {exception.Message}");
-                await Task.Delay(TimeSpan.FromMilliseconds(100), runtime.ShutdownToken)
-                    .ConfigureAwait(false);
-            }
-        }
+        await ZLinkReconciliationRunner.RunAsync(
+                finalize,
+                exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"{operation} retry: {exception.Message}"),
+                runtime.ShutdownToken)
+            .ConfigureAwait(false);
     }
 }
 

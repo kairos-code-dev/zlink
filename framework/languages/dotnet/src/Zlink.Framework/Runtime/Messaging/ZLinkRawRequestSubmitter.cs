@@ -18,7 +18,8 @@ internal static class ZLinkRawRequestSubmitter
                     pending,
                     CreateCompletion(complete, fail, failureMessage),
                     timeout),
-                cancellationToken)
+                cancellationToken,
+                ZLinkMessageParts.DisposeAll)
             .ConfigureAwait(false);
     }
 
@@ -36,7 +37,8 @@ internal static class ZLinkRawRequestSubmitter
                     pending,
                     CreateCompletion(complete, fail, failureMessage),
                     timeout),
-                cancellationToken)
+                cancellationToken,
+                ZLinkMessageParts.DisposeAll)
             .ConfigureAwait(false);
     }
 

@@ -1,10 +1,24 @@
 using Systems.Zlink.Stream.Connector.Contracts;
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class ActorHandoffTests
 {
+    [Fact]
+    public async Task Unregistered_Transfer_Adapter_Uses_The_Frozen_Empty_State()
+    {
+        var state = await ZLinkActorRemoteJoiner.CaptureTransferStateAsync(
+            new ServiceCollection().BuildServiceProvider(),
+            transfer: null,
+            new ActorWithoutTransferAdapter(),
+            CancellationToken.None);
+
+        Assert.Same(ZLinkMessage.Empty, state);
+    }
+
     [Fact]
     public void InFlightHandoffOrder_PreservesArrivalOrder()
     {
@@ -601,6 +615,40 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public async Task Drain_Rejects_New_Admission_But_Allows_An_Already_Accepted_Commit()
+    {
+        var time = new ManualTimeProvider();
+        var admissions = new ZLinkActorHandoffAdmissions(time);
+        var gate = new ZLinkDrainAdmissionGate();
+        var request = AdmissionRequest(time, "handoff-accepted-before-drain");
+        var target = RoutingId.From("target-spot");
+
+        Assert.True(gate.TryEnterActorAdmission(out var admissionLease));
+        var reply = await admissions.AdmitAsync(
+            request,
+            target,
+            _ => ValueTask.FromResult(new ZLinkRemoteActorAdmissionReply(
+                true,
+                "application/json",
+                [],
+                request.DeadlineUnixTimeMilliseconds)),
+            CancellationToken.None);
+        admissionLease.Dispose();
+        Assert.True(reply.Accepted);
+
+        Assert.True(gate.BeginDrain());
+        Assert.False(gate.TryEnterActorAdmission(out var rejectedAdmission));
+        rejectedAdmission.Dispose();
+
+        var commit = CommitRequest(request.HandoffId, []);
+        admissions.BeginCommit(commit, target);
+        admissions.Complete(request.HandoffId);
+
+        await admissions.WaitUntilDrainSafeAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
     public void TerminalHandoffOutcome_SurvivesAdmissionCleanup_AndRejectsChangedRetry()
     {
         var admissions = new ZLinkActorHandoffAdmissions();
@@ -826,4 +874,12 @@ public sealed class ActorHandoffTests
             [],
             handoffId,
             (timeProvider.GetUtcNow() + TimeSpan.FromSeconds(5)).ToUnixTimeMilliseconds());
+
+    private sealed class ActorWithoutTransferAdapter : IZLinkActor
+    {
+        public string ActorId => "actor-without-adapter";
+
+        public IZLinkActorContext Context => throw new InvalidOperationException(
+            "Empty-state capture must not inspect the actor context.");
+    }
 }

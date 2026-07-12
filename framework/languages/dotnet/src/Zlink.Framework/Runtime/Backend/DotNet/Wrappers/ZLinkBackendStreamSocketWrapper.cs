@@ -19,9 +19,9 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
         nativeSocket.SetTlsServer(certPath, keyPath, requireClientCert);
     }
 
-    public void OnFramedPacket(Action<string, Message, Message> handler)
+    public void OnFramedPacket(Action<RoutingId, Message, Message> handler)
     {
-        nativeSocket.OnPacket((routingId, header, body) => { handler("hex:" + routingId.ToHex(), header, body); });
+        nativeSocket.OnPacket((routingId, header, body) => handler(routingId, header, body));
     }
 
     public bool Send(

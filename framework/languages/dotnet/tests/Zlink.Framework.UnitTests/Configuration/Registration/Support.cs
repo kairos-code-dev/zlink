@@ -248,6 +248,39 @@ public abstract class RegistrationValidationSupport
         }
     }
 
+    protected sealed class AsyncSessionHandlerLifetime
+    {
+        public List<object> Invocations { get; } = [];
+
+        public int DisposeCount { get; set; }
+    }
+
+    protected sealed record AsyncDisposableSessionPacketMessage;
+
+    protected sealed class AsyncDisposableSessionPacketHandler(AsyncSessionHandlerLifetime lifetime)
+        : IZLinkSessionPacketHandler<TestSessionPacketContext, AsyncDisposableSessionPacketMessage>, IAsyncDisposable
+    {
+        public ValueTask HandleAsync(
+            TestSessionPacketContext context,
+            ZLinkSessionDispatchContext dispatch,
+            AsyncDisposableSessionPacketMessage message,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            _ = dispatch;
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            lifetime.Invocations.Add(this);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            lifetime.DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
     protected sealed class TestSessionWithConfiguredPacketHandler(
         IZLinkSessionContext context) : IZLinkSession
     {

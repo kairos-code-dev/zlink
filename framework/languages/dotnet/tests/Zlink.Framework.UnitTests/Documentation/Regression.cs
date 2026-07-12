@@ -17,6 +17,7 @@ public sealed class RegressionTests
         "aspnet-core-actor.ko.md",
         "session-actor-dispatch.ko.md",
         "spot-node.ko.md",
+        "stream-connector.ko.md",
         "streaming-client.ko.md",
         "aspnet-core-monitoring.ko.md",
         "aspnet-core-location.ko.md",
@@ -40,44 +41,18 @@ public sealed class RegressionTests
         "01-overview.ko.md",
         "02-getting-started.ko.md",
         "03-concepts.ko.md",
-        "04-channel-messaging.ko.md",
-        "05-spot.ko.md",
-        "06-actor-spot.ko.md",
-        "07-actor-session.ko.md",
-        "08-stream.ko.md",
-        "09-location.ko.md",
-        "10-monitoring.ko.md",
-        "11-feature-map.ko.md",
-        "12-interface-catalog.ko.md",
-        "13-grpc-alternative.ko.md"
+        "04-feature-map.ko.md",
+        "05-channel-messaging.ko.md",
+        "06-spot.ko.md",
+        "07-actor-spot.ko.md",
+        "08-actor-session.ko.md",
+        "09-stream.ko.md",
+        "10-location.ko.md",
+        "11-monitoring.ko.md",
+        "12-operations.ko.md",
+        "13-interface-catalog.ko.md",
+        "14-grpc-alternative.ko.md"
     ];
-
-    private static readonly IReadOnlySet<string> RemovedE2ETestClasses =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            "ActorBindingTests",
-            "ActorDisconnectNotifyTests",
-            "ActorLifecycleTests",
-            "ActorRegistryExecutionTests",
-            "ActorSessionStateTests",
-            "ClientServerTests",
-            "EmbeddedRegistryTests",
-            "EntryMailboxExecutionTests",
-            "EntryRoutingTests",
-            "EventsTests",
-            "FanoutTests",
-            "HeaderStreamSessionTests",
-            "HostTests",
-            "LocalActorMailboxExecutionTests",
-            "LocalSessionRelayTests",
-            "ManagerTests",
-            "ProtocolTests",
-            "PublisherTests",
-            "RemoteProxyDisconnectTests",
-            "RemoteSessionRelayTests",
-            "TimerTests",
-            "TopologyTests"
-        };
 
     [Fact]
     public void DotNetContractDocuments_AllExposeRegressionTestSection()
@@ -121,6 +96,22 @@ public sealed class RegressionTests
                 .Where(static group => group.Count() > 1)
                 .Select(static group => group.Key));
         }
+    }
+
+    [Fact]
+    public void DotNetContractReadme_Exposes_Resolvable_Regression_Evidence()
+    {
+        var readme = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "README.ko.md"));
+
+        Assert.Contains("## 회귀 테스트", readme, StringComparison.Ordinal);
+        Assert.Contains(
+            "ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature",
+            readme,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods",
+            readme,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -272,6 +263,8 @@ public sealed class RegressionTests
     public void DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods()
     {
         var activeTests = GetActiveTestMethods();
+        var activeE2EScenarios = GetActiveE2EScenarios();
+        var unresolved = new List<string>();
 
         foreach (var document in DotNetContractDocuments)
         {
@@ -281,12 +274,30 @@ public sealed class RegressionTests
             Assert.NotEmpty(references);
 
             foreach (var reference in references)
-            {
-                if (IsRemovedE2ETestReference(reference)) continue;
-
-                Assert.Contains(reference, activeTests);
-            }
+                if (reference.StartsWith("E2E:", StringComparison.Ordinal))
+                {
+                    if (!activeE2EScenarios.Contains(reference[4..]))
+                        unresolved.Add($"{document}: {reference}");
+                }
+                else if (reference.StartsWith("SCRIPT:", StringComparison.Ordinal))
+                {
+                    var languageRoot = Path.GetFullPath(Path.Combine(
+                        GetDotNetDocRoot(),
+                        "..",
+                        "..",
+                        "..",
+                        "languages",
+                        "dotnet"));
+                    if (!File.Exists(Path.Combine(languageRoot, reference[7..])))
+                        unresolved.Add($"{document}: {reference}");
+                }
+                else if (!activeTests.Contains(reference))
+                    unresolved.Add($"{document}: {reference}");
         }
+
+        Assert.True(
+            unresolved.Count == 0,
+            $"Unresolved regression references:{Environment.NewLine}{string.Join(Environment.NewLine, unresolved.Order(StringComparer.Ordinal))}");
     }
 
     [Fact]
@@ -303,6 +314,213 @@ public sealed class RegressionTests
         Assert.Contains("session callback 직렬성", matrix, StringComparison.Ordinal);
         Assert.Contains("runtime task exception observation", matrix, StringComparison.Ordinal);
         Assert.Contains("execution queue cancellation semantics", matrix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotNetRegressionMatrix_Uses_AutomaticTurnDispatch_Contract()
+    {
+        var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
+
+        Assert.Contains("Automatic turn dispatch regression", matrix, StringComparison.Ordinal);
+        Assert.Contains(
+            "SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line",
+            matrix,
+            StringComparison.Ordinal);
+        Assert.Contains("E2E:ATD-B3", matrix, StringComparison.Ordinal);
+        Assert.DoesNotContain("Spot yield dispatch regression", matrix, StringComparison.Ordinal);
+        Assert.DoesNotContain("`Yield(...)`", matrix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryCommonE2EScenarioHasAnActiveDotNetFixtureAndAllRunnerEntry()
+    {
+        var commonE2ERoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "common",
+            "e2e"));
+        var dotNetE2ERoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "..",
+            "..",
+            "languages",
+            "dotnet",
+            "e2e"));
+        var fixtureByConfig = new Dictionary<int, string>
+        {
+            [1] = "LocationMessaging",
+            [2] = "SpotService",
+            [3] = "PubSub",
+            [4] = "RegistrationCodec",
+            [5] = "ResilienceLifecycle",
+            [6] = "StoreFailure",
+            [7] = "RuntimeMonitoring",
+            [8] = "AutomaticTurnDispatch",
+            [9] = "ToActorMessaging",
+            [10] = "SpotActorTransfer",
+            [11] = "ObservabilityOps"
+        };
+        var activeScenarios = GetActiveE2EScenarios();
+        var allRunner = File.ReadAllText(Path.Combine(dotNetE2ERoot, "run_e2e_all.sh"));
+
+        foreach (var pair in fixtureByConfig)
+        {
+            var document = Directory.GetFiles(
+                    commonE2ERoot,
+                    $"config-{pair.Key}-*.ko.md",
+                    SearchOption.TopDirectoryOnly)
+                .Single();
+            var scenarioIds = Regex.Matches(
+                    File.ReadAllText(document),
+                    @"(?m)^#{2,5}\s+(?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\b")
+                .Select(static match => match.Groups["id"].Value)
+                .ToArray();
+
+            Assert.NotEmpty(scenarioIds);
+            Assert.All(scenarioIds, id => Assert.Contains(id, activeScenarios));
+            Assert.Single(Regex.Matches(
+                    allRunner,
+                    $@"(?m)^\s{{2}}{Regex.Escape(pair.Value)}$")
+                .Cast<Match>());
+        }
+    }
+
+    [Fact]
+    public void SpotNodeContractsUseTheLocationStoreAsTheAddressSourceOfTruth()
+    {
+        var dotnet = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "spot-node.ko.md"));
+        var node = File.ReadAllText(Path.GetFullPath(Path.Combine(
+            GetDotNetContractDocRoot(),
+            "..",
+            "node",
+            "spot-node.ko.md")));
+
+        Assert.Contains("location store", dotnet, StringComparison.Ordinal);
+        Assert.Contains("location store", node, StringComparison.Ordinal);
+        Assert.DoesNotContain("core `ResolveSpot", dotnet, StringComparison.Ordinal);
+        Assert.DoesNotContain("core `resolveSpot", node, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotNetLanguageContractsPreserveTheReviewedPublicRuntimeDecisions()
+    {
+        var handlers = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "handler-interfaces.ko.md"));
+        var channel = File.ReadAllText(Path.Combine(
+            GetDotNetContractDocRoot(),
+            "aspnet-core-channel-messaging.ko.md"));
+        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-spot.ko.md"));
+        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-actor.ko.md"));
+        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-location.ko.md"));
+
+        Assert.Contains("`IZLinkEndpointConnections`", handlers, StringComparison.Ordinal);
+        Assert.Contains("`IZLinkSpotMeshBuilder`", handlers, StringComparison.Ordinal);
+        Assert.Contains("`IZLinkDrainControl`", handlers, StringComparison.Ordinal);
+        Assert.Equal(10, Regex.Matches(handlers, @"string\? packetName = null").Count);
+        Assert.Contains(
+            "Entry Spot timer callback은 Entry Spot 전체 실행 줄",
+            handlers,
+            StringComparison.Ordinal);
+        Assert.Contains("RouteMesh 단일 경로", channel, StringComparison.Ordinal);
+        Assert.Contains("route mesh `ROUTER`만 사용", spot, StringComparison.Ordinal);
+        Assert.Contains("actor factory", spot, StringComparison.Ordinal);
+        Assert.Contains("framework runtime", actor, StringComparison.Ordinal);
+        Assert.Contains(
+            "RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations",
+            location,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotNetG0ContractLedger_Covers_LiveSpecs_And_ResolvableProofs()
+    {
+        var ledgerPath = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "..",
+            "plan",
+            "log",
+            "framework-public-contract-gap-implementation",
+            "dotnet-g0-contract-ledger.ko.md"));
+        var ledger = File.ReadAllText(ledgerPath);
+        var commonSpecRoot = Path.GetFullPath(Path.Combine(GetDotNetContractDocRoot(), "..", ".."));
+        var commonSpecs = Directory
+            .EnumerateFiles(commonSpecRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var contractSpecs = Directory
+            .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(static file => file != "stage-wrapper-on-spot.ko.md")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var spec in commonSpecs)
+            Assert.Matches(
+                $@"(?m)^\| DN-COMMON-[0-9]+ \| `{Regex.Escape(spec)}` \|",
+                ledger);
+        foreach (var spec in contractSpecs)
+            Assert.Matches(
+                $@"(?m)^\| DN-DOC-[0-9]+ \| `{Regex.Escape(spec)}` \|",
+                ledger);
+
+        Assert.Equal(commonSpecs.Length, Regex.Matches(ledger, @"(?m)^\| DN-COMMON-[0-9]+ \|").Count);
+        Assert.Equal(contractSpecs.Length, Regex.Matches(ledger, @"(?m)^\| DN-DOC-[0-9]+ \|").Count);
+        Assert.Contains("stage-wrapper-on-spot.ko.md", ledger, StringComparison.Ordinal);
+
+        var formalMatrixIds = commonSpecs
+            .Select(spec => File.ReadAllText(Path.Combine(commonSpecRoot, spec)))
+            .SelectMany(static text => Regex
+                .Matches(text, @"(?m)^\| (?<id>(?:MFLOW(?:-EXT)?|RMETRIC|DRAIN)-[0-9]{3}) \|")
+                .Select(static match => match.Groups["id"].Value))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.NotEmpty(formalMatrixIds);
+        Assert.Equal(formalMatrixIds.Length, formalMatrixIds.Distinct(StringComparer.Ordinal).Count());
+        foreach (var id in formalMatrixIds)
+            Assert.Single(Regex.Matches(ledger, $@"(?m)^\| {Regex.Escape(id)} \|").Cast<Match>());
+
+        var snapshotEntries = Regex
+            .Matches(
+                ledger,
+                @"(?m)^(?<hash>[0-9a-f]{64}) (?<scope>common|dotnet)/(?<file>[^\r\n]+\.ko\.md)$")
+            .Cast<Match>()
+            .ToArray();
+        var snapshotFiles = commonSpecs
+            .Select(file => (Scope: "common", File: file, Root: commonSpecRoot))
+            .Concat(Directory
+                .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OfType<string>()
+                .Select(file => (Scope: "dotnet", File: file, Root: GetDotNetContractDocRoot())))
+            .ToArray();
+        Assert.Equal(snapshotFiles.Length, snapshotEntries.Length);
+        foreach (var (scope, file, root) in snapshotFiles)
+        {
+            var entry = Assert.Single(snapshotEntries.Where(match =>
+                match.Groups["scope"].Value == scope
+                && match.Groups["file"].Value == file));
+            var actualHash = Convert
+                .ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    File.ReadAllBytes(Path.Combine(root, file))))
+                .ToLowerInvariant();
+            Assert.Equal(entry.Groups["hash"].Value, actualHash);
+        }
+
+        var activeTests = GetActiveTestMethods();
+        var activeE2EScenarios = GetActiveE2EScenarios();
+        var unresolved = ExtractLedgerProofReferences(ledger)
+            .Where(reference => reference.StartsWith("E2E:", StringComparison.Ordinal)
+                ? !activeE2EScenarios.Contains(reference[4..])
+                : !activeTests.Contains(reference))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.True(
+            unresolved.Length == 0,
+            $"Unresolved G0 ledger proofs:{Environment.NewLine}{string.Join(Environment.NewLine, unresolved)}");
     }
 
     private static string GetDotNetDocRoot()
@@ -384,9 +602,11 @@ public sealed class RegressionTests
         return Regex
             .Matches(
                 sectionMatch.Groups["body"].Value,
-                @"^\| `(?<test>[^`]+)` \|",
+                @"^\| (?<cell>.*?) \|",
                 RegexOptions.Multiline)
-            .Select(static match => match.Groups["test"].Value)
+            .SelectMany(static row => Regex
+                .Matches(row.Groups["cell"].Value, @"`(?<test>[^`]+)`")
+                .Select(static match => match.Groups["test"].Value))
             .ToArray();
     }
 
@@ -423,25 +643,92 @@ public sealed class RegressionTests
         return activeTests;
     }
 
-    private static bool IsRemovedE2ETestReference(string reference)
+    private static IReadOnlySet<string> GetActiveE2EScenarios()
     {
-        var separatorIndex = reference.IndexOf('.');
-        if (separatorIndex <= 0) return false;
+        var e2eRoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "..",
+            "..",
+            "languages",
+            "dotnet",
+            "e2e"));
+        var scenarios = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var featureMap in Directory.EnumerateFiles(
+                     e2eRoot,
+                     "feature-map.ko.md",
+                     SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(featureMap);
+            var runnerPath = Path.Combine(
+                Path.GetDirectoryName(featureMap)
+                ?? throw new InvalidOperationException($"Missing feature-map directory: {featureMap}"),
+                "run_e2e.sh");
+            if (!File.Exists(runnerPath)) continue;
+            var fixtureRoot = Path.GetDirectoryName(featureMap)!;
+            var implementationText = string.Join(
+                Environment.NewLine,
+                Directory
+                    .EnumerateFiles(fixtureRoot, "*", SearchOption.AllDirectories)
+                    .Where(static path => path.EndsWith(".cs", StringComparison.Ordinal)
+                                          || path.EndsWith(".sh", StringComparison.Ordinal))
+                    .Where(static path => !path.Contains(
+                                              $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                              StringComparison.Ordinal)
+                                          && !path.Contains(
+                                              $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                              StringComparison.Ordinal))
+                    .Select(File.ReadAllText));
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"(?m)^\| (?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+) \| (?<status>[^|]+) \|"))
+            {
+                var scenarioId = match.Groups["id"].Value;
+                if (match.Groups["status"].Value.Trim() == "구현"
+                    && implementationText.Contains(scenarioId, StringComparison.OrdinalIgnoreCase))
+                    scenarios.Add(scenarioId);
+            }
+        }
 
-        var className = reference[..separatorIndex];
-        return RemovedE2ETestClasses.Contains(className);
+        return scenarios;
+    }
+
+    private static IEnumerable<string> ExtractLedgerProofReferences(string ledger)
+    {
+        foreach (var line in ledger.Split('\n'))
+        {
+            if (!line.StartsWith("| DN-", StringComparison.Ordinal)) continue;
+            var cells = line.Split('|');
+            if (cells.Length < 6) continue;
+            var proofCell = cells[^2];
+            foreach (Match match in Regex.Matches(proofCell, @"`(?<reference>[^`]+)`"))
+            {
+                var reference = match.Groups["reference"].Value;
+                if (reference.StartsWith("E2E:", StringComparison.Ordinal)
+                    || Regex.IsMatch(
+                        reference,
+                        @"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"))
+                    yield return reference;
+            }
+        }
     }
 
     private static bool HasFactOrTheoryAttribute(string text, int methodIndex)
     {
-        var lookbackStart = Math.Max(0, methodIndex - 300);
-        var prefix = text[lookbackStart..methodIndex];
-        return prefix.Contains("[Fact]", StringComparison.Ordinal)
-               || prefix.Contains("[Theory]", StringComparison.Ordinal)
-               || (prefix.Contains("[Fact(", StringComparison.Ordinal)
-                   && !prefix.Contains("Skip", StringComparison.Ordinal))
-               || (prefix.Contains("[Theory(", StringComparison.Ordinal)
-                   && !prefix.Contains("Skip", StringComparison.Ordinal));
+        var prefix = text[..methodIndex];
+        var factIndex = new[] { "[Fact", "[Theory", "[SkippableFact", "[SkippableTheory" }
+            .Max(attribute => prefix.LastIndexOf(attribute, StringComparison.Ordinal));
+        if (factIndex < 0) return false;
+
+        var priorMethod = Regex.Matches(
+                prefix,
+                @"\bpublic\s+(?:async\s+)?(?:Task|void)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(")
+            .Cast<Match>()
+            .LastOrDefault();
+        if (priorMethod is not null && factIndex < priorMethod.Index) return false;
+
+        var attributes = prefix[factIndex..];
+        return !Regex.IsMatch(attributes, @"\bSkip\s*=");
     }
 
     private static bool IsUnderDirectory(
@@ -465,16 +752,23 @@ public sealed class RegressionTests
         var projectDirectory = Path.GetDirectoryName(projectPath)
                                ?? throw new InvalidOperationException(
                                    $"Could not get project directory for '{projectPath}'.");
-        var projectSources = Directory
-            .EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                                      StringComparison.Ordinal)
-                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                                      StringComparison.Ordinal))
-            .Select(Path.GetFullPath)
-            .ToHashSet(StringComparer.Ordinal);
-
         var document = XDocument.Load(projectPath);
+        var defaultCompileItems = document
+            .Descendants("EnableDefaultCompileItems")
+            .LastOrDefault()?.Value;
+        var projectSources = string.Equals(defaultCompileItems, "false", StringComparison.OrdinalIgnoreCase)
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : Directory
+                .EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
+                .Where(static path => !path.Contains(
+                                          $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                          StringComparison.Ordinal)
+                                      && !path.Contains(
+                                          $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                          StringComparison.Ordinal))
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.Ordinal);
+
         foreach (var remove in document.Descendants("Compile")
                      .SelectMany(static element => element.Attributes("Remove")))
         foreach (var removedPath in ResolveProjectPattern(projectDirectory, remove.Value))

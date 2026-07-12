@@ -11,23 +11,24 @@ using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests;
 
-public sealed class UnhandledDispatchPolicyTests
+[Collection(RuntimeMetricsCollection.Name)]
+public sealed partial class UnhandledDispatchPolicyTests
 {
     [Fact]
     public async Task SpotSubscription_MalformedUnknownTopic_ReportsInvalidFrameBeforeTopicLookup()
     {
         var result = await ObserveUnknownSpotSubscriptionAsync(malformed: true);
 
-        Assert.Equal(ZLinkMessageFlowOutcome.Error, result.Error.Outcome);
-        Assert.Equal(ZLinkDispatchErrorSurface.SpotSubscription, result.Error.Surface);
-        Assert.Equal(ZLinkDispatchErrorReason.InvalidFrame, result.Error.ErrorReason);
-        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Error.ErrorAction);
-        Assert.Equal(TestFlowId, result.Error.FlowId);
-        Assert.Equal(ZLinkFlowOrigin.Application, result.Error.FlowOrigin);
-        Assert.Equal(nameof(TestSubscriptionEvent), result.Error.PacketName);
-        Assert.Equal("events.child", result.Error.Topic);
-        Assert.Equal("subscription-correlation", result.Error.CorrelationId);
-        Assert.Equal("source-rid", result.Error.SourceRid);
+        Assert.Equal(ZLinkMessageFlowOutcome.Dropped, result.Terminal.Outcome);
+        Assert.Equal(ZLinkDispatchErrorSurface.SpotSubscription, result.Terminal.Surface);
+        Assert.Equal(ZLinkDispatchErrorReason.InvalidFrame, result.Terminal.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Terminal.ErrorAction);
+        Assert.Equal(TestFlowId, result.Terminal.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, result.Terminal.FlowOrigin);
+        Assert.Equal(nameof(TestSubscriptionEvent), result.Terminal.PacketName);
+        Assert.Equal("events.child", result.Terminal.Topic);
+        Assert.Equal("subscription-correlation", result.Terminal.CorrelationId);
+        Assert.Equal("source-rid", result.Terminal.SourceRid);
         Assert.Equal(0, result.DispatchCount);
         Assert.Equal(0, result.FanoutReceived);
         Assert.Empty(result.LogMessages);
@@ -46,17 +47,154 @@ public sealed class UnhandledDispatchPolicyTests
         Assert.Equal("subscription-correlation", result.Received.CorrelationId);
         Assert.Equal("source-rid", result.Received.SourceRid);
 
-        Assert.Equal(ZLinkDispatchErrorReason.HandlerMissing, result.Error.ErrorReason);
-        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Error.ErrorAction);
-        Assert.Equal(TestFlowId, result.Error.FlowId);
-        Assert.Equal(ZLinkFlowOrigin.Application, result.Error.FlowOrigin);
-        Assert.Equal(nameof(TestSubscriptionEvent), result.Error.PacketName);
-        Assert.Equal("events.child", result.Error.Topic);
-        Assert.Equal("subscription-correlation", result.Error.CorrelationId);
-        Assert.Equal("source-rid", result.Error.SourceRid);
+        Assert.Equal(ZLinkMessageFlowOutcome.Dropped, result.Terminal.Outcome);
+        Assert.Equal(ZLinkDispatchErrorReason.HandlerMissing, result.Terminal.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Terminal.ErrorAction);
+        Assert.Equal(TestFlowId, result.Terminal.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, result.Terminal.FlowOrigin);
+        Assert.Equal(nameof(TestSubscriptionEvent), result.Terminal.PacketName);
+        Assert.Equal("events.child", result.Terminal.Topic);
+        Assert.Equal("subscription-correlation", result.Terminal.CorrelationId);
+        Assert.Equal("source-rid", result.Terminal.SourceRid);
         Assert.Equal(0, result.DispatchCount);
         Assert.True(result.FanoutReceived > 0);
         Assert.Empty(result.LogMessages);
+    }
+
+    [Fact]
+    public async Task SpotSubscription_Fanout_Instances_Keep_One_Flow_And_Owner_Skip_Uses_The_Same_Identity()
+    {
+        var observer = new CapturingMessageFlowObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        options.SetMessageFlowObserver(observer);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
+        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var logger = new CapturingLogger<ZLinkSpotSubscriptionRegistry>();
+        var registryA = new ZLinkSpotSubscriptionRegistry();
+        var registryB = new ZLinkSpotSubscriptionRegistry();
+        var spotA = new CapturingSpot();
+        var spotB = new CapturingSpot();
+        var applicationProbe = new TestSubscriptionProbe();
+        var owner = new TestSubscriptionSpot(true, applicationProbe);
+        var nonOwner = new TestSubscriptionSpot(false, applicationProbe);
+        registryA.Add("events.child", typeof(TestSubscriptionHandler));
+        registryB.Add("events.child", typeof(TestSubscriptionHandler));
+        registryA.Bind(owner, spotA);
+        registryB.Bind(nonOwner, spotB);
+
+        var backendFactory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = backendFactory.CreateChannelAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var publisher = channelAdapter.CreatePublisherSocket(context);
+        await using var subscriberA = channelAdapter.CreateSubscriberSocket(context);
+        await using var subscriberB = channelAdapter.CreateSubscriberSocket(context);
+        var endpoint = GetTcpEndpoint();
+        publisher.Bind(endpoint);
+        subscriberA.Connect(endpoint);
+        subscriberB.Connect(endpoint);
+        subscriberA.SetSubscription("events.child");
+        subscriberB.SetSubscription("events.child");
+        spotA.SubscribeHandler = subscriberA.Subscribe;
+        spotB.SubscribeHandler = subscriberB.Subscribe;
+
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Publish,
+            "play",
+            nameof(TestSubscriptionEvent),
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "fanout-correlation",
+            null,
+            "events.child",
+            null,
+            null,
+            "source-rid")
+        {
+            FlowId = TestFlowId,
+            FlowOrigin = ZLinkFlowOrigin.Application
+        };
+        var dispatchA = 0;
+        var dispatchB = 0;
+        try
+        {
+            for (var attempt = 0; attempt < 100 && (dispatchA == 0 || dispatchB == 0); attempt++)
+            {
+                var parts = ZLinkEnvelopeCodec.EncodeParts(
+                    header,
+                    new TestSubscriptionEvent("payload"),
+                    typeof(TestSubscriptionEvent),
+                    null);
+                try
+                {
+                    publisher.Publish("events.child", parts, SendFlags.None);
+                }
+                finally
+                {
+                    ZLinkMessageParts.DisposeAll(parts);
+                }
+
+                await Task.Delay(5);
+                await registryA.DrainAsync(
+                    spotA,
+                    null,
+                    reporter,
+                    logger,
+                    async (_, body, cancellationToken) =>
+                    {
+                        dispatchA++;
+                        await new TestSubscriptionHandler().HandleAsync(
+                            owner,
+                            Assert.IsType<TestSubscriptionEvent>(body),
+                            cancellationToken);
+                    },
+                    CancellationToken.None);
+                await registryB.DrainAsync(
+                    spotB,
+                    null,
+                    reporter,
+                    logger,
+                    async (_, body, cancellationToken) =>
+                    {
+                        dispatchB++;
+                        await new TestSubscriptionHandler().HandleAsync(
+                            nonOwner,
+                            Assert.IsType<TestSubscriptionEvent>(body),
+                            cancellationToken);
+                    },
+                    CancellationToken.None);
+            }
+
+            Assert.True(dispatchA > 0);
+            Assert.True(dispatchB > 0);
+            Assert.True(applicationProbe.OwnerHandled > 0);
+            Assert.True(applicationProbe.NonOwnerSkipped > 0);
+            for (var attempt = 0; attempt < 100
+                                  && observer.Events.Count(flow =>
+                                      flow.Outcome == ZLinkMessageFlowOutcome.Dispatched) < 2;
+                 attempt++)
+                await Task.Delay(5);
+            var fanout = observer.Events
+                .Where(flow => flow.Outcome == ZLinkMessageFlowOutcome.Dispatched)
+                .ToArray();
+            Assert.True(fanout.Length >= 2);
+            Assert.All(fanout, flow =>
+            {
+                Assert.Equal(TestFlowId, flow.FlowId);
+                Assert.Equal(ZLinkFlowOrigin.Application, flow.FlowOrigin);
+                Assert.Equal("events.child", flow.Topic);
+            });
+
+            Assert.DoesNotContain(
+                observer.Events,
+                flow => flow.FlowId == TestFlowId
+                        && flow.Outcome == ZLinkMessageFlowOutcome.Dropped);
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
     }
 
     [Fact]
@@ -72,10 +210,11 @@ public sealed class UnhandledDispatchPolicyTests
         ActivitySource.AddActivityListener(listener);
         var options = new ZLinkDispatchOptionsModel();
         options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        using var runtimeServices = CreateDispatchRuntime(out var runtime);
         var nativeSpot = new CapturingSpot();
         var logger = new CapturingLogger<ZLinkSpotActorJoinDispatcher>();
         var dispatcher = new ZLinkSpotActorJoinDispatcher(
-            null!,
+            runtime,
             nativeSpot,
             "entry",
             new ZLinkSpotActorJoinRegistry(),
@@ -89,7 +228,7 @@ public sealed class UnhandledDispatchPolicyTests
                 "entry",
                 "JoinReq",
                 ZLinkEnvelopeCodec.DefaultContentType,
-                null,
+                "join-request-1",
                 null,
                 null,
                 null,
@@ -123,10 +262,11 @@ public sealed class UnhandledDispatchPolicyTests
     [Fact]
     public async Task ActorJoinMissingHandler_RepliesRejected_AndLogsReason()
     {
+        using var runtimeServices = CreateDispatchRuntime(out var runtime);
         var nativeSpot = new CapturingSpot();
         var logger = new CapturingLogger<ZLinkSpotActorJoinDispatcher>();
         var dispatcher = new ZLinkSpotActorJoinDispatcher(
-            null!,
+            runtime,
             nativeSpot,
             "entry",
             new ZLinkSpotActorJoinRegistry(),
@@ -139,7 +279,7 @@ public sealed class UnhandledDispatchPolicyTests
                 "entry",
                 "JoinReq",
                 ZLinkEnvelopeCodec.DefaultContentType,
-                null,
+                "join-request-2",
                 null,
                 null,
                 null,
@@ -180,9 +320,10 @@ public sealed class UnhandledDispatchPolicyTests
         var activities = new List<Activity>();
         listener.ActivityStopped = activities.Add;
         ActivitySource.AddActivityListener(listener);
+        using var runtimeServices = CreateDispatchRuntime(out var runtime);
         var nativeSpot = new CapturingSpot();
         var dispatcher = new ZLinkSpotActorJoinDispatcher(
-            null!,
+            runtime,
             nativeSpot,
             "entry",
             new ZLinkSpotActorJoinRegistry(),
@@ -195,7 +336,7 @@ public sealed class UnhandledDispatchPolicyTests
                 "entry",
                 "JoinReq",
                 ZLinkEnvelopeCodec.DefaultContentType,
-                null,
+                "join-request-3",
                 null,
                 null,
                 null,
@@ -371,7 +512,7 @@ public sealed class UnhandledDispatchPolicyTests
     }
 
     [Fact]
-    public async Task Invalid_Json_Envelope_Replies_RequestProtocolError()
+    public async Task Invalid_Json_Envelope_Without_Correlation_Is_Dropped()
     {
         var registration = new ZLinkFrameworkRegistration();
         var services = new ServiceCollection().BuildServiceProvider();
@@ -397,23 +538,13 @@ public sealed class UnhandledDispatchPolicyTests
         var requestTask = dealerSocket.Request()
             .Message(invalidHeader)
             .Message(body)
-            .Timeout(TimeSpan.FromSeconds(2))
+            .Timeout(TimeSpan.FromMilliseconds(100))
             .Async();
         using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
         await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
 
-        var reply = await requestTask.WaitAsync(TimeSpan.FromSeconds(2));
-        try
-        {
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
-            Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestProtocolError), replyHeader.ErrorCode);
-            Assert.Contains("header is invalid", replyHeader.ErrorMessage);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-        }
+        await Assert.ThrowsAsync<ZlinkRequestException>(async () =>
+            await requestTask.WaitAsync(TimeSpan.FromSeconds(2)));
     }
 
     [Fact]
@@ -425,6 +556,11 @@ public sealed class UnhandledDispatchPolicyTests
             .AddTransient<CapturingPublishHandler>()
             .BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration();
+        var observer = new CapturingMessageFlowObserver();
+        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        registration.DispatchOptions.SetMessageFlowObserver(observer);
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(registration.DispatchOptions, services, runner);
         var registry = new ZLinkHandlerRegistry([
             new ZLinkHandlerEndpointDescriptor(
                 ZLinkMessageKind.Publish,
@@ -459,7 +595,7 @@ public sealed class UnhandledDispatchPolicyTests
                 registration),
             static _ => new HashSet<string>(StringComparer.Ordinal),
             LogLevel.Warning,
-            new ZLinkDispatchErrorReporter(registration.DispatchOptions),
+            new ZLinkDispatchErrorReporter(registration.DispatchOptions, observerPump: observerPump),
             registration.Codecs,
             new CapturingLogger<ZLinkChannelPublishDispatchPipeline>());
         var header = new ZLinkEnvelopeHeader(
@@ -472,11 +608,6 @@ public sealed class UnhandledDispatchPolicyTests
             "events",
             null,
             null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(
-            header,
-            new TestPublishedEvent("delivered"),
-            typeof(TestPublishedEvent),
-            null);
         var backendFactory = new ZLinkDotNetBackendAdapterFactory();
         var channelAdapter = backendFactory.CreateChannelAdapter();
         await using var context = channelAdapter.CreateContext();
@@ -488,31 +619,42 @@ public sealed class UnhandledDispatchPolicyTests
         subscriber.SetSubscription(string.Empty);
         using var topicMessage = new TopicMessage();
 
-        try
+        var timeout = Stopwatch.StartNew();
+        var received = false;
+        while (timeout.Elapsed < TimeSpan.FromSeconds(2))
         {
-            var timeout = Stopwatch.StartNew();
-            var received = false;
-            while (timeout.Elapsed < TimeSpan.FromSeconds(2))
+            var parts = ZLinkEnvelopeCodec.EncodeParts(
+                header,
+                new TestPublishedEvent("delivered"),
+                typeof(TestPublishedEvent),
+                null);
+            try
             {
                 publisher.Publish("events", parts, SendFlags.None);
-                if (subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
-                {
-                    received = true;
-                    break;
-                }
-
-                await Task.Delay(10);
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(parts);
             }
 
-            Assert.True(received, "The publish test message was not received.");
-            await pipeline.DispatchAsync("play", topicMessage, header, CancellationToken.None);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
+            if (subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
+            {
+                received = true;
+                break;
+            }
+
+            await Task.Delay(10);
         }
 
+        Assert.True(received, "The publish test message was not received.");
+        await pipeline.DispatchAsync("play", topicMessage, header, CancellationToken.None);
+
         Assert.Equal("delivered", probe.Value);
+        var dropped = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ZLinkMessageFlowOutcome.Dropped, dropped.Outcome);
+        Assert.Equal(ZLinkDispatchErrorReason.PayloadDecodeFailed, dropped.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, dropped.ErrorAction);
+        await runner.StopAsync();
     }
 
     [Fact]
@@ -552,7 +694,7 @@ public sealed class UnhandledDispatchPolicyTests
     }
 
     [Fact]
-    public async Task SpotActorSendMissingHandler_LogsAndReportsMessageFlowErrorEvent()
+    public async Task SpotActorSendMissingHandler_LogsAndReportsMessageFlowDroppedEvent()
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
@@ -566,6 +708,7 @@ public sealed class UnhandledDispatchPolicyTests
             static () => throw new InvalidOperationException("Handler invoker should not be used."),
             new ZLinkDispatchErrorReporter(
                 options,
+                logger,
                 observerPump: observerPump),
             logger);
         var actor = new TestActor("actor-1");
@@ -583,14 +726,15 @@ public sealed class UnhandledDispatchPolicyTests
         await dispatcher.DispatchAsync(actor, runtimeState, header, body, CancellationToken.None);
 
         var observed = await observer.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(ZLinkMessageFlowOutcome.Error, observed.Outcome);
+        Assert.Equal(ZLinkMessageFlowOutcome.Dropped, observed.Outcome);
         Assert.Equal(ZLinkDispatchErrorSurface.SpotActor, observed.Surface);
         Assert.Equal(ZLinkDispatchMessageKind.ActorSend, observed.MessageKind);
         Assert.Equal(ZLinkDispatchErrorReason.HandlerMissing, observed.ErrorReason);
         Assert.Equal(ZLinkDispatchErrorAction.Drop, observed.ErrorAction);
         Assert.Equal("missing-actor-send", observed.PacketName);
         Assert.Equal("actor-1", observed.ActorId);
-        Assert.Contains(logger.Messages, message => message.Contains("no-handler", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("phase=dropped", StringComparison.Ordinal)
+                                                    && message.Contains("errorReason=HandlerMissing", StringComparison.Ordinal));
         await runner.StopAsync();
     }
 
@@ -694,7 +838,7 @@ public sealed class UnhandledDispatchPolicyTests
         var dispatchCount = 0;
         try
         {
-            for (var attempt = 0; attempt < 100 && !observer.HasError; attempt++)
+            for (var attempt = 0; attempt < 100 && !observer.HasTerminal; attempt++)
             {
                 var parts = CreateParts();
                 try
@@ -756,9 +900,22 @@ public sealed class UnhandledDispatchPolicyTests
 
     private sealed record TestSubscriptionEvent(string Value);
 
-    private sealed class TestSubscriptionSpot : IZLinkSpot
+    private sealed class TestSubscriptionSpot(
+        bool ownsMessage = true,
+        TestSubscriptionProbe? probe = null) : IZLinkSpot
     {
+        public bool OwnsMessage { get; } = ownsMessage;
+
+        public TestSubscriptionProbe? Probe { get; } = probe;
+
         public IZLinkSpotContext Context => null!;
+    }
+
+    private sealed class TestSubscriptionProbe
+    {
+        public int OwnerHandled;
+
+        public int NonOwnerSkipped;
     }
 
     private sealed class TestSubscriptionHandler
@@ -767,12 +924,25 @@ public sealed class UnhandledDispatchPolicyTests
         public ValueTask HandleAsync(
             TestSubscriptionSpot spot,
             TestSubscriptionEvent message,
-            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!spot.OwnsMessage)
+            {
+                Interlocked.Increment(ref spot.Probe!.NonOwnerSkipped);
+                return ValueTask.CompletedTask;
+            }
+
+            if (spot.Probe is not null)
+                Interlocked.Increment(ref spot.Probe.OwnerHandled);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed record SpotSubscriptionObservation(
         ZLinkMessageFlowEvent? Received,
-        ZLinkMessageFlowEvent Error,
+        ZLinkMessageFlowEvent Terminal,
         int DispatchCount,
         long FanoutReceived,
         IReadOnlyList<string> LogMessages);
@@ -807,14 +977,15 @@ public sealed class UnhandledDispatchPolicyTests
 
         public IReadOnlyCollection<ZLinkMessageFlowEvent> Events => _events.ToArray();
 
-        public bool HasError => _observed.Task.IsCompleted;
+        public bool HasTerminal => _observed.Task.IsCompleted;
 
         public ValueTask OnMessageFlowAsync(
             ZLinkMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
             _events.Enqueue(flow);
-            if (flow.Outcome == ZLinkMessageFlowOutcome.Error) _observed.TrySetResult(flow);
+            if (flow.Outcome is ZLinkMessageFlowOutcome.Error or ZLinkMessageFlowOutcome.Dropped)
+                _observed.TrySetResult(flow);
             return ValueTask.CompletedTask;
         }
 
@@ -847,6 +1018,23 @@ public sealed class UnhandledDispatchPolicyTests
         {
             Messages.Add(formatter(state, exception));
         }
+    }
+
+    private static ServiceProvider CreateDispatchRuntime(out ZLinkFrameworkRuntime runtime)
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var services = new ServiceCollection();
+        services.AddSingleton(registration);
+        var provider = services.BuildServiceProvider();
+        runtime = new ZLinkFrameworkRuntime(
+            provider,
+            null!,
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        return provider;
     }
 
     private sealed class CapturingSpot : IZLinkBackendSpot

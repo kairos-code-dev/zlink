@@ -45,9 +45,10 @@ internal static class ZLinkStreamFrameWriter
 
     private static bool WriteRaw(IZLinkStream stream, Message message)
     {
-        if (stream is ZLinkManagedStream managedStream) return managedStream.WriteRaw(message);
+        if (stream is ZLinkManagedStream managedStream)
+            return managedStream.WriteRaw(message, SendFlags.DontWait);
 
-        return stream.Write(ZLinkMessage.From(message.ToArray()));
+        return stream.Write(ZLinkMessage.From(message.ToArray()), SendFlags.DontWait);
     }
 
     private static string ResolveTransport(IZLinkStream stream) =>

@@ -208,6 +208,64 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task Dispose_Waits_For_Cancellation_Ignoring_Inbound_Observer()
+    {
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "blocked-observer",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "payload"u8.ToArray());
+            var buffer = new byte[1];
+            Assert.Equal(0, await stream.ReadAsync(buffer, 0, buffer.Length));
+        });
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        var observerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseObserver = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observerCompleted = 0;
+        using var registration = connector.ObserveInbound(async (_, _) =>
+        {
+            observerStarted.SetResult();
+            await releaseObserver.Task.ConfigureAwait(false);
+            Interlocked.Increment(ref observerCompleted);
+        });
+
+        await connector.Connect.Async();
+        await observerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var dispose = connector.DisposeAsync().AsTask();
+        var repeatedDispose = connector.DisposeAsync().AsTask();
+        Assert.Same(dispose, repeatedDispose);
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        Assert.False(dispose.IsCompleted);
+        Assert.False(repeatedDispose.IsCompleted);
+        Assert.Equal(0, Volatile.Read(ref observerCompleted));
+
+        releaseObserver.SetResult();
+        await Task.WhenAll(dispose, repeatedDispose).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref observerCompleted));
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        Assert.Equal(1, Volatile.Read(ref observerCompleted));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task InboundObserverFailureReportsObserverFailedAndMessageStillDispatches()
     {
         var headerCodec = new ZlinkStreamHeaderCodec();

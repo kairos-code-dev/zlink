@@ -73,12 +73,19 @@ internal readonly struct ZLinkDispatchFlowScope(
             surfaceName,
             kindName,
             actorType,
-            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
-        Report(
-            dispatchErrors,
-            ZLinkDispatchErrorReason.HandlerMissing,
-            action,
-            exception);
+            writeLog: false);
+        if (action == ZLinkDispatchErrorAction.Drop)
+            ReportDropped(
+                dispatchErrors,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                action,
+                exception);
+        else
+            Report(
+                dispatchErrors,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                action,
+                exception);
     }
 
     public void Dropped(
@@ -96,8 +103,8 @@ internal readonly struct ZLinkDispatchFlowScope(
             surfaceName,
             kindName,
             actorType,
-            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Dropped));
-        Report(
+            writeLog: false);
+        ReportDropped(
             dispatchErrors,
             reason,
             ZLinkDispatchErrorAction.Drop);
@@ -119,12 +126,19 @@ internal readonly struct ZLinkDispatchFlowScope(
             surfaceName,
             kindName,
             actorType,
-            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
-        Report(
-            dispatchErrors,
-            ZLinkDispatchErrorReason.PayloadDecodeFailed,
-            action,
-            reportedException ?? exception);
+            writeLog: false);
+        if (action == ZLinkDispatchErrorAction.Drop)
+            ReportDropped(
+                dispatchErrors,
+                ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                action,
+                reportedException ?? exception);
+        else
+            Report(
+                dispatchErrors,
+                ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                action,
+                reportedException ?? exception);
     }
 
     public void HandlerException(
@@ -144,7 +158,7 @@ internal readonly struct ZLinkDispatchFlowScope(
                 kindName,
                 exception,
                 actorType,
-                dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
+                writeLog: false);
 
         Report(
             dispatchErrors,
@@ -183,6 +197,27 @@ internal readonly struct ZLinkDispatchFlowScope(
             Exception: exception));
     }
 
+    private void ReportDropped(
+        ZLinkDispatchErrorReporter dispatchErrors,
+        ZLinkDispatchErrorReason reason,
+        ZLinkDispatchErrorAction action,
+        Exception? exception = null)
+    {
+        dispatchErrors.ReportDropped(new ZLinkDispatchFailure(
+            surface,
+            messageKind,
+            reason,
+            action,
+            packetName,
+            channelName,
+            topic,
+            SourceRid: sourceRid,
+            SpotRid: spotRid,
+            ActorId: actorId,
+            CorrelationId: correlationId,
+            Exception: exception));
+    }
+
     private ZLinkMessageFlowEvent CreateEvent(
         ZLinkMessageFlowOutcome outcome,
         bool forLog)
@@ -201,7 +236,7 @@ internal readonly struct ZLinkDispatchFlowScope(
             ActorId: actorId)
         {
             FlowId = flow?.FlowId ?? string.Empty,
-            FlowOrigin = flow?.Origin ?? ZLinkFlowOrigin.Inbound
+            FlowOrigin = flow?.Origin
         };
     }
 

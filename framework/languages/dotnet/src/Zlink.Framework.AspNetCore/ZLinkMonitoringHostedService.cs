@@ -18,11 +18,31 @@ internal sealed class ZLinkMonitoringHostedService(
     private Task? _pollingTask;
     private CancellationTokenSource? _stopTokenSource;
     private ZLinkRuntimeTaskRunner? _taskRunner;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
     private int _disposed;
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         try
         {
             await StopCoreAsync(disposing: true).ConfigureAwait(false);
@@ -45,7 +65,7 @@ internal sealed class ZLinkMonitoringHostedService(
 
             try
             {
-                _sourceValidator.PreflightSocketSources(frameworkRuntime);
+                _sourceValidator.PreflightFrameworkSources(frameworkRuntime);
 
                 if (frameworkRuntime is not null && !frameworkRuntime.IsStarted)
                 {

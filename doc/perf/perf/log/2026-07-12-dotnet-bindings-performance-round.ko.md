@@ -579,3 +579,20 @@ CPU idle 99~100%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이 �
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `PUBSUB / wss`
+
+### PUBSUB wss 완료
+
+CPU idle 99~100%를 확인하고 secure transport의 여섯 크기를 C 직후 .NET 순서로
+CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_131950_core_9_0_dotnet_pubsub_wss_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_132301_core_9_0_dotnet_pubsub_wss_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 92.3%, 74.0%, 92.6%, 97.1%, 97.6%, 101.7%였다. 최소는
+74.0%, 크기 중앙값은 약 94.9%, 평균 latency 최대 비율은 1.25배다. 모든 gate를
+통과해 코드 변경 없이 wss를 완료한다.
+
+- `PUBSUB / wss`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `PUBSUB / tls`

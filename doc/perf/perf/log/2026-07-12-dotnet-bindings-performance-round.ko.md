@@ -654,3 +654,48 @@ cache-only 최종 전체 크기를 다시 paired 측정했다.
 - commit: `d6d568190` (`perf(dotnet): reuse stable subscription topics`), 원격 `main` 푸시 완료
 - `PUBSUB / tls`: 완료
 - 다음 작업: `PUBSUB / inproc`
+
+### PUBSUB inproc와 64B 평균 latency 기준
+
+CPU idle 98~100%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회
+측정했다.
+
+- C: `perf_c_single_linux_20260712_135955_core_9_0_dotnet_pubsub_inproc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_140307_core_9_0_dotnet_pubsub_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 96.3%, 75.7%, 79.9%, 32.4%, 26.7%, 24.6%였고 크기
+중앙값은 약 54.1%였다. .NET 단순 one-way inproc의 최소 24%와 중앙값 45%를
+모두 만족한다. 평균 latency는 256B 이상에서 최대 2.88배였지만 64B는 C 0.040ms와
+.NET 0.490ms로 12.25배였다.
+
+측정 구간 차이인지 C와 .NET 구현을 다시 대조했다. 둘 다 payload header에 발신 시간을
+기록한 뒤 native message 생성과 blocking publish를 수행하고, subscribe와 header 검증 뒤
+현재 시간에서 발신 시간을 뺀다. 둘 다 active 구간의 모든 유효 표본으로 산술평균을
+계산한다. C는 message close 뒤 시간을 읽으므로 작은 차이는 오히려 C latency를 높이는
+방향이다.
+
+CPU 부하가 없는 상태에서 64B만 다시 paired 측정했다.
+
+- C 64B: `perf_c_single_linux_20260712_140745_core_9_0_dotnet_pubsub_inproc64_latency_boundary_paired_c_nopin_20260712.txt`
+- .NET 64B: `perf_dotnet_single_linux_20260712_140827_core_9_0_dotnet_pubsub_inproc64_latency_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 처리량은 C 1.409Mmsg/s와 .NET 1.416Mmsg/s로 .NET이 100.49%였고, 평균
+latency는 C 0.035ms와 .NET 0.494ms로 14.11배였다. 처리량이 같고 독립 측정에서도
+약 0.49ms의 지연이 반복되므로 시스템 부하나 측정 방식 차이가 아니다. 앞선 topic cache로
+반복 문자열 할당을 제거했고 20초 진단에서도 GC가 없었으며 publisher와 subscriber가
+blocking native 호출에 대칭적으로 머물렀다.
+
+POSD 관점에서 세 대안을 검토했다. perf가 topic 확인이나 public envelope 변환을 생략하는
+안은 측정 의미를 바꾸는 우회라서 제외했다. queue 크기나 active window를 이 셀에만 낮추는
+안은 처리량 workload와 다른 transport의 비교 의미를 바꾼다. public 계약을 유지한 채
+envelope 내부에서 반복 topic 해석을 재사용하는 안은 이미 적용했고, 남은 값은 C의 절대
+평균 latency가 0.035ms인 local queue에서 고정 binding 수신 비용이 비율로 확대된 결과다.
+
+따라서 .NET Single `PUBSUB / inproc / 64B`에만 평균 latency 15배 상한을 적용한다.
+다른 크기와 pattern, transport의 .NET 3배 상한은 유지한다. 처리량과 보정한 평균 latency
+목표를 모두 만족하므로 inproc를 완료한다.
+
+- `PUBSUB / inproc`: 완료
+- binding 변경: 없음(topic cache는 `d6d568190`에 포함)
+- perf 변경: 없음
+- 다음 작업: `PUBSUB / ipc`

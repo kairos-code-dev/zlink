@@ -781,3 +781,21 @@ queue 체류 시간이 커지는 구간이다. 처리량은 목표를 통과하�
 - perf 변경: 없음
 - `DEALER_DEALER / ws`: 완료
 - 다음 작업: `DEALER_DEALER / wss`
+
+### DEALER_DEALER wss 완료
+
+CPU idle이 88.2~92.5%로 안정적이고 한 프로세스가 CPU 하나를 독점하지 않는 상태에서
+C와 .NET의 secure transport 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_150017_core_9_0_dotnet_dealer_dealer_wss_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_150257_core_9_0_dotnet_dealer_dealer_wss_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 96.2%, 77.8%, 92.9%, 100.0%, 95.9%, 97.4%였다. 최소는
+77.8%, 크기 중앙값은 약 96.1%다. 평균 latency 비율은 0.80배, 2.61배,
+1.11배, 1.84배, 1.07배, 2.60배로 모두 일반 상한 3배 이내다. 처리량과 평균
+latency 목표를 첫 paired 측정에서 만족해 추가 개선은 필요하지 않았다.
+
+- `DEALER_DEALER / wss`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_DEALER / tls`

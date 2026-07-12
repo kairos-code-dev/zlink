@@ -1752,4 +1752,5 @@ request state의 thread-local·전역·lock-free pool, operation state를 callba
 - C++ binding 변경: 단일 part request/reply 직접 native 경로와 routing id 재사용
 - public API 변경: 없음
 - perf 변경: 고정 routing id 생성 위치와 단일 part 접근을 C와 같은 의미로 정렬
-- 다음 작업: 검증된 변경을 커밋·푸시한 뒤 ws 대형 두 셀 개선 계속
+- 커밋과 푸시: `90ebee542`
+- 다음 작업: ws 대형 두 셀 개선 계속

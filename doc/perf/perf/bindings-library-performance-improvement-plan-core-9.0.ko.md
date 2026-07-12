@@ -1234,7 +1234,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Multi `ROUTER_ROUTER_REQREP` 진행 중 | `DEALER_ROUTER_REQREP`의 tcp와 ws는 재측정에서 모두 통과했다. 다음 재개 항목인 ws를 측정한다. |
 | paired C | ws 전체 크기 측정 완료 | CPU pin 없이 `MULTI_ROUTER_ROUTER_REQREP / ws` 여섯 크기를 C 직후 C++ 순서로 5회 측정했고, 변동이 컸던 65536B는 해당 셀만 같은 순서로 다시 측정했다. |
 | 개선 반복 | C++ ws 대형 셀 개선 중 | 단일 part request/reply와 reply의 불필요한 vector 경유, 요청마다 반복하던 native routing id 변환을 제거했다. 65536B 78.0%, 131072B 76.4%로 개선됐지만 최소 80%에는 미달한다. |
-| 커밋과 푸시 | 새 C++ 채택분 준비 | 검증된 C++ hot path 변경과 측정 근거만 커밋·푸시한 뒤 같은 ws 대형 셀 개선을 계속한다. |
+| 커밋과 푸시 | C++ 개선 1차 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`로 커밋해 원격 `main`에 푸시했다. 같은 ws 대형 셀 개선을 계속한다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1288,7 +1288,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` tcp 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_tcp_target80_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 84.3%, size 중앙값 88.7%, 평균 latency 최대 1.83배였다. | tcp 통과, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | 전체 | managed 언어 중앙값 목표 상향 | - | 낮은 과거 값을 최적화 한계로 쓰지 않고 Node/Python은 모든 pattern 60%, .NET/Java request/reply와 multi routed echo는 70%, SPOT은 각각 80%와 85%로 중앙값 목표를 올렸다. | 최소 기준과 중앙값 목표 분리 유지 | 이 문서 2.1절 |
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` ws 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배였다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-12 | C++ | Multi `MULTI_ROUTER_ROUTER_REQREP` ws 개선 1차 | core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_*_nopin_20260712 | 단일 part 요청과 응답의 vector 경유와 요청마다 반복하던 native routing id 변환을 제거했다. 전체 크기 5회와 65536B 경계 셀 5회를 C 직후 C++ 순서로 측정했다. | 크기 중앙값 86.5%와 평균 latency는 통과, 65536B 78.0%와 131072B 76.4%는 계속 개선 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | C++ | Multi `MULTI_ROUTER_ROUTER_REQREP` ws 개선 1차 | core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_*_nopin_20260712 | 단일 part 요청과 응답의 vector 경유와 요청마다 반복하던 native routing id 변환을 제거했다. 전체 크기 5회와 65536B 경계 셀 5회를 C 직후 C++ 순서로 측정했다. | `90ebee542` 푸시 완료, 65536B 78.0%와 131072B 76.4%는 계속 개선 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

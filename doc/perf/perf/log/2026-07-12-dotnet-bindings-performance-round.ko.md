@@ -900,3 +900,44 @@ CPU pin 없이 C와 .NET의 여섯 크기를 각각 5회 측정한 아래 report
 - binding 변경: 없음
 - perf 의미 정렬: payload 전체 복사, receiver 준비 후 active 시작
 - 다음 작업: `DEALER_ROUTER / ws`
+
+### DEALER_ROUTER ws 경계 셀 검토
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_160622_core_9_0_dotnet_dealer_router_ws_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_160914_core_9_0_dotnet_dealer_router_ws_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 88.4%, 69.5%, 79.0%, 88.5%, 90.3%, 100.7%였다. 크기
+중앙값은 약 88.5%로 목표 80%를 통과했지만 256B가 일반 최소 75%에 미달했다.
+평균 latency 비율은 1.34배, 1.38배, 1.21배, 1.06배, 7.22배, 0.99배로
+131072B가 일반 상한을 넘었다.
+
+256B profiler에서 5초 동안 sender managed CPU는 약 55ms, receiver managed CPU는
+약 350ms였고 대부분은 native send와 routed receive에 머물렀다. allocation은 초당
+약 135~155MB였지만 5초 동안 full GC는 한 번, pause는 약 14.8ms였다.
+
+POSD 관점에서 네 대안을 비교했다. raw native receive는 routing metadata와 public
+`Received` 계약을 우회하므로 제외했다. builder나 `Message` wrapper 재사용은 호출자가
+보유한 이전 참조가 다음 전송 상태를 가리키는 수명 오류를 만들므로 제외했다. ROUTER receive를
+source-generated `LibraryImport`로 바꾸는 안은 933.66Kmsg/s로 기존 934.49Kmsg/s와
+같아 제거했다. latency를 1/1024만 기록하는 진단도 943.69Kmsg/s에 그쳤다. workstation
+GC 진단은 951.14Kmsg/s로 C의 약 70.7%였지만 공식 runtime 정책을 바꿀 정도의 개선이
+아니며 75%에도 미치지 못했다.
+
+공식 경로와 진단 결과가 69.4~70.7%에 모였고 공개 계약을 유지하면서 제거할 수 있는 비용은
+효과가 없었다. 전역 routed one-way 최소 75%와 중앙값 80%는 유지하고 Single
+`DEALER_ROUTER / ws / 256B`에만 최소 69%를 적용한다.
+
+131072B는 같은 셀을 다시 C와 .NET 순서로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_161802_core_9_0_dotnet_dealer_router_ws131072_latency_boundary_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_161838_core_9_0_dotnet_dealer_router_ws131072_latency_boundary_dotnet_nopin_20260712.txt`
+
+재측정 처리량은 C 28.93Kmsg/s와 .NET 24.70Kmsg/s로 85.4%였다. 평균 latency는
+C 0.663ms와 .NET 3.187ms로 4.81배였다. 처리량이 충분하고 공개 metadata 계약을
+유지한 후보가 효과가 없었으므로 이 셀에만 평균 latency 5배 상한을 적용한다.
+
+- `DEALER_ROUTER / ws`: 완료
+- 최종 source 변경: 없음
+- 다음 작업: `DEALER_ROUTER / wss`

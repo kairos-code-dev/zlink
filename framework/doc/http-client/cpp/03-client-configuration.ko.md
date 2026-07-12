@@ -25,7 +25,6 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 | 옵션 | 의미 | 기본값 |
 |------|------|--------|
 | `base_url(url)` / `create(url)` | `http://` 또는 `https://` endpoint. path prefix 포함 가능 | 필수 |
-| `json()` | `Accept: application/json` + 기본 `Content-Type` 등록 | off |
 | `timeout(duration)` | request 기본 timeout. request 단위로 [override 가능](04-making-requests.ko.md) | 3000ms |
 | `max_response_body_size(bytes)` | 응답 body를 읽을 때 허용하는 최대 bytes. buffered 응답과 streaming 다운로드 모두에 적용 | 16 MiB |
 | `default_header(name, value)` | 모든 request에 실리는 헤더 | 없음 |

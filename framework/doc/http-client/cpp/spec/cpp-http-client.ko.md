@@ -9,9 +9,12 @@
 # Spec -- ZLink HTTP Client For C++
 
 > 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
-> 이 문서는 `zlink::http_client` 산출물의 공개 계약을 정리한다.
-> 실제 계약의 단일 기준은 `http-client/include/zlink/http_client/**` public header와
-> `test_cpp_http_client`, `test_cpp_framework_contract_headers` 회귀 테스트다.
+> **언어 중립 공통 계약은 [공통 spec](../../spec/README.ko.md)이 정본**이며,
+> 이 문서는 공통 계약에 대한 C++ 고유 편차(coroutine 실행 계약, `delete_`,
+> `result_t` 봉투, OpenSSL 선택 빌드, 자체 connection pool)와 구현 상세를 기술한다.
+> 실제 계약의 단일 기준은 공통 spec + `http-client/include/zlink/http_client/**`
+> public header와 `test_cpp_http_client`, `test_cpp_framework_contract_headers`
+> 회귀 테스트다.
 
 ## 1. 목적
 
@@ -146,6 +149,7 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   request는 자동 retry에서 제외한다.
 - cookie jar: `cookies()`. `Set-Cookie`의 `Path`, `Secure`, `Max-Age`(0 이하 = 삭제)를
   반영하는 in-memory jar. `Domain`, `Expires` 등 나머지 속성은 무시한다.
+  host당 최대 128개(공통 계약)이며 초과 시 가장 오래된 것부터 제거한다.
 - proxy: `proxy("http://host:port")`. http target은 absolute-form으로 전달하고,
   https target은 `CONNECT` tunnel을 연 뒤 TLS handshake를 수행한다.
   `proxy_basic_auth`는 absolute-form request와 `CONNECT`에 `Proxy-Authorization`을 싣는다.

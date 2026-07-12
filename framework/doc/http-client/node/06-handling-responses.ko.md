@@ -36,4 +36,4 @@ const raw = response.rawBody;      // 원본 응답 텍스트
 | `submitRaw()` | status를 그대로 돌려준다(예외 없음) |
 | `submit<T>()` | `requestFailed` 예외 |
 
-[다음: 비동기 →](07-async-coroutines.ko.md)
+[다음: 비동기 →](07-async.ko.md)

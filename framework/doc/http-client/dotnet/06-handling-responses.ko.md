@@ -35,7 +35,7 @@ PlayerProfile profile = client.Get("/players/7281").Fetch<PlayerProfile>();
 ```
 
 `Fetch<T>()`는 typed body를 직접 돌려주고 실패를 예외로 던진다. 테스트·CLI 전용이다
-([7장](07-async-coroutines.ko.md)).
+([7장](07-async.ko.md)).
 
 ## status 처리 정리
 
@@ -44,4 +44,4 @@ PlayerProfile profile = client.Get("/players/7281").Fetch<PlayerProfile>();
 | `SubmitRawAsync()` | status를 그대로 돌려준다(예외 없음) |
 | `SubmitAsync<T>()` / `Fetch<T>()` | `RequestFailed` 예외 |
 
-[다음: 비동기와 코루틴 →](07-async-coroutines.ko.md)
+[다음: 비동기 →](07-async.ko.md)

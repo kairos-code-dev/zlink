@@ -20,19 +20,24 @@
 - [x] `perf/README.ko.md` (시나리오 매트릭스 정본) 작성
 - [x] 개정 후보 R1~R8 등재 (`spec/10-revision-candidates.ko.md`)
 
-## Phase 1 — 문서 정비 (코드 무변경)
+## Phase 1 — 문서 정비 (코드 무변경) ✅ (2026-07-12)
 
-- [ ] 언어별 spec 5개(`<lang>/spec/<lang>-http-client.ko.md`)를
-  "공통 계약 참조 + 언어 편차만"으로 재편, 공통 spec 링크 추가
-- [ ] dotnet/java/kotlin/node 03장에 기본값 표 반영(공통 spec 인용)
-- [ ] 07장 파일명·제목 정리: 코루틴 없는 언어(dotnet/java/node)는
-  `07-async`(비동기)로, kotlin은 현행 `07-coroutines` 유지 — 링크 일괄 수정
-- [ ] 스텁 챕터 보강: dotnet/java/kotlin의 09(auth)·11(proxy)·12(압축)에
-  CONNECT 의미론/보안 서술 추가(cpp 수준으로)
-- [ ] cpp 10장에 cookie host당 128개 상한 추가(유일 누락)
-- [ ] node spec §3의 builder 목록에서 `json` 제거 — 코드에 없는 메서드
-  (`client.ts` builder에 미존재, 문서 drift)
-- [ ] 언어별 spec 상단 nav 블록 통일(cpp만 있음)
+- [x] 언어별 spec 5개를 "공통 계약 참조 + 언어 편차만"으로 재편
+  (dotnet/java/kotlin/node §5·§6 교체, cpp는 참조 헤더 + 상세 유지)
+- [x] dotnet/java/kotlin/node 03장에 기본값 표 반영(공통 spec 인용)
+- [x] 07장 파일명·제목 정리: dotnet/java/node `07-async.ko.md`(비동기),
+  kotlin `07-coroutines`·cpp `07-async-coroutines` 유지 — 링크 일괄 수정,
+  저장소 전체 참조·링크 무결성 검사 통과
+- [x] 스텁 챕터 보강: 3언어 11장(CONNECT tunnel/end-to-end TLS/인증 비유출),
+  09장(trust 추가 의미·hostname 검증 명시, dotnet 09 "custom root trust"
+  오해 표현 교정 — java composite TrustManager 코드로 검증). 12장은 이미
+  핵심 의미론 보유로 보강 불요 판정
+- [x] cpp 10장 + cpp spec에 cookie host당 128개 상한 추가
+- [x] `json()`/`Json()` drift 전량 제거 — node spec만이 아니라
+  **5언어 문서 전반**(dotnet·java·node spec §3, 03장 5개, kotlin 02/03/12장
+  예제, cpp 03장 표)에 잔존했음. 코드는 커밋 `a69810f1e`에서 제거된 옵션
+- [x] spec 상단 통일: 5개 spec 모두 "공통 spec이 정본 + 이 문서는 언어
+  편차만" 헤더로 통일(cpp adapter-nav 체인은 cpp 고유 유지)
 
 ## Phase 2 — 소비자 격리: 로컬 패키지 스냅숏 + 버전 도입
 
@@ -120,7 +125,7 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 | # | 항목 | 상태 |
 | --- | --- | --- |
 | 1 | Phase 0 공통 spec + perf 문서 | ✅ 2026-07-12 |
-| 2 | Phase 1 문서 정비 | ⬜ |
+| 2 | Phase 1 문서 정비 | ✅ 2026-07-12 |
 | 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ⬜ |
 | 4 | Phase 3 에러 모델 parity | ⬜ |
 | 5 | Phase 4 언어별 결함 | ⬜ |

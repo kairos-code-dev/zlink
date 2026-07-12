@@ -7,7 +7,6 @@
 
 ```kotlin
 val report = zlinkHttpClient("https://api.internal") {
-    json()
     compression()
 }.use { client ->
     client.get("/large-report").fetch<Report>()

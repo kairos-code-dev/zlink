@@ -1,8 +1,9 @@
 # Spec -- ZLink HTTP Client For Node
 
 > 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
-> 이 문서는 `@zlink-systems/http-client` 산출물의 공개 계약을 정리한다.
-> 실제 계약의 단일 기준은 `packages/http-client/src/**` 공개 타입과
+> **언어 중립 공통 계약은 [공통 spec](../../spec/README.ko.md)이 정본**이며,
+> 이 문서는 공통 계약에 대한 Node 고유 편차와 구현 매핑만 기술한다.
+> 실제 계약의 단일 기준은 공통 spec + `packages/http-client/src/**` 공개 타입과
 > `test/contract/http-client.test.js` 회귀 테스트다.
 
 ## 1. 목적
@@ -30,7 +31,7 @@ core의 기본 의존성은 아니다(단방향 의존).
 
 - `ZLinkHttpClient` — `create()` / `create(baseUrl)`, 메서드 `get/post/put/delete/
   patch/head/options`, `close()`.
-- `ZLinkHttpClientBuilder` — `baseUrl`, `json`, `timeout`, `defaultHeader`, `basicAuth`,
+- `ZLinkHttpClientBuilder` — `baseUrl`, `timeout`, `defaultHeader`, `basicAuth`,
   `bearerToken`, `maxResponseBodySize`, `trustCertificateFile`, `clientCertificateFile`,
   `followRedirects`, `retry`, `cookies`, `proxy`, `proxyBasicAuth`, `compression`,
   `build`, 그리고 단발 verb shortcut.
@@ -49,28 +50,27 @@ core의 기본 의존성은 아니다(단방향 의존).
 
 ## 5. 전송 의미론
 
-- **백엔드**: undici 저수준 `request`(`fetch` 아님). auto-redirect/decompress/cookie 없음.
-- **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
-  본문 제거. same-origin `Authorization` 보존, cross-origin 제거. `max` 초과 시
-  `requestFailed`. 래퍼 루프로 구현.
-- **retry**: retriable transport 실패만, 고정 50ms, streaming 제외.
-- **cookie jar**: host 정확 매칭, 기본 `Path=/`, `Path`/`Secure`/`Max-Age`만, host당 128개.
-- **compression**: gzip+deflate 해제, `content-encoding` 제거, decoded 크기 한도,
-  streaming 비해제.
-- **TLS**: `trustCertificateFile`→`Agent.connect.ca`, mTLS→`connect.cert/key`.
-- **proxy**: `ProxyAgent`(인증은 `token`).
-- **body 소스 상호 배타**: `body`/`bodyStream`/`form`/`multipart` 중 하나.
+기본값·redirect·retry·cookie·압축·인증 스크럽·body 소스 배타 의미론은
+[공통 spec 2~8장](../../spec/README.ko.md)을 따른다. Node 구현 매핑:
+
+- **백엔드**: undici 저수준 `request`(`fetch` 아님 — auto-redirect/decompress/
+  cookie가 없어 의미론을 래퍼가 통제).
+- **TLS**: `trustCertificateFile`→`Agent.connect.ca`(기본 root에 추가),
+  mTLS→`connect.cert/key`.
+- **proxy**: `ProxyAgent` — 인증은 헤더가 아니라 `token`으로 전달되어 CONNECT
+  tunnel에서 target에 노출되지 않는다.
+- **압축 해제**: `node:zlib`.
+- typed JSON 디코드에 prototype-pollution 방어(`__proto__`/`constructor`/
+  `prototype` 제거) — Node 고유 보안 규칙.
 
 ## 6. 에러 매핑
 
-| 상황 | kind |
-|------|------|
-| 구성/요청 검증 | `requestProtocolError` |
-| status ≥ 400 (typed) / redirect 한도 / 크기 초과 / transport / timeout | `requestFailed` |
-| JSON·압축 디코드 | `payloadDecodeFailed` |
+[공통 spec 9장](../../spec/09-error-model.ko.md)을 따른다. Node 표기는
+`ZLinkFrameworkErrorKind`(camelCase: `requestProtocolError`/`requestFailed`/
+`payloadDecodeFailed`) + `isRetriable`.
 
-timeout은 `requestFailed`(`isRetriable=true`)로 보고한다(framework enum에 timeout kind
-없음).
+- 편차: timeout은 `requestFailed`(`isRetriable=true`)로 보고한다(framework
+  enum에 timeout kind 없음 — 공통 spec [R2](../../spec/10-revision-candidates.ko.md) 검토 대상).
 
 ## 7. 회귀 테스트 / 등록
 

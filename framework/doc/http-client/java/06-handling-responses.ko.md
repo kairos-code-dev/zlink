@@ -44,4 +44,4 @@ PlayerProfile profile = client.get("/players/7281").fetch(PlayerProfile.class);
 | `submitRaw()` | status를 그대로 돌려준다(예외 없음) |
 | `submit(Type)` / `fetch(Type)` | 예외 |
 
-[다음: 비동기와 코루틴 →](07-async-coroutines.ko.md)
+[다음: 비동기 →](07-async.ko.md)

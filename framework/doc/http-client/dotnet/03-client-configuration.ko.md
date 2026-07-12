@@ -7,21 +7,23 @@ builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHtt
 
 ## builder 옵션
 
-| 옵션 | 효과 | 구현 |
-|------|------|------|
-| `BaseUrl(url)` | 모든 요청의 기준 URL | 래퍼 |
-| `Json()` | `Accept: application/json` + 기본 `content-type` | 래퍼 |
-| `Timeout(span)` | 요청 timeout(요청별 override 가능) | `CancellationToken` |
-| `DefaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 래퍼 |
-| `BasicAuth(u, p)` / `BearerToken(t)` | `Authorization` 헤더 | 래퍼 |
-| `MaxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | 래퍼 |
-| `TrustCertificateFile(path)` | 테스트 인증서 신뢰 | `SslClientAuthenticationOptions` |
-| `ClientCertificateFile(cert, key)` | mTLS client 인증서 | `SslClientAuthenticationOptions` |
-| `FollowRedirects(max)` | redirect 추적(최대 횟수) | **래퍼 redirect 루프** |
-| `Retry(attempts)` | transport 실패 재시도 | **래퍼 retry 루프** |
-| `Cookies()` | cookie jar 활성화 | **래퍼 cookie jar** |
-| `Proxy(url)` / `ProxyBasicAuth(u, p)` | HTTP proxy | `WebProxy` |
-| `Compression()` | gzip/deflate 투명 해제 | **래퍼 해제** |
+기본값은 [공통 spec 2장](../spec/02-client-builder.ko.md)이 정본이다.
+
+| 옵션 | 효과 | 기본값 | 구현 |
+| --- | --- | --- | --- |
+| `BaseUrl(url)` | 모든 요청의 기준 URL | 없음(필수) | 래퍼 |
+| `Timeout(span)` | 시도당 timeout(요청별 override 가능) | **3000ms** | `CancellationToken` |
+| `DefaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 없음 | 래퍼 |
+| `BasicAuth(u, p)` / `BearerToken(t)` | `Authorization` 헤더 | off | 래퍼 |
+| `MaxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | **16 MiB** | 래퍼 |
+| `TrustCertificateFile(path)` | 신뢰 인증서 추가 | 시스템 root | `SslClientAuthenticationOptions` |
+| `ClientCertificateFile(cert, key)` | mTLS client 인증서 | off | `SslClientAuthenticationOptions` |
+| `FollowRedirects(max)` | redirect 추적(무인자 시 **5회**) | off | **래퍼 redirect 루프** |
+| `Retry(attempts)` | transport 실패 재시도(총 1+n회 시도) | off | **래퍼 retry 루프** |
+| `Cookies()` | cookie jar 활성화 | off | **래퍼 cookie jar** |
+| `Proxy(url)` / `ProxyBasicAuth(u, p)` | HTTP proxy | off | `WebProxy` |
+| `Compression()` | gzip/deflate 투명 해제 | off | **래퍼 해제** |
+| `Codecs(configure)` | framework codec extension 등록(.NET 고유) | JSON | 래퍼 |
 
 ## 네이티브 위임 vs 래퍼 구현
 

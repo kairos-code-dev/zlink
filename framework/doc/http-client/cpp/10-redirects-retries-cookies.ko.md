@@ -97,6 +97,7 @@ jar가 반영하는 속성과 무시하는 속성:
 | `Max-Age` | 0 이하면 즉시 삭제 |
 | `Domain`, `Expires`, `HttpOnly`, `SameSite` | 무시 (host 단위 저장, 영속화 없음) |
 
-jar는 client(runtime) 수명 동안만 유지된다. 디스크 영속화는 없다.
+jar는 host당 최대 128개를 보관하며 초과하면 가장 오래된 것부터 제거한다.
+client(runtime) 수명 동안만 유지되고 디스크 영속화는 없다.
 
 [다음: Proxy →](11-proxy.ko.md)

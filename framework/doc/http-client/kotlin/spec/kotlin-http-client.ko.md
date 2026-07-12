@@ -1,8 +1,10 @@
 # Spec -- ZLink HTTP Client For Kotlin
 
 > 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
-> 이 문서는 `zlink-http-client-kotlin` 산출물의 공개 계약을 정리한다.
-> 실제 계약의 단일 기준은
+> **언어 중립 공통 계약은 [공통 spec](../../spec/README.ko.md)이 정본**이며,
+> 이 문서는 java 런타임 위 Kotlin idiom 레이어의 편차만 기술한다.
+> 전송 의미론의 검증 책임은 [java spec](../../java/spec/java-http-client.ko.md)이 진다.
+> 실제 계약의 단일 기준은 공통 spec +
 > `src/main/kotlin/systems/zlink/httpclient/kotlin/HttpClientCoroutines.kt` 공개 확장과
 > `src/test/kotlin/...` 회귀 테스트다.
 
@@ -27,7 +29,7 @@ dispatcher에서 재개된다.
 DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수다.
 
 - `zlinkHttpClient(baseUrl: String, configure: ZLinkHttpClientBuilder.() -> Unit = {}): ZLinkHttpClient`
-  — DSL 블록을 fluent builder에 적용해 client를 만든다. 블록 안에서 `json`/`timeout`/
+  — DSL 블록을 fluent builder에 적용해 client를 만든다. 블록 안에서 `timeout`/
   `basicAuth`/`bearerToken`/`maxResponseBodySize`/`trustCertificateFile`/
   `clientCertificateFile`/`followRedirects`/`retry`/`cookies`/`proxy`/`proxyBasicAuth`/
   `compression` 등 builder 메서드를 그대로 호출한다.
@@ -53,22 +55,17 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
 
 ## 5. 전송 의미론
 
-- **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
-  본문 제거. same-origin `Authorization` 보존, cross-origin 제거. 횟수 한도 초과 시 예외.
-- **retry**: retriable transport 실패(`IOException`)만, 고정 50ms 간격, streaming 제외.
-  status 코드(4xx/5xx)는 재시도하지 않는다.
-- **cookie jar**: host 정확 매칭, 기본 `Path=/`, `Path`/`Secure`/`Max-Age`만 해석,
-  secure cookie는 https에만, host당 128개.
-- **compression**: gzip+deflate 해제, `content-encoding` 헤더 제거, decoded 크기 한도,
-  streaming chunk는 비해제.
-- **TLS**: `trustCertificateFile`로 테스트 인증서 신뢰, `clientCertificateFile`로 mTLS.
-- **proxy**: `proxy(url)` + `proxyBasicAuth` → `Proxy-Authorization`.
-- **body 소스 상호 배타**: `body`/`bodyStream`/`form`/`multipart` 중 하나.
+전송 의미론은 [공통 spec 2~8장](../../spec/README.ko.md)과
+[java spec](../../java/spec/java-http-client.ko.md)을 그대로 따른다
+(전이 재사용 — Kotlin 레이어는 전송 동작을 바꾸지 않는다).
 
 ## 6. 에러 매핑
 
-모든 실패는 `ZLinkFrameworkException`(`systems.zlink.framework.errors`)으로 보고된다. suspend
-호출은 `try`/`catch`로 잡는다. retry 판단은 내부 `IOException` 여부로 한다.
+[java spec 6절](../../java/spec/java-http-client.ko.md)과 동일하다(공통 spec 9.3의
+kind/`isRetriable` 미노출 갭 포함). suspend 호출은 `try`/`catch`로 잡는다.
+
+- Kotlin 고유 주의: coroutine 취소가 하부 요청에 전파되지 않는다
+  (공통 spec [R5/R9](../../spec/10-revision-candidates.ko.md) 검토 대상).
 
 ## 7. 회귀 테스트 / 등록
 

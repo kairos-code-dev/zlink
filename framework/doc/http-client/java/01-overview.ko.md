@@ -40,7 +40,7 @@ JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
   점유되지 않는다.
 - `fetch(Type)`는 blocking 접근으로 테스트·CLI 전용이다.
 
-자세한 규칙은 [7. 비동기와 코루틴](07-async-coroutines.ko.md)에서 다룬다.
+자세한 규칙은 [7. 비동기](07-async.ko.md)에서 다룬다.
 
 ## 기능 한눈에 보기
 

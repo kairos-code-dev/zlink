@@ -7,21 +7,22 @@ builder는 client 전역 설정을 모은다. `java.net.http` 설정으로 매�
 
 ## builder 옵션
 
-| 옵션 | 효과 | 구현 |
-|------|------|------|
-| `baseUrl(url)` | 모든 요청의 기준 URL | 래퍼 |
-| `json()` | `Accept: application/json` + 기본 `content-type` | 래퍼 |
-| `timeout(Duration)` | 요청 timeout(요청별 override 가능) | `HttpRequest.timeout` |
-| `defaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 래퍼 |
-| `basicAuth(u, p)` / `bearerToken(t)` | `Authorization` 헤더 | 래퍼 |
-| `maxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | 래퍼 |
-| `trustCertificateFile(path)` | 테스트 인증서 신뢰 | `SSLContext` TrustManager |
-| `clientCertificateFile(cert, key)` | mTLS client 인증서 | `SSLContext` KeyManager |
-| `followRedirects(max)` | redirect 추적(최대 횟수) | **래퍼 redirect 루프** |
-| `retry(attempts)` | transport 실패 재시도 | **래퍼 retry 루프** |
-| `cookies()` | cookie jar 활성화 | **래퍼 cookie jar** |
-| `proxy(url)` / `proxyBasicAuth(u, p)` | HTTP proxy | `ProxySelector` |
-| `compression()` | gzip/deflate 투명 해제 | **래퍼 해제** |
+기본값은 [공통 spec 2장](../spec/02-client-builder.ko.md)이 정본이다.
+
+| 옵션 | 효과 | 기본값 | 구현 |
+| --- | --- | --- | --- |
+| `baseUrl(url)` | 모든 요청의 기준 URL | 없음(필수) | 래퍼 |
+| `timeout(Duration)` | 시도당 timeout(요청별 override 가능) | **3000ms** | `HttpRequest.timeout` |
+| `defaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 없음 | 래퍼 |
+| `basicAuth(u, p)` / `bearerToken(t)` | `Authorization` 헤더 | off | 래퍼 |
+| `maxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | **16 MiB** | 래퍼 |
+| `trustCertificateFile(path)` | 신뢰 인증서 추가 | 시스템 root | `SSLContext` TrustManager |
+| `clientCertificateFile(cert, key)` | mTLS client 인증서 | off | `SSLContext` KeyManager |
+| `followRedirects(max)` | redirect 추적(무인자 시 **5회**) | off | **래퍼 redirect 루프** |
+| `retry(attempts)` | transport 실패 재시도(총 1+n회 시도) | off | **래퍼 retry 루프** |
+| `cookies()` | cookie jar 활성화 | off | **래퍼 cookie jar** |
+| `proxy(url)` / `proxyBasicAuth(u, p)` | HTTP proxy | off | `ProxySelector` |
+| `compression()` | gzip/deflate 투명 해제 | off | **래퍼 해제** |
 
 ## 네이티브 위임 vs 래퍼 구현
 

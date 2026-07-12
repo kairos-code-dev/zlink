@@ -1,6 +1,6 @@
 [← 목차](README.ko.md)
 
-# 7. 비동기와 코루틴
+# 7. 비동기
 
 `submitRaw()` / `submit(Type)` / `download(sink)`는 모두 `CompletionStage`를 돌려준다.
 

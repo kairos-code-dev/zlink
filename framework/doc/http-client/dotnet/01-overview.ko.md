@@ -52,7 +52,7 @@ JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 > `Fetch<T>()` 같은 blocking 접근은 테스트·client 시나리오처럼 blocking이 허용되는
 > 곳에서만 쓴다.
 
-자세한 규칙은 [7. 비동기와 코루틴](07-async-coroutines.ko.md)에서 다룬다.
+자세한 규칙은 [7. 비동기](07-async.ko.md)에서 다룬다.
 
 ## 기능 한눈에 보기
 

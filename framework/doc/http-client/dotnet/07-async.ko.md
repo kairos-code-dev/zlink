@@ -1,6 +1,6 @@
 [← 목차](README.ko.md)
 
-# 7. 비동기와 코루틴
+# 7. 비동기
 
 `SubmitRawAsync()` / `SubmitAsync<T>()` / `DownloadAsync(sink)`는 모두 `ValueTask<T>`를
 돌려준다. .NET에서는 `async`/`await`가 코루틴 역할을 한다.

@@ -17,7 +17,7 @@ Console.WriteLine(response.Status); // 본문은 비어 있음
 ```
 
 - sink는 응답을 읽는 비동기 컨텍스트에서 호출된다. 무거운 동기 작업으로 스레드를 막지
-  않는다([7장](07-async-coroutines.ko.md)).
+  않는다([7장](07-async.ko.md)).
 - 누적 크기는 `MaxResponseBodySize`로 제한된다.
 
 ## streaming 업로드

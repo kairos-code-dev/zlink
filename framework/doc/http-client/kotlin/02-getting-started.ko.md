@@ -22,7 +22,7 @@ import systems.zlink.httpclient.ZLinkHttpClient
 ## 첫 요청
 
 ```kotlin
-zlinkHttpClient("http://127.0.0.1:18080") { json() }.use { client ->
+zlinkHttpClient("http://127.0.0.1:18080").use { client ->
     val player = client.get("/players/7281").await<PlayerProfile>()
     println(player.body().name)
 }
@@ -46,7 +46,7 @@ data class CreateGameRes(val id: String, val ranked: Boolean)
 
 ```kotlin
 suspend fun createGame(): CreateGameRes =
-    zlinkHttpClient("https://game-api.example.internal") { json() }.use { client ->
+    zlinkHttpClient("https://game-api.example.internal").use { client ->
         client.post("/games").body(CreateGameReq("ranked-match-0611")).fetch()
     }
 ```
@@ -59,7 +59,7 @@ coroutine 밖(테스트·`main`)에서는 `runBlocking`으로 감싼다.
 
 ```kotlin
 fun main() = runBlocking {
-    zlinkHttpClient("http://127.0.0.1:18080") { json() }.use { client ->
+    zlinkHttpClient("http://127.0.0.1:18080").use { client ->
         val board = client.get("/leaderboard").fetch<Leaderboard>()
         println(board)
     }

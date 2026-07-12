@@ -1,8 +1,9 @@
 # Spec -- ZLink HTTP Client For .NET
 
 > 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
-> 이 문서는 `Zlink.HttpClient` 산출물의 공개 계약을 정리한다.
-> 실제 계약의 단일 기준은 `src/Zlink.HttpClient/**` 공개 타입과
+> **언어 중립 공통 계약은 [공통 spec](../../spec/README.ko.md)이 정본**이며,
+> 이 문서는 공통 계약에 대한 .NET 고유 편차와 구현 매핑만 기술한다.
+> 실제 계약의 단일 기준은 공통 spec + `src/Zlink.HttpClient/**` 공개 타입과
 > `Zlink.HttpClient.UnitTests` 회귀 테스트다.
 
 ## 1. 목적
@@ -31,10 +32,12 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 
 - `ZLinkHttpClient` — `Create()` / `Create(baseUrl)`, 메서드 `Get/Post/Put/Delete/
   Patch/Head/Options`, `IDisposable`.
-- `ZLinkHttpClientBuilder` — `BaseUrl`, `Json`, `Timeout`, `DefaultHeader`,
+- `ZLinkHttpClientBuilder` — `BaseUrl`, `Codecs`, `Timeout`, `DefaultHeader`,
   `BasicAuth`, `BearerToken`, `MaxResponseBodySize`, `TrustCertificateFile`,
   `ClientCertificateFile`, `FollowRedirects`, `Retry`, `Cookies`, `Proxy`,
   `ProxyBasicAuth`, `Compression`, `Build`, 그리고 단발 verb shortcut.
+  (`Codecs`는 framework codec extension 등록 — .NET 고유 확장점,
+  [공통 spec 2.3장](../../spec/02-client-builder.ko.md) 언어 편차)
 - `ZLinkHttpRequestBuilder` — `Header`, `Query`, `Timeout`, `Body<T>`, `Body(content,
   contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`, `SubmitRawAsync`,
   `DownloadAsync`, `SubmitAsync<T>`, `Fetch<T>`.
@@ -53,24 +56,24 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 
 ## 5. 전송 의미론
 
-- **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
-  본문 제거. **same-origin `Authorization` 보존, cross-origin 제거.** `max` 초과 시
-  `RequestFailed`. 네이티브 auto-redirect는 끄고 래퍼 루프로 구현.
-- **retry**: retriable transport 실패만, 고정 50ms, streaming 제외.
-- **cookie jar**: host 정확 매칭, 기본 `Path=/`, `Path`/`Secure`/`Max-Age`만, host당
-  128개. 네이티브 cookie container는 끄고 래퍼 jar로 구현.
-- **compression**: gzip+deflate 해제, `Content-Encoding` 제거, decoded 크기 한도,
-  streaming 비해제. 네이티브 auto-decompression은 끄고 래퍼로 구현.
-- **body 소스 상호 배타**: `Body`/`BodyStream`/`Form`/`Multipart` 중 하나.
+기본값·redirect·retry·cookie·압축·인증 스크럽·body 소스 배타 의미론은
+[공통 spec 2~8장](../../spec/README.ko.md)을 따른다. .NET 구현 매핑:
+
+- 네이티브 자동 기능 비활성: `SocketsHttpHandler`에서 `AllowAutoRedirect=false`,
+  `AutomaticDecompression=None`, `UseCookies=false` — 의미론은 래퍼가 구현.
+- per-attempt timeout은 `HttpClient.Timeout` 대신 linked
+  `CancellationTokenSource.CancelAfter`로 강제(호출자 취소와 timeout을 구분).
+- TLS: `SslClientAuthenticationOptions`(trust 추가 + mTLS). proxy: `WebProxy`.
+- 압축 해제: 래퍼가 `System.IO.Compression`으로 수행.
 
 ## 6. 에러 매핑
 
-| 상황 | kind |
-|------|------|
-| 구성/요청 검증 | `RequestProtocolError` |
-| status ≥ 400 (typed) / redirect 한도 / 크기 초과 / transport | `RequestFailed` |
-| JSON·압축 디코드 | `PayloadDecodeFailed` |
-| timeout | `TimeoutException` |
+[공통 spec 9장](../../spec/09-error-model.ko.md)을 따른다. .NET 표기는
+`ZLinkFrameworkErrorKind`(PascalCase: `RequestProtocolError`/`RequestFailed`/
+`PayloadDecodeFailed`) + `IsRetriable`.
+
+- **편차(구현 갭)**: timeout이 `System.TimeoutException`으로 보고되어 zlink
+  에러 모델 밖으로 샌다 — 공통 spec 9.3의 수정 추적 대상.
 
 ## 7. 회귀 테스트 축
 

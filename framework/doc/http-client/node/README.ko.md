@@ -22,7 +22,7 @@ const game = await ZLinkHttpClient.create('https://game-api.example.internal')
 | 4 | [Request 만들기](04-making-requests.ko.md) | HTTP 메서드, query 파라미터, 헤더, request timeout |
 | 5 | [Request Body](05-request-body.ko.md) | JSON, raw, form, multipart, streaming 업로드 |
 | 6 | [Response 다루기](06-handling-responses.ko.md) | 응답 구조, `submit`, status 처리 |
-| 7 | [비동기](07-async-coroutines.ko.md) | `Promise`, `await`, non-blocking 보장 |
+| 7 | [비동기](07-async.ko.md) | `Promise`, `await`, non-blocking 보장 |
 | 8 | [Streaming](08-streaming.ko.md) | `download(sink)` 다운로드, chunked 업로드 |
 | 9 | [인증과 TLS](09-authentication-tls.ko.md) | Basic/Bearer, HTTPS 검증, mTLS |
 | 10 | [Redirect · Retry · Cookie](10-redirects-retries-cookies.ko.md) | redirect 의미론, 재시도, cookie jar |
@@ -33,7 +33,7 @@ const game = await ZLinkHttpClient.create('https://game-api.example.internal')
 ## 빠른 길잡이
 
 - 처음이라면 → [2. 시작하기](02-getting-started.ko.md)
-- 비동기 실행 모델 → [7. 비동기](07-async-coroutines.ko.md)
+- 비동기 실행 모델 → [7. 비동기](07-async.ko.md)
 - 실패가 어떻게 보고되는지 → [13. 에러 처리](13-error-handling.ko.md)
 
 정식 계약과 회귀 테스트 축은 spec 문서

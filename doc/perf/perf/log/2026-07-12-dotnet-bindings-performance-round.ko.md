@@ -312,3 +312,21 @@ tcp 256B 3회 중앙값은 1,192,564.4msg/s와 평균 latency 0.175ms였다. 직
 
 성능 수치 향상은 없지만 검증 책임과 내부 사전 조건이 분명해졌고 기능·성능 회귀가 없으므로
 POSD 개선으로 채택한다. tcp 256B의 공식 상태는 계속 `미달(64.9%)`이다.
+
+### pooled Message rent clear 제거 후보 기각
+
+pool 반환은 released wrapper만 허용하므로 rent 시 opaque 64바이트 handle을 다시 지우는 작업을
+제거하는 후보를 확인했다. 256B 제한 3회는 1,225,937.4msg/s와 평균 latency 0.099ms였고,
+최종 paired 5회는 C 1,838,912.0msg/s, .NET 1,204,677.0msg/s로 65.51%였다.
+
+- C 256B: `perf_c_single_linux_20260712_092527_core_9_0_dotnet_pair_tcp256_pool_rent_clear_final_paired_20260712.txt`
+- .NET 256B: `perf_dotnet_single_linux_20260712_092558_core_9_0_dotnet_pair_tcp256_pool_rent_clear_final_paired_20260712.txt`
+
+대표 셀 3회 뒤 64B와 128KiB를 C 직후 .NET으로 5회 재검증했다. 64B는 C 대비
+89.6%와 평균 latency 1.14배로 통과했지만, 128KiB .NET 처리량은 이전 55,148.0msg/s에서
+48,247.8msg/s로 12.5% 낮아져 5% 회귀 gate를 넘었다. 따라서 후보와 `HOT PATH:` 주석을
+최종 코드에서 제거했다.
+
+- C 대표 셀: `perf_c_single_linux_20260712_092736_core_9_0_dotnet_pair_tcp_pool_rent_clear_regression_paired_20260712.txt`
+- .NET 대표 셀: `perf_dotnet_single_linux_20260712_092830_core_9_0_dotnet_pair_tcp_pool_rent_clear_regression_paired_20260712.txt`
+- 최종 코드 변경: 없음

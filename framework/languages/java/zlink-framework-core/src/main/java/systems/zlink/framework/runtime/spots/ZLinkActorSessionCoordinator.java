@@ -12,7 +12,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorReplyRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.contracts.messaging.Message;
@@ -132,7 +132,7 @@ final class ZLinkActorSessionCoordinator {
         boolean request,
         boolean noBindRequest,
         ZLinkBackendActorReceived headerPart,
-        ZLinkBackendSpotNode primaryNode,
+        ZLinkInternalSpotNode primaryNode,
         Supplier<CompletionStage<Optional<Message>>> operation) {
         ZLinkActorRuntime runtime = requireActors();
         if (request
@@ -157,7 +157,7 @@ final class ZLinkActorSessionCoordinator {
 
     void bindNativeSession(
         ZLinkActor actor,
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid) {
@@ -260,11 +260,7 @@ final class ZLinkActorSessionCoordinator {
         return actors;
     }
 
-    private static Object currentSpotSurface(ZLinkActor actor) {
-        try {
-            return actor.context().getSpot();
-        } catch (RuntimeException ignored) {
-            return null;
-        }
+    private Object currentSpotSurface(ZLinkActor actor) {
+        return requireActors().currentSpot(actor);
     }
 }

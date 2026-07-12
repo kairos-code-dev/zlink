@@ -1,5 +1,9 @@
 package systems.zlink.framework.runtime.host;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
+
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -17,7 +21,7 @@ import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
@@ -30,7 +34,6 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
@@ -38,7 +41,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class ZLinkFrameworkRuntime
-    implements AutoCloseable, systems.zlink.framework.configuration.ZLinkMessageFlowControl {
+    implements AutoCloseable,
+        systems.zlink.framework.configuration.ZLinkMessageFlowControl,
+        systems.zlink.framework.monitoring.ZLinkDrainControl {
     private final ZLinkChannelRuntime channels;
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
@@ -52,10 +57,16 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkLocationRuntimeQuery locationRuntimeQuery;
     private final ZLinkLocationLifecycle locationLifecycle;
     private final ZLinkLocationAutoConnectHost locationAutoConnectHost;
-    private final SpotRemoteRefResolver locationSpotRemoteRefResolver;
+    private final systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver
+        spotTransportAddressResolver;
     private final ZLinkStoreLocationResolvers storeLocationResolvers;
     private final java.util.concurrent.atomic.AtomicBoolean spotRuntimeStopped =
         new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean ready =
+        new java.util.concurrent.atomic.AtomicBoolean(true);
+    private final java.util.concurrent.CompletableFuture<
+        systems.zlink.framework.monitoring.ZLinkDrainResult> drained =
+        new java.util.concurrent.CompletableFuture<>();
     // Shared, runtime-mutable message-flow mode cell, installed into the diagnostics
     // options so every surface observes setMessageFlowMode live.
     private final java.util.concurrent.atomic.AtomicReference<
@@ -63,24 +74,24 @@ public final class ZLinkFrameworkRuntime
 
     ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkMessageSerializer serializer) {
-        this(options, backendFactory, serializer, ZLinkHandlerFactory.reflection());
+        this(options, backendFactory, serializer, ZLinkHandlerActivator.reflection());
     }
 
     ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(options, backendFactory, serializer, handlerFactory, null);
     }
 
     ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         options.validate();
         this.registration = options.registration();
@@ -91,8 +102,8 @@ public final class ZLinkFrameworkRuntime
         ZLinkBackendAdapterOptions adapterOptions =
             new ZLinkBackendAdapterOptions(options.defaultRequestTimeout());
         ZLinkStreamCodec defaultStreamCodec = defaultStreamCodec(options);
-        ZLinkHandlerFactory.MutableServices runtimeHandlers =
-            ZLinkHandlerFactory.services(handlerFactory);
+        ZLinkHandlerActivator.MutableServices runtimeHandlers =
+            ZLinkHandlerActivator.services(handlerFactory);
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
         ZLinkFrameworkLocationSubsystem locationSubsystem =
@@ -103,14 +114,14 @@ public final class ZLinkFrameworkRuntime
             this.locationRuntimeQuery = locationSubsystem.locationRuntimeQuery();
             this.locationLifecycle = locationSubsystem.locationLifecycle();
             this.locationAutoConnectHost = locationSubsystem.locationAutoConnectHost();
-            this.locationSpotRemoteRefResolver = locationSubsystem.locationSpotRemoteRefResolver();
+            this.spotTransportAddressResolver = locationSubsystem.spotTransportAddressResolver();
             this.storeLocationResolvers = locationSubsystem.storeLocationResolvers();
         } else {
             this.locationRuntime = null;
             this.locationRuntimeQuery = null;
             this.locationLifecycle = null;
             this.locationAutoConnectHost = null;
-            this.locationSpotRemoteRefResolver = null;
+            this.spotTransportAddressResolver = null;
             this.storeLocationResolvers = null;
         }
         ZLinkFrameworkChannelSubsystem channelSubsystem = ZLinkFrameworkChannelSubsystem.create(
@@ -133,7 +144,7 @@ public final class ZLinkFrameworkRuntime
             this.channels,
             this.backendContext,
             this.locationLifecycle,
-            this.locationSpotRemoteRefResolver);
+            this.spotTransportAddressResolver);
         this.spots = spotSubsystem.spots();
 
         ZLinkFrameworkActorSubsystem actorSubsystem = ZLinkFrameworkActorSubsystem.create(
@@ -172,21 +183,21 @@ public final class ZLinkFrameworkRuntime
 
     static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory) {
+        ZLinkBackendAdapterProvider backendFactory) {
         return new ZLinkFrameworkRuntime(options, backendFactory, serializerFor(options));
     }
 
     static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkBackendAdapterProvider backendFactory,
+        ZLinkHandlerActivator handlerFactory) {
         return start(options, backendFactory, handlerFactory, null);
     }
 
     static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkBackendAdapterProvider backendFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         return new ZLinkFrameworkRuntime(
             options,
@@ -266,7 +277,7 @@ public final class ZLinkFrameworkRuntime
         return channels.monitoringSocketSources();
     }
 
-    public java.util.Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
+    public java.util.Map<String, ZLinkInternalSpotNode> monitoringSpotSources() {
         return spots == null ? java.util.Map.of() : spots.nodesByName();
     }
 
@@ -325,6 +336,7 @@ public final class ZLinkFrameworkRuntime
 
     @Override
     public void close() {
+        ready.set(false);
         if (spots != null && !spotRuntimeStopped.get()) {
             spots.beginClose();
         }
@@ -335,7 +347,7 @@ public final class ZLinkFrameworkRuntime
         if (locationRuntime != null) {
             shutdown.defer(locationRuntime::close);
             shutdown.defer(locationLifecycle::close);
-            shutdown.defer(() -> locationRuntime.stopAsync().toCompletableFuture().join());
+            shutdown.defer(() -> locationRuntime.stop().toCompletableFuture().join());
         }
         if (spots != null) {
             shutdown.defer(() -> {
@@ -346,7 +358,7 @@ public final class ZLinkFrameworkRuntime
         }
         shutdown.defer(channels::close);
         if (locationAutoConnectHost != null) {
-            shutdown.defer(() -> locationAutoConnectHost.stopAsync().toCompletableFuture().join());
+            shutdown.defer(() -> locationAutoConnectHost.stop().toCompletableFuture().join());
         }
         if (streams != null) {
             shutdown.defer(streams::close);
@@ -355,6 +367,41 @@ public final class ZLinkFrameworkRuntime
             shutdown.defer(actors::close);
         }
         shutdown.close();
+        drained.complete(new systems.zlink.framework.monitoring.Drained());
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain() {
+        return drain(java.time.Duration.ofSeconds(30));
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain(
+        java.time.Duration deadline) {
+        java.util.Objects.requireNonNull(deadline, "deadline");
+        if (ready.compareAndSet(true, false)) {
+            java.util.concurrent.CompletableFuture.runAsync(this::close)
+                .whenComplete((ignored, error) -> drained.complete(
+                    error == null
+                        ? new systems.zlink.framework.monitoring.Drained()
+                        : new systems.zlink.framework.monitoring.ForceStopped(
+                            systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED)));
+            java.util.concurrent.CompletableFuture.delayedExecutor(
+                Math.max(0L, deadline.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS)
+                .execute(() -> drained.complete(new systems.zlink.framework.monitoring.ForceStopped(
+                    systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED)));
+        }
+        return drained;
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> awaitDrained() {
+        return drained;
+    }
+
+    @Override
+    public boolean isReady() {
+        return ready.get();
     }
 
     private void closeHandlerExecutor() {

@@ -1,12 +1,8 @@
 package systems.zlink.framework.channels;
 
 import java.time.Duration;
-import systems.zlink.framework.CancellationToken;
 
 public interface ZLinkYieldRequestCall extends ZLinkRequestCall {
-    @Override
-    ZLinkYieldRequestCall packetName(String packetName);
-
     @Override
     ZLinkYieldRequestCall metadata(String key, String value);
 
@@ -15,5 +11,4 @@ public interface ZLinkYieldRequestCall extends ZLinkRequestCall {
 
     <TReply> TReply yield(Class<TReply> replyType);
 
-    <TReply> TReply yield(Class<TReply> replyType, CancellationToken cancellationToken);
 }

@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
@@ -12,12 +12,12 @@ final class RuntimeTestSupport {
 
     static ZLinkFrameworkRuntime startFramework(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory) {
+        ZLinkBackendAdapterProvider backendFactory) {
         return invoke(() -> {
             Method start = ZLinkFrameworkRuntime.class.getDeclaredMethod(
                 "start",
                 DefaultZLinkFrameworkOptions.class,
-                ZLinkBackendAdapterFactory.class);
+                ZLinkBackendAdapterProvider.class);
             start.setAccessible(true);
             return (ZLinkFrameworkRuntime) start.invoke(null, options, backendFactory);
         });

@@ -4,13 +4,13 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkPeerLocationStore {
-    CompletionStage<ZLinkLocationWriteResult> updatePeerAsync(
+    CompletionStage<ZLinkLocationWriteResult> updatePeer(
         ZLinkPeerLocation peer,
         ZLinkLocationWriteIntent intent);
 
-    CompletionStage<ZLinkLocationWriteResult> removePeerAsync(
+    CompletionStage<ZLinkLocationWriteResult> removePeer(
         ZLinkPeerLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter);
+    CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter);
 }

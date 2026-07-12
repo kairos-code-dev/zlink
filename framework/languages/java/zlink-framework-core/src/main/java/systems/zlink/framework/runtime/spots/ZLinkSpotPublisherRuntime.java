@@ -9,7 +9,6 @@ import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.ZLinkSubmitStage;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
@@ -17,7 +16,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -26,7 +25,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     private final ZLinkMessageSerializer serializer;
     private final ZLinkSpotRouteMessages messages;
     private final ZLinkMessageFlowTracer flow;
-    private final Map<String, ZLinkBackendSpotNode> nodesByChannel = new HashMap<>();
+    private final Map<String, ZLinkInternalSpotNode> nodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> spotsByChannel = new HashMap<>();
 
     ZLinkSpotPublisherRuntime(
@@ -38,7 +37,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
         this.flow = flow;
     }
 
-    void register(String channelName, ZLinkBackendSpotNode node) {
+    void register(String channelName, ZLinkInternalSpotNode node) {
         nodesByChannel.put(channelName, node);
     }
 
@@ -80,20 +79,24 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
             this, channelName, topic, payload, packetName);
     }
 
-    ZLinkSubmitStage submit(
+    void submit(
         String channelName,
         String topic,
         Message payload,
         Optional<String> packetName) {
         trace(channelName, topic, packetName);
-        return ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
+        CompletableFuture.runAsync(() -> {
             List<Message> parts = messages.encode(packetName, payload);
             try {
                 publisherSpot(channelName).publish(topic, parts, SendFlags.NONE);
             } finally {
                 parts.forEach(Message::close);
             }
-        }));
+        }).exceptionally(error -> {
+            java.util.logging.Logger.getLogger(ZLinkSpotPublisherRuntime.class.getName())
+                .log(java.util.logging.Level.SEVERE, "one-way SPOT publish failed", error);
+            return null;
+        });
     }
 
     @Override
@@ -118,12 +121,12 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     }
 
     private synchronized ZLinkBackendSpot publisherSpot(String channelName) {
-        ZLinkBackendSpotNode node = requireChannel(channelName);
+        ZLinkInternalSpotNode node = requireChannel(channelName);
         return spotsByChannel.computeIfAbsent(channelName, ignored -> node.createSpot());
     }
 
-    private ZLinkBackendSpotNode requireChannel(String channelName) {
-        ZLinkBackendSpotNode node = nodesByChannel.get(channelName);
+    private ZLinkInternalSpotNode requireChannel(String channelName) {
+        ZLinkInternalSpotNode node = nodesByChannel.get(channelName);
         if (node == null) {
             throw new ZLinkConfigurationException(
                 "SPOT publisher client is not configured: " + channelName);
@@ -189,7 +192,6 @@ final class ZLinkExternalSpotPublishCall implements ZLinkPublishCall {
         this.packetName = packetName;
     }
 
-    @Override
     public ZLinkPublishCall packetName(String packetName) {
         return new ZLinkExternalSpotPublishCall(
             publishers,
@@ -205,7 +207,7 @@ final class ZLinkExternalSpotPublishCall implements ZLinkPublishCall {
     }
 
     @Override
-    public ZLinkSubmitStage submit() {
-        return publishers.submit(channelName, topic, payload, packetName);
+    public void submit() {
+        publishers.submit(channelName, topic, payload, packetName);
     }
 }

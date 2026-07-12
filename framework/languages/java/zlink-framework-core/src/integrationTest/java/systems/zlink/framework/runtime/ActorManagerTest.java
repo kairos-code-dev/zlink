@@ -71,10 +71,10 @@ final class ActorManagerTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
@@ -84,7 +84,7 @@ final class ActorManagerTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
     }
 }

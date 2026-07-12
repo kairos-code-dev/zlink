@@ -9,10 +9,11 @@ import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
+import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
@@ -24,14 +25,14 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private final Map<String, Object> handlers;
     private final ZLinkMessageSerializer serializer;
     private final Executor handlerExecutor;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
 
     ZLinkSessionPacketDispatcherRuntime(
         List<Class<?>> handlerTypes,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkMessageSerializer serializer,
         Executor handlerExecutor,
-        List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers) {
+        List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers) {
         this.handlers = buildHandlerMap(handlerTypes, handlerFactory);
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerExecutor = java.util.Objects.requireNonNull(handlerExecutor, "handlerExecutor");
@@ -107,7 +108,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private static <TSessionContext extends ZLinkSessionContext>
     Map<String, Object> buildHandlerMap(
         List<Class<?>> handlerTypes,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         Map<String, Object> map =
             new HashMap<>();
         for (Class<?> handlerType : handlerTypes) {
@@ -129,6 +130,9 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     }
 
     private static String packetName(Object handler) {
+        if (handler instanceof ZLinkTypedSessionPacketHandler<?, ?> typedHandler) {
+            return ZLinkPacketNames.resolve(typedHandler.messageType());
+        }
         if (handler instanceof ZLinkSessionPacketHandler<?> packetHandler) {
             return packetHandler.packetName();
         }

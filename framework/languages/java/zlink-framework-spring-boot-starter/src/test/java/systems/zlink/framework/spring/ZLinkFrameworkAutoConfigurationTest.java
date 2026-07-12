@@ -58,10 +58,10 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -90,7 +90,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
@@ -116,7 +116,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(EnabledTestConfig.class);
             context.refresh();
@@ -133,7 +133,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 StreamCompressionConfig.class,
@@ -153,7 +153,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
@@ -173,7 +173,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
@@ -196,7 +196,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 SpotNodeConfig.class,
@@ -226,7 +226,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 SpotNodeWithLocationStoreConfig.class,
@@ -254,7 +254,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 SpotNodeWithActorConfig.class,
@@ -278,7 +278,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 InjectedSpotAndActorConfig.class,
@@ -304,7 +304,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 PrivateConstructorSpotConfig.class,
@@ -327,7 +327,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 SpotPublisherConfig.class,
@@ -349,14 +349,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(
                 HandlerInjectionConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            ZLinkHandlerFactory handlerFactory = context.getBean(ZLinkHandlerFactory.class);
+            ZLinkHandlerActivator handlerFactory = context.getBean(ZLinkHandlerActivator.class);
             InjectedRequestHandler handler =
                 (InjectedRequestHandler) handlerFactory.create(InjectedRequestHandler.class);
 
@@ -373,7 +373,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(
                 AutoDiscoveredSessionPacketConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -394,7 +394,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(
                 AutoDiscoveredSessionPacketSubpackageConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -522,7 +522,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             try (AnnotationConfigApplicationContext sourceContext =
                      new AnnotationConfigApplicationContext()) {
                 sourceContext.registerBean(
-                    ZLinkBackendAdapterFactory.class,
+                    ZLinkBackendAdapterProvider.class,
                     ZLinkJavaBackendAdapterFactory::new);
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
@@ -552,7 +552,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
@@ -569,7 +569,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.registerBean(ZLinkRuntimeEventDispatcher.class, () -> dispatcher);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
@@ -585,7 +585,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(MonitoringConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
@@ -617,7 +617,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
@@ -634,7 +634,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
-                ZLinkBackendAdapterFactory.class,
+                ZLinkBackendAdapterProvider.class,
                 FakeZLinkBackendAdapterFactory::new);
             context.register(LocationStoreBeanConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
@@ -656,7 +656,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 

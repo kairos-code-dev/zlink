@@ -14,7 +14,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 // MFLOW-001/002/003/011: mode gating + runtime live toggle + structured output.
 class ZLinkMessageFlowTracerTest {
@@ -25,7 +25,7 @@ class ZLinkMessageFlowTracerTest {
     }
 
     private static ZLinkMessageFlowTracer tracer(ZLinkDispatchOptionsRegistration options) {
-        return new ZLinkMessageFlowTracer(options, ZLinkHandlerFactory.reflection(), Runnable::run);
+        return new ZLinkMessageFlowTracer(options, ZLinkHandlerActivator.reflection(), Runnable::run);
     }
 
     private static ZLinkMessageFlowEvent flow(ZLinkMessageFlowOutcome phase) {

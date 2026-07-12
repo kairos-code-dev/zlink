@@ -7,7 +7,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 public final class ZLinkDispatchErrorReporter {
     private final AtomicLong reportedCount = new AtomicLong();
@@ -18,14 +18,14 @@ public final class ZLinkDispatchErrorReporter {
 
     public ZLinkDispatchErrorReporter(
         ZLinkDispatchOptionsRegistration options,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Executor executor) {
         this(options, handlerFactory, executor, null);
     }
 
     public ZLinkDispatchErrorReporter(
         ZLinkDispatchOptionsRegistration options,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Executor executor,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.flow = new ZLinkMessageFlowTracer(options, handlerFactory, executor, eventDispatcher);

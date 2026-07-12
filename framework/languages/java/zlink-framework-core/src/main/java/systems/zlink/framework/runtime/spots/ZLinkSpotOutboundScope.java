@@ -5,7 +5,7 @@ import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 final class ZLinkSpotOutboundScope {
@@ -49,13 +49,13 @@ final class ZLinkAmbientSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(SpotRef spotRef, Object message) {
-        return scope.requireCurrent().sendToSpot(spotRef, message);
+    public ZLinkSendCall sendToSpot(SpotHandle spot, Object message) {
+        return scope.requireCurrent().sendToSpot(spot, message);
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToSpot(SpotRef spotRef, Object request) {
-        return scope.requireCurrent().requestToSpot(spotRef, request);
+    public ZLinkYieldRequestCall requestToSpot(SpotHandle spot, Object request) {
+        return scope.requireCurrent().requestToSpot(spot, request);
     }
 
     @Override

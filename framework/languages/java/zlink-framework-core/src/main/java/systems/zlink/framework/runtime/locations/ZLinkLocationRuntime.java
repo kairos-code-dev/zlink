@@ -96,7 +96,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         return ownerLeaseRenewedAt;
     }
 
-    public CompletionStage<Void> startAsync(RoutingId nodeRid) {
+    public CompletionStage<Void> start(RoutingId nodeRid) {
         Objects.requireNonNull(nodeRid, "nodeRid");
         synchronized (stateGate) {
             if (started) {
@@ -106,7 +106,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             this.nodeRid = nodeRid;
         }
 
-        return renewOwnerLeaseOnceAsync().thenAccept(ignored -> {
+        return renewOwnerLeaseOnce().thenAccept(ignored -> {
             synchronized (stateGate) {
                 if (heartbeatTask == null || heartbeatTask.isCancelled()) {
                     heartbeatTask = heartbeatExecutor.scheduleWithFixedDelay(
@@ -119,7 +119,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         });
     }
 
-    public CompletionStage<Void> stopAsync() {
+    public CompletionStage<Void> stop() {
         boolean shouldStop;
         synchronized (stateGate) {
             shouldStop = started;
@@ -133,13 +133,13 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
-        return stores.ownerLeaseStore().removeOwnerLeaseAsync(ownerId)
+        return stores.ownerLeaseStore().removeOwnerLease(ownerId)
             .handle((ignored, failure) -> null)
-            .thenCompose(ignored -> stores.unifiedStore().removeAllByOwnerAsync(ownerId).handle((removed, failure) -> null))
+            .thenCompose(ignored -> stores.unifiedStore().removeAllByOwner(ownerId).handle((removed, failure) -> null))
             .thenApply(ignored -> null);
     }
 
-    public CompletionStage<Boolean> renewOwnerLeaseOnceAsync() {
+    public CompletionStage<Boolean> renewOwnerLeaseOnce() {
         RoutingId currentNodeRid = nodeRid;
         if (currentNodeRid == null) {
             CompletableFuture<Boolean> failed = new CompletableFuture<>();
@@ -147,7 +147,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return failed;
         }
 
-        return stores.ownerLeaseStore().renewOwnerLeaseAsync(ownerId, currentNodeRid, ownerLeaseTtl)
+        return stores.ownerLeaseStore().renewOwnerLease(ownerId, currentNodeRid, ownerLeaseTtl)
             .handle((result, failure) -> {
                 if (failure != null) {
                     recordFailure(failure.getMessage());
@@ -160,81 +160,81 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             });
     }
 
-    CompletionStage<ZLinkLocationWriteResult> writePeerAsync(
+    CompletionStage<ZLinkLocationWriteResult> writePeer(
         ZLinkPeerLocation peer,
         ZLinkLocationWriteIntent intent) {
         ZLinkPeerLocation stamped = new ZLinkPeerLocation(
             peer.autoConnectType(), peer.meshName(), peer.nodeRid(), peer.role(), peer.endpoint(),
-            peer.weight(), peer.value(), peer.metadata(), peer.capabilities(), ownerId,
+            peer.weight(), peer.draining(), peer.value(), peer.metadata(), peer.capabilities(), ownerId,
             peer.generation(), peer.updatedAt());
         String key = ZLinkLocationKeyCodec.encodePeerKey(new ZLinkPeerLocationKey(
             peer.autoConnectType(), peer.meshName(), peer.role(), peer.nodeRid(), peer.endpoint()));
-        return stores.peerStore().updatePeerAsync(stamped, intent)
+        return stores.peerStore().updatePeer(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, key));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> writeSpotAsync(
+    CompletionStage<ZLinkLocationWriteResult> writeSpot(
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent) {
         ZLinkSpotLocation stamped = new ZLinkSpotLocation(
             spot.meshName(), spot.spotRid(), spot.spotType(), spot.nodeRid(), spot.spotKind(),
             spot.routeEndpoint(), ownerId, spot.generation(), spot.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid()));
-        return stores.spotStore().updateSpotAsync(stamped, intent)
+        return stores.spotStore().updateSpot(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, key));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> writeActorAsync(
+    CompletionStage<ZLinkLocationWriteResult> writeActor(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent) {
         ZLinkActorLocation stamped = new ZLinkActorLocation(
             actor.actorId(), actor.actorType(), actor.actorRef(), actor.nodeRid(), actor.locationKind(),
             actor.spotMeshName(), actor.spotRid(), ownerId, actor.generation(), actor.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId()));
-        return stores.actorStore().updateActorAsync(stamped, intent)
+        return stores.actorStore().updateActor(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, key));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> writeRouteAsync(
+    CompletionStage<ZLinkLocationWriteResult> writeRoute(
         ZLinkRouteLocation route,
         ZLinkLocationWriteIntent intent) {
         ZLinkRouteLocation stamped = new ZLinkRouteLocation(
             route.routeKind(), route.routeKey(), route.ownerNodeRid(), ownerId,
             route.generation(), route.value(), route.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeRouteKey(new ZLinkRouteLocationKey(route.routeKind(), route.routeKey()));
-        return stores.routeStore().updateRouteAsync(stamped, intent)
+        return stores.routeStore().updateRoute(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, key));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> removeSpotAsync(
+    CompletionStage<ZLinkLocationWriteResult> removeSpot(
         ZLinkSpotLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodeSpotKey(key);
-        return stores.spotStore().removeSpotAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
+        return stores.spotStore().removeSpot(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, canonicalKey));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> removePeerAsync(
+    CompletionStage<ZLinkLocationWriteResult> removePeer(
         ZLinkPeerLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodePeerKey(key);
-        return stores.peerStore().removePeerAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
+        return stores.peerStore().removePeer(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, canonicalKey));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> removeActorAsync(
+    CompletionStage<ZLinkLocationWriteResult> removeActor(
         ZLinkActorLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodeActorKey(key);
-        return stores.actorStore().removeActorAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
+        return stores.actorStore().removeActor(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, canonicalKey));
     }
 
-    CompletionStage<ZLinkLocationWriteResult> removeRouteAsync(
+    CompletionStage<ZLinkLocationWriteResult> removeRoute(
         ZLinkRouteLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodeRouteKey(key);
-        return stores.routeStore().removeRouteAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
+        return stores.routeStore().removeRoute(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, canonicalKey));
     }
 
@@ -258,7 +258,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
     }
 
     private void renewOwnerLeaseOnHeartbeat() {
-        renewOwnerLeaseOnceAsync().toCompletableFuture().join();
+        renewOwnerLeaseOnce().toCompletableFuture().join();
     }
 
     private ZLinkLocationWriteResult notifyIfStale(

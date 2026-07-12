@@ -18,9 +18,9 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
@@ -30,8 +30,8 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private final RoutingId spotRid;
     private final ScheduledExecutorService executor;
-    private final ZLinkHandlerFactory handlerFactory;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final ZLinkHandlerActivator handlerFactory;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final String sourceName;
     private final Dispatch dispatch;
@@ -41,8 +41,8 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     ZLinkSpotTimerRegistry(
         RoutingId spotRid,
         ScheduledExecutorService executor,
-        ZLinkHandlerFactory handlerFactory,
-        List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers,
+        ZLinkHandlerActivator handlerFactory,
+        List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         String sourceName,
         Dispatch dispatch) {
@@ -220,7 +220,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         @Override
         public CompletionStage<Void> cancelAsync() {
             close();
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
         @Override

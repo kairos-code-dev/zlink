@@ -13,6 +13,8 @@ public interface RouteMeshChannelBuilder {
 
     RouteMeshChannelBuilder enableClient(String endpoint);
 
+    ZLinkEndpointConnections clientConnections();
+
     RouteMeshChannelBuilder addHandlerGroup(String groupName);
 
     void addSendHandler(

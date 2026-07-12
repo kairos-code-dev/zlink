@@ -35,7 +35,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
@@ -70,54 +69,55 @@ import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
 final class RouteSpotSendCall implements ZLinkSendCall {
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
-    private final RoutingId targetNode;
-    private final RoutingId targetSpot;
+    private final SpotTransportAddressResolver resolver;
+    private final SpotHandle target;
     private final Message payload;
     private final Optional<String> packetName;
 
     RouteSpotSendCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        SpotTransportAddressResolver resolver,
+        SpotHandle target,
         Message payload,
         Optional<String> packetName) {
         this.runtime = runtime;
         this.channelName = channelName;
-        this.targetNode = targetNode;
-        this.targetSpot = targetSpot;
+        this.resolver = resolver;
+        this.target = target;
         this.payload = payload;
         this.packetName = packetName;
     }
 
-    @Override
     public ZLinkSendCall packetName(String packetName) {
         return new RouteSpotSendCall(
             runtime,
             channelName,
-            targetNode,
-            targetSpot,
+            resolver,
+            target,
             payload,
             Optional.of(packetName));
     }
@@ -128,26 +128,28 @@ final class RouteSpotSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public systems.zlink.framework.ZLinkSubmitStage submit() {
-        List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        try {
-            return systems.zlink.framework.ZLinkSubmitStage.from(
-                runtime.sendToSpot(
-                channelName,
-                targetNode,
-                targetSpot,
-                sendParts));
-        } finally {
-            sendParts.forEach(Message::close);
-        }
+    public void submit() {
+        runtime.settleOneWay(SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
+            List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
+            try {
+                return runtime.sendToSpot(
+                    channelName,
+                    address.targetNodeRid(),
+                    address.spotRid(),
+                    sendParts).whenComplete((ignored, error) -> sendParts.forEach(Message::close));
+            } catch (RuntimeException error) {
+                sendParts.forEach(Message::close);
+                throw error;
+            }
+        }).toCompletableFuture());
     }
 }
 
 final class RouteSpotRequestCall implements ZLinkRequestCall {
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
-    private final RoutingId targetNode;
-    private final RoutingId targetSpot;
+    private final SpotTransportAddressResolver resolver;
+    private final SpotHandle target;
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
@@ -156,41 +158,40 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
     RouteSpotRequestCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        SpotTransportAddressResolver resolver,
+        SpotHandle target,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
-        this(runtime, channelName, targetNode, targetSpot, payload, packetName, timeout,
+        this(runtime, channelName, resolver, target, payload, packetName, timeout,
             ZLinkFrameworkTurns.captureCurrent());
     }
 
     private RouteSpotRequestCall(
         ZLinkChannelCallRuntime runtime,
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        SpotTransportAddressResolver resolver,
+        SpotHandle target,
         Message payload,
         Optional<String> packetName,
         Duration timeout,
         ZLinkYieldTurn turn) {
         this.runtime = runtime;
         this.channelName = channelName;
-        this.targetNode = targetNode;
-        this.targetSpot = targetSpot;
+        this.resolver = resolver;
+        this.target = target;
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
         this.turn = turn;
     }
 
-    @Override
     public ZLinkRequestCall packetName(String packetName) {
         return new RouteSpotRequestCall(
             runtime,
             channelName,
-            targetNode,
-            targetSpot,
+            resolver,
+            target,
             payload,
             Optional.of(packetName),
             timeout,
@@ -207,8 +208,8 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
         return new RouteSpotRequestCall(
             runtime,
             channelName,
-            targetNode,
-            targetSpot,
+            resolver,
+            target,
             payload,
             packetName,
             timeout,
@@ -217,12 +218,12 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-        List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        try {
+        return SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
+            List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             return runtime.requestToSpot(
                 channelName,
-                targetNode,
-                targetSpot,
+                address.targetNodeRid(),
+                address.spotRid(),
                 requestParts,
                 timeout)
                 .thenApply(replyParts -> {
@@ -231,10 +232,8 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
                     } finally {
                         replyParts.forEach(Message::close);
                     }
-                });
-        } finally {
-            requestParts.forEach(Message::close);
-        }
+                }).whenComplete((ignored, error) -> requestParts.forEach(Message::close));
+        });
     }
 
     @Override
@@ -246,4 +245,22 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
         return ZLinkAwait.await(ZLinkFrameworkTurns.awaitManagedCompletion(turn, stage));
     }
 
+}
+
+final class SpotCallAddresses {
+    private SpotCallAddresses() {
+    }
+
+    static CompletionStage<SpotTransportAddress> resolve(
+        SpotTransportAddressResolver resolver,
+        SpotHandle target) {
+        if (resolver == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "SpotHandle resolver is not configured"));
+        }
+        return resolver.resolve(target).thenCompose(address -> address
+            .map(CompletableFuture::completedFuture)
+            .orElseGet(() -> CompletableFuture.failedFuture(
+                new ZLinkConfigurationException("SpotHandle cannot be resolved"))));
+    }
 }

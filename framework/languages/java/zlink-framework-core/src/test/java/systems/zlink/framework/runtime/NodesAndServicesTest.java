@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.host;
 
+import systems.zlink.framework.spots.SpotHandles;
+
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 
 import systems.zlink.framework.runtime.backend.*;
@@ -27,13 +29,11 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -106,11 +106,6 @@ final class NodesAndServicesTest {
         RoutingId targetNodeRid = RoutingId.from("target-node-" + suffix);
         RoutingId sourceNodeRid = RoutingId.from("source-node-" + suffix);
         RoutingId roomRid = RoutingId.from("room-" + suffix);
-        TestRemoteAddressResolver.address = new SpotRemoteRef(
-            "route",
-            targetNodeRid,
-            roomRid,
-            ZLinkSpotKind.USER);
         ClientSpot.reply = new CompletableFuture<>();
         PingHandler.received = new CompletableFuture<>();
         FlowObserver.events.clear();
@@ -121,7 +116,10 @@ final class NodesAndServicesTest {
             targetNodeRid,
             routeA,
             routeB);
-        target.addSpotMesh("target")
+        ZLinkInMemoryLocationStore sharedLocations = new ZLinkInMemoryLocationStore();
+        target.addLocationStore(sharedLocations);
+        target.configureLocations().setSpotRouterChannel("game", "route");
+        target.addSpotMesh("game")
             .setRoutingId(targetNodeRid)
             .enableRouter(spotA)
             .connectRouter(sourceNodeRid, spotB)
@@ -131,8 +129,9 @@ final class NodesAndServicesTest {
             sourceNodeRid,
             routeB,
             routeA);
-        source.addSpotRemoteRefResolver(TestRemoteAddressResolver.class);
-        source.addSpotMesh("source")
+        source.addLocationStore(sharedLocations);
+        source.configureLocations().setSpotRouterChannel("game", "route");
+        source.addSpotMesh("game")
             .setRoutingId(sourceNodeRid)
             .enableRouter(spotB)
             .connectRouter(targetNodeRid, spotA)
@@ -225,8 +224,12 @@ final class NodesAndServicesTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public record Ping(String value) {
@@ -267,8 +270,12 @@ final class NodesAndServicesTest {
             context.handlers().addHandler(PingHandler.class);
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class PingHandler
@@ -276,9 +283,9 @@ final class NodesAndServicesTest {
         static CompletableFuture<String> received = new CompletableFuture<>();
 
         @Override
-        public Pong handle(RoomSpot spot, Ping request) {
+        public CompletionStage<Pong> handle(RoomSpot spot, Ping request) {
             received.complete(request.value());
-            return new Pong("pong:" + request.value());
+            return CompletableFuture.completedFuture(new Pong("pong:" + request.value()));
         }
     }
 
@@ -298,10 +305,10 @@ final class NodesAndServicesTest {
         }
 
         @Override
-        public void onInitialize() {
+        public CompletionStage<Void> onInitialize() {
             context.outbound()
                 .requestToSpot(
-                    new SpotRef("route", targetNodeRid, targetRoomRid),
+                    SpotHandles.create(targetRoomRid),
                     new Ping("ping"))
                 .timeout(Duration.ofSeconds(2))
                 .submit(Pong.class)
@@ -312,20 +319,14 @@ final class NodesAndServicesTest {
                         reply.complete(value);
                     }
                 });
+            return CompletableFuture.completedFuture(null);
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-    }
-
-    public static final class TestRemoteAddressResolver
-        implements SpotRemoteRefResolver {
-        static SpotRemoteRef address;
-
-        @Override
-        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
-            RoutingId spotRid) {
-            return CompletableFuture.completedFuture(address);
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -335,8 +336,12 @@ final class NodesAndServicesTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class EntrySpotB implements ZLinkEntrySpot<ZLinkActor> {
@@ -345,8 +350,12 @@ final class NodesAndServicesTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class PlayerActor implements ZLinkActor {
@@ -371,10 +380,10 @@ final class NodesAndServicesTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 

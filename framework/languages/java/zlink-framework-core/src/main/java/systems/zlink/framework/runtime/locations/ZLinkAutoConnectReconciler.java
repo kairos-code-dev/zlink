@@ -48,9 +48,9 @@ final class ZLinkAutoConnectReconciler {
         return storeFailed;
     }
 
-    CompletionStage<Void> tickAsync() {
-        return publishLocalAsync()
-            .thenCompose(ignored -> peers.listLivePeersAsync(new ZLinkPeerLocationFilter(
+    CompletionStage<Void> tick() {
+        return publishLocal()
+            .thenCompose(ignored -> peers.listLivePeers(new ZLinkPeerLocationFilter(
                 local.type(), local.meshName(), null, null, null)))
             .handle((rows, failure) -> {
                 if (failure != null) {
@@ -63,10 +63,10 @@ final class ZLinkAutoConnectReconciler {
             });
     }
 
-    CompletionStage<Void> shutdownAsync() {
+    CompletionStage<Void> shutdown() {
         CompletionStage<Void> remove = CompletableFuture.completedFuture(null);
         if (localPublished) {
-            remove = runtime.removePeerAsync(localKey(), localGeneration).thenApply(ignored -> null);
+            remove = runtime.removePeer(localKey(), localGeneration).thenApply(ignored -> null);
             localPublished = false;
         }
         return remove.whenComplete((ignored, failure) -> {
@@ -114,11 +114,11 @@ final class ZLinkAutoConnectReconciler {
         }
     }
 
-    private CompletionStage<Void> publishLocalAsync() {
+    private CompletionStage<Void> publishLocal() {
         if (localRow == null || localPublished) {
             return CompletableFuture.completedFuture(null);
         }
-        return runtime.writePeerAsync(localRow, ZLinkLocationWriteIntent.NEW_CLAIM)
+        return runtime.writePeer(localRow, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenCompose(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
                     localGeneration = result.generation();
@@ -129,10 +129,10 @@ final class ZLinkAutoConnectReconciler {
                     && localGeneration > 0) {
                     ZLinkPeerLocation renewed = new ZLinkPeerLocation(
                         localRow.autoConnectType(), localRow.meshName(), localRow.nodeRid(),
-                        localRow.role(), localRow.endpoint(), localRow.weight(), localRow.value(),
+                        localRow.role(), localRow.endpoint(), localRow.weight(), localRow.draining(), localRow.value(),
                         localRow.metadata(), localRow.capabilities(), localRow.ownerId(),
                         localGeneration, Instant.EPOCH);
-                    return runtime.writePeerAsync(renewed, ZLinkLocationWriteIntent.RENEW)
+                    return runtime.writePeer(renewed, ZLinkLocationWriteIntent.RENEW)
                         .thenAccept(renewedResult -> {
                             localPublished = renewedResult.status() == ZLinkLocationWriteStatus.STORED;
                         });

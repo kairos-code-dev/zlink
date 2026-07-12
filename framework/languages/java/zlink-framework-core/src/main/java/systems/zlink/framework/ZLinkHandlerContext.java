@@ -12,5 +12,4 @@ public interface ZLinkHandlerContext {
 
     Optional<String> contentType();
 
-    CancellationToken cancellationToken();
 }

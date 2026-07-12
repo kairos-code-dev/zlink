@@ -18,7 +18,7 @@ final class ZLinkFrameworkAutoConnectSubsystem {
             return;
         }
 
-        locationAutoConnectHost.startAsync(
+        locationAutoConnectHost.start(
                 registration,
                 channels,
                 spots == null ? java.util.Map.of() : spots.nodesByName(),

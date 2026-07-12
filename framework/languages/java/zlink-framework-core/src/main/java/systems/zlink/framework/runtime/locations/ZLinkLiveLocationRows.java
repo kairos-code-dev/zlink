@@ -74,7 +74,7 @@ public final class ZLinkLiveLocationRows {
                 if (!acceptObserved.test(row)) {
                     return CompletableFuture.completedFuture(live);
                 }
-                return leaseTracker.isOwnerLiveAsync(ownerId.apply(row)).thenApply(ownerLive -> {
+                return leaseTracker.isOwnerLive(ownerId.apply(row)).thenApply(ownerLive -> {
                     if (ownerLive) {
                         live.add(row);
                     }
@@ -93,7 +93,7 @@ public final class ZLinkLiveLocationRows {
             if (row == null || !acceptObserved.test(row)) {
                 return CompletableFuture.completedFuture(null);
             }
-            return leaseTracker.isOwnerLiveAsync(ownerId.apply(row))
+            return leaseTracker.isOwnerLive(ownerId.apply(row))
                 .thenApply(live -> live ? row : null);
         });
     }

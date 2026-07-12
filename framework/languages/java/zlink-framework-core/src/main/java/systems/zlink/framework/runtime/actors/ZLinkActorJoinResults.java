@@ -23,10 +23,10 @@ final class ZLinkActorJoinResults {
                 ? (emptyReply = Message.from(new byte[0]))
                 : replyParts.get(0);
             TReply reply = ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
-            return new ZLinkActorJoinResult<>(
-                joinResultCode,
-                ZLinkActorRuntime.toPublicActorRef(actor),
-                reply);
+            return joinResultCode == 0
+                ? new ZLinkActorJoinResult.Accepted<>(
+                    ZLinkActorRuntime.toPublicActorRef(actor), reply)
+                : new ZLinkActorJoinResult.Rejected<>(reply);
         } finally {
             if (emptyReply != null) {
                 emptyReply.close();
@@ -40,10 +40,10 @@ final class ZLinkActorJoinResults {
         ZLinkBackendActorRef actor,
         List<Message> replyParts) {
         try {
-            return new ZLinkActorJoinResult<>(
-                joinResultCode,
-                ZLinkActorRuntime.toPublicActorRef(actor),
-                null);
+            return joinResultCode == 0
+                ? new ZLinkActorJoinResult.Accepted<>(
+                    ZLinkActorRuntime.toPublicActorRef(actor), null)
+                : new ZLinkActorJoinResult.Rejected<>(null);
         } finally {
             closeReplyParts(replyParts);
         }

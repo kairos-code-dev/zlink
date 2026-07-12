@@ -35,7 +35,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
@@ -70,21 +69,20 @@ import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
@@ -116,7 +114,6 @@ final class RouteSendCall implements ZLinkSendCall {
         this(runtime, router, target, payload, Optional.empty());
     }
 
-    @Override
     public ZLinkSendCall packetName(String packetName) {
         return new RouteSendCall(runtime, router, target, payload, Optional.of(packetName));
     }
@@ -127,7 +124,7 @@ final class RouteSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public systems.zlink.framework.ZLinkSubmitStage submit() {
+    public void submit() {
         if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
             runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,
@@ -135,14 +132,14 @@ final class RouteSendCall implements ZLinkSendCall {
                 ZLinkDispatchMessageKind.SEND,
                 packetName.orElse(null), null, null, null, target.toString(), null, null, null));
         }
-        return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
+        runtime.submitOneWay(() -> {
             List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             try {
                 router.send(target, sendParts, SendFlags.NONE);
             } finally {
                 sendParts.forEach(Message::close);
             }
-        }));
+        });
     }
 }
 
@@ -187,7 +184,6 @@ final class RouteRequestCall implements ZLinkRequestCall {
         this.turn = turn;
     }
 
-    @Override
     public ZLinkRequestCall packetName(String packetName) {
         return new RouteRequestCall(
             runtime,

@@ -12,15 +12,6 @@ record ZLinkStreamConnectorSendCall(
     ZLinkStreamEncodedPayload payload,
     boolean compressed) implements ZLinkStreamSendCall {
     @Override
-    public ZLinkStreamSendCall packetName(String packetName) {
-        return new ZLinkStreamConnectorSendCall(connector, new ZLinkStreamEncodedPayload(
-            DefaultZLinkStreamConnector.validatePacketName(packetName),
-            payload.payload(),
-            payload.metadata(),
-            payload.codec()), compressed);
-    }
-
-    @Override
     public ZLinkStreamSendCall metadata(String key, String value) {
         Map<String, String> metadata = new HashMap<>(payload.metadata());
         metadata.put(key, value);
@@ -42,9 +33,8 @@ record ZLinkStreamConnectorSendCall(
     }
 
     @Override
-    public CompletionStage<Void> submit() {
+    public void submit() {
         connector.submit(payload, compressed);
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }
 
@@ -53,15 +43,6 @@ record ZLinkStreamConnectorRequestCall(
     ZLinkStreamEncodedPayload payload,
     Duration timeout,
     boolean compressed) implements ZLinkStreamRequestCall {
-    @Override
-    public ZLinkStreamRequestCall packetName(String packetName) {
-        return new ZLinkStreamConnectorRequestCall(connector, new ZLinkStreamEncodedPayload(
-            DefaultZLinkStreamConnector.validatePacketName(packetName),
-            payload.payload(),
-            payload.metadata(),
-            payload.codec()), timeout, compressed);
-    }
-
     @Override
     public ZLinkStreamRequestCall metadata(String key, String value) {
         Map<String, String> metadata = new HashMap<>(payload.metadata());

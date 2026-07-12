@@ -12,6 +12,7 @@ public record ZLinkPeerLocation(
     ZLinkLocationRole role,
     String endpoint,
     long weight,
+    boolean draining,
     long value,
     Map<String, String> metadata,
     List<String> capabilities,

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 
@@ -20,7 +20,7 @@ final class FakeZLinkBackendAdapterTest {
         ZLinkBackendContext context = channel.createContext();
         channel.createDealerSocket(context);
 
-        ZLinkBackendSpotNode spotNode =
+        ZLinkInternalSpotNode spotNode =
             factory.createSpotAdapter(options).createSpotNode(context, ZLinkBackendSpotNodeMode.ALL);
         ZLinkBackendStreamSocket stream =
             factory.createStreamAdapter(options).createStreamSocket(context);

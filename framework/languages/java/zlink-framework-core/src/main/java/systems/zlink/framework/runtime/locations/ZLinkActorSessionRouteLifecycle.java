@@ -22,7 +22,7 @@ final class ZLinkActorSessionRouteLifecycle {
         this.runtime = runtime;
     }
 
-    CompletionStage<Void> bindAsync(
+    CompletionStage<Void> bind(
         RoutingId sessionRid,
         String actorId,
         RoutingId ownerNodeRid) {
@@ -35,10 +35,10 @@ final class ZLinkActorSessionRouteLifecycle {
             0,
             actorId.getBytes(StandardCharsets.UTF_8),
             Instant.EPOCH);
-        return runtime.writeRouteAsync(row, ZLinkLocationWriteIntent.NEW_CLAIM)
+        return runtime.writeRoute(row, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenCompose(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.REJECTED_CONFLICT) {
-                    return runtime.writeRouteAsync(row, ZLinkLocationWriteIntent.TAKEOVER);
+                    return runtime.writeRoute(row, ZLinkLocationWriteIntent.TAKEOVER);
                 }
                 return CompletableFuture.completedFuture(result);
             })
@@ -54,7 +54,7 @@ final class ZLinkActorSessionRouteLifecycle {
             });
     }
 
-    CompletionStage<Void> removeAsync(RoutingId sessionRid) {
+    CompletionStage<Void> remove(RoutingId sessionRid) {
         ZLinkRouteLocationKey key = new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, toRouteKey(sessionRid));
         String canonical = ZLinkLocationKeyCodec.encodeRouteKey(key);
         Long generation;
@@ -64,7 +64,7 @@ final class ZLinkActorSessionRouteLifecycle {
         if (generation == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return runtime.removeRouteAsync(key, generation).thenApply(ignored -> null);
+        return runtime.removeRoute(key, generation).thenApply(ignored -> null);
     }
 
     void onOwnershipLost(String canonicalKey) {

@@ -3,17 +3,17 @@ package systems.zlink.framework.locations;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkRouteLocationStore {
-    CompletionStage<ZLinkLocationWriteResult> updateRouteAsync(
+    CompletionStage<ZLinkLocationWriteResult> updateRoute(
         ZLinkRouteLocation route,
         ZLinkLocationWriteIntent intent);
 
-    CompletionStage<ZLinkLocationWriteResult> removeRouteAsync(
+    CompletionStage<ZLinkLocationWriteResult> removeRoute(
         ZLinkRouteLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key);
+    CompletionStage<ZLinkRouteLocation> resolveRoute(ZLinkRouteLocationKey key);
 
-    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page);
 }

@@ -13,7 +13,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
 final class ZLinkActorBoundSessionSender {
     private static final long RETRY_DELAY_MILLIS = 25;
@@ -31,7 +31,7 @@ final class ZLinkActorBoundSessionSender {
     }
 
     CompletionStage<Void> send(
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         ZLinkBackendActorRef actor,
         String actorId,
         byte[] frameBytes,
@@ -49,7 +49,7 @@ final class ZLinkActorBoundSessionSender {
     }
 
     private final class SendAttempt implements Runnable {
-        private final ZLinkBackendSpotNode node;
+        private final ZLinkInternalSpotNode node;
         private final ZLinkBackendActorRef actor;
         private final String actorId;
         private final byte[] frameBytes;
@@ -58,7 +58,7 @@ final class ZLinkActorBoundSessionSender {
         private final CompletableFuture<Void> result;
 
         private SendAttempt(
-            ZLinkBackendSpotNode node,
+            ZLinkInternalSpotNode node,
             ZLinkBackendActorRef actor,
             String actorId,
             byte[] frameBytes,

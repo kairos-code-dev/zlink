@@ -23,12 +23,11 @@ import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.spots.SpotBuilders;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamBuilders;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
@@ -123,13 +122,6 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void addSpotRemoteRefResolver(
-        Class<? extends SpotRemoteRefResolver> resolverType) {
-        registration.setSpotRemoteRefResolverType(
-            Objects.requireNonNull(resolverType, "resolverType"));
-    }
-
-    @Override
     public void useInMemoryLocationStores() {
         registration.useInMemoryLocationStores();
     }
@@ -179,7 +171,7 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker) {
+    public void useSuspendHandlerInvoker(ZLinkSuspendInvocationAdapter invoker) {
         registration.useSuspendHandlerInvoker(invoker);
     }
 

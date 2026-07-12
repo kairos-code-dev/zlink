@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
@@ -30,7 +32,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private static final ZLinkSessionRelayHeaders RELAY_HEADERS = new ZLinkSessionRelayHeaders();
     private final ZLinkBackendStreamSocket stream;
-    private final ZLinkBackendSpotNode spotNode;
+    private final ZLinkInternalSpotNode spotNode;
     private final RoutingId sessionRid;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
@@ -113,7 +115,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     public ZLinkSessionActorsRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkBackendStreamSocket stream,
         RoutingId sessionRid,
         ZLinkActorRuntime actors,

@@ -31,7 +31,7 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
@@ -39,7 +39,6 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
-import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
@@ -51,8 +50,6 @@ import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -88,9 +85,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
         { var metadata = options.configureMetadata(); metadata.addForwardedMetadataKey("trace-id"); };
         options.useFilter(TestFilter.class);
-        { var dispatch = options.configureDispatch(); dispatch.setSpotDispatchMode(ZLinkDispatchMode.DYNAMIC);
-            dispatch.traceSampleRate(0.25d); };
-        options.addSpotRemoteRefResolver(TestSpotRemoteRefResolver.class);
+        options.configureDispatch().traceSampleRate(0.25d);
 
         assertTrue(options.registration().codecs().serializers().containsKey("application/x-test"));
         assertTrue(options.registration().handlerPackageMarkers()
@@ -98,12 +93,8 @@ final class DefaultZLinkFrameworkOptionsTest {
         assertTrue(options.registration().metadataPolicy().forwardedApplicationKeys()
             .contains("trace-id"));
         assertTrue(options.registration().filters().contains(TestFilter.class));
-        assertEquals(ZLinkDispatchMode.DYNAMIC,
-            options.registration().dispatchOptions().spotDispatchMode());
         assertEquals(0.25d,
             options.registration().dispatchOptions().diagnostics().sampleRate());
-        assertEquals(TestSpotRemoteRefResolver.class,
-            options.registration().spotRemoteRefResolverType());
     }
 
     @Test
@@ -206,7 +197,7 @@ final class DefaultZLinkFrameworkOptionsTest {
             dispatch.setMessageFlowObserver(new ThrowingMessageFlowObserver()); };
         ZLinkDispatchErrorReporter callbackReporter = new ZLinkDispatchErrorReporter(
             callbackFailure.registration().dispatchOptions(),
-            ZLinkHandlerFactory.reflection(),
+            ZLinkHandlerActivator.reflection(),
             Runnable::run);
 
         assertDoesNotThrow(() -> callbackReporter.report(error));
@@ -228,7 +219,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions noObserver = new DefaultZLinkFrameworkOptions();
         ZLinkDispatchErrorReporter noObserverReporter = new ZLinkDispatchErrorReporter(
             noObserver.registration().dispatchOptions(),
-            ZLinkHandlerFactory.reflection(),
+            ZLinkHandlerActivator.reflection(),
             Runnable::run);
         assertDoesNotThrow(() -> noObserverReporter.report(error));
         assertEquals(1, noObserverReporter.reportedCount());
@@ -738,8 +729,8 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     public static final class EchoHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return request;
+        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 
@@ -750,40 +741,43 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class AnnotatedEchoHandler
         implements ZLinkRequestHandler<AnnotatedPacket, String> {
         @Override
-        public String handle(
+        public CompletionStage<String> handle(
             AnnotatedPacket request,
             ZLinkRequestContext context) {
-            return request.value();
+            return CompletableFuture.completedFuture(request.value());
         }
     }
 
     @ZLinkHandlerGroup("scanned-publish")
     public static final class EventHandler implements ZLinkPublishHandler<String> {
         @Override
-        public void handle(String message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(String message, ZLinkPublishContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
     @ZLinkHandlerGroup("scanned-attributed-publish")
     public static final class AttributedEventHandler {
         @ZLinkPublish(packetName = "AttributedEvent")
-        public void handle(
+        public CompletionStage<Void> handle(
             String message,
             ZLinkPublishContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class SendHandler implements ZLinkSendHandler<String> {
         @Override
-        public void handle(String message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(String message, ZLinkSendContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
     @ZLinkHandlerGroup("scanned-request")
     public static final class ScannedRequestHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return request;
+        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 
@@ -792,14 +786,15 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class MultiGroupScannedRequestHandler
         implements ZLinkRequestHandler<Integer, Integer> {
         @Override
-        public Integer handle(Integer request, ZLinkRequestContext context) {
-            return request;
+        public CompletionStage<Integer> handle(Integer request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 
     public static final class RouteSendHandler implements ZLinkRouteSendHandler<String> {
         @Override
-        public void handle(String message, ZLinkRouteSendContext context) {
+        public CompletionStage<Void> handle(String message, ZLinkRouteSendContext context) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -807,10 +802,10 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class RouteEchoHandler
         implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public String handle(
+        public CompletionStage<String> handle(
             String request,
             ZLinkRouteRequestContext context) {
-            return request;
+            return CompletableFuture.completedFuture(request);
         }
     }
 
@@ -820,12 +815,12 @@ final class DefaultZLinkFrameworkOptionsTest {
             return null;
         }
 
-        @Override public void onJoinedActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class TestFilter implements ZLinkHandlerFilter {
@@ -841,18 +836,6 @@ final class DefaultZLinkFrameworkOptionsTest {
         ZLinkLocationStore {
     }
 
-    public static final class TestSpotRemoteRefResolver
-        implements SpotRemoteRefResolver {
-        @Override
-        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
-            return CompletableFuture.completedFuture(
-                new SpotRemoteRef(
-                    "play",
-                    RoutingId.from("node"),
-                    spotRid,
-                    ZLinkSpotKind.USER));
-        }
-    }
 
     public static final class TestMessageFlowObserver
         implements ZLinkMessageFlowObserver {

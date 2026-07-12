@@ -35,15 +35,15 @@ final class ZLinkOwnerLeaseTracker {
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
     }
 
-    CompletionStage<Boolean> isOwnerLiveAsync(String ownerId) {
-        return getSnapshotAsync().thenApply(current -> {
+    CompletionStage<Boolean> isOwnerLive(String ownerId) {
+        return getSnapshot().thenApply(current -> {
             ZLinkOwnerLease lease = current.leases().get(ownerId);
             return lease != null && remaining(current, lease).compareTo(Duration.ZERO) > 0;
         });
     }
 
-    CompletionStage<Long> getLiveOwnerSetVersionAsync() {
-        return getSnapshotAsync().thenApply(current -> {
+    CompletionStage<Long> getLiveOwnerSetVersion() {
+        return getSnapshot().thenApply(current -> {
             String fingerprint = current.leases().values().stream()
                 .filter(lease -> remaining(current, lease).compareTo(Duration.ZERO) > 0)
                 .map(ZLinkOwnerLease::ownerId)
@@ -59,7 +59,7 @@ final class ZLinkOwnerLeaseTracker {
         });
     }
 
-    private CompletionStage<Snapshot> getSnapshotAsync() {
+    private CompletionStage<Snapshot> getSnapshot() {
         Snapshot current = snapshot;
         long now = nanoTime.getAsLong();
         if (current != null && Duration.ofNanos(now - current.fetchedAtNanos()).compareTo(pollingInterval) < 0) {
@@ -73,7 +73,7 @@ final class ZLinkOwnerLeaseTracker {
                 return CompletableFuture.completedFuture(current);
             }
             long fetchedAt = now;
-            return store.listOwnerLeasesAsync().thenApply(listed -> {
+            return store.listOwnerLeases().thenApply(listed -> {
                 Map<String, ZLinkOwnerLease> leases = listed.leases().stream()
                     .collect(Collectors.toUnmodifiableMap(ZLinkOwnerLease::ownerId, lease -> lease, (left, right) -> right));
                 Snapshot refreshed = new Snapshot(leases, listed.storeNow(), fetchedAt);

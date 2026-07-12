@@ -12,11 +12,11 @@ import systems.zlink.framework.runtime.actors.ZLinkStoreActorDirectory;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkFrameworkActorSubsystem {
@@ -36,15 +36,15 @@ final class ZLinkFrameworkActorSubsystem {
     static ZLinkFrameworkActorSubsystem create(
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory.MutableServices runtimeHandlers,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator.MutableServices runtimeHandlers,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         ZLinkStreamCodec defaultStreamCodec,
         ZLinkChannelRuntime channels,
         ZLinkSpotRuntime spots,
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
-        SpotRemoteRefResolver remoteAddressResolver) {
+        SpotTransportAddressResolver remoteAddressResolver) {
         var actorNodeRegistration = registration.spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
@@ -99,7 +99,7 @@ final class ZLinkFrameworkActorSubsystem {
     }
 
     private static void registerActorServices(
-        ZLinkHandlerFactory.MutableServices runtimeHandlers,
+        ZLinkHandlerActivator.MutableServices runtimeHandlers,
         ZLinkActorClient actorClient,
         ZLinkActorDirectory actorDirectory,
         ZLinkActorRuntime actors) {
@@ -116,13 +116,13 @@ final class ZLinkFrameworkActorSubsystem {
 
     private static void wireActorRuntime(
         ZLinkFrameworkRegistration registration,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         ZLinkChannelRuntime channels,
         ZLinkSpotRuntime spots,
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
-        SpotRemoteRefResolver remoteAddressResolver,
+        SpotTransportAddressResolver remoteAddressResolver,
         ZLinkActorRuntime actors) {
         if (actors == null) {
             return;

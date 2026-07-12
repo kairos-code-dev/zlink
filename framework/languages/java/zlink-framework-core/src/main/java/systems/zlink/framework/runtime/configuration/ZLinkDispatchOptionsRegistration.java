@@ -1,7 +1,6 @@
 package systems.zlink.framework.runtime.configuration;
 
 import systems.zlink.framework.configuration.ZLinkDiagnosticsOptions;
-import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -13,30 +12,8 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOptions {
     private final UnhandledDispatchOptions unhandled = new UnhandledDispatchOptions();
     private final DiagnosticsOptions diagnostics = new DiagnosticsOptions();
-    private ZLinkDispatchMode spotDispatchMode = ZLinkDispatchMode.COMPILED;
-    private ZLinkDispatchMode streamDispatchMode = ZLinkDispatchMode.COMPILED;
     private Class<? extends ZLinkMessageFlowObserver> messageFlowObserverType;
     private ZLinkMessageFlowObserver messageFlowObserver;
-
-    @Override
-    public ZLinkDispatchMode spotDispatchMode() {
-        return spotDispatchMode;
-    }
-
-    @Override
-    public void setSpotDispatchMode(ZLinkDispatchMode mode) {
-        spotDispatchMode = requireNonNull(mode, "spotDispatchMode");
-    }
-
-    @Override
-    public ZLinkDispatchMode streamDispatchMode() {
-        return streamDispatchMode;
-    }
-
-    @Override
-    public void setStreamDispatchMode(ZLinkDispatchMode mode) {
-        streamDispatchMode = requireNonNull(mode, "streamDispatchMode");
-    }
 
     @Override
     public UnhandledDispatchOptions unhandled() {

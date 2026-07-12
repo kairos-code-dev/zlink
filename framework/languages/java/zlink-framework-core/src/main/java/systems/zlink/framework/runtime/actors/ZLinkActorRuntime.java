@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
@@ -16,7 +18,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ActorRef;
@@ -24,9 +25,8 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
+import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
-import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
 import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
@@ -37,7 +37,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
@@ -45,11 +45,11 @@ import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
+import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDirectory {
-    private static final CancellationToken NONE_CANCELLATION = () -> false;
     @FunctionalInterface
     public interface CreatedNotifier {
         CompletionStage<Void> notify(
@@ -64,13 +64,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         CompletionStage<Void> leave(ZLinkActor actor);
     }
 
-    private final ZLinkBackendSpotNode spotNode;
+    private final ZLinkInternalSpotNode spotNode;
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
     private final ZLinkActorTransferRegistry actorTransfers;
     private final Duration defaultRequestTimeout;
     private final Duration actorTransferForwardWindow;
     private final ZLinkMessageSerializer serializer;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final ZLinkStreamCodec defaultStreamCodec;
     private final ActorRegistry actorRegistry = new ActorRegistry();
     private final ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
@@ -83,7 +83,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private SourceActorLeaver sourceActorLeaver =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
-    private SpotRemoteRefResolver remoteAddressResolver;
+    private SpotTransportAddressResolver remoteAddressResolver;
     private final ZLinkActorLocationCoordinator locations =
         new ZLinkActorLocationCoordinator(actorRegistry::actorType);
     private ZLinkChannelRuntime routedTransport;
@@ -97,7 +97,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public ZLinkActorRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer) {
@@ -108,16 +108,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             defaultRequestTimeout,
             Duration.ofSeconds(5),
             serializer,
-            ZLinkHandlerFactory.reflection(),
+            ZLinkHandlerActivator.reflection(),
             ZLinkStreamCodec.JSON);
     }
 
     public ZLinkActorRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             spotNode,
             factories,
@@ -130,12 +130,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public ZLinkActorRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkStreamCodec defaultStreamCodec) {
         this(
             spotNode,
@@ -149,13 +149,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public ZLinkActorRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
         Duration actorTransferForwardWindow,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkStreamCodec defaultStreamCodec) {
         if (factories.isEmpty()) {
             throw new ZLinkConfigurationException("at least one actor factory is required");
@@ -297,6 +297,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         DefaultActorContext context = new DefaultActorContext(actorRef);
         return ZLinkHandlerStages
             .fromSupplier(() -> createFactory(factoryType).create(actorId, context))
+            .thenCompose(stage -> stage)
             .thenApply(actor -> {
                 context.setActor(actor);
                 actorRegistry.register(actorId, actorType, actor, context);
@@ -385,37 +386,31 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         }
         DefaultActorContext context = new DefaultActorContext(actorRef);
         context.beginMove();
-        return ZLinkHandlerStages.fromSupplier(() -> {
-                ZLinkActor actor = adapterKey == null
-                    ? createFactory(factoryType).create(actorId, context)
-                    : actorTransfers.transferIn(
-                        actorType,
-                        actorId,
-                        context,
-                        transferState,
-                        NONE_CANCELLATION);
+        return ZLinkHandlerStages.fromStageSupplier(() -> adapterKey == null
+                ? createFactory(factoryType).create(actorId, context)
+                : actorTransfers.transferIn(
+                    actorType,
+                    actorId,
+                    context,
+                    transferState))
+            .thenApply(actor -> {
                 if (actor == null) {
                     throw new ZLinkConfigurationException(
                         "actor transfer did not materialize an actor: " + actorId);
                 }
-                return actor;
-            })
-            .thenApply(actor -> {
                 context.setActor(actor);
                 actorRegistry.register(actorId, actorType, actor, context);
                 return actor;
             });
     }
 
-    ZLinkActorTransferRegistry.TransferState transferOut(
-        ZLinkActor actor,
-        CancellationToken cancellationToken) {
+    CompletionStage<ZLinkActorTransferRegistry.TransferState> transferOut(ZLinkActor actor) {
         String actorType = actorRegistry.actorType(actor.actorId());
         if (actorType == null) {
             throw new ZLinkConfigurationException(
                 "actor type is not registered for transfer: " + actor.actorId());
         }
-        return actorTransfers.transferOut(actorType, actor, cancellationToken);
+        return actorTransfers.transferOut(actorType, actor);
     }
 
     CompletionStage<Void> beginRemoteMove(ZLinkActor actor) {
@@ -807,6 +802,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return refFor(actor);
     }
 
+    public ZLinkSpot<?> currentSpot(ZLinkActor actor) {
+        DefaultActorContext context = actorRegistry.context(actor);
+        if (context == null || context.joinedSpotRid() == null) {
+            return null;
+        }
+        return context.currentSpot();
+    }
+
     private ActorRef publicRefFor(ZLinkActor actor) {
         ZLinkBackendActorRef actorRef = refFor(actor);
         return new ActorRef(
@@ -1004,8 +1007,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor Spot is not routable: " + spotRid));
         }
-        return remoteAddressResolver.resolveSpotRemoteRefAsync(spotRid)
+        return resolveHandle(spotRid)
+            .thenCompose(remoteAddressResolver::resolve)
             .thenCompose(address -> {
+                var target = address.orElseThrow(() ->
+                    new ZLinkConfigurationException("SPOT transport address was not found: " + spotRid));
                 List<Message> parts =
                     ZLinkActorSpotRoutePackets.createActorPacketParts(
                         actorRef, header, payload, null);
@@ -1013,9 +1019,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                     if (header.requestSequence().isPresent()
                         || header.kind() == systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST) {
                         return routedTransport.requestToSpotViaRouterChannel(
-                                address.routerChannelId(),
-                                address.targetNodeRid(),
-                                address.spotRid(),
+                                target.routerChannelId(),
+                                target.targetNodeRid(),
+                                target.spotRid(),
                                 parts,
                                 defaultRequestTimeout)
                             .thenApply(replyParts -> {
@@ -1029,9 +1035,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                             });
                     }
                     return routedTransport.sendToSpotViaRouterChannel(
-                            address.routerChannelId(),
-                            address.targetNodeRid(),
-                            address.spotRid(),
+                            target.routerChannelId(),
+                            target.targetNodeRid(),
+                            target.spotRid(),
                             parts)
                         .thenApply(ignored -> Optional.<Message>empty());
                 } finally {
@@ -1149,8 +1155,17 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         locations.setSpotMeshResolver(spotMeshResolver);
     }
 
-    public void setRemoteAddressResolver(SpotRemoteRefResolver remoteAddressResolver) {
+    public void setRemoteAddressResolver(SpotTransportAddressResolver remoteAddressResolver) {
         this.remoteAddressResolver = remoteAddressResolver;
+    }
+
+    private CompletionStage<SpotHandle> resolveHandle(RoutingId spotRid) {
+        if (!(remoteAddressResolver instanceof systems.zlink.framework.spots.SpotHandleResolver handles)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "SPOT transport resolver does not provide opaque handles"));
+        }
+        return handles.resolveSpotHandle(spotRid).thenApply(handle -> handle.orElseThrow(() ->
+            new ZLinkConfigurationException("SPOT handle was not found: " + spotRid)));
     }
 
     public void setLocationLifecycle(ZLinkLocationLifecycle lifecycle) {
@@ -1204,14 +1219,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
     public long bindNativeSession(
         ZLinkActor actor,
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkBackendActorRef actorRef) {
         return bindNativeSession(actor, spotNode, actorRef, null, null);
     }
 
     public long bindNativeSession(
         ZLinkActor actor,
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid) {
@@ -1559,6 +1574,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return state.spotRid();
         }
 
+        ZLinkSpot<?> currentSpot() {
+            return state.requireSpot();
+        }
+
         RoutingId boundSessionSourceNodeRid() {
             return state.boundSessionSourceNodeRid();
         }
@@ -1597,46 +1616,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         }
 
         @Override
-        public boolean isJoined() {
-            return state.joined();
-        }
-
-        @Override
         public ZLinkBoundSession boundSession() {
             return state.requireBoundSession();
         }
 
         @Override
-        public ZLinkSpot<?> getSpot() {
-            return state.requireSpot();
-        }
-
-        @Override
-        public <TSpot extends ZLinkSpot<?>> TSpot getSpot(Class<TSpot> spotType) {
-            if (spotType == null) {
-                throw new ZLinkConfigurationException("spotType is required");
-            }
-            ZLinkSpot<?> current = getSpot();
-            if (!spotType.isInstance(current)) {
-                throw new ZLinkConfigurationException(
-                    "actor joined Spot type "
-                        + current.getClass().getName()
-                        + ", not "
-                        + spotType.getName());
-            }
-            return spotType.cast(current);
-        }
-
-        @Override
-        public ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid) {
-            if (spotNodeRid == null) {
-                throw new ZLinkConfigurationException("spotNodeRid is required");
-            }
-            return createJoinEntrySpotCall(spotNodeRid, Message.from(new byte[0]), defaultRequestTimeout);
-        }
-
-        @Override
-        public ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request) {
+        public ZLinkActorJoinCall joinEntrySpot(RoutingId spotNodeRid, Object request) {
             if (spotNodeRid == null) {
                 throw new ZLinkConfigurationException("spotNodeRid is required");
             }
@@ -1649,7 +1634,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 defaultRequestTimeout);
         }
 
-        private ZLinkActorJoinEntrySpotCall createJoinEntrySpotCall(
+        private ZLinkActorJoinCall createJoinEntrySpotCall(
             RoutingId spotNodeRid,
             Message request,
             Duration timeout) {
@@ -1669,15 +1654,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         }
 
         @Override
-        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid) {
-            if (spotRid == null) {
-                throw new ZLinkConfigurationException("spotRid is required");
-            }
-            return createJoinSpotCall(spotRid, Message.from(new byte[0]), defaultRequestTimeout);
-        }
-
-        @Override
-        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request) {
+        public ZLinkActorJoinCall joinSpot(RoutingId spotRid, Object request) {
             if (spotRid == null) {
                 throw new ZLinkConfigurationException("spotRid is required");
             }
@@ -1687,7 +1664,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return createJoinSpotCall(spotRid, messageFromRequest(request), defaultRequestTimeout);
         }
 
-        private ZLinkActorJoinSpotCall createJoinSpotCall(
+        private ZLinkActorJoinCall createJoinSpotCall(
             RoutingId spotRid,
             Message request,
             Duration timeout) {

@@ -1,13 +1,13 @@
 package systems.zlink.framework.runtime.binding;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 
-public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {
+public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterProvider {
     @Override
     public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
         return new ZLinkJavaChannelBackendAdapter();

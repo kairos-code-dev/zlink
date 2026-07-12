@@ -10,9 +10,9 @@ import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -29,12 +29,10 @@ import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
-import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
-import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
+import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.spots.ZLinkWorkerCall;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
@@ -92,7 +90,6 @@ final class HandlerContractTest {
     void routeRequestCallDoesNotExposeYieldTerminator() throws NoSuchMethodException {
         assertFalse(hasMethod(ZLinkRequestCall.class, "yield"));
         ZLinkYieldRequestCall.class.getMethod("yield", Class.class);
-        ZLinkYieldRequestCall.class.getMethod("yield", Class.class, CancellationToken.class);
     }
 
     @Test
@@ -116,29 +113,25 @@ final class HandlerContractTest {
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
-            Object.class,
-            CancellationToken.class);
+            Object.class);
         ZLinkEntrySpotActorRequestHandler.class.getMethod(
             "handle",
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
-            Object.class,
-            CancellationToken.class);
+            Object.class);
         ZLinkSpotActorSendHandler.class.getMethod(
             "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
-            Object.class,
-            CancellationToken.class);
+            Object.class);
         ZLinkSpotActorRequestHandler.class.getMethod(
             "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
-            Object.class,
-            CancellationToken.class);
+            Object.class);
     }
 
     @Test
@@ -147,37 +140,22 @@ final class HandlerContractTest {
         ZLinkSpot.class.getMethod(
             "onActorJoin",
             String.class,
-            ZLinkMessage.class,
-            CancellationToken.class);
-        ZLinkSpot.class.getMethod(
-            "onJoinedActor",
-            ZLinkActor.class,
-            CancellationToken.class);
-        ZLinkSpot.class.getMethod(
-            "onLeaveActor",
-            ZLinkActor.class,
-            CancellationToken.class);
-        ZLinkSpot.class.getMethod(
-            "onDisconnectActor",
-            ZLinkActor.class,
-            CancellationToken.class);
+            ZLinkMessage.class);
+        ZLinkSpot.class.getMethod("onJoinedActor", ZLinkActor.class);
+        ZLinkSpot.class.getMethod("onLeaveActor", ZLinkActor.class);
+        ZLinkSpot.class.getMethod("onDisconnectActor", ZLinkActor.class);
         ZLinkEntrySpot.class.getMethod(
             "onActorJoin",
             String.class,
-            ZLinkMessage.class,
-            CancellationToken.class);
-        ZLinkEntrySpot.class.getMethod(
-            "onJoinedActor",
-            ZLinkActor.class,
-            CancellationToken.class);
-        ZLinkEntrySpot.class.getMethod(
-            "onLeaveActor",
-            ZLinkActor.class,
-            CancellationToken.class);
-        ZLinkEntrySpot.class.getMethod(
-            "onDisconnectActor",
-            ZLinkActor.class,
-            CancellationToken.class);
+            ZLinkMessage.class);
+        assertEquals(CompletionStage.class,
+            ZLinkSpot.class.getMethod("onJoinedActor", ZLinkActor.class).getReturnType());
+        assertEquals(CompletionStage.class,
+            ZLinkSpot.class.getMethod("onLeaveActor", ZLinkActor.class).getReturnType());
+        assertEquals(CompletionStage.class,
+            ZLinkEntrySpot.class.getMethod("onJoinedActor", ZLinkActor.class).getReturnType());
+        assertEquals(CompletionStage.class,
+            ZLinkEntrySpot.class.getMethod("onLeaveActor", ZLinkActor.class).getReturnType());
         assertTrue(ZLinkSpotActorJoinResponse.accept().accepted());
     }
 
@@ -193,7 +171,13 @@ final class HandlerContractTest {
             "handle",
             ZLinkSessionContext.class,
             ZLinkSessionDispatchContext.class,
-            ZLinkMessage.class);
+            Object.class);
+        assertEquals(CompletionStage.class,
+            ZLinkTypedSessionPacketHandler.class.getMethod(
+                "handle",
+                ZLinkSessionContext.class,
+                ZLinkSessionDispatchContext.class,
+                Object.class).getReturnType());
         ZLinkSessionPacketDispatcher.class.getMethod(
             "tryHandleAsync",
             ZLinkSessionContext.class,
@@ -204,28 +188,15 @@ final class HandlerContractTest {
 
     @Test
     void actorJoinContractsSupportDtoAndNoReplyJoins() throws NoSuchMethodException {
-        ZLinkActorContext.class.getMethod("joinSpot", RoutingId.class);
         ZLinkActorContext.class.getMethod("joinSpot", RoutingId.class, Object.class);
-        ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class);
         ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
-        ZLinkActorJoinSpotCall.class.getMethod("submit");
-        ZLinkActorJoinSpotCall.class.getMethod("await");
-        ZLinkActorJoinSpotCall.class.getMethod("yield");
-        ZLinkActorJoinSpotCall.class.getMethod("yield", CancellationToken.class);
-        ZLinkActorJoinSpotCall.class.getMethod("submit", Class.class);
-        ZLinkActorJoinSpotCall.class.getMethod("await", Class.class);
-        ZLinkActorJoinSpotCall.class.getMethod("yield", Class.class);
-        ZLinkActorJoinSpotCall.class.getMethod("yield", Class.class, CancellationToken.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("submit");
-        ZLinkActorJoinEntrySpotCall.class.getMethod("await");
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yield");
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yield", CancellationToken.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("submit", Class.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class, CancellationToken.class);
-        ZLinkYieldRequestCall.class.getMethod("yield", Class.class, CancellationToken.class);
-        ZLinkWorkerCall.class.getMethod("yield", CancellationToken.class);
+        ZLinkActorJoinCall.class.getMethod("timeout", java.time.Duration.class);
+        ZLinkActorJoinCall.class.getMethod("submit");
+        ZLinkActorJoinCall.class.getMethod("submit", Class.class);
+        assertFalse(hasMethod(ZLinkActorContext.class, "isJoined"));
+        assertFalse(hasMethod(ZLinkActorContext.class, "getSpot"));
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "await"));
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
     }
 
     @Test

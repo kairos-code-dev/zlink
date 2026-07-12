@@ -15,7 +15,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 
@@ -43,7 +43,7 @@ final class ZLinkActorSpotAdmission {
     }
 
     CompletionStage<Void> leaveSpot(
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         ZLinkActor actor,
         RoutingId fallbackSpotRid,
         Duration timeout,
@@ -144,7 +144,7 @@ final class ZLinkActorSpotAdmission {
     CompletionStage<RoutedJoin> commitRoutedActor(
         ZLinkActorSpotRoutePackets.TransferRequest request,
         ZLinkMessage transferState,
-        ZLinkBackendSpotNode primaryNode,
+        ZLinkInternalSpotNode primaryNode,
         RoutingId spotRid,
         ZLinkSpot<?> spotSurface,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback,
@@ -207,7 +207,7 @@ final class ZLinkActorSpotAdmission {
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         ZLinkPendingActorTransfers.Admission pending,
-        ZLinkBackendSpotNode primaryNode) {
+        ZLinkInternalSpotNode primaryNode) {
         ZLinkActorSpotRoutePackets.TransferRequest request = pending.request();
         if (request.hasSourceSessionRoute()) {
             RoutingId sourceNodeRid = pending.sourcePeerRid() == null

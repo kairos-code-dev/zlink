@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -157,8 +159,8 @@ final class MonitoringEventsTest {
             stores,
             locationOptions.ownerLeaseTtl(),
             locationOptions.heartbeatInterval());
-        locationRuntime.startAsync(RoutingId.from("node-a")).toCompletableFuture().get();
-        store.updatePeerAsync(peer(locationRuntime.ownerId()), ZLinkLocationWriteIntent.NEW_CLAIM)
+        locationRuntime.start(RoutingId.from("node-a")).toCompletableFuture().get();
+        store.updatePeer(peer(locationRuntime.ownerId()), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
         ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
@@ -213,6 +215,7 @@ final class MonitoringEventsTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:6000",
             1,
+            false,
             0,
             Map.of(),
             List.of(),
@@ -269,7 +272,7 @@ final class MonitoringEventsTest {
         }
     }
 
-    private static final class FakeSpotNode implements ZLinkBackendSpotNode {
+    private static final class FakeSpotNode implements ZLinkInternalSpotNode {
         List<SpotNodeSubjectEntry> subjects = List.of();
 
         @Override

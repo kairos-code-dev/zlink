@@ -36,6 +36,7 @@ class ZLinkRedisLocationRowJsonTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:6000",
             10,
+            true,
             20,
             Map.of("pub-endpoint", "tcp://127.0.0.1:6001"),
             List.of("a", "b"),
@@ -47,7 +48,13 @@ class ZLinkRedisLocationRowJsonTest {
         assertEquals(1, node.path("AutoConnectType").asInt());
         assertEquals(3, node.path("Role").asInt());
         assertEquals("0123", node.path("NodeRid").asText());
+        assertEquals(true, node.path("Draining").asBoolean());
         assertEquals("tcp://127.0.0.1:6001", node.path("Metadata").path("pub-endpoint").asText());
+
+        ZLinkPeerLocation decoded = ZLinkRedisLocationRowJson.deserializePeer(json, 9, UPDATED_AT.plusSeconds(1));
+        assertEquals(true, decoded.draining());
+        assertEquals(9, decoded.generation());
+        assertEquals("owner-a", decoded.ownerId());
     }
 
     @Test
@@ -183,6 +190,7 @@ class ZLinkRedisLocationRowJsonTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:5001",
             100,
+            false,
             7,
             Map.of("route-endpoint", "tcp://127.0.0.1:6001"),
             List.of("router", "route-bridge"),

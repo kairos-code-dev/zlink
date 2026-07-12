@@ -35,7 +35,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
@@ -70,38 +69,37 @@ import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
 final class ZLinkChannelHandlerInvoker {
     private final ZLinkMessageSerializer serializer;
     private final ZLinkCodecRegistration codecs;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final Executor handlerExecutor;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final List<Class<? extends ZLinkHandlerFilter>> filterTypes;
 
     ZLinkChannelHandlerInvoker(
         ZLinkMessageSerializer serializer,
         ZLinkCodecRegistration codecs,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Executor handlerExecutor,
-        List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers,
+        List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers,
         List<Class<? extends ZLinkHandlerFilter>> filterTypes) {
         this.serializer = serializer;
         this.codecs = codecs;
@@ -328,9 +326,7 @@ final class ZLinkChannelHandlerInvoker {
         Object[] arguments = new Object[parameterTypes.length];
         arguments[0] = message;
         for (int index = 1; index < parameterTypes.length; index++) {
-            if (parameterTypes[index] == CancellationToken.class) {
-                arguments[index] = context.cancellationToken();
-            } else if (parameterTypes[index].isInstance(context)) {
+            if (parameterTypes[index].isInstance(context)) {
                 arguments[index] = context;
             } else {
                 arguments[index] = null;

@@ -21,14 +21,14 @@ public final class ZLinkLocationReadinessService implements ZLinkLocationReadine
     }
 
     @Override
-    public CompletionStage<Boolean> isPeerReadyAsync(
+    public CompletionStage<Boolean> isPeerReady(
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid) {
         if (query == null) {
             return CompletableFuture.completedFuture(false);
         }
-        return query.listTopologyAsync(
+        return query.listTopology(
                 new ZLinkLocationTopologyFilter(
                     ZLinkLocationKind.PEER,
                     meshName,

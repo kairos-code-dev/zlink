@@ -14,11 +14,10 @@ import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
@@ -36,13 +35,12 @@ public final class ZLinkFrameworkRegistration {
     private final List<StreamNodeRegistration> streamNodes = new ArrayList<>();
     private final Set<Class<?>> handlerPackageMarkers = new LinkedHashSet<>();
     private final List<Class<? extends ZLinkHandlerFilter>> filters = new ArrayList<>();
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers = new ArrayList<>();
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers = new ArrayList<>();
     private ZLinkStreamCompressionCodec streamCompressionCodec = ZLinkStreamCompressionCodecs.lz4();
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Duration actorTransferForwardWindow = Duration.ofSeconds(5);
-    private Class<? extends SpotRemoteRefResolver> spotRemoteRefResolverType;
 
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
@@ -100,7 +98,7 @@ public final class ZLinkFrameworkRegistration {
         return filters;
     }
 
-    public List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers() {
+    public List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers() {
         return List.copyOf(suspendHandlerInvokers);
     }
 
@@ -120,16 +118,9 @@ public final class ZLinkFrameworkRegistration {
         return closeHandlerExecutor;
     }
 
-    public Class<? extends SpotRemoteRefResolver> spotRemoteRefResolverType() {
-        return spotRemoteRefResolverType;
-    }
-
     public Set<Class<?>> applicationTypes() {
         Set<Class<?>> types = new LinkedHashSet<>();
         types.addAll(filters);
-        if (spotRemoteRefResolverType != null) {
-            types.add(spotRemoteRefResolverType);
-        }
         for (ChannelRegistration channel : channels) {
             types.addAll(channel.handlerTypes());
         }
@@ -146,11 +137,6 @@ public final class ZLinkFrameworkRegistration {
             types.add(handler.handlerType());
         }
         return Set.copyOf(types);
-    }
-
-    void setSpotRemoteRefResolverType(
-        Class<? extends SpotRemoteRefResolver> resolverType) {
-        spotRemoteRefResolverType = resolverType;
     }
 
     void useInMemoryLocationStores() {
@@ -176,7 +162,7 @@ public final class ZLinkFrameworkRegistration {
         closeHandlerExecutor = false;
     }
 
-    void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker) {
+    void useSuspendHandlerInvoker(ZLinkSuspendInvocationAdapter invoker) {
         if (invoker == null) {
             throw new ZLinkConfigurationException("suspend handler invoker is required");
         }

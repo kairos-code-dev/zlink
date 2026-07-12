@@ -106,7 +106,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
 
     @Override
     public CompletionStage<Void> close() {
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     CompletionStage<Void> dispatchStage(
@@ -219,7 +219,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
             ZLinkStreamHeader replyHeader =
                 ZLinkStreamHeader.createErrorResponse(requestHeader, requestHeader.packetName());
             submitReplyAsync(replyHeader, payload.toByteArray());
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }
 

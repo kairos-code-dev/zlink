@@ -28,7 +28,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotRes
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
@@ -42,10 +42,10 @@ final class ZLinkActorClientRuntimeTest {
     @Test
     void sendAndRequestUseActorRefAndUseBackendNoBindOperations() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLeaseAsync("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
+        store.renewOwnerLease("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
             .toCompletableFuture()
             .join();
-        store.updateActorAsync(
+        store.updateActor(
                 new ZLinkActorLocation(
                     "actor-1",
                     "test",
@@ -71,12 +71,10 @@ final class ZLinkActorClientRuntimeTest {
 
         ActorRef actorRef = new ActorRef(RoutingId.from("actor-node"), "actor-1", 7);
         client.sendToActor(actorRef, new Ping("hello"))
-            .packetName("Ping")
             .submit()
             .toCompletableFuture()
             .join();
         Pong pong = client.requestToActor(actorRef, new Ping("hello"))
-            .packetName("Ping")
             .submit(Pong.class)
             .toCompletableFuture()
             .join();
@@ -100,12 +98,10 @@ final class ZLinkActorClientRuntimeTest {
         ActorRef actorRef = new ActorRef(RoutingId.from("direct-node"), "actor-direct", 17);
 
         client.sendToActor(actorRef, new Ping("hello"))
-            .packetName("Ping")
             .submit()
             .toCompletableFuture()
             .join();
         Pong pong = client.requestToActor(actorRef, new Ping("hello"))
-            .packetName("Ping")
             .submit(Pong.class)
             .toCompletableFuture()
             .join();
@@ -144,7 +140,6 @@ final class ZLinkActorClientRuntimeTest {
             Duration.ofMillis(250));
 
         client.sendToActor(new ActorRef(RoutingId.from("actor-node"), "actor-1", 7), new Ping("hello"))
-            .packetName("Ping")
             .submit()
             .toCompletableFuture()
             .join();
@@ -166,7 +161,6 @@ final class ZLinkActorClientRuntimeTest {
         CompletionException error = assertThrows(
             CompletionException.class,
             () -> client.requestToActor(new ActorRef(RoutingId.from("actor-node"), "actor-1", 7), new Ping("hello"))
-                .packetName("Ping")
                 .submit(Pong.class)
                 .toCompletableFuture()
                 .join());
@@ -190,7 +184,6 @@ final class ZLinkActorClientRuntimeTest {
             () -> client.requestToActor(
                     new ActorRef(RoutingId.from("actor-node"), "actor-1", 7),
                     new Ping("hello"))
-                .packetName("Ping")
                 .submit(Pong.class)
                 .toCompletableFuture()
                 .join());
@@ -201,10 +194,10 @@ final class ZLinkActorClientRuntimeTest {
 
     private static ZLinkInMemoryLocationStore storeWithActor(String actorId) {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLeaseAsync("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
+        store.renewOwnerLease("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
             .toCompletableFuture()
             .join();
-        store.updateActorAsync(
+        store.updateActor(
                 new ZLinkActorLocation(
                     actorId,
                     "test",
@@ -262,10 +255,10 @@ final class ZLinkActorClientRuntimeTest {
 
     public static final class ProbeActorFactory implements systems.zlink.framework.actors.ZLinkActorFactory {
         @Override
-        public systems.zlink.framework.actors.ZLinkActor create(
+        public CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(
             String actorId,
             systems.zlink.framework.actors.ZLinkActorContext context) {
-            return new ProbeActor(actorId);
+            return java.util.concurrent.CompletableFuture.completedFuture(new ProbeActor(actorId));
         }
     }
 
@@ -276,7 +269,7 @@ final class ZLinkActorClientRuntimeTest {
         }
     }
 
-    private static class RecordingSpotNode implements ZLinkBackendSpotNode {
+    private static class RecordingSpotNode implements ZLinkInternalSpotNode {
         private final List<Message> reply;
         ZLinkBackendActorRef sentActor;
         ZLinkBackendActorRef requestedActor;

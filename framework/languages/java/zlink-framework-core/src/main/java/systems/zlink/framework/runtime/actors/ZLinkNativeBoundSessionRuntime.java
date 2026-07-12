@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
@@ -18,7 +20,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
-    private final ZLinkBackendSpotNode spotNode;
+    private final ZLinkInternalSpotNode spotNode;
     private ZLinkBackendActorRef actorRef;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actorRuntime;
@@ -30,7 +32,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     private long bindingToken;
 
     ZLinkNativeBoundSessionRuntime(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkBackendActorRef actorRef,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actorRuntime,
@@ -96,7 +98,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     }
 
     private record SendCall(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkActorRuntime actorRuntime,
         ZLinkActor actor,
         RoutingId sourceNodeRid,
@@ -104,7 +106,6 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         Message payload,
         Duration timeout,
         ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
-        @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
                 spotNode,
@@ -131,7 +132,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public systems.zlink.framework.ZLinkSubmitStage submit() {
+        public void submit() {
             ZLinkBackendActorRef currentActorRef = actorRuntime.actorRef(actor);
             byte[] frameBytes;
             try {
@@ -139,20 +140,25 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             } finally {
                 payload.close();
             }
-            return systems.zlink.framework.ZLinkSubmitStage.from(sendWithRetry(
+            sendWithRetry(
                 spotNode,
                 currentActorRef,
                 sourceNodeRid,
                 sourceSessionRid,
                 frameBytes,
                 timeout,
-                "actor bound session send failed: " + currentActorRef.actorId()));
+                "actor bound session send failed: " + currentActorRef.actorId())
+                .exceptionally(error -> {
+                    java.util.logging.Logger.getLogger(ZLinkNativeBoundSessionRuntime.class.getName())
+                        .log(java.util.logging.Level.SEVERE, "native bound-session send failed", error);
+                    return null;
+                });
         }
 
     }
 
     private static CompletionStage<Void> sendWithRetry(
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,

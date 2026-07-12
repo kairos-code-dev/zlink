@@ -21,7 +21,7 @@ final class ZLinkSpotLocationLifecycle {
         this.runtime = runtime;
     }
 
-    CompletionStage<ZLinkLocationWriteStatus> claimAsync(
+    CompletionStage<ZLinkLocationWriteStatus> claim(
         String meshName,
         RoutingId spotRid,
         String spotType,
@@ -31,7 +31,7 @@ final class ZLinkSpotLocationLifecycle {
         Runnable deactivate) {
         ZLinkSpotLocation row = new ZLinkSpotLocation(
             meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, "", 0, Instant.EPOCH);
-        return runtime.writeSpotAsync(row, ZLinkLocationWriteIntent.NEW_CLAIM)
+        return runtime.writeSpot(row, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenApply(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
                     String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(meshName, spotRid));
@@ -43,7 +43,7 @@ final class ZLinkSpotLocationLifecycle {
             });
     }
 
-    CompletionStage<Void> releaseAsync(String meshName, RoutingId spotRid) {
+    CompletionStage<Void> release(String meshName, RoutingId spotRid) {
         ZLinkSpotLocationKey key = new ZLinkSpotLocationKey(meshName, spotRid);
         String canonical = ZLinkLocationKeyCodec.encodeSpotKey(key);
         TrackedSpot tracked;
@@ -53,7 +53,7 @@ final class ZLinkSpotLocationLifecycle {
         if (tracked == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return runtime.removeSpotAsync(key, tracked.generation()).thenApply(ignored -> null);
+        return runtime.removeSpot(key, tracked.generation()).thenApply(ignored -> null);
     }
 
     void onOwnershipLost(String canonicalKey) {

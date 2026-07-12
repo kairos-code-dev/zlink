@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
@@ -22,7 +22,7 @@ final class HostTest {
 
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.registerBean(ZLinkBackendAdapterProvider.class, () -> backendFactory);
             context.register(ProfileChannelConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 

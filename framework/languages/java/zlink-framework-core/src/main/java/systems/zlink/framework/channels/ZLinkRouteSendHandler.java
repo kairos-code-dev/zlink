@@ -1,7 +1,9 @@
 package systems.zlink.framework.channels;
 
+import java.util.concurrent.CompletionStage;
+
 public interface ZLinkRouteSendHandler<TMessage> {
-    void handle(
+    CompletionStage<Void> handle(
         TMessage message,
         ZLinkRouteSendContext context);
 }

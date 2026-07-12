@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime;
 
+import systems.zlink.framework.spots.SpotHandleResolver;
+
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
@@ -58,10 +60,10 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPublish;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
@@ -69,8 +71,6 @@ import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 
 final class ChannelMessagingTest {
     private static final AtomicInteger NEXT_PORT =
@@ -115,13 +115,12 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", message("hello"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("hello"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -141,13 +140,12 @@ final class ChannelMessagingTest {
         options.useFilter(ReplyDecoratingFilter.class);
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", message("hello"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("hello"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -176,7 +174,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addSendHandler(ProfileChangedHandler.class, String.class, "ProfileChanged"); };
+            channel.addSendHandler(ProfileChangedHandler.class, ProfileChanged.class, "ProfileChanged"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -228,35 +226,31 @@ final class ChannelMessagingTest {
             }); };
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String before = runtime.client()
-                .requestToChannel("profile", message("before"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("before"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("before", before);
             String markerText = runtime.client()
-                .requestToChannel("profile", message("ZLinkFrameworkError:not-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("ZLinkFrameworkError:not-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("ZLinkFrameworkError:not-error", markerText);
             String markerOnlyText = runtime.client()
-                .requestToChannel("profile", message("ZLinkFrameworkError"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("ZLinkFrameworkError"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("ZLinkFrameworkError", markerOnlyText);
 
             CompletionException failure = assertThrows(CompletionException.class, () -> runtime.client()
-                .requestToChannel("profile", message("missing"))
-                .packetName("MissingReq")
+                .requestToChannel("profile", new MissingRequest("missing"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join());
@@ -281,8 +275,7 @@ final class ChannelMessagingTest {
                 "dispatch error log marker was not written");
 
             String after = runtime.client()
-                .requestToChannel("profile", message("after"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("after"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -326,24 +319,20 @@ final class ChannelMessagingTest {
             }); };
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String before = runtime.client()
-                .requestToChannel("profile", message("before-send-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("before-send-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("before-send-error", before);
 
             runtime.client()
-                .sendToChannel("profile", message("missing-send"))
-                .packetName("MissingCommand")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("profile", new MissingCommand("missing-send"))
+                .submit();
 
             assertTrue(errorLatch.await(1, TimeUnit.SECONDS),
                 "dispatch error observer was not called");
@@ -362,8 +351,7 @@ final class ChannelMessagingTest {
                 "dispatch error log marker was not written");
 
             String after = runtime.client()
-                .requestToChannel("profile", message("after-send-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("after-send-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -408,14 +396,13 @@ final class ChannelMessagingTest {
             }); };
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
             channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class, "DecodeReq"); };
 
         ZLinkJavaBackendAdapterFactory backendFactory = new ZLinkJavaBackendAdapterFactory();
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             String before = runtime.client()
-                .requestToChannel("profile", message("before-decode-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("before-decode-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -466,7 +453,6 @@ final class ChannelMessagingTest {
 
             String after = runtime.client()
                 .requestToChannel("profile", new DecodePayload("after-decode-error"))
-                .packetName("DecodeReq")
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -512,22 +498,20 @@ final class ChannelMessagingTest {
             }); };
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-            channel.addRequestHandler(ThrowingRequestHandler.class, String.class, String.class, "ThrowReq"); };
+channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
+            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class, "ThrowReq"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String before = runtime.client()
-                .requestToChannel("profile", message("before-handler-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("before-handler-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("before-handler-error", before);
 
             CompletionException failure = assertThrows(CompletionException.class, () -> runtime.client()
-                .requestToChannel("profile", message("boom"))
-                .packetName("ThrowReq")
+                .requestToChannel("profile", new ThrowRequest("boom"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join());
@@ -553,8 +537,7 @@ final class ChannelMessagingTest {
                 "dispatch error log marker was not written");
 
             String after = runtime.client()
-                .requestToChannel("profile", message("after-handler-error"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("after-handler-error"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -589,24 +572,22 @@ final class ChannelMessagingTest {
             }); };
         { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Echo");
             channel.addRequestHandler(DecodeProbeHandler.class, DecodePayload.class, String.class, "DecodeReq");
-            channel.addRequestHandler(ThrowingRequestHandler.class, String.class, String.class, "ThrowReq"); };
+            channel.addRequestHandler(ThrowingRequestHandler.class, ThrowRequest.class, String.class, "ThrowReq"); };
 
         ZLinkJavaBackendAdapterFactory backendFactory = new ZLinkJavaBackendAdapterFactory();
         DecodeProbeHandler.invocations.set(0);
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             String before = runtime.client()
-                .requestToChannel("profile", message("before-file-log"))
-                .packetName("Echo")
+                .requestToChannel("profile", new EchoRequest("before-file-log"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("before-file-log", before);
 
             CompletionException missing = assertThrows(CompletionException.class, () -> runtime.client()
-                .requestToChannel("profile", message("missing"))
-                .packetName("MissingReq")
+                .requestToChannel("profile", new MissingRequest("missing"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join());
@@ -637,8 +618,7 @@ final class ChannelMessagingTest {
             }
 
             CompletionException thrown = assertThrows(CompletionException.class, () -> runtime.client()
-                .requestToChannel("profile", message("boom"))
-                .packetName("ThrowReq")
+                .requestToChannel("profile", new ThrowRequest("boom"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join());
@@ -690,7 +670,6 @@ final class ChannelMessagingTest {
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             JsonCodecProbe reply = runtime.client()
                 .requestToChannel("codec", request)
-                .packetName("JsonCodecProbe")
                 .submit(JsonCodecProbe.class)
                 .toCompletableFuture()
                 .join();
@@ -731,12 +710,12 @@ final class ChannelMessagingTest {
         { var channel = serverOptions.addClientServerChannel("manual-reg").enableServer(endpoint);
             channel.addRequestHandler(
                 ManualRegistrationRequestHandler.class,
-                String.class,
+                ManualRequest.class,
                 String.class,
                 "ManualRegisteredReq");
             channel.addSendHandler(
                 ManualRegistrationCommandHandler.class,
-                String.class,
+                ManualCommand.class,
                 "ManualRegisteredCommand"); };
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
@@ -757,7 +736,7 @@ final class ChannelMessagingTest {
             channel.enableSubscriber(fanoutEndpoint);
             channel.addPublishHandler(
                 ManualRegistrationPublishHandler.class,
-                String.class,
+                ManualEvent.class,
                 "ManualRegisteredEvent"); };
 
         try (ZLinkFrameworkRuntime ignoredServer =
@@ -769,19 +748,15 @@ final class ChannelMessagingTest {
              ZLinkFrameworkRuntime ignoredSubscriber =
                  RuntimeTestSupport.startFramework(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
             String reply = client.client()
-                .requestToChannel("manual-reg", message("registered"))
-                .packetName("ManualRegisteredReq")
+                .requestToChannel("manual-reg", new ManualRequest("registered"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             assertEquals("manual:registered", reply);
 
             client.client()
-                .sendToChannel("manual-reg", message("command"))
-                .packetName("ManualRegisteredCommand")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("manual-reg", new ManualCommand("command"))
+                .submit();
             assertTrue(sendLatch.await(1, TimeUnit.SECONDS), "manual send was not delivered");
             assertEquals("command", MANUAL_REG_SEND_MESSAGE.get());
             assertEquals("ManualRegisteredCommand", MANUAL_REG_SEND_PACKET.get());
@@ -794,8 +769,7 @@ final class ChannelMessagingTest {
             assertEquals("manual-events", MANUAL_REG_PUBLISH_CHANNEL.get());
 
             CompletionException missingRequest = assertThrows(CompletionException.class, () -> client.client()
-                .requestToChannel("manual-reg", message("missing"))
-                .packetName("ManualMissingReq")
+                .requestToChannel("manual-reg", new ManualMissingRequest("missing"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join());
@@ -804,11 +778,8 @@ final class ChannelMessagingTest {
                 "HANDLER_MISSING for packet 'ManualMissingReq'"));
 
             client.client()
-                .sendToChannel("manual-reg", message("missing-command"))
-                .packetName("ManualMissingCommand")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("manual-reg", new ManualMissingCommand("missing-command"))
+                .submit();
 
             publishManualRegistrationUntilObserved(
                 publisher,
@@ -864,8 +835,7 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", message("hello"))
-                .packetName("String")
+                .requestToChannel("profile", new StringPacket("hello"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -892,17 +862,13 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", message("hello"))
-                .packetName("AnnotatedEcho")
+                .requestToChannel("profile", new AnnotatedEcho("hello"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.client()
-                .sendToChannel("profile", message("changed"))
-                .packetName("ProfileChanged")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("profile", new ProfileChanged("changed"))
+                .submit();
 
             assertEquals("annotated:hello", reply);
             assertTrue(latch.await(1, TimeUnit.SECONDS), "annotated send was not delivered");
@@ -960,7 +926,6 @@ final class ChannelMessagingTest {
         OutboundChannelSpot.CONTEXT.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addSpotRemoteRefResolver(SpotEgressAddressResolver.class);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
         { var channel = sourceOptions.addRouteMeshChannel("route");
@@ -975,7 +940,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };
+            channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Noop"); };
         { var channel = targetOptions.addRouteMeshChannel("route");
             channel.enableServer(routeTargetEndpoint);
             channel.enableClient(routeSourceEndpoint);
@@ -1002,7 +967,11 @@ final class ChannelMessagingTest {
             ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
             SpotEgressReply reply = context.outbound()
                 .requestToSpot(
-                    new SpotRef("route", SPOT_EGRESS_TARGET_ROUTE_RID, targetSpotRid),
+                    OutboundChannelSpot.HANDLES.get()
+                        .resolveSpotHandle(targetSpotRid)
+                        .toCompletableFuture()
+                        .join()
+                        .orElseThrow(),
                     new SpotEgressRequest("ping"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(SpotEgressReply.class)
@@ -1031,17 +1000,17 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions firstOptions = new DefaultZLinkFrameworkOptions();
         { var channel = firstOptions.addFanoutChannel("sequence");
             channel.enableSubscriber(endpoint);
-            channel.addPublishHandler(FanoutSequenceOneHandler.class, String.class, "FanoutSequence"); };
+            channel.addPublishHandler(FanoutSequenceOneHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         DefaultZLinkFrameworkOptions secondOptions = new DefaultZLinkFrameworkOptions();
         { var channel = secondOptions.addFanoutChannel("sequence");
             channel.enableSubscriber(endpoint);
-            channel.addPublishHandler(FanoutSequenceTwoHandler.class, String.class, "FanoutSequence"); };
+            channel.addPublishHandler(FanoutSequenceTwoHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         DefaultZLinkFrameworkOptions thirdOptions = new DefaultZLinkFrameworkOptions();
         { var channel = thirdOptions.addFanoutChannel("sequence");
             channel.enableSubscriber(endpoint);
-            channel.addPublishHandler(FanoutSequenceThreeHandler.class, String.class, "FanoutSequence"); };
+            channel.addPublishHandler(FanoutSequenceThreeHandler.class, FanoutSequence.class, "FanoutSequence"); };
 
         try (ZLinkFrameworkRuntime publisher =
                  RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1077,7 +1046,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
         { var channel = subscriberOptions.addFanoutChannel("events"); channel.enableSubscriber(endpoint);
-            channel.addPublishHandler(ScoreChangedHandler.class, String.class, "ScoreChanged"); };
+            channel.addPublishHandler(ScoreChangedHandler.class, ScoreChanged.class, "ScoreChanged"); };
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
                  RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1114,7 +1083,7 @@ final class ChannelMessagingTest {
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime ignoredSource =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1169,7 +1138,7 @@ final class ChannelMessagingTest {
         { var channel = initiatorOptions.addRouteMeshChannel("route");
             channel.enableServer(initiatorEndpoint);
             channel.setRoutingId(initiatorRid);
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         DefaultZLinkFrameworkOptions nonInitiatorOptions = new DefaultZLinkFrameworkOptions();
         nonInitiatorOptions.addLocationStore(store);
@@ -1235,7 +1204,7 @@ final class ChannelMessagingTest {
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
+            channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1266,7 +1235,7 @@ final class ChannelMessagingTest {
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
-            channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket"); };
+            channel.addRequestHandler(DelayedRouteEchoHandler.class, SharedPacket.class, String.class, "SharedPacket"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1275,13 +1244,11 @@ final class ChannelMessagingTest {
             assertEquals("warmup", awaitSharedRouteReply(source, targetRid, "warmup:1"));
 
             CompletionStage<String> slow = source.route()
-                .requestToNode("route", targetRid, message("slow:40"))
-                .packetName("SharedPacket")
+                .requestToNode("route", targetRid, new SharedPacket("slow:40"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
             CompletionStage<String> fast = source.route()
-                .requestToNode("route", targetRid, message("fast:1"))
-                .packetName("SharedPacket")
+                .requestToNode("route", targetRid, new SharedPacket("fast:1"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
 
@@ -1312,7 +1279,7 @@ final class ChannelMessagingTest {
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
-            channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice"); };
+            channel.addSendHandler(RouteNoticeHandler.class, RouteNotice.class, "Notice"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -1340,8 +1307,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return client.client()
-                    .requestToChannel("api", message("hello"))
-                    .packetName("NestedApi")
+                    .requestToChannel("api", new NestedApi("hello"))
                     .timeout(Duration.ofMillis(200))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1365,8 +1331,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return context.outbound()
-                    .requestToChannel("api", message("hello"))
-                    .packetName("SpotApi")
+                    .requestToChannel("api", new SpotApi("hello"))
                     .timeout(Duration.ofMillis(200))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1399,11 +1364,8 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && FANOUT_LATCH.get().getCount() > 0) {
             publisher.fanout()
-                .publish("events", "score", message("home:1"))
-                .packetName("ScoreChanged")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .publish("events", "score", new ScoreChanged("home:1"))
+                .submit();
             Thread.onSpinWait();
         }
     }
@@ -1419,11 +1381,8 @@ final class ChannelMessagingTest {
             }
             String value = "seq:" + sequence++;
             publisher.fanout()
-                .publish("sequence", "score", message(value))
-                .packetName("FanoutSequence")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .publish("sequence", "score", new FanoutSequence(value))
+                .submit();
             Thread.onSpinWait();
         }
         common = commonFanoutSequence();
@@ -1455,11 +1414,8 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && MANUAL_REG_PUBLISH_LATCH.get().getCount() > 0) {
             publisher.fanout()
-                .publish("manual-events", "manual", message(value))
-                .packetName(packetName)
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .publish("manual-events", "manual", new ManualEvent(value))
+                .submit();
             Thread.onSpinWait();
         }
     }
@@ -1474,11 +1430,8 @@ final class ChannelMessagingTest {
                 && error.errorReason() == ZLinkDispatchErrorReason.HANDLER_MISSING
                 && packetName.equals(error.packetName()))) {
             publisher.fanout()
-                .publish("manual-events", "manual", message("missing-event"))
-                .packetName(packetName)
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .publish("manual-events", "manual", new ManualMissingEvent("missing-event"))
+                .submit();
             Thread.onSpinWait();
         }
     }
@@ -1487,11 +1440,8 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && SEND_LATCH.get().getCount() > 0) {
             runtime.client()
-                .sendToChannel("profile", message("changed"))
-                .packetName("ProfileChanged")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("profile", new ProfileChanged("changed"))
+                .submit();
             Thread.onSpinWait();
         }
     }
@@ -1502,8 +1452,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestToNode("route", targetRid, message("hello"))
-                    .packetName("Echo")
+                    .requestToNode("route", targetRid, new EchoRequest("hello"))
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1524,8 +1473,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 source.route()
-                    .requestToNode("route", targetRid, message("hello"))
-                    .packetName("Missing")
+                    .requestToNode("route", targetRid, new MissingRouteRequest("hello"))
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1550,8 +1498,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestToNode("route", targetRid, message("hello"))
-                    .packetName("String")
+                    .requestToNode("route", targetRid, new StringPacket("hello"))
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1573,8 +1520,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestToNode("route", targetRid, message(message))
-                    .packetName("SharedPacket")
+                    .requestToNode("route", targetRid, new SharedPacket(message))
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -1591,11 +1537,8 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && ROUTE_SEND_LATCH.get().getCount() > 0) {
             source.route()
-                .sendToNode("route", targetRid, message("ping"))
-                .packetName("Notice")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToNode("route", targetRid, new RouteNotice("ping"))
+                .submit();
             Thread.onSpinWait();
         }
     }
@@ -1710,20 +1653,22 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class EchoHandler implements ZLinkRequestHandler<String, String> {
+    public static final class EchoHandler implements ZLinkRequestHandler<EchoRequest, String> {
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return request;
+        public CompletionStage<String> handle(EchoRequest request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request.value());
         }
     }
 
     public static final class OutboundChannelSpot implements ZLinkSpot<ZLinkActor> {
         static final AtomicReference<ZLinkSpotContext> CONTEXT = new AtomicReference<>();
+        static final AtomicReference<SpotHandleResolver> HANDLES = new AtomicReference<>();
         private final ZLinkSpotContext context;
 
-        public OutboundChannelSpot(ZLinkSpotContext context) {
+        public OutboundChannelSpot(ZLinkSpotContext context, SpotHandleResolver handles) {
             this.context = context;
             CONTEXT.set(context);
+            HANDLES.set(handles);
         }
 
         @Override
@@ -1731,8 +1676,8 @@ final class ChannelMessagingTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
     }
 
     public static final class RemoteStateSpot implements ZLinkSpot<ZLinkActor> {
@@ -1747,8 +1692,8 @@ final class ChannelMessagingTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
 
         @Override
         public void configure() {
@@ -1771,35 +1716,62 @@ final class ChannelMessagingTest {
     public record SpotEgressRequest(String value) {
     }
 
+    @ZLinkPacket("Missing")
+    public record MissingRouteRequest(String value) {
+    }
+
+    @ZLinkPacket("ProfileChanged")
+    public record ProfileChanged(String value) {
+    }
+
+    @ZLinkPacket("ScoreChanged")
+    public record ScoreChanged(String value) {
+    }
+
+    @ZLinkPacket("FanoutSequence")
+    public record FanoutSequence(String value) {
+    }
+
+    @ZLinkPacket("Notice")
+    public record RouteNotice(String value) {
+    }
+
+    @ZLinkPacket("Echo") public record EchoRequest(String value) { }
+    @ZLinkPacket("ThrowReq") public record ThrowRequest(String value) { }
+    @ZLinkPacket("MissingReq") public record MissingRequest(String value) { }
+    @ZLinkPacket("MissingCommand") public record MissingCommand(String value) { }
+    @ZLinkPacket("ManualRegisteredReq") public record ManualRequest(String value) { }
+    @ZLinkPacket("ManualRegisteredCommand") public record ManualCommand(String value) { }
+    @ZLinkPacket("ManualRegisteredEvent") public record ManualEvent(String value) { }
+    @ZLinkPacket("ManualMissingReq") public record ManualMissingRequest(String value) { }
+    @ZLinkPacket("ManualMissingCommand") public record ManualMissingCommand(String value) { }
+    @ZLinkPacket("ManualMissingEvent") public record ManualMissingEvent(String value) { }
+    @ZLinkPacket("String") public record StringPacket(String value) { }
+    @ZLinkPacket("AnnotatedEcho") public record AnnotatedEcho(String value) { }
+    @ZLinkPacket("SharedPacket") public record SharedPacket(String value) { }
+    @ZLinkPacket("NestedApi") public record NestedApi(String value) { }
+    @ZLinkPacket("SpotApi") public record SpotApi(String value) { }
+    @ZLinkPacket("NestedRoute") public record NestedRoute(String value) { }
+
     public record SpotEgressReply(
         String spotRid,
         String nodeRid,
         String value) {
     }
 
-    public static final class SpotEgressAddressResolver
-        implements SpotRemoteRefResolver {
+
+    public static final class ThrowingRequestHandler implements ZLinkRequestHandler<ThrowRequest, String> {
         @Override
-        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
-            return CompletableFuture.completedFuture(
-                new SpotRemoteRef(
-                    "route",
-                    SPOT_EGRESS_TARGET_ROUTE_RID,
-                    spotRid,
-                    ZLinkSpotKind.USER));
+        public CompletionStage<String> handle(ThrowRequest request, ZLinkRequestContext context) {
+            return CompletableFuture.failedFuture(new IllegalStateException("DERR-007 handler exception"));
         }
     }
 
-    public static final class ThrowingRequestHandler implements ZLinkRequestHandler<String, String> {
-        @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            throw new IllegalStateException("DERR-007 handler exception");
-        }
-    }
-
+    @ZLinkPacket("DecodeReq")
     public record DecodePayload(String value) {
     }
 
+    @ZLinkPacket("JsonCodecProbe")
     public record JsonCodecProbe(
         String name,
         int revision,
@@ -1820,43 +1792,45 @@ final class ChannelMessagingTest {
         static final AtomicInteger invocations = new AtomicInteger();
 
         @Override
-        public String handle(DecodePayload request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(DecodePayload request, ZLinkRequestContext context) {
             invocations.incrementAndGet();
-            return "decode:" + request.value();
+            return CompletableFuture.completedFuture("decode:" + request.value());
         }
     }
 
     public static final class JsonCodecEchoHandler implements ZLinkRequestHandler<JsonCodecProbe, JsonCodecProbe> {
         @Override
-        public JsonCodecProbe handle(JsonCodecProbe request, ZLinkRequestContext context) {
-            return request;
+        public CompletionStage<JsonCodecProbe> handle(JsonCodecProbe request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture(request);
         }
     }
 
-    public static final class ManualRegistrationRequestHandler implements ZLinkRequestHandler<String, String> {
+    public static final class ManualRegistrationRequestHandler implements ZLinkRequestHandler<ManualRequest, String> {
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return "manual:" + request;
+        public CompletionStage<String> handle(ManualRequest request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture("manual:" + request.value());
         }
     }
 
-    public static final class ManualRegistrationCommandHandler implements ZLinkSendHandler<String> {
+    public static final class ManualRegistrationCommandHandler implements ZLinkSendHandler<ManualCommand> {
         @Override
-        public void handle(String message, ZLinkSendContext context) {
-            MANUAL_REG_SEND_MESSAGE.set(message);
+        public CompletionStage<Void> handle(ManualCommand message, ZLinkSendContext context) {
+            MANUAL_REG_SEND_MESSAGE.set(message.value());
             MANUAL_REG_SEND_PACKET.set(context.packetName().orElse(""));
             MANUAL_REG_SEND_CHANNEL.set(context.channelName().orElse(""));
             MANUAL_REG_SEND_LATCH.get().countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    public static final class ManualRegistrationPublishHandler implements ZLinkPublishHandler<String> {
+    public static final class ManualRegistrationPublishHandler implements ZLinkPublishHandler<ManualEvent> {
         @Override
-        public void handle(String message, ZLinkPublishContext context) {
-            MANUAL_REG_PUBLISH_MESSAGE.set(message);
+        public CompletionStage<Void> handle(ManualEvent message, ZLinkPublishContext context) {
+            MANUAL_REG_PUBLISH_MESSAGE.set(message.value());
             MANUAL_REG_PUBLISH_TOPIC.set(context.topic());
             MANUAL_REG_PUBLISH_CHANNEL.set(context.channelName().orElse(""));
             MANUAL_REG_PUBLISH_LATCH.get().countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1877,66 +1851,71 @@ final class ChannelMessagingTest {
     }
 
     @ZLinkHandlerGroup("scanned-profile")
-    public static final class ScannedEchoHandler implements ZLinkRequestHandler<String, String> {
+    public static final class ScannedEchoHandler implements ZLinkRequestHandler<StringPacket, String> {
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return "scanned:" + request;
+        public CompletionStage<String> handle(StringPacket request, ZLinkRequestContext context) {
+            return CompletableFuture.completedFuture("scanned:" + request.value());
         }
     }
 
-    public static final class ProfileChangedHandler implements ZLinkSendHandler<String> {
+    public static final class ProfileChangedHandler implements ZLinkSendHandler<ProfileChanged> {
         @Override
-        public void handle(String message, ZLinkSendContext context) {
-            SEND_MESSAGE.set(message);
+        public CompletionStage<Void> handle(ProfileChanged message, ZLinkSendContext context) {
+            SEND_MESSAGE.set(message.value());
             SEND_PACKET.set(context.packetName().orElse(""));
             SEND_CHANNEL.set(context.channelName().orElse(""));
             SEND_LATCH.get().countDown();
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     @ZLinkHandlerGroup("annotated-profile")
     public static final class AnnotatedProfileHandlers {
         @ZLinkRequest(packetName = "AnnotatedEcho")
-        public String echo(String request) {
-            return "annotated:" + request;
+        public String echo(AnnotatedEcho request) {
+            return "annotated:" + request.value();
         }
 
         @ZLinkSend(packetName = "ProfileChanged")
-        public void profileChanged(String message) {
-            SEND_MESSAGE.set(message);
+        public void profileChanged(ProfileChanged message) {
+            SEND_MESSAGE.set(message.value());
             SEND_PACKET.set("ProfileChanged");
             SEND_LATCH.get().countDown();
         }
     }
 
-    public static final class ScoreChangedHandler implements ZLinkPublishHandler<String> {
+    public static final class ScoreChangedHandler implements ZLinkPublishHandler<ScoreChanged> {
         @Override
-        public void handle(String message, ZLinkPublishContext context) {
-            FANOUT_MESSAGE.set(message);
+        public CompletionStage<Void> handle(ScoreChanged message, ZLinkPublishContext context) {
+            FANOUT_MESSAGE.set(message.value());
             FANOUT_TOPIC.set(context.topic());
             FANOUT_CHANNEL.set(context.channelName().orElse(""));
             FANOUT_LATCH.get().countDown();
-                    }
-    }
-
-    public static final class FanoutSequenceOneHandler implements ZLinkPublishHandler<String> {
-        @Override
-        public void handle(String message, ZLinkPublishContext context) {
-            FANOUT_SEQUENCE_ONE.add(message);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    public static final class FanoutSequenceTwoHandler implements ZLinkPublishHandler<String> {
+    public static final class FanoutSequenceOneHandler implements ZLinkPublishHandler<FanoutSequence> {
         @Override
-        public void handle(String message, ZLinkPublishContext context) {
-            FANOUT_SEQUENCE_TWO.add(message);
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+            FANOUT_SEQUENCE_ONE.add(message.value());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    public static final class FanoutSequenceThreeHandler implements ZLinkPublishHandler<String> {
+    public static final class FanoutSequenceTwoHandler implements ZLinkPublishHandler<FanoutSequence> {
         @Override
-        public void handle(String message, ZLinkPublishContext context) {
-            FANOUT_SEQUENCE_THREE.add(message);
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+            FANOUT_SEQUENCE_TWO.add(message.value());
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class FanoutSequenceThreeHandler implements ZLinkPublishHandler<FanoutSequence> {
+        @Override
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+            FANOUT_SEQUENCE_THREE.add(message.value());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1950,15 +1929,15 @@ final class ChannelMessagingTest {
         }
     }
 
-    public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
+    public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<EchoRequest, String> {
         @Override
-        public String handle(String request, ZLinkRouteRequestContext context) {
+        public CompletionStage<String> handle(EchoRequest request, ZLinkRouteRequestContext context) {
             ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
-            return "route:" + request;
+            return CompletableFuture.completedFuture("route:" + request.value());
         }
     }
 
-    public static final class NestedRouteApiHandler implements ZLinkRequestHandler<String, String> {
+    public static final class NestedRouteApiHandler implements ZLinkRequestHandler<NestedApi, String> {
         private final ZLinkRouteClient routes;
 
         public NestedRouteApiHandler(ZLinkRouteClient routes) {
@@ -1966,45 +1945,42 @@ final class ChannelMessagingTest {
         }
 
         @Override
-        public String handle(String request, ZLinkRequestContext context) {
-            return routes.requestToNode("route", RoutingId.from("nested-play-route"), message(request))
-                .packetName("NestedRoute")
+        public CompletionStage<String> handle(NestedApi request, ZLinkRequestContext context) {
+            return routes.requestToNode("route", RoutingId.from("nested-play-route"), new NestedRoute(request.value()))
                 .timeout(Duration.ofMillis(200))
-                .submit(String.class)
-                .toCompletableFuture()
-                .join();
+                .submit(String.class);
         }
     }
 
     @ZLinkHandlerGroup("route-shared")
     public static final class ScannedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public String handle(String request, ZLinkRouteRequestContext context) {
-            return "scanned-route:" + request;
+        public CompletionStage<String> handle(String request, ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture("scanned-route:" + request);
         }
     }
 
-    public static final class DelayedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
+    public static final class DelayedRouteEchoHandler implements ZLinkRouteRequestHandler<SharedPacket, String> {
         @Override
-        public String handle(String request, ZLinkRouteRequestContext context) {
-            String[] parts = request.split(":", 2);
+        public CompletionStage<String> handle(SharedPacket request, ZLinkRouteRequestContext context) {
+            String[] parts = request.value().split(":", 2);
             String value = parts[0];
             long delayMillis = parts.length == 2 ? Long.parseLong(parts[1]) : 0;
             return CompletableFuture.supplyAsync(
                 () -> value,
-                CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
-                .join();
+                CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS));
         }
     }
 
-    public static final class RouteNoticeHandler implements ZLinkRouteSendHandler<String> {
+    public static final class RouteNoticeHandler implements ZLinkRouteSendHandler<RouteNotice> {
         @Override
-        public void handle(String message, ZLinkRouteSendContext context) {
-            ROUTE_SEND_MESSAGE.set(message);
+        public CompletionStage<Void> handle(RouteNotice message, ZLinkRouteSendContext context) {
+            ROUTE_SEND_MESSAGE.set(message.value());
             ROUTE_SEND_PACKET.set(context.packetName().orElse(""));
             ROUTE_SEND_CHANNEL.set(context.channelName().orElse(""));
             ROUTE_SEND_SOURCE.set(context.routingId());
             ROUTE_SEND_LATCH.get().countDown();
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 }

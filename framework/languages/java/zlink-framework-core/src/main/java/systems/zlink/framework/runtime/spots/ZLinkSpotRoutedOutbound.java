@@ -7,9 +7,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
-import systems.zlink.framework.ZLinkSubmitStage;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -18,7 +16,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 
@@ -27,14 +25,14 @@ final class ZLinkSpotRoutedOutbound {
     private final ZLinkSpotRouteMessages messages;
     private final ZLinkSpotDirectOutbound directOutbound;
     private final ZLinkMessageFlowTracer flow;
-    private final Function<String, ZLinkBackendSpotNode> localRouterNode;
+    private final Function<String, ZLinkInternalSpotNode> localRouterNode;
 
     ZLinkSpotRoutedOutbound(
         ZLinkChannelRuntime channels,
         ZLinkSpotRouteMessages messages,
         ZLinkSpotDirectOutbound directOutbound,
         ZLinkMessageFlowTracer flow,
-        Function<String, ZLinkBackendSpotNode> localRouterNode) {
+        Function<String, ZLinkInternalSpotNode> localRouterNode) {
         this.channels = channels;
         this.messages = messages;
         this.directOutbound = directOutbound;
@@ -75,7 +73,7 @@ final class ZLinkSpotRoutedOutbound {
             ZLinkFrameworkTurns.captureCurrent());
     }
 
-    ZLinkSubmitStage submitSend(
+    void submitSend(
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
@@ -87,24 +85,32 @@ final class ZLinkSpotRoutedOutbound {
             packetName,
             routerChannelId,
             spotRid);
-        ZLinkBackendSpotNode routerNode = localRouterNode.apply(routerChannelId);
+        ZLinkInternalSpotNode routerNode = localRouterNode.apply(routerChannelId);
         if (routerNode != null) {
-            return directOutbound.send(
+            directOutbound.send(
                 routerNode.entrySpot(),
                 targetNodeRid,
                 spotRid,
                 payload,
                 packetName).submit();
+            return;
         }
         List<Message> parts = messages.encode(packetName, payload);
         try {
-            return ZLinkSubmitStage.from(channels.sendToSpotViaRouterChannel(
+            channels.sendToSpotViaRouterChannel(
                 routerChannelId,
                 targetNodeRid,
                 spotRid,
-                parts));
-        } finally {
+                parts).whenComplete((ignored, error) -> {
+                    parts.forEach(Message::close);
+                    if (error != null) {
+                        java.util.logging.Logger.getLogger(ZLinkSpotRoutedOutbound.class.getName())
+                            .log(java.util.logging.Level.SEVERE, "one-way routed SPOT submission failed", error);
+                    }
+                });
+        } catch (RuntimeException error) {
             parts.forEach(Message::close);
+            throw error;
         }
     }
 
@@ -123,7 +129,7 @@ final class ZLinkSpotRoutedOutbound {
             packetName,
             routerChannelId,
             spotRid);
-        ZLinkBackendSpotNode routerNode = localRouterNode.apply(routerChannelId);
+        ZLinkInternalSpotNode routerNode = localRouterNode.apply(routerChannelId);
         if (routerNode != null) {
             return directOutbound.request(
                 routerNode.entrySpot(),
@@ -203,7 +209,6 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
         this.packetName = packetName;
     }
 
-    @Override
     public ZLinkSendCall packetName(String packetName) {
         return new ZLinkSpotRoutedSendCall(
             outbound,
@@ -220,8 +225,8 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSubmitStage submit() {
-        return outbound.submitSend(
+    public void submit() {
+        outbound.submitSend(
             routerChannelId,
             targetNodeRid,
             spotRid,
@@ -259,7 +264,6 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
         this.turn = turn;
     }
 
-    @Override
     public ZLinkYieldRequestCall packetName(String packetName) {
         return new ZLinkSpotRoutedRequestCall(
             outbound,
@@ -307,17 +311,6 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
     public <TReply> TReply yield(Class<TReply> replyType) {
         return ZLinkAwait.await(
             ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
-    }
-
-    @Override
-    public <TReply> TReply yield(
-        Class<TReply> replyType,
-        CancellationToken cancellationToken) {
-        ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
-        return ZLinkAwait.await(ZLinkFrameworkTurns.awaitManagedCompletion(
-            requireTurn(),
-            submit(replyType),
-            cancellationToken));
     }
 
     private ZLinkYieldTurn requireTurn() {

@@ -5,9 +5,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.locations.ActorSpotRefResolver;
-import systems.zlink.framework.locations.SpotRef;
-import systems.zlink.framework.locations.SpotRefResolver;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
@@ -39,26 +36,24 @@ public final class ZLinkStoreLocationResolvers
     }
 
     @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listLivePeersAsync(ZLinkPeerLocationFilter filter) {
-        return stores.peerStore().listPeerLocationsAsync(filter)
+    public CompletionStage<List<ZLinkPeerLocation>> listLivePeers(ZLinkPeerLocationFilter filter) {
+        return stores.peerStore().listPeerLocations(filter)
             .thenCompose(liveRows::filterLivePeers);
     }
 
-    CompletionStage<ZLinkSpotLocation> resolveSpotRowAsync(ZLinkSpotLocationKey key) {
-        return liveRows.resolveLiveSpot(stores.spotStore().resolveSpotAsync(key));
+    CompletionStage<ZLinkSpotLocation> resolveSpotRow(ZLinkSpotLocationKey key) {
+        return liveRows.resolveLiveSpot(stores.spotStore().resolveSpot(key));
     }
 
-    public CompletionStage<ZLinkActorLocation> resolveActorRowAsync(ZLinkActorLocationKey key) {
-        return liveRows.resolveLiveActor(stores.actorStore().resolveActorAsync(key));
+    public CompletionStage<ZLinkActorLocation> resolveActorRow(ZLinkActorLocationKey key) {
+        return liveRows.resolveLiveActor(stores.actorStore().resolveActor(key));
     }
 
-    CompletionStage<ZLinkRouteLocation> resolveRouteRowAsync(ZLinkRouteLocationKey key) {
-        return liveRows.resolveLiveRoute(stores.routeStore().resolveRouteAsync(key));
+    CompletionStage<ZLinkRouteLocation> resolveRouteRow(ZLinkRouteLocationKey key) {
+        return liveRows.resolveLiveRoute(stores.routeStore().resolveRoute(key));
     }
 
-    public static final class AddressResolvers
-        implements SpotRefResolver,
-                   ActorSpotRefResolver {
+    public static final class AddressResolvers {
         private final List<String> meshNames;
         private final Map<String, String> spotRouterChannels;
         private final ZLinkStoreLocationResolvers rows;
@@ -78,44 +73,22 @@ public final class ZLinkStoreLocationResolvers
             this.rows = Objects.requireNonNull(rows, "rows");
         }
 
-        @Override
-        public CompletionStage<SpotRef> resolveSpotRefAsync(
-            String meshName,
-            systems.zlink.contracts.core.RoutingId spotRid) {
-            return rows.resolveSpotRowAsync(new ZLinkSpotLocationKey(meshName, spotRid))
-                .thenApply(row -> row == null
-                    ? null
-                    : new SpotRef(row.meshName(), row.nodeRid(), row.spotRid()));
+        public CompletionStage<ZLinkActorLocation> resolveActorSpotRow(String actorId) {
+            return rows.resolveActorRow(new ZLinkActorLocationKey(actorId));
         }
 
-        @Override
-        public CompletionStage<SpotRef> resolveActorSpotRefAsync(
-            String actorId) {
-            return rows.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
-                .thenApply(row -> {
-                    if (row == null) {
-                        return null;
-                    }
-                    systems.zlink.contracts.core.RoutingId spotRid =
-                        row.locationKind() == ZLinkSpotKind.ENTRY || row.spotRid() == null
-                            ? row.nodeRid()
-                            : row.spotRid();
-                    return new SpotRef(row.spotMeshName(), row.nodeRid(), spotRid);
-                });
-        }
-
-        CompletionStage<ZLinkSpotLocation> resolveAnySpotRowAsync(
+        public CompletionStage<ZLinkSpotLocation> resolveAnySpotRow(
             systems.zlink.contracts.core.RoutingId spotRid) {
             CompletionStage<ZLinkSpotLocation> result = CompletableFuture.completedFuture(null);
             for (String meshName : meshNames) {
                 result = result.thenCompose(found -> found != null
                     ? CompletableFuture.completedFuture(found)
-                    : rows.resolveSpotRowAsync(new ZLinkSpotLocationKey(meshName, spotRid)));
+                    : rows.resolveSpotRow(new ZLinkSpotLocationKey(meshName, spotRid)));
             }
             return result;
         }
 
-        String routerChannelId(String meshName) {
+        public String routerChannelId(String meshName) {
             return spotRouterChannels.getOrDefault(meshName, meshName);
         }
     }

@@ -9,9 +9,7 @@ import java.util.concurrent.Executor;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
-import systems.zlink.framework.ZLinkSubmitStage;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
@@ -92,7 +90,7 @@ final class ZLinkSpotDirectOutbound {
         return new ZLinkSpotDirectPublishCall(this, spot, topic, payload, packetName);
     }
 
-    ZLinkSubmitStage submitSend(
+    void submitSend(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
@@ -105,14 +103,14 @@ final class ZLinkSpotDirectOutbound {
             null,
             targetNodeRid,
             spotRid);
-        return ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
+        settle(CompletableFuture.runAsync(() -> {
             List<Message> parts = messages.encode(packetName, payload);
             try {
                 spot.sendToSpot(targetNodeRid, spotRid, parts, SendFlags.NONE);
             } finally {
                 parts.forEach(Message::close);
             }
-        }));
+        }, handlerExecutor));
     }
 
     <TReply> CompletionStage<TReply> submitRequest(
@@ -155,7 +153,7 @@ final class ZLinkSpotDirectOutbound {
         return result.thenApplyAsync(reply -> reply, handlerExecutor);
     }
 
-    ZLinkSubmitStage submitPublish(
+    void submitPublish(
         ZLinkBackendSpot spot,
         String topic,
         Message payload,
@@ -167,14 +165,22 @@ final class ZLinkSpotDirectOutbound {
             topic,
             null,
             null);
-        return ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
+        settle(CompletableFuture.runAsync(() -> {
             List<Message> parts = messages.encode(packetName, payload);
             try {
                 spot.publish(topic, parts, SendFlags.NONE);
             } finally {
                 parts.forEach(Message::close);
             }
-        }));
+        }, handlerExecutor));
+    }
+
+    private void settle(CompletionStage<Void> submission) {
+        submission.exceptionally(error -> {
+            java.util.logging.Logger.getLogger(ZLinkSpotDirectOutbound.class.getName())
+                .log(java.util.logging.Level.SEVERE, "one-way SPOT submission failed", error);
+            return null;
+        });
     }
 
     private void trace(
@@ -227,7 +233,6 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
         this.packetName = packetName;
     }
 
-    @Override
     public ZLinkSendCall packetName(String packetName) {
         return new ZLinkSpotDirectSendCall(
             outbound,
@@ -244,8 +249,8 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSubmitStage submit() {
-        return outbound.submitSend(
+    public void submit() {
+        outbound.submitSend(
             spot, targetNodeRid, spotRid, payload, packetName);
     }
 }
@@ -279,7 +284,6 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
         this.turn = turn;
     }
 
-    @Override
     public ZLinkYieldRequestCall packetName(String packetName) {
         return new ZLinkSpotDirectRequestCall(
             outbound,
@@ -328,17 +332,6 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
             ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
     }
 
-    @Override
-    public <TReply> TReply yield(
-        Class<TReply> replyType,
-        CancellationToken cancellationToken) {
-        ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
-        return ZLinkAwait.await(ZLinkFrameworkTurns.awaitManagedCompletion(
-            requireTurn(),
-            submit(replyType),
-            cancellationToken));
-    }
-
     private ZLinkYieldTurn requireTurn() {
         if (turn != null) {
             return turn;
@@ -372,7 +365,6 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
         this.packetName = packetName;
     }
 
-    @Override
     public ZLinkPublishCall packetName(String packetName) {
         return new ZLinkSpotDirectPublishCall(
             outbound, spot, topic, payload, Optional.of(packetName));
@@ -384,7 +376,7 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
     }
 
     @Override
-    public ZLinkSubmitStage submit() {
-        return outbound.submitPublish(spot, topic, payload, packetName);
+    public void submit() {
+        outbound.submitPublish(spot, topic, payload, packetName);
     }
 }

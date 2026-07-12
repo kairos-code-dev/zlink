@@ -2,8 +2,6 @@ package systems.zlink.framework.spots;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
-import java.util.function.BiConsumer;
-import systems.zlink.framework.CancellationToken;
 
 /**
  * Fluent worker offload call created by {@code context.runWorker(...)}.
@@ -32,9 +30,4 @@ public interface ZLinkWorkerCall<T> {
 
     T yield();
 
-    T yield(CancellationToken cancellationToken);
-
-    void submit(
-        BiConsumer<T, CancellationToken> onCompleted,
-        BiConsumer<Throwable, CancellationToken> onError);
 }

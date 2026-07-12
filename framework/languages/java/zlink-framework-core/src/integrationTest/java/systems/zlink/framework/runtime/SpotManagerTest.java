@@ -188,12 +188,13 @@ final class SpotManagerTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
 
         @Override
-        public void onInitialize() {
-                    }
+        public CompletionStage<Void> onInitialize() {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class PublishingSpot implements ZLinkSpot<ZLinkActor> {
@@ -228,26 +229,26 @@ final class SpotManagerTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
 
         @Override
-        public void onInitialize() {
+        public CompletionStage<Void> onInitialize() {
             initializedOnVirtualThread.set(Thread.currentThread().isVirtual());
-            context.addTimer(
+            return context.addTimer(
                     "heartbeat",
                     Duration.ofMillis(10),
                     HeartbeatTimerHandler.class,
                     null)
-                .toCompletableFuture()
-                .join();
+                .thenApply(timer -> null);
         }
 
         @Override
-        public void onClosing() {
+        public CompletionStage<Void> onClosing() {
             closedOnVirtualThread.set(Thread.currentThread().isVirtual());
             closed.countDown();
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class RejectingSpot implements ZLinkSpot<ZLinkActor> {
@@ -262,12 +263,13 @@ final class SpotManagerTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-            return ZLinkSpotCreateResponse.reject("reject:" + request.decode(String.class));
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
+            return CompletableFuture.completedFuture(
+                ZLinkSpotCreateResponse.reject("reject:" + request.decode(String.class)));
         }
     }
 
@@ -295,35 +297,29 @@ final class SpotManagerTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             createCalls.incrementAndGet();
             createRequest.set(request.decode(String.class));
             createStarted.countDown();
-            release.join();
-            return ZLinkSpotCreateResponse.accept();
+            return release.thenApply(ignored -> ZLinkSpotCreateResponse.accept());
         }
     }
 
     public static final class HeartbeatTimerHandler implements ZLinkSpotTimerHandler<PublishingSpot> {
         @Override
-        public void handle(PublishingSpot spot, ZLinkTimerTick tick) {
+        public CompletionStage<Void> handle(PublishingSpot spot, ZLinkTimerTick tick) {
             PublishingSpot.timerOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (PublishingSpot.removed.get()) {
                 PublishingSpot.afterRemoveTick.countDown();
             }
             PublishingSpot.ticks.incrementAndGet();
-            spot.context()
-                .outbound()
-                .publish("heartbeat", "tick")
-                .packetName("Heartbeat")
-                .submit()
-                .thenRun(PublishingSpot.timerPublished::countDown)
-                .toCompletableFuture()
-                .join();
+            spot.context().outbound().publish("heartbeat", "tick").submit();
+            PublishingSpot.timerPublished.countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

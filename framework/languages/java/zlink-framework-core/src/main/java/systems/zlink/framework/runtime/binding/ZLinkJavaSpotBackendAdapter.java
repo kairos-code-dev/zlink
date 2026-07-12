@@ -3,13 +3,13 @@ package systems.zlink.framework.runtime.binding;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 
 final class ZLinkJavaSpotBackendAdapter implements ZLinkSpotBackendAdapter {
     @Override
-    public ZLinkBackendSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) {
+    public ZLinkInternalSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) {
         return new ZLinkJavaSpotNode(nativeContext(context).createSpotNode(map(mode)));
     }
 

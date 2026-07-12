@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
 import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkRouteMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 
 final class DefaultClientServerChannelRuntimeOptions
@@ -9,6 +10,22 @@ final class DefaultClientServerChannelRuntimeOptions
     private final String channelName;
 
     DefaultClientServerChannelRuntimeOptions(ZLinkChannelRuntime host, String channelName) {
+        this.host = host;
+        this.channelName = channelName;
+    }
+
+    @Override
+    public ZLinkSocketRuntimeOptions configureServerSocket() {
+        return new DefaultChannelSocketRuntimeOptions(host, channelName);
+    }
+}
+
+final class DefaultRouteMeshChannelRuntimeOptions
+    implements ZLinkRouteMeshChannelRuntimeOptions {
+    private final ZLinkChannelRuntime host;
+    private final String channelName;
+
+    DefaultRouteMeshChannelRuntimeOptions(ZLinkChannelRuntime host, String channelName) {
         this.host = host;
         this.channelName = channelName;
     }

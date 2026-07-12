@@ -1,7 +1,5 @@
 package systems.zlink.framework.spots;
 
-import systems.zlink.framework.CancellationToken;
-
 /**
  * Work executed on the framework worker pool, outside the owning Spot's serial
  * execution line.
@@ -14,5 +12,5 @@ import systems.zlink.framework.CancellationToken;
  */
 @FunctionalInterface
 public interface ZLinkWorkerTask<T> {
-    T run(CancellationToken cancellationToken) throws Exception;
+    T run() throws Exception;
 }

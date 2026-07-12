@@ -28,12 +28,12 @@ class ZLinkInMemoryLocationStoreTest {
     @Test
     void newClaimRejectsWhenExistingOwnerLeaseIsLive() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.renewOwnerLeaseAsync("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
-        var first = store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        var first = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        var conflict = store.updatePeerAsync(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var conflict = store.updatePeer(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
@@ -45,11 +45,11 @@ class ZLinkInMemoryLocationStoreTest {
     @Test
     void expiredOwnerLeaseAllowsNewClaimWithNewGeneration() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        var replacement = store.updatePeerAsync(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var replacement = store.updatePeer(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
@@ -60,22 +60,22 @@ class ZLinkInMemoryLocationStoreTest {
     @Test
     void renewAndRemoveRequireCurrentOwnerToken() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        var claim = store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var claim = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        var staleRenew = store.updatePeerAsync(peer("owner-a", NODE_A, 99), ZLinkLocationWriteIntent.RENEW)
+        var staleRenew = store.updatePeer(peer("owner-a", NODE_A, 99), ZLinkLocationWriteIntent.RENEW)
             .toCompletableFuture()
             .get();
-        var renew = store.updatePeerAsync(peer("owner-a", NODE_A, claim.generation()), ZLinkLocationWriteIntent.RENEW)
+        var renew = store.updatePeer(peer("owner-a", NODE_A, claim.generation()), ZLinkLocationWriteIntent.RENEW)
             .toCompletableFuture()
             .get();
-        var staleRemove = store.removePeerAsync(
+        var staleRemove = store.removePeer(
                 peerKey(NODE_A),
                 new ZLinkLocationOwnerToken("owner-a", 99))
             .toCompletableFuture()
             .get();
-        var remove = store.removePeerAsync(
+        var remove = store.removePeer(
                 peerKey(NODE_A),
                 new ZLinkLocationOwnerToken("owner-a", claim.generation()))
             .toCompletableFuture()
@@ -85,24 +85,24 @@ class ZLinkInMemoryLocationStoreTest {
         assertEquals(ZLinkLocationWriteStatus.STORED, renew.status());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRemove.status());
         assertEquals(ZLinkLocationWriteStatus.STORED, remove.status());
-        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
     @Test
     void changeStampTracksMeshSpecificAndKindWideScopes() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
 
-        store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        assertEquals(1, store.getChangeStampAsync(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
+        assertEquals(1, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
             .toCompletableFuture()
             .get());
-        assertEquals(1, store.getChangeStampAsync(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, null))
+        assertEquals(1, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, null))
             .toCompletableFuture()
             .get());
-        assertEquals(0, store.getChangeStampAsync(new ZLinkLocationChangeStampScope(ZLinkLocationKind.SPOT, null))
+        assertEquals(0, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.SPOT, null))
             .toCompletableFuture()
             .get());
     }
@@ -115,6 +115,7 @@ class ZLinkInMemoryLocationStoreTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:6000",
             1,
+            false,
             0,
             Map.of(),
             List.of(),

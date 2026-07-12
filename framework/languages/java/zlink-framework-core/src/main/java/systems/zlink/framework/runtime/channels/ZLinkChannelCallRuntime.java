@@ -11,6 +11,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -24,6 +28,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 
 final class ZLinkChannelCallRuntime {
+    private static final Logger LOGGER = Logger.getLogger(ZLinkChannelCallRuntime.class.getName());
     @FunctionalInterface
     interface SpotSend {
         CompletionStage<Void> send(
@@ -50,6 +55,11 @@ final class ZLinkChannelCallRuntime {
     private final SpotSend spotSend;
     private final SpotRequest spotRequest;
     private final Set<CompletableFuture<?>> pendingRequests = ConcurrentHashMap.newKeySet();
+    private final ExecutorService oneWayExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "zlink-java-channel-one-way-submit");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     ZLinkChannelCallRuntime(
         ZLinkMessageFlowTracer flow,
@@ -70,6 +80,20 @@ final class ZLinkChannelCallRuntime {
 
     ZLinkMessageFlowTracer flow() {
         return flow;
+    }
+
+    void settleOneWay(CompletableFuture<Void> submission) {
+        pendingRequests.add(submission);
+        submission.whenComplete((ignored, error) -> {
+            pendingRequests.remove(submission);
+            if (error != null) {
+                LOGGER.log(Level.SEVERE, "one-way channel submission failed", error);
+            }
+        });
+    }
+
+    void submitOneWay(Runnable submission) {
+        settleOneWay(CompletableFuture.runAsync(submission, oneWayExecutor));
     }
 
     void track(CompletableFuture<?> result, Duration timeout) {
@@ -162,6 +186,7 @@ final class ZLinkChannelCallRuntime {
     }
 
     void beginClose() {
+        oneWayExecutor.shutdown();
         for (CompletableFuture<?> pending : pendingRequests) {
             pending.completeExceptionally(new ZLinkConfigurationException(
                 "channel runtime is closed"));

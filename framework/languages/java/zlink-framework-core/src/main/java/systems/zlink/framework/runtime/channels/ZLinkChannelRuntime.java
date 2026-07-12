@@ -1,5 +1,9 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
+
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,7 +39,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
@@ -44,6 +47,7 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkRouteMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -70,21 +74,22 @@ import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
@@ -110,22 +115,23 @@ public final class ZLinkChannelRuntime
     private final ZLinkMessageSerializer serializer;
     private final ZLinkChannelReplyDecoder replyDecoder;
     private final ZLinkCodecRegistration codecs;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final Executor handlerExecutor;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final List<Class<? extends ZLinkHandlerFilter>> filterTypes;
     private final ZLinkChannelHandlerInvoker channelHandlerInvoker;
     private final ZLinkChannelReceiveLoops receiveLoops;
     private final Duration defaultRequestTimeout;
     private final ZLinkChannelCallRuntime callRuntime;
+    private final SpotTransportAddressResolver spotAddressResolver;
     private final ZLinkSpotRouteBridgeDrainer spotRouteBridgeDrainer;
-    private final ZLinkBackendAdapterFactory backendFactory;
+    private final ZLinkBackendAdapterProvider backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private final ZLinkChannelDispatchReporter dispatchReporter;
     private final ZLinkChannelMessageDispatcher messageDispatcher;
     private final ZLinkChannelRouteDispatcher routeDispatcher;
-    private Supplier<ZLinkBackendSpotNode> spotRouteBridgeOwner;
+    private Supplier<ZLinkInternalSpotNode> spotRouteBridgeOwner;
     private final ExecutorService spotRouteBridgeExecutor = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "zlink-java-spot-route-bridge");
         thread.setDaemon(true);
@@ -159,6 +165,12 @@ public final class ZLinkChannelRuntime
     public ZLinkClientServerChannelRuntimeOptions clientServerChannel(String channelName) {
         ChannelRegistration registration = requireChannel(channelName, ChannelKind.CLIENT_SERVER);
         return new DefaultClientServerChannelRuntimeOptions(this, registration.name());
+    }
+
+    @Override
+    public ZLinkRouteMeshChannelRuntimeOptions routeMeshChannel(String channelName) {
+        ChannelRegistration registration = requireChannel(channelName, ChannelKind.ROUTE_MESH);
+        return new DefaultRouteMeshChannelRuntimeOptions(this, registration.name());
     }
 
     private ChannelRegistration requireChannel(String channelName, ChannelKind kind) {
@@ -202,24 +214,24 @@ public final class ZLinkChannelRuntime
         ZLinkChannelBackendAdapter backend,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer) {
-        this(backend, registration, serializer, ZLinkHandlerFactory.reflection());
+        this(backend, registration, serializer, ZLinkHandlerActivator.reflection());
     }
 
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(backend, null, null, registration, serializer, handlerFactory);
     }
 
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             backend,
             backend.createContext(),
@@ -235,11 +247,11 @@ public final class ZLinkChannelRuntime
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,
         ZLinkBackendContext context,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             backend,
             context,
@@ -255,11 +267,11 @@ public final class ZLinkChannelRuntime
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,
         ZLinkBackendContext context,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this(
             backend,
@@ -277,16 +289,17 @@ public final class ZLinkChannelRuntime
         ZLinkChannelBackendAdapter backend,
         ZLinkBackendContext context,
         boolean ownsContext,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.serializer = Objects.requireNonNull(serializer, "serializer");
         this.replyDecoder = new ZLinkChannelReplyDecoder(this.serializer);
         this.codecs = Objects.requireNonNull(registration.codecs(), "codecs");
         this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
+        this.spotAddressResolver = resolveSpotAddressResolver(this.handlerFactory);
         this.handlerExecutor = Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor");
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.filterTypes = List.copyOf(registration.filters());
@@ -408,16 +421,16 @@ public final class ZLinkChannelRuntime
     @Override
     public ZLinkSendCall sendToSpot(
         String channelName,
-        SpotRef spotRef,
+        SpotHandle spot,
         Object message) {
-        Objects.requireNonNull(spotRef, "spotRef");
+        Objects.requireNonNull(spot, "spot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotSendCall(
             callRuntime,
             channelName,
-            spotRef.nodeRid(),
-            spotRef.spotRid(),
+            spotAddressResolver,
+            spot,
             encoded.payload(),
             Optional.of(encoded.packetName()));
     }
@@ -439,23 +452,33 @@ public final class ZLinkChannelRuntime
     @Override
     public ZLinkRequestCall requestToSpot(
         String channelName,
-        SpotRef spotRef,
+        SpotHandle spot,
         Object message) {
-        Objects.requireNonNull(spotRef, "spotRef");
+        Objects.requireNonNull(spot, "spot");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotRequestCall(
             callRuntime,
             channelName,
-            spotRef.nodeRid(),
-            spotRef.spotRid(),
+            spotAddressResolver,
+            spot,
             encoded.payload(),
             Optional.of(encoded.packetName()),
             defaultRequestTimeout(channelName));
     }
 
+    private static SpotTransportAddressResolver resolveSpotAddressResolver(
+        ZLinkHandlerActivator handlerFactory) {
+        try {
+            return (SpotTransportAddressResolver) handlerFactory.create(
+                SpotTransportAddressResolver.class);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
     public void registerSpotRouteBridgeOwner(
-        Supplier<ZLinkBackendSpotNode> owner) {
+        Supplier<ZLinkInternalSpotNode> owner) {
         this.spotRouteBridgeOwner = Objects.requireNonNull(owner, "owner");
     }
 
@@ -465,7 +488,7 @@ public final class ZLinkChannelRuntime
 
     public boolean attachSpotRouteBridgeToServer(
         String channelName,
-        ZLinkBackendSpotNode node) {
+        ZLinkInternalSpotNode node) {
         ZLinkBackendRouterSocket router = sockets.server(channelName);
         if (router == null) {
             router = sockets.routeRouter(channelName);
@@ -484,7 +507,7 @@ public final class ZLinkChannelRuntime
 
     public void registerSpotRouterNode(
         String routerChannelId,
-        ZLinkBackendSpotNode node) {
+        ZLinkInternalSpotNode node) {
         String channelId = requireRouterChannelId(routerChannelId);
         sockets.registerSpotRouterNode(channelId, Objects.requireNonNull(node, "node"));
     }
@@ -612,7 +635,7 @@ public final class ZLinkChannelRuntime
         if (registration != null && registration.kind() == ChannelKind.ROUTE_MESH) {
             return new ZLinkRouteBridgeTarget();
         }
-        ZLinkBackendSpotNode spotRouterNode = sockets.spotRouterNode(routerChannelId);
+        ZLinkInternalSpotNode spotRouterNode = sockets.spotRouterNode(routerChannelId);
         if (spotRouterNode != null) {
             return new ZLinkSpotRouterNodeTarget(spotRouterNode);
         }
@@ -623,7 +646,7 @@ public final class ZLinkChannelRuntime
 
     private CompletionStage<Void> sendToSpotViaSpotRouterNode(
         String routerChannelId,
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts) {
@@ -637,7 +660,7 @@ public final class ZLinkChannelRuntime
 
     private CompletionStage<List<Message>> requestToSpotViaSpotRouterNode(
         String routerChannelId,
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts,

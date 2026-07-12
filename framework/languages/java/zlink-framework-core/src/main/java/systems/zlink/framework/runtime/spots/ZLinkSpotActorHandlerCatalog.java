@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -281,13 +280,12 @@ final class ZLinkSpotActorHandlerCatalog {
         if (parameters.length == 2) {
             return new ActorMessageShape(null, parameters[0], parameters[1]);
         }
-        if (parameters.length == 5
-            && parameters[2].isAssignableFrom(contextType)
-            && parameters[4] == CancellationToken.class) {
+        if (parameters.length == 4
+            && parameters[2].isAssignableFrom(contextType)) {
             return new ActorMessageShape(parameters[0], parameters[1], parameters[3]);
         }
         throw new ZLinkConfigurationException(
-            "Spot actor packet handler method must have actor/message or spot, actor, context, message, CancellationToken parameters: "
+            "Spot actor packet handler method must have actor/message or spot, actor, context, message parameters: "
                 + handlerType.getName() + "." + method.getName());
     }
 

@@ -39,7 +39,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
@@ -52,7 +52,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
@@ -294,15 +294,13 @@ final class EntrySpotActorDispatchTests {
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -328,21 +326,22 @@ final class EntrySpotActorDispatchTests {
 
     public static final class ProbeActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
-            return new ProbeActor(actorId, context);
+        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new ProbeActor(actorId, context));
         }
     }
 
     public static final class ProbeActorRequestHandler {
         @ZLinkSpotActorRequest(packetName = "request")
-        public ProbeReply handle(ProbeActor actor, ProbeRequest request) {
-            return new ProbeReply(request.value() + ":" + actor.actorId());
+        public CompletionStage<ProbeReply> handle(ProbeActor actor, ProbeRequest request) {
+            return CompletableFuture.completedFuture(
+                new ProbeReply(request.value() + ":" + actor.actorId()));
         }
     }
 
     public static final class ProbeActorThrowHandler {
         @ZLinkSpotActorRequest(packetName = "throw")
-        public ProbeReply handle(ProbeActor actor, ProbeRequest request) {
+        public CompletionStage<ProbeReply> handle(ProbeActor actor, ProbeRequest request) {
             throw new IllegalStateException(request.value());
         }
     }
@@ -386,7 +385,7 @@ final class EntrySpotActorDispatchTests {
     }
 
     private static final class TestBackend
-        implements ZLinkBackendAdapterFactory, ZLinkChannelBackendAdapter, ZLinkSpotBackendAdapter {
+        implements ZLinkBackendAdapterProvider, ZLinkChannelBackendAdapter, ZLinkSpotBackendAdapter {
         final TestSpotNode node = new TestSpotNode();
         final TestSpot entrySpot = node.entrySpot;
 
@@ -399,7 +398,7 @@ final class EntrySpotActorDispatchTests {
         @Override public ZLinkBackendRouterSocket createRouterSocket(ZLinkBackendContext context) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendPublisherSocket createPublisherSocket(ZLinkBackendContext context) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendSubscriberSocket createSubscriberSocket(ZLinkBackendContext context) { throw new UnsupportedOperationException(); }
-        @Override public ZLinkBackendSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) { return node; }
+        @Override public ZLinkInternalSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) { return node; }
     }
 
     private static final class TestContext implements ZLinkBackendContext {
@@ -408,7 +407,7 @@ final class EntrySpotActorDispatchTests {
         @Override public void close() { }
     }
 
-    private static final class TestSpotNode implements ZLinkBackendSpotNode {
+    private static final class TestSpotNode implements ZLinkInternalSpotNode {
         private RoutingId routingId = RoutingId.from("entry-node");
         private final TestSpot entrySpot = new TestSpot();
         private final List<ReplyRecord> noBindReplies = new CopyOnWriteArrayList<>();

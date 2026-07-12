@@ -51,8 +51,8 @@ final class ZLinkActorLocationCoordinator {
             return CompletableFuture.completedFuture(null);
         }
         CompletionStage<ZLinkLocationWriteStatus> claim = intent == ZLinkLocationWriteIntent.TAKEOVER
-            ? lifecycle.takeoverActorAsync(actorType, actorId, ownerNodeRid, ownershipLost)
-            : lifecycle.claimActorAsync(actorType, actorId, ownerNodeRid, ownershipLost);
+            ? lifecycle.takeoverActor(actorType, actorId, ownerNodeRid, ownershipLost)
+            : lifecycle.claimActor(actorType, actorId, ownerNodeRid, ownershipLost);
         return claim.thenCompose(status -> {
             if (status == ZLinkLocationWriteStatus.STORED) {
                 return CompletableFuture.completedFuture(null);
@@ -68,14 +68,14 @@ final class ZLinkActorLocationCoordinator {
         if (lifecycle == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.setActorRefAsync(actorType, actorId, actorRef);
+        return lifecycle.setActorRef(actorType, actorId, actorRef);
     }
 
     CompletionStage<Optional<ActorRef>> findStoredActorRef(String actorId) {
         if (resolvers == null) {
             return CompletableFuture.completedFuture(Optional.empty());
         }
-        return resolvers.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
+        return resolvers.resolveActorRow(new ZLinkActorLocationKey(actorId))
             .thenApply(row -> row == null || row.actorRef() == null
                 ? Optional.empty()
                 : Optional.of(row.actorRef()));
@@ -93,7 +93,7 @@ final class ZLinkActorLocationCoordinator {
         if (meshName == null || meshName.isBlank()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorJoinedSpotAsync(actorType, actor.actorId(), meshName, spotRid);
+        return lifecycle.notifyActorJoinedSpot(actorType, actor.actorId(), meshName, spotRid);
     }
 
     CompletionStage<Void> actorLeftSpot(ZLinkActor actor) {
@@ -104,7 +104,7 @@ final class ZLinkActorLocationCoordinator {
         if (actorType == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorLeftSpotAsync(actorType, actor.actorId());
+        return lifecycle.notifyActorLeftSpot(actorType, actor.actorId());
     }
 
     CompletionStage<Void> actorMovedToEntrySpot(ZLinkActor actor, RoutingId nodeRid) {
@@ -115,21 +115,21 @@ final class ZLinkActorLocationCoordinator {
         if (actorType == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorMovedToEntrySpotAsync(actorType, actor.actorId(), nodeRid);
+        return lifecycle.notifyActorMovedToEntrySpot(actorType, actor.actorId(), nodeRid);
     }
 
     CompletionStage<Void> releaseActor(String actorType, String actorId) {
         if (lifecycle == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.releaseActorAsync(actorType == null ? "" : actorType, actorId);
+        return lifecycle.releaseActor(actorType == null ? "" : actorType, actorId);
     }
 
     void bindSessionRoute(RoutingId routeSessionRid, String actorId, RoutingId sourceNodeRid) {
         if (lifecycle == null || routeSessionRid == null || sourceNodeRid == null) {
             return;
         }
-        lifecycle.bindActorSessionRouteAsync(routeSessionRid, actorId, sourceNodeRid)
+        lifecycle.bindActorSessionRoute(routeSessionRid, actorId, sourceNodeRid)
             .exceptionally(error -> null);
     }
 
@@ -137,7 +137,7 @@ final class ZLinkActorLocationCoordinator {
         if (lifecycle == null || routeSessionRid == null) {
             return;
         }
-        lifecycle.removeActorSessionRouteAsync(routeSessionRid)
+        lifecycle.removeActorSessionRoute(routeSessionRid)
             .exceptionally(error -> null);
     }
 

@@ -1,5 +1,7 @@
 package systems.zlink.framework.spots;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
@@ -9,14 +11,16 @@ public interface ZLinkSpot<TActor extends ZLinkActor> extends ZLinkSpotActorLife
     default void configure() {
     }
 
-    default ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-        return ZLinkSpotCreateResponse.accept();
+    default CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
+        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
-    default void onInitialize() {
+    default CompletionStage<Void> onInitialize() {
+        return CompletableFuture.completedFuture(null);
     }
 
-    default void onClosing() {
+    default CompletionStage<Void> onClosing() {
+        return CompletableFuture.completedFuture(null);
     }
 
 }

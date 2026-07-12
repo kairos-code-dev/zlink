@@ -15,7 +15,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
@@ -26,7 +26,7 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
     public static final int PHASE = ZLinkFrameworkLifecycle.PHASE + 100;
 
     private final DefaultZLinkMonitoringOptions options;
-    private final ZLinkBackendAdapterFactory backendAdapterFactory;
+    private final ZLinkBackendAdapterProvider backendAdapterFactory;
     private final ZLinkRuntimeEventDispatcher dispatcher;
     private final ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle;
     private final List<ZLinkRuntimeEventHandler<?>> eventHandlers;
@@ -37,7 +37,7 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
 
     public ZLinkMonitoringLifecycle(
         DefaultZLinkMonitoringOptions options,
-        ZLinkBackendAdapterFactory backendAdapterFactory,
+        ZLinkBackendAdapterProvider backendAdapterFactory,
         ZLinkRuntimeEventDispatcher dispatcher,
         ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle,
         List<ZLinkRuntimeEventHandler<?>> eventHandlers) {

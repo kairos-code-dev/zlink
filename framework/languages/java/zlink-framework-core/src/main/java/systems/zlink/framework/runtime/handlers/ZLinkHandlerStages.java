@@ -24,4 +24,18 @@ public final class ZLinkHandlerStages {
             return CompletableFuture.failedFuture(ex);
         }
     }
+
+    public static <T> CompletionStage<T> fromStageSupplier(
+        Supplier<? extends CompletionStage<T>> operation) {
+        try {
+            CompletionStage<T> stage = operation.get();
+            if (stage == null) {
+                return CompletableFuture.failedFuture(
+                    new NullPointerException("handler returned a null completion stage"));
+            }
+            return stage;
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(ex);
+        }
+    }
 }

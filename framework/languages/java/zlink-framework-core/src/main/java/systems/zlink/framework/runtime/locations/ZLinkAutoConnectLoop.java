@@ -30,28 +30,28 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
         });
     }
 
-    CompletionStage<Void> startAsync() {
+    CompletionStage<Void> start() {
         running = true;
         startupPollingUntilNanos = System.nanoTime() + options.heartbeatInterval().toNanos();
-        return tickAsync().whenComplete((ignored, failure) -> {
+        return tick().whenComplete((ignored, failure) -> {
             if (running) {
                 scheduleNext();
             }
         });
     }
 
-    CompletionStage<Void> stopAsync() {
+    CompletionStage<Void> stop() {
         running = false;
         if (task != null) {
             task.cancel(false);
             task = null;
         }
         executor.shutdownNow();
-        return reconciler.shutdownAsync();
+        return reconciler.shutdown();
     }
 
-    private CompletionStage<Void> tickAsync() {
-        return reconciler.tickAsync();
+    private CompletionStage<Void> tick() {
+        return reconciler.tick();
     }
 
     private void tickOnLoop() {
@@ -59,7 +59,7 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
             return;
         }
         try {
-            tickAsync().toCompletableFuture().join();
+            tick().toCompletableFuture().join();
         } catch (RuntimeException ignored) {
             // The reconciler records store failures as fail-static ticks.
         } finally {
@@ -79,7 +79,7 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
 
     @Override
     public void close() {
-        stopAsync().toCompletableFuture().join();
+        stop().toCompletableFuture().join();
         executor.close();
     }
 }

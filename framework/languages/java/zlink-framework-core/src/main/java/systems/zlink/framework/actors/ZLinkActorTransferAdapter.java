@@ -1,6 +1,6 @@
 package systems.zlink.framework.actors;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
 /**
@@ -9,13 +9,10 @@ import systems.zlink.framework.messaging.ZLinkMessage;
  * responsibilities.
  */
 public interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
-    ZLinkMessage transferOut(
-        TActor actor,
-        CancellationToken cancellationToken);
+    CompletionStage<ZLinkMessage> transferOut(TActor actor);
 
-    TActor transferIn(
+    CompletionStage<TActor> transferIn(
         String actorId,
         ZLinkActorContext context,
-        ZLinkMessage state,
-        CancellationToken cancellationToken);
+        ZLinkMessage state);
 }

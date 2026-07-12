@@ -11,7 +11,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
 final class ZLinkSpotRouterNodeDispatcher {
     private ZLinkSpotRouterNodeDispatcher() {
@@ -19,7 +19,7 @@ final class ZLinkSpotRouterNodeDispatcher {
 
     static CompletionStage<Void> send(
         String routerChannelId,
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts) {
@@ -52,7 +52,7 @@ final class ZLinkSpotRouterNodeDispatcher {
 
     static CompletionStage<List<Message>> request(
         String routerChannelId,
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts,

@@ -24,7 +24,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         this.runtime.addOwnershipLostListener(ownershipLostListener);
     }
 
-    public CompletionStage<ZLinkLocationWriteStatus> claimSpotAsync(
+    public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
         String meshName,
         RoutingId spotRid,
         String spotType,
@@ -32,65 +32,65 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         ZLinkSpotKind spotKind,
         String routeEndpoint,
         Runnable deactivate) {
-        return spots.claimAsync(meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, deactivate);
+        return spots.claim(meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, deactivate);
     }
 
-    public CompletionStage<Void> releaseSpotAsync(String meshName, RoutingId spotRid) {
-        return spots.releaseAsync(meshName, spotRid);
+    public CompletionStage<Void> releaseSpot(String meshName, RoutingId spotRid) {
+        return spots.release(meshName, spotRid);
     }
 
-    public CompletionStage<ZLinkLocationWriteStatus> claimActorAsync(
+    public CompletionStage<ZLinkLocationWriteStatus> claimActor(
         String actorType,
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return actors.claimAsync(actorType, actorId, nodeRid, deactivate);
+        return actors.claim(actorType, actorId, nodeRid, deactivate);
     }
 
-    public CompletionStage<ZLinkLocationWriteStatus> takeoverActorAsync(
+    public CompletionStage<ZLinkLocationWriteStatus> takeoverActor(
         String actorType,
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return actors.takeoverAsync(actorType, actorId, nodeRid, deactivate);
+        return actors.takeover(actorType, actorId, nodeRid, deactivate);
     }
 
-    public CompletionStage<Void> setActorRefAsync(String actorType, String actorId, ActorRef actorRef) {
-        return actors.setActorRefAsync(actorType, actorId, actorRef);
+    public CompletionStage<Void> setActorRef(String actorType, String actorId, ActorRef actorRef) {
+        return actors.setActorRef(actorType, actorId, actorRef);
     }
 
-    public CompletionStage<Void> notifyActorJoinedSpotAsync(
+    public CompletionStage<Void> notifyActorJoinedSpot(
         String actorType,
         String actorId,
         String meshName,
         RoutingId spotRid) {
-        return actors.notifyJoinedSpotAsync(actorType, actorId, meshName, spotRid);
+        return actors.notifyJoinedSpot(actorType, actorId, meshName, spotRid);
     }
 
-    public CompletionStage<Void> notifyActorLeftSpotAsync(String actorType, String actorId) {
-        return actors.notifyLeftSpotAsync(actorType, actorId);
+    public CompletionStage<Void> notifyActorLeftSpot(String actorType, String actorId) {
+        return actors.notifyLeftSpot(actorType, actorId);
     }
 
-    public CompletionStage<Void> notifyActorMovedToEntrySpotAsync(
+    public CompletionStage<Void> notifyActorMovedToEntrySpot(
         String actorType,
         String actorId,
         RoutingId nodeRid) {
-        return actors.notifyMovedToEntrySpotAsync(actorType, actorId, nodeRid);
+        return actors.notifyMovedToEntrySpot(actorType, actorId, nodeRid);
     }
 
-    public CompletionStage<Void> releaseActorAsync(String actorType, String actorId) {
-        return actors.releaseAsync(actorType, actorId);
+    public CompletionStage<Void> releaseActor(String actorType, String actorId) {
+        return actors.release(actorType, actorId);
     }
 
-    public CompletionStage<Void> bindActorSessionRouteAsync(
+    public CompletionStage<Void> bindActorSessionRoute(
         RoutingId sessionRid,
         String actorId,
         RoutingId ownerNodeRid) {
-        return actorSessionRoutes.bindAsync(sessionRid, actorId, ownerNodeRid);
+        return actorSessionRoutes.bind(sessionRid, actorId, ownerNodeRid);
     }
 
-    public CompletionStage<Void> removeActorSessionRouteAsync(RoutingId sessionRid) {
-        return actorSessionRoutes.removeAsync(sessionRid);
+    public CompletionStage<Void> removeActorSessionRoute(RoutingId sessionRid) {
+        return actorSessionRoutes.remove(sessionRid);
     }
 
     boolean ownsActor(String actorType, String actorId) {

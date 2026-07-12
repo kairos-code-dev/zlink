@@ -4,7 +4,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 
 public interface ZLinkLocationReadiness {
-    CompletionStage<Boolean> isPeerReadyAsync(
+    CompletionStage<Boolean> isPeerReady(
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid);

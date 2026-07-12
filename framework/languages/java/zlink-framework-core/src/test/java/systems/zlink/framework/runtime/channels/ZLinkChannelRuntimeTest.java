@@ -1,5 +1,9 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.spots.SpotHandles;
+
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,30 +31,42 @@ import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 
 final class ZLinkChannelRuntimeTest {
+    private static ZLinkHandlerActivator handlers() {
+        SpotTransportAddressResolver resolver = handle ->
+            java.util.concurrent.CompletableFuture.completedFuture(Optional.of(
+                new SpotTransportAddress(
+                    "play.route",
+                    RoutingId.from("play-node"),
+                    handle.spotRid(),
+                    systems.zlink.framework.spots.ZLinkSpotKind.USER)));
+        return ZLinkHandlerActivator.services()
+            .add(SpotTransportAddressResolver.class, resolver);
+    }
+
     @Test
-    void methodArgumentsBindMessageContextAndCancellationTokenLikeDotnet() throws Exception {
+    void methodArgumentsBindMessageAndContextOnly() throws Exception {
         DefaultRequestContext context = new DefaultRequestContext();
         Method method = ContextHandler.class.getMethod(
             "handle",
             String.class,
-            ZLinkRequestContext.class,
-            CancellationToken.class);
+            ZLinkRequestContext.class);
 
         Object[] arguments = ZLinkChannelHandlerInvoker.methodArguments(method, "hello", context);
 
         assertSame("hello", arguments[0]);
         assertSame(context, arguments[1]);
-        assertSame(context.cancellationToken(), arguments[2]);
+        assertEquals(2, arguments.length);
     }
 
     @Test
@@ -64,7 +80,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -102,17 +118,13 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             TestReply reply = runtime.requestToSpot(
                     "play.route",
-                    new SpotRef(
-                        "play",
-                        RoutingId.from("play-node"),
-                        RoutingId.from("room-spot")),
+                    SpotHandles.create(RoutingId.from("room-spot")),
                     new TestRequest("hello"))
-                .packetName("TestRequest")
                 .timeout(Duration.ofMillis(300))
                 .await(TestReply.class);
 
@@ -133,23 +145,19 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             runtime.sendToSpot(
                     "play.route",
-                    new SpotRef(
-                        "play",
-                        RoutingId.from("play-node"),
-                        RoutingId.from("room-spot")),
+                    SpotHandles.create(RoutingId.from("room-spot")),
                     new TestRequest("hello"))
-                .packetName("TestCommand")
-                .await();
+                .submit();
 
             assertEquals("play.route", backend.bridge.lastChannelName);
             assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
             assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
-            assertEquals("TestCommand", backend.bridge.lastParts.get(0).toUtf8String());
+            assertEquals("TestRequest", backend.bridge.lastParts.get(0).toUtf8String());
         }
     }
 
@@ -162,7 +170,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             backend.router.inbound.add(new ZLinkBackendReceived(
@@ -189,9 +197,8 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             TestReply reply = runtime.requestToChannel("profile", new TestRequest("hello"))
-                .packetName("TestRequest")
                 .timeout(Duration.ofMillis(300))
                 .await(TestReply.class);
 
@@ -213,12 +220,11 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             TestReply reply = runtime.requestToNode(
                     "play.route",
                     RoutingId.from("play-node"),
                     new TestRequest("hello"))
-                .packetName("TestRequest")
                 .timeout(Duration.ofMillis(300))
                 .await(TestReply.class);
 
@@ -238,19 +244,15 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouterNode("bingo.rooms", backend.spotNode);
 
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.requestToSpot(
                         "bingo.rooms",
-                        new SpotRef(
-                            "bingo.rooms",
-                            RoutingId.from("play-node"),
-                            RoutingId.from("room-spot")),
+                        SpotHandles.create(RoutingId.from("room-spot")),
                         new TestRequest("hello"))
-                    .packetName("TestRequest")
                     .timeout(Duration.ofMillis(300))
                     .await(TestReply.class));
 
@@ -269,19 +271,15 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouterNode("bingo.rooms", backend.spotNode);
 
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.requestToSpot(
                         "bingo.rooms",
-                        new SpotRef(
-                            "bingo.rooms",
-                            RoutingId.from("play-node"),
-                            RoutingId.from("room-spot")),
+                        SpotHandles.create(RoutingId.from("room-spot")),
                         new TestRequest("hello"))
-                    .packetName("TestRequest")
                     .timeout(Duration.ofMillis(300))
                     .await(TestReply.class));
 
@@ -301,7 +299,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -339,7 +337,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -385,7 +383,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -419,7 +417,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -453,7 +451,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -494,7 +492,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -542,7 +540,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             runtime.requestToSpotViaRouterChannel(
                     "play.route",
@@ -583,7 +581,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -621,7 +619,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
@@ -657,7 +655,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             backend.router.inbound.add(new ZLinkBackendReceived(
                 Optional.of(RoutingId.from("play-node")),
                 Optional.empty(),
@@ -692,7 +690,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             var request = runtime.requestToSpotViaRouterChannel(
@@ -735,7 +733,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             var request = runtime.requestToSpotViaRouterChannel(
@@ -775,7 +773,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             var request = runtime.requestToChannel("api", "payload")
                 .timeout(Duration.ofMillis(300))
                 .submit(String.class);
@@ -796,7 +794,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             var socket = runtime.clientServerChannel("api").configureServerSocket();
 
             assertEquals(100, socket.weight());
@@ -816,7 +814,7 @@ final class ZLinkChannelRuntimeTest {
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
-            new ZLinkJsonMessageSerializer())) {
+            new ZLinkJsonMessageSerializer(), handlers())) {
             var socket = runtime.clientServerChannel("api").configureServerSocket();
 
             org.junit.jupiter.api.Assertions.assertThrows(
@@ -831,14 +829,11 @@ final class ZLinkChannelRuntimeTest {
     public static final class ContextHandler {
         public void handle(
             String request,
-            ZLinkRequestContext context,
-            CancellationToken cancellationToken) {
+            ZLinkRequestContext context) {
         }
     }
 
     private static final class DefaultRequestContext implements ZLinkRequestContext {
-        private static final CancellationToken NONE = () -> false;
-
         @Override
         public java.util.Optional<String> channelName() {
             return java.util.Optional.of("profile");
@@ -854,10 +849,6 @@ final class ZLinkChannelRuntimeTest {
             return java.util.Optional.empty();
         }
 
-        @Override
-        public CancellationToken cancellationToken() {
-            return NONE;
-        }
     }
 
     private static final class FakeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
@@ -1067,7 +1058,7 @@ final class ZLinkChannelRuntimeTest {
     private record TestReply(String value) {
     }
 
-    private static final class FakeSpotNode implements ZLinkBackendSpotNode {
+    private static final class FakeSpotNode implements ZLinkInternalSpotNode {
         private final FakeSpotRouteBridge bridge;
         private final FakeSpot entrySpot = new FakeSpot();
 

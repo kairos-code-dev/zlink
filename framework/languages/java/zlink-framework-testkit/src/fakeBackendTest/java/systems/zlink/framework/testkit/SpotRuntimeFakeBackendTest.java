@@ -48,7 +48,7 @@ import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -212,7 +212,7 @@ final class SpotRuntimeFakeBackendTest {
                  options,
                  new FakeZLinkBackendAdapterFactory(),
                  serializer,
-                 ZLinkHandlerFactory.reflection())) {
+                 ZLinkHandlerActivator.reflection())) {
             var created = runtime.spotManager()
                 .getOrCreate(
                     PayloadSpot.class,
@@ -414,8 +414,8 @@ final class SpotRuntimeFakeBackendTest {
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(SerialSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
-        ZLinkHandlerFactory reflection = ZLinkHandlerFactory.reflection();
-        ZLinkHandlerFactory handlerFactory = handlerType -> {
+        ZLinkHandlerActivator reflection = ZLinkHandlerActivator.reflection();
+        ZLinkHandlerActivator handlerFactory = handlerType -> {
             if (handlerType == SerialActorJoinHandler.class) {
                 return new SerialActorJoinHandler();
             }
@@ -1088,7 +1088,7 @@ final class SpotRuntimeFakeBackendTest {
                  options,
                  backendFactory,
                  new InterfaceActorSerializer(),
-                 ZLinkHandlerFactory.reflection())) {
+                 ZLinkHandlerActivator.reflection())) {
             managedActor(runtime, "player-1", "player");
 
             backendFactory.dispatchEntrySpotActorStreamRequest(
@@ -1212,7 +1212,7 @@ final class SpotRuntimeFakeBackendTest {
                  options,
                  backendFactory,
                  new InterfaceActorSerializer(),
-                 ZLinkHandlerFactory.reflection())) {
+                 ZLinkHandlerActivator.reflection())) {
             runtime.spotManager()
                 .create(InterfaceUserSpot.class, RoutingId.from("interface-spot"))
                 .toCompletableFuture()

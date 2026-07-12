@@ -34,7 +34,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
@@ -64,19 +63,18 @@ import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -130,17 +128,15 @@ final class EntrySpotActivation
         Object createContext) {
         ZLinkEntrySpot rawEntrySpot = entrySpot;
         if (createContext == context) {
-            return ZLinkHandlerStages.fromRunnable(() ->
+            return ZLinkHandlerStages.fromStageSupplier(() ->
                 rawEntrySpot.onCreateActor(
                     actor,
-                    createRequest,
-                    ZLinkSpotRuntime.noneCancellation()));
+                    createRequest));
         }
-        return context.enqueueDispatch(() -> ZLinkHandlerStages.fromRunnable(() ->
+        return context.enqueueDispatch(() -> ZLinkHandlerStages.fromStageSupplier(() ->
             rawEntrySpot.onCreateActor(
                 actor,
-                createRequest,
-                ZLinkSpotRuntime.noneCancellation())));
+                createRequest)));
     }
 
     @Override
@@ -340,7 +336,7 @@ final class EntrySpotActivation
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "remote joined actor packet forward failed: " + actor.actorId()));
             }
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         } finally {
             payload.close();
             headerPart.close();
@@ -362,6 +358,7 @@ final class EntrySpotActivation
                     .whenComplete((response, error) -> {
                         try {
                             if (error != null) {
+                                error.printStackTrace(System.err);
                                 try (Message emptyReply = Message.from(new byte[0])) {
                                     backendSpot.replyActorJoin(request, 1, List.of(emptyReply));
                                 }
@@ -405,13 +402,13 @@ final class EntrySpotActivation
         Message payload) {
         CompletableFuture<ZLinkSpotActorJoinResponse> admission = new CompletableFuture<>();
         context.enqueueDispatch(() ->
-                ZLinkHandlerStages.fromSupplier(() ->
+                ZLinkHandlerStages.fromStageSupplier(() ->
+                    (CompletionStage<ZLinkSpotActorJoinResponse>)
                     ((ZLinkEntrySpot) entrySpot).onActorJoin(
                         actorId,
                         ZLinkMessage.fromEncoded(
                             ZLinkMessagePayloads.encoded(payload),
-                            host.serializerForSpot()),
-                        ZLinkSpotRuntime.noneCancellation()))
+                            host.serializerForSpot())))
                     .thenAccept(admission::complete))
             .whenComplete((ignored, error) -> {
                 if (error != null) {

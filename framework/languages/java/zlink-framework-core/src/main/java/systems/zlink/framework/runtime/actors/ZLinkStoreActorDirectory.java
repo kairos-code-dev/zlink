@@ -23,7 +23,7 @@ public final class ZLinkStoreActorDirectory implements ZLinkActorDirectory {
         if (actorId == null || actorId.isBlank()) {
             throw new ZLinkConfigurationException("actorId is required");
         }
-        return locations.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
+        return locations.resolveActorRow(new ZLinkActorLocationKey(actorId))
             .thenApply(row -> row == null || row.actorRef() == null
                 ? Optional.empty()
                 : Optional.of(row.actorRef()));

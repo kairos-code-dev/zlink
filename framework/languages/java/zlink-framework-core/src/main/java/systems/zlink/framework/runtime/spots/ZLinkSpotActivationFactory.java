@@ -8,7 +8,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -21,14 +21,14 @@ final class ZLinkSpotActivationFactory {
     private final ZLinkWorkerPool workerPool;
     private final ZLinkSpotHandlerLoader handlerLoader;
     private final ZLinkSpotHandlerInvoker handlerInvoker;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
 
     ZLinkSpotActivationFactory(
         ZLinkSpotRuntime host,
         ZLinkWorkerPool workerPool,
         ZLinkSpotHandlerLoader handlerLoader,
         ZLinkSpotHandlerInvoker handlerInvoker,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
@@ -58,7 +58,7 @@ final class ZLinkSpotActivationFactory {
         context.closeRegistration();
         context.bindSubscriptions(backendSpot);
         return host.runWithOutbound(context.dispatchOutbound(), () ->
-                ZLinkHandlerStages.fromSupplier(() -> spot.onCreate(effectiveRequest)))
+                ZLinkHandlerStages.fromStageSupplier(() -> spot.onCreate(effectiveRequest)))
             .thenCompose(response -> initializeAcceptedSpot(
                 spot,
                 backendSpot,
@@ -135,7 +135,7 @@ final class ZLinkSpotActivationFactory {
         }
         return host.runWithOutbound(
                 context.dispatchOutbound(),
-                () -> ZLinkHandlerStages.fromRunnable(spot::onInitialize))
+                () -> ZLinkHandlerStages.fromStageSupplier(spot::onInitialize))
             .thenApply(ignored -> {
                 SpotActivation activation = new SpotActivation(
                     host,
@@ -152,7 +152,7 @@ final class ZLinkSpotActivationFactory {
         Class<? extends ZLinkSpot<?>> spotType,
         ZLinkSpotContext context) {
         try {
-            return (ZLinkSpot<?>) ZLinkHandlerFactory.services(handlerFactory)
+            return (ZLinkSpot<?>) ZLinkHandlerActivator.services(handlerFactory)
                 .add(ZLinkSpotContext.class, context)
                 .create(spotType);
         } catch (RuntimeException error) {
@@ -166,7 +166,7 @@ final class ZLinkSpotActivationFactory {
         Class<? extends ZLinkEntrySpot<?>> entrySpotType,
         ZLinkEntrySpotContext context) {
         try {
-            return (ZLinkEntrySpot<?>) ZLinkHandlerFactory.services(handlerFactory)
+            return (ZLinkEntrySpot<?>) ZLinkHandlerActivator.services(handlerFactory)
                 .add(ZLinkEntrySpotContext.class, context)
                 .create(entrySpotType);
         } catch (RuntimeException error) {

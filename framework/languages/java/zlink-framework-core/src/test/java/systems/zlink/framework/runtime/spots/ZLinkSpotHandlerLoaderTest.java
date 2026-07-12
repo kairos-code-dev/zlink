@@ -41,8 +41,10 @@ final class ZLinkSpotHandlerLoaderTest {
 
     private static final class ConfiguredActorHandler {
         @ZLinkSpotActorRequest(packetName = "configured-request")
-        public Reply handle(TestActor actor, Request request) {
-            return new Reply();
+        public java.util.concurrent.CompletionStage<Reply> handle(
+            TestActor actor,
+            Request request) {
+            return CompletableFuture.completedFuture(new Reply());
         }
     }
 

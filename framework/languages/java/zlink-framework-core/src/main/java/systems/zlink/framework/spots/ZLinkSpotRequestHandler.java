@@ -1,5 +1,7 @@
 package systems.zlink.framework.spots;
 
+import java.util.concurrent.CompletionStage;
+
 public interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
-    TReply handle(TSpot spot, TRequest request);
+    CompletionStage<TReply> handle(TSpot spot, TRequest request);
 }

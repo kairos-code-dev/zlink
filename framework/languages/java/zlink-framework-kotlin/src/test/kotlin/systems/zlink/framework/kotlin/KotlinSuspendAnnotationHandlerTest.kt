@@ -42,6 +42,7 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -149,6 +150,54 @@ final class KotlinSuspendAnnotationHandlerTest {
             .get(1, TimeUnit.SECONDS)
 
         assertEquals(ProfileReply("profile:Ada"), reply)
+    }
+
+    @Test
+    fun kotlinSuspendInvocationFailsClearlyWhenNoProviderSupportsTheMethod() {
+        val handler = KotlinSuspendingInterfaceRequestHandler()
+        val method = ZLinkHandlerMethodInvoker.requireHandlerMethod(
+            handler.javaClass,
+            "handle",
+            arrayOf(ProfileRequest("Ada"), requestContext("profile")),
+        )
+        val unsupportedInvoker = object : ZLinkSuspendHandlerInvoker {
+            override fun supports(method: java.lang.reflect.Method): Boolean = false
+
+            override fun invoke(
+                handler: Any,
+                method: java.lang.reflect.Method,
+                logicalArguments: Array<Any>,
+            ) = CompletableFuture.failedFuture<Any>(AssertionError("unsupported invoker must not run"))
+        }
+
+        val failure = assertThrows<ExecutionException> {
+            ZLinkHandlerMethodInvoker
+                .invoke(
+                    handler,
+                    method,
+                    arrayOf(ProfileRequest("Ada"), requestContext("profile")),
+                    listOf(unsupportedInvoker),
+                )
+                .toCompletableFuture()
+                .get(1, TimeUnit.SECONDS)
+        }
+
+        assertTrue(failure.cause is ZLinkConfigurationException)
+        assertTrue(failure.cause!!.message!!.contains("registered ZLinkSuspendHandlerInvoker"))
+    }
+
+    @Test
+    fun nonSuspendCompletionStageHandlerResultIsFlattened() {
+        val handler = CompletionStageHandler()
+        val method = handler.javaClass.getMethod("handle", ProfileRequest::class.java)
+
+        val reply = ZLinkHandlerMethodInvoker
+            .invoke(handler, method, arrayOf(ProfileRequest("Ada")))
+            .toCompletableFuture()
+            .get(1, TimeUnit.SECONDS)
+
+        assertEquals(ProfileReply("stage:Ada"), reply)
+        assertTrue(reply !is CompletableFuture<*>)
     }
 
     @Test
@@ -615,6 +664,11 @@ object ObservedValues {
 data class ProfileRequest(val name: String)
 
 data class ProfileReply(val value: String)
+
+class CompletionStageHandler {
+    fun handle(request: ProfileRequest) =
+        CompletableFuture.completedFuture(ProfileReply("stage:${request.name}"))
+}
 
 @ZLinkPacket("ProfileGreeting")
 data class ProfileGreeting(val value: String)

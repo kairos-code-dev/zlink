@@ -48,6 +48,7 @@ final class ZLinkRedisLocationRowJson {
         node.put("Role", row.role() == null ? 0 : row.role().value());
         node.put("Endpoint", row.endpoint());
         node.put("Weight", row.weight());
+        node.put("Draining", row.draining());
         node.put("Value", row.value());
         putStringMap(node, "Metadata", row.metadata());
         putStringList(node, "Capabilities", row.capabilities());
@@ -66,6 +67,7 @@ final class ZLinkRedisLocationRowJson {
             role(node.path("Role").asInt()),
             text(node, "Endpoint"),
             node.path("Weight").asLong(),
+            node.path("Draining").asBoolean(),
             node.path("Value").asLong(),
             stringMap(node.path("Metadata")),
             stringList(node.path("Capabilities")),

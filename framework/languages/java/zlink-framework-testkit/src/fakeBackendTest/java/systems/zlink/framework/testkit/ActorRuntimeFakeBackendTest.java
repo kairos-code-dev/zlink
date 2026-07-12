@@ -35,7 +35,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
@@ -182,7 +182,7 @@ final class ActorRuntimeFakeBackendTest {
                      options,
                      backendFactory,
                      serializer,
-                     ZLinkHandlerFactory.reflection())) {
+                     ZLinkHandlerActivator.reflection())) {
             Message reply = messageFrom(serializer.serialize(new CustomJoinReply("joined")));
             try {
                 backendFactory.nextActorJoinReply(reply);

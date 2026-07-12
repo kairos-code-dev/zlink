@@ -1,27 +1,22 @@
 package systems.zlink.framework.spots;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor> {
-    default ZLinkSpotActorJoinResponse onActorJoin(
+    default CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.reject();
+        ZLinkMessage request) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
     }
 
-    void onJoinedActor(
-        TActor actor,
-        CancellationToken cancellationToken);
+    CompletionStage<Void> onJoinedActor(TActor actor);
 
-    void onLeaveActor(
-        TActor actor,
-        CancellationToken cancellationToken);
+    CompletionStage<Void> onLeaveActor(TActor actor);
 
-    default void onDisconnectActor(
-        TActor actor,
-        CancellationToken cancellationToken) {
+    default CompletionStage<Void> onDisconnectActor(TActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 }

@@ -25,54 +25,54 @@ final class ZLinkActorOwnershipCoordinator {
         this.runtime = runtime;
     }
 
-    CompletionStage<ZLinkLocationWriteStatus> claimAsync(
+    CompletionStage<ZLinkLocationWriteStatus> claim(
         String actorType,
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return writeAsync(actorType, actorId, nodeRid, deactivate, ZLinkLocationWriteIntent.NEW_CLAIM);
+        return write(actorType, actorId, nodeRid, deactivate, ZLinkLocationWriteIntent.NEW_CLAIM);
     }
 
-    CompletionStage<ZLinkLocationWriteStatus> takeoverAsync(
+    CompletionStage<ZLinkLocationWriteStatus> takeover(
         String actorType,
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return writeAsync(actorType, actorId, nodeRid, deactivate, ZLinkLocationWriteIntent.TAKEOVER);
+        return write(actorType, actorId, nodeRid, deactivate, ZLinkLocationWriteIntent.TAKEOVER);
     }
 
-    CompletionStage<Void> setActorRefAsync(String actorType, String actorId, ActorRef actorRef) {
-        return renewAsync(actorType, actorId, row -> new ZLinkActorLocation(
+    CompletionStage<Void> setActorRef(String actorType, String actorId, ActorRef actorRef) {
+        return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), actorRef, row.nodeRid(), row.locationKind(),
             row.spotMeshName(), row.spotRid(), row.ownerId(), row.generation(), row.updatedAt()));
     }
 
-    CompletionStage<Void> notifyJoinedSpotAsync(
+    CompletionStage<Void> notifyJoinedSpot(
         String actorType,
         String actorId,
         String meshName,
         RoutingId spotRid) {
-        return renewAsync(actorType, actorId, row -> new ZLinkActorLocation(
+        return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), ZLinkSpotKind.USER,
             meshName, spotRid, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
-    CompletionStage<Void> notifyLeftSpotAsync(String actorType, String actorId) {
-        return renewAsync(actorType, actorId, row -> new ZLinkActorLocation(
+    CompletionStage<Void> notifyLeftSpot(String actorType, String actorId) {
+        return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), ZLinkSpotKind.ENTRY,
             "", null, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
-    CompletionStage<Void> notifyMovedToEntrySpotAsync(
+    CompletionStage<Void> notifyMovedToEntrySpot(
         String actorType,
         String actorId,
         RoutingId nodeRid) {
-        return renewAsync(actorType, actorId, row -> new ZLinkActorLocation(
+        return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), row.actorRef(), nodeRid, ZLinkSpotKind.ENTRY,
             "", null, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
-    CompletionStage<Void> releaseAsync(String actorType, String actorId) {
+    CompletionStage<Void> release(String actorType, String actorId) {
         ZLinkActorLocationKey key = new ZLinkActorLocationKey(actorId);
         String canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
         TrackedActor tracked;
@@ -82,7 +82,7 @@ final class ZLinkActorOwnershipCoordinator {
         if (tracked == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return runtime.removeActorAsync(key, tracked.row().generation()).thenApply(ignored -> null);
+        return runtime.removeActor(key, tracked.row().generation()).thenApply(ignored -> null);
     }
 
     boolean owns(String actorType, String actorId) {
@@ -105,7 +105,7 @@ final class ZLinkActorOwnershipCoordinator {
         }
     }
 
-    private CompletionStage<ZLinkLocationWriteStatus> writeAsync(
+    private CompletionStage<ZLinkLocationWriteStatus> write(
         String actorType,
         String actorId,
         RoutingId nodeRid,
@@ -120,7 +120,7 @@ final class ZLinkActorOwnershipCoordinator {
 
         ZLinkActorLocation row = new ZLinkActorLocation(
             actorId, actorType, null, nodeRid, ZLinkSpotKind.ENTRY, "", null, "", 0, Instant.EPOCH);
-        return runtime.writeActorAsync(row, intent)
+        return runtime.writeActor(row, intent)
             .thenApply(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
                     synchronized (gate) {
@@ -132,7 +132,7 @@ final class ZLinkActorOwnershipCoordinator {
             });
     }
 
-    private CompletionStage<Void> renewAsync(
+    private CompletionStage<Void> renew(
         String actorType,
         String actorId,
         Function<ZLinkActorLocation, ZLinkActorLocation> mutate) {
@@ -146,7 +146,7 @@ final class ZLinkActorOwnershipCoordinator {
             tracked = tracked.withRow(mutate.apply(tracked.row()));
             actors.put(canonical, tracked);
         }
-        return runtime.writeActorAsync(tracked.row(), ZLinkLocationWriteIntent.RENEW).thenApply(result -> {
+        return runtime.writeActor(tracked.row(), ZLinkLocationWriteIntent.RENEW).thenApply(result -> {
             if (result.status() == ZLinkLocationWriteStatus.IGNORED_STALE) {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,

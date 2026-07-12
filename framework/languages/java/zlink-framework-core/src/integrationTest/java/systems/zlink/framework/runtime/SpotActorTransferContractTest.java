@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,7 +19,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -31,8 +31,6 @@ import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -74,7 +72,8 @@ final class SpotActorTransferContractTest {
             assertFalse(joining.isDone());
             ContractTargetSpot.joinRelease.complete(null);
 
-            assertTrue(joining.get(3, TimeUnit.SECONDS).accepted());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class,
+                joining.get(3, TimeUnit.SECONDS));
             assertOrder("target-admission", "source-leave", "target-joined");
         }
     }
@@ -127,7 +126,8 @@ final class SpotActorTransferContractTest {
             assertFalse(probe.isDone());
 
             ContractTargetSpot.joinRelease.complete(null);
-            assertTrue(joining.get(3, TimeUnit.SECONDS).accepted());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class,
+                joining.get(3, TimeUnit.SECONDS));
             assertEquals("local-target", probe.get(3, TimeUnit.SECONDS).spotRid());
             assertEquals(1, EVENTS.stream().filter("target-packet"::equals).count());
         }
@@ -151,8 +151,9 @@ final class SpotActorTransferContractTest {
                 .toCompletableFuture()
                 .get(4, TimeUnit.SECONDS);
 
-            assertTrue(result.accepted());
-            assertEquals(TARGET_NODE, result.actor().nodeRid());
+            ZLinkActorJoinResult.Accepted<String> accepted = assertInstanceOf(
+                ZLinkActorJoinResult.Accepted.class, result);
+            assertEquals(TARGET_NODE, accepted.actor().nodeRid());
             ContractActor transferred = harness.targetActor("remote-state");
             assertEquals(17, transferred.stateVersion);
             assertOrder(
@@ -250,57 +251,54 @@ final class SpotActorTransferContractTest {
 
     public static final class ContractActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
+        public java.util.concurrent.CompletionStage<ZLinkActor> create(
+            String actorId, ZLinkActorContext context) {
             ContractActor actor = new ContractActor(actorId, context);
             ACTORS.put(actorId, actor);
-            return actor;
+            return CompletableFuture.completedFuture(actor);
         }
     }
 
     public static final class StatefulAdapter
         implements ZLinkActorTransferAdapter<ContractActor> {
         @Override
-        public ZLinkMessage transferOut(
-            ContractActor actor,
-            CancellationToken cancellationToken) {
+        public java.util.concurrent.CompletionStage<ZLinkMessage> transferOut(
+            ContractActor actor) {
             EVENTS.add("transfer-out");
-            return ZLinkMessage.of(actor.stateVersion);
+            return CompletableFuture.completedFuture(ZLinkMessage.of(actor.stateVersion));
         }
 
         @Override
-        public ContractActor transferIn(
+        public java.util.concurrent.CompletionStage<ContractActor> transferIn(
             String actorId,
             ZLinkActorContext context,
-            ZLinkMessage state,
-            CancellationToken cancellationToken) {
+            ZLinkMessage state) {
             EVENTS.add("transfer-in");
             ContractActor actor = new ContractActor(actorId, context);
             actor.stateVersion = state.decode(Integer.class);
             ACTORS.put(actorId, actor);
-            return actor;
+            return CompletableFuture.completedFuture(actor);
         }
     }
 
     public static final class EmptyAdapter
         implements ZLinkActorTransferAdapter<ContractActor> {
         @Override
-        public ZLinkMessage transferOut(
-            ContractActor actor,
-            CancellationToken cancellationToken) {
+        public java.util.concurrent.CompletionStage<ZLinkMessage> transferOut(
+            ContractActor actor) {
             EVENTS.add("transfer-out-empty");
-            return ZLinkMessage.empty();
+            return CompletableFuture.completedFuture(ZLinkMessage.empty());
         }
 
         @Override
-        public ContractActor transferIn(
+        public java.util.concurrent.CompletionStage<ContractActor> transferIn(
             String actorId,
             ZLinkActorContext context,
-            ZLinkMessage state,
-            CancellationToken cancellationToken) {
+            ZLinkMessage state) {
             EVENTS.add("transfer-in-empty");
             ContractActor actor = new ContractActor(actorId, context);
             ACTORS.put(actorId, actor);
-            return actor;
+            return CompletableFuture.completedFuture(actor);
         }
     }
 
@@ -308,14 +306,17 @@ final class SpotActorTransferContractTest {
         private final ZLinkSpotContext context;
         public ContractSourceSpot(ZLinkSpotContext context) { this.context = context; }
         @Override public ZLinkSpotContext context() { return context; }
-        @Override public ZLinkSpotActorJoinResponse onActorJoin(
-            String actorId, ZLinkMessage request, CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept("source");
+        @Override public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId, ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("source"));
         }
-        @Override public void onJoinedActor(
-            ContractActor actor, CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(
-            ContractActor actor, CancellationToken cancellationToken) { EVENTS.add("source-leave"); }
+        @Override public java.util.concurrent.CompletionStage<Void> onJoinedActor(ContractActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public java.util.concurrent.CompletionStage<Void> onLeaveActor(ContractActor actor) {
+            EVENTS.add("source-leave");
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class ContractTargetSpot implements ZLinkSpot<ContractActor> {
@@ -326,27 +327,28 @@ final class SpotActorTransferContractTest {
         @Override public void configure() {
             context.handlers().addHandler(ProbeHandler.class);
         }
-        @Override public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-            return ZLinkSpotCreateResponse.accept();
+        @Override public java.util.concurrent.CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
         }
-        @Override public ZLinkSpotActorJoinResponse onActorJoin(
-            String actorId, ZLinkMessage request, CancellationToken cancellationToken) {
+        @Override public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId, ZLinkMessage request) {
             EVENTS.add("target-admission");
-            return "reject".equals(request.decode(String.class))
+            return CompletableFuture.completedFuture("reject".equals(request.decode(String.class))
                 ? ZLinkSpotActorJoinResponse.reject("rejected")
-                : ZLinkSpotActorJoinResponse.accept("accepted");
+                : ZLinkSpotActorJoinResponse.accept("accepted"));
         }
-        @Override public void onJoinedActor(
-            ContractActor actor, CancellationToken cancellationToken) {
+        @Override public java.util.concurrent.CompletionStage<Void> onJoinedActor(ContractActor actor) {
             if (actor.actorId().startsWith("fail-joined")) {
                 EVENTS.add("target-joined-failed");
                 throw new IllegalStateException("injected joined failure");
             }
             joinRelease.join();
             EVENTS.add("target-joined");
+            return CompletableFuture.completedFuture(null);
         }
-        @Override public void onLeaveActor(
-            ContractActor actor, CancellationToken cancellationToken) { }
+        @Override public java.util.concurrent.CompletionStage<Void> onLeaveActor(ContractActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public record ProbeRequest(String marker) { }
@@ -362,21 +364,12 @@ final class SpotActorTransferContractTest {
             ContractTargetSpot spot,
             ContractActor actor,
             ZLinkSpotActorRequestContext context,
-            ProbeRequest request,
-            CancellationToken cancellationToken) {
+            ProbeRequest request) {
             EVENTS.add("target-packet");
             return new ProbeReply(request.marker(), spot.context().spotRid().toString());
         }
     }
 
-    public static final class TargetResolver implements SpotRemoteRefResolver {
-        @Override
-        public java.util.concurrent.CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
-            RoutingId spotRid) {
-            return CompletableFuture.completedFuture(
-                new SpotRemoteRef("contract-route", TARGET_ROUTE, spotRid, ZLinkSpotKind.USER));
-        }
-    }
 
     private static final class Harness implements AutoCloseable {
         private ZLinkFrameworkRuntime source;
@@ -401,7 +394,6 @@ final class SpotActorTransferContractTest {
             String targetSpotEndpoint = tcpEndpoint();
             String sourceRouteEndpoint = tcpEndpoint();
             String targetRouteEndpoint = tcpEndpoint();
-            sourceOptions.addSpotRemoteRefResolver(TargetResolver.class);
             var sourceRoute = sourceOptions.addRouteMeshChannel("contract-route");
             sourceRoute.enableServer(sourceRouteEndpoint);
             sourceRoute.enableClient(targetRouteEndpoint);
@@ -481,7 +473,7 @@ final class SpotActorTransferContractTest {
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class)
                 .toCompletableFuture().get(4, TimeUnit.SECONDS);
-            assertTrue(result.accepted());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, result);
             return targetActor(actorId);
         }
 

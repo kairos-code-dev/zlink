@@ -125,6 +125,7 @@ final class ZLinkRedisCrossLanguageTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:5300",
             100,
+            false,
             7,
             Map.of("route-endpoint", "tcp://127.0.0.1:6300"),
             List.of("java", "route"),

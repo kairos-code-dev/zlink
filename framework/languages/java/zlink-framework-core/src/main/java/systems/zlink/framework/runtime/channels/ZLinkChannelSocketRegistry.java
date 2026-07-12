@@ -16,7 +16,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
 
@@ -30,7 +30,7 @@ final class ZLinkChannelSocketRegistry {
     private final Map<String, Object> routeSocketLocks = new HashMap<>();
     private final Map<String, ZLinkBackendSpotRouteBridge> spotRouteBridges =
         new ConcurrentHashMap<>();
-    private final Map<String, ZLinkBackendSpotNode> spotRouterNodes = new HashMap<>();
+    private final Map<String, ZLinkInternalSpotNode> spotRouterNodes = new HashMap<>();
     private final List<ZLinkBackendObject> ownedSockets = new ArrayList<>();
 
     void registerChannel(ChannelRegistration registration) {
@@ -107,11 +107,11 @@ final class ZLinkChannelSocketRegistry {
         return List.copyOf(spotRouteBridges.keySet());
     }
 
-    void registerSpotRouterNode(String channelName, ZLinkBackendSpotNode node) {
+    void registerSpotRouterNode(String channelName, ZLinkInternalSpotNode node) {
         spotRouterNodes.put(channelName, node);
     }
 
-    ZLinkBackendSpotNode spotRouterNode(String channelName) {
+    ZLinkInternalSpotNode spotRouterNode(String channelName) {
         return spotRouterNodes.get(channelName);
     }
 

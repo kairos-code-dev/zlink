@@ -37,16 +37,16 @@ class ZLinkLocationLifecycleTest {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
         ZLinkLocationRuntime runtime = newRuntime(store, "owner-a");
         try (runtime; ZLinkLocationLifecycle lifecycle = new ZLinkLocationLifecycle(runtime)) {
-            runtime.startAsync(NODE_A).toCompletableFuture().get();
+            runtime.start(NODE_A).toCompletableFuture().get();
 
-            ZLinkLocationWriteStatus status = lifecycle.claimSpotAsync(
+            ZLinkLocationWriteStatus status = lifecycle.claimSpot(
                     "mesh", SPOT_RID, "room", NODE_A, ZLinkSpotKind.USER, "tcp://127.0.0.1:6000", null)
                 .toCompletableFuture()
                 .get();
 
             assertEquals(ZLinkLocationWriteStatus.STORED, status);
             assertTrue(runtime.ownerLeaseHealthy());
-            assertEquals("owner-a", store.resolveSpotAsync(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
+            assertEquals("owner-a", store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
                 .toCompletableFuture()
                 .get()
                 .ownerId());
@@ -60,14 +60,14 @@ class ZLinkLocationLifecycleTest {
         ZLinkLocationRuntime ownerB = newRuntime(store, "owner-b");
         AtomicInteger deactivations = new AtomicInteger();
         try (ownerA; ownerB; ZLinkLocationLifecycle lifecycleA = new ZLinkLocationLifecycle(ownerA)) {
-            ownerA.startAsync(NODE_A).toCompletableFuture().get();
-            ownerB.startAsync(NODE_B).toCompletableFuture().get();
-            assertEquals(ZLinkLocationWriteStatus.STORED, lifecycleA.claimActorAsync(
+            ownerA.start(NODE_A).toCompletableFuture().get();
+            ownerB.start(NODE_B).toCompletableFuture().get();
+            assertEquals(ZLinkLocationWriteStatus.STORED, lifecycleA.claimActor(
                     "chat", "actor-1", NODE_A, deactivations::incrementAndGet)
                 .toCompletableFuture()
                 .get());
 
-            ownerB.writeActorAsync(
+            ownerB.writeActor(
                     new systems.zlink.framework.locations.ZLinkActorLocation(
                         "actor-1", "chat", null, NODE_B, ZLinkSpotKind.ENTRY,
                         "", null, "", 0, NOW),
@@ -76,7 +76,7 @@ class ZLinkLocationLifecycleTest {
                 .get();
             CompletionException error = assertThrows(
                 CompletionException.class,
-                () -> lifecycleA.setActorRefAsync("chat", "actor-1", new ActorRef(NODE_A, "actor-1", 1))
+                () -> lifecycleA.setActorRef("chat", "actor-1", new ActorRef(NODE_A, "actor-1", 1))
                     .toCompletableFuture()
                     .join());
             ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
@@ -84,7 +84,7 @@ class ZLinkLocationLifecycleTest {
             assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
             assertFalse(lifecycleA.ownsActor("chat", "actor-1"));
             assertEquals(1, deactivations.get());
-            assertEquals("owner-b", store.resolveActorAsync(new ZLinkActorLocationKey("actor-1"))
+            assertEquals("owner-b", store.resolveActor(new ZLinkActorLocationKey("actor-1"))
                 .toCompletableFuture()
                 .get()
                 .ownerId());
@@ -96,17 +96,17 @@ class ZLinkLocationLifecycleTest {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
         ZLinkLocationRuntime runtime = newRuntime(store, "owner-a");
         try (runtime; ZLinkLocationLifecycle lifecycle = new ZLinkLocationLifecycle(runtime)) {
-            runtime.startAsync(NODE_A).toCompletableFuture().get();
-            lifecycle.claimSpotAsync("mesh", SPOT_RID, "room", NODE_A, ZLinkSpotKind.USER, null, null)
+            runtime.start(NODE_A).toCompletableFuture().get();
+            lifecycle.claimSpot("mesh", SPOT_RID, "room", NODE_A, ZLinkSpotKind.USER, null, null)
                 .toCompletableFuture()
                 .get();
 
-            runtime.stopAsync().toCompletableFuture().get();
+            runtime.stop().toCompletableFuture().get();
 
-            assertNull(store.resolveSpotAsync(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
+            assertNull(store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
                 .toCompletableFuture()
                 .get());
-            assertTrue(store.listOwnerLeasesAsync().toCompletableFuture().get().leases().isEmpty());
+            assertTrue(store.listOwnerLeases().toCompletableFuture().get().leases().isEmpty());
         }
     }
 
@@ -117,18 +117,18 @@ class ZLinkLocationLifecycleTest {
         RoutingId sessionRid = RoutingId.from("session-a");
         String routeKey = java.util.HexFormat.of().formatHex(sessionRid.toBytes());
         try (runtime; ZLinkLocationLifecycle lifecycle = new ZLinkLocationLifecycle(runtime)) {
-            runtime.startAsync(NODE_A).toCompletableFuture().get();
+            runtime.start(NODE_A).toCompletableFuture().get();
 
-            lifecycle.bindActorSessionRouteAsync(sessionRid, "actor-1", NODE_A)
+            lifecycle.bindActorSessionRoute(sessionRid, "actor-1", NODE_A)
                 .toCompletableFuture()
                 .get();
 
-            var row = store.resolveRouteAsync(
+            var row = store.resolveRoute(
                     new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, routeKey))
                 .toCompletableFuture()
                 .get();
             assertEquals("actor-1", new String(row.value(), java.nio.charset.StandardCharsets.UTF_8));
-            assertEquals(1, store.listRouteLocationsAsync(
+            assertEquals(1, store.listRouteLocations(
                     new ZLinkRouteLocationFilter(ZLinkRouteKind.ACTOR_SESSION, NODE_A, "owner-a"),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
@@ -136,9 +136,9 @@ class ZLinkLocationLifecycleTest {
                 .items()
                 .size());
 
-            lifecycle.removeActorSessionRouteAsync(sessionRid).toCompletableFuture().get();
+            lifecycle.removeActorSessionRoute(sessionRid).toCompletableFuture().get();
 
-            assertNull(store.resolveRouteAsync(
+            assertNull(store.resolveRoute(
                     new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, routeKey))
                 .toCompletableFuture()
                 .get());

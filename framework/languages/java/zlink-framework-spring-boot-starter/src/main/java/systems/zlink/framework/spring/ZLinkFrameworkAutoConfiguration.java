@@ -15,10 +15,10 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 
@@ -44,7 +44,7 @@ public class ZLinkFrameworkAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ZLinkBackendAdapterFactory zlinkBackendAdapterFactory() {
+    public ZLinkBackendAdapterProvider zlinkBackendAdapterFactory() {
         return new ZLinkJavaBackendAdapterFactory();
     }
 
@@ -80,7 +80,7 @@ public class ZLinkFrameworkAutoConfiguration {
     @Bean
     @ConditionalOnBean(DefaultZLinkFrameworkOptions.class)
     @ConditionalOnMissingBean
-    public ZLinkHandlerFactory zlinkHandlerFactory(AutowireCapableBeanFactory beanFactory) {
+    public ZLinkHandlerActivator zlinkHandlerFactory(AutowireCapableBeanFactory beanFactory) {
         return new ZLinkSpringHandlerFactory(beanFactory);
     }
 
@@ -89,8 +89,8 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnMissingBean
     public ZLinkFrameworkLifecycle zlinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendAdapterFactory,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkBackendAdapterProvider backendAdapterFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher dispatcher) {
         return new ZLinkFrameworkLifecycle(
             options,
@@ -104,7 +104,7 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnMissingBean
     public ZLinkMonitoringLifecycle zlinkMonitoringLifecycle(
         DefaultZLinkMonitoringOptions options,
-        ZLinkBackendAdapterFactory backendAdapterFactory,
+        ZLinkBackendAdapterProvider backendAdapterFactory,
         ZLinkRuntimeEventDispatcher dispatcher,
         ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle,
         ObjectProvider<ZLinkRuntimeEventHandler<?>> eventHandlers) {

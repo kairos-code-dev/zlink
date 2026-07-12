@@ -5,8 +5,7 @@ import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 
 public interface ZLinkFrameworkOptions {
     Duration defaultRequestTimeout();
@@ -33,9 +32,6 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
-    void addSpotRemoteRefResolver(
-        Class<? extends SpotRemoteRefResolver> resolverType);
-
     void useInMemoryLocationStores();
 
     void addLocationStore(ZLinkLocationStore store);
@@ -54,5 +50,5 @@ public interface ZLinkFrameworkOptions {
 
     void useHandlerExecutor(Executor executor);
 
-    void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker);
+    void useSuspendHandlerInvoker(ZLinkSuspendInvocationAdapter invoker);
 }

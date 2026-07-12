@@ -11,6 +11,8 @@ public interface ClientServerChannelBuilder {
 
     ClientServerChannelBuilder enableClient(String endpoint);
 
+    ZLinkEndpointConnections clientConnections();
+
     ClientServerChannelBuilder setDefaultRequestTimeout(java.time.Duration timeout);
 
     ClientServerChannelBuilder addHandlerGroup(String groupName);

@@ -1,5 +1,9 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
+
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import systems.zlink.framework.ZLinkAwait;
@@ -34,7 +38,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
@@ -66,20 +69,20 @@ import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -119,12 +122,11 @@ public final class ZLinkSpotRuntime
 
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
-    private static final CancellationToken NONE_CANCELLATION = () -> false;
     private final ZLinkBackendContext context;
     private final boolean ownsContext;
     private final ZLinkFrameworkRegistration frameworkRegistration;
-    private final List<ZLinkBackendSpotNode> nodes = new ArrayList<>();
-    private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
+    private final List<ZLinkInternalSpotNode> nodes = new ArrayList<>();
+    private final Map<String, ZLinkInternalSpotNode> nodesByName = new HashMap<>();
     private final ZLinkSpotLocationCoordinator spotLocations =
         new ZLinkSpotLocationCoordinator();
     private final ZLinkSpotLifecycle spotLifecycle;
@@ -132,18 +134,18 @@ public final class ZLinkSpotRuntime
         new ZLinkActorSessionCoordinator();
     private final ZLinkActorSpotAdmission actorAdmissions =
         new ZLinkActorSpotAdmission();
-    private final ZLinkBackendSpotNode primaryNode;
+    private final ZLinkInternalSpotNode primaryNode;
     private final String primaryNodeSourceName;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkSpotRouteMessages routeMessages;
     private final ZLinkSpotDirectOutbound directOutbound;
     private final ZLinkSpotRoutedOutbound routedOutbound;
     private final ZLinkSpotPublisherRuntime publishers;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final Executor handlerExecutor;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final ZLinkSpotHandlerInvoker spotHandlerInvoker;
     private final ZLinkSpotActorHandlerCatalog actorHandlers;
     private final ZLinkSpotHandlerLoader handlerLoader;
@@ -166,26 +168,26 @@ public final class ZLinkSpotRuntime
     });
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration) {
         this(backendFactory, adapterOptions, registration, null);
     }
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels) {
-        this(backendFactory, adapterOptions, registration, channels, ZLinkHandlerFactory.reflection());
+        this(backendFactory, adapterOptions, registration, channels, ZLinkHandlerActivator.reflection());
     }
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             backendFactory,
             adapterOptions,
@@ -196,12 +198,12 @@ public final class ZLinkSpotRuntime
     }
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             backendFactory,
             adapterOptions,
@@ -213,12 +215,12 @@ public final class ZLinkSpotRuntime
     }
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this(
             backendFactory,
@@ -233,13 +235,13 @@ public final class ZLinkSpotRuntime
     }
 
     public ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkBackendContext context,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this(
             backendFactory,
@@ -254,14 +256,14 @@ public final class ZLinkSpotRuntime
     }
 
     private ZLinkSpotRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkBackendContext context,
         boolean ownsContext,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         if (registration.spotNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one SpotNode is required");
@@ -319,12 +321,12 @@ public final class ZLinkSpotRuntime
             defaultRequestTimeout,
             this::isClosing,
             ZLinkSpotRuntime::traceActorSession);
-        Map<String, ZLinkBackendSpotNode> routeBridgeNodesByName = new HashMap<>();
+        Map<String, ZLinkInternalSpotNode> routeBridgeNodesByName = new HashMap<>();
         Set<Class<? extends ZLinkSpot<?>>> initializedSpotTypes = new HashSet<>();
         List<EntrySpotInitialization> entrySpotInitializations =
             new ArrayList<>();
         for (SpotNodeRegistration nodeRegistration : registration.spotNodes()) {
-            ZLinkBackendSpotNode node =
+            ZLinkInternalSpotNode node =
                 spotAdapter.createSpotNode(this.context, resolveSpotNodeMode(nodeRegistration));
             if (nodeRegistration.nodeRoutingId() != null) {
                 node.setRoutingId(nodeRegistration.nodeRoutingId());
@@ -504,7 +506,7 @@ public final class ZLinkSpotRuntime
         RuntimeException firstFailure = null;
         firstFailure = closeRuntimeComponent(spotLifecycle::closeAll, firstFailure);
         firstFailure = closeRuntimeComponent(publishers::close, firstFailure);
-        for (ZLinkBackendSpotNode node : nodes) {
+        for (ZLinkInternalSpotNode node : nodes) {
             firstFailure = closeRuntimeComponent(node::close, firstFailure);
         }
         timerExecutor.shutdownNow();
@@ -537,10 +539,6 @@ public final class ZLinkSpotRuntime
         return serializer;
     }
 
-    static CancellationToken noneCancellation() {
-        return NONE_CANCELLATION;
-    }
-
     private static RuntimeException closeRuntimeComponent(
         Runnable close,
         RuntimeException firstFailure) {
@@ -556,20 +554,20 @@ public final class ZLinkSpotRuntime
         return firstFailure;
     }
 
-    public ZLinkBackendSpotNode primaryNode() {
+    public ZLinkInternalSpotNode primaryNode() {
         return primaryNode;
     }
 
-    public ZLinkBackendSpotNode node(String nodeName) {
-        ZLinkBackendSpotNode node = nodesByName.get(nodeName);
+    public ZLinkInternalSpotNode node(String nodeName) {
+        ZLinkInternalSpotNode node = nodesByName.get(nodeName);
         if (node == null) {
             throw new ZLinkConfigurationException("unknown SpotNode: " + nodeName);
         }
         return node;
     }
 
-    private ZLinkBackendSpotNode nodeByRid(RoutingId nodeRid) {
-        for (ZLinkBackendSpotNode node : nodes) {
+    private ZLinkInternalSpotNode nodeByRid(RoutingId nodeRid) {
+        for (ZLinkInternalSpotNode node : nodes) {
             if (node.routingId().equals(nodeRid)) {
                 return node;
             }
@@ -589,7 +587,7 @@ public final class ZLinkSpotRuntime
         actorAdmissions.attach(actorRuntime);
     }
 
-    public Map<String, ZLinkBackendSpotNode> nodesByName() {
+    public Map<String, ZLinkInternalSpotNode> nodesByName() {
         return Map.copyOf(nodesByName);
     }
 
@@ -597,7 +595,7 @@ public final class ZLinkSpotRuntime
         if (!hasRoutingId(nodeRid)) {
             return true;
         }
-        for (ZLinkBackendSpotNode node : nodes) {
+        for (ZLinkInternalSpotNode node : nodes) {
             if (nodeRid.equals(node.routingId())) {
                 return true;
             }
@@ -877,7 +875,7 @@ public final class ZLinkSpotRuntime
             })
             .thenCompose(reply -> {
                 if (reply.isEmpty()) {
-                    return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
                 }
                 byte[] frameBytes;
                 try (Message frame = reply.get().streamFrame()
@@ -898,7 +896,7 @@ public final class ZLinkSpotRuntime
                             headerPart.flags(),
                             List.of(frame));
                     }
-                    return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
                 }
                 return sendActorBoundSessionWithRetry(
                     primaryNode,
@@ -967,19 +965,15 @@ public final class ZLinkSpotRuntime
             return withCurrentOutbound(
                 ((DefaultSpotContext) spot.context()).dispatchOutbound(),
                 () -> joined
-                    ? ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onJoinedActor(actor, NONE_CANCELLATION))
-                    : ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onLeaveActor(actor, NONE_CANCELLATION)));
+                    ? ZLinkHandlerStages.fromStageSupplier(() -> spot.onJoinedActor(actor))
+                    : ZLinkHandlerStages.fromStageSupplier(() -> spot.onLeaveActor(actor)));
         }
         if (spotSurface instanceof ZLinkEntrySpot entrySpot) {
             return joined
-                ? ZLinkHandlerStages.fromRunnable(() ->
-                    entrySpot.onJoinedActor(actor, NONE_CANCELLATION))
-                : ZLinkHandlerStages.fromRunnable(() ->
-                    entrySpot.onLeaveActor(actor, NONE_CANCELLATION));
+                ? ZLinkHandlerStages.fromStageSupplier(() -> entrySpot.onJoinedActor(actor))
+                : ZLinkHandlerStages.fromStageSupplier(() -> entrySpot.onLeaveActor(actor));
         }
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private boolean isAlreadyJoinedTo(
@@ -1067,23 +1061,22 @@ public final class ZLinkSpotRuntime
             if (spot.context() instanceof DefaultSpotContext context) {
                 return withCurrentOutbound(
                     context.dispatchOutbound(),
-                    () -> ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onDisconnectActor(actor, NONE_CANCELLATION)));
+                    () -> ZLinkHandlerStages.fromStageSupplier(() ->
+                        spot.onDisconnectActor(actor)));
             }
-            return ZLinkHandlerStages.fromRunnable(() ->
-                spot.onDisconnectActor(actor, NONE_CANCELLATION));
+            return ZLinkHandlerStages.fromStageSupplier(() -> spot.onDisconnectActor(actor));
         }
         if (spotSurface instanceof ZLinkEntrySpot entrySpot) {
-            return ZLinkHandlerStages.fromRunnable(() ->
-                entrySpot.onDisconnectActor(actor, NONE_CANCELLATION));
+            return ZLinkHandlerStages.fromStageSupplier(() ->
+                entrySpot.onDisconnectActor(actor));
         }
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private CompletionStage<Void> notifySourceActorLeftForRemoteMove(ZLinkActor actor) {
         Object spotSurface = localActorSpotSurface(actor);
         if (spotSurface == null) {
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         RoutingId spotRid = spotSurface instanceof ZLinkSpot<?> spot
             ? spot.context().spotRid()
@@ -1204,15 +1197,15 @@ public final class ZLinkSpotRuntime
             "failed to invoke local session actor request handler");
     }
 
-    private void attachRouteMeshSpotBridges(Map<String, ZLinkBackendSpotNode> routeBridgeNodesByName) {
+    private void attachRouteMeshSpotBridges(Map<String, ZLinkInternalSpotNode> routeBridgeNodesByName) {
         if (channels == null || routeMeshChannels.isEmpty() || routeBridgeNodesByName.isEmpty()) {
             return;
         }
         for (ChannelRegistration routeMeshChannel : routeMeshChannels) {
-            ZLinkBackendSpotNode routeBridgeNode =
+            ZLinkInternalSpotNode routeBridgeNode =
                 routeBridgeNodesByName.get(routeMeshChannel.name());
             if (routeBridgeNode == null && routeMeshChannel.routeRoutingId() != null) {
-                for (ZLinkBackendSpotNode candidate : routeBridgeNodesByName.values()) {
+                for (ZLinkInternalSpotNode candidate : routeBridgeNodesByName.values()) {
                     if (routeMeshChannel.routeRoutingId().equals(candidate.routingId())) {
                         routeBridgeNode = candidate;
                         break;
@@ -1261,7 +1254,7 @@ public final class ZLinkSpotRuntime
                         headerPart.requestId(),
                         headerPart.flags(),
                         List.of(frame));
-                    return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
                 } finally {
                     headerPart.close();
                 }
@@ -1375,11 +1368,14 @@ public final class ZLinkSpotRuntime
             publishers,
             channels,
             channels != null && !routeMeshChannels.isEmpty(),
-            defaultRequestTimeout);
+            defaultRequestTimeout,
+            () -> (SpotTransportAddressResolver) handlerFactory.create(
+                SpotTransportAddressResolver.class));
     }
 
+
     CompletionStage<Void> sendActorBoundSessionWithRetry(
-        ZLinkBackendSpotNode node,
+        ZLinkInternalSpotNode node,
         ZLinkBackendActorRef actor,
         String actorId,
         byte[] frameBytes,
@@ -1574,7 +1570,7 @@ public final class ZLinkSpotRuntime
         ZLinkBackendActorReceived headerPart,
         Optional<Message> reply) {
         if (reply.isEmpty()) {
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         byte[] frameBytes;
         try (Message payload = reply.get();
@@ -1591,7 +1587,7 @@ public final class ZLinkSpotRuntime
                     headerPart.flags(),
                     List.of(frame));
             }
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         return sendActorBoundSessionWithRetry(
             primaryNode,

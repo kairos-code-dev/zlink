@@ -1,16 +1,12 @@
 package systems.zlink.framework.streams;
 
-import systems.zlink.framework.messaging.ZLinkMessage;
+import java.util.concurrent.CompletionStage;
 
-public interface ZLinkTypedSessionPacketHandler<TSessionContext extends ZLinkSessionContext, TMessage>
-    extends ZLinkSessionPacketHandler<TSessionContext> {
+public interface ZLinkTypedSessionPacketHandler<TSessionContext extends ZLinkSessionContext, TMessage> {
     Class<TMessage> messageType();
 
-    void handle(TSessionContext context, ZLinkSessionDispatchContext dispatch, TMessage message);
-
-    @Override
-    default void handle(TSessionContext context, ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        throw new UnsupportedOperationException(
-            "typed session packet handlers are invoked by the framework runtime");
-    }
+    CompletionStage<Void> handle(
+        TSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        TMessage message);
 }

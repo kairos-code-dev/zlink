@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.backend;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 public interface ZLinkSpotBackendAdapter {
-    ZLinkBackendSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode);
+    ZLinkInternalSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode);
 }

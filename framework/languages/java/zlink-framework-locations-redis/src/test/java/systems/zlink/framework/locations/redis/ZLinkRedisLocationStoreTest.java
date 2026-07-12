@@ -106,6 +106,7 @@ class ZLinkRedisLocationStoreTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:6000",
             1,
+            false,
             0,
             Map.of(),
             List.of(),

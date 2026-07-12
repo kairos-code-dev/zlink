@@ -17,7 +17,7 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 // Message-flow tracer for success transitions and dispatch errors, keyed by
 // correlation id. Mirrors the C++ message_flow_tracer / .NET ZLinkMessageFlowTracer.
@@ -30,7 +30,7 @@ public final class ZLinkMessageFlowTracer {
         Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
 
     private final ZLinkDispatchOptionsRegistration options;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final Executor executor;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final AtomicLong tracedCount = new AtomicLong();
@@ -39,14 +39,14 @@ public final class ZLinkMessageFlowTracer {
 
     public ZLinkMessageFlowTracer(
         ZLinkDispatchOptionsRegistration options,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Executor executor) {
         this(options, handlerFactory, executor, null);
     }
 
     public ZLinkMessageFlowTracer(
         ZLinkDispatchOptionsRegistration options,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Executor executor,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.options = options;

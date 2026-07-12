@@ -121,6 +121,7 @@ final class ZLinkAutoConnectPlannerTest {
             role,
             endpoint,
             100,
+            false,
             0,
             Map.of(),
             List.of(),

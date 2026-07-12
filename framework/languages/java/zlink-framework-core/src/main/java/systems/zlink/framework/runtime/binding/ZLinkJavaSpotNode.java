@@ -21,10 +21,10 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 
-final class ZLinkJavaSpotNode implements ZLinkBackendSpotNode {
+final class ZLinkJavaSpotNode implements ZLinkInternalSpotNode {
     private final SpotNode spotNode;
 
     ZLinkJavaSpotNode(SpotNode spotNode) {

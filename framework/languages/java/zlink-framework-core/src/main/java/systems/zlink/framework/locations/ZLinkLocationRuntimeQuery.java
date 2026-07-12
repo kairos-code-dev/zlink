@@ -4,26 +4,26 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkLocationRuntimeQuery {
-    CompletionStage<ZLinkLocationRuntimeStatus> getStatusAsync();
+    CompletionStage<ZLinkLocationRuntimeStatus> getStatus();
 
-    CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter);
+    CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter);
 
-    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocations(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocations(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listTopologyAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listTopology(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<List<ZLinkLocationServiceSummary>> listServiceSummariesAsync(
+    CompletionStage<List<ZLinkLocationServiceSummary>> listServiceSummaries(
         ZLinkLocationServiceSummaryFilter filter);
 }

@@ -1,6 +1,5 @@
 package systems.zlink.framework.spots;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 
 public interface ZLinkEntrySpotActorSendHandler<
@@ -11,6 +10,5 @@ public interface ZLinkEntrySpotActorSendHandler<
         TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorSendContext context,
-        TMessage message,
-        CancellationToken cancellationToken);
+        TMessage message);
 }

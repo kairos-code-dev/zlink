@@ -8,7 +8,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
@@ -29,7 +31,7 @@ import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
@@ -55,13 +57,13 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new MinimalBackend());
-        String ownerId = store.listOwnerLeasesAsync()
+        String ownerId = store.listOwnerLeases()
             .toCompletableFuture()
             .get()
             .leases()
             .get(0)
             .ownerId();
-        store.updatePeerAsync(
+        store.updatePeer(
                 new ZLinkPeerLocation(
                     ZLinkLocationAutoConnectType.ROUTE_MESH,
                     "mesh",
@@ -69,6 +71,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                     ZLinkLocationRole.ROUTER,
                     "tcp://127.0.0.1:6000",
                     1,
+                    false,
                     0,
                     Map.of(),
                     List.of(),
@@ -81,8 +84,8 @@ class ZLinkFrameworkLocationRuntimeTest {
 
         runtime.close();
 
-        assertEquals(List.of(), store.listOwnerLeasesAsync().toCompletableFuture().get().leases());
-        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(List.of(), store.listOwnerLeases().toCompletableFuture().get().leases());
+        assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
     @Test
@@ -103,7 +106,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
 
-            ZLinkLocationPage<ZLinkSpotLocation> rows = store.listSpotLocationsAsync(
+            ZLinkLocationPage<ZLinkSpotLocation> rows = store.listSpotLocations(
                     new ZLinkSpotLocationFilter(
                         "game",
                         LocationSpot.class.getName(),
@@ -114,12 +117,12 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .get();
             assertEquals(1, rows.items().size());
             assertEquals(spotRid, rows.items().get(0).spotRid());
-            assertEquals(1, store.listOwnerLeasesAsync().toCompletableFuture().get().leases().size());
+            assertEquals(1, store.listOwnerLeases().toCompletableFuture().get().leases().size());
 
             assertTrue(runtime.spotManager().close(spotRid).toCompletableFuture().get());
             assertEquals(
                 List.of(),
-                store.listSpotLocationsAsync(ZLinkSpotLocationFilter.all(), ZLinkPageRequest.firstPage())
+                store.listSpotLocations(ZLinkSpotLocationFilter.all(), ZLinkPageRequest.firstPage())
                     .toCompletableFuture()
                     .get()
                     .items());
@@ -143,7 +146,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             .toCompletableFuture()
             .get();
 
-        ZLinkLocationPage<ZLinkActorLocation> rows = store.listActorLocationsAsync(
+        ZLinkLocationPage<ZLinkActorLocation> rows = store.listActorLocations(
                 new ZLinkActorLocationFilter("player", nodeRid, null, ZLinkSpotKind.ENTRY),
                 ZLinkPageRequest.firstPage())
             .toCompletableFuture()
@@ -156,20 +159,20 @@ class ZLinkFrameworkLocationRuntimeTest {
 
         assertEquals(
             List.of(),
-            store.listActorLocationsAsync(ZLinkActorLocationFilter.all(), ZLinkPageRequest.firstPage())
+            store.listActorLocations(ZLinkActorLocationFilter.all(), ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
                 .get()
                 .items());
-        assertEquals(List.of(), store.listOwnerLeasesAsync().toCompletableFuture().get().leases());
+        assertEquals(List.of(), store.listOwnerLeases().toCompletableFuture().get().leases());
     }
 
     @Test
     void actorCreationConflictThrowsCreateRejectedKind() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLeaseAsync("owner-b", RoutingId.from("other-node"), Duration.ofSeconds(30))
+        store.renewOwnerLease("owner-b", RoutingId.from("other-node"), Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
-        store.updateActorAsync(
+        store.updateActor(
                 new ZLinkActorLocation(
                     "player-conflict",
                     "player",
@@ -232,12 +235,12 @@ class ZLinkFrameworkLocationRuntimeTest {
             LocationActor actor = LocationActorFactory.last.get();
 
             actor.context()
-                .joinSpot(spotRid)
+                .joinSpot(spotRid, systems.zlink.framework.messaging.ZLinkMessage.empty())
                 .submit()
                 .toCompletableFuture()
                 .get();
 
-            ZLinkActorLocation joined = store.listActorLocationsAsync(
+            ZLinkActorLocation joined = store.listActorLocations(
                     new ZLinkActorLocationFilter("player", nodeRid, spotRid, ZLinkSpotKind.USER),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
@@ -252,7 +255,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
 
-            ZLinkActorLocation left = store.listActorLocationsAsync(
+            ZLinkActorLocation left = store.listActorLocations(
                     new ZLinkActorLocationFilter("player", nodeRid, null, ZLinkSpotKind.ENTRY),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
@@ -263,7 +266,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         }
     }
 
-    private static final class MinimalBackend implements ZLinkBackendAdapterFactory, ZLinkChannelBackendAdapter {
+    private static final class MinimalBackend implements ZLinkBackendAdapterProvider, ZLinkChannelBackendAdapter {
         @Override
         public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
             return this;
@@ -338,23 +341,20 @@ class ZLinkFrameworkLocationRuntimeTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            systems.zlink.framework.messaging.ZLinkMessage request,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept();
+            systems.zlink.framework.messaging.ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -362,10 +362,10 @@ class ZLinkFrameworkLocationRuntimeTest {
         static final AtomicReference<LocationActor> last = new AtomicReference<>();
 
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
             LocationActor actor = new LocationActor(actorId, context);
             last.set(actor);
-            return actor;
+            return CompletableFuture.completedFuture(actor);
         }
     }
 

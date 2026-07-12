@@ -36,14 +36,14 @@ import systems.zlink.framework.locations.ZLinkRouteLocationKey;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 class ZLinkLocationStoreResolverTest {
     @Test
     void disabledRegistrationResolvesToNull() {
         assertNull(ZLinkLocationStoreResolver.resolve(
             new ZLinkLocationRegistration(),
-            ZLinkHandlerFactory.reflection()));
+            ZLinkHandlerActivator.reflection()));
     }
 
     @Test
@@ -53,7 +53,7 @@ class ZLinkLocationStoreResolverTest {
 
         ZLinkRegisteredLocationStores stores = ZLinkLocationStoreResolver.resolve(
             registration,
-            ZLinkHandlerFactory.reflection());
+            ZLinkHandlerActivator.reflection());
 
         assertNotNull(stores);
         assertSame(stores.peerStore(), stores.spotStore());
@@ -72,7 +72,7 @@ class ZLinkLocationStoreResolverTest {
 
         ZLinkRegisteredLocationStores stores = ZLinkLocationStoreResolver.resolve(
             registration,
-            ZLinkHandlerFactory.reflection());
+            ZLinkHandlerActivator.reflection());
 
         assertSame(store, stores.peerStore());
         assertSame(store, stores.spotStore());
@@ -91,7 +91,7 @@ class ZLinkLocationStoreResolverTest {
 
         ZLinkRegisteredLocationStores stores = ZLinkLocationStoreResolver.resolve(
             registration,
-            ZLinkHandlerFactory.reflection());
+            ZLinkHandlerActivator.reflection());
 
         assertEquals(1, CountingLocationStore.created.get());
         assertSame(store, stores.unifiedStore());
@@ -110,104 +110,104 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> updatePeerAsync(
+        public CompletionStage<ZLinkLocationWriteResult> updatePeer(
             ZLinkPeerLocation peer,
             ZLinkLocationWriteIntent intent) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> removePeerAsync(
+        public CompletionStage<ZLinkLocationWriteResult> removePeer(
             ZLinkPeerLocationKey key,
             ZLinkLocationOwnerToken owner) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
+        public CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter) {
             return CompletableFuture.completedFuture(List.of());
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateSpotAsync(
+        public CompletionStage<ZLinkLocationWriteResult> updateSpot(
             ZLinkSpotLocation spot,
             ZLinkLocationWriteIntent intent) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeSpotAsync(
+        public CompletionStage<ZLinkLocationWriteResult> removeSpot(
             ZLinkSpotLocationKey key,
             ZLinkLocationOwnerToken owner) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
+        public CompletionStage<ZLinkSpotLocation> resolveSpot(ZLinkSpotLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocations(
             ZLinkSpotLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateActorAsync(
+        public CompletionStage<ZLinkLocationWriteResult> updateActor(
             ZLinkActorLocation actor,
             ZLinkLocationWriteIntent intent) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeActorAsync(
+        public CompletionStage<ZLinkLocationWriteResult> removeActor(
             ZLinkActorLocationKey key,
             ZLinkLocationOwnerToken owner) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
+        public CompletionStage<ZLinkActorLocation> resolveActor(ZLinkActorLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocations(
             ZLinkActorLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateRouteAsync(
+        public CompletionStage<ZLinkLocationWriteResult> updateRoute(
             ZLinkRouteLocation route,
             ZLinkLocationWriteIntent intent) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeRouteAsync(
+        public CompletionStage<ZLinkLocationWriteResult> removeRoute(
             ZLinkRouteLocationKey key,
             ZLinkLocationOwnerToken owner) {
             return unsupportedWrite();
         }
 
         @Override
-        public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
+        public CompletionStage<ZLinkRouteLocation> resolveRoute(ZLinkRouteLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
             ZLinkRouteLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
         }
 
         @Override
-        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
+        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
             String ownerId,
             RoutingId nodeRid,
             Duration leaseTtl) {
@@ -215,17 +215,17 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
+        public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
             return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
         }
 
         @Override
-        public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+        public CompletionStage<Long> removeAllByOwner(String ownerId) {
             return CompletableFuture.completedFuture(0L);
         }
 
         @Override
-        public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeasesAsync() {
+        public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
             return CompletableFuture.completedFuture(new ZLinkOwnerLeaseSnapshot(List.of(), java.time.Instant.EPOCH));
         }
 

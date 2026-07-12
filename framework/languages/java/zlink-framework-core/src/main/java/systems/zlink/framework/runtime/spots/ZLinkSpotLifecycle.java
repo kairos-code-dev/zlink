@@ -18,7 +18,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateState;
@@ -38,7 +38,7 @@ final class ZLinkSpotLifecycle {
         boolean hasActorsInSpot(RoutingId spotRid);
     }
 
-    private final ZLinkBackendSpotNode primaryNode;
+    private final ZLinkInternalSpotNode primaryNode;
     private final Executor backendExecutor;
     private final ZLinkSpotLocationCoordinator locations;
     private final ActivationFactory activationFactory;
@@ -50,7 +50,7 @@ final class ZLinkSpotLifecycle {
         new ConcurrentHashMap<>();
 
     ZLinkSpotLifecycle(
-        ZLinkBackendSpotNode primaryNode,
+        ZLinkInternalSpotNode primaryNode,
         Executor backendExecutor,
         ZLinkSpotLocationCoordinator locations,
         Collection<Class<? extends ZLinkSpot<?>>> registeredSpotTypes,
@@ -161,7 +161,7 @@ final class ZLinkSpotLifecycle {
                 return activation.notifyActorCreated(actor, createRequest, createContext);
             }
         }
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     ZLinkSpot<?> spotFor(RoutingId spotRid) {

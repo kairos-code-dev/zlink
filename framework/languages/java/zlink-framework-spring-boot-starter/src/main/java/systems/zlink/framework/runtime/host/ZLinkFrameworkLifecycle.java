@@ -17,10 +17,10 @@ import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.SpotRef;
@@ -35,23 +35,23 @@ public final class ZLinkFrameworkLifecycle
     public static final int PHASE = 0;
 
     private final DefaultZLinkFrameworkOptions options;
-    private final ZLinkBackendAdapterFactory backendAdapterFactory;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkBackendAdapterProvider backendAdapterFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private ZLinkFrameworkRuntime runtime;
     private boolean running;
 
     public ZLinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendAdapterFactory,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkBackendAdapterProvider backendAdapterFactory,
+        ZLinkHandlerActivator handlerFactory) {
         this(options, backendAdapterFactory, handlerFactory, null);
     }
 
     public ZLinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendAdapterFactory,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkBackendAdapterProvider backendAdapterFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.options = Objects.requireNonNull(options, "options");
         this.backendAdapterFactory = Objects.requireNonNull(
@@ -213,7 +213,7 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().monitoringSocketSources();
     }
 
-    public Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
+    public Map<String, ZLinkInternalSpotNode> monitoringSpotSources() {
         return requireRuntime().monitoringSpotSources();
     }
 

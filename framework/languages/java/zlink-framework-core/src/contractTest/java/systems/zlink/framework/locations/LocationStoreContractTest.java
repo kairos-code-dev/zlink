@@ -22,6 +22,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryServic
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkStoreSpotHandleResolver;
 
 final class LocationStoreContractTest {
     private static final Instant STORE_NOW = Instant.parse("2026-07-03T00:00:00Z");
@@ -32,31 +33,31 @@ final class LocationStoreContractTest {
     @Test
     void storeIssuesGenerationsAndGuardsWritesWithOwnerTokens() throws Exception {
         ZLinkInMemoryLocationStore store = newStore();
-        store.renewOwnerLeaseAsync("owner-a", NODE_A, Duration.ofSeconds(30))
+        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
 
-        ZLinkLocationWriteResult claimed = store.updateActorAsync(
+        ZLinkLocationWriteResult claimed = store.updateActor(
                 actor("owner-a", 0),
                 ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        ZLinkLocationWriteResult conflict = store.updateActorAsync(
+        ZLinkLocationWriteResult conflict = store.updateActor(
                 actor("owner-b", 0),
                 ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        ZLinkLocationWriteResult renewed = store.updateActorAsync(
+        ZLinkLocationWriteResult renewed = store.updateActor(
                 actor("owner-a", claimed.generation()),
                 ZLinkLocationWriteIntent.RENEW)
             .toCompletableFuture()
             .get();
-        ZLinkLocationWriteResult takeover = store.updateActorAsync(
+        ZLinkLocationWriteResult takeover = store.updateActor(
                 actor("owner-b", 0),
                 ZLinkLocationWriteIntent.TAKEOVER)
             .toCompletableFuture()
             .get();
-        ZLinkLocationWriteResult stale = store.updateActorAsync(
+        ZLinkLocationWriteResult stale = store.updateActor(
                 actor("owner-a", claimed.generation()),
                 ZLinkLocationWriteIntent.RENEW)
             .toCompletableFuture()
@@ -71,7 +72,7 @@ final class LocationStoreContractTest {
         assertEquals(2, takeover.generation());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, stale.status());
 
-        assertEquals(1, store.removeAllByOwnerAsync("owner-b").toCompletableFuture().get());
+        assertEquals(1, store.removeAllByOwner("owner-b").toCompletableFuture().get());
     }
 
     @Test
@@ -86,17 +87,17 @@ final class LocationStoreContractTest {
         assertSame(store, stores.ownerLeaseStore());
         assertNotNull(stores.changeStampStore());
 
-        store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        store.updateSpotAsync(spot("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updateSpot(spot("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        store.updateRouteAsync(route("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updateRoute(route("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        assertEquals(1, store.listPeerLocationsAsync(new ZLinkPeerLocationFilter(
+        assertEquals(1, store.listPeerLocations(new ZLinkPeerLocationFilter(
                 ZLinkLocationAutoConnectType.ROUTE_MESH,
                 "play",
                 ZLinkLocationRole.ROUTER,
@@ -105,12 +106,12 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(SPOT_RID, store.resolveSpotAsync(new ZLinkSpotLocationKey("play", SPOT_RID))
+        assertEquals(SPOT_RID, store.resolveSpot(new ZLinkSpotLocationKey("play", SPOT_RID))
             .toCompletableFuture()
             .get()
             .spotRid());
 
-        ZLinkLocationPage<ZLinkRouteLocation> routePage = store.listRouteLocationsAsync(
+        ZLinkLocationPage<ZLinkRouteLocation> routePage = store.listRouteLocations(
                 new ZLinkRouteLocationFilter(ZLinkRouteKind.ACTOR_SESSION, NODE_A, null),
                 new ZLinkPageRequest(1, null))
             .toCompletableFuture()
@@ -130,41 +131,42 @@ final class LocationStoreContractTest {
         ZLinkStoreLocationResolvers.AddressResolvers addresses =
             new ZLinkStoreLocationResolvers.AddressResolvers(List.of("play"), rows);
 
-        store.updatePeerAsync(peer("expired-owner", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updatePeer(peer("expired-owner", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        store.updateSpotAsync(spot("expired-owner", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updateSpot(spot("expired-owner", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
-        assertEquals(List.of(), rows.listLivePeersAsync(ZLinkPeerLocationFilter.all())
+        assertEquals(List.of(), rows.listLivePeers(ZLinkPeerLocationFilter.all())
             .toCompletableFuture()
             .get());
-        assertNull(addresses.resolveSpotRefAsync("play", SPOT_RID)
+        assertTrue(new ZLinkStoreSpotHandleResolver(addresses)
+            .resolveSpotHandle(SPOT_RID)
             .toCompletableFuture()
-            .get());
+            .get().isEmpty());
 
-        store.renewOwnerLeaseAsync("owner-a", NODE_A, Duration.ofSeconds(30))
+        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
-        store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        store.updateSpotAsync(spot("owner-a", 0), ZLinkLocationWriteIntent.TAKEOVER)
+        store.updateSpot(spot("owner-a", 0), ZLinkLocationWriteIntent.TAKEOVER)
             .toCompletableFuture()
             .get();
 
         rows = new ZLinkStoreLocationResolvers(stores, new ZLinkLocationOptions());
         addresses = new ZLinkStoreLocationResolvers.AddressResolvers(List.of("play"), rows);
 
-        assertEquals(1, rows.listLivePeersAsync(ZLinkPeerLocationFilter.all())
+        assertEquals(1, rows.listLivePeers(ZLinkPeerLocationFilter.all())
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(new SpotRef("play", NODE_A, SPOT_RID),
-            addresses.resolveSpotRefAsync("play", SPOT_RID)
+        assertEquals(SPOT_RID,
+            new ZLinkStoreSpotHandleResolver(addresses).resolveSpotHandle(SPOT_RID)
                 .toCompletableFuture()
-                .get());
+                .get().orElseThrow().spotRid());
     }
 
     @Test
@@ -173,12 +175,12 @@ final class LocationStoreContractTest {
         ZLinkRegisteredLocationStores stores = ZLinkRegisteredLocationStores.fromUnified(store);
         ZLinkLocationRuntime runtime =
             new ZLinkLocationRuntime(stores, Duration.ofSeconds(30), Duration.ofSeconds(5));
-        runtime.startAsync(NODE_A).toCompletableFuture().get();
+        runtime.start(NODE_A).toCompletableFuture().get();
         try (runtime) {
-            store.updatePeerAsync(peer(runtime.ownerId(), NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+            store.updatePeer(peer(runtime.ownerId(), NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture()
                 .get();
-            store.updatePeerAsync(peer("expired-owner", NODE_B, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+            store.updatePeer(peer("expired-owner", NODE_B, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture()
                 .get();
 
@@ -187,18 +189,18 @@ final class LocationStoreContractTest {
                 runtime,
                 new ZLinkLocationOptions());
 
-            ZLinkLocationRuntimeStatus status = query.getStatusAsync()
+            ZLinkLocationRuntimeStatus status = query.getStatus()
                 .toCompletableFuture()
                 .get();
-            List<ZLinkPeerLocation> peers = query.listPeerLocationsAsync(ZLinkPeerLocationFilter.all())
+            List<ZLinkPeerLocation> peers = query.listPeerLocations(ZLinkPeerLocationFilter.all())
                 .toCompletableFuture()
                 .get();
-            ZLinkLocationPage<ZLinkLocationTopologyEntry> topology = query.listTopologyAsync(
+            ZLinkLocationPage<ZLinkLocationTopologyEntry> topology = query.listTopology(
                     ZLinkLocationTopologyFilter.all(),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
                 .get();
-            List<ZLinkLocationServiceSummary> summaries = query.listServiceSummariesAsync(
+            List<ZLinkLocationServiceSummary> summaries = query.listServiceSummaries(
                     ZLinkLocationServiceSummaryFilter.all())
                 .toCompletableFuture()
                 .get();
@@ -226,6 +228,7 @@ final class LocationStoreContractTest {
             ZLinkLocationRole.ROUTER,
             "tcp://127.0.0.1:5001",
             100,
+            false,
             0,
             Map.of("zone", "a"),
             List.of("actor-route"),

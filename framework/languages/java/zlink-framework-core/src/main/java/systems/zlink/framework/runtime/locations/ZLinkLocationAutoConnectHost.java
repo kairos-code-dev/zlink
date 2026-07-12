@@ -16,7 +16,7 @@ import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
 import systems.zlink.framework.runtime.backend.ZLinkBackendConnectableSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
@@ -39,10 +39,10 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         this.options = Objects.requireNonNull(options, "options");
     }
 
-    public CompletionStage<Void> startAsync(
+    public CompletionStage<Void> start(
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
-        Map<String, ZLinkBackendSpotNode> spotNodesByName,
+        Map<String, ZLinkInternalSpotNode> spotNodesByName,
         ZLinkSpotRuntime spots) {
         Objects.requireNonNull(registration, "registration");
         Objects.requireNonNull(channels, "channels");
@@ -53,7 +53,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             addChannelLoop(surface);
         }
         for (SpotNodeRegistration spot : registration.spotNodes()) {
-            ZLinkBackendSpotNode node = spotNodesByName.get(spot.nodeName());
+            ZLinkInternalSpotNode node = spotNodesByName.get(spot.nodeName());
             if (node == null || !spot.routerEnabled()) {
                 continue;
             }
@@ -76,15 +76,15 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (ZLinkAutoConnectLoop loop : loops) {
-            chain = chain.thenCompose(ignored -> loop.startAsync());
+            chain = chain.thenCompose(ignored -> loop.start());
         }
         return chain;
     }
 
-    public CompletionStage<Void> stopAsync() {
+    public CompletionStage<Void> stop() {
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (ZLinkAutoConnectLoop loop : loops) {
-            chain = chain.thenCompose(ignored -> loop.stopAsync());
+            chain = chain.thenCompose(ignored -> loop.stop());
         }
         return chain.whenComplete((ignored, failure) -> loops.clear());
     }
@@ -126,7 +126,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
         ZLinkPeerLocation row = advertisable
             ? new ZLinkPeerLocation(
-                type, meshName, nodeRid, role, endpoint, weight, 0,
+                type, meshName, nodeRid, role, endpoint, weight, false, 0,
                 metadata, null, "", 0, Instant.EPOCH)
             : null;
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
@@ -141,7 +141,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
     @Override
     public void close() {
-        stopAsync().toCompletableFuture().join();
+        stop().toCompletableFuture().join();
     }
 
     private static final class ConnectableSocketExecutor implements ZLinkAutoConnectExecutor {
@@ -207,12 +207,12 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     private static final class SpotNodeExecutor implements ZLinkAutoConnectExecutor {
-        private final ZLinkBackendSpotNode node;
+        private final ZLinkInternalSpotNode node;
         private final Set<String> manualEndpoints;
         private final ZLinkSpotRuntime spots;
 
         SpotNodeExecutor(
-            ZLinkBackendSpotNode node,
+            ZLinkInternalSpotNode node,
             Set<String> manualEndpoints,
             ZLinkSpotRuntime spots) {
             this.node = node;

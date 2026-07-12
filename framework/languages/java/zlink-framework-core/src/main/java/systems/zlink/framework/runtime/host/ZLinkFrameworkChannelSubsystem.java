@@ -5,13 +5,13 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 final class ZLinkFrameworkChannelSubsystem {
     private final ZLinkChannelRuntime channels;
@@ -26,10 +26,10 @@ final class ZLinkFrameworkChannelSubsystem {
 
     static ZLinkFrameworkChannelSubsystem create(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory.MutableServices runtimeHandlers,
+        ZLinkHandlerActivator.MutableServices runtimeHandlers,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         ZLinkChannelBackendAdapter channelBackend = backendFactory.createChannelAdapter(adapterOptions);
         ZLinkBackendContext backendContext = channelBackend.createContext();

@@ -31,12 +31,12 @@ import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 
 public final class ZLinkMonitoringRuntime implements AutoCloseable {
     private final List<ZLinkBackendSocketMonitor> socketMonitors = new ArrayList<>();
-    private final Map<String, ZLinkBackendSpotNode> spotSources = new HashMap<>();
+    private final Map<String, ZLinkInternalSpotNode> spotSources = new HashMap<>();
     private final Map<String, SpotSnapshot> previousSpotSnapshots = new HashMap<>();
     private final Map<String, LocationSnapshot> previousLocationSnapshots = new HashMap<>();
     private final Map<String, ZLinkLocationRuntimeQuery> locationRuntimeSources = new HashMap<>();
@@ -54,7 +54,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         DefaultZLinkMonitoringOptions options,
         ZLinkMonitoringBackendAdapter backend,
         Map<String, ZLinkBackendSocket> socketSources,
-        Map<String, ZLinkBackendSpotNode> spotSources,
+        Map<String, ZLinkInternalSpotNode> spotSources,
         ZLinkLocationRuntimeQuery locationRuntimeQuery,
         ZLinkRuntimeEventDispatcher dispatcher) {
         Objects.requireNonNull(options, "options");
@@ -79,7 +79,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
             socketMonitors.add(monitor);
         }
         for (String sourceName : options.spotSources().keySet()) {
-            ZLinkBackendSpotNode spotNode = spotSources.get(sourceName);
+            ZLinkInternalSpotNode spotNode = spotSources.get(sourceName);
             if (spotNode == null) {
                 throw new ZLinkConfigurationException(
                     "monitoring spot source is not configured: " + sourceName);
@@ -99,13 +99,13 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         DefaultZLinkMonitoringOptions options,
         ZLinkMonitoringBackendAdapter backend,
         Map<String, ZLinkBackendSocket> socketSources,
-        Map<String, ZLinkBackendSpotNode> spotSources,
+        Map<String, ZLinkInternalSpotNode> spotSources,
         ZLinkRuntimeEventDispatcher dispatcher) {
         this(options, backend, socketSources, spotSources, null, dispatcher);
     }
 
     public void pollSnapshots() {
-        for (Map.Entry<String, ZLinkBackendSpotNode> entry : spotSources.entrySet()) {
+        for (Map.Entry<String, ZLinkInternalSpotNode> entry : spotSources.entrySet()) {
             pollSpot(entry.getKey(), entry.getValue());
         }
         for (Map.Entry<String, ZLinkLocationRuntimeQuery> entry : locationRuntimeSources.entrySet()) {
@@ -164,7 +164,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         return false;
     }
 
-    private void pollSpot(String sourceName, ZLinkBackendSpotNode spotNode) {
+    private void pollSpot(String sourceName, ZLinkInternalSpotNode spotNode) {
         SpotSnapshot current = SpotSnapshot.from(spotNode);
         SpotSnapshot previous = previousSpotSnapshots.put(sourceName, current);
         if (previous == null || !previous.status().equals(current.status())) {
@@ -200,9 +200,9 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
     }
 
     private void pollLocationRuntime(String sourceName, ZLinkLocationRuntimeQuery query) {
-        query.getStatusAsync()
+        query.getStatus()
             .thenCompose(status -> listAllTopology(query)
-                .thenCompose(topology -> query.listServiceSummariesAsync(ZLinkLocationServiceSummaryFilter.all())
+                .thenCompose(topology -> query.listServiceSummaries(ZLinkLocationServiceSummaryFilter.all())
                     .thenApply(summary -> new LocationSnapshot(status, topology, List.copyOf(summary)))))
             .whenComplete((current, failure) -> {
                 if (failure != null) {
@@ -232,7 +232,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         String continuation,
         List<ZLinkLocationTopologyEntry> entries,
         CompletableFuture<List<ZLinkLocationTopologyEntry>> result) {
-        query.listTopologyAsync(
+        query.listTopology(
                 ZLinkLocationTopologyFilter.all(),
                 new ZLinkPageRequest(128, continuation))
             .whenComplete((page, failure) -> {
@@ -293,7 +293,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         SpotNodeStatus status,
         List<SpotNodePeerEntry> peers,
         List<SpotNodeSubjectEntry> subjects) {
-        static SpotSnapshot from(ZLinkBackendSpotNode spotNode) {
+        static SpotSnapshot from(ZLinkInternalSpotNode spotNode) {
             return new SpotSnapshot(
                 spotNode.status(),
                 List.copyOf(spotNode.peers()),

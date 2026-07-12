@@ -4,9 +4,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 final class RuntimeTestSupport {
@@ -15,12 +15,12 @@ final class RuntimeTestSupport {
 
     static ZLinkFrameworkRuntime startFramework(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory) {
+        ZLinkBackendAdapterProvider backendFactory) {
         return invoke(() -> {
             Method start = ZLinkFrameworkRuntime.class.getDeclaredMethod(
                 "start",
                 DefaultZLinkFrameworkOptions.class,
-                ZLinkBackendAdapterFactory.class);
+                ZLinkBackendAdapterProvider.class);
             start.setAccessible(true);
             return (ZLinkFrameworkRuntime) start.invoke(null, options, backendFactory);
         });
@@ -28,16 +28,16 @@ final class RuntimeTestSupport {
 
     static ZLinkFrameworkRuntime newFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         return invoke(() -> {
             Constructor<ZLinkFrameworkRuntime> constructor =
                 ZLinkFrameworkRuntime.class.getDeclaredConstructor(
                     DefaultZLinkFrameworkOptions.class,
-                    ZLinkBackendAdapterFactory.class,
+                    ZLinkBackendAdapterProvider.class,
                     ZLinkMessageSerializer.class,
-                    ZLinkHandlerFactory.class);
+                    ZLinkHandlerActivator.class);
             constructor.setAccessible(true);
             return constructor.newInstance(options, backendFactory, serializer, handlerFactory);
         });

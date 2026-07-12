@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -28,23 +27,25 @@ final class ZLinkEntrySpotTimerSurface implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.reject();
+        ZLinkMessage request) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
     }
 
     @Override
-    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnectActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onDisconnectActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 }
 
@@ -68,7 +69,7 @@ record ZLinkEntrySpotBackedContext(
 
     @Override
     public CompletionStage<Void> leaveActor(ZLinkActor actor) {
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override

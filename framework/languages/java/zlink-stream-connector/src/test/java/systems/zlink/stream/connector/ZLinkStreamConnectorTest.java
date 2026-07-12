@@ -31,6 +31,24 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorTest {
+    @Test
+    void oneWayAndTypedCallSurfacesMatchTheJavaContract() throws Exception {
+        assertEquals(void.class, ZLinkStreamSendCall.class.getMethod("submit").getReturnType());
+        assertEquals(void.class, ZLinkTypedStreamSendCall.class.getMethod("submit").getReturnType());
+        assertEquals(
+            ZLinkTypedStreamSendCall.class,
+            ZLinkStreamConnector.class.getMethod("send", Object.class).getReturnType());
+        assertEquals(
+            ZLinkTypedStreamRequestCall.class,
+            ZLinkStreamConnector.class.getMethod("request", Object.class).getReturnType());
+        assertFalse(java.util.Arrays.stream(ZLinkStreamSendCall.class.getMethods())
+            .anyMatch(method -> method.getName().equals("packetName")));
+        assertFalse(java.util.Arrays.stream(ZLinkStreamRequestCall.class.getMethods())
+            .anyMatch(method -> method.getName().equals("packetName") || method.getName().equals("await")));
+        assertFalse(java.util.Arrays.stream(ZLinkStreamConnector.class.getMethods())
+            .anyMatch(method -> method.getName().equals("await")));
+    }
+
     private final List<ZLinkStreamConnector> connectors = new ArrayList<>();
 
     @AfterEach
@@ -109,25 +127,24 @@ final class ZLinkStreamConnectorTest {
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
-                .packetName("EchoOverride")
                 .timeout(Duration.ofMillis(500))
                 .submit()
                 .toCompletableFuture();
 
             TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
             assertEquals(ZLinkStreamWireProtocol.KIND_REQUEST, request.header().kind());
-            assertEquals("EchoOverride", request.header().name());
+            assertEquals("Echo", request.header().name());
             assertEquals("hello", new String(request.payload(), StandardCharsets.UTF_8));
 
             server.sendAsync(TcpStreamConnectorTestServer.responseTo(
                     request,
-                    "EchoOverride",
+                    "Echo",
                     Map.of()),
                 TcpStreamConnectorTestServer.bytes("reply")).join();
 
             ZLinkStreamEncodedPayload reply = replyFuture.join();
             try {
-                assertEquals("EchoOverride", reply.packetName());
+                assertEquals("Echo", reply.packetName());
                 assertEquals("reply", new String(
                     reply.payload().toByteArray(),
                     StandardCharsets.UTF_8));
@@ -405,9 +422,7 @@ final class ZLinkStreamConnectorTest {
             connector.send(payload("Meta", "hello"))
                 .metadata("old", "ignored")
                 .metadata(Map.of("trace", "abc", "tenant", "sample"))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             TcpStreamConnectorTestServer.ReceivedFrame sent = frame.join();
             assertEquals(ZLinkStreamWireProtocol.KIND_SEND, sent.header().kind());
@@ -429,9 +444,7 @@ final class ZLinkStreamConnectorTest {
                     Message.from("{\"ok\":true}"),
                     Map.of(),
                     ZLinkStreamCodec.JSON))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             TcpStreamConnectorTestServer.ReceivedFrame sent = frame.join();
             assertEquals(ZLinkStreamWireProtocol.KIND_SEND, sent.header().kind());
@@ -497,9 +510,7 @@ final class ZLinkStreamConnectorTest {
 
             var plainFrame = server.readFrameAsync();
             connector.send(payload("Plain", "A".repeat(1024)))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             TcpStreamConnectorTestServer.ReceivedFrame plain = plainFrame.join();
             assertEquals(0, plain.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED);
@@ -508,9 +519,7 @@ final class ZLinkStreamConnectorTest {
             var compressedFrame = server.readFrameAsync();
             connector.send(payload("Compressed", "A".repeat(1024)))
                 .compress()
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             TcpStreamConnectorTestServer.ReceivedFrame compressed = compressedFrame.join();
             assertTrue((compressed.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) != 0);
@@ -631,9 +640,7 @@ final class ZLinkStreamConnectorTest {
             var sentFrame = server.readFrameAsync();
             connector.send(payload("CustomOutbound", "outbound"))
                 .compress()
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             TcpStreamConnectorTestServer.ReceivedFrame sent = sentFrame.join();
             assertTrue((sent.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) != 0);
@@ -1135,10 +1142,6 @@ final class ZLinkStreamConnectorTest {
                 () -> connector.send(payload("$zlink.send", "hello")));
             assertThrows(IllegalArgumentException.class,
                 () -> connector.request(payload("$zlink.request", "hello")));
-            assertThrows(IllegalArgumentException.class,
-                () -> connector.send(payload("Ping", "hello")).packetName("$zlink.override"));
-            assertThrows(IllegalArgumentException.class,
-                () -> connector.request(payload("Ping", "hello")).packetName("$zlink.override"));
         } finally {
             connector.close().await();
         }

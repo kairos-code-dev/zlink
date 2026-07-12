@@ -1,4 +1,11 @@
-package systems.zlink.framework.runtime.backend;
+package systems.zlink.framework.runtime.internal.backend;
+
+import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 
 import java.util.List;
 import java.time.Duration;
@@ -10,7 +17,7 @@ import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 
-public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
+public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     RoutingId routingId();
 
     void setRoutingId(RoutingId routingId);

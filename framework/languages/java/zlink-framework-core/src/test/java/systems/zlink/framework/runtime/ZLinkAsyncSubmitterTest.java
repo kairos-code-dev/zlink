@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.host;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
+
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 
 import systems.zlink.framework.runtime.backend.*;
@@ -27,21 +29,18 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ZLinkAsyncSubmitterTest {
     @Test
-    void submit_drainsPendingItemFromReadyCallback() throws InterruptedException {
+    void oneWaySubmitIsSettledByRuntime() throws InterruptedException {
         BlockingPublishBackend backend = new BlockingPublishBackend();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addFanoutChannel("events").enablePublisher("inproc://events"); };
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
-            var submitted = runtime.fanout()
+            runtime.fanout()
                 .publish("events", "topic", "payload")
-                .packetName("Event")
                 .submit();
 
             assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
-            assertFalse(submitted.toCompletableFuture().isDone());
             backend.release.countDown();
-            submitted.toCompletableFuture().join();
         }
     }
 
@@ -56,7 +55,6 @@ final class ZLinkAsyncSubmitterTest {
                 CompletionException.class,
                 () -> runtime.client()
                     .requestToChannel("profile", "hello")
-                    .packetName("Echo")
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -74,7 +72,6 @@ final class ZLinkAsyncSubmitterTest {
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend());
         var pending = runtime.client()
             .requestToChannel("profile", "hello")
-            .packetName("Echo")
             .submit(String.class)
             .toCompletableFuture();
 
@@ -98,7 +95,6 @@ final class ZLinkAsyncSubmitterTest {
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
             var pending = runtime.client()
                 .requestToChannel("profile", "hello")
-                .packetName("Echo")
                 .submit(String.class)
                 .toCompletableFuture();
 
@@ -120,7 +116,7 @@ final class ZLinkAsyncSubmitterTest {
         assertDoesNotThrow(runtime::close);
     }
 
-    private static class NoReplyBackend implements ZLinkBackendAdapterFactory, ZLinkChannelBackendAdapter {
+    private static class NoReplyBackend implements ZLinkBackendAdapterProvider, ZLinkChannelBackendAdapter {
         @Override
         public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
             return this;

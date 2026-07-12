@@ -11,6 +11,8 @@ public interface FanoutChannelBuilder {
 
     FanoutChannelBuilder enableSubscriber(String endpoint);
 
+    ZLinkEndpointConnections subscriberConnections();
+
     FanoutChannelBuilder addHandlerGroup(String groupName);
 
     void addPublishHandler(

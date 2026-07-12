@@ -92,7 +92,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
     @Override
     public CompletionStage<Void> disconnect() {
         actorRuntime.clearSessionBinding(actor, bindingToken);
-        return systems.zlink.framework.ZLinkSubmitStage.completed();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private static CompletionStage<Void> sendFrame(
@@ -122,7 +122,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                     new ZLinkConfigurationException(
                         "routed actor bound session target is not ready"));
             }
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         } finally {
             parts.forEach(Message::close);
         }
@@ -138,7 +138,6 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         Message payload,
         Duration timeout,
         ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
-        @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
                 sourceEntrySpot,
@@ -167,7 +166,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public systems.zlink.framework.ZLinkSubmitStage submit() {
+        public void submit() {
             byte[] frameBytes;
             try {
                 frameBytes = options.encodeFrame(payload);
@@ -175,15 +174,18 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 payload.close();
             }
             try (Message frame = Message.from(frameBytes)) {
-                return systems.zlink.framework.ZLinkSubmitStage.from(
-                    ZLinkRoutedBoundSessionRuntime.sendFrame(
+                ZLinkRoutedBoundSessionRuntime.sendFrame(
                         sourceEntrySpot,
                         routedTransport,
                         routeChannelName,
                         targetNodeRid,
                         targetEntrySpotRid,
                         actorRef,
-                        frame));
+                        frame).exceptionally(error -> {
+                            java.util.logging.Logger.getLogger(ZLinkRoutedBoundSessionRuntime.class.getName())
+                                .log(java.util.logging.Level.SEVERE, "routed bound-session send failed", error);
+                            return null;
+                        });
             }
         }
 

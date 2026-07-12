@@ -7,11 +7,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
@@ -20,7 +18,6 @@ import systems.zlink.framework.errors.ZLinkWorkerTimeoutException;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
 import systems.zlink.framework.spots.ZLinkWorkerTask;
 
@@ -71,7 +68,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     public CompletionStage<T> submit() {
         ensureSingleTerminator();
         CompletableFuture<T> result = new CompletableFuture<>();
-        start(result::complete, result::completeExceptionally, () -> false);
+        start(result::complete, result::completeExceptionally);
         return result;
     }
 
@@ -82,52 +79,13 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
             ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit()));
     }
 
-    @Override
-    public T yield(CancellationToken cancellationToken) {
-        ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
-        ZLinkYieldTurn capturedTurn = requireTurn();
-        CompletionStage<T> result = submit(cancellationToken);
-        return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, result, cancellationToken));
-    }
-
-    @Override
-    public void submit(
-        BiConsumer<T, CancellationToken> onCompleted,
-        BiConsumer<Throwable, CancellationToken> onError) {
-        Objects.requireNonNull(onCompleted, "onCompleted");
-        Objects.requireNonNull(onError, "onError");
-        ensureSingleTerminator();
-        AtomicBoolean cancelledView = new AtomicBoolean();
-        CancellationToken callbackToken = cancelledView::get;
-        start(
-            value -> postToSpotQueue.apply(() ->
-                ZLinkHandlerStages.fromRunnable(() -> onCompleted.accept(value, callbackToken))),
-            error -> postToSpotQueue.apply(() ->
-                ZLinkHandlerStages.fromRunnable(() -> onError.accept(error, callbackToken))),
-            () -> false);
-    }
-
-    private CompletionStage<T> submit(CancellationToken cancellationToken) {
-        ensureSingleTerminator();
-        CompletableFuture<T> result = new CompletableFuture<>();
-        start(result::complete, result::completeExceptionally, cancellationToken);
-        return result;
-    }
-
     private void start(
         Consumer<T> complete,
-        Consumer<Throwable> fail,
-        CancellationToken cancellationToken) {
-        Objects.requireNonNull(cancellationToken, "cancellationToken");
+        Consumer<Throwable> fail) {
         AtomicBoolean settled = new AtomicBoolean();
-        AtomicBoolean timeoutCancelled = new AtomicBoolean();
-        CancellationToken token = () ->
-            timeoutCancelled.get() || cancellationToken.isCancellationRequested();
         ScheduledFuture<?> timeoutFuture = timeout == null
             ? null
             : pool.scheduleTimeout(() -> {
-                timeoutCancelled.set(true);
                 if (settled.compareAndSet(false, true)) {
                     fail.accept(new ZLinkWorkerTimeoutException(
                         "worker call timed out after " + timeout));
@@ -137,7 +95,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
             pool.execute(() -> {
                 T value;
                 try {
-                    value = work.run(token);
+                    value = work.run();
                 } catch (Exception ex) {
                     if (settled.compareAndSet(false, true)) {
                         cancelTimeout(timeoutFuture);

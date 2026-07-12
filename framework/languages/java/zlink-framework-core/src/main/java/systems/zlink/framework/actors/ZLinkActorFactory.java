@@ -1,7 +1,9 @@
 package systems.zlink.framework.actors;
 
+import java.util.concurrent.CompletionStage;
+
 public interface ZLinkActorFactory {
-    ZLinkActor create(
+    CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context);
 }

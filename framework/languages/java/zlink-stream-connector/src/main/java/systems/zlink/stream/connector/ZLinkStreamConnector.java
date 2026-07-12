@@ -1,7 +1,6 @@
 package systems.zlink.stream.connector;
 
 import java.util.Objects;
-import java.util.concurrent.CompletionStage;
 
 public interface ZLinkStreamConnector {
     boolean isConnected();
@@ -24,23 +23,18 @@ public interface ZLinkStreamConnector {
 
     ZLinkStreamLifecycleCall dispatch();
 
-    default <T> T await(CompletionStage<T> stage) throws Exception {
-        Objects.requireNonNull(stage, "stage");
-        return ZLinkStreamCompletions.await(stage);
-    }
-
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
 
-    default ZLinkStreamSendCall send(Object payload) {
+    default ZLinkTypedStreamSendCall send(Object payload) {
         Objects.requireNonNull(payload, "payload");
-        return send(encodeTypedPayload(payload));
+        return new ZLinkTypedStreamConnectorSendCall(send(encodeTypedPayload(payload)));
     }
 
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
 
-    default ZLinkStreamRequestCall request(Object payload) {
+    default ZLinkTypedStreamRequestCall request(Object payload) {
         Objects.requireNonNull(payload, "payload");
-        return request(encodeTypedPayload(payload));
+        return new ZLinkTypedStreamConnectorRequestCall(request(encodeTypedPayload(payload)));
     }
 
     AutoCloseable observeInbound(ZLinkStreamInboundObserver observer);

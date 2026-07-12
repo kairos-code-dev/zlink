@@ -1,5 +1,7 @@
 package systems.zlink.framework.spots;
 
+import java.util.concurrent.CompletionStage;
+
 public interface ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
-    void handle(TSpot spot, TEvent message);
+    CompletionStage<Void> handle(TSpot spot, TEvent message);
 }

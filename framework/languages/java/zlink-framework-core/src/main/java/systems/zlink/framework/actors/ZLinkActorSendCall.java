@@ -4,8 +4,6 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.ZLinkAwait;
 
 public interface ZLinkActorSendCall {
-    ZLinkActorSendCall packetName(String packetName);
-
     CompletionStage<Void> submit();
 
     default void await() {

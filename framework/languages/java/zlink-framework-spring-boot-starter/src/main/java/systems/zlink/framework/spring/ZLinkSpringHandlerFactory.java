@@ -23,7 +23,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
@@ -37,7 +37,7 @@ import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
-final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
+final class ZLinkSpringHandlerFactory implements ZLinkHandlerActivator {
     private final AutowireCapableBeanFactory beanFactory;
 
     ZLinkSpringHandlerFactory(AutowireCapableBeanFactory beanFactory) {

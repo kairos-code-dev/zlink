@@ -35,7 +35,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorUnbindOperation;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
@@ -55,7 +55,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
@@ -75,7 +75,7 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
-public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterFactory {
+public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterProvider {
     private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
     private final List<FakeStreamSocket> streams = new ArrayList<>();
     private final List<FakeSpot> spots = new ArrayList<>();
@@ -473,7 +473,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override
-        public ZLinkBackendSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) {
+        public ZLinkInternalSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) {
             return new FakeSpotNode(calls, spots, owner);
         }
     }
@@ -679,7 +679,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
     }
 
-    private static final class FakeSpotNode extends FakeBackendObject implements ZLinkBackendSpotNode {
+    private static final class FakeSpotNode extends FakeBackendObject implements ZLinkInternalSpotNode {
         private int nextSpotId = 1;
         private final List<FakeSpot> spots;
         private final FakeZLinkBackendAdapterFactory owner;

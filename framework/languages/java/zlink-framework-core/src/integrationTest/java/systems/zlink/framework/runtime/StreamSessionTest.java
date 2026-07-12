@@ -24,6 +24,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -220,8 +221,8 @@ final class StreamSessionTest {
             return null;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
     }
 
     public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
@@ -236,8 +237,8 @@ final class StreamSessionTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> onLeaveActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
     }
 
     public static final class UserSpot implements ZLinkSpot<ZLinkActor> {
@@ -254,24 +255,21 @@ final class StreamSessionTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept("joined");
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("joined"));
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            lastLeave.set(!actor.context().isJoined());
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            lastLeave.set(actor.context().spotRid().isEmpty());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -297,54 +295,47 @@ final class StreamSessionTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
     public static final class ActorEchoHandler {
         @ZLinkSpotActorRequest(packetName = "StreamActorEcho")
-        public String handle(PlayerActor actor, String request) {
-            return actor.actorId() + ":" + request;
+        public CompletionStage<String> handle(PlayerActor actor, String request) {
+            return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
         }
 
         @ZLinkSpotActorRequest(packetName = "StreamActorEchoWithPush")
-        public String handleWithPush(PlayerActor actor, String request) {
+        public CompletionStage<String> handleWithPush(PlayerActor actor, String request) {
             actor.context()
                 .boundSession()
                 .send("push:" + request)
-                .packetName("StreamActorPush")
-                .submit()
-                .toCompletableFuture()
-                .join();
-            return actor.actorId() + ":" + request;
+                .submit();
+            return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
         }
     }
 
     public static final class JoinUserSpotHandler {
         @ZLinkSpotActorRequest(packetName = "JoinUserSpot")
-        public String handle(PlayerActor actor, String request) {
+        public CompletionStage<String> handle(PlayerActor actor, String request) {
             return actor.context()
-                .joinSpot(RoutingId.from("room-a"))
+                .joinSpot(RoutingId.from("room-a"), request)
                 .submit(String.class)
-                .toCompletableFuture()
-                .join()
-                .reply();
+                .thenApply(ZLinkActorJoinResult::reply);
         }
     }
 
     public static final class LeaveUserSpotHandler {
         @ZLinkSpotActorRequest(packetName = "LeaveUserSpot")
-        public String handle(
+        public CompletionStage<String> handle(
             UserSpot spot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
-            String request,
-            systems.zlink.framework.CancellationToken cancellationToken) {
-            spot.context().leaveActor(actor).toCompletableFuture().join();
-            return "left";
+            String request) {
+            return spot.context().leaveActor(actor).thenApply(ignored -> "left");
         }
     }
 
@@ -404,7 +395,7 @@ final class StreamSessionTest {
             if (!"Ping".equals(dispatch.packetName())) {
                 throw new IllegalArgumentException("unexpected packet: " + dispatch.packetName());
             }
-            context.client().reply("pong").submit().toCompletableFuture().join();
+            context.client().reply("pong").submit();
         }
     }
 
@@ -447,9 +438,7 @@ final class StreamSessionTest {
             recovered.set(true);
             context.client()
                 .reply("pong")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
         }
     }
 
@@ -489,7 +478,7 @@ final class StreamSessionTest {
                 String actorId = payload.decode(String.class);
                 actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> context.actors().bind(actor))
-                    .thenCompose(ignored -> context.client().reply("bound").submit())
+                    .thenRun(() -> context.client().reply("bound").submit())
                     .toCompletableFuture()
                     .join();
                 return;

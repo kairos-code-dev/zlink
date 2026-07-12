@@ -5,8 +5,6 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.ZLinkAwait;
 
 public interface ZLinkRequestCall {
-    ZLinkRequestCall packetName(String packetName);
-
     ZLinkRequestCall metadata(String key, String value);
 
     ZLinkRequestCall timeout(Duration timeout);

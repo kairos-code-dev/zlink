@@ -1,4 +1,4 @@
-package systems.zlink.framework.runtime.handlers;
+package systems.zlink.framework.runtime.internal.handlers;
 
 import java.lang.reflect.Constructor;
 import java.util.LinkedHashMap;
@@ -6,10 +6,10 @@ import java.util.Map;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 @FunctionalInterface
-public interface ZLinkHandlerFactory {
+public interface ZLinkHandlerActivator {
     Object create(Class<?> handlerType);
 
-    static ZLinkHandlerFactory reflection() {
+    static ZLinkHandlerActivator reflection() {
         return handlerType -> {
             try {
                 return handlerType.getConstructor().newInstance();
@@ -25,15 +25,15 @@ public interface ZLinkHandlerFactory {
         return new MutableServices(reflection());
     }
 
-    static MutableServices services(ZLinkHandlerFactory fallback) {
+    static MutableServices services(ZLinkHandlerActivator fallback) {
         return new MutableServices(fallback);
     }
 
-    final class MutableServices implements ZLinkHandlerFactory {
+    final class MutableServices implements ZLinkHandlerActivator {
         private final Map<Class<?>, Object> services = new LinkedHashMap<>();
-        private final ZLinkHandlerFactory fallback;
+        private final ZLinkHandlerActivator fallback;
 
-        private MutableServices(ZLinkHandlerFactory fallback) {
+        private MutableServices(ZLinkHandlerActivator fallback) {
             this.fallback = fallback;
         }
 
@@ -45,6 +45,10 @@ public interface ZLinkHandlerFactory {
         @Override
         public Object create(Class<?> handlerType) {
             try {
+                Object registered = findRuntimeService(handlerType);
+                if (registered != null) {
+                    return registered;
+                }
                 for (Constructor<?> constructor : handlerType.getConstructors()) {
                     Object[] arguments = resolveArguments(constructor.getParameterTypes());
                     if (arguments != null && arguments.length > 0) {

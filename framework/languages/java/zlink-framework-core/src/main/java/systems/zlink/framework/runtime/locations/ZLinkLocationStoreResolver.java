@@ -1,7 +1,7 @@
 package systems.zlink.framework.runtime.locations;
 
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 public final class ZLinkLocationStoreResolver {
     private ZLinkLocationStoreResolver() {
@@ -9,7 +9,7 @@ public final class ZLinkLocationStoreResolver {
 
     public static ZLinkRegisteredLocationStores resolve(
         ZLinkLocationRegistration registration,
-        ZLinkHandlerFactory factory) {
+        ZLinkHandlerActivator factory) {
         if (registration == null || !registration.enabled()) {
             return null;
         }

@@ -23,7 +23,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
@@ -37,13 +37,13 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     private static final Duration FALLBACK_ROUTE_RETRY_TIMEOUT = Duration.ofSeconds(5);
 
-    private final java.util.function.Supplier<ZLinkBackendSpotNode> spotNode;
+    private final java.util.function.Supplier<ZLinkInternalSpotNode> spotNode;
     private final ZLinkStoreLocationResolvers locations;
     private final ZLinkMessageSerializer serializer;
     private final Duration defaultTimeout;
 
     public ZLinkActorClientRuntime(
-        java.util.function.Supplier<ZLinkBackendSpotNode> spotNode,
+        java.util.function.Supplier<ZLinkInternalSpotNode> spotNode,
         ZLinkStoreLocationResolvers locations,
         ZLinkMessageSerializer serializer,
         Duration defaultTimeout) {
@@ -155,7 +155,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private CompletionStage<ZLinkBackendActorRef> resolveActorAddress(String actorId) {
-        return locations.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
+        return locations.resolveActorRow(new ZLinkActorLocationKey(actorId))
             .thenApply(row -> {
                 if (row == null || row.actorRef() == null) {
                     throw new ZLinkFrameworkException(
@@ -167,7 +167,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private CompletionStage<ZLinkBackendActorRef> reResolveActorAddress(String actorId) {
-        return locations.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
+        return locations.resolveActorRow(new ZLinkActorLocationKey(actorId))
             .thenApply(row -> {
                 if (row == null || row.actorRef() == null) {
                     throw new ZLinkFrameworkException(
@@ -436,7 +436,6 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             this.packetName = ZLinkPacketNames.resolve(message);
         }
 
-        @Override
         public ZLinkActorSendCall packetName(String packetName) {
             this.packetName = packetName;
             return this;
@@ -460,7 +459,6 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             this.packetName = ZLinkPacketNames.resolve(request);
         }
 
-        @Override
         public ZLinkActorRequestCall packetName(String packetName) {
             this.packetName = packetName;
             return this;

@@ -1,14 +1,15 @@
 package systems.zlink.framework.actors;
 
-public record ZLinkActorJoinResult<TReply>(
-    int resultCode,
-    ActorRef actor,
-    TReply reply) {
-    public boolean accepted() {
-        return resultCode == 0;
+public sealed interface ZLinkActorJoinResult<TReply>
+    permits ZLinkActorJoinResult.Accepted, ZLinkActorJoinResult.Rejected {
+
+    TReply reply();
+
+    record Accepted<TReply>(ActorRef actor, TReply reply)
+        implements ZLinkActorJoinResult<TReply> {
     }
 
-    public java.util.Optional<ActorRef> actorRef() {
-        return java.util.Optional.ofNullable(actor);
+    record Rejected<TReply>(TReply reply)
+        implements ZLinkActorJoinResult<TReply> {
     }
 }

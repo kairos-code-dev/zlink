@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.util.EnumSet;
@@ -30,7 +32,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
     private final ZLinkBackendStreamSocket stream;
-    private final ZLinkBackendSpotNode spotNode;
+    private final ZLinkInternalSpotNode spotNode;
     private final RoutingId sessionRid;
     private final String actorId;
     private final ZLinkMessageSerializer serializer;
@@ -44,7 +46,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
 
     ZLinkBoundSessionRuntime(
         ZLinkBackendStreamSocket stream,
-        ZLinkBackendSpotNode spotNode,
+        ZLinkInternalSpotNode spotNode,
         RoutingId sessionRid,
         String actorId,
         ZLinkMessageSerializer serializer,
@@ -182,7 +184,6 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         String actorId,
         Message payload,
         ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
-        @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
                 stream,
@@ -203,7 +204,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public systems.zlink.framework.ZLinkSubmitStage submit() {
+        public void submit() {
             byte[] payloadBytes;
             try {
                 payloadBytes = payload.toByteArray();
@@ -211,8 +212,12 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 payload.close();
             }
             ZLinkStreamHeader header = options.header();
-            return systems.zlink.framework.ZLinkSubmitStage.from(
-                sendWithRetry(stream, sessionRid, header, payloadBytes, actorId));
+            sendWithRetry(stream, sessionRid, header, payloadBytes, actorId)
+                .exceptionally(error -> {
+                    java.util.logging.Logger.getLogger(ZLinkBoundSessionRuntime.class.getName())
+                        .log(java.util.logging.Level.SEVERE, "bound-session send failed", error);
+                    return null;
+                });
         }
 
     }

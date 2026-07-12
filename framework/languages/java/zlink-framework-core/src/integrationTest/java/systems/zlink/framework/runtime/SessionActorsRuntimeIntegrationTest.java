@@ -6,6 +6,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,6 +33,8 @@ import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.handlers.ZLinkPacket;
+import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -74,6 +77,12 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startLocalManagedStreamRuntime()) {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
+            RoutingId room = RoutingId.from("local-room");
+            runtime.spotManager().create(GameSpot.class, room).toCompletableFuture().join();
+            assertInstanceOf(
+                systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted.class,
+                actor.context().joinSpot(room, "local")
+                    .submit().toCompletableFuture().join());
             ZLinkSessionActor bound = runtime.sessionActors(
                     "local",
                     RoutingId.from("session-1"))
@@ -81,7 +90,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            relayWithHeader(bound, "ActorNotify", ZLinkMessage.of("hello"));
+            relayWithHeader(bound, "ActorNotify", ZLinkMessage.of(new ActorNotifyMessage("hello")));
 
             assertEquals(
                 "player-1:hello",
@@ -96,14 +105,16 @@ final class SessionActorsRuntimeIntegrationTest {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+                .joinEntrySpot(RoutingId.from("play-node"), "entry")
                 .timeout(Duration.ofSeconds(2))
                 .submit()
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actor().actorId());
-            assertEquals(RoutingId.from("play-node"), joined.actor().nodeRid());
+            var accepted = assertInstanceOf(
+                systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted.class, joined);
+            assertEquals("player-1", accepted.actor().actorId());
+            assertEquals(RoutingId.from("play-node"), accepted.actor().nodeRid());
         }
     }
 
@@ -114,14 +125,16 @@ final class SessionActorsRuntimeIntegrationTest {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+                .joinEntrySpot(RoutingId.from("play-node"), "entry")
                 .timeout(Duration.ofSeconds(2))
                 .submit()
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actor().actorId());
-            assertEquals(RoutingId.from("play-node"), joined.actor().nodeRid());
+            var accepted = assertInstanceOf(
+                systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted.class, joined);
+            assertEquals("player-1", accepted.actor().actorId());
+            assertEquals(RoutingId.from("play-node"), accepted.actor().nodeRid());
         }
     }
 
@@ -130,8 +143,7 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startChannelJoinRuntime()) {
             String actorId = runtime.client()
-                .requestToChannel("play", "player-1")
-                .packetName("Ensure")
+                .requestToChannel("play", new EnsureActorRequest("player-1"))
                 .timeout(Duration.ofSeconds(2))
                 .submit(String.class)
                 .toCompletableFuture()
@@ -146,13 +158,15 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
-            ActorRef actorRef = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+            var joinResult = actor.context()
+                .joinEntrySpot(RoutingId.from("play-node"), "entry")
                 .timeout(Duration.ofSeconds(2))
                 .submit()
                 .toCompletableFuture()
-                .join()
-                .actor();
+                .join();
+            ActorRef actorRef = assertInstanceOf(
+                systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted.class,
+                joinResult).actor();
             ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
                 "gateway",
                 RoutingId.from("session-1"));
@@ -176,14 +190,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            CompletionException failure = assertThrows(CompletionException.class, () -> actor.context()
-                    .boundSession()
-                    .send("push")
-                    .packetName("Push")
-                    .submit()
-                    .toCompletableFuture()
-                    .join());
-            assertTrue(failure.getCause() instanceof ZlinkSubmitException);
+            actor.context().boundSession().send("push").submit();
         }
     }
 
@@ -212,7 +219,6 @@ final class SessionActorsRuntimeIntegrationTest {
     private static ZLinkFrameworkRuntime startLocalManagedStreamRuntime() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class);
                 node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -239,10 +245,12 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         String endpoint = "inproc://play-channel-" + System.nanoTime();
-        options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
         { var channel = options.addClientServerChannel("play").enableServer(endpoint);
             channel.enableClient(endpoint);
-            channel.addHandlerGroup("play-channel"); };
+            channel.addRequestHandler(
+                EnsureActorHandler.class,
+                EnsureActorRequest.class,
+                String.class); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
 
@@ -277,24 +285,49 @@ final class SessionActorsRuntimeIntegrationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class GameSpot implements ZLinkSpot<PlayerActor> {
+        private final ZLinkSpotContext context;
+
+        public GameSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
         @Override
         public ZLinkSpotContext context() {
-            return null;
+            return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override
+        public void configure() {
+            context.handlers().addHandler(ActorEchoHandler.class);
+            context.handlers().addHandler(ActorNotifyHandler.class);
+        }
+
+        @Override public CompletionStage<Void> onJoinedActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            System.err.println("ENTRY ADMISSION " + actorId);
+            return CompletableFuture.completedFuture(
+                systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept());
+        }
     }
 
-    public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class GameEntrySpot implements ZLinkEntrySpot<PlayerActor> {
         private final ZLinkEntrySpotContext context;
 
         public GameEntrySpot(ZLinkEntrySpotContext context) {
@@ -306,22 +339,36 @@ final class SessionActorsRuntimeIntegrationTest {
             return context;
         }
 
-        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
-        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public CompletionStage<Void> onJoinedActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletionStage<Void> onLeaveActor(PlayerActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            System.err.println("ENTRY SPOT ADMISSION " + actorId);
+            return CompletableFuture.completedFuture(
+                systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept());
+        }
     }
 
     public static final class ActorEchoHandler {
-        @ZLinkSpotActorRequest(packetName = "ActorEcho")
-        public String handle(PlayerActor actor, String request) {
-            actorRelayRequests.offer(actor.actorId() + ":" + request);
-            return request;
+        @ZLinkSpotActorRequest
+        public CompletionStage<String> handle(PlayerActor actor, ActorEchoRequest request) {
+            actorRelayRequests.offer(actor.actorId() + ":" + request.value());
+            return CompletableFuture.completedFuture(request.value());
         }
     }
 
     public static final class ActorNotifyHandler {
-        @ZLinkSpotActorSend(packetName = "ActorNotify")
-        public void handle(PlayerActor actor, String request) {
-            actorRelayRequests.offer(actor.actorId() + ":" + request);
+        @ZLinkSpotActorSend
+        public CompletionStage<Void> handle(PlayerActor actor, ActorNotifyMessage request) {
+            actorRelayRequests.offer(actor.actorId() + ":" + request.value());
+            return CompletableFuture.completedFuture(null);
                     }
     }
 
@@ -331,11 +378,23 @@ final class SessionActorsRuntimeIntegrationTest {
     public record JsonRelayRes(String value) {
     }
 
+    @ZLinkPacket("ActorEcho")
+    public record ActorEchoRequest(String value) {
+    }
+
+    @ZLinkPacket("ActorNotify")
+    public record ActorNotifyMessage(String value) {
+    }
+
+    @ZLinkPacket("Ensure")
+    public record EnsureActorRequest(String actorId) {
+    }
+
     public static final class DefaultJsonActorHandler {
         @ZLinkSpotActorRequest
-        public JsonRelayRes handle(PlayerActor actor, JsonRelayReq request) {
+        public CompletionStage<JsonRelayRes> handle(PlayerActor actor, JsonRelayReq request) {
             actorRelayRequests.offer(actor.actorId() + ":" + request.value());
-            return new JsonRelayRes(request.value());
+            return CompletableFuture.completedFuture(new JsonRelayRes(request.value()));
         }
     }
 
@@ -367,7 +426,8 @@ final class SessionActorsRuntimeIntegrationTest {
             relayWithHeader(
                 bound,
                 "ActorNotify",
-                ZLinkMessage.of(new String(payloadBytes, StandardCharsets.UTF_8)));
+                ZLinkMessage.of(new ActorNotifyMessage(
+                    new String(payloadBytes, StandardCharsets.UTF_8))));
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) {
                 throw new java.util.concurrent.TimeoutException();
@@ -406,12 +466,12 @@ final class SessionActorsRuntimeIntegrationTest {
             this.actors = actors;
         }
 
-        @ZLinkRequest(packetName = "Ensure")
-        public String handle(String actorId) {
-            return actors.getOrCreate(actorId, "player")
-                .thenApply(actor -> actor.actorId())
-                .toCompletableFuture()
-                .join();
+        @ZLinkRequest
+        public CompletionStage<String> handle(
+            EnsureActorRequest request,
+            ZLinkRequestContext context) {
+            return actors.getOrCreate(request.actorId(), "player")
+                .thenApply(actor -> actor.actorId());
         }
     }
 

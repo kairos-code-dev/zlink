@@ -1,5 +1,7 @@
 package systems.zlink.framework.spots;
 
+import java.util.concurrent.CompletionStage;
+
 public interface ZLinkSpotTimerHandler<TSpot extends ZLinkSpot<?>> {
-    void handle(TSpot spot, ZLinkTimerTick tick);
+    CompletionStage<Void> handle(TSpot spot, ZLinkTimerTick tick);
 }

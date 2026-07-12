@@ -62,7 +62,8 @@ final class StreamPayloadTest {
             null),
                 TcpStreamConnectorTestServer.bytes("event")).join();
 
-            ZLinkStreamMessage<ZLinkStreamEncodedPayload> message = connector.await(push);
+            ZLinkStreamMessage<ZLinkStreamEncodedPayload> message =
+                push.toCompletableFuture().get();
             assertEquals("Push", message.packetName());
             try {
                 assertEquals("event", new String(

@@ -8,7 +8,7 @@ import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
 import systems.zlink.framework.locations.ZLinkPeerLocationStore;
 import systems.zlink.framework.locations.ZLinkRouteLocationStore;
 import systems.zlink.framework.locations.ZLinkSpotLocationStore;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 public record ZLinkRegisteredLocationStores(
     ZLinkPeerLocationStore peerStore,
@@ -32,7 +32,7 @@ public record ZLinkRegisteredLocationStores(
             store);
     }
 
-    public void addTo(ZLinkHandlerFactory.MutableServices services) {
+    public void addTo(ZLinkHandlerActivator.MutableServices services) {
         services.add(ZLinkPeerLocationStore.class, peerStore);
         services.add(ZLinkSpotLocationStore.class, spotStore);
         services.add(ZLinkActorLocationStore.class, actorStore);

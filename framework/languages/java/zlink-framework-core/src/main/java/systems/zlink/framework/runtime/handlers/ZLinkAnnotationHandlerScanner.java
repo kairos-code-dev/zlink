@@ -5,7 +5,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Set;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -45,7 +44,7 @@ final class ZLinkAnnotationHandlerScanner {
         Set<String> groups) {
         ZLinkSend send = method.getAnnotation(ZLinkSend.class);
         if (send != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkSendContext.class);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.CHANNEL,
@@ -60,7 +59,7 @@ final class ZLinkAnnotationHandlerScanner {
 
         ZLinkRequest request = method.getAnnotation(ZLinkRequest.class);
         if (request != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkRequestContext.class);
             Class<?> replyType = resolveReplyType(candidate, method);
             handlers.add(new ZLinkScannedHandler(
@@ -76,7 +75,7 @@ final class ZLinkAnnotationHandlerScanner {
 
         ZLinkPublish publish = method.getAnnotation(ZLinkPublish.class);
         if (publish != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkPublishContext.class);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.CHANNEL,
@@ -97,7 +96,7 @@ final class ZLinkAnnotationHandlerScanner {
         Set<String> groups) {
         ZLinkSpotRequest spotRequest = method.getAnnotation(ZLinkSpotRequest.class);
         if (spotRequest != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
@@ -120,7 +119,7 @@ final class ZLinkAnnotationHandlerScanner {
 
         ZLinkSpotSubscription spotSubscription = method.getAnnotation(ZLinkSpotSubscription.class);
         if (spotSubscription != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
@@ -148,7 +147,7 @@ final class ZLinkAnnotationHandlerScanner {
         Set<String> groups) {
         ZLinkSpotActorSend actorSend = method.getAnnotation(ZLinkSpotActorSend.class);
         if (actorSend != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             ActorMessageShape shape = requireActorPacketHandlerShape(
                 candidate,
                 method,
@@ -170,7 +169,7 @@ final class ZLinkAnnotationHandlerScanner {
 
         ZLinkSpotActorRequest actorRequest = method.getAnnotation(ZLinkSpotActorRequest.class);
         if (actorRequest != null) {
-            rejectJavaCompletionStageReturn(candidate, method);
+            requireJavaCompletionStageReturn(candidate, method);
             ActorMessageShape shape = requireActorPacketHandlerShape(
                 candidate,
                 method,
@@ -207,17 +206,18 @@ final class ZLinkAnnotationHandlerScanner {
     private record SpotMethodShape(Class<?> spotType, Class<?> messageType) {
     }
 
-    private static void rejectJavaCompletionStageReturn(Class<?> handlerType, Method method) {
+    private static void requireJavaCompletionStageReturn(Class<?> handlerType, Method method) {
         if (ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)) {
             return;
         }
         Type returnType = method.getGenericReturnType();
         if (returnType instanceof ParameterizedType parameterized
             && parameterized.getRawType() == java.util.concurrent.CompletionStage.class) {
-            throw new ZLinkConfigurationException(
-                "Java handler method must return a plain value or void, not CompletionStage: "
-                    + handlerType.getName() + "." + method.getName());
+            return;
         }
+        throw new ZLinkConfigurationException(
+            "Java handler method must return CompletionStage: "
+                + handlerType.getName() + "." + method.getName());
     }
 
     private static void rejectConflictingSpotActorAnnotations(Class<?> handlerType, Method method) {
@@ -237,13 +237,12 @@ final class ZLinkAnnotationHandlerScanner {
         if (parameters.length == 2) {
             return new ActorMessageShape(null, parameters[0], parameters[1]);
         }
-        if (parameters.length == 5
-            && parameters[2].isAssignableFrom(contextType)
-            && parameters[4] == CancellationToken.class) {
+        if (parameters.length == 4
+            && parameters[2].isAssignableFrom(contextType)) {
             return new ActorMessageShape(parameters[0], parameters[1], parameters[3]);
         }
         throw new ZLinkConfigurationException(
-            "Spot actor packet handler method must have actor/message or spot, actor, context, message, CancellationToken parameters: "
+            "Spot actor packet handler method must have actor/message or spot, actor, context, message parameters: "
                 + handlerType.getName() + "." + method.getName());
     }
 
@@ -261,8 +260,7 @@ final class ZLinkAnnotationHandlerScanner {
                     + handlerType.getName() + "." + method.getName());
         }
         for (int index = 1; index < parameters.length; index++) {
-            if (parameters[index] == CancellationToken.class
-                || parameters[index].isAssignableFrom(contextType)) {
+            if (parameters[index].isAssignableFrom(contextType)) {
                 continue;
             }
             throw new ZLinkConfigurationException(
@@ -280,6 +278,17 @@ final class ZLinkAnnotationHandlerScanner {
         if (method.getReturnType() == Void.TYPE || method.getReturnType() == Void.class) {
             throw new ZLinkConfigurationException(
                 "request handler method must return a reply: "
+                    + handlerType.getName() + "." + method.getName());
+        }
+        Type returnType = method.getGenericReturnType();
+        if (returnType instanceof ParameterizedType parameterized
+            && parameterized.getRawType() == java.util.concurrent.CompletionStage.class) {
+            Type replyType = parameterized.getActualTypeArguments()[0];
+            if (replyType instanceof Class<?> replyClass && replyClass != Void.class) {
+                return replyClass;
+            }
+            throw new ZLinkConfigurationException(
+                "request handler CompletionStage must declare a concrete reply type: "
                     + handlerType.getName() + "." + method.getName());
         }
         return method.getReturnType();

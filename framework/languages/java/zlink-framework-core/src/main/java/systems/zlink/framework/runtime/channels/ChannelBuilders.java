@@ -1,10 +1,14 @@
 package systems.zlink.framework.runtime.channels;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 
 public final class ChannelBuilders {
     private ChannelBuilders() {
@@ -47,6 +51,17 @@ public final class ChannelBuilders {
             registration.enableClient();
             registration.addClientManualEndpoint(endpoint);
             return this;
+        }
+
+        @Override
+        public ZLinkEndpointConnections clientConnections() {
+            return new EndpointConnections(
+                endpoint -> {
+                    registration.enableClient();
+                    registration.addClientManualEndpoint(endpoint);
+                },
+                registration::removeClientManualEndpoint,
+                registration::clientManualEndpoints);
         }
 
         @Override
@@ -130,6 +145,17 @@ public final class ChannelBuilders {
         }
 
         @Override
+        public ZLinkEndpointConnections subscriberConnections() {
+            return new EndpointConnections(
+                endpoint -> {
+                    registration.enableSubscriber();
+                    registration.addSubscriberManualEndpoint(endpoint);
+                },
+                registration::removeSubscriberManualEndpoint,
+                registration::subscriberManualEndpoints);
+        }
+
+        @Override
         public FanoutChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
             return this;
@@ -204,6 +230,17 @@ public final class ChannelBuilders {
         }
 
         @Override
+        public ZLinkEndpointConnections clientConnections() {
+            return new EndpointConnections(
+                endpoint -> {
+                    registration.enableClient();
+                    registration.addRouteManualEndpoint(endpoint);
+                },
+                registration::removeRouteManualEndpoint,
+                registration::routeManualEndpoints);
+        }
+
+        @Override
         public RouteMeshChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
             return this;
@@ -248,5 +285,25 @@ public final class ChannelBuilders {
                 packetName));
         }
 
+    }
+
+    private record EndpointConnections(
+        Consumer<String> connectAction,
+        Consumer<String> disconnectAction,
+        Supplier<List<String>> listAction) implements ZLinkEndpointConnections {
+        @Override
+        public void connect(String endpoint) {
+            connectAction.accept(endpoint);
+        }
+
+        @Override
+        public void disconnect(String endpoint) {
+            disconnectAction.accept(endpoint);
+        }
+
+        @Override
+        public List<String> listConnections() {
+            return listAction.get();
+        }
     }
 }

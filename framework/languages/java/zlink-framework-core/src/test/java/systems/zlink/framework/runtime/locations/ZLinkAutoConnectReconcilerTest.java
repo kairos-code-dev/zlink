@@ -46,7 +46,7 @@ final class ZLinkAutoConnectReconcilerTest {
             ZLinkAutoConnectExecutor.NONE,
             options());
 
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
 
         ZLinkPeerLocation stored = findPeer(store, new ZLinkPeerLocationKey(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
@@ -56,7 +56,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 "inproc://local"));
         assertEquals("local-owner", stored.ownerId());
 
-        reconciler.shutdownAsync().toCompletableFuture().join();
+        reconciler.shutdown().toCompletableFuture().join();
 
         assertNull(findPeer(store, new ZLinkPeerLocationKey(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
@@ -76,10 +76,10 @@ final class ZLinkAutoConnectReconcilerTest {
             RoutingId.from("local-node"),
             "inproc://local",
             "local-owner");
-        store.renewOwnerLeaseAsync("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
-        var remoteWrite = store.updatePeerAsync(
+        var remoteWrite = store.updatePeer(
                 peer(
                     ZLinkLocationRole.ROUTER,
                     RoutingId.from("local-node"),
@@ -101,7 +101,7 @@ final class ZLinkAutoConnectReconcilerTest {
             ZLinkAutoConnectExecutor.NONE,
             options());
 
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
         assertEquals("remote-owner", findPeer(store, new ZLinkPeerLocationKey(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
                 "orders",
@@ -110,7 +110,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 "inproc://local"))
             .ownerId());
 
-        store.removePeerAsync(
+        store.removePeer(
                 new ZLinkPeerLocationKey(
                     ZLinkLocationAutoConnectType.CLIENT_SERVER,
                     "orders",
@@ -120,7 +120,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 new ZLinkLocationOwnerToken("remote-owner", remoteWrite.generation()))
             .toCompletableFuture()
             .join();
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
 
         assertEquals("local-owner", findPeer(store, new ZLinkPeerLocationKey(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
@@ -129,7 +129,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 RoutingId.from("local-node"),
                 "inproc://local"))
             .ownerId());
-        reconciler.shutdownAsync().toCompletableFuture().join();
+        reconciler.shutdown().toCompletableFuture().join();
         runtime.close();
     }
 
@@ -137,10 +137,10 @@ final class ZLinkAutoConnectReconcilerTest {
     void dialingCapabilityConnectsLivePeerAndDisconnectsRemovedPeer() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLeaseAsync("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
-        var remoteWrite = store.updatePeerAsync(
+        var remoteWrite = store.updatePeer(
                 peer(
                     ZLinkLocationRole.ROUTER,
                     RoutingId.from("remote-node"),
@@ -164,11 +164,11 @@ final class ZLinkAutoConnectReconcilerTest {
             executor,
             options());
 
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
 
         assertEquals(List.of("inproc://remote"), executor.connected);
 
-        store.removePeerAsync(
+        store.removePeer(
                 new ZLinkPeerLocationKey(
                     ZLinkLocationAutoConnectType.CLIENT_SERVER,
                     "orders",
@@ -178,7 +178,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 new ZLinkLocationOwnerToken("remote-owner", remoteWrite.generation()))
             .toCompletableFuture()
             .join();
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
 
         assertEquals(List.of("inproc://remote"), executor.disconnected);
         runtime.close();
@@ -188,10 +188,10 @@ final class ZLinkAutoConnectReconcilerTest {
     void storeFailureKeepsExistingConnectionAndRecoveryDefersDisconnectDiff() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLeaseAsync("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
-        var remoteWrite = store.updatePeerAsync(
+        var remoteWrite = store.updatePeer(
                 peer(
                     ZLinkLocationRole.ROUTER,
                     RoutingId.from("remote-node"),
@@ -216,11 +216,11 @@ final class ZLinkAutoConnectReconcilerTest {
             executor,
             options);
 
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of("inproc://remote"), executor.connected);
 
         resolver.fail = true;
-        store.removePeerAsync(
+        store.removePeer(
                 new ZLinkPeerLocationKey(
                     ZLinkLocationAutoConnectType.CLIENT_SERVER,
                     "orders",
@@ -231,15 +231,15 @@ final class ZLinkAutoConnectReconcilerTest {
             .toCompletableFuture()
             .join();
 
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
 
         resolver.fail = false;
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
 
         Thread.sleep(options.heartbeatInterval().toMillis() + 10);
-        reconciler.tickAsync().toCompletableFuture().join();
+        reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of("inproc://remote"), executor.disconnected);
         runtime.close();
     }
@@ -253,7 +253,7 @@ final class ZLinkAutoConnectReconcilerTest {
             ownerId,
             Duration.ofSeconds(30),
             Duration.ofMillis(50));
-        runtime.startAsync(RoutingId.from(nodeRid)).toCompletableFuture().join();
+        runtime.start(RoutingId.from(nodeRid)).toCompletableFuture().join();
         return runtime;
     }
 
@@ -266,7 +266,7 @@ final class ZLinkAutoConnectReconcilerTest {
     private static ZLinkPeerLocation findPeer(
         ZLinkInMemoryLocationStore store,
         ZLinkPeerLocationKey key) {
-        return store.listPeerLocationsAsync(new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
+        return store.listPeerLocations(new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
                 key.autoConnectType(),
                 key.meshName(),
                 key.role(),
@@ -299,6 +299,7 @@ final class ZLinkAutoConnectReconcilerTest {
             role,
             endpoint,
             100,
+            false,
             0,
             null,
             null,
@@ -331,12 +332,12 @@ final class ZLinkAutoConnectReconcilerTest {
         }
 
         @Override
-        public CompletionStage<List<ZLinkPeerLocation>> listLivePeersAsync(
+        public CompletionStage<List<ZLinkPeerLocation>> listLivePeers(
             ZLinkPeerLocationFilter filter) {
             if (fail) {
                 return CompletableFuture.failedFuture(new IllegalStateException("store unavailable"));
             }
-            return delegate.listLivePeersAsync(filter);
+            return delegate.listLivePeers(filter);
         }
     }
 }

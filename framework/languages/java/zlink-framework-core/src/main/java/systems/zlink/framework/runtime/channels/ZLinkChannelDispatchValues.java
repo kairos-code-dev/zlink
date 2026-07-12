@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -22,7 +21,6 @@ final class PayloadDecodeDispatchException extends RuntimeException {
 }
 
 abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
-    private static final CancellationToken NONE = () -> false;
     private final String channelName;
     private final String packetName;
     private final String contentType;
@@ -51,10 +49,6 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
         return presentText(contentType);
     }
 
-    @Override
-    public final CancellationToken cancellationToken() {
-        return NONE;
-    }
 
     private static Optional<String> presentText(String value) {
         return Optional.ofNullable(value).filter(text -> !text.isBlank());

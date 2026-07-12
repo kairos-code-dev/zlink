@@ -5,8 +5,6 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkStreamRequestCall {
-    ZLinkStreamRequestCall packetName(String packetName);
-
     ZLinkStreamRequestCall metadata(String key, String value);
 
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
@@ -19,7 +17,4 @@ public interface ZLinkStreamRequestCall {
 
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 
-    default <TReply> TReply await(Class<TReply> replyType) throws Exception {
-        return ZLinkStreamCompletions.await(submit(replyType));
-    }
 }

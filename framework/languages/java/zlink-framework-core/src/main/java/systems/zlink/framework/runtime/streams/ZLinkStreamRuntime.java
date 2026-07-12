@@ -1,5 +1,9 @@
 package systems.zlink.framework.runtime.streams;
 
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
+
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.util.ArrayList;
@@ -28,9 +32,9 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -55,10 +59,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkBackendContext context;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
-    private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkHandlerActivator handlerFactory;
     private final Executor handlerExecutor;
     private final systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkStreamCompressionCodec compressionCodec;
     private final Predicate<RoutingId> sessionRelayRouteReady;
@@ -66,17 +70,17 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
     private final Map<String, ZLinkBackendStreamSocket> streamsByName = new HashMap<>();
     private final Map<String, Boolean> streamSessionRelayAttached = new HashMap<>();
-    private final Map<String, ZLinkBackendSpotNode> streamSessionRelaySpotNodes = new HashMap<>();
+    private final Map<String, ZLinkInternalSpotNode> streamSessionRelaySpotNodes = new HashMap<>();
     private final Map<String, SessionState> sessions = new HashMap<>();
 
     public ZLinkStreamRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
-        Map<String, ZLinkBackendSpotNode> spotNodes,
+        Map<String, ZLinkInternalSpotNode> spotNodes,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerActivator handlerFactory) {
         this(
             backendFactory,
             adapterOptions,
@@ -90,13 +94,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     }
 
     public ZLinkStreamRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
-        Map<String, ZLinkBackendSpotNode> spotNodes,
+        Map<String, ZLinkInternalSpotNode> spotNodes,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Predicate<RoutingId> sessionRelayRouteReady,
         ZLinkSpotRuntime spots) {
         this(
@@ -113,13 +117,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     }
 
     public ZLinkStreamRuntime(
-        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
-        Map<String, ZLinkBackendSpotNode> spotNodes,
+        Map<String, ZLinkInternalSpotNode> spotNodes,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         Predicate<RoutingId> sessionRelayRouteReady,
         ZLinkSpotRuntime spots,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
@@ -162,7 +166,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 dispatchToSession(streamNode, routingId, header, payload));
             stream.onTransportError((routingId, nativeCode, message) ->
                 reportTransportError(streamNode, routingId, nativeCode, message));
-            ZLinkBackendSpotNode spotNode = resolveSessionRelayNode(spotNodes);
+            ZLinkInternalSpotNode spotNode = resolveSessionRelayNode(spotNodes);
             streams.add(stream);
             streamsByName.put(streamNode.name(), stream);
             streamSessionRelayAttached.put(
@@ -174,8 +178,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
     }
 
-    private static ZLinkBackendSpotNode resolveSessionRelayNode(
-        Map<String, ZLinkBackendSpotNode> spotNodes) {
+    private static ZLinkInternalSpotNode resolveSessionRelayNode(
+        Map<String, ZLinkInternalSpotNode> spotNodes) {
         return spotNodes.values().stream().findFirst().orElse(null);
     }
 
@@ -382,8 +386,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 serializer,
                 handlerExecutor,
                 suspendHandlerInvokers);
-        ZLinkHandlerFactory.MutableServices sessionFactory =
-            ZLinkHandlerFactory.services(handlerFactory)
+        ZLinkHandlerActivator.MutableServices sessionFactory =
+            ZLinkHandlerActivator.services(handlerFactory)
                 .add(ZLinkSessionContext.class, context)
                 .add(ZLinkSessionPacketDispatcher.class, dispatcher);
         if (actors != null) {

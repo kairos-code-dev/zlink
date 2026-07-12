@@ -1,10 +1,11 @@
 package systems.zlink.framework.runtime.handlers;
 
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
@@ -16,7 +17,7 @@ public final class ZLinkFilterPipeline {
 
     public static <T> CompletionStage<T> invokeAsync(
         List<Class<? extends ZLinkHandlerFilter>> filterTypes,
-        ZLinkHandlerFactory handlerFactory,
+        ZLinkHandlerActivator handlerFactory,
         ZLinkHandlerContext context,
         Object request,
         Supplier<CompletionStage<T>> terminal) {
@@ -65,9 +66,5 @@ public final class ZLinkFilterPipeline {
             return inner.contentType();
         }
 
-        @Override
-        public CancellationToken cancellationToken() {
-            return inner.cancellationToken();
-        }
     }
 }

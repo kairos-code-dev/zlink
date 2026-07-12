@@ -6,27 +6,26 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 
 final class ZLinkSpotHandlerInvoker {
     private final ZLinkMessageSerializer serializer;
-    private final ZLinkHandlerFactory handlerFactory;
-    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
+    private final ZLinkHandlerActivator handlerFactory;
+    private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
 
     ZLinkSpotHandlerInvoker(
         ZLinkMessageSerializer serializer,
-        ZLinkHandlerFactory handlerFactory,
-        List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers) {
+        ZLinkHandlerActivator handlerFactory,
+        List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers) {
         this.serializer = serializer;
         this.handlerFactory = handlerFactory;
         this.suspendHandlerInvokers = suspendHandlerInvokers;
@@ -188,7 +187,7 @@ final class ZLinkSpotHandlerInvoker {
         if (parameterTypes.length == 2) {
             return new Object[] {actor, message};
         }
-        return new Object[] {spot, actor, context, message, context.cancellationToken()};
+        return new Object[] {spot, actor, context, message};
     }
 
     private CompletionStage<Void> invokeVoidMethod(
@@ -233,13 +232,7 @@ final class ZLinkSpotHandlerInvoker {
                 .invokeHandler(
                     handler,
                     "handle",
-                    new Object[] {
-                        spotSurface,
-                        actor,
-                        context,
-                        message,
-                        context.cancellationToken()
-                    },
+                    new Object[] {spotSurface, actor, context, message},
                     suspendHandlerInvokers)
                 .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
@@ -262,13 +255,7 @@ final class ZLinkSpotHandlerInvoker {
             return ZLinkHandlerMethodInvoker.invokeHandler(
                 handler,
                 "handle",
-                new Object[] {
-                    spotSurface,
-                    actor,
-                    context,
-                    message,
-                    context.cancellationToken()
-                },
+                new Object[] {spotSurface, actor, context, message},
                 suspendHandlerInvokers);
         } catch (RuntimeException ex) {
             return failed(

@@ -1,8 +1,9 @@
-package systems.zlink.framework.spots;
+package systems.zlink.framework.runtime.internal.spots;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 
-public record SpotRemoteRef(
+public record SpotTransportAddress(
     String routerChannelId,
     RoutingId targetNodeRid,
     RoutingId spotRid,

@@ -56,7 +56,7 @@ final class ZLinkSpotLocationCoordinator {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("Location runtime is not available."));
         }
-        return lifecycle.claimSpotAsync(
+        return lifecycle.claimSpot(
             node.meshName(),
             spotRid,
             spotType.getName(),
@@ -85,7 +85,7 @@ final class ZLinkSpotLocationCoordinator {
         if (node == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.releaseSpotAsync(node.meshName(), spotRid);
+        return lifecycle.releaseSpot(node.meshName(), spotRid);
     }
 
     CompletionStage<Void> releaseEntrySpotAsync(RoutingId nodeRid) {
@@ -93,14 +93,14 @@ final class ZLinkSpotLocationCoordinator {
         if (lifecycle == null || node == null || !node.hasRouteEndpoint()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.releaseSpotAsync(node.meshName(), node.nodeRid());
+        return lifecycle.releaseSpot(node.meshName(), node.nodeRid());
     }
 
     private CompletionStage<ZLinkLocationWriteStatus> claimEntrySpotAsync(NodeLocation node) {
         if (!node.hasRouteEndpoint() || lifecycle == null) {
             return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
         }
-        return lifecycle.claimSpotAsync(
+        return lifecycle.claimSpot(
             node.meshName(),
             node.nodeRid(),
             null,

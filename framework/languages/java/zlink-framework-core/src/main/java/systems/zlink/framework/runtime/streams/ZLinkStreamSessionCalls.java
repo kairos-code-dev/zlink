@@ -96,7 +96,6 @@ record ZLinkStreamSessionSendCall(
             compressionCodec);
     }
 
-    @Override
     public ZLinkSessionSendCall packetName(String messageName) {
         if (messageName == null || messageName.isBlank()) {
             throw new IllegalArgumentException("messageName is required");
@@ -126,7 +125,7 @@ record ZLinkStreamSessionSendCall(
     }
 
     @Override
-    public systems.zlink.framework.ZLinkSubmitStage submit() {
+    public void submit() {
         ZLinkStreamPayloadCodec.Encoded encoded = ZLinkStreamPayloadCodec.encode(
             payload,
             compressed,
@@ -144,7 +143,7 @@ record ZLinkStreamSessionSendCall(
             if (!stream.send(routingId, header, parts, SendFlags.DONT_WAIT)) {
                 throw new ZLinkConfigurationException("session send failed: " + routingId);
             }
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return;
         } finally {
             parts.forEach(Message::close);
             payload.close();
@@ -190,7 +189,7 @@ record ZLinkStreamSessionReplyCall(
     }
 
     @Override
-    public systems.zlink.framework.ZLinkSubmitStage submit() {
+    public void submit() {
         Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
         if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
             payload.close();
@@ -213,7 +212,7 @@ record ZLinkStreamSessionReplyCall(
                 throw new ZLinkConfigurationException("session reply failed: " + routingId);
             }
             context.traceStreamReplied(current);
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
+            return;
         } finally {
             parts.forEach(Message::close);
             payload.close();

@@ -174,12 +174,20 @@ public final class ChannelRegistration {
         clientServer.manualEndpoints.add(requireEndpoint(endpoint));
     }
 
+    void removeClientManualEndpoint(String endpoint) {
+        clientServer.manualEndpoints.remove(requireEndpoint(endpoint));
+    }
+
     void addPublisherBind(String endpoint) {
         fanout.publisherBinds.add(requireEndpoint(endpoint));
     }
 
     void addSubscriberManualEndpoint(String endpoint) {
         fanout.subscriberManualEndpoints.add(requireEndpoint(endpoint));
+    }
+
+    void removeSubscriberManualEndpoint(String endpoint) {
+        fanout.subscriberManualEndpoints.remove(requireEndpoint(endpoint));
     }
 
     void setRouteRoutingId(RoutingId routingId) {
@@ -192,6 +200,10 @@ public final class ChannelRegistration {
 
     void addRouteManualEndpoint(String endpoint) {
         routeMesh.manualEndpoints.add(requireEndpoint(endpoint));
+    }
+
+    void removeRouteManualEndpoint(String endpoint) {
+        routeMesh.manualEndpoints.remove(requireEndpoint(endpoint));
     }
 
     void addHandlerGroup(String groupName) {

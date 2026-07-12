@@ -1642,3 +1642,40 @@ Release build는 warning과 error 없이 성공했고 `test_spot_pubsub_basic`�
 - binding 변경: 소스 생성 방식의 네이티브 호출 코드 적용, `f8a8fb676` 푸시 완료
 - perf 변경: 공통 `Message` 풀 사용 경로로 의미 정렬
 - 다음 작업: `SPOT / ws`
+
+### SPOT ws 변동 셀 재확인
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_201606_core_9_0_dotnet_spot_ws_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_202006_core_9_0_dotnet_spot_ws_full_paired_dotnet_nopin_20260712.txt`
+
+C 전체 report는 131072B 첫 반복이 종료 코드 1로 끝나 partial이므로 해당 셀의 판정에
+사용하지 않았다. CPU idle 93.1%에서 같은 셀만 5회 다시 측정해 complete report를 얻었다.
+
+- C 131072B: `perf_c_single_linux_20260712_201922_core_9_0_dotnet_spot_ws_131072_recheck_c_nopin_20260712.txt`
+
+전체 결과에서 64B 평균 latency가 일반 상한 3배를 넘었고 256B, 65536B, 262144B의
+C 또는 .NET 처리량 변동이 10%를 넘었다. CPU idle 91.4%에서 이 네 셀을 C와 .NET
+순서로 다시 5회 측정했다.
+
+- C 경계 셀: `perf_c_single_linux_20260712_202350_core_9_0_dotnet_spot_ws_boundary_variability_recheck_c_nopin_20260712.txt`
+- .NET 경계 셀: `perf_dotnet_single_linux_20260712_202614_core_9_0_dotnet_spot_ws_boundary_variability_recheck_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 87.0%, 93.0%, 94.3%, 97.4%, 100.7%, 98.3%다.
+최소는 87.0%, 크기 중앙값은 약 95.9%로 SPOT 목표를 통과했다. C 256B 첫 반복과
+.NET 262144B의 일부 반복은 재측정에서도 중앙값에서 벗어났지만, 같은 payload와
+auto-HWM 4096/4 slot, 종료 조건을 사용했고 두 report 모두 complete였다.
+
+평균 latency 비율은 약 4.71배, 0.98배, 0.67배, 1.03배, 1.01배, 1.01배다.
+C 64B 평균 latency는 최초 5회에서 80.360~199.573ms, 재측정에서
+86.775~258.961ms로 크게 움직였지만 .NET은 재측정에서 533.707~559.921ms로
+안정적이었다. tcp 분석에서 확인한 것처럼 auto-HWM 16384 slot을 가진 여러 SPOT queue가
+포화될 때 작은 처리율 차이가 queue 깊이에 반영된다. 제거 가능한 binding 비용은 tcp에서
+이미 줄였으므로 `SPOT / ws / 64B`에만 평균 latency 5배 상한을 적용한다. 다른 셀의
+상한은 유지한다.
+
+- `SPOT / ws`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `SPOT / wss`

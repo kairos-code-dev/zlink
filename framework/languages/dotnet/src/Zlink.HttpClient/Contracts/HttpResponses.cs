@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+using System.Text;
+
 namespace Zlink.HttpClient;
 
 /// <summary>
@@ -8,11 +10,21 @@ namespace Zlink.HttpClient;
 /// </summary>
 public sealed class RawHttpResponse
 {
+    private string? _body;
+
     public required int Status { get; init; }
 
     public required IReadOnlyDictionary<string, string> Headers { get; init; }
 
-    public required string Body { get; init; }
+    /// <summary>
+    ///     Decoded lazily from the buffered bytes so binary responses do not pay a UTF-8
+    ///     string conversion unless the text body is actually read.
+    /// </summary>
+    public string Body
+    {
+        get => _body ??= BodyBytes.Length == 0 ? string.Empty : Encoding.UTF8.GetString(BodyBytes);
+        init => _body = value;
+    }
 
     internal byte[] BodyBytes { get; init; } = [];
 }

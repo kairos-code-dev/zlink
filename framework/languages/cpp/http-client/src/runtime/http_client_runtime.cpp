@@ -30,15 +30,10 @@ http_client_runtime_t::~http_client_runtime_t () = default;
 zlink::framework::result_t<raw_http_response_t>
 http_client_runtime_t::execute (const http_request_t &request) const
 {
-    const retry_policy_t retry_policy (_options, request);
-
-    for (int attempt = 0;; ++attempt) {
-        auto result = perform_once (_options, _cookie_jar, *_connection_pool, request);
-        if (!retry_policy.should_retry (attempt, result)) {
-            return result;
-        }
-        std::this_thread::sleep_for (retry_policy_t::delay ());
-    }
+    //  The synchronous path enforces the same total wall-clock budget across retries as the
+    //  coroutine path; without this the caller blocked for up to attempts x timeout.
+    const auto timeout = request.timeout.value_or (_options.timeout);
+    return execute_with_deadline (request, std::chrono::steady_clock::now () + timeout);
 }
 
 zlink::framework::result_t<raw_http_response_t>

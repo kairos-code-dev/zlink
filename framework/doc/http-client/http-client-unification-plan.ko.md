@@ -85,25 +85,25 @@ package 정책(`scripts/local-package/README.ko.md`)을 http-client에 그대로
   timeout kind+retriable), dotnet timeout 2케이스 갱신. node/cpp는 기존
   테스트가 이미 kind 검증. spec 9.2/9.3·언어별 spec 6절 현황 갱신
 
-## Phase 4 — 언어별 결함 수정
+## Phase 4 — 언어별 결함 수정 ✅ (2026-07-12)
 
-| 언어 | 항목 | 위치 |
+| 언어 | 항목 | 결과 |
 | --- | --- | --- |
-| node | 동기 zlib(`gunzipSync` 등) → async 전환(event loop 블록 제거) | `runtime/compression.ts` |
-| dotnet | 버퍼드 응답 무조건 `UTF8.GetString`(바이너리 응답 낭비/훼손) → lazy 변환 | `Runtime/RequestPerformer.cs:90` |
-| dotnet | `IsPackable` 미설정 → nupkg 미생성인데 문서는 "public package". 배포 의도 확정 후 정렬 | `Zlink.HttpClient.csproj` |
-| dotnet | `HttpClientCodecRegistry` ↔ framework `ZLinkCodecRegistryBuilder` 중복 통합 + 타입캐시 + `AddStreamCodec` no-op 정리 | `Runtime/HttpClientCodecRegistry.cs` |
-| cpp | 동기 경로 재시도 총 데드라인 부재(최악 retry×timeout 블로킹) — 코루틴 경로와 시맨틱 통일 | `http_client_runtime.cpp:30-42` |
-| cpp | 기본 스케줄러 1스레드 execute/resume 공용(직렬화·데드락) + continuation 예외 무음 삼킴 | `coroutine_scheduler.cpp` |
-| cpp | connection pool: 키당 idle 4 하드코딩, 전체 상한·TTL 없음 | `connection_pool.cpp:23` |
-| cpp | dead code 제거: `http_response_metadata_t`, `version_*` 상수 | `contracts/types.hpp` |
-| kotlin | 취소 전파(`suspendCancellableCoroutine` + 하부 cancel) — R5 승격과 연동 | `HttpClientCoroutines.kt` |
-| java | CookieJar 단일 synchronized 락 완화 검토(활성화 시 전 요청 경유) | `internal/CookieJar.java` |
-| java | read-loop/size-limit 3중복 통합 | `ResponseBodyReader` / `ResponseCompression` |
-| java | virtual threads 검토(JDK 22 타깃인데 body-read를 플랫폼 풀에 오프로드) | `HttpClientRuntime.java` |
+| node | 동기 zlib → async(promisify + `chunkSize` 1MiB) + **body lazy UTF-8 변환** | ✅ 실측: 64MiB gzip, body 미접근 median 478→105ms(−78%), event loop 블로킹 461→35ms(−92%); body 접근 시 median 동등(±2%). 계약 32/32 |
+| dotnet | 버퍼드 응답 무조건 `UTF8.GetString` → `RawHttpResponse.Body` lazy 변환 | ✅ 54/54 |
+| dotnet | `IsPackable` | ✅ Phase 2에서 처리 |
+| dotnet | 코덱 레지스트리: 매 요청 LINQ 해석 → **타입 캐시**(ConcurrentDictionary) | ✅. framework 빌더와의 **중복 통합은 보류** — framework `ZLinkCodecRegistryBuilder`가 internal이라 어셈블리 경계상 재사용 불가(공개화 필요). `AddStreamCodec` no-op은 인터페이스 계약상 유지 |
+| cpp | 동기 경로 총 데드라인 | ✅ `execute()`가 `execute_with_deadline()`으로 위임 — 두 경로 timeout 의미 통일(총 예산, 언어 편차로 spec 6.2 기재) |
+| cpp | 기본 스케줄러 | ✅ execute 4스레드 + resume 전용 1스레드 분리(직렬화·상호 굶김 데드락 해소). continuation 예외 무음은 유지(소유자 없는 detached 스레드 — 주석 명문화) |
+| cpp | connection pool | ✅ idle TTL 30초 lazy 축출 추가. 전체 상한은 보류(키당 4 + TTL로 충분, 필요 시 재평가) |
+| cpp | dead code | ✅ `http_response_metadata_t` 제거(공개 목록에 원래 없음), `version_*`는 UA 파생으로 사용처 연결(Phase 2) |
+| kotlin | 취소 전파 | → Phase 5 R5/R9 결정으로 이관 |
+| java | read-loop 3중복 | ✅ `BoundedRead.copy` 단일 헬퍼로 통합 |
+| java | CookieJar 락 | **유지 결정** — 병목 실측 증거 없음(host당 128개 선형 스캔, 임계구역 짧음). perf 하네스(H2) 기록 후 재평가 |
+| java | virtual threads | **보류 결정** — 동작·성능 변화가 커서 perf 기록(H2/H4) 없이 전환 금지. Phase 6 이후 재평가 |
 
-perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)은
-**perf/README 규칙대로 baseline vs patched 측정 후 커밋**.
+전 언어 게이트: cpp 54/54 + contract headers, dotnet 54/54, java/kotlin 그린,
+node 계약 32/32.
 
 ## Phase 5 — 개정 후보 결정 (R1~R14)
 
@@ -140,7 +140,7 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 | 2 | Phase 1 문서 정비 | ✅ 2026-07-12 |
 | 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ✅ 2026-07-12 (cpp는 소스 참조+계약 게이트로 편차 확정) |
 | 4 | Phase 3 에러 모델 parity | ✅ 2026-07-12 |
-| 5 | Phase 4 언어별 결함 | ⬜ |
+| 5 | Phase 4 언어별 결함 | ✅ 2026-07-12 |
 | 6 | Phase 5 R-항목 결정 | ⬜ |
 | 7 | Phase 6 배포·perf 체계 | ⬜ |
 | 8 | 이 문서 삭제 | ⬜ |

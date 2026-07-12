@@ -75,7 +75,6 @@ internal sealed class RequestPerformer(
                 {
                     Status = status,
                     Headers = headers,
-                    Body = string.Empty,
                     BodyBytes = []
                 };
             }
@@ -87,7 +86,6 @@ internal sealed class RequestPerformer(
             {
                 Status = status,
                 Headers = headers,
-                Body = Encoding.UTF8.GetString(bytes),
                 BodyBytes = bytes
             };
         }

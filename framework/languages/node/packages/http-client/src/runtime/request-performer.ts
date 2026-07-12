@@ -99,11 +99,21 @@ export class RequestPerformer {
       let bytes = await this.bodyReader.readBuffered(response.body);
       let finalHeaders = collectedHeaders;
       if (this.options.compression) {
-        const result = this.bodyReader.decompress(bytes, finalHeaders);
+        const result = await this.bodyReader.decompress(bytes, finalHeaders);
         bytes = result.body;
         finalHeaders = result.headers;
       }
-      return { status, headers: finalHeaders, body: bytes.toString('utf8') };
+      // Decode lazily: the UTF-8 conversion of a large body is a main-thread cost that
+      // callers who never read the text body (binary consumers) should not pay.
+      let text: string | undefined;
+      return {
+        status,
+        headers: finalHeaders,
+        get body(): string {
+          text ??= bytes.toString('utf8');
+          return text;
+        },
+      };
     }
   }
 

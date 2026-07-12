@@ -47,20 +47,15 @@ public final class ResponseCompression {
     }
 
     private static byte[] decode(java.io.InputStream stream, long maxBytes) throws IOException {
-        try (stream) {
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            byte[] buffer = new byte[16384];
-            int read;
-            while ((read = stream.read(buffer)) > 0) {
-                if ((long) output.size() + read > maxBytes) {
-                    throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                        "HTTP response compressed body exceeds maxResponseBodySize");
-                }
-                output.write(buffer, 0, read);
-            }
-            return output.toByteArray();
-        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        // The limit failure is unchecked, so it escapes the callers' IOException->malformed
+        // mapping and keeps its REQUEST_FAILED kind.
+        BoundedRead.copy(stream, maxBytes,
+            () -> new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                "HTTP response compressed body exceeds maxResponseBodySize"),
+            (buffer, length) -> output.write(buffer, 0, length));
+        return output.toByteArray();
     }
 
     private static ZLinkFrameworkException malformed(IOException cause) {

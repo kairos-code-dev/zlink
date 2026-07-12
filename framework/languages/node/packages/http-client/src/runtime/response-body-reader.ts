@@ -40,10 +40,10 @@ export class ResponseBodyReader {
     return Buffer.concat(chunks);
   }
 
-  decompress(
+  async decompress(
     bytes: Buffer,
     headers: Record<string, string>,
-  ): { body: Buffer; headers: Record<string, string> } {
+  ): Promise<{ body: Buffer; headers: Record<string, string> }> {
     const encoding = Object.prototype.hasOwnProperty.call(headers, 'content-encoding')
       ? headers['content-encoding']
       : undefined;
@@ -52,10 +52,16 @@ export class ResponseBodyReader {
       return { body: bytes, headers };
     }
     if (encoding.toLowerCase() === 'gzip') {
-      return { body: gunzip(bytes, this.options.maxResponseBodySize), headers: stripEncodingHeaders(headers) };
+      return {
+        body: await gunzip(bytes, this.options.maxResponseBodySize),
+        headers: stripEncodingHeaders(headers),
+      };
     }
     if (encoding.toLowerCase() === 'deflate') {
-      return { body: inflateDeflate(bytes, this.options.maxResponseBodySize), headers: stripEncodingHeaders(headers) };
+      return {
+        body: await inflateDeflate(bytes, this.options.maxResponseBodySize),
+        headers: stripEncodingHeaders(headers),
+      };
     }
     return { body: bytes, headers };
   }

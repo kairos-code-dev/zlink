@@ -22,12 +22,6 @@ enum class http_method_t
     options
 };
 
-struct http_response_metadata_t
-{
-    int status = 0;
-    std::map<std::string, std::string> headers;
-};
-
 template <typename T> struct http_response_t
 {
     int status = 0;

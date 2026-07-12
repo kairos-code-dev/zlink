@@ -33,19 +33,13 @@ final class ResponseBodyReader {
     }
 
     void streamToSink(InputStream stream, Consumer<byte[]> sink) {
-        try (stream) {
-            byte[] buffer = new byte[16384];
-            long total = 0;
-            int read;
-            while ((read = stream.read(buffer)) > 0) {
-                total += read;
-                if (total > options.maxResponseBodySize()) {
-                    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
-                }
-                byte[] chunk = new byte[read];
-                System.arraycopy(buffer, 0, chunk, 0, read);
-                sink.accept(chunk);
-            }
+        try {
+            BoundedRead.copy(stream, options.maxResponseBodySize(), ResponseBodyReader::tooLarge,
+                (buffer, length) -> {
+                    byte[] chunk = new byte[length];
+                    System.arraycopy(buffer, 0, chunk, 0, length);
+                    sink.accept(chunk);
+                });
         } catch (IOException cause) {
             // Surface as an unchecked IOException so RetryPolicy can classify a body-read transport
             // failure (e.g. connection reset) as retriable, rather than masking it.
@@ -54,22 +48,21 @@ final class ResponseBodyReader {
     }
 
     byte[] readBuffered(InputStream stream) {
-        try (stream) {
+        try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
-            byte[] buffer = new byte[16384];
-            int read;
-            while ((read = stream.read(buffer)) > 0) {
-                if ((long) output.size() + read > options.maxResponseBodySize()) {
-                    throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
-                }
-                output.write(buffer, 0, read);
-            }
+            BoundedRead.copy(stream, options.maxResponseBodySize(), ResponseBodyReader::tooLarge,
+                (buffer, length) -> output.write(buffer, 0, length));
             return output.toByteArray();
         } catch (IOException cause) {
             // Surface as an unchecked IOException so RetryPolicy can classify a body-read transport
             // failure (e.g. connection reset) as retriable, rather than masking it.
             throw new UncheckedIOException(cause);
         }
+    }
+
+    private static ZLinkFrameworkException tooLarge() {
+        return new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
     }
 
     DecodedBody decompress(byte[] bytes, Map<String, String> headers) {

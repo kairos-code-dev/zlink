@@ -10,6 +10,7 @@
 #include <boost/asio/ssl/stream.hpp>
 #endif
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -38,8 +39,14 @@ class connection_pool_t
     void release (const std::string &key, std::unique_ptr<pooled_connection_t> connection);
 
   private:
+    struct idle_entry_t
+    {
+        std::unique_ptr<pooled_connection_t> connection;
+        std::chrono::steady_clock::time_point released_at;
+    };
+
     std::mutex _mutex;
-    std::map<std::string, std::vector<std::unique_ptr<pooled_connection_t>>> _idle;
+    std::map<std::string, std::vector<idle_entry_t>> _idle;
 };
 
 } // namespace zlink::http_client::detail

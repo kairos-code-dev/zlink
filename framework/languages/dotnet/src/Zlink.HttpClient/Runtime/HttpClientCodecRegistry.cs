@@ -13,6 +13,11 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
     private readonly Dictionary<string, RegisteredSerializer> _serializers =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Per-type resolution cache: the registry is snapshot at Build() and requests resolve the
+    // same payload types repeatedly, so the linear scan runs once per type instead of per call.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<
+        Type, (bool Found, string ContentType, IZLinkMessageSerializer? Serializer)> _resolved = new();
+
     public HttpClientCodecRegistry()
     {
     }
@@ -118,6 +123,7 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
 
         _serializers[NormalizeContentType(contentType)] =
             new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
+        _resolved.Clear();
     }
 
     private bool TryResolveSerializer(
@@ -125,25 +131,27 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
         out string contentType,
         out IZLinkMessageSerializer serializer)
     {
+        var entry = _resolved.GetOrAdd(payloadType, ResolveUncached);
+        contentType = entry.ContentType;
+        serializer = entry.Serializer!;
+        return entry.Found;
+    }
+
+    private (bool Found, string ContentType, IZLinkMessageSerializer? Serializer) ResolveUncached(
+        Type payloadType)
+    {
         var matches = _serializers
             .Where(entry => entry.Value.CanSerialize(payloadType))
             .ToArray();
 
-        if (matches.Length == 0)
-        {
-            contentType = string.Empty;
-            serializer = null!;
-            return false;
-        }
+        if (matches.Length == 0) return (false, string.Empty, null);
 
         if (matches.Length > 1)
             throw new InvalidOperationException(
                 "HTTP payload serializer is ambiguous for type '" + payloadType + "': "
                 + string.Join(", ", matches.Select(entry => entry.Key)));
 
-        contentType = matches[0].Key;
-        serializer = matches[0].Value.Serializer;
-        return true;
+        return (true, matches[0].Key, matches[0].Value.Serializer);
     }
 
     private bool TryResolveFallback(out string contentType, out IZLinkMessageSerializer serializer)

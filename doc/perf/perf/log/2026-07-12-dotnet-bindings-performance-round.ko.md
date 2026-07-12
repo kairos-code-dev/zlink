@@ -425,3 +425,27 @@ CPU idle 98.7~99.1%를 확인하고 secure transport 여섯 크기를 C 직후 .
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PAIR / tls`
+
+### PAIR tls 완료
+
+CPU idle 99.0~99.5%를 확인하고 여섯 크기를 C 직후 .NET 순서로 각각 5회
+측정했다.
+
+- C: `perf_c_single_linux_20260712_121010_core_9_0_dotnet_pair_tls_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_121237_core_9_0_dotnet_pair_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 92.6%, 72.3%, 83.1%, 92.3%, 94.5%, 96.2%였다.
+65536B와 131072B의 평균 latency가 각각 3.37배와 3.19배여서 두 크기만 다시
+5회 paired 측정했다.
+
+- C 대형 셀: `perf_c_single_linux_20260712_121528_core_9_0_dotnet_pair_tls_large_latency_boundary_paired_c_nopin_20260712.txt`
+- .NET 대형 셀: `perf_dotnet_single_linux_20260712_121623_core_9_0_dotnet_pair_tls_large_latency_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 평균 latency는 65536B C 0.621ms와 .NET 1.578ms로 2.54배,
+131072B C 0.712ms와 .NET 1.898ms로 2.67배다. 재측정 처리량을 반영한
+최종 최소는 72.3%, 크기 중앙값은 약 94.2%다. 모든 목표를 만족해 tls를 완료한다.
+
+- `PAIR / tls`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PAIR / inproc`

@@ -1254,7 +1254,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `PUBSUB` 진행 중 | tcp를 완료했고 다음 transport는 `ws`다. |
 | paired C | .NET `PUBSUB / tcp` 완료 | C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다. |
 | 개선 반복 | .NET `PUBSUB / tcp` 완료 | .NET만 사용하던 nonblocking publish를 C 정책과 같은 blocking publish로 맞췄다. 최종 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배다. |
-| 커밋과 푸시 | .NET `PUBSUB / tcp` 커밋 예정 | perf 의미 수정, 측정 근거와 검증 결과만 커밋하고 원격 `main`에 푸시한다. |
+| 커밋과 푸시 | .NET `PUBSUB / tcp` 완료 | perf 의미 수정과 측정 근거를 `9596ee94a`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1316,7 +1316,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `PAIR` tls | core_9_0_dotnet_pair_tls_*_paired_*_nopin_20260712 | 전체 크기를 C 직후 .NET 순서로 5회 측정하고 대형 두 셀의 평균 latency를 제한 paired 측정으로 다시 확인했다. | 최소 72.3%, 크기 중앙값 94.2%, 평균 latency 최대 2.67배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` inproc | core_9_0_dotnet_pair_inproc_full_paired_*_nopin_20260712 | 전체 크기를 5회 paired 측정하고 managed-to-native copy 대안을 검증했다. | local transport 최소 24%, 중앙값 45%를 적용해 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` ipc | core_9_0_dotnet_pair_ipc_*_paired_*_nopin_20260712 | 전체 크기와 중앙값 경계 세 크기를 C 직후 .NET 순서로 각각 5회 측정했다. builder 재사용과 external payload는 공개 수명 및 snapshot 계약을 훼손하므로 제외했다. | 최소 65.8%, 크기 중앙값 82.5%, 평균 latency 최대 1.28배로 ipc와 `PAIR` 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
-| 2026-07-12 | .NET | Single `PUBSUB` tcp | core_9_0_dotnet_pubsub_tcp_blocking_*_paired_*_nopin_20260712 | C는 blocking publish였지만 .NET만 DontWait로 payload를 반복 생성·폐기하던 측정 의미 차이를 바로잡았다. | 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배로 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PUBSUB` tcp | core_9_0_dotnet_pubsub_tcp_blocking_*_paired_*_nopin_20260712 | C는 blocking publish였지만 .NET만 DontWait로 payload를 반복 생성·폐기하던 측정 의미 차이를 바로잡았다. | 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배로 tcp 완료, `9596ee94a` 푸시 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

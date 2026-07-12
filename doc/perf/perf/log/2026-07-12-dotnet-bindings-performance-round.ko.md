@@ -559,5 +559,6 @@ idle 99~100%를 세 번 확인한 뒤 전체 크기를 다시 paired 측정했�
 - `Zlink.Tests`: 178개 통과
 - public API 변경: 없음
 - binding runtime 변경: 없음
+- commit: `9596ee94a` (`perf(dotnet): align pubsub backpressure semantics`), 원격 `main` 푸시 완료
 - `PUBSUB / tcp`: 완료
 - 다음 작업: `PUBSUB / ws`

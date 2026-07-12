@@ -678,7 +678,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ipc` | `PUBSUB` | 통과(94.6%) | 통과(78.9%) | 통과(82.0%) | 통과(75.5%) | 통과(92.4%) | 통과(98.8%) | CPU pin 없는 5회 paired 측정. 최소 75.5%, 크기 중앙값 약 87.2%, 평균 latency 최대 1.28배로 ipc와 PUBSUB 전체를 완료했다. |
 | `ipc` | `DEALER_DEALER` | 통과(97.5%) | 통과(78.8%) | 통과(86.3%) | 통과(100.2%) | 통과(100.1%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 78.8%, 크기 중앙값 약 98.7%, 평균 latency 최대 1.48배로 ipc와 `DEALER_DEALER` 전체를 완료했다. |
 | `ipc` | `DEALER_ROUTER` | 통과(89.6%) | 통과(71.4%) | 통과(77.3%) | 통과(92.0%) | 통과(104.7%) | 통과(104.3%) | 256B는 독립 paired 재측정 최소 71%를 적용한다. 크기 중앙값 약 90.8%, 평균 latency 최대 약 1.15배로 통과했다. |
-| `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 통과(86.4%) | 통과(87.5%) | 통과(90.0%) | 통과(81.9%) | 통과(72.2%) | 통과(78.6%) | reply ownership transfer를 유지하고 CPU pin 없이 5회 paired 측정했다. 최소 72.2%, 중앙값 약 84.2%, 평균 latency 최대 약 1.36배로 통과했다. |
 | `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
@@ -1273,17 +1273,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `DEALER_ROUTER_REQREP` 진행 중 | tcp, ws, wss, tls, inproc를 완료했고 다음 transport는 ipc다. |
-| paired C | .NET `DEALER_ROUTER_REQREP / inproc` 완료 | 전체 크기와 262144B 경계를 CPU pin 없이 paired 측정하고 변경 후 전체 회귀를 5회 확인했다. |
-| 개선 반복 | .NET `DEALER_ROUTER_REQREP / inproc` 완료 | 262144B 처리량을 18.53K에서 45.50Kops/s로 개선했고 전체 최소 78.7%, 중앙값 91.2%를 확인했다. |
-| 커밋과 푸시 | .NET reply ownership transfer 반영 중 | perf 수정, 기능 test, inproc 전체와 tcp 대표 회귀 근거를 함께 커밋하고 푸시한다. |
+| 현재 pattern | Single `DEALER_ROUTER_REQREP` 완료 | tcp, ws, wss, tls, inproc, ipc의 모든 크기 판정을 완료했다. 다음 pattern은 `ROUTER_ROUTER`다. |
+| paired C | .NET `DEALER_ROUTER_REQREP / ipc` 완료 | 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `DEALER_ROUTER_REQREP` 완료 | ipc 최소 72.2%, 중앙값 84.2%, 평균 latency 최대 약 1.36배를 확인했다. |
+| 커밋과 푸시 | .NET `DEALER_ROUTER_REQREP / ipc` 문서 반영 중 | source 추가 변경은 없으며 측정 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER` 완료, `DEALER_ROUTER_REQREP` tcp, ws, wss, tls, inproc 완료 | 미측정 | `DEALER_ROUTER_REQREP / ipc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP` 완료 | 미측정 | `ROUTER_ROUTER / tcp` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1361,6 +1361,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `DEALER_ROUTER_REQREP` wss | core_9_0_dotnet_dealer_router_reqrep_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 각각 5회 측정했다. | 최소 83.4%, 크기 중앙값 89.4%, 평균 latency 최대 약 1.17배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER_REQREP` tls | core_9_0_dotnet_dealer_router_reqrep_tls_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 각각 5회 측정했다. | 최소 84.0%, 크기 중앙값 85.4%, 평균 latency 최대 약 1.15배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER_REQREP` inproc | core_9_0_dotnet_dealer_router_reqrep_inproc_*_nopin_20260712 | C는 수신 message를 reply로 이동하지만 .NET perf만 전체 payload를 복사하던 의미 차이를 제거했다. | 최소 78.7%, 크기 중앙값 91.2%, 평균 latency 최대 약 1.09배로 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `DEALER_ROUTER_REQREP` ipc | core_9_0_dotnet_dealer_router_reqrep_ipc_full_paired_*_nopin_20260712 | reply ownership transfer를 유지하고 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 72.2%, 크기 중앙값 84.2%, 평균 latency 최대 약 1.36배로 ipc와 pattern 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

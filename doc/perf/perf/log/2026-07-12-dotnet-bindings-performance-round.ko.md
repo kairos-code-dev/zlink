@@ -1219,3 +1219,22 @@ tcp 대표 회귀 5회에서는 64B가 기존 227.33K에서 232.19Kops/s, 262144
 - binding 변경: 없음
 - perf 의미 정렬: 수신 message를 reply로 직접 이동
 - 다음 작업: `DEALER_ROUTER_REQREP / ipc`
+
+### DEALER_ROUTER_REQREP ipc와 pattern 완료
+
+reply ownership transfer 개선을 유지하고 C와 .NET의 여섯 크기를 CPU pin 없이 각각
+5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_174700_core_9_0_dotnet_dealer_router_reqrep_ipc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_174942_core_9_0_dotnet_dealer_router_reqrep_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 86.4%, 87.5%, 90.0%, 81.9%, 72.2%, 78.6%였다. 최소는
+72.2%, 크기 중앙값은 약 84.2%로 request/reply 목표를 통과했다. 평균 latency 최대
+비율은 131072B의 약 1.36배로 일반 상한 3배 이내였다. 모든 크기가 첫 paired
+측정에서 통과해 추가 개선은 필요하지 않았다.
+
+- `DEALER_ROUTER_REQREP / ipc`: 완료
+- `DEALER_ROUTER_REQREP`: 전체 transport 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `ROUTER_ROUTER / tcp`

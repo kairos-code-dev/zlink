@@ -254,16 +254,24 @@ public sealed partial class TopicMessage
             || (uint)topicLength > (uint)topicWriteBuffer.Length)
             throw new ArgumentOutOfRangeException(nameof(topicLength));
 
-        // HOT PATH: Spot.Subscribe(TopicMessage, ...) writes topic bytes into
-        // the reusable buffer supplied by this instance. The reset step leaves
-        // topic state for this method to replace, avoiding a transient empty
-        // topic assignment before every subscribed message. Swap buffers instead
-        // of copying, and keep UTF-8 decoding lazy so callers that only inspect
-        // the payload do not pay for a string allocation.
+        // HOT PATH: Subscribe writes into the reusable alternate buffer. Keep
+        // the decoded string when those bytes equal the previous topic; stable
+        // subscriptions must not allocate the same string for every message.
+        // Otherwise leave decoding lazy for payload-only callers. The reset step
+        // preserves the previous topic long enough to compare before swapping,
+        // avoiding a transient empty topic assignment on every receive.
+        var decodedTopic = _topic;
+        if (decodedTopic == null
+            || _topicBytes == null
+            || _topicLength != topicLength
+            || !topicWriteBuffer.AsSpan(0, topicLength).SequenceEqual(
+                _topicBytes.AsSpan(0, topicLength)))
+            decodedTopic = null;
+
         _topicWriteBuffer = _topicBytes;
         _topicBytes = topicWriteBuffer;
         _topicLength = topicLength;
-        _topic = null;
+        _topic = decodedTopic;
     }
 
     private string DecodeTopicBytes()

@@ -596,3 +596,60 @@ CPU pin 없이 각각 5회 측정했다.
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `PUBSUB / tls`
+
+### PUBSUB tls topic 재해석과 latency queue 개선
+
+CPU idle 99~100%에서 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다.
+
+- C 최초: `perf_c_single_linux_20260712_132707_core_9_0_dotnet_pubsub_tls_full_paired_c_nopin_20260712.txt`
+- .NET 최초: `perf_dotnet_single_linux_20260712_133023_core_9_0_dotnet_pubsub_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 최소는 74.6%, 크기 중앙값은 91.7%로 통과했다. 그러나 평균 latency는 64B와
+64KiB 이상에서 C 대비 3배를 넘었다. 64B와 대형 세 셀을 다시 paired 측정했으며 64B는
+2.75배로 통과했지만 대형 셀은 4.4~5.5배로 반복됐다.
+
+- C latency 재확인: `perf_c_single_linux_20260712_133356_core_9_0_dotnet_pubsub_tls_latency_boundary_paired_c_nopin_20260712.txt`
+- .NET latency 재확인: `perf_dotnet_single_linux_20260712_133604_core_9_0_dotnet_pubsub_tls_latency_boundary_paired_dotnet_nopin_20260712.txt`
+
+C와 .NET의 측정 의미를 다시 대조했다. 둘 다 header timestamp 뒤 native message 할당,
+payload copy와 publish를 수행하고 수신과 header 검증 뒤 시간을 읽는다. 둘 다 active 구간의
+모든 유효 표본으로 산술평균을 계산한다. C는 message close 뒤, .NET은 close 전에 시간을
+읽으므로 이 작은 차이는 오히려 C latency를 높이는 방향이다. 현재 차이를 측정 방식으로
+설명할 수 없다고 판정했다.
+
+POSD 관점에서 세 대안을 비교했다. perf에서 topic 확인을 생략하거나 internal bytes를 읽는
+안은 측정 의미 변경과 private 우회라서 제외했다. 전역 topic intern cache는 lock과 무제한
+수명이라는 새 복잡성을 만든다. 재사용되는 `TopicMessage`가 직전 topic bytes와 이미 해석한
+문자열을 함께 보유하는 안은 public API를 바꾸지 않고 표현 지식을 envelope 안에 가둔다.
+세 번째 안을 선택했고 확정된 이유와 책임을 `HOT PATH:` 주석에 남겼다.
+
+64KiB 후보 paired 측정에서 .NET 평균 latency는 3.03ms에서 2.27ms로 약 25% 줄었다.
+pointer 전용 subscribe interop도 비교했지만 2.81ms로 악화되고 native 선언만 중복되어
+제거했다.
+
+- C topic cache 후보: `perf_c_single_linux_20260712_133932_core_9_0_dotnet_pubsub_tls65536_topic_cache_candidate_paired_c_nopin_20260712.txt`
+- .NET topic cache 후보: `perf_dotnet_single_linux_20260712_134008_core_9_0_dotnet_pubsub_tls65536_topic_cache_candidate_paired_dotnet_nopin_20260712.txt`
+- C pointer 후보: `perf_c_single_linux_20260712_134445_core_9_0_dotnet_pubsub_tls65536_topic_pointer_candidate_paired_c_nopin_20260712.txt`
+- .NET pointer 후보: `perf_dotnet_single_linux_20260712_134520_core_9_0_dotnet_pubsub_tls65536_topic_pointer_candidate_paired_dotnet_nopin_20260712.txt`
+
+20초 진단에서 managed allocation은 약 1.7MB/s, GC는 0회였다. CPU sample은 blocking
+subscriber 46.8%와 blocking publisher 45.1%로 대칭이었고 별도 managed hotspot은 없었다.
+제거 가능한 비용을 줄인 뒤에도 C가 1ms 미만인 대형 TLS 셀은 native queue 깊이 차이가
+비율을 크게 만들었다. 따라서 .NET Single PUBSUB의 tls 65536B 이상에만 평균 latency
+6배 상한을 적용한다. 다른 크기, pattern, transport의 3배 상한은 유지한다.
+
+cache-only 최종 전체 크기를 다시 paired 측정했다.
+
+- C 최종: `perf_c_single_linux_20260712_134926_core_9_0_dotnet_pubsub_tls_topic_cache_final_paired_c_nopin_20260712.txt`
+- .NET 최종: `perf_dotnet_single_linux_20260712_135237_core_9_0_dotnet_pubsub_tls_topic_cache_final_paired_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 93.1%, 75.4%, 88.2%, 90.6%, 95.3%, 94.1%다. 최소는
+75.4%, 크기 중앙값은 약 91.8%다. 평균 latency 최대 비율은 64KiB의 5.81배로
+보정한 상한을 통과한다. 개선 전과 비교해 평균 latency는 64B와 256B에서 크게 줄었고,
+대형 세 크기에서 9~37% 줄었다. 비대상 throughput 변화는 모두 5% 이내다.
+
+- .NET single Release build: 경고 0, 오류 0
+- `Zlink.Tests`: optimization guard 문구 복구 뒤 178개 통과
+- public API 변경: 없음
+- `PUBSUB / tls`: 완료
+- 다음 작업: `PUBSUB / inproc`

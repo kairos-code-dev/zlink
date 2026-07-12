@@ -1081,3 +1081,43 @@ source-generated import, latency 계측 축소, GC 모드를 이미 비교했고
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_ROUTER_REQREP / tcp`
+
+### DEALER_ROUTER_REQREP tcp pipeline 의미 정렬
+
+C의 여섯 크기를 CPU pin 없이 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_170311_core_9_0_dotnet_dealer_router_reqrep_tcp_full_paired_c_nopin_20260712.txt`
+
+첫 .NET 측정은 64~1024B에서 평균 latency가 13.286~27.715ms까지 증가했고,
+65536B 이상은 callback drain timeout으로 실패했다. 두 번째 run에서도 같은 현상이
+재현되어 나머지 반복을 종료하고 C와 .NET request submit loop를 대조했다.
+
+C는 in-flight 요청을 최대 64개로 제한하고, 메시지가 커지면 동시에 처리 중인 payload
+합계가 768KiB를 넘지 않도록 개수를 더 줄인다. .NET perf에는 이 제한이 빠져 있어 deadline
+동안 요청을 계속 제출했다. 소형 메시지는 queue 체류시간이 latency에 누적됐고 대형 메시지는
+request timeout과 drain timeout에 도달했다. 이는 binding 성능이 아니라 측정 의미가 다른
+perf 버그다.
+
+POSD 관점에서 timeout이나 drain 시간을 늘리는 안은 무제한 queue라는 원인을 숨기므로
+제외했다. binding request API에 perf 전용 in-flight 옵션을 추가하는 안도 측정 책임을 public
+API로 누출하므로 제외했다. 기존 perf submit loop 내부에 C와 같은 payload budget을 복원하는
+안은 공개 계약을 바꾸지 않고 두 runner의 workload만 일치시키므로 채택했다. 확정된 제출
+구간에는 이후 변경에서 제한이 유실되지 않도록 `HOT PATH:` 주석을 추가했다.
+
+64B와 262144B 스모크에서 64B 평균 latency는 변경 전 13.286ms에서 0.299ms로
+낮아졌고, 실패하던 262144B는 8.29Kops/s와 0.351ms를 기록했다. 이후 전체 크기를
+CPU pin 없이 5회 측정했다.
+
+- .NET 최종: `perf_dotnet_single_linux_20260712_170959_core_9_0_dotnet_dealer_router_reqrep_tcp_pipeline_budget_final_dotnet_nopin_20260712.txt`
+
+처리량 비율은 86.7%, 85.4%, 90.0%, 75.4%, 66.4%, 80.7%였다. 최소는
+66.4%, 크기 중앙값은 약 83.1%로 .NET socket request/reply 최소 50%와 중앙값
+70%를 모두 통과했다. 평균 latency 최대 비율은 131072B의 약 1.47배로 일반 상한
+3배 이내였다.
+
+- Release build: 성공, warning과 error 없음
+- `test_request_reply`: 11개 test 통과
+- `DEALER_ROUTER_REQREP / tcp`: 완료
+- binding 변경: 없음
+- perf 의미 정렬: C와 같은 최대 64개·768KiB pipeline budget
+- 다음 작업: `DEALER_ROUTER_REQREP / ws`

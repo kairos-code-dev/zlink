@@ -375,6 +375,9 @@ internal static class PerfReqRep
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
         ulong seq = 1;
+        const int pipelineBudgetBytes = 768 * 1024;
+        int maxInFlight = Math.Max(1,
+            Math.Min(64, pipelineBudgetBytes / Math.Max(1, msgSize)));
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
 
         bool HasCallbackError()
@@ -474,7 +477,12 @@ internal static class PerfReqRep
         {
             bool submittedAny = false;
             int submittedSinceProgress = 0;
-            while (Stopwatch.GetTimestamp() < deadlineTicks && !HasCallbackError())
+            // HOT PATH: keep request count and total payload below the same
+            // balanced pipeline budget as C. Removing this bound turns queue
+            // residence into the latency metric and times out large payloads.
+            while (Volatile.Read(ref inFlight) < maxInFlight
+                   && Stopwatch.GetTimestamp() < deadlineTicks
+                   && !HasCallbackError())
             {
                 if (!TrySubmitOne())
                     break;

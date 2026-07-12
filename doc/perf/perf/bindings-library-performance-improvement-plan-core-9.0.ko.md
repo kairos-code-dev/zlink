@@ -646,6 +646,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `PAIR` | 통과(87.6%) | 통과(73.0%) | 통과(91.9%) | 통과(91.4%) | 통과(90.5%) | 통과(98.0%) | CPU pin 없는 5회 paired 측정. 최소 73.0%, 크기 중앙값 약 91.7%, 평균 latency 최대 1.54배로 통과했다. |
 | `wss` | `PUBSUB` | 통과(92.3%) | 통과(74.0%) | 통과(92.6%) | 통과(97.1%) | 통과(97.6%) | 통과(101.7%) | CPU pin 없는 5회 paired 측정. 최소 74.0%, 크기 중앙값 약 94.9%, 평균 latency 최대 1.25배로 통과했다. |
 | `wss` | `DEALER_DEALER` | 통과(96.2%) | 통과(77.8%) | 통과(92.9%) | 통과(100.0%) | 통과(95.9%) | 통과(97.4%) | CPU pin 없는 5회 paired 측정. 최소 77.8%, 크기 중앙값 약 96.1%, 평균 latency 최대 2.61배로 통과했다. |
+| `wss` | `DEALER_ROUTER` | 통과(94.9%) | 통과(75.7%) | 통과(95.1%) | 통과(106.1%) | 통과(104.9%) | 통과(128.3%) | secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. 최소 75.7%, 크기 중앙값 약 100.0%, 평균 latency 최대 1.37배로 통과했다. |
 | `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1266,17 +1267,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `DEALER_ROUTER` 진행 중 | tcp와 ws를 완료했고 다음 transport는 wss다. |
-| paired C | .NET `DEALER_ROUTER / ws` 완료 | C와 .NET 전체 크기를 CPU pin 없이 차례로 5회 측정하고 131072B를 다시 paired 측정했다. |
-| 개선 반복 | .NET `DEALER_ROUTER / ws` 완료 | 256B의 공개 경로 상한과 131072B queue latency를 반복 측정했다. 최소 69.5%, 크기 중앙값 88.5%, 보정한 평균 latency 최대 4.81배로 통과했다. |
-| 커밋과 푸시 | .NET `DEALER_ROUTER / ws` 문서 반영 중 | 효과 없는 binding과 계측 후보는 제거했으며 측정 근거만 별도 커밋한다. |
+| 현재 pattern | Single `DEALER_ROUTER` 진행 중 | tcp, ws, wss를 완료했고 다음 transport는 tls다. |
+| paired C | .NET `DEALER_ROUTER / wss` 완료 | secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `DEALER_ROUTER / wss` 완료 | 최소 75.7%, 크기 중앙값 100.0%, 평균 latency 최대 1.37배로 추가 개선 없이 통과했다. |
+| 커밋과 푸시 | .NET `DEALER_ROUTER / wss` 문서 반영 중 | source 변경은 없으며 측정 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER` 완료, `DEALER_ROUTER` tcp와 ws 완료 | 미측정 | `DEALER_ROUTER / wss` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER` 완료, `DEALER_ROUTER` tcp, ws, wss 완료 | 미측정 | `DEALER_ROUTER / tls` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1345,6 +1346,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `DEALER_DEALER` ipc | core_9_0_dotnet_dealer_dealer_ipc_full_paired_*_nopin_20260712 | local transport 전체 크기를 C 직후 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 78.8%, 크기 중앙값 98.7%, 평균 latency 최대 1.48배로 ipc와 `DEALER_DEALER` 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` tcp | core_9_0_dotnet_dealer_router_tcp_*full_payload*_nopin_20260712 | C는 payload 전체를 native message에 복사하지만 .NET perf는 header만 쓰던 의미 차이와 active 시작 순서를 바로잡았다. | 최소 75.5%, 크기 중앙값 93.7%, 평균 latency 최대 2.03배로 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` ws | core_9_0_dotnet_dealer_router_ws_*_nopin_20260712 | 전체 크기와 131072B latency 경계 셀을 paired 5회 측정했다. LibraryImport와 latency 계측 축소 후보는 효과가 없어 제거했다. | 256B 최소 69% 예외와 131072B 평균 latency 5배 상한을 적용해 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `DEALER_ROUTER` wss | core_9_0_dotnet_dealer_router_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C와 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 75.7%, 크기 중앙값 100.0%, 평균 latency 최대 1.37배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

@@ -941,3 +941,20 @@ C 0.663ms와 .NET 3.187ms로 4.81배였다. 처리량이 충분하고 공개 met
 - `DEALER_ROUTER / ws`: 완료
 - 최종 source 변경: 없음
 - 다음 작업: `DEALER_ROUTER / wss`
+
+### DEALER_ROUTER wss 완료
+
+secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_162115_core_9_0_dotnet_dealer_router_wss_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_162403_core_9_0_dotnet_dealer_router_wss_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 94.9%, 75.7%, 95.1%, 106.1%, 104.9%, 128.3%였다. 최소는
+75.7%, 크기 중앙값은 약 100.0%로 routed one-way의 최소 75%와 중앙값 80%를
+만족한다. 평균 latency 비율은 1.01배, 1.37배, 1.13배, 0.98배, 0.97배,
+0.80배로 모두 일반 상한 3배 이내다. 첫 paired 측정에서 모든 목표를 만족해 추가
+개선은 필요하지 않았다.
+
+- `DEALER_ROUTER / wss`: 완료
+- source 변경: 없음
+- 다음 작업: `DEALER_ROUTER / tls`

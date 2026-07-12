@@ -140,8 +140,11 @@ public sealed class test_socket_options
         using var dealer = ctx.CreateDealerSocket();
         using var router = ctx.CreateRouterSocket();
 
+        Assert.Equal(100, dealer.Options.PeerWeight);
         dealer.Options.PeerWeight = 0;
+        Assert.Equal(0, dealer.Options.PeerWeight);
         dealer.Options.PeerWeight = 100;
+        Assert.Equal(100, dealer.Options.PeerWeight);
         router.Options.PeerWeight = 0;
         Assert.Equal(0, router.Options.PeerWeight);
         router.Options.PeerWeight = 100;

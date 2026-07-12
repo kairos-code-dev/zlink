@@ -309,6 +309,10 @@ public sealed class test_socket_surface
             .GetProperty(nameof(DealerSocketOptions.Probe))!.CanWrite);
         Assert.False(typeof(DealerSocketOptions)
             .GetProperty(nameof(DealerSocketOptions.Probe))!.CanRead);
+        Assert.True(typeof(DealerSocketOptions)
+            .GetProperty(nameof(DealerSocketOptions.PeerWeight))!.CanRead);
+        Assert.True(typeof(DealerSocketOptions)
+            .GetProperty(nameof(DealerSocketOptions.PeerWeight))!.CanWrite);
 
         AssertNullableReturn(typeof(ISubscriberSocket),
             nameof(ISubscriberSocket.SubscriptionAt));

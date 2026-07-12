@@ -27,11 +27,12 @@ public sealed partial class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    ///     Sets this peer's relative load-balancing weight (0-100); higher values
+    ///     Gets or sets this peer's relative load-balancing weight (0-100); higher values
     ///     receive a larger share of round-robined sends.
     /// </summary>
     public int PeerWeight
     {
+        get => Socket.GetOption(SocketOptions.DealerWeight);
         set => Socket.SetOption(SocketOptions.DealerWeight,
             EncodePeerWeight(value, nameof(value)));
     }

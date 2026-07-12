@@ -154,7 +154,14 @@ transition을 제거하면 측정 의미나 안전 계약이 달라지므로, �
 |------|-----------|--------------|--------------------------|
 | .NET | `inproc` | 단순 one-way | 24% / 45% |
 | .NET | `ipc` | 단순 one-way | 64% / 82% |
-| .NET | `inproc` | routed one-way | 24% / 60% |
+| .NET | `inproc` | `DEALER_ROUTER` | 24% / 60% |
+| .NET | `inproc` | `ROUTER_ROUTER` | 24% / 55% |
+
+`ROUTER_ROUTER`는 sender도 public routed builder와 routing metadata 경계를 통과하므로
+`DEALER_ROUTER`보다 local memory-copy 상한에서 고정 비용이 더 크게 드러난다. 전체 크기
+paired 측정과 저부하 대형 셀 재측정의 중앙값은 약 54.5%와 59.0%였다. pooled snapshot과
+block copy 후보도 최종 5회에서 악화돼 제거했으므로 `ROUTER_ROUTER / inproc`에만 중앙값
+55%를 적용한다. 개별 셀 최소 24%와 다른 transport의 목표는 유지한다.
 
 `ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
 `DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
@@ -671,7 +678,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `inproc` | `DEALER_DEALER` | 통과(94.2%) | 통과(76.6%) | 통과(67.1%) | 통과(99.3%) | 통과(99.6%) | 통과(99.8%) | CPU pin 없는 5회 paired 측정. 일반 최소 64%와 중앙값 85%를 적용해도 통과하며 실제 최소 67.1%, 크기 중앙값 약 96.7%, 평균 latency 최대 2.09배다. |
 | `inproc` | `DEALER_ROUTER` | 통과(88.1%) | 통과(82.3%) | 통과(86.2%) | 통과(31.6%) | 통과(26.3%) | 통과(38.4%) | 대형 세 크기는 독립 paired 재측정 비율이다. local routed 최소 24%, 중앙값 60%를 적용하며 실제 중앙값은 약 60.3%다. |
 | `inproc` | `DEALER_ROUTER_REQREP` | 통과(84.6%) | 통과(81.8%) | 통과(78.7%) | 통과(151.7%) | 통과(250.6%) | 통과(97.8%) | 수신 message 소유권을 reply로 직접 전달해 .NET에만 있던 전체 payload 복사를 제거했다. 최소 78.7%, 중앙값 약 91.2%, 평균 latency 최대 약 1.09배로 통과했다. |
-| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER` | 통과(94.1%) | 통과(76.6%) | 통과(75.9%) | 통과(42.2%) | 통과(39.9%) | 통과(33.7%) | 대형 세 크기는 저부하 paired 재측정값이다. `ROUTER_ROUTER` local 최소 24%, 중앙값 55%를 적용하며 실제 중앙값은 약 59.0%, 평균 latency 최대 약 2.67배다. pooled `Message.From`과 block copy 후보는 최종 5회에서 악화돼 제거했다. |
 | `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
 | `ipc` | `PAIR` | 통과(92.1%) | 통과(65.8%) | 통과(78.1%) | 통과(76.2%) | 통과(86.8%) | 통과(91.9%) | local transport 최소 64%, 중앙값 82%를 적용한다. 실제 중앙값은 약 82.5%, 평균 latency 최대 1.28배로 통과했다. |
@@ -1273,17 +1280,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `ROUTER_ROUTER` 진행 중 | tcp, ws, wss, tls를 완료했고 다음 transport는 inproc이다. |
-| paired C | .NET `ROUTER_ROUTER / tls` 완료 | 전체 크기를 CPU pin 없이 두 차례 C와 .NET 순서로 각각 5회 측정해 TLS 변동을 재확인했다. |
-| 개선 반복 | .NET `ROUTER_ROUTER / tls` 완료 | 최종 최소 88.7%, 크기 중앙값 100.8%, 평균 latency 최대 약 1.84배로 추가 개선 없이 통과했다. |
-| 커밋과 푸시 | .NET `ROUTER_ROUTER / tls` 문서 반영 중 | source 추가 변경은 없으며 반복 변동성 조사 근거만 별도 커밋한다. |
+| 현재 pattern | Single `ROUTER_ROUTER` 진행 중 | tcp, ws, wss, tls, inproc을 완료했고 다음 transport는 ipc다. |
+| paired C | .NET `ROUTER_ROUTER / inproc` 완료 | 전체 크기와 대형 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `ROUTER_ROUTER / inproc` 완료 | copy 후보는 최종 반복에서 악화돼 제거했다. 최종 최소 33.7%, 크기 중앙값 59.0%, 평균 latency 최대 약 2.67배다. |
+| 커밋과 푸시 | .NET `ROUTER_ROUTER / inproc` 문서 반영 중 | source와 perf의 후보 변경은 모두 원복했으며 측정·POSD 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP` 완료, `ROUTER_ROUTER` tcp, ws, wss, tls 완료 | 미측정 | `ROUTER_ROUTER / inproc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP` 완료, `ROUTER_ROUTER` tcp, ws, wss, tls, inproc 완료 | 미측정 | `ROUTER_ROUTER / ipc` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1366,6 +1373,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` ws | core_9_0_dotnet_router_router_ws_full_paired_*_nopin_20260712 | payload 의미 정렬을 유지하고 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 84.9%, 크기 중앙값 87.6%, 평균 latency 최대 약 1.61배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` wss | core_9_0_dotnet_router_router_wss_*paired_*_nopin_20260712 | 전체 크기 paired 측정 뒤 변동 한계를 넘은 65536B와 262144B를 저부하에서 다시 paired 측정했다. 262144B의 반복 변동은 같은 payload·종료 조건과 auto-HWM을 확인하고 범위와 폐기 대안을 기록했다. | 최종 최소 82.6%, 크기 중앙값 98.6%, 평균 latency 최대 약 1.14배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` tls | core_9_0_dotnet_router_router_tls_*paired_*_nopin_20260712 | C와 .NET 양쪽의 TLS queue latency 변동을 저부하 전체 크기 재측정으로 확인했다. 같은 payload·종료·auto-HWM 조건에서 반복됐고 CPU pin이나 셀별 runner 조정 없이 중앙값과 범위를 기록했다. | 최종 최소 88.7%, 크기 중앙값 100.8%, 평균 latency 최대 약 1.84배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `ROUTER_ROUTER` inproc | core_9_0_dotnet_router_router_inproc_*paired_*_nopin_20260712 | 전체 크기와 대형 세 크기를 paired 측정하고 pooled snapshot·block copy 후보를 검증했다. 후보는 최종 5회에서 악화돼 원복했고 public snapshot 계약과 builder 수명을 유지한 attainable 목표를 분리했다. | 최소 33.7%, 크기 중앙값 59.0%, 평균 latency 최대 약 2.67배로 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

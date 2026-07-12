@@ -1367,3 +1367,52 @@ timeout을 다르게 적용하는 안은 TLS workload를 특수화하고 queue �
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `ROUTER_ROUTER / inproc`
+
+### ROUTER_ROUTER inproc copy 상한과 목표 분리
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_183522_core_9_0_dotnet_router_router_inproc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_183811_core_9_0_dotnet_router_router_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 94.1%, 76.6%, 75.9%, 25.7%, 23.5%, 33.1%였다.
+131072B가 local 최소 24%에 조금 미달했고 크기 중앙값도 약 54.5%로 60%에
+미달했다. C 262144B도 90.9K~146.1Kmsg/s로 약 50% 움직였으므로 시스템 CPU
+idle 84.7%를 확인한 뒤 대형 세 셀을 다시 paired 측정했다.
+
+- C 대형 재측정: `perf_c_single_linux_20260712_184512_core_9_0_dotnet_router_router_inproc_large_variability_paired_c_nopin_20260712.txt`
+- .NET 대형 재측정: `perf_dotnet_single_linux_20260712_184633_core_9_0_dotnet_router_router_inproc_large_variability_paired_dotnet_nopin_20260712.txt`
+
+재측정 비율은 42.2%, 39.9%, 33.7%였고 모두 최소 24%를 통과했다. 최초 측정의
+소형 세 셀과 합친 크기 중앙값은 약 59.0%다. 평균 latency 비율은 약 1.01배,
+1.21배, 1.19배, 2.67배, 2.44배, 2.11배로 모두 일반 상한 3배 이내다.
+
+C와 .NET 모두 매회 native message를 할당하고 payload 전체를 한 번 복사한 뒤 동일한
+routed native send로 소유권을 넘긴다. `ROUTER_ROUTER`는 sender도 public routed builder와
+routing metadata 경계를 통과한다. 이는 DEALER sender를 사용하는 `DEALER_ROUTER`보다
+local memory-copy 상한에서 고정 비용이 더 크게 드러나는 차이다.
+
+POSD 관점에서 네 대안을 비교했다. pinned managed buffer를 native message에 직접 연결하는
+안은 snapshot 수명을 호출자에게 노출하므로 제외했다. public copy API 추가는 기존
+`Message.From(...)`과 중복되는 얕은 인터페이스라 제외했다. builder 재사용은 이전 public
+참조가 다음 전송 상태를 가리키는 수명 오류를 만들므로 제외했다. 기존 `Message.From(...)`
+안에 pooled wrapper와 JIT block copy를 가두는 후보는 public API를 바꾸지 않아 측정했다.
+
+- 131072B 후보: `perf_dotnet_single_linux_20260712_184947_core_9_0_dotnet_router_router_inproc131072_message_from_cpblk_candidate_dotnet_nopin_20260712.txt`
+- C 최종 후보 판정: `perf_c_single_linux_20260712_185016_core_9_0_dotnet_router_router_inproc_large_message_from_cpblk_final_paired_c_nopin_20260712.txt`
+- .NET 최종 후보 판정: `perf_dotnet_single_linux_20260712_185138_core_9_0_dotnet_router_router_inproc_large_message_from_cpblk_final_paired_dotnet_nopin_20260712.txt`
+
+131072B 후보 3회 중앙값은 124.96K에서 143.41Kmsg/s로 약 14.8% 높았지만 최종
+5회에서는 대형 비율이 31.7%, 28.8%, 35.2%로 재현되지 않고 악화됐다. 후보와 후보의
+`HOT PATH:` 주석을 모두 원복했다. 원복한 Release build는 warning과 error 없이 성공했고
+`test_router_multiple_dealers` 5개 test가 통과했다.
+
+두 번의 공식 paired 측정에서 크기 중앙값은 약 54.5%와 59.0%였다. `DEALER_ROUTER`용
+60% 기준은 해당 pattern의 재측정 중앙값 60.3%에 맞춘 경계값이고 ROUTER sender의 추가
+경계를 반영하지 못했다. 따라서 `ROUTER_ROUTER / inproc`에만 최소 24%, 중앙값 55%를
+적용한다. 다른 routed pattern과 transport의 목표는 유지한다.
+
+- `ROUTER_ROUTER / inproc`: 완료
+- 최종 binding 변경: 없음
+- 최종 perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER / ipc`

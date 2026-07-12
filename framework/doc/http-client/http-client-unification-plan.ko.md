@@ -34,7 +34,31 @@
   (`client.ts` builder에 미존재, 문서 drift)
 - [ ] 언어별 spec 상단 nav 블록 통일(cpp만 있음)
 
-## Phase 2 — 에러 모델 parity (spec 9장 구현 갭 해소)
+## Phase 2 — 소비자 격리: 로컬 패키지 스냅숏 + 버전 도입
+
+http-client 수정 전에 e2e/샘플을 현행 스냅숏에 고정한다. bindings local
+package 정책(`scripts/local-package/README.ko.md`)을 http-client에 그대로
+확장: 소비자는 소스가 아니라 **명시한 버전의 로컬 패키지**만 참조하고,
+새 버전을 배포해도 참조 버전을 올리기 전까지 기존 버전을 쓴다.
+
+- [ ] 버전 baseline `0.2.0` 확정 — 현행(=spec 동결본)을 0.2.0으로 스냅숏.
+  UA `zlink-http-client/0.2` 하드코딩(java/node)과 정합. 버전 정본을 한 곳에
+  두고 아티팩트 버전·User-Agent를 파생(cpp `version_*` 상수는 이 정본과
+  정합시키거나 제거)
+- [ ] dotnet `IsPackable=true` (Phase 6에서 당김 — nupkg 생성 전제)
+- [ ] `scripts/local-package`에 http-client 트랙 추가, 산출물은
+  `.artifacts/wsl` 아래(nupkg 피드 / maven repo / npm tarball / cpp install
+  export). README 정책 문구 갱신(bindings 전용 → +framework http-client)
+- [ ] 소비자 전환 (java/kotlin은 소비자 없음 — 제외):
+  - dotnet: e2e 9 + 샘플 7 csproj — ProjectReference → PackageReference 0.2.0 고정
+  - node: 샘플 4 + e2e 1 — workspace 참조 → `.artifacts` tarball 참조
+  - cpp: 샘플 1 + e2e 2 (+PackageTests) — 소스 타깃 → `find_package` 설치본
+- [ ] 게이트: 전환 직후 해당 e2e/샘플 전량 그린(수정 전 baseline 증명)
+- [ ] 이후 규칙: http-client 수정 → 새 버전(0.3.0…) 로컬 배포 → 소비자
+  참조 버전은 의도적으로만 상향. 계약 영향 변경(R 승격)은 minor 상향 +
+  plan에 소비자 반영 항목 동반
+
+## Phase 3 — 에러 모델 parity (spec 9장 구현 갭 해소)
 
 - [ ] java/kotlin: framework 공용 error kind + `isRetriable` 노출
   (`ZLinkFrameworkException`에 kind 접근 경로 — framework-core 조율 필요)
@@ -44,7 +68,7 @@
   (`runtime_errors.cpp:21-25`) — retriable은 전송 실패·timeout만
 - [ ] 계약 테스트: kind/isRetriable 검증 케이스를 4언어에 추가(spec 11장 매트릭스 갱신)
 
-## Phase 3 — 언어별 결함 수정
+## Phase 4 — 언어별 결함 수정
 
 | 언어 | 항목 | 위치 |
 | --- | --- | --- |
@@ -64,10 +88,10 @@
 perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)은
 **perf/README 규칙대로 baseline vs patched 측정 후 커밋**.
 
-## Phase 4 — 개정 후보 결정 (R1~R14)
+## Phase 5 — 개정 후보 결정 (R1~R14)
 
 - [ ] R1(에러 바디 노출) — 우선 검토 권장(실무 함정 최다)
-- [ ] R2(timeout kind) — Phase 2와 연동
+- [ ] R2(timeout kind) — Phase 3(에러 모델)과 연동
 - [ ] R3(retry 백오프) / R4(multipart 바이너리) / R6(헤더 정규화) /
   R7(one-shot 재검토) / R11(다중값 헤더)
 - [ ] R5(kotlin Flow·취소·fetch 동명이의) — R9(취소 표면)·R12(스트리밍
@@ -81,11 +105,10 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 
 승격된 것만 spec 본문 이동 + 5언어 동시 구현(README 변경 절차).
 
-## Phase 5 — 배포·관리 체계
+## Phase 6 — 배포·관리 체계
 
-- [ ] 버전 단일 소스화: User-Agent `zlink-http-client/0.2` 하드코딩(java
-  `RequestPerformer.java:154`, node `request-performer.ts`) vs 아티팩트
-  `0.1.0-SNAPSHOT` 불일치 해소 — 빌드에서 버전 주입
+- [ ] 버전 단일 소스화 마무리 — Phase 2에서 도입한 버전 정본을 정식 배포
+  파이프라인까지 연결(빌드에서 UA 주입, `0.1.0-SNAPSHOT` 잔재 제거)
 - [ ] cpp PUBLIC 링크 전이(`nlohmann_json`) 재검토
 - [ ] 교차 언어 계약 게이트: node `verify:cross-language`를 5언어 매트릭스
   대조로 확장(spec 11장 §11.3)
@@ -98,15 +121,18 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 | --- | --- | --- |
 | 1 | Phase 0 공통 spec + perf 문서 | ✅ 2026-07-12 |
 | 2 | Phase 1 문서 정비 | ⬜ |
-| 3 | Phase 2 에러 모델 parity | ⬜ |
-| 4 | Phase 3 언어별 결함 | ⬜ |
-| 5 | Phase 4 R-항목 결정 | ⬜ |
-| 6 | Phase 5 배포·perf 체계 | ⬜ |
-| 7 | 이 문서 삭제 | ⬜ |
+| 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ⬜ |
+| 4 | Phase 3 에러 모델 parity | ⬜ |
+| 5 | Phase 4 언어별 결함 | ⬜ |
+| 6 | Phase 5 R-항목 결정 | ⬜ |
+| 7 | Phase 6 배포·perf 체계 | ⬜ |
+| 8 | 이 문서 삭제 | ⬜ |
 
 ## 완료 기준
 
 - 5개 언어가 spec 2~9장 계약과 11장 매트릭스를 전량 그린으로 통과.
+- e2e/샘플 소비자가 고정 버전 로컬 패키지를 경유하고, 최종 버전으로
+  상향된 상태에서 전량 그린.
 - 언어별 spec이 공통 spec을 참조하는 구조로 재편.
 - perf 최초 기록이 존재하고 회귀 판정 기준이 작동.
 - 이 문서 삭제(내용은 spec/커밋 이력으로 대체).

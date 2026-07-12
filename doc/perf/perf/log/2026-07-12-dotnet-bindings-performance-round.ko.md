@@ -1004,3 +1004,51 @@ builder나 `Message` wrapper 재사용은 이전 public 참조가 다음 메시�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_ROUTER / inproc`
+
+### DEALER_ROUTER inproc copy bandwidth 검토
+
+시스템 CPU idle이 93%대로 회복된 뒤 C와 .NET의 여섯 크기를 CPU pin 없이 차례로
+5회 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_164106_core_9_0_dotnet_dealer_router_inproc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_164401_core_9_0_dotnet_dealer_router_inproc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 88.1%, 82.3%, 86.2%, 29.0%, 24.3%, 37.4%였다. 소형 세
+크기는 일반 routed one-way 목표를 통과했지만 대형 세 크기는 network 비용이 없는 C의
+memory copy 상한과 큰 차이를 보였다. 전체 크기 중앙값은 약 59.9%였다.
+
+131072B를 8초 동안 CPU sampling한 결과 `Buffer.Memmove`가 exclusive CPU의 38.27%,
+poll 대기가 39.15%, `Received.ResetForReuse()`와 routed receive가 합계 약 9.56%를
+사용했다. native send submit 자체는 약 3.7%였다. 따라서 routed metadata를 없애도 목표에
+도달할 수 없고, managed payload 전체 복사의 bandwidth가 주된 제한임을 확인했다.
+
+POSD 관점에서 세 대안을 비교했다. 첫 번째 대안인 raw receive나 metadata 없는 별도 public
+API는 수신 계약을 호출자에게 분기시키면서 최대 개선 폭도 약 10%라 제외했다. 두 번째 대안인
+pinned managed buffer를 native message에 직접 연결하는 방식은 submit 뒤에도 원본을 바꾸지
+못하게 하고 callback과 pin 수명을 호출자에게 노출하므로 snapshot 계약을 훼손한다. 세 번째
+대안으로 동일한 전체 payload 복사를 JIT `cpblk`로 바꾼 진단 후보를 측정했다.
+
+- .NET 131072B copy 후보: `perf_dotnet_single_linux_20260712_164913_core_9_0_dotnet_dealer_router_inproc131072_cpblk_candidate_dotnet_nopin_20260712.txt`
+
+후보는 76.81Kmsg/s에서 81.69Kmsg/s로 약 6.4% 개선됐지만 당시 C의 약 25.8%에
+그쳤다. 변경 위치도 perf helper여서 binding 개선이 아니므로 즉시 원복하고 공식 Release
+binary를 다시 만들었다. public `Message`에 copy 전용 메서드를 추가하는 안도 기존
+`Allocate()`와 `AsSpan()`으로 표현되는 동작을 위해 인터페이스를 넓히는 얕은 API이므로
+채택하지 않았다.
+
+C의 대형 결과도 실행별 변동이 있어 65536, 131072, 262144B만 다시 C와 .NET 순서로
+각각 5회 측정했다.
+
+- C 경계: `perf_c_single_linux_20260712_165045_core_9_0_dotnet_dealer_router_inproc_large_boundary_paired_c_nopin_20260712.txt`
+- .NET 경계: `perf_dotnet_single_linux_20260712_165209_core_9_0_dotnet_dealer_router_inproc_large_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 처리량 비율은 31.6%, 26.3%, 38.4%였고, 평균 latency 비율은 2.13배,
+2.50배, 1.95배로 모두 일반 상한 3배 이내였다. 경계 결과를 사용한 전체 크기 중앙값은
+약 60.3%다. 공개 snapshot과 ownership 계약을 유지하면서 확인한 copy 구현 상한으로는
+일반 75%를 달성할 수 없으므로 .NET `inproc` routed one-way에만 최소 24%, 중앙값 60%를
+적용한다. network transport와 다른 pattern 그룹의 목표는 바꾸지 않는다.
+
+- `DEALER_ROUTER / inproc`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_ROUTER / ipc`

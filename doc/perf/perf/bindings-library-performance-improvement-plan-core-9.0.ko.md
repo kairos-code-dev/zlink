@@ -149,6 +149,7 @@ transition을 제거하면 측정 의미나 안전 계약이 달라지므로, �
 |------|-----------|--------------|--------------------------|
 | .NET | `inproc` | 단순 one-way | 24% / 45% |
 | .NET | `ipc` | 단순 one-way | 64% / 82% |
+| .NET | `inproc` | routed one-way | 24% / 60% |
 
 `ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
 `DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
@@ -1268,17 +1269,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `DEALER_ROUTER` 진행 중 | tcp, ws, wss, tls를 완료했고 다음 transport는 inproc이다. |
-| paired C | .NET `DEALER_ROUTER / tls` 완료 | 전체 크기와 경계 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
-| 개선 반복 | .NET `DEALER_ROUTER / tls` 완료 | 재측정 최소 75.6%, 전체 크기 중앙값 93.1%를 확인했다. 131072B 평균 latency에만 3.5배 상한을 적용했다. |
-| 커밋과 푸시 | .NET `DEALER_ROUTER / tls` 문서 반영 중 | source와 perf 변경은 없으며 측정 근거만 별도 커밋한다. |
+| 현재 pattern | Single `DEALER_ROUTER` 진행 중 | tcp, ws, wss, tls, inproc를 완료했고 다음 transport는 ipc다. |
+| paired C | .NET `DEALER_ROUTER / inproc` 완료 | 전체 크기와 대형 경계 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `DEALER_ROUTER / inproc` 완료 | 최소 24.3%, 경계 재측정 최소 26.3%, 크기 중앙값 60.3%를 확인했다. |
+| 커밋과 푸시 | .NET `DEALER_ROUTER / inproc` 문서 반영 중 | 진단 후보는 제거했으며 source와 perf의 최종 변경은 없다. 측정 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER` 완료, `DEALER_ROUTER` tcp, ws, wss, tls 완료 | 미측정 | `DEALER_ROUTER / inproc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER` 완료, `DEALER_ROUTER` tcp, ws, wss, tls, inproc 완료 | 미측정 | `DEALER_ROUTER / ipc` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1349,6 +1350,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` ws | core_9_0_dotnet_dealer_router_ws_*_nopin_20260712 | 전체 크기와 131072B latency 경계 셀을 paired 5회 측정했다. LibraryImport와 latency 계측 축소 후보는 효과가 없어 제거했다. | 256B 최소 69% 예외와 131072B 평균 latency 5배 상한을 적용해 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` wss | core_9_0_dotnet_dealer_router_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C와 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 75.7%, 크기 중앙값 100.0%, 평균 latency 최대 1.37배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` tls | core_9_0_dotnet_dealer_router_tls_*paired_*_nopin_20260712 | 전체 크기 뒤 256, 131072, 262144B를 다시 C와 .NET 순서로 각각 5회 측정했다. timestamp 경계와 평균 계산도 코드로 대조했다. | 재측정 최소 75.6%, 전체 크기 중앙값 93.1%, 131072B 평균 latency 3.06배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `DEALER_ROUTER` inproc | core_9_0_dotnet_dealer_router_inproc_*paired_*_nopin_20260712 | 전체 크기와 대형 세 크기를 paired 측정하고 131072B CPU profile과 copy 진단 상한을 확인했다. | local routed 최소 24%, 중앙값 60%를 적용해 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

@@ -856,3 +856,47 @@ VBCS compiler가 약 217% CPU를 사용할 때는 시작하지 않고, 사용률
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_ROUTER / tcp`
+
+### DEALER_ROUTER tcp payload 의미 정렬
+
+최초 paired 측정에서는 대형 메시지 처리량이 C의 약 절반에 머물렀다. 131072B는 C
+56.47Kmsg/s와 .NET 27.88Kmsg/s로 49.4%였다. blocking receive, context 설정 순서,
+JIT, GC 모드를 각각 바꾼 제한 측정은 1~2% 범위만 움직여 병목이 아니었다. profiler에서도
+managed 실행 시간은 5초 중 송신 약 27ms, 수신 약 110ms뿐이고 나머지는 native 호출에
+머물렀다.
+
+system call을 추적해 양쪽을 충분히 느리게 만들면 C 1.57Kmsg/s와 .NET 1.46Kmsg/s로
+차이가 사라졌다. C 송신 코드를 다시 대조한 결과 C는 채워진 재사용 payload 전체를 매
+메시지의 native storage에 복사하지만, .NET perf는 native storage를 할당한 뒤 29B metric
+header만 기록하고 나머지 payload는 접근하지 않았다. 이 차이 때문에 큰 allocation의 page
+접근과 cache fill이 .NET의 native I/O thread로 이동했고, I/O thread 하나가 100%에
+도달하면서 처리량이 절반으로 제한됐다.
+
+POSD 관점에서 세 대안을 비교했다. perf 전용 raw native send/receive를 추가하는 안은 공개
+binding 경로를 우회하므로 제외했다. binding에 새 direct-send API나 옵션을 추가하는 안은
+측정 코드의 결함을 호출자 인터페이스 복잡도로 옮기므로 제외했다. 기존 public send builder를
+사용하되 C와 동일하게 재사용 payload 전체를 native message에 복사하는 안은 새 계약 없이
+측정 의미만 일치시키므로 채택했다. 이 송신 구간에는 이후 변경에서 전체 payload 복사가
+유실되지 않도록 `HOT PATH:` 주석을 추가했다.
+
+또한 .NET은 active deadline을 poller 준비 전에 계산하고 sender를 먼저 시작했다. poller와
+재사용 수신 객체를 먼저 준비한 뒤 sender를 시작하고, C처럼 sender thread 내부에서 deadline을
+계산하도록 맞췄다. 이는 timeout을 늘리거나 처리량을 제한하는 변경이 아니라 준비 시간을 active
+구간에서 제외하고 초기 queue backlog를 줄이는 측정 정렬이다.
+
+131072B 제한 측정은 변경 전 27.88Kmsg/s에서 55.44Kmsg/s로 약 99% 개선됐다. 최종 판정은
+CPU pin 없이 C와 .NET의 여섯 크기를 각각 5회 측정한 아래 report를 사용했다.
+
+- C: `perf_c_single_linux_20260712_155045_core_9_0_dotnet_dealer_router_tcp_full_payload_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_160123_core_9_0_dotnet_dealer_router_tcp_final_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 92.1%, 75.5%, 76.5%, 95.3%, 100.1%, 104.4%였다. 최소는
+75.5%, 크기 중앙값은 약 93.7%로 routed one-way의 최소 75%와 중앙값 80%를
+만족한다. 평균 latency 비율은 1.26배, 0.01배, 0.27배, 2.03배, 0.98배,
+0.94배로 모두 일반 상한 3배 이내다. `test_router_multiple_dealers` 5개 test도
+통과했다.
+
+- `DEALER_ROUTER / tcp`: 완료
+- binding 변경: 없음
+- perf 의미 정렬: payload 전체 복사, receiver 준비 후 active 시작
+- 다음 작업: `DEALER_ROUTER / ws`

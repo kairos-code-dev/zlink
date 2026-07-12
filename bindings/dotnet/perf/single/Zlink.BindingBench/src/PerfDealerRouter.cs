@@ -131,8 +131,6 @@ internal static class PerfDealerRouter
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
         _ = recvTimeoutMs;
-        long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-
         long received = 0;
         Exception? sendError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
@@ -166,23 +164,35 @@ internal static class PerfDealerRouter
             return false;
         }
 
+        using var poller = Zlink.CreatePoller();
+        var events = new PollEvent[1];
+        poller.Add(receiver, PollEventFlags.PollIn, 0);
+        using var maybe = Received.Create();
+
         var senderThread = new Thread(() =>
         {
             try
             {
-                int payloadSize = payload.Length;
+                // C starts its active deadline inside the sender thread. Keep
+                // setup time outside the measured interval and start only
+                // after the receiver's poll registration is ready.
+                long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
                 while (true)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
                     if (nowTicks >= deadlineTicks)
                         break;
-                    using Message message = Message.Allocate(payloadSize);
-                    StampMetricHeader(message.AsSpan(), RunId, ActivePhase, msgSize,
+                    // HOT PATH: C stamps its reusable payload and then copies
+                    // every byte into each native message. Keep the binding
+                    // measurement equivalent so untouched large allocations
+                    // do not move page-fault and cache-fill work to the native
+                    // I/O thread.
+                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
                         seq, EpochNsFromTimestamp(nowTicks));
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, message, SendFlags.None) <= 0)
+                        if (PerfSocketIo.Send(sender, payload, SendFlags.None) <= 0)
                             continue;
                     }
                     catch (ZlinkException ex)
@@ -209,10 +219,6 @@ internal static class PerfDealerRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        using var poller = Zlink.CreatePoller();
-        var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn, 0);
-        using var maybe = Received.Create();
         try
         {
             while (!stopReceived)

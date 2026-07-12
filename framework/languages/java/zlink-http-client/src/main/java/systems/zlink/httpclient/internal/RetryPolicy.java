@@ -23,7 +23,12 @@ import systems.zlink.httpclient.internal.RequestPerformer.RawResult;
  */
 final class RetryPolicy {
 
-    private static final Duration RETRY_DELAY = Duration.ofMillis(50);
+    // Exponential backoff with full jitter: base 50ms, doubling per attempt, capped at 1s.
+    // Fixed delays synchronize retries from many clients against an ailing server.
+    private static long delayMillisFor(int attempt) {
+        long ceiling = Math.min(1000L, 50L << Math.min(attempt, 5));
+        return java.util.concurrent.ThreadLocalRandom.current().nextLong(ceiling + 1);
+    }
 
     private final Executor executor;
 
@@ -39,7 +44,7 @@ final class RetryPolicy {
         return perform.get().exceptionallyCompose(error -> {
             Throwable cause = unwrap(error);
             if (isRetriable(cause) && attempt < maxRetries) {
-                Executor delayed = CompletableFuture.delayedExecutor(RETRY_DELAY.toMillis(), TimeUnit.MILLISECONDS, executor);
+                Executor delayed = CompletableFuture.delayedExecutor(delayMillisFor(attempt), TimeUnit.MILLISECONDS, executor);
                 return CompletableFuture.supplyAsync(() -> null, delayed)
                     .thenCompose(ignored -> attempt(attempt + 1, maxRetries, perform));
             }

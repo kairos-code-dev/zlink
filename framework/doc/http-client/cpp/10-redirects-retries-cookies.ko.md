@@ -36,14 +36,14 @@ auto game = client.get ("/games/latest").fetch<game_t> ();
 ```cpp
 auto raw = client.get ("/games/latest").submit_raw ().result ();
 if (raw && raw.value ().status == 302) {
-    const auto &location = raw.value ().headers.at ("Location");
+    const auto &location = raw.value ().headers.at ("location");
 }
 ```
 
 ## Retry
 
 `retry(attempts)`는 **retriable한 transport 실패**(연결 끊김, timeout)만
-재시도한다. 시도 사이에 50ms 간격을 둔다.
+재시도한다. 시도 사이 간격은 지수 백오프 + full jitter다(기본 50ms, 시도마다 2배, 상한 1초, 0~상한 무작위).
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")

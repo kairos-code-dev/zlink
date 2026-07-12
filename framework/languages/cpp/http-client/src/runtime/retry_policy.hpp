@@ -13,7 +13,7 @@ class retry_policy_t
 
     bool should_retry (int attempt,
                        const zlink::framework::result_t<raw_http_response_t> &result) const;
-    static std::chrono::milliseconds delay ();
+    static std::chrono::milliseconds delay (int attempt);
 
   private:
     int _max_retries;

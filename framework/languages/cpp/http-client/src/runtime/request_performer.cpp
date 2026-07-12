@@ -15,6 +15,8 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 
@@ -37,7 +39,12 @@ raw_http_response_t to_raw_response (const http::response<http::string_body> &re
     raw.status = static_cast<int> (response.result_int ());
     raw.body = response.body ();
     for (const auto &field : response) {
-        raw.headers.emplace (std::string (field.name_string ()), std::string (field.value ()));
+        //  Names are lower-cased so lookups do not depend on the server's spelling
+        //  (cross-language contract: header lookup is case-insensitive).
+        std::string name (field.name_string ());
+        std::transform (name.begin (), name.end (), name.begin (),
+                        [] (unsigned char c) { return static_cast<char> (std::tolower (c)); });
+        raw.headers.emplace (std::move (name), std::string (field.value ()));
     }
     return raw;
 }

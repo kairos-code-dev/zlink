@@ -65,7 +65,7 @@ http_client_runtime_t::execute_with_deadline (http_request_t request,
             return timeout_before_exchange ();
         }
         std::this_thread::sleep_until (
-          std::min (deadline, before_sleep + retry_policy_t::delay ()));
+          std::min (deadline, before_sleep + retry_policy_t::delay (attempt)));
     }
 }
 

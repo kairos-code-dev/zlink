@@ -30,8 +30,10 @@
 - **retriable 대상은 전송 계층 실패와 timeout뿐이다.** HTTP status(4xx/5xx)는
   재시도하지 않는다.
 - streaming(업로드 provider 또는 download sink)이 있으면 재시도하지 않는다.
-- 시도 간 지연은 현행 계약상 **고정 50ms**다(백오프/지터는 개정 후보
-  [R3](10-revision-candidates.ko.md) — 승격 전까지 50ms가 계약).
+- 시도 간 지연은 **지수 백오프 + full jitter**다: 상한 =
+  `min(1초, 50ms × 2^attempt)`, 실제 지연 = `[0, 상한]` 균등 무작위
+  (2026-07-12 R3 승격 — 고정 50ms에서 개정. 고정 지연은 장애 서버에 대한
+  동시 재돌진을 유발한다).
 - timeout은 **시도(attempt)당** 적용한다. timeout 실패는 retriable이다.
   따라서 `retry(n)` + timeout 조합이 "응답이 timeout 안에 안 오면 n회
   재시도"의 표준 표현이다.

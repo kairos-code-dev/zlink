@@ -30,7 +30,7 @@ if (!result) {                                   // ① transport/디코딩/4xx�
 }
 const auto &response = result.value ();          // ② HTTP 봉투
 assert (response.status == 200);
-const auto &etag = response.headers.at ("ETag");
+const auto &etag = response.headers.at ("etag");
 const auto &profile = response.body;             // ③ DTO
 ```
 

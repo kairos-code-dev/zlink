@@ -22,7 +22,7 @@ client.options ("/games");                        // 허용 메서드 조회
 ```cpp
 auto head = client.head ("/replays/r-99182.bin").submit_raw ().result ();
 if (head && head.value ().status == 200) {
-    const auto size = head.value ().headers.at ("Content-Length");
+    const auto size = head.value ().headers.at ("content-length");
 }
 ```
 

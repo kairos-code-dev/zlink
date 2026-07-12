@@ -2,6 +2,9 @@
 
 #include "runtime/retry_policy.hpp"
 
+#include <algorithm>
+#include <random>
+
 namespace zlink::http_client::detail
 {
 
@@ -18,9 +21,15 @@ bool retry_policy_t::should_retry (
     return !result.has_value () && attempt < _max_retries && result.error ()->is_retriable ();
 }
 
-std::chrono::milliseconds retry_policy_t::delay ()
+std::chrono::milliseconds retry_policy_t::delay (int attempt)
 {
-    return std::chrono::milliseconds (50);
+    //  Exponential backoff with full jitter: base 50ms, doubling per attempt, capped at 1s.
+    //  Fixed delays synchronize retries from many clients against an ailing server.
+    const int shift = attempt < 5 ? attempt : 5;
+    const long ceiling_ms = std::min<long> (1000, 50L << shift);
+    thread_local std::mt19937 rng{std::random_device{} ()};
+    std::uniform_int_distribution<long> jitter (0, ceiling_ms);
+    return std::chrono::milliseconds (jitter (rng));
 }
 
 } // namespace zlink::http_client::detail

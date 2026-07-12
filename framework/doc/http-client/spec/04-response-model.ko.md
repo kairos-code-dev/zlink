@@ -30,11 +30,10 @@
 
 ## 4.3 헤더 표현
 
-- 응답 헤더 name 조회는 **대소문자 무시와 동등**해야 한다. java/node는
+- 응답 헤더 name 조회는 **대소문자 무시와 동등**해야 한다. cpp/java/node는
   소문자 정규화 map, dotnet은 원 표기 보존 + case-insensitive map
-  (`OrdinalIgnoreCase`) — 둘 다 계약을 충족한다.
-- 언어 편차(구현 갭): cpp는 원 표기 보존 + **대소문자 구분** map이라 조회
-  결과가 서버 표기에 의존한다. 통일은 개정 후보 [R6](10-revision-candidates.ko.md).
+  (`OrdinalIgnoreCase`) — 둘 다 계약을 충족한다(2026-07-12 R6 승격으로 cpp의
+  대소문자 구분 map 편차 해소).
 
 ## 4.4 download(sink) 의미론
 

@@ -12,7 +12,13 @@ namespace Zlink.HttpClient.Runtime;
 /// </summary>
 internal sealed class RetryPolicy(HttpClientOptions options)
 {
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(50);
+    // Exponential backoff with full jitter: base 50ms, doubling per attempt, capped at 1s.
+    // Fixed delays synchronize retries from many clients against an ailing server.
+    private static TimeSpan DelayFor(int attempt)
+    {
+        var ceilingMs = Math.Min(1000, 50 << Math.Min(attempt, 5));
+        return TimeSpan.FromMilliseconds(Random.Shared.Next(0, ceilingMs + 1));
+    }
 
     public async ValueTask<RawHttpResponse> ExecuteAsync(
         HttpRequestSpec request,
@@ -61,7 +67,7 @@ internal sealed class RetryPolicy(HttpClientOptions options)
 
             if (attempt < maxRetries)
             {
-                await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(DelayFor(attempt), cancellationToken).ConfigureAwait(false);
                 continue;
             }
 

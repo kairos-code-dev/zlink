@@ -22,7 +22,7 @@ zlinkHttpClient("https://api.internal") { followRedirects(5) }
 
 ## Retry
 
-`retry(attempts)`로 transport 실패를 재시도한다(고정 50ms 간격).
+`retry(attempts)`로 transport 실패를 재시도한다(지수 백오프 + full jitter 간격(기본 50ms, 시도마다 2배, 상한 1초, 0~상한 무작위)).
 
 - 재시도 대상: **retriable transport 실패**(연결 오류, timeout 등). status 코드(4xx/5xx)
   자체는 재시도하지 않는다.

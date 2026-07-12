@@ -4,7 +4,12 @@ import { ZLinkFrameworkException, ZLinkFrameworkErrorKind } from '@zlink-systems
 import type { HttpClientOptions } from './options';
 import type { HttpRequestSpec, RawResult } from './request-performer';
 
-const RETRY_DELAY_MS = 50;
+// Exponential backoff with full jitter: base 50ms, doubling per attempt, capped at 1s.
+// Fixed delays synchronize retries from many clients against an ailing server.
+function delayMsFor(attempt: number): number {
+  const ceiling = Math.min(1000, 50 << Math.min(attempt, 5));
+  return Math.floor(Math.random() * (ceiling + 1));
+}
 
 /**
  * Applies the wrapper's retry policy around a single request attempt: streaming requests are never
@@ -34,7 +39,7 @@ export class RetryPolicy {
       } catch (error) {
         const failure = mapFailure(error, controller.signal.aborted);
         if (failure.isRetriable && attempt < maxRetries) {
-          await delay(RETRY_DELAY_MS);
+          await delay(delayMsFor(attempt));
           continue;
         }
         throw failure;

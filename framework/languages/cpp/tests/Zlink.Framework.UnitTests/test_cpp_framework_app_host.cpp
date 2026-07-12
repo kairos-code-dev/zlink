@@ -1051,10 +1051,10 @@ int main ()
     trace.phase = "main app assertions";
     if (!post_result || post_result.value ().body.name != "post"
         || post_result.value ().body.correlationId != "corr-post"
-        || post_result.value ().headers.at ("X-Correlation-Id") != "corr-post"
-        || post_result.value ().headers.at ("X-Middleware-Before") != "seen"
-        || post_result.value ().headers.at ("X-Middleware-After") != "seen"
-        || post_result.value ().headers.at ("X-Middleware-State") != "preserved") {
+        || post_result.value ().headers.at ("x-correlation-id") != "corr-post"
+        || post_result.value ().headers.at ("x-middleware-before") != "seen"
+        || post_result.value ().headers.at ("x-middleware-after") != "seen"
+        || post_result.value ().headers.at ("x-middleware-state") != "preserved") {
         return 14;
     }
     if (!nested_result || nested_result.value ().body.name != "nested:app"
@@ -1064,7 +1064,7 @@ int main ()
     }
     if (!get_result || get_result.value ().status != 200 || get_result.value ().body.id != "1"
         || get_result.value ().body.filter != "active"
-        || get_result.value ().headers.at ("X-Context-Path") != "/games/1") {
+        || get_result.value ().headers.at ("x-context-path") != "/games/1") {
         return 18;
     }
     if (!number_get_result || number_get_result.value ().body.id != 41
@@ -1075,14 +1075,14 @@ int main ()
         || response_object_result.value ().body.id != "9"
         || response_object_result.value ().body.name != "response:object"
         || response_object_result.value ().body.filter != "direct"
-        || response_object_result.value ().headers.at ("X-Http-Target")
+        || response_object_result.value ().headers.at ("x-http-target")
              != "/response-games/9?filter=direct&name=object") {
         return 57;
     }
     if (!response_context_result || response_context_result.value ().status != 207
         || response_context_result.value ().body.id != "10"
         || response_context_result.value ().body.name != "response-context:object"
-        || response_context_result.value ().headers.at ("X-Response-Wins") != "true") {
+        || response_context_result.value ().headers.at ("x-response-wins") != "true") {
         return 61;
     }
     if (!request_task_result || request_task_result.value ().status != 200
@@ -1092,7 +1092,7 @@ int main ()
         return 62;
     }
     if (!raw_result || raw_result.value ().status != 206
-        || raw_result.value ().headers.at ("X-Raw-Path") != "/raw/42"
+        || raw_result.value ().headers.at ("x-raw-path") != "/raw/42"
         || raw_result.value ().body.find ("42|echo|text/plain|") == std::string::npos) {
         return 58;
     }
@@ -1130,7 +1130,7 @@ int main ()
         || invalid_json_shape_result.value ().body.find ("payload_decode_failed")
              == std::string::npos
         || invalid_json_shape_result.value ().body.find ("corr-invalid-json") == std::string::npos
-        || invalid_json_shape_result.value ().headers.at ("X-Middleware-After") != "seen") {
+        || invalid_json_shape_result.value ().headers.at ("x-middleware-after") != "seen") {
         return 22;
     }
     if (!route_parse_failure_result || route_parse_failure_result.value ().status != 400
@@ -1167,7 +1167,7 @@ int main ()
     if (!timeout_mapping_result || timeout_mapping_result.value ().status != 504
         || timeout_mapping_result.value ().body.find ("timeout") == std::string::npos
         || timeout_mapping_result.value ().body.find ("corr-timeout") == std::string::npos
-        || timeout_mapping_result.value ().headers.at ("X-Middleware-After") != "seen") {
+        || timeout_mapping_result.value ().headers.at ("x-middleware-after") != "seen") {
         return 27;
     }
     if (!shutdown_mapping_result || shutdown_mapping_result.value ().status != 503

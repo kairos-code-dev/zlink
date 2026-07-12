@@ -105,20 +105,39 @@ package 정책(`scripts/local-package/README.ko.md`)을 http-client에 그대로
 전 언어 게이트: cpp 54/54 + contract headers, dotnet 54/54, java/kotlin 그린,
 node 계약 32/32.
 
-## Phase 5 — 개정 후보 결정 (R1~R14)
+## Phase 5 — 개정 후보 결정 (R1~R14) ✅ 결정 완료 (2026-07-12)
 
-- [ ] R1(에러 바디 노출) — 우선 검토 권장(실무 함정 최다)
-- [ ] R2(timeout kind) — Phase 3(에러 모델)과 연동
-- [ ] R3(retry 백오프) / R4(multipart 바이너리) / R6(헤더 정규화) /
-  R7(one-shot 재검토) / R11(다중값 헤더)
-- [ ] R5(kotlin Flow·취소·fetch 동명이의) — R9(취소 표면)·R12(스트리밍
-  관용화)와 묶어서 결정 권장(같은 뿌리)
-- [ ] R10(관찰성 훅) — framework 통일성 관점 우선 검토 권장
-  (flow-tracing 헤더 전파)
-- [ ] R13(호스팅/DI 통합) — 사용성 트랙, 우선 dotnet/node
-- [ ] R14(조건 폴링 `poll` terminal) — 무조건 loop 포함 여부는 R14에서 결정,
-  취소(R9) 선행 권장
-- [ ] R8(cpp async I/O 전환) — 대형, 별도 draft로 분리 권장
+**승격·구현 완료 (2건)**:
+- [x] **R3 승격**: retry 지연을 지수 백오프 + full jitter로(상한 =
+  min(1초, 50ms×2^attempt), 지연 = [0,상한] 무작위). 4언어 구현 + spec 6.2 +
+  언어 가이드 10장 5개 개정. 잔여 쟁점(총 데드라인)은 R3′로 분리
+- [x] **R6 승격**: cpp 응답 헤더 소문자 정규화(4장 §4.3 편차 해소). cpp 문서
+  예제 3곳 + framework app-host 테스트 10곳 소문자 갱신. 전 언어 게이트 그린.
+  주의: cpp 소비자는 소스 참조라 즉시 영향 — 원표기 조회 코드는 깨짐(의도)
+
+**차기 버전(0.3.0) 구현 트랙으로 승격 예고 (2건)**:
+- [ ] R1(에러 바디 노출) — 가치 최대. 설계 요점: 4언어는
+  `ZLinkFrameworkException` 파생(status/headers/rawBody 보유) 1개 도입,
+  cpp는 `result_t` 실패에 응답 봉투를 싣는 방법 조사 필요(별도 설계)
+- [ ] R4(multipart 바이너리) — 시그니처는 자명하나 4언어 multipart 조립부가
+  문자열 기반이라 바이너리 조립로 재작업 필요
+
+**보류 (사유와 재검토 조건)**:
+- R2(timeout kind): framework 공용 enum 변경은 HTTP 밖 영향 — R3′와 함께 재검토
+- R3′(총 데드라인 옵션): cpp만 총 예산 강제(언어 편차) — 수요 확인 후
+- R5+R9+R12(kotlin coroutine·취소 표면·스트리밍 관용화): 같은 뿌리(비동기
+  수명 제어) — 단일 설계 트랙으로 묶어 진행해야 하며 부분 구현 금지
+- R10(관찰성 훅): 보류 중 **우선 검토 1순위** — flow-correlation 헤더 표준을
+  framework 쪽과 함께 정해야 해서 http-client 단독 결정 불가
+- R11(다중값 헤더): 응답 타입 변경 — R1 구현 시 응답 모델 개정과 일괄
+- R13(DI 통합): 사용성 트랙, 별도 진행 가능
+- R14(poll terminal): R9(취소) 선행 필요
+- R8(cpp async I/O): 대형 — 별도 draft 문서로 분리(향후 착수 시
+  `framework/doc/draft/` 관례)
+
+**현상 유지로 종결 (1건)**:
+- [x] R7(one-shot): 편의 계약으로 유지. 반복 사용 경고는 공통 spec 5.4에
+  명문화돼 있음. dotnet 핸들러 재생성 비용은 문서 경고로 충분하다고 판단
 
 승격된 것만 spec 본문 이동 + 5언어 동시 구현(README 변경 절차).
 
@@ -141,7 +160,7 @@ node 계약 32/32.
 | 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ✅ 2026-07-12 (cpp는 소스 참조+계약 게이트로 편차 확정) |
 | 4 | Phase 3 에러 모델 parity | ✅ 2026-07-12 |
 | 5 | Phase 4 언어별 결함 | ✅ 2026-07-12 |
-| 6 | Phase 5 R-항목 결정 | ⬜ |
+| 6 | Phase 5 R-항목 결정 | ✅ 2026-07-12 (R3·R6 승격 구현, R1·R4 0.3.0 트랙, R7 종결, 나머지 보류) |
 | 7 | Phase 6 배포·perf 체계 | ⬜ |
 | 8 | 이 문서 삭제 | ⬜ |
 

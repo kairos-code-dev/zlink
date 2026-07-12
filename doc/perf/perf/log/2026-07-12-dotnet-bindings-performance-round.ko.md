@@ -1156,3 +1156,20 @@ secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `DEALER_ROUTER_REQREP / tls`
+
+### DEALER_ROUTER_REQREP tls 완료
+
+secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_172716_core_9_0_dotnet_dealer_router_reqrep_tls_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_173001_core_9_0_dotnet_dealer_router_reqrep_tls_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 84.0%, 84.4%, 86.2%, 84.5%, 87.7%, 87.1%였다. 최소는
+84.0%, 크기 중앙값은 약 85.4%로 request/reply 목표를 통과했다. 평균 latency 최대
+비율은 64B의 약 1.15배로 일반 상한 3배 이내였다. 모든 크기가 첫 paired 측정에서
+통과해 추가 개선은 필요하지 않았다.
+
+- `DEALER_ROUTER_REQREP / tls`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `DEALER_ROUTER_REQREP / inproc`

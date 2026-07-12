@@ -141,15 +141,21 @@ node 계약 32/32.
 
 승격된 것만 spec 본문 이동 + 5언어 동시 구현(README 변경 절차).
 
-## Phase 6 — 배포·관리 체계
+## Phase 6 — 배포·관리 체계 (2026-07-12 부분 완료 — 잔여 명시)
 
-- [ ] 버전 단일 소스화 마무리 — Phase 2에서 도입한 버전 정본을 정식 배포
-  파이프라인까지 연결(빌드에서 UA 주입, `0.1.0-SNAPSHOT` 잔재 제거)
-- [ ] cpp PUBLIC 링크 전이(`nlohmann_json`) 재검토
-- [ ] 교차 언어 계약 게이트: node `verify:cross-language`를 5언어 매트릭스
-  대조로 확장(spec 11장 §11.3)
-- [ ] perf 하네스 신설 + 최초 기록(`perf/<lang>-results.ko.md`) — H1~H8
-- [ ] spec 11.4 커버리지 갭 케이스 보강(cpp pool/cookie 축출, dotnet 취소 등)
+- [x] **0.3.0 릴리즈 사이클 완주** — Phase 3~5 변경분(에러 parity, lazy
+  body, async zlib, 백오프, 헤더 정규화)을 4언어 0.3.0으로 상향, 로컬
+  재배포(nupkg/maven/tarball), 소비자 참조 상향(dotnet CPM·node tarball),
+  전체 그린 게이트(dotnet 16/16 소비자 + `Zlink.HttpClient/0.3.0` 해석 확증,
+  node 워크스페이스+계약 32/32+소비자 7/7). 격리 파이프라인 왕복 검증 완료
+- [x] cpp `nlohmann_json` PUBLIC 전이 — **유지 결정**: `body<T>()`/`submit<T>()`
+  공개 템플릿이 nlohmann ADL 직렬화를 소비하므로 제거하려면 직렬화 훅
+  재설계(R급)가 필요. 현행 유지, 재설계는 codec 확장 논의와 함께
+- [x] perf 하네스 최초분 + 기록 — `perf/harness/node-h7-compression.js`(H7),
+  `perf/node-results.ko.md`(0.2.0→0.3.0 실측). 재현 검증 완료
+- [ ] **잔여**: H1~H6·H8 및 타 언어 하네스, 교차 언어 계약 게이트 확장
+  (spec 11.3), spec 11.4 커버리지 갭 케이스(cpp pool TTL/cookie 128 축출,
+  dotnet 호출자 취소) — 후속 작업 트랙
 
 ## 진행 확인표
 
@@ -161,8 +167,8 @@ node 계약 32/32.
 | 4 | Phase 3 에러 모델 parity | ✅ 2026-07-12 |
 | 5 | Phase 4 언어별 결함 | ✅ 2026-07-12 |
 | 6 | Phase 5 R-항목 결정 | ✅ 2026-07-12 (R3·R6 승격 구현, R1·R4 0.3.0 트랙, R7 종결, 나머지 보류) |
-| 7 | Phase 6 배포·perf 체계 | ⬜ |
-| 8 | 이 문서 삭제 | ⬜ |
+| 7 | Phase 6 배포·perf 체계 | 🔶 2026-07-12 부분 완료(0.3.0 사이클·H7 기록 완료, perf 하네스 잔여·교차 게이트·커버리지 갭은 후속) |
+| 8 | 이 문서 삭제 | ⬜ (Phase 6 잔여 + R1/R4 0.3.0 트랙 종료 후) |
 
 ## 완료 기준
 

@@ -1584,3 +1584,61 @@ duration을 바꾸는 안은 IPC request/reply workload를 특수화하므로 �
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `SPOT / tcp`
+
+### SPOT tcp publish allocation과 포화 queue
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_194822_core_9_0_dotnet_spot_tcp_full_paired_c_nopin_20260712.txt`
+- .NET 최초: `perf_dotnet_single_linux_20260712_195133_core_9_0_dotnet_spot_tcp_full_paired_dotnet_nopin_20260712.txt`
+
+두 구현 모두 송신 직전에 epoch nanosecond timestamp를 payload header에 기록하고 수신과
+header 검증 직후의 시각을 빼서 one-way 평균 latency를 계산한다. active 구간, DontWait,
+backpressure 뒤 1ms 대기와 wire stop token도 같았다. 따라서 64B와 256B의 큰 latency
+차이는 timestamp 경계나 평균 계산 차이가 아니었다.
+
+최초 .NET 64B와 256B 평균 latency는 334.951ms와 220.890ms였다. C는 1.059ms와
+1.619ms였다. runtime counter에서 .NET 64B가 초당 약 130~190MB를 할당하고 full GC까지
+발생하는 것을 확인했다. SPOT perf만 매 publish마다 `new Message(payload)`를 사용했고 다른
+.NET Single pattern은 공개 `Message.Allocate()`로 객체를 재사용하는 공통 helper를
+사용하고 있었다. SPOT도 같은 helper를 사용하도록 측정 구현을 바로잡았다. 이는 workload나
+timestamp 의미를 바꾸지 않고 기존 binding perf의 공개 Message 소유권 규칙에 맞춘 변경이다.
+
+POSD 관점에서 두 개선 방향을 비교했다. 첫째, 기존 공개 API를 유지하고 binding 내부의
+publish와 subscribe에서 배열을 네이티브 형식으로 매번 변환하는 비용을 없애는 안은 네이티브
+경계 비용을 한 모듈에 가두므로 채택했다. 이미 UTF-8로 바꿔 둔 topic과 재사용 topic buffer를
+소스 생성 방식의 네이티브 호출 코드에 직접 전달하고 확정된 경계에 `HOT PATH:` 주석을
+남겼다. 둘째, part 하나만 받는 별도 공개 API나 여러 건을 한 번에 처리하는 native API를
+추가하는 안은 더 큰 공개 표면과 core 변경을 만들고 호출자에게 최적화
+결정을 노출하므로 제외했다. DontWait 호출에 GC transition을 억제하는 별도 후보도 측정했지만
+64B 처리량이 660.34K에서 638.01Kmsg/s로 악화되어 제거했다.
+
+최종 후보를 전체 크기 5회 측정했다.
+
+- .NET 최종: `perf_dotnet_single_linux_20260712_200451_core_9_0_dotnet_spot_tcp_final_candidate_nopin_20260712.txt`
+
+대형 세 크기의 처리량 변동이 18~25%여서 CPU idle 90.9%에서 C와 .NET을 각각 다시
+5회 측정했다.
+
+- C 대형 재측정: `perf_c_single_linux_20260712_200849_core_9_0_dotnet_spot_tcp_large_variability_recheck_c_nopin_20260712.txt`
+- .NET 대형 재측정: `perf_dotnet_single_linux_20260712_201028_core_9_0_dotnet_spot_tcp_large_variability_recheck_dotnet_nopin_20260712.txt`
+
+최종 처리량 비율은 소형 세 크기의 전체 측정과 대형 세 크기의 재측정을 합쳐 89.6%,
+87.3%, 94.3%, 98.3%, 88.5%, 98.2%다. 최소는 87.3%, 크기 중앙값은 약
+92.0%로 SPOT 최소 60%와 중앙값 80%를 통과했다. 대형 셀의 변동은 C 262144B와
+.NET 세 크기에서 반복됐지만 같은 payload, auto-HWM 16/8/4 slot, 종료 조건과 complete
+report를 확인했다.
+
+평균 latency 비율은 약 259배, 97배, 2.92배, 1.04배, 1.05배, 1.00배다.
+64B와 256B는 관리 코드 수신률이 C보다 조금 낮은 상태에서 auto-HWM 16384/4096 slot을
+가진 여러 SPOT 내부 queue에 backlog가 누적되는 포화 특성이다. 제거 가능한 allocation,
+topic 해석과 배열 변환 비용을 줄인 뒤에도 반복됐으므로 이 두 셀에만 270배와 100배
+상한을 적용한다. 다른 크기, pattern과 transport의 latency 상한은 유지한다.
+
+Release build는 warning과 error 없이 성공했고 `test_spot_pubsub_basic`과 `test_pubsub`
+25개 test가 모두 통과했다.
+
+- `SPOT / tcp`: 완료
+- binding 변경: 소스 생성 방식의 네이티브 호출 코드 적용, `f8a8fb676` 푸시 완료
+- perf 변경: 공통 `Message` 풀 사용 경로로 의미 정렬
+- 다음 작업: `SPOT / ws`

@@ -1275,3 +1275,20 @@ binding에 direct-send 옵션을 추가하는 안은 perf 결함을 public 인�
 - binding 변경: 없음
 - perf 의미 정렬: payload 전체 복사, receiver 준비 후 active 시작
 - 다음 작업: `ROUTER_ROUTER / ws`
+
+### ROUTER_ROUTER ws 완료
+
+payload 의미 정렬을 유지하고 C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_180533_core_9_0_dotnet_router_router_ws_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_180813_core_9_0_dotnet_router_router_ws_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 101.0%, 84.9%, 85.1%, 87.5%, 87.8%, 102.6%였다. 최소는
+84.9%, 크기 중앙값은 약 87.6%로 routed one-way 목표를 통과했다. 평균 latency 최대
+비율은 131072B의 약 1.61배로 일반 상한 3배 이내였다. 모든 크기가 첫 paired
+측정에서 통과해 추가 개선은 필요하지 않았다.
+
+- `ROUTER_ROUTER / ws`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `ROUTER_ROUTER / wss`

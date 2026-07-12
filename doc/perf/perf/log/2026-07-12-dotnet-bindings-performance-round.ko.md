@@ -1292,3 +1292,40 @@ payload 의미 정렬을 유지하고 C와 .NET의 여섯 크기를 CPU pin 없�
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `ROUTER_ROUTER / wss`
+
+### ROUTER_ROUTER wss 완료
+
+secure transport의 payload 의미 정렬을 유지하고 C와 .NET의 여섯 크기를 CPU pin 없이
+각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_181345_core_9_0_dotnet_router_router_wss_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_181628_core_9_0_dotnet_router_router_wss_full_paired_dotnet_nopin_20260712.txt`
+
+첫 paired 결과의 처리량 비율은 103.3%, 82.6%, 92.4%, 96.9%, 99.1%,
+105.6%였다. 65536B의 .NET 처리량 범위는 중앙값 대비 약 12.1%, 262144B는
+약 18.5%로 변동성 한계 10%를 넘었다. 호스트는 20 CPU에서 load average 2.67이었고
+한 CPU를 지속 점유하는 프로세스는 없었다. 두 셀만 C와 .NET 순서로 각각 5회 다시
+측정했다.
+
+- C 재측정: `perf_c_single_linux_20260712_181952_core_9_0_dotnet_router_router_wss_variable_cells_paired_c_nopin_20260712.txt`
+- .NET 재측정: `perf_dotnet_single_linux_20260712_182046_core_9_0_dotnet_router_router_wss_variable_cells_paired_dotnet_nopin_20260712.txt`
+
+65536B 처리량 변동은 재측정에서 약 2.3%로 안정화됐고 C 대비 중앙값은 98.0%였다.
+262144B는 .NET에서 4.10K~4.84Kmsg/s의 두 구간이 반복되어 변동 범위가 약
+15.4%였다. C와 .NET 모두 payload 전체를 전송하고 wire stop token으로 종료하며
+auto-HWM은 4-slot이었다. partial 결과, timeout, message 수명 주기 차이는 없었다.
+
+CPU pin을 추가하는 안은 공식 측정 조건을 바꾸므로 제외했다. HWM, timeout 또는 duration을
+이 셀에만 조정하는 안은 secure transport의 공식 workload를 특수화하므로 제외했다. 기존
+runner 의미를 유지하고 반복 중앙값과 변동 범위를 함께 기록하는 안은 측정 조건을 숨기지
+않으므로 채택했다. 262144B 재측정 중앙값은 C 대비 122.8%, 평균 latency는 약 0.79배로
+목표를 만족했다.
+
+최종 판정에는 재측정한 65536B와 262144B 값을 사용했다. 처리량 비율은 103.3%,
+82.6%, 92.4%, 98.0%, 99.1%, 122.8%다. 최소는 82.6%, 크기 중앙값은 약
+98.6%이며 평균 latency 최대 비율은 약 1.14배다.
+
+- `ROUTER_ROUTER / wss`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `ROUTER_ROUTER / tls`

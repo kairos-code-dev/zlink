@@ -1329,3 +1329,41 @@ runner 의미를 유지하고 반복 중앙값과 변동 범위를 함께 기록
 - binding 변경: 없음
 - perf 추가 변경: 없음
 - 다음 작업: `ROUTER_ROUTER / tls`
+
+### ROUTER_ROUTER tls 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 최초: `perf_c_single_linux_20260712_182259_core_9_0_dotnet_router_router_tls_full_paired_c_nopin_20260712.txt`
+- .NET 최초: `perf_dotnet_single_linux_20260712_182540_core_9_0_dotnet_router_router_tls_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 102.1%, 97.9%, 90.8%, 93.5%, 96.1%, 100.8%로
+전부 통과했다. 평균 latency 최대 비율도 약 2.56배로 통과했다. 다만 C와 .NET
+양쪽에서 대형 메시지 평균 latency가 반복마다 20% 넘게 움직였고, 일부 처리량 셀도
+10% 한계를 넘었다.
+
+호스트 load average는 2.27/20 CPU였고 한 CPU를 지속 점유하는 프로세스는 없었다.
+같은 조건에서 전체 크기를 다시 C와 .NET 순서로 각각 5회 측정했다.
+
+- C 재측정: `perf_c_single_linux_20260712_182854_core_9_0_dotnet_router_router_tls_variability_recheck_paired_c_nopin_20260712.txt`
+- .NET 재측정: `perf_dotnet_single_linux_20260712_183134_core_9_0_dotnet_router_router_tls_variability_recheck_paired_dotnet_nopin_20260712.txt`
+
+재측정에서도 TLS의 짧은 대형-message queue에서 C와 .NET 양쪽의 평균 latency가
+낮은 구간과 높은 구간으로 반복됐다. 두 구현 모두 송신 전에 같은 header를 기록하고
+payload 전체를 복사하며 wire stop token으로 종료한다. runtime, duration과 auto-HWM
+slot도 같고 partial, timeout이나 message 수명 주기 차이는 없었다. 따라서 binding에만
+있는 병목이나 측정 의미 차이로 판정하지 않았다.
+
+CPU pin을 추가하는 안은 공식 조건을 바꾸므로 제외했다. 대형 셀에만 HWM, duration 또는
+timeout을 다르게 적용하는 안은 TLS workload를 특수화하고 queue 결정을 perf 호출자에게
+노출하므로 제외했다. 기존 runner 조건을 유지하고 저부하 재측정 중앙값과 변동 범위를
+기록하는 안을 채택했다.
+
+재측정 처리량 비율은 103.8%, 91.8%, 88.7%, 100.0%, 101.6%, 102.6%다.
+최소는 88.7%, 크기 중앙값은 약 100.8%다. 평균 latency 비율은 약 1.03배,
+0.92배, 0.67배, 1.84배, 0.61배, 0.76배로 모두 일반 상한 3배 이내다.
+
+- `ROUTER_ROUTER / tls`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `ROUTER_ROUTER / inproc`

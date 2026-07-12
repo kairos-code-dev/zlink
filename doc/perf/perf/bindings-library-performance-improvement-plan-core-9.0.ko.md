@@ -663,7 +663,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `DEALER_DEALER` | 통과(97.5%) | 통과(82.4%) | 통과(91.5%) | 통과(97.2%) | 통과(100.5%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 82.4%, 크기 중앙값 약 97.4%, 평균 latency 최대 1.02배로 통과했다. |
 | `tls` | `DEALER_ROUTER` | 통과(93.7%) | 통과(75.6%) | 통과(91.0%) | 통과(92.5%) | 통과(91.1%) | 통과(96.8%) | 전체 측정 뒤 경계 세 크기를 다시 paired 측정했다. 크기 중앙값 약 93.1%이며 131072B 평균 latency에만 3.5배 상한을 적용한다. |
 | `tls` | `DEALER_ROUTER_REQREP` | 통과(84.0%) | 통과(84.4%) | 통과(86.2%) | 통과(84.5%) | 통과(87.7%) | 통과(87.1%) | CPU pin 없는 5회 paired 측정. 최소 84.0%, 크기 중앙값 약 85.4%, 평균 latency 최대 약 1.15배로 통과했다. |
-| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER` | 통과(103.8%) | 통과(91.8%) | 통과(88.7%) | 통과(100.0%) | 통과(101.6%) | 통과(102.6%) | CPU pin 없는 전체 크기 5회 paired 재측정값. C와 .NET 양쪽에서 TLS queue latency와 일부 처리량 변동이 반복됐지만 payload, 종료, auto-HWM과 runtime 조건이 같고 모든 중앙값 gate가 통과했다. 최소 88.7%, 크기 중앙값 약 100.8%, 평균 latency 최대 약 1.84배다. |
 | `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `PAIR` | 통과(87.7%) | 통과(63.7%) | 통과(63.2%) | 통과(29.7%) | 통과(27.0%) | 통과(24.5%) | local transport 최소 24%, 중앙값 45%를 적용해 통과했다. |
@@ -1273,17 +1273,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `ROUTER_ROUTER` 진행 중 | tcp, ws, wss를 완료했고 다음 transport는 tls다. |
-| paired C | .NET `ROUTER_ROUTER / wss` 완료 | 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정하고 변동 셀 두 개를 다시 paired 측정했다. |
-| 개선 반복 | .NET `ROUTER_ROUTER / wss` 완료 | 최소 82.6%, 크기 중앙값 98.6%, 평균 latency 최대 약 1.14배로 추가 개선 없이 통과했다. |
-| 커밋과 푸시 | .NET `ROUTER_ROUTER / wss` 문서 반영 중 | source 추가 변경은 없으며 측정·변동성 조사 근거만 별도 커밋한다. |
+| 현재 pattern | Single `ROUTER_ROUTER` 진행 중 | tcp, ws, wss, tls를 완료했고 다음 transport는 inproc이다. |
+| paired C | .NET `ROUTER_ROUTER / tls` 완료 | 전체 크기를 CPU pin 없이 두 차례 C와 .NET 순서로 각각 5회 측정해 TLS 변동을 재확인했다. |
+| 개선 반복 | .NET `ROUTER_ROUTER / tls` 완료 | 최종 최소 88.7%, 크기 중앙값 100.8%, 평균 latency 최대 약 1.84배로 추가 개선 없이 통과했다. |
+| 커밋과 푸시 | .NET `ROUTER_ROUTER / tls` 문서 반영 중 | source 추가 변경은 없으며 반복 변동성 조사 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP` 완료, `ROUTER_ROUTER` tcp, ws, wss 완료 | 미측정 | `ROUTER_ROUTER / tls` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP` 완료, `ROUTER_ROUTER` tcp, ws, wss, tls 완료 | 미측정 | `ROUTER_ROUTER / inproc` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1365,6 +1365,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` tcp | core_9_0_dotnet_router_router_tcp_*full_payload*_nopin_20260712 | C는 payload 전체를 복사하지만 .NET perf는 header만 기록하던 의미 차이와 active 시작 순서를 바로잡았다. | 최소 78.7%, 크기 중앙값 93.9%, 평균 latency 최대 약 2.26배로 tcp 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` ws | core_9_0_dotnet_router_router_ws_full_paired_*_nopin_20260712 | payload 의미 정렬을 유지하고 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 84.9%, 크기 중앙값 87.6%, 평균 latency 최대 약 1.61배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER` wss | core_9_0_dotnet_router_router_wss_*paired_*_nopin_20260712 | 전체 크기 paired 측정 뒤 변동 한계를 넘은 65536B와 262144B를 저부하에서 다시 paired 측정했다. 262144B의 반복 변동은 같은 payload·종료 조건과 auto-HWM을 확인하고 범위와 폐기 대안을 기록했다. | 최종 최소 82.6%, 크기 중앙값 98.6%, 평균 latency 최대 약 1.14배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `ROUTER_ROUTER` tls | core_9_0_dotnet_router_router_tls_*paired_*_nopin_20260712 | C와 .NET 양쪽의 TLS queue latency 변동을 저부하 전체 크기 재측정으로 확인했다. 같은 payload·종료·auto-HWM 조건에서 반복됐고 CPU pin이나 셀별 runner 조정 없이 중앙값과 범위를 기록했다. | 최종 최소 88.7%, 크기 중앙값 100.8%, 평균 latency 최대 약 1.84배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

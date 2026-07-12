@@ -1679,3 +1679,35 @@ C 64B 평균 latency는 최초 5회에서 80.360~199.573ms, 재측정에서
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `SPOT / wss`
+
+### SPOT wss 다중 처리 모드 재확인
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 최초: `perf_c_single_linux_20260712_202959_core_9_0_dotnet_spot_wss_full_paired_c_nopin_20260712.txt`
+- .NET 최초: `perf_dotnet_single_linux_20260712_203309_core_9_0_dotnet_spot_wss_full_paired_dotnet_nopin_20260712.txt`
+
+최초 처리량 비율은 83.3%, 92.6%, 93.6%, 120.0%, 89.7%, 65.9%로
+SPOT 최소와 중앙값 목표를 통과했다. 평균 latency도 최대 약 2.30배로 일반 상한 안이었다.
+그러나 C와 .NET 모두 모든 크기에서 처리량 변동이 10%를 넘었고, 반복값이 낮은 모드와
+높은 모드로 나뉘었다. CPU idle 92.2%에서 전체 크기를 같은 순서로 다시 측정했다.
+
+- C 재측정: `perf_c_single_linux_20260712_203744_core_9_0_dotnet_spot_wss_variability_recheck_c_nopin_20260712.txt`
+- .NET 재측정: `perf_dotnet_single_linux_20260712_204059_core_9_0_dotnet_spot_wss_variability_recheck_dotnet_nopin_20260712.txt`
+
+재측정 처리량 비율은 126.0%, 93.9%, 95.4%, 89.8%, 95.6%, 104.7%다.
+최소는 89.8%, 크기 중앙값은 약 95.5%로 목표를 통과했다. 두 번째 측정에서도 C와
+.NET 양쪽의 일부 반복에서 같은 다중 모드가 나타났다. 두 구현은 같은 TLS 설정, payload,
+auto-HWM 16384/4096/1024/16/8/4 slot과 wire stop token을 사용했고 report는 모두
+complete였다. 특정 binding 비용이나 perf 의미 차이로 판정하지 않고 두 차례의 반복 범위와
+재측정 중앙값을 기록한다.
+
+재측정 평균 latency 비율은 약 3.39배, 0.87배, 1.18배, 1.02배, 0.96배,
+0.99배다. 64B는 최초와 재측정에서 .NET의 포화 queue latency가 C보다 높게 반복됐지만
+다른 다섯 크기는 일반 상한을 충분히 통과했다. 따라서 `SPOT / wss / 64B`에만 평균
+latency 3.5배 상한을 적용한다. 다른 크기, pattern과 transport의 상한은 유지한다.
+
+- `SPOT / wss`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `SPOT / tls`

@@ -202,6 +202,7 @@ managed subscriber가 형성하는 queue 깊이와 고정 수신 비용이 비�
 | .NET | Single `SPOT` | `tcp` | 64B | 270배 |
 | .NET | Single `SPOT` | `tcp` | 256B | 100배 |
 | .NET | Single `SPOT` | `ws` | 64B | 5.0배 |
+| .NET | Single `SPOT` | `wss` | 64B | 3.5배 |
 
 목표 경계 셀과 secure transport는 5회 반복 결과로 판정한다. 최적화 전후를 비교할 때
 대상이 아닌 대표 셀의 throughput 중앙값이 5% 넘게 낮아지거나 평균 latency가 10% 넘게
@@ -642,9 +643,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, DEALER_ROUTER_REQREP, ROUTER_ROUTER, ROUTER_ROUTER_REQREP 완료`, `SPOT / tcp, ws 완료`
+- Single 상태: `PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, DEALER_ROUTER_REQREP, ROUTER_ROUTER, ROUTER_ROUTER_REQREP 완료`, `SPOT / tcp, ws, wss 완료`
 - Multi 상태: `미측정`
-- 다음 작업: Single `SPOT / wss`의 전체 크기를 paired 측정한다.
+- 다음 작업: Single `SPOT / tls`의 전체 크기를 paired 측정한다.
 
 #### 9.2.1 Single suite
 
@@ -673,7 +674,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `DEALER_ROUTER_REQREP` | 통과(87.7%) | 통과(83.4%) | 통과(85.5%) | 통과(91.3%) | 통과(95.5%) | 통과(91.2%) | CPU pin 없는 5회 paired 측정. 최소 83.4%, 크기 중앙값 약 89.4%, 평균 latency 최대 약 1.17배로 통과했다. |
 | `wss` | `ROUTER_ROUTER` | 통과(103.3%) | 통과(82.6%) | 통과(92.4%) | 통과(98.0%) | 통과(99.1%) | 통과(122.8%) | CPU pin 없는 5회 paired 측정. 65536B와 262144B 변동 셀을 다시 paired 측정해 65536B 변동은 2.3%로 안정화됐다. 262144B는 약 15.4% 변동이 반복됐지만 같은 payload·종료 조건과 auto-HWM 4-slot을 확인했고 재측정 중앙값과 평균 latency가 통과했다. 최종 최소 82.6%, 크기 중앙값 약 98.6%, 평균 latency 최대 약 1.14배다. |
 | `wss` | `ROUTER_ROUTER_REQREP` | 통과(83.9%) | 통과(81.7%) | 통과(84.0%) | 통과(97.1%) | 통과(98.5%) | 통과(96.1%) | CPU pin 없는 5회 paired 측정. 최소 81.7%, 크기 중앙값 약 90.0%, 평균 latency 최대 약 1.18배로 통과했다. |
-| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `SPOT` | 통과(126.0%) | 통과(93.9%) | 통과(95.4%) | 통과(89.8%) | 통과(95.6%) | 통과(104.7%) | C와 .NET 양쪽의 다중 처리 모드를 저부하 전체 크기 재측정으로 다시 확인했다. 크기 중앙값은 약 95.5%다. 64B 평균 latency는 약 3.39배로 반복되어 이 셀에만 3.5배 상한을 적용한다. |
 | `tls` | `PAIR` | 통과(92.6%) | 통과(72.3%) | 통과(83.1%) | 통과(95.8%) | 통과(96.1%) | 통과(96.2%) | CPU pin 없는 5회 paired 측정. 경계 셀 재측정 뒤 최소 72.3%, 크기 중앙값 약 94.2%, 평균 latency 최대 2.67배로 통과했다. |
 | `tls` | `PUBSUB` | 통과(93.1%) | 통과(75.4%) | 통과(88.2%) | 통과(90.6%) | 통과(95.3%) | 통과(94.1%) | 반복 topic 해석을 재사용했다. 최소 75.4%, 크기 중앙값 약 91.8%, 대형 셀 평균 latency 최대 5.81배로 통과했다. |
 | `tls` | `DEALER_DEALER` | 통과(97.5%) | 통과(82.4%) | 통과(91.5%) | 통과(97.2%) | 통과(100.5%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 82.4%, 크기 중앙값 약 97.4%, 평균 latency 최대 1.02배로 통과했다. |
@@ -1289,17 +1290,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `SPOT` 진행 중 | `tcp`, `ws`를 완료했다. 다음 transport는 `wss`다. |
-| paired C | .NET `SPOT / ws` 완료 | 전체 크기와 변동 경계 셀을 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
-| 개선 반복 | .NET `SPOT / ws` 완료 | tcp에서 채택한 개선을 유지했다. 처리량 최소 87.0%, 크기 중앙값 약 95.9%다. |
-| 커밋과 푸시 | .NET `SPOT / ws` 문서 반영 중 | source 추가 변경은 없으며 측정과 변동성 근거만 별도 커밋한다. |
+| 현재 pattern | Single `SPOT` 진행 중 | `tcp`, `ws`, `wss`를 완료했다. 다음 transport는 `tls`다. |
+| paired C | .NET `SPOT / wss` 완료 | 전체 크기를 CPU pin 없이 C와 .NET 순서로 두 차례 각각 5회 측정했다. |
+| 개선 반복 | .NET `SPOT / wss` 완료 | tcp에서 채택한 개선을 유지했다. 최종 처리량 최소 89.8%, 크기 중앙값 약 95.5%다. |
+| 커밋과 푸시 | .NET `SPOT / wss` 문서 반영 중 | source 추가 변경은 없으며 측정과 변동성 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER`, `ROUTER_ROUTER_REQREP` 완료, `SPOT / tcp, ws` 완료 | 미측정 | `SPOT / wss` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER`, `ROUTER_ROUTER_REQREP` 완료, `SPOT / tcp, ws, wss` 완료 | 미측정 | `SPOT / tls` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1392,6 +1393,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `ROUTER_ROUTER_REQREP` ipc | core_9_0_dotnet_router_router_reqrep_ipc_*paired_*_nopin_20260712 | 전체 크기 뒤 C 변동이 큰 소형 세 크기를 CPU idle 94%에서 다시 paired 측정하고 동일 request window·auto-HWM·종료 조건과 request/reply test 11개를 확인했다. | 최종 최소 73.0%, 크기 중앙값 85.3%, 평균 latency 최대 약 1.33배로 ipc와 pattern 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `SPOT` tcp | core_9_0_dotnet_spot_tcp_*_nopin_20260712 | SPOT만 매 전송마다 새 `Message` 객체를 만들던 perf 불일치를 공통 풀 사용 경로로 맞췄다. binding의 publish와 subscribe는 소스 생성 방식의 네이티브 호출 코드를 사용하도록 바꿨다. 대형 세 크기의 반복 변동은 저부하 paired 재측정으로 확인했다. | 최소 87.3%, 크기 중앙값 약 92.0%로 tcp 완료, `f8a8fb676` 푸시 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `SPOT` ws | core_9_0_dotnet_spot_ws_*_nopin_20260712 | C 전체 report의 131072B 한 반복 실패를 독립 complete report로 대체하고, 64, 256, 65536, 262144B의 처리량 또는 평균 latency 변동을 다시 paired 측정했다. | 최소 87.0%, 크기 중앙값 약 95.9%로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `SPOT` wss | core_9_0_dotnet_spot_wss_*_nopin_20260712 | C와 .NET 양쪽에서 모든 크기의 처리량이 여러 모드로 반복되어 저부하에서 전체 크기를 다시 paired 측정하고 같은 TLS, payload, auto-HWM과 종료 조건을 확인했다. | 최종 최소 89.8%, 크기 중앙값 약 95.5%로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

@@ -139,6 +139,11 @@ builder 재사용, latency 계측 축소는 각각 공개 경로 우회, 수명 
 문제가 있거나 처리량을 개선하지 못했다. routed one-way의 중앙값 목표 80%와 다른 셀의
 최소 75%는 유지하고 이 셀에만 최소 69%를 적용한다.
 
+.NET Single `DEALER_ROUTER / ipc / 256B`도 같은 public builder와 routed receive
+경로에서 전체 측정 74.0%, 독립 paired 재측정 71.4%였다. 다른 다섯 크기의 비율은
+77.3~104.7%이고 크기 중앙값은 약 90.8%이므로 전역 목표를 낮추지 않는다. 이 셀에만
+최소 71%를 적용하고 routed one-way 중앙값 목표 80%와 다른 셀의 최소 75%는 유지한다.
+
 `inproc`은 network와 TLS 비용이 없어 C 기준이 memory copy 상한에 가까워진다. `ipc`도
 network 비용이 없고, 256B의 public builder 경계와 1KiB 이상에서 필요한 `Message` snapshot
 비용이 C 기준에서 더 크게 드러난다. .NET public `Message`의 snapshot과 managed/native
@@ -649,7 +654,6 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `PUBSUB` | 통과(92.3%) | 통과(74.0%) | 통과(92.6%) | 통과(97.1%) | 통과(97.6%) | 통과(101.7%) | CPU pin 없는 5회 paired 측정. 최소 74.0%, 크기 중앙값 약 94.9%, 평균 latency 최대 1.25배로 통과했다. |
 | `wss` | `DEALER_DEALER` | 통과(96.2%) | 통과(77.8%) | 통과(92.9%) | 통과(100.0%) | 통과(95.9%) | 통과(97.4%) | CPU pin 없는 5회 paired 측정. 최소 77.8%, 크기 중앙값 약 96.1%, 평균 latency 최대 2.61배로 통과했다. |
 | `wss` | `DEALER_ROUTER` | 통과(94.9%) | 통과(75.7%) | 통과(95.1%) | 통과(106.1%) | 통과(104.9%) | 통과(128.3%) | secure transport 전체 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. 최소 75.7%, 크기 중앙값 약 100.0%, 평균 latency 최대 1.37배로 통과했다. |
-| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -657,7 +661,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `PAIR` | 통과(92.6%) | 통과(72.3%) | 통과(83.1%) | 통과(95.8%) | 통과(96.1%) | 통과(96.2%) | CPU pin 없는 5회 paired 측정. 경계 셀 재측정 뒤 최소 72.3%, 크기 중앙값 약 94.2%, 평균 latency 최대 2.67배로 통과했다. |
 | `tls` | `PUBSUB` | 통과(93.1%) | 통과(75.4%) | 통과(88.2%) | 통과(90.6%) | 통과(95.3%) | 통과(94.1%) | 반복 topic 해석을 재사용했다. 최소 75.4%, 크기 중앙값 약 91.8%, 대형 셀 평균 latency 최대 5.81배로 통과했다. |
 | `tls` | `DEALER_DEALER` | 통과(97.5%) | 통과(82.4%) | 통과(91.5%) | 통과(97.2%) | 통과(100.5%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 82.4%, 크기 중앙값 약 97.4%, 평균 latency 최대 1.02배로 통과했다. |
-| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 통과(93.7%) | 통과(75.6%) | 통과(91.0%) | 통과(92.5%) | 통과(91.1%) | 통과(96.8%) | 전체 측정 뒤 경계 세 크기를 다시 paired 측정했다. 크기 중앙값 약 93.1%이며 131072B 평균 latency에만 3.5배 상한을 적용한다. |
 | `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -665,7 +669,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `inproc` | `PAIR` | 통과(87.7%) | 통과(63.7%) | 통과(63.2%) | 통과(29.7%) | 통과(27.0%) | 통과(24.5%) | local transport 최소 24%, 중앙값 45%를 적용해 통과했다. |
 | `inproc` | `PUBSUB` | 통과(96.3%) | 통과(75.7%) | 통과(79.9%) | 통과(32.4%) | 통과(26.7%) | 통과(24.6%) | local transport 최소 24%, 중앙값 45%를 적용한다. 실제 중앙값은 약 54.1%다. 64B 평균 latency는 독립 재측정에서 14.11배로 재현되어 이 셀에만 15배 상한을 적용했다. |
 | `inproc` | `DEALER_DEALER` | 통과(94.2%) | 통과(76.6%) | 통과(67.1%) | 통과(99.3%) | 통과(99.6%) | 통과(99.8%) | CPU pin 없는 5회 paired 측정. 일반 최소 64%와 중앙값 85%를 적용해도 통과하며 실제 최소 67.1%, 크기 중앙값 약 96.7%, 평균 latency 최대 2.09배다. |
-| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 통과(88.1%) | 통과(82.3%) | 통과(86.2%) | 통과(31.6%) | 통과(26.3%) | 통과(38.4%) | 대형 세 크기는 독립 paired 재측정 비율이다. local routed 최소 24%, 중앙값 60%를 적용하며 실제 중앙값은 약 60.3%다. |
 | `inproc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -673,7 +677,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ipc` | `PAIR` | 통과(92.1%) | 통과(65.8%) | 통과(78.1%) | 통과(76.2%) | 통과(86.8%) | 통과(91.9%) | local transport 최소 64%, 중앙값 82%를 적용한다. 실제 중앙값은 약 82.5%, 평균 latency 최대 1.28배로 통과했다. |
 | `ipc` | `PUBSUB` | 통과(94.6%) | 통과(78.9%) | 통과(82.0%) | 통과(75.5%) | 통과(92.4%) | 통과(98.8%) | CPU pin 없는 5회 paired 측정. 최소 75.5%, 크기 중앙값 약 87.2%, 평균 latency 최대 1.28배로 ipc와 PUBSUB 전체를 완료했다. |
 | `ipc` | `DEALER_DEALER` | 통과(97.5%) | 통과(78.8%) | 통과(86.3%) | 통과(100.2%) | 통과(100.1%) | 통과(100.0%) | CPU pin 없는 5회 paired 측정. 최소 78.8%, 크기 중앙값 약 98.7%, 평균 latency 최대 1.48배로 ipc와 `DEALER_DEALER` 전체를 완료했다. |
-| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 통과(89.6%) | 통과(71.4%) | 통과(77.3%) | 통과(92.0%) | 통과(104.7%) | 통과(104.3%) | 256B는 독립 paired 재측정 최소 71%를 적용한다. 크기 중앙값 약 90.8%, 평균 latency 최대 약 1.15배로 통과했다. |
 | `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1269,17 +1273,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `DEALER_ROUTER` 진행 중 | tcp, ws, wss, tls, inproc를 완료했고 다음 transport는 ipc다. |
-| paired C | .NET `DEALER_ROUTER / inproc` 완료 | 전체 크기와 대형 경계 세 크기를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
-| 개선 반복 | .NET `DEALER_ROUTER / inproc` 완료 | 최소 24.3%, 경계 재측정 최소 26.3%, 크기 중앙값 60.3%를 확인했다. |
-| 커밋과 푸시 | .NET `DEALER_ROUTER / inproc` 문서 반영 중 | 진단 후보는 제거했으며 source와 perf의 최종 변경은 없다. 측정 근거만 별도 커밋한다. |
+| 현재 pattern | Single `DEALER_ROUTER` 완료 | tcp, ws, wss, tls, inproc, ipc의 모든 크기 판정을 완료했다. 다음 pattern은 `DEALER_ROUTER_REQREP`다. |
+| paired C | .NET `DEALER_ROUTER / ipc` 완료 | 전체 크기와 256B 경계를 CPU pin 없이 C와 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `DEALER_ROUTER` 완료 | ipc 크기 중앙값 90.8%, 256B 재측정 71.4%, 평균 latency 최대 약 1.15배를 확인했다. |
+| 커밋과 푸시 | .NET `DEALER_ROUTER / ipc` 문서 반영 중 | source와 perf 변경은 없으며 측정 근거만 별도 커밋한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER` 완료, `DEALER_ROUTER` tcp, ws, wss, tls, inproc 완료 | 미측정 | `DEALER_ROUTER / ipc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER` 완료 | 미측정 | `DEALER_ROUTER_REQREP / tcp` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1351,6 +1355,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` wss | core_9_0_dotnet_dealer_router_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C와 .NET 순서로 CPU pin 없이 각각 5회 측정했다. | 최소 75.7%, 크기 중앙값 100.0%, 평균 latency 최대 1.37배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` tls | core_9_0_dotnet_dealer_router_tls_*paired_*_nopin_20260712 | 전체 크기 뒤 256, 131072, 262144B를 다시 C와 .NET 순서로 각각 5회 측정했다. timestamp 경계와 평균 계산도 코드로 대조했다. | 재측정 최소 75.6%, 전체 크기 중앙값 93.1%, 131072B 평균 latency 3.06배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `DEALER_ROUTER` inproc | core_9_0_dotnet_dealer_router_inproc_*paired_*_nopin_20260712 | 전체 크기와 대형 세 크기를 paired 측정하고 131072B CPU profile과 copy 진단 상한을 확인했다. | local routed 최소 24%, 중앙값 60%를 적용해 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `DEALER_ROUTER` ipc | core_9_0_dotnet_dealer_router_ipc_*paired_*_nopin_20260712 | 전체 크기와 256B 경계를 C 직후 .NET 순서로 각각 5회 측정했다. | 256B 최소 71%, 크기 중앙값 90.8%, 평균 latency 최대 약 1.15배로 ipc와 pattern 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

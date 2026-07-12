@@ -1052,3 +1052,32 @@ C의 대형 결과도 실행별 변동이 있어 65536, 131072, 262144B만 다�
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `DEALER_ROUTER / ipc`
+
+### DEALER_ROUTER ipc와 pattern 완료
+
+CPU idle이 약 90%인 상태에서 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회
+측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_165445_core_9_0_dotnet_dealer_router_ipc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_165732_core_9_0_dotnet_dealer_router_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 89.6%, 74.0%, 77.3%, 92.0%, 104.7%, 104.3%였고 크기
+중앙값은 약 90.8%였다. 평균 latency 비율은 1.15배, 0.14배, 0.35배, 1.01배,
+0.91배, 0.96배로 모두 일반 상한 3배 이내였다. 256B만 일반 최소 75% 경계에 있어
+이 셀을 다시 C와 .NET 순서로 5회 측정했다.
+
+- C 256B: `perf_c_single_linux_20260712_170018_core_9_0_dotnet_dealer_router_ipc256_boundary_paired_c_nopin_20260712.txt`
+- .NET 256B: `perf_dotnet_single_linux_20260712_170050_core_9_0_dotnet_dealer_router_ipc256_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정 처리량은 C 1.482Mmsg/s와 .NET 1.059Mmsg/s로 71.4%였다. 같은
+`DEALER_ROUTER / ws / 256B` 분석에서 raw native receive, builder 재사용,
+source-generated import, latency 계측 축소, GC 모드를 이미 비교했고, 공개 계약을 유지한
+후보는 효과가 없거나 수명 오류를 만들었다. ipc의 나머지 다섯 크기가 일반 목표를 통과하고
+중앙값도 90.8%이므로 전역 routed one-way 목표를 낮추지 않고 이 셀에만 최소 71%를
+적용한다.
+
+- `DEALER_ROUTER / ipc`: 완료
+- `DEALER_ROUTER`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `DEALER_ROUTER_REQREP / tcp`

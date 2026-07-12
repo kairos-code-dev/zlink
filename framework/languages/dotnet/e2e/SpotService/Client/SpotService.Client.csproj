@@ -9,6 +9,7 @@
     <ItemGroup>
         <ProjectReference Include="../Shared/SpotService.Shared.csproj"/>
         <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
-        <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj"/>
+        <PackageReference Include="Zlink.HttpClient"/>
+        <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
     </ItemGroup>
 </Project>

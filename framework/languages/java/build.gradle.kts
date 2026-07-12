@@ -170,13 +170,17 @@ subprojects {
                         githubRepo.map { "https://maven.pkg.github.com/$it" }
                     ).orElse(layout.buildDirectory.dir("repo").map { it.asFile.toURI().toString() })
                     url = uri(repoUrl.get())
-                    credentials {
-                        val configuredUser = providers.environmentVariable("MAVEN_REPOSITORY_USERNAME")
-                        val configuredPassword = providers.environmentVariable("MAVEN_REPOSITORY_PASSWORD")
-                        val githubActor = providers.environmentVariable("GITHUB_ACTOR")
-                        val githubToken = providers.environmentVariable("GITHUB_TOKEN")
-                        username = configuredUser.orElse(githubActor).orNull
-                        password = configuredPassword.orElse(githubToken).orNull
+                    // file:// local repositories reject any authentication scheme; only
+                    // remote repositories take credentials.
+                    if (!repoUrl.get().startsWith("file:")) {
+                        credentials {
+                            val configuredUser = providers.environmentVariable("MAVEN_REPOSITORY_USERNAME")
+                            val configuredPassword = providers.environmentVariable("MAVEN_REPOSITORY_PASSWORD")
+                            val githubActor = providers.environmentVariable("GITHUB_ACTOR")
+                            val githubToken = providers.environmentVariable("GITHUB_TOKEN")
+                            username = configuredUser.orElse(githubActor).orNull
+                            password = configuredPassword.orElse(githubToken).orNull
+                        }
                     }
                 }
             }

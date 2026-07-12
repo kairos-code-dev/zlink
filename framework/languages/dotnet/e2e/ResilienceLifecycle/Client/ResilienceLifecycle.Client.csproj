@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../Shared/ResilienceLifecycle.Shared.csproj"/>
-        <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj"/>
+        <PackageReference Include="Zlink.HttpClient"/>
+        <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
     </ItemGroup>
 </Project>

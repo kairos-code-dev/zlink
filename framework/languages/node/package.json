@@ -19,7 +19,13 @@
     "verify:release": "npm run verify:abi-matrix && npm run verify:p0 && npm run verify:samples && npm run verify:runtime-matrix && npm run verify:cross-language"
   },
   "workspaces": [
-    "packages/*"
+    "packages/framework",
+    "packages/framework-codec-msgpack",
+    "packages/framework-codec-protobuf",
+    "packages/framework-locations-redis",
+    "packages/nestjs",
+    "packages/stream-connector",
+    "packages/stream-wire"
   ],
   "devDependencies": {
     "@types/node": "^22.15.30",
@@ -30,6 +36,7 @@
   "dependencies": {
     "@nestjs/common": "^10.4.22",
     "@nestjs/core": "^10.4.22",
+    "@zlink-systems/http-client": "file:../../../.artifacts/wsl/npm/zlink-systems-http-client-0.2.0.tgz",
     "@zlink-systems/zlink": "file:../../../.artifacts/wsl/npm/zlink-systems-zlink-8.6.4.tgz",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

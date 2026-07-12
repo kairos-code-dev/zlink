@@ -18,12 +18,12 @@ internal sealed class SpotToSpotHandler(
         SpotToSpotReq request,
         CancellationToken cancellationToken)
     {
-        // Resolve once, hold the address for the interaction (spot-address
-        // messaging draft §6).
+        // Resolve one opaque handle for the interaction; the framework owns its
+        // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live address.");
+                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var reply = await spot.Context.Outbound
             .RequestToSpot(target, new StateReq("add", 3))
             .Async<StateRes>(cancellationToken);
@@ -58,7 +58,7 @@ internal sealed class SpotToSpotTimeoutHandler(
             var target = await spots.ResolveSpotHandleAsync(
                              RoutingId.From(request.TargetSpotRid), cancellationToken)
                          ?? throw new InvalidOperationException(
-                             $"Target spot '{request.TargetSpotRid}' has no live address.");
+                             $"Target spot '{request.TargetSpotRid}' has no live location row.");
             await spot.Context.Outbound
                 .RequestToSpot(target, new SlowSpotReq(request.Marker, 1500))
                 .Timeout(TimeSpan.FromMilliseconds(100))
@@ -91,12 +91,12 @@ internal sealed class SpotToSpotNegativeHandler(
         CancellationToken cancellationToken)
     {
         // The negative here is the missing HANDLER on a live target spot:
-        // the address resolves, the request reply-errors, and the
+        // the handle resolves, the request reply-errors, and the
         // best-effort send is dropped at the target with evidence.
         var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live address.");
+                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var requestFailed = false;
         try
         {

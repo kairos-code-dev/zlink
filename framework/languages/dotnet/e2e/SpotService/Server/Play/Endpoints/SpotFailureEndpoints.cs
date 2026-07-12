@@ -62,7 +62,7 @@ internal static class SpotFailureEndpoints
             IZLinkSpotHandleResolver locator,
             SpotMissingTargetReq request) =>
         {
-            // The missing spot has no live address, so the resolve itself
+            // The missing spot has no live location row, so the resolve itself
             // is the expected failure — it must fail inside the awaited task.
             var failed = await FailsAsync(RequestMissingTargetAsync());
             return Results.Ok(new SpotMissingTargetRes(request.SpotRid, failed));

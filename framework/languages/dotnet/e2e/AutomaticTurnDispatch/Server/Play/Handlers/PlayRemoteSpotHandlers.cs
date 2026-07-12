@@ -21,12 +21,12 @@ internal sealed class RemoteSpotAwaitHandler(
         evidence.Add(
             $"remote-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
-        // Resolve once, then message with the held address (spot-address
-        // messaging draft §6).
+        // Resolve one opaque handle for this request. The framework owns its
+        // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live address.");
+                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var call = spot.Context.Outbound.RequestToSpot(
                 target,
                 new AwaitReq(request.RequestId, request.DelayMs, "remote-spot"))
@@ -59,12 +59,12 @@ internal sealed class RemoteSpotAwaitCommandHandler(
         evidence.Add(
             $"remote-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
-        // Resolve once, then message with the held address (spot-address
-        // messaging draft §6).
+        // Resolve one opaque handle for this request. The framework owns its
+        // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live address.");
+                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var call = spot.Context.Outbound.RequestToSpot(
                 target,
                 new AwaitReq(request.RequestId, request.DelayMs, "remote-spot"))

@@ -218,7 +218,7 @@ internal sealed class SpotOnlyUserSpot(
                              RoutingId.From(command.TargetSpotRid),
                              cancellationToken)
                          ?? throw new InvalidOperationException(
-                             $"Target spot '{command.TargetSpotRid}' has no live address.");
+                             $"Target spot '{command.TargetSpotRid}' has no live location row.");
             var reply = await Context.Outbound
                 .RequestToSpot(target, new StateReq("add", 7))
                 .Async<StateRes>(cancellationToken);

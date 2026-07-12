@@ -7,6 +7,11 @@ plugins {
 
 description = "ZLink Kotlin HTTP client coroutine (suspend) and DSL extensions"
 
+// Follows the java client version (single source: HttpClientVersion.java).
+version = Regex("VERSION = \"([^\"]+)\"")
+    .find(file("../zlink-http-client/src/main/java/systems/zlink/httpclient/internal/HttpClientVersion.java").readText())!!
+    .groupValues[1]
+
 kotlin {
     jvmToolchain(22)
 }
@@ -45,4 +50,12 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 
 tasks.named("check") {
     dependsOn(tasks.named("jacocoTestCoverageVerification"))
+}
+
+// The shared publishing config stamps the publication version before this script runs;
+// restate it so the published artifact uses the module version above.
+publishing {
+    publications.withType<MavenPublication>().configureEach {
+        version = project.version.toString()
+    }
 }

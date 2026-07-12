@@ -2,11 +2,15 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">8.6.5</ZLinkBindingsPackageVersion>
+    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">8.6.6</ZLinkBindingsPackageVersion>
+    <!-- e2e/sample consumers pin the local http-client snapshot; bump deliberately after
+         republishing (framework/doc/http-client/http-client-unification-plan.ko.md Phase 2). -->
+    <ZLinkHttpClientPackageVersion Condition="'$(ZLinkHttpClientPackageVersion)' == ''">0.2.0</ZLinkHttpClientPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageVersion Include="Systems.Zlink" Version="$(ZLinkBindingsPackageVersion)" />
+    <PackageVersion Include="Zlink.HttpClient" Version="$(ZLinkHttpClientPackageVersion)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />

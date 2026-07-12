@@ -123,6 +123,28 @@ PowerShell에서 실행한다.
 | Node.js | `node/build-wsl.sh`, `node/build-windows.ps1` | npm tarball |
 | C++ | `cpp/build-wsl.sh`, `cpp/build-windows.ps1` | 버전별 CMake install prefix |
 
+## HTTP client 트랙 (framework component)
+
+bindings 외에 framework HTTP client도 같은 정책으로 local package를 만든다.
+e2e/sample 소비자는 http-client 소스가 아니라 고정 버전 local package를 참조하므로,
+client를 수정해도 소비자 참조 버전을 올리기 전까지는 영향이 없다.
+
+```bash
+./scripts/local-package/http-client/build-wsl.sh          # dotnet java node
+```
+
+| 언어 | 산출물 | 소비자 참조 버전 위치 |
+|------|--------|----------------------|
+| .NET | `nuget/Zlink.HttpClient.<ver>.nupkg` | `framework/languages/dotnet/Directory.Packages.props`의 `ZLinkHttpClientPackageVersion` |
+| Java | `maven/systems/zlink/zlink-http-client/<ver>/` | (소비자 없음 — 게시만) |
+| Node.js | `npm/zlink-systems-http-client-<ver>.tgz` | `framework/languages/node/package.json`의 `@zlink-systems/http-client` tarball 경로 |
+| C++ | 제외 | static lib + in-tree framework PUBLIC 헤더 의존이라 설치본/소스 혼합 시 ODR 위험. cpp 소비자는 소스 참조를 유지하고 `test_cpp_http_client` 계약 테스트로 게이트한다 |
+
+버전 정본: dotnet `Zlink.HttpClient.csproj`의 `<Version>`, java
+`HttpClientVersion.java`(gradle 버전이 이 파일에서 파생), node
+`packages/http-client/package.json`, cpp `contracts/types.hpp`의 `version_*` 상수.
+네 곳 모두 User-Agent `zlink-http-client/<major.minor>`가 버전에서 파생된다.
+
 ## Framework 참조 버전 관리
 
 framework가 사용하는 bindings 버전은 언어별로 한 곳에서 바꾼다. 이 값은 자동으로 최신 버전을

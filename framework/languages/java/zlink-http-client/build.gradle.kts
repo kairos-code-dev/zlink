@@ -6,6 +6,11 @@ plugins {
 
 description = "ZLink Java HTTP client (fluent wrapper over java.net.http)"
 
+// Single version source: HttpClientVersion.java (also drives the User-Agent token).
+version = Regex("VERSION = \"([^\"]+)\"")
+    .find(file("src/main/java/systems/zlink/httpclient/internal/HttpClientVersion.java").readText())!!
+    .groupValues[1]
+
 dependencies {
     api(project(":zlink-framework-core"))
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
@@ -37,4 +42,12 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 
 tasks.named("check") {
     dependsOn(tasks.named("jacocoTestCoverageVerification"))
+}
+
+// The shared publishing config stamps the publication version before this script runs;
+// restate it so the published artifact uses the module version above.
+publishing {
+    publications.withType<MavenPublication>().configureEach {
+        version = project.version.toString()
+    }
 }

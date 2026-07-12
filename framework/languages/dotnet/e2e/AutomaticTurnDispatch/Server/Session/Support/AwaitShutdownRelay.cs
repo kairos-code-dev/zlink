@@ -22,7 +22,7 @@ internal sealed partial class AwaitSession
         var address = await spots.ResolveSpotHandleAsync(
                           RoutingId.From(request.SpotRid), cancellationToken)
                       ?? throw new InvalidOperationException(
-                          $"Spot '{request.SpotRid}' has no live address.");
+                          $"Spot '{request.SpotRid}' has no live location row.");
         await routes.RequestToSpot(address,
                 new AwaitReq(request.RequestId, request.DelayMs, "shutdown"))
             // The session gateway owns a shorter downstream deadline than the

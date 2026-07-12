@@ -8,6 +8,7 @@ import type { HttpClientOptions } from './options';
 import { CookieJar } from './cookie-jar';
 import { isRedirectStatus, makeTarget, resolveLocation, rewriteForRedirect } from './redirect-policy';
 import { ResponseBodyReader } from './response-body-reader';
+import { httpClientUserAgent } from './version';
 
 export interface HttpRequestSpec {
   readonly method: ZLinkHttpMethod;
@@ -113,7 +114,7 @@ export class RequestPerformer {
     hasBody: boolean,
   ): Record<string, string> {
     const headers: Record<string, string> = {
-      'user-agent': 'zlink-http-client/0.2',
+      'user-agent': httpClientUserAgent,
       accept: 'application/json',
     };
     if (this.options.compression) {

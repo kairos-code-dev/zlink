@@ -2,6 +2,8 @@
 
 #include "runtime/request_performer.hpp"
 
+#include <zlink/http_client/contracts/types.hpp>
+
 #include "runtime/compression.hpp"
 #include "runtime/connection_opener.hpp"
 #include "runtime/connection_pool.hpp"
@@ -150,7 +152,11 @@ class request_performer_t
         const bool default_port = (hop.scheme == "http" && hop.port == "80")
                                   || (hop.scheme == "https" && hop.port == "443");
         wire.set (http::field::host, default_port ? hop.host : hop.host + ":" + hop.port);
-        wire.set (http::field::user_agent, "zlink-http-client/0.2");
+        // Version identity: derived from contracts/types.hpp version constants (single source).
+        static const std::string user_agent = "zlink-http-client/"
+                                              + std::to_string (zlink::http_client::version_major) + "."
+                                              + std::to_string (zlink::http_client::version_minor);
+        wire.set (http::field::user_agent, user_agent);
         wire.set (http::field::accept, "application/json");
         if (_options.compression) {
             wire.set (http::field::accept_encoding, "gzip, deflate");

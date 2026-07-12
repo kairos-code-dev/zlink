@@ -46,20 +46,28 @@ package 정책(`scripts/local-package/README.ko.md`)을 http-client에 그대로
 확장: 소비자는 소스가 아니라 **명시한 버전의 로컬 패키지**만 참조하고,
 새 버전을 배포해도 참조 버전을 올리기 전까지 기존 버전을 쓴다.
 
-- [ ] 버전 baseline `0.2.0` 확정 — 현행(=spec 동결본)을 0.2.0으로 스냅숏.
-  UA `zlink-http-client/0.2` 하드코딩(java/node)과 정합. 버전 정본을 한 곳에
-  두고 아티팩트 버전·User-Agent를 파생(cpp `version_*` 상수는 이 정본과
-  정합시키거나 제거)
-- [ ] dotnet `IsPackable=true` (Phase 6에서 당김 — nupkg 생성 전제)
-- [ ] `scripts/local-package`에 http-client 트랙 추가, 산출물은
-  `.artifacts/wsl` 아래(nupkg 피드 / maven repo / npm tarball / cpp install
-  export). README 정책 문구 갱신(bindings 전용 → +framework http-client)
-- [ ] 소비자 전환 (java/kotlin은 소비자 없음 — 제외):
-  - dotnet: e2e 9 + 샘플 7 csproj — ProjectReference → PackageReference 0.2.0 고정
-  - node: 샘플 4 + e2e 1 — workspace 참조 → `.artifacts` tarball 참조
-  - cpp: 샘플 1 + e2e 2 (+PackageTests) — 소스 타깃 → `find_package` 설치본
-- [ ] 게이트: 전환 직후 해당 e2e/샘플 전량 그린(수정 전 baseline 증명)
-- [ ] 이후 규칙: http-client 수정 → 새 버전(0.3.0…) 로컬 배포 → 소비자
+- [x] 버전 baseline `0.2.0` 확정 — 언어별 단일 소스에서 UA 파생:
+  dotnet csproj `<Version>`→assembly version, java `HttpClientVersion.java`
+  (gradle 버전도 이 파일에서 regex 파생), node `package.json`(runtime require),
+  cpp `types.hpp` `version_*` 상수(dead code였던 것을 사용처 연결)
+- [x] dotnet `IsPackable=true` + `SuppressDependenciesWhenPacking`(Framework
+  의존은 패키지 의존으로 선언하지 않음 — 소비자가 framework를 직접 소유)
+- [x] `scripts/local-package/http-client/build-wsl.sh` 신설 + README에
+  HTTP client 트랙 절 추가. java 루트 gradle의 file:// 게시 credentials
+  검증 오류 수정(Gradle 9). **kotlin 모듈 게시는 제외**(Gradle 9 ×
+  Kotlin 2.1.0 플러그인 `getDependencyProject` 비호환, 소비자 없음)
+- [x] 소비자 전환:
+  - dotnet: 16 csproj → CPM `ZLinkHttpClientPackageVersion=0.2.0` 고정
+    PackageReference(+순수 클라이언트 13곳에 Framework ProjectReference 추가)
+  - node: http-client를 workspace에서 제외, 루트 `package.json`에
+    `.artifacts` tarball 고정 참조(기존 `@zlink-systems/zlink` 8.6.4와 동일 패턴)
+  - **cpp: 전환 제외 결정** — static lib + in-tree framework PUBLIC 헤더
+    의존이라 설치본/소스 혼합 시 ODR 위험. 소스 참조 유지 +
+    `test_cpp_http_client` 계약 테스트 게이트로 대체
+- [x] 게이트 그린: dotnet 소비자 16/16 빌드(assets에 `Zlink.HttpClient/0.2.0`
+  type=package 확증) + UnitTests 54/54, node 워크스페이스 빌드 + 계약 32/32 +
+  샘플 4 + e2e 3 빌드, java/kotlin 테스트 그린, cpp 54/54
+- [ ] 이후 규칙(상시): http-client 수정 → 새 버전(0.3.0…) 로컬 배포 → 소비자
   참조 버전은 의도적으로만 상향. 계약 영향 변경(R 승격)은 minor 상향 +
   plan에 소비자 반영 항목 동반
 
@@ -126,7 +134,7 @@ perf 영향이 있는 항목(node zlib, dotnet GetString, cpp 스케줄러/풀)�
 | --- | --- | --- |
 | 1 | Phase 0 공통 spec + perf 문서 | ✅ 2026-07-12 |
 | 2 | Phase 1 문서 정비 | ✅ 2026-07-12 |
-| 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ⬜ |
+| 3 | Phase 2 소비자 격리(로컬 패키지 0.2.0 + 전환 + 그린 게이트) | ✅ 2026-07-12 (cpp는 소스 참조+계약 게이트로 편차 확정) |
 | 4 | Phase 3 에러 모델 parity | ⬜ |
 | 5 | Phase 4 언어별 결함 | ⬜ |
 | 6 | Phase 5 R-항목 결정 | ⬜ |

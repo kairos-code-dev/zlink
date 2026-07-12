@@ -5,10 +5,9 @@ using Zlink.Framework.Contracts.Locations;
 namespace SpotService.Shared;
 
 /// <summary>
-/// Resolve-once helper for the E2E servers: spot rid strings from test
-/// payloads become spot full addresses before messaging, per the
-/// spot-address messaging draft. A missing row fails typed so negative
-/// scenarios observe SpotRouteNotFound without waiting out a timeout.
+/// Resolves the spot id from an E2E payload once and returns the opaque messaging
+/// handle. A missing live location row fails with the typed routing error so the
+/// negative scenarios do not wait for a request timeout.
 /// </summary>
 public static class SpotAddressRouting
 {
@@ -20,6 +19,6 @@ public static class SpotAddressRouting
         return await locator.ResolveSpotHandleAsync(RoutingId.From(spotRid), cancellationToken)
                ?? throw new ZLinkFrameworkException(
                    ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                   $"Spot '{spotRid}' has no live address.");
+                   $"Spot '{spotRid}' has no live location row.");
     }
 }

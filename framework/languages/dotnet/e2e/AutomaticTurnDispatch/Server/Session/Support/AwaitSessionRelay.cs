@@ -61,19 +61,19 @@ internal sealed partial class AwaitSession
         string packetName,
         CancellationToken cancellationToken)
     {
-        // Resolve once per attempt and message with the address; a failed
-        // attempt re-resolves (spot-address messaging draft §7).
+        // A synchronous routing rejection means this one-way send was not accepted,
+        // so the fixture may resolve a new handle before the next startup attempt.
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                var address = await spots.ResolveSpotHandleAsync(
+                var handle = await spots.ResolveSpotHandleAsync(
                                   RoutingId.From(spotRid), cancellationToken)
                               ?? throw new ZLinkFrameworkException(
                                   ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                                  $"Spot '{spotRid}' has no live address.");
-                routes.SendToSpot(address,
+                                  $"Spot '{spotRid}' has no live location row.");
+                routes.SendToSpot(handle,
                         message).Submit(cancellationToken);
                 return;
             }
@@ -96,19 +96,19 @@ internal sealed partial class AwaitSession
         string packetName,
         CancellationToken cancellationToken)
     {
-        // Resolve once per attempt and message with the address; a stale
-        // address fails typed and the next attempt re-resolves (draft §7).
+        // Resolve a handle for each bounded fixture attempt. The handle itself owns
+        // the safe refresh rule defined by the spot-address messaging contract.
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                var address = await spots.ResolveSpotHandleAsync(
+                var handle = await spots.ResolveSpotHandleAsync(
                                   RoutingId.From(spotRid), cancellationToken)
                               ?? throw new ZLinkFrameworkException(
                                   ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                                  $"Spot '{spotRid}' has no live address.");
-                return await routes.RequestToSpot(address,
+                                  $"Spot '{spotRid}' has no live location row.");
+                return await routes.RequestToSpot(handle,
                         request)
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<TRes>(cancellationToken);

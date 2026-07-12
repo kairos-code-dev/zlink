@@ -126,7 +126,7 @@ internal sealed class RequestPerformer(
         // HttpListener (and many servers) do not emit 100-Continue; waiting for it would deadlock
         // a streamed/chunked upload. We never use the Expect/continue handshake.
         message.Headers.ExpectContinue = false;
-        message.Headers.TryAddWithoutValidation("User-Agent", "zlink-http-client/0.2");
+        message.Headers.TryAddWithoutValidation("User-Agent", HttpClientVersion.UserAgent);
         message.Headers.TryAddWithoutValidation("Accept", "application/json");
 
         if (options.Compression) message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");

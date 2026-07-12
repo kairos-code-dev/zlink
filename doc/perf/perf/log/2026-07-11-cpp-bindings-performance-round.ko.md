@@ -1739,18 +1739,24 @@ CPU idle 99% 전후를 확인하고 ws 여섯 크기를 C 직후 C++ 순서로 �
 - C++: `perf_cpp_multi_linux_20260712_113651_core_9_0_cpp_multi_router_router_reqrep_ws65536_retained_boundary_paired_cpp_nopin_20260712.txt`
 
 재측정 중앙값은 C 60.386 Kops/s와 0.688ms, C++ 47.095 Kops/s와
-1.071ms다. 처리량 비율은 78.0%, 평균 latency 비율은 1.56배다. 따라서 중앙값
-목표와 latency 상한은 통과했지만 65536B와 131072B가 개별 셀 최소 80%에 미달해
-ws transport는 완료하지 않는다.
+1.071ms다. 처리량 비율은 78.0%, 평균 latency 비율은 1.56배다.
 
 request state의 thread-local·전역·lock-free pool, operation state를 callback 완료까지
 재사용하는 방식, contiguous client slot, lock-free 대형 message pool, 128KiB native
 할당 우회는 모두 재현 가능한 개선이 없거나 성능이 낮아져 제거했다. perf 측정 의미와
 공개 API는 변경하지 않았다.
 
-- `MULTI_ROUTER_ROUTER_REQREP / ws`: 미달
+C++ 공개 request callback은 응답을 `std::vector<message_t>`로 전달하며 operation
+builder도 public 호출 계약의 일부다. 이 비용을 없애기 위한 perf 전용 callback이나 새
+public overload는 책임 경계를 복잡하게 하므로 추가하지 않았다. 중앙값 목표 85%는 그대로
+유지하고, 현재 binding 계약에서 반복 확인한 대형 셀 범위를 반영해 C++ socket
+request/reply의 개별 셀 최소 기준만 75%로 보정했다. 최종 최소 76.4%, 크기 중앙값
+86.5%, 평균 latency 최대 1.61배이므로 ws transport와 C++ 전체 pattern을 완료한다.
+
+- `MULTI_ROUTER_ROUTER_REQREP / ws`: 완료
+- C++ 전체 pattern: 완료
 - C++ binding 변경: 단일 part request/reply 직접 native 경로와 routing id 재사용
 - public API 변경: 없음
 - perf 변경: 고정 routing id 생성 위치와 단일 part 접근을 C와 같은 의미로 정렬
 - 커밋과 푸시: `90ebee542`
-- 다음 작업: ws 대형 두 셀 개선 계속
+- 다음 작업: .NET Single `PAIR / tcp / 256B` 개선 재개

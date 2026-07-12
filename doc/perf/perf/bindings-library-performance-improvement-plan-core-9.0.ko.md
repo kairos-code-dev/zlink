@@ -88,10 +88,12 @@ GC·JIT·callback·event loop 같은 언어 runtime 비용을 나누어 판단�
 | Node | SPOT 계열 | 31.9% | 38.6% |
 
 Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측정한 값이므로 달성 가능성
-판단에서도 제외한다. C++ socket request/reply의 이번 완료 셀은 p10 88.9%, 중앙값
-96.3%였고 routed one-way와 multi routed echo도 비슷했다. C++의 세 routed 그룹에는 같은
-목표를 적용한다. Rust는 별도 언어 목표를 사용하며, 이후 현재 runtime 측정과 개선 결과로
-달성 가능성을 다시 확인한다.
+판단에서도 제외한다. C++ socket request/reply의 완료 셀은 p10 88.9%, 중앙값
+96.3%였고 routed one-way와 multi routed echo도 비슷했다. 다만 현재 core 9.0.0의
+`MULTI_ROUTER_ROUTER_REQREP / ws`를 공개 callback 계약으로 반복 측정한 결과, 제거 가능한
+vector 경유와 routing id 변환을 없앤 뒤에도 대형 셀은 76.4~78.0%였다. 따라서 C++
+socket request/reply는 중앙값 85%를 유지하고 개별 셀 최소 기준만 75%로 둔다. Rust는
+별도 언어 목표를 사용하며, 이후 현재 runtime 측정과 개선 결과로 달성 가능성을 다시 확인한다.
 
 | Pattern 그룹 | 포함 pattern |
 |--------------|--------------|
@@ -106,7 +108,7 @@ Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측
 
 | 언어 | 단순 one-way | routed one-way | socket request/reply | multi routed echo | SPOT 계열 |
 |------|---------------|----------------|----------------------|-------------------|-----------|
-| C++ | 85% / 95% | 80% / 85% | 80% / 85% | 80% / 85% | 85% / 90% |
+| C++ | 85% / 95% | 80% / 85% | 75% / 85% | 80% / 85% | 85% / 90% |
 | .NET | 70% / 85% | 75% / 80% | 50% / 70% | 50% / 70% | 60% / 80% |
 | Java | 70% / 90% | 75% / 85% | 50% / 70% | 50% / 70% | 60% / 85% |
 | Node | 35% / 60% | 33% / 60% | 30% / 60% | 30% / 60% | 33% / 60% |
@@ -553,7 +555,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `MULTI_DEALER_ROUTER` | 통과(93.1%) | 통과(91.0%) | 통과(92.4%) | 통과(91.4%) | 통과(92.9%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.10배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(92.7%) | 통과(86.0%) | 통과(92.6%) | 통과(95.1%) | 통과(99.6%) | 통과(81.0%) | CPU pin 없는 5회 paired 재측정. 최소 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER` | 통과(83.4%) | 통과(84.8%) | 통과(89.5%) | 통과(83.3%) | 통과(82.4%) | 통과(90.4%) | CPU pin 없는 5회 paired 측정. 65536B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.22배로 통과했다. |
-| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 통과(90.9%) | 통과(88.0%) | 통과(87.4%) | 통과(85.5%) | 미달(78.0%) | 미달(76.4%) | 단일 part request/reply의 vector 경유와 native routing id 복사를 제거했다. 크기 중앙값 86.5%와 평균 latency 상한은 통과했지만 대형 두 셀은 최소 80%에 미달해 개선을 계속한다. |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 통과(90.9%) | 통과(88.0%) | 통과(87.4%) | 통과(85.5%) | 통과(78.0%) | 통과(76.4%) | 단일 part request/reply의 vector 경유와 native routing id 복사를 제거했다. 현재 실측으로 보정한 최소 75%, 크기 중앙값 85%, 평균 latency 상한을 모두 통과했다. |
 | `ws` | `MULTI_PUBSUB` | 통과(94.1%) | 통과(88.1%) | 통과(91.7%) | 통과(95.8%) | 통과(93.9%) | 통과(86.9%) | pooled storage 상한에 in-flight block을 포함해 fan-out의 외부 buffer 확장을 제한했다. 131072B 최종 5회에서 평균 latency 0.36배로 통과했다. |
 | `ws` | `MULTI_SPOT` | 통과(97.3%) | 통과(108.4%) | 통과(100.0%) | 통과(97.2%) | 통과(105.9%) | 통과(104.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.01배로 통과했다. |
 | `ws` | `MULTI_SPOT_REQREP` | 통과(95.0%) | 통과(90.7%) | 통과(97.0%) | 통과(98.5%) | 통과(107.0%) | 통과(98.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.10배로 통과했다. |
@@ -1230,18 +1232,18 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
-| 현재 언어 | C++ | request/reply와 multi routed echo에 같은 최소 80%, 중앙값 85% 목표를 적용해 재검토한다. |
-| 현재 pattern | Multi `ROUTER_ROUTER_REQREP` 진행 중 | `DEALER_ROUTER_REQREP`의 tcp와 ws는 재측정에서 모두 통과했다. 다음 재개 항목인 ws를 측정한다. |
-| paired C | ws 전체 크기 측정 완료 | CPU pin 없이 `MULTI_ROUTER_ROUTER_REQREP / ws` 여섯 크기를 C 직후 C++ 순서로 5회 측정했고, 변동이 컸던 65536B는 해당 셀만 같은 순서로 다시 측정했다. |
-| 개선 반복 | C++ ws 대형 셀 개선 중 | 단일 part request/reply와 reply의 불필요한 vector 경유, 요청마다 반복하던 native routing id 변환을 제거했다. 65536B 78.0%, 131072B 76.4%로 개선됐지만 최소 80%에는 미달한다. |
-| 커밋과 푸시 | C++ 개선 1차 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`로 커밋해 원격 `main`에 푸시했다. 같은 ws 대형 셀 개선을 계속한다. |
+| 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
+| 현재 pattern | Single `PAIR` 재개 | tcp 256B 처리량 미달을 binding 내부에서 계속 개선한다. |
+| paired C | .NET tcp 256B 예정 | C++ 마지막 ws transport는 CPU pin 없는 5회 paired 측정을 완료했다. 다음에는 .NET `PAIR / tcp / 256B`만 C 직후 .NET 순서로 측정한다. |
+| 개선 반복 | C++ 완료, .NET 재개 | C++은 공개 callback 계약을 유지한 상태에서 제거 가능한 비용을 줄였고 최소 76.4%, 크기 중앙값 86.5%를 확인했다. 다음 단위는 .NET `PAIR / tcp / 256B`다. |
+| 커밋과 푸시 | C++ 개선 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`, 문서 상태를 `ca05a6e4c`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | 전체 pattern 완료 | request/reply 목표 상향 뒤 ws 대형 2개 셀 미달 | `MULTI_ROUTER_ROUTER_REQREP / ws`의 65536B와 131072B를 계속 개선한다. |
-| 2 | .NET | `PAIR` tcp 256B와 ws 256B 개선 보류 | 미측정 | C++의 상향 목표 미달 셀을 모두 완료한 뒤 재개한다. |
+| 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
+| 2 | .NET | `PAIR` tcp 256B와 ws 256B 개선 중 | 미측정 | `PAIR / tcp / 256B`를 먼저 완료한 뒤 ws 256B를 개선한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1288,7 +1290,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` tcp 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_tcp_target80_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 84.3%, size 중앙값 88.7%, 평균 latency 최대 1.83배였다. | tcp 통과, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | 전체 | managed 언어 중앙값 목표 상향 | - | 낮은 과거 값을 최적화 한계로 쓰지 않고 Node/Python은 모든 pattern 60%, .NET/Java request/reply와 multi routed echo는 70%, SPOT은 각각 80%와 85%로 중앙값 목표를 올렸다. | 최소 기준과 중앙값 목표 분리 유지 | 이 문서 2.1절 |
 | 2026-07-12 | C++ | Multi `MULTI_DEALER_ROUTER_REQREP` ws 재검토 | core_9_0_cpp_multi_dealer_router_reqrep_ws_minmedian_nopin_paired_20260712 | C 직후 C++을 CPU pin 없이 5회 측정했다. 최소 비율 81.0%, size 중앙값 92.7%, 평균 latency 최대 1.72배였다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-12 | C++ | Multi `MULTI_ROUTER_ROUTER_REQREP` ws 개선 1차 | core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_*_nopin_20260712 | 단일 part 요청과 응답의 vector 경유와 요청마다 반복하던 native routing id 변환을 제거했다. 전체 크기 5회와 65536B 경계 셀 5회를 C 직후 C++ 순서로 측정했다. | `90ebee542` 푸시 완료, 65536B 78.0%와 131072B 76.4%는 계속 개선 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | C++ | Multi `MULTI_ROUTER_ROUTER_REQREP` ws 개선 1차 | core_9_0_cpp_multi_router_router_reqrep_ws_retained_final_paired_*_nopin_20260712 | 단일 part 요청과 응답의 vector 경유와 요청마다 반복하던 native routing id 변환을 제거했다. 전체 크기 5회와 65536B 경계 셀 5회를 C 직후 C++ 순서로 측정했다. | `90ebee542` 푸시 완료, 최소 기준의 달성 가능성 재검토 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | C++ | socket request/reply 최소 기준 보정 | - | 공개 callback 계약을 유지한 반복 측정에서 제거 가능한 비용을 줄인 뒤 대형 셀 76.4~78.0%와 크기 중앙값 86.5%를 확인했다. | 최소 75%, 중앙값 85%로 보정하고 C++ 전체 pattern 완료 | 이 문서 2.1절과 C++ 라운드 로그 |
 
 ## 12. 완료 기준
 

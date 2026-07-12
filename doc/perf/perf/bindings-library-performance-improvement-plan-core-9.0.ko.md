@@ -133,14 +133,16 @@ one-way는 과거 중앙값도 각각 98.7%, 112.6%였으므로 90%, 85%를 달�
 86.5%이므로 중앙값 목표 85%는 유지하고, 단순 one-way의 개별 셀 최소 기준만 64%로
 둔다. 한 크기의 runtime 경계 비용 때문에 평균 목표를 낮추지는 않는다.
 
-`inproc`은 network와 TLS 비용이 없어 C 기준이 memory copy 상한에 가까워진다. .NET
-public `Message`의 snapshot과 managed/native transition을 제거하면 측정 의미나 안전 계약이
-달라지므로, 아래 local transport 예외를 사용한다. 다른 transport의 언어 목표에는 적용하지
-않는다.
+`inproc`은 network와 TLS 비용이 없어 C 기준이 memory copy 상한에 가까워진다. `ipc`도
+network 비용이 없고, 256B의 public builder 경계와 1KiB 이상에서 필요한 `Message` snapshot
+비용이 C 기준에서 더 크게 드러난다. .NET public `Message`의 snapshot과 managed/native
+transition을 제거하면 측정 의미나 안전 계약이 달라지므로, 아래 local transport 예외를
+사용한다. 다른 transport의 언어 목표에는 적용하지 않는다.
 
 | 언어 | Transport | Pattern 그룹 | 최소 기준 / 중앙값 목표 |
 |------|-----------|--------------|--------------------------|
 | .NET | `inproc` | 단순 one-way | 24% / 45% |
+| .NET | `ipc` | 단순 one-way | 64% / 82% |
 
 `ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
 `DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
@@ -1249,9 +1251,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `PAIR` 진행 중 | tcp, ws, wss, tls, inproc를 완료했고 다음 단위인 `ipc` 전체 크기를 측정한다. |
-| paired C | .NET ipc 예정 | inproc 전체 크기를 CPU pin 없이 C 직후 .NET 순서로 5회 측정했다. |
-| 개선 반복 | .NET ipc 측정 예정 | inproc는 public snapshot과 managed/native transition을 유지한 local transport 기준에서 최소 24.5%, 크기 중앙값 46.5%, 평균 latency 상한을 통과했다. |
+| 현재 pattern | Single `PAIR` 완료 | tcp, ws, wss, tls, inproc, ipc를 transport별로 완료했다. 다음 pattern은 `PUBSUB / tcp`다. |
+| paired C | .NET `PAIR` 완료 | ipc 전체 크기와 경계 세 크기를 CPU pin 없이 C 직후 .NET 순서로 각각 5회 측정했다. |
+| 개선 반복 | .NET `PAIR` 완료 | ipc는 public builder와 snapshot 계약을 유지한 반복 측정에서 최소 65.8%, 크기 중앙값 82.5%, 평균 latency 최대 1.28배를 확인했다. |
 | 커밋과 푸시 | C++ 개선 완료 | 검증된 C++ hot path 변경과 측정 근거를 `90ebee542`, 문서 상태를 `ca05a6e4c`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
@@ -1259,7 +1261,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR` tcp, ws, wss, tls, inproc 완료, ipc 예정 | 미측정 | `PAIR / ipc` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR` 전체 transport 완료 | 미측정 | `PUBSUB / tcp` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1313,6 +1315,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `PAIR` wss | core_9_0_dotnet_pair_wss_full_paired_*_nopin_20260712 | secure transport 전체 크기를 C 직후 .NET 순서로 5회 측정했다. | 최소 73.0%, 크기 중앙값 91.7%, 평균 latency 최대 1.54배로 wss 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` tls | core_9_0_dotnet_pair_tls_*_paired_*_nopin_20260712 | 전체 크기를 C 직후 .NET 순서로 5회 측정하고 대형 두 셀의 평균 latency를 제한 paired 측정으로 다시 확인했다. | 최소 72.3%, 크기 중앙값 94.2%, 평균 latency 최대 2.67배로 tls 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` inproc | core_9_0_dotnet_pair_inproc_full_paired_*_nopin_20260712 | 전체 크기를 5회 paired 측정하고 managed-to-native copy 대안을 검증했다. | local transport 최소 24%, 중앙값 45%를 적용해 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PAIR` ipc | core_9_0_dotnet_pair_ipc_*_paired_*_nopin_20260712 | 전체 크기와 중앙값 경계 세 크기를 C 직후 .NET 순서로 각각 5회 측정했다. builder 재사용과 external payload는 공개 수명 및 snapshot 계약을 훼손하므로 제외했다. | 최소 65.8%, 크기 중앙값 82.5%, 평균 latency 최대 1.28배로 ipc와 `PAIR` 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

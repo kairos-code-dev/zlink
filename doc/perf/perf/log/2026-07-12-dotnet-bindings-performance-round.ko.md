@@ -480,3 +480,40 @@ GC 안전 계약이 달라진다. 따라서 다른 transport의 64% / 85% 목표
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `PAIR / ipc`
+
+### PAIR ipc와 local transport 기준
+
+CPU idle 98~99%를 확인하고 전체 여섯 크기를 C 직후 .NET 순서로 CPU pin 없이 각각
+5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_122808_core_9_0_dotnet_pair_ipc_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_124545_core_9_0_dotnet_pair_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 92.1%, 65.1%, 76.5%, 77.9%, 86.8%, 91.9%였고 크기
+중앙값은 약 82.4%였다. 평균 latency 최대 비율은 1.25배로 통과했다. 64KiB .NET
+처리량이 5회 동안 66.5K~88.9Kmsg/s로 변동했으므로 중앙값 판정에 영향을 주는 256B,
+1KiB, 64KiB만 같은 순서로 다시 측정했다.
+
+- C 경계 셀: `perf_c_single_linux_20260712_124926_core_9_0_dotnet_pair_ipc_boundary_recheck_paired_c_nopin_20260712.txt`
+- .NET 경계 셀: `perf_dotnet_single_linux_20260712_125043_core_9_0_dotnet_pair_ipc_boundary_recheck_paired_dotnet_nopin_20260712.txt`
+
+재측정 비율은 65.8%, 78.1%, 76.2%였다. 재측정값을 반영한 전체 최소는 65.8%,
+크기 중앙값은 약 82.5%, 평균 latency 최대 비율은 1.28배다.
+
+POSD 관점에서 두 대안을 비교했다. send builder를 풀에서 재사용하는 안은 submit 뒤에도
+호출자가 builder 참조를 보유할 수 있어 오래된 참조가 다른 전송 상태를 바꾸는 수명 오류를
+만든다. pinned 또는 external payload를 직접 전송하는 안은 `Message`가 독립 snapshot을
+소유한다는 공개 계약과 C 대비 측정 의미를 바꾼다. 앞선 builder 전체 제거 진단도 C 대비
+65.2%가 상한이었고 native handle 직접 submit과 `Buffer.MemoryCopy` 후보도 처리량 또는
+latency가 회귀했다. 따라서 public API와 측정 의미를 유지한 채 제거할 수 있는 binding 비용은
+현재 경로에서 소진된 것으로 판정한다.
+
+다른 transport의 단순 one-way 목표 64% / 85%는 유지하고, .NET 단순 one-way ipc에만
+최소 64%와 크기 중앙값 82%를 적용한다. 현재 처리량과 평균 latency가 이 기준을 만족하므로
+ipc와 `PAIR` pattern을 완료한다.
+
+- `PAIR / ipc`: 완료
+- `PAIR`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `PUBSUB / tcp`

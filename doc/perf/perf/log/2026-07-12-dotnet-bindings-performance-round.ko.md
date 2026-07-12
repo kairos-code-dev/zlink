@@ -562,3 +562,20 @@ idle 99~100%를 세 번 확인한 뒤 전체 크기를 다시 paired 측정했�
 - commit: `9596ee94a` (`perf(dotnet): align pubsub backpressure semantics`), 원격 `main` 푸시 완료
 - `PUBSUB / tcp`: 완료
 - 다음 작업: `PUBSUB / ws`
+
+### PUBSUB ws 완료
+
+CPU idle 99~100%를 확인하고 C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회
+측정했다.
+
+- C: `perf_c_single_linux_20260712_131229_core_9_0_dotnet_pubsub_ws_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_131545_core_9_0_dotnet_pubsub_ws_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 90.3%, 71.0%, 84.4%, 87.1%, 91.5%, 99.8%였다. 최소는
+71.0%, 크기 중앙값은 약 88.7%, 평균 latency 최대 비율은 1.34배다. 모든 처리량과
+평균 latency gate를 통과해 코드 변경 없이 ws를 완료한다.
+
+- `PUBSUB / ws`: 완료
+- binding 변경: 없음
+- perf 추가 변경: 없음
+- 다음 작업: `PUBSUB / wss`

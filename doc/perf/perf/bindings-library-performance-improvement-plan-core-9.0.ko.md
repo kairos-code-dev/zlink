@@ -1251,9 +1251,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | C++은 보정한 request/reply 최소 75%와 중앙값 85%를 포함해 전체 pattern을 완료했다. |
-| 현재 pattern | Single `PUBSUB` 진행 중 | tcp를 완료했고 다음 transport는 `ws`다. |
-| paired C | .NET `PUBSUB / tcp` 완료 | C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다. |
-| 개선 반복 | .NET `PUBSUB / tcp` 완료 | .NET만 사용하던 nonblocking publish를 C 정책과 같은 blocking publish로 맞췄다. 최종 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배다. |
+| 현재 pattern | Single `PUBSUB` 진행 중 | tcp와 ws를 완료했고 다음 transport는 `wss`다. |
+| paired C | .NET `PUBSUB / ws` 완료 | C와 .NET의 여섯 크기를 CPU pin 없이 차례로 5회 측정했다. |
+| 개선 반복 | .NET `PUBSUB / ws` 완료 | 최소 71.0%, 크기 중앙값 88.7%, 평균 latency 최대 1.34배로 코드 변경 없이 통과했다. |
 | 커밋과 푸시 | .NET `PUBSUB / tcp` 완료 | perf 의미 수정과 측정 근거를 `9596ee94a`로 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
@@ -1261,7 +1261,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR` 완료, `PUBSUB` tcp 완료 | 미측정 | `PUBSUB / ws` 전체 크기를 측정한다. |
+| 2 | .NET | `PAIR` 완료, `PUBSUB` tcp와 ws 완료 | 미측정 | `PUBSUB / wss` 전체 크기를 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1317,6 +1317,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | .NET | Single `PAIR` inproc | core_9_0_dotnet_pair_inproc_full_paired_*_nopin_20260712 | 전체 크기를 5회 paired 측정하고 managed-to-native copy 대안을 검증했다. | local transport 최소 24%, 중앙값 45%를 적용해 inproc 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PAIR` ipc | core_9_0_dotnet_pair_ipc_*_paired_*_nopin_20260712 | 전체 크기와 중앙값 경계 세 크기를 C 직후 .NET 순서로 각각 5회 측정했다. builder 재사용과 external payload는 공개 수명 및 snapshot 계약을 훼손하므로 제외했다. | 최소 65.8%, 크기 중앙값 82.5%, 평균 latency 최대 1.28배로 ipc와 `PAIR` 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 | 2026-07-12 | .NET | Single `PUBSUB` tcp | core_9_0_dotnet_pubsub_tcp_blocking_*_paired_*_nopin_20260712 | C는 blocking publish였지만 .NET만 DontWait로 payload를 반복 생성·폐기하던 측정 의미 차이를 바로잡았다. | 최소 77.5%, 크기 중앙값 94.6%, 평균 latency 최대 1.07배로 tcp 완료, `9596ee94a` 푸시 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PUBSUB` ws | core_9_0_dotnet_pubsub_ws_full_paired_*_nopin_20260712 | blocking publish 의미를 유지하고 C 직후 .NET 전체 크기를 각각 5회 측정했다. | 최소 71.0%, 크기 중앙값 88.7%, 평균 latency 최대 1.34배로 ws 완료 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

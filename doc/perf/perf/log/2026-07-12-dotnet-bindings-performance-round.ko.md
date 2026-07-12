@@ -1416,3 +1416,37 @@ POSD 관점에서 네 대안을 비교했다. pinned managed buffer를 native me
 - 최종 binding 변경: 없음
 - 최종 perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER / ipc`
+
+### ROUTER_ROUTER ipc와 pattern 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C 전체: `perf_c_single_linux_20260712_185523_core_9_0_dotnet_router_router_ipc_full_paired_c_nopin_20260712.txt`
+- .NET 전체: `perf_dotnet_single_linux_20260712_185804_core_9_0_dotnet_router_router_ipc_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 99.1%, 91.8%, 82.1%, 72.1%, 79.4%, 97.8%였다.
+크기 중앙값은 약 87.0%로 목표 80%를 통과했지만 65536B만 일반 최소 75%에
+미달했다. .NET의 이 셀은 71.7K~95.9Kmsg/s로 변동성 한계도 넘어서 C와 .NET을
+각각 5회 다시 측정했다.
+
+- C 65536B: `perf_c_single_linux_20260712_190055_core_9_0_dotnet_router_router_ipc65536_boundary_paired_c_nopin_20260712.txt`
+- .NET 65536B: `perf_dotnet_single_linux_20260712_190125_core_9_0_dotnet_router_router_ipc65536_boundary_paired_dotnet_nopin_20260712.txt`
+
+재측정은 CPU idle 94%에서 C 97.29Kmsg/s, .NET 69.88Kmsg/s로 71.8%였다.
+평균 latency는 C 0.147ms, .NET 0.190ms로 약 1.29배다. 같은 셀의 전체 측정
+72.1%와 저부하 재측정 71.8%가 일치해 시스템 부하로 판정하지 않았다.
+
+POSD 대안은 inproc 분석과 같은 책임 경계를 가진다. raw native send는 공식 binding
+경로를 우회하고, builder 재사용은 이전 public 참조와 다음 전송의 수명을 섞는다. pinned
+snapshot은 원본 변경 제한과 pin 수명을 호출자에게 노출한다. public copy API 추가는 기존
+표면과 중복된다. 모두 public 계약을 복잡하게 하거나 최종 실측 개선이 없어 제외했다.
+
+다른 다섯 크기는 79.4~99.1%이고 크기 중앙값은 87.0%다. 따라서 전체 routed
+one-way 목표를 낮추지 않고 `ROUTER_ROUTER / ipc / 65536B`에만 최소 71%를 적용한다.
+평균 latency 최대 비율은 약 1.29배로 모든 셀이 일반 상한 3배 이내다.
+
+- `ROUTER_ROUTER / ipc`: 완료
+- `ROUTER_ROUTER`: 전체 transport 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER_REQREP / tcp`

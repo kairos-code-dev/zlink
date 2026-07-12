@@ -1468,3 +1468,20 @@ C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
 - binding 변경: 없음
 - perf 변경: 없음
 - 다음 작업: `ROUTER_ROUTER_REQREP / ws`
+
+### ROUTER_ROUTER_REQREP ws 완료
+
+C와 .NET의 여섯 크기를 CPU pin 없이 각각 5회 paired 측정했다.
+
+- C: `perf_c_single_linux_20260712_190954_core_9_0_dotnet_router_router_reqrep_ws_full_paired_c_nopin_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_191243_core_9_0_dotnet_router_router_reqrep_ws_full_paired_dotnet_nopin_20260712.txt`
+
+처리량 비율은 85.2%, 83.9%, 89.2%, 96.2%, 81.6%, 80.4%였다. 최소는
+80.4%, 크기 중앙값은 약 84.5%로 socket request/reply 목표를 통과했다. 평균
+latency 최대 비율은 약 1.22배로 일반 상한 3배 이내였다. 반복 처리량과 평균 latency
+변동도 정책 한계 이내여서 추가 개선은 필요하지 않았다.
+
+- `ROUTER_ROUTER_REQREP / ws`: 완료
+- binding 변경: 없음
+- perf 변경: 없음
+- 다음 작업: `ROUTER_ROUTER_REQREP / wss`

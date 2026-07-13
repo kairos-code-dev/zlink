@@ -5,6 +5,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $RunDir = New-SampleRunDirectory "deliverydispatch-dotnet"
 $RedisContainer = $null
+$RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $WorkDir = Join-Path $RunDir "work"
 $SampleLogDir = if ($env:DELIVERYDISPATCH_LOG_DIR) { $env:DELIVERYDISPATCH_LOG_DIR } else { Join-Path $ScriptDir "logs" }
@@ -48,6 +49,7 @@ try {
     Set-DefaultEnv "DELIVERYDISPATCH_REDIS_KEY_PREFIX" "deliverydispatch:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
     Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_HTTP" "http://127.0.0.1:$($ports[2])"
     Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_CHANNEL" "tcp://127.0.0.1:$($ports[3])"
+    Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[4])"
     Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_CHANNEL" "tcp://127.0.0.1:$($ports[5])"
     Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[6])"
     Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT" "tcp://127.0.0.1:$($ports[7])"
@@ -63,19 +65,9 @@ try {
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2" "tcp://127.0.0.1:$($ports[18])"
     Set-DefaultEnv "DELIVERYDISPATCH_WORK_DIR" $WorkDir
 
-    if (-not $env:DELIVERYDISPATCH_REDIS_ENDPOINT) {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required to run the DeliveryDispatch sample when DELIVERYDISPATCH_REDIS_ENDPOINT is not set."
-        }
-
-        $RedisContainer = "deliverydispatch-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis container."
-        }
-        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-        $env:DELIVERYDISPATCH_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
-    }
+    $redis = Start-SampleRedisContainer "zlink-deliverydispatch-dotnet-redis"
+    $RedisContainer = $redis.ContainerId
+    $env:DELIVERYDISPATCH_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:DELIVERYDISPATCH_REDIS_ENDPOINT"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "DeliveryDispatch.sln")
@@ -99,6 +91,7 @@ try {
     Wait-SampleTcpEndpoint "courier-actor-node2-router" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER
 
     Start-SampleDotnetAssembly -Name "dispatch" -Project (Join-Path $ScriptDir "Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj") -LogDirectory $LogDir | Out-Null
+    Wait-SampleTcpEndpoint "dispatch-spot-router" $env:DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER
     Wait-SampleHttpHealth "dispatch" $env:DELIVERYDISPATCH_DISPATCH_HTTP
 
     $clientLog = Join-Path $LogDir "client.log"
@@ -123,13 +116,14 @@ try {
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch courier-session: bound courier=courier-b"
     Wait-SampleLogContains "message flow" "DeliveryDispatch message-flow evidence"
     Write-Host "deliverydispatch-runner-evidence=completed"
+    $RunSucceeded = $true
 }
 finally {
     Stop-SampleProcesses
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer | Out-Null
+        Remove-SampleRedisContainer $RedisContainer
     }
-    if ($env:DELIVERYDISPATCH_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $env:DELIVERYDISPATCH_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

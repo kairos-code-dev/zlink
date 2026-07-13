@@ -12,6 +12,7 @@ mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
+RUN_SUCCEEDED=0
 export SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:dotnet:${RUN_ID}:"
 
 cleanup() {
@@ -44,9 +45,9 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${SUPPORTCHAT_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${SUPPORTCHAT_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
@@ -180,3 +181,4 @@ wait_log "status=WaitingForClose" "${LOG_DIR}/support.log"
 wait_log "status=Closed" "${LOG_DIR}/support.log"
 grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"
 echo "supportchat-server-evidence=completed"
+RUN_SUCCEEDED=1

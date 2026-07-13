@@ -9,6 +9,7 @@
 
 #include "sample_names.hpp"
 #include "sample_topology.hpp"
+#include "../Play/Application/GameCreation/room_route_store.hpp"
 
 #include <sw/redis++/redis++.h>
 
@@ -21,15 +22,7 @@
 namespace zlink::samples::tictactoe
 {
 
-struct room_route_t
-{
-    std::string route_channel_id;
-    std::string owner_node_rid;
-    std::string spot_rid;
-    std::string spot_kind = sample_names_t::match_spot;
-};
-
-class redis_room_route_store_t
+class redis_room_route_store_t : public room_route_store_t
 {
   public:
     explicit redis_room_route_store_t (sample_topology_t topology) :
@@ -37,7 +30,7 @@ class redis_room_route_store_t
     {
     }
 
-    void save (const room_route_t &route)
+    void save (const room_route_t &route) override
     {
         const std::unordered_map<std::string, std::string> fields{
           {"RouteChannelId", route.route_channel_id},
@@ -47,7 +40,7 @@ class redis_room_route_store_t
         _redis.hset (key (route.spot_rid), fields.begin (), fields.end ());
     }
 
-    room_route_t require (std::string_view spot_rid)
+    room_route_t require (std::string_view spot_rid) override
     {
         std::unordered_map<std::string, std::string> stored;
         _redis.hgetall (key (std::string (spot_rid)),

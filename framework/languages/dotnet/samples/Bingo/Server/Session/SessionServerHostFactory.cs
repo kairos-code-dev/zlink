@@ -41,7 +41,6 @@ public static class SessionServerHostFactory
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .EnableRouter(session.RouterEndpoint)
                 .SetRoutingId(session.RoutingId)
-                .ConnectRouter(session.PreferredPlayNodeRid, session.PreferredPlaySpotRouterEndpoint)
                 .EnablePubSub(session.PubEndpoint);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)

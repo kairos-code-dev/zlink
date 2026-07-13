@@ -802,6 +802,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
                std::string::npos);
     EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
     EXPECT_NE (play_factory.find ("redis_room_route_store_t"), std::string::npos);
+    /* Application은 port에만 의존한다(공통 sample spec §7). */
+    EXPECT_NE (play_factory.find ("add_singleton<room_route_store_t>"), std::string::npos);
     EXPECT_NE (play_factory.find (".group (\"play\")"), std::string::npos);
     EXPECT_NE (play_factory.find (".add<create_game_handler_t> ()"), std::string::npos);
     EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);

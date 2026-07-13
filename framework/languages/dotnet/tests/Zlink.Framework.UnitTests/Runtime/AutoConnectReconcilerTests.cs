@@ -107,7 +107,6 @@ public sealed class AutoConnectReconcilerTests
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]
-    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot)]
     public void Symmetric_Mesh_Pairwise_Initiator_Connects_From_The_Smaller_Side_Only(
         ZLinkLocationAutoConnectType type,
         ZLinkLocationRole role)
@@ -120,10 +119,25 @@ public sealed class AutoConnectReconcilerTests
         var fromSmaller = ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger]);
         var fromBigger = ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller]);
 
-        // Only the byte-order smaller routing id dials, so route, spot,
-        // and dealer meshes share one physical link per peer pair.
+        // Only the byte-order smaller routing id dials, so route and dealer
+        // meshes share one physical link per peer pair.
         Assert.Single(fromSmaller);
         Assert.Empty(fromBigger);
+    }
+
+    [Fact]
+    public void SpotMesh_All_Members_Subscribe_While_Only_The_Smaller_Member_Dials_The_Router()
+    {
+        var smaller = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
+        var bigger = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "bb", "tcp://b:1");
+        var rowSmaller = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
+        var rowBigger = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "bb", "tcp://b:1");
+
+        var fromSmaller = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger])).Value;
+        var fromBigger = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller])).Value;
+
+        Assert.True(fromSmaller.InitiatesSpotRouterLink);
+        Assert.False(fromBigger.InitiatesSpotRouterLink);
     }
 
     [Fact]

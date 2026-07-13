@@ -74,23 +74,15 @@ public interface ICommerceStateStore
         CancellationToken cancellationToken);
 
     ValueTask<ReserveInventoryResult> ReserveInventoryAsync(
-        string orderId,
-        string reservationId,
-        IReadOnlyList<OrderLineInput> lines,
+        ReserveInventoryCommand command,
         CancellationToken cancellationToken);
 
-    ValueTask ReleaseInventoryAsync(
-        string orderId,
-        string reservationId,
-        string reason,
+    ValueTask<ReleaseInventoryResult> ReleaseInventoryAsync(
+        ReleaseInventoryCommand command,
         CancellationToken cancellationToken);
 
     ValueTask<AuthorizePaymentResult> AuthorizePaymentAsync(
-        string orderId,
-        string paymentId,
-        string paymentMethodId,
-        decimal amount,
-        string currency,
+        AuthorizePaymentCommand command,
         CancellationToken cancellationToken);
 }
 
@@ -99,9 +91,20 @@ public sealed record StoredOrderEvent(
     string? SourceCommandId,
     string OrderId,
     string EventType,
-    OrderDomainEvent Payload,
+    byte[] Payload,
     long Version,
     long CreatedAtUnixMs);
+
+public static class StoredOrderEventPayload
+{
+    public static byte[] Encode(OrderDomainEvent domainEvent) =>
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes<OrderDomainEvent>(domainEvent);
+
+    public static OrderDomainEvent Decode(this StoredOrderEvent storedEvent) =>
+        System.Text.Json.JsonSerializer.Deserialize<OrderDomainEvent>(storedEvent.Payload)
+        ?? throw new InvalidOperationException(
+            $"Stored order event '{storedEvent.EventId}' has an empty payload.");
+}
 
 public sealed record IdempotencyMapping(
     string IdempotencyKey,

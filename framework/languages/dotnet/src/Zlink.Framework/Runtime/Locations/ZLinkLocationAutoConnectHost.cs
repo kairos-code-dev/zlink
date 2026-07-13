@@ -406,16 +406,18 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         public bool Connect(ZLinkAutoConnectTarget target)
         {
-            if (connectRouter && !node.ConnectRouterAuto(target.NodeRid, target.Endpoint)) return false;
+            var connectsRouter = connectRouter && target.InitiatesSpotRouterLink;
+            if (connectsRouter && !node.ConnectRouterAuto(target.NodeRid, target.Endpoint)) return false;
             if (!connectPubSub || PubEndpointOf(target) is not { } pubEndpoint) return true;
             if (node.ConnectPubSubAuto(pubEndpoint)) return true;
-            if (connectRouter) _ = node.DisconnectRouterAuto(target.Endpoint);
+            if (connectsRouter) _ = node.DisconnectRouterAuto(target.Endpoint);
             return false;
         }
 
         public bool Disconnect(ZLinkAutoConnectTarget target)
         {
-            var router = !connectRouter || node.DisconnectRouterAuto(target.Endpoint);
+            var router = !connectRouter || !target.InitiatesSpotRouterLink
+                         || node.DisconnectRouterAuto(target.Endpoint);
             var pubSub = !connectPubSub || PubEndpointOf(target) is not { } pubEndpoint
                          || node.DisconnectPubSubAuto(pubEndpoint);
             return router && pubSub;

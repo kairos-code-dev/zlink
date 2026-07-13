@@ -78,3 +78,22 @@ public sealed record AuthorizePaymentResult(
     bool Accepted,
     string? PaymentId,
     string? Reason);
+
+public sealed record ReserveInventoryCommand(
+    string OrderId,
+    string ReservationId,
+    IReadOnlyList<OrderLineInput> Lines);
+
+public sealed record ReleaseInventoryCommand(
+    string OrderId,
+    string ReservationId,
+    string Reason);
+
+public sealed record ReleaseInventoryResult(bool Released);
+
+public sealed record AuthorizePaymentCommand(
+    string OrderId,
+    string PaymentId,
+    string PaymentMethodId,
+    decimal Amount,
+    string Currency);

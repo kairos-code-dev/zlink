@@ -25,7 +25,8 @@ internal sealed record ZLinkAutoConnectTarget(
     string Endpoint,
     string? ConnectionFingerprint = null,
     IReadOnlyDictionary<string, string>? Metadata = null,
-    string? OwnerId = null);
+    string? OwnerId = null,
+    bool InitiatesSpotRouterLink = true);
 
 /// <summary>
 /// Pure desired-target-set computation: the role allow table and target
@@ -72,7 +73,9 @@ internal static class ZLinkAutoConnectPlanner
             var target = new ZLinkAutoConnectTarget(
                 TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint,
                 ConnectionFingerprintOf(peer), peer.Metadata,
-                peer.OwnerId);
+                peer.OwnerId,
+                local.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
+                || LocalIsInitiator(local, peer));
             desired[target.TargetKey] = target;
         }
 
@@ -144,8 +147,7 @@ internal static class ZLinkAutoConnectPlanner
                 local.Role == ZLinkLocationRole.Sub && peer.Role == ZLinkLocationRole.Pub,
             ZLinkLocationAutoConnectType.SpotMesh =>
                 local.Role == ZLinkLocationRole.Spot
-                && peer.Role == ZLinkLocationRole.Spot
-                && LocalIsInitiator(local, peer),
+                && peer.Role == ZLinkLocationRole.Spot,
             _ => false
         };
 

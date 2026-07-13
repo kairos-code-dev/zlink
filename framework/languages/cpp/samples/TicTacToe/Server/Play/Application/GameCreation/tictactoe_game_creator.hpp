@@ -2,7 +2,7 @@
 #pragma once
 
 #include "../../../Configuration/sample_names.hpp"
-#include "../../../Configuration/redis_room_route_store.hpp"
+#include "room_route_store.hpp"
 #include "../../../../Shared/Contracts/messages.hpp"
 
 #include <zlink/framework.hpp>
@@ -17,9 +17,9 @@ using namespace framework;
 class tictactoe_game_creator_t
 {
   public:
-    using dependency_types = dependency_list_t<sample_topology_t, redis_room_route_store_t>;
+    using dependency_types = dependency_list_t<sample_topology_t, room_route_store_t>;
 
-    tictactoe_game_creator_t (sample_topology_t &topology, redis_room_route_store_t &routes) :
+    tictactoe_game_creator_t (sample_topology_t &topology, room_route_store_t &routes) :
         _topology (topology), _routes (routes)
     {
     }
@@ -46,7 +46,7 @@ class tictactoe_game_creator_t
 
   private:
     sample_topology_t &_topology;
-    redis_room_route_store_t &_routes;
+    room_route_store_t &_routes;
     int _next = 1;
 };
 

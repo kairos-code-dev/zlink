@@ -7,6 +7,7 @@ public sealed record SampleTopology(
     string RedisKeyPrefix,
     string DispatchHttpUrl,
     string DispatchChannelEndpoint,
+    string DispatchSpotRouterEndpoint,
     string TrackingChannelEndpoint,
     string TrackingSpotRouterEndpoint,
     string TrackingSpotEndpoint,
@@ -35,6 +36,8 @@ public sealed record SampleTopology(
                            ?? "http://127.0.0.1:7392";
         var dispatchChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_CHANNEL")
                               ?? "tcp://127.0.0.1:7395";
+        var dispatchSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER")
+                                 ?? "tcp://127.0.0.1:7396";
         var trackingChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_CHANNEL")
                               ?? "tcp://127.0.0.1:7397";
         var trackingSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER")
@@ -68,6 +71,7 @@ public sealed record SampleTopology(
             redisKeyPrefix,
             dispatchHttp,
             dispatchChannel,
+            dispatchSpotRouter,
             trackingChannel,
             trackingSpotRouter,
             trackingSpot,

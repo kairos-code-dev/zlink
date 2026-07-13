@@ -38,7 +38,7 @@ internal sealed class CourierSessionBinder(
 
         await boundActor.RelayAsync(
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(
-                new BindCourierSessionReq(courierId, actor, context.SessionId)),
+                new BindCourierReq(courierId, context.SessionId)),
             cancellationToken);
         return new BindCourierSessionRes(courierId, actor.NodeRid.ToString(), context.SessionId);
     }

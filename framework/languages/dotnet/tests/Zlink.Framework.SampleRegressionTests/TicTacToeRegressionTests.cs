@@ -74,9 +74,11 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$env:TICTACTOE_REDIS_KEY_PREFIX = \"tictactoe:dotnet:${RunId}:\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("--name \"zlink-tictactoe-dotnet-redis-$RunId\"", powershellRunner,
+        Assert.Contains("Start-SampleRedisContainer \"zlink-tictactoe-dotnet-redis\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Remove-SampleRedisContainer $redisContainerId", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("docker run", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 13 -BasePort 0", powershellRunner,
@@ -300,7 +302,7 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void Only_TicTacToe_Sample_Uses_Manual_Handler_Registration()
+    public void DotNet_Samples_Use_Declarative_Handler_Registration()
     {
         var samplesRoot = ResolveSamplesRoot();
         var manualRegistrationTokens = new[]
@@ -308,7 +310,10 @@ public sealed partial class RegressionTests
             "Context.Handlers.AddHandler<",
             "Context.Handlers.AddPacket<",
             "Context.Handlers.AddSubscribe<",
-            "Context.Handlers.AddActorPacket<"
+            "Context.Handlers.AddActorPacket<",
+            ".AddRequestHandler<",
+            ".AddSendHandler<",
+            ".AddPublishHandler<"
         };
         var manualRegistrations = EnumerateSourceFiles(samplesRoot)
             .Where(file =>
@@ -318,11 +323,6 @@ public sealed partial class RegressionTests
             })
             .ToArray();
 
-        Assert.NotEmpty(manualRegistrations);
-        Assert.All(manualRegistrations, file =>
-            Assert.Contains(
-                $"{Path.DirectorySeparatorChar}TicTacToe{Path.DirectorySeparatorChar}",
-                file,
-                StringComparison.Ordinal));
+        Assert.Empty(manualRegistrations);
     }
 }

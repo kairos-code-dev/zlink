@@ -332,8 +332,8 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   샘플 실행은 API 2개, Session 2개, Play 2개 server를 띄우고 client가 Session
   stream에 접속해 `bingo=completed`와 server evidence에 해당하는 성공 결과를 만들 수 있어야
   한다.
-- runner는 서버 프로세스를 띄운 뒤 필요한 TCP endpoint가 열린 것을 확인하고, 짧은 안정화
-  시간을 둔 뒤 client self-check를 시작한다. 별도 readiness 프로젝트나 게임 시나리오
+- runner는 서버 프로세스를 띄운 뒤 필요한 TCP endpoint가 열린 것을 확인하고 곧바로
+  client self-check를 시작한다. 고정 sleep을 준비 상태 확인으로 사용하지 않는다. 별도 readiness 프로젝트나 게임 시나리오
   안의 pub/sub 확인 message를 사용하지 않는다.
 - 샘플 실행에는 match queue Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로
   받고, Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 실행마다 Docker로
@@ -570,7 +570,7 @@ EnsurePlayerActorReq {
 // protobuf 경계 전용 wire 메시지 — framework의 ActorRefSnapshot과의 변환은
 // generated message 경계 한 곳에서만 수행한다.
 ActorRefWire {
-  NodeRid: bytes
+  NodeRid: string
   ActorId: string
   Generation: uint64
 }
@@ -858,13 +858,12 @@ room Spot owner 위치 조회와 remote `JoinSpot` route는 match queue Redis가
 location store 기반 resolver가 처리해야 한다.
 
 `BingoGameStartedNotify` 전달 책임은 join 상태에 따라 나눈다. owner `BingoRoom`은 이미
-room 안에 있던 player에게 room event로 start notify를 보낸다. 반면 방금 remote
-`JoinSpot`을 수행 중인 actor에게는 owner room의 join callback 안에서 직접 push하지 않는다.
-새로 join한 actor의 handler는 `JoinSpot` 응답을 받은 뒤 `BingoRoomJoinRes.State.Status`가
-`Running`이면 자기 public bound session API로 `BingoGameStartedNotify`를 보낸다. 이렇게 해야
-owner room이 아직 join 응답을 기다리는 actor의 session 경로를 가정하지 않고, remote join
-완료 이후의 public actor/session 계약만 사용하게 된다. 이 분리는 runner의 endpoint 확인과
-짧은 안정화 대기와 별개의 책임 경계이며, 각 언어 샘플도 같은 구조를 따라야 한다.
+room 안에 있던 player에게 room event로 start notify를 보낸다. 방금 remote `JoinSpot`으로
+이동한 actor는 대상 room의 `OnJoinedActorAsync`가 호출된 시점에 join lifecycle을 완료한
+상태이므로, 이 callback에서 actor의 public bound session API로 start notify를 보낸다.
+source entry handler는 `JoinSpot`이 끝난 뒤 이전 actor 객체를 다시 사용하지 않는다. remote
+join으로 actor의 실행 위치가 달라질 수 있기 때문이다. 이 분리는 runner의 endpoint 준비 상태
+확인과 별개의 책임 경계이며, 각 언어 샘플도 같은 구조를 따라야 한다.
 
 observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아니다. routing id는
 관찰 대상 `RoomId`와 현재 Play SpotNode rid에서 만든 local observer room id를 사용한다.
@@ -1087,19 +1086,25 @@ options.ConfigureDispatch()
 
 ### 17.2 런타임 메트릭
 
-`Session`은 CCU, `Play`는 룸 큐·actor 이동을 방출한다. 앰비언트 meter/registry만 연결하면 끝이다.
+`Session`은 CCU, `Play`는 룸 큐·actor 이동을 방출한다. 언어 표준 meter/registry만 연결하면
+된다. .NET 샘플은 별도 HTTP metrics 서버를 추가하지 않고 `MeterListener`로 framework meter를
+구독해 runner 로그에서 실제 계기 값을 확인한다.
 
 ```csharp
-// Session/Play 공통 (.NET) — zlink 계기를 앱 OTel 파이프라인에 포함
-builder.Services.AddOpenTelemetry().WithMetrics(m => m
-    .AddMeter(ZLinkMeters.Framework)
-    .AddPrometheusExporter());
-
-app.MapPrometheusScrapingEndpoint(); // 샘플에서 실제 계기 값을 확인할 endpoint 공개
+// Session/Play 공통 (.NET) — framework meter의 계기만 구독
+listener.InstrumentPublished = static (instrument, meterListener) =>
+{
+    if (instrument.Meter.Name == ZLinkMeters.Framework)
+        meterListener.EnableMeasurementEvents(instrument);
+};
+listener.SetMeasurementEventCallback<long>(RecordMetric);
+listener.SetMeasurementEventCallback<double>(RecordMetric);
+listener.Start(); // runner는 "zlink metric" 로그에서 실제 값을 확인
 ```
 
-`AddPrometheusExporter()`는 `OpenTelemetry.Exporter.Prometheus.AspNetCore` 패키지가 필요하다(exporter는
-앱 몫, 공통 스펙 §6). 관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
+Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `ZLinkMeters.Framework` meter를
+자기 metrics pipeline에 추가한다. exporter 선택과 metrics HTTP endpoint는 앱의 운영 정책이다.
+관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
 `zlink.spot.queue.depth`(`kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
 
 ### 17.3 Graceful Drain

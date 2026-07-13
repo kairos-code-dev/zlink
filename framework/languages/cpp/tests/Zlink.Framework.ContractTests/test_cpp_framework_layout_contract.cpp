@@ -1126,9 +1126,12 @@ int main ()
                             / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "place_mark_handler.hpp",
                           "SPOT actor packets must be registered as spot member functions");
-    ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/"
-                            "ensure_player_actor_handler.hpp");
+    /* EnsurePlayerActor는 Bingo 전용 계약이다(공통 sample spec §11): TicTacToe는 인증에서
+     * 받은 PlayerInfo를 그대로 actor 생성 payload로 쓴다. */
+    ok &= require_absent (root
+                            / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/"
+                              "ensure_player_actor_handler.hpp",
+                          "TicTacToe must not carry the Bingo-only EnsurePlayerActor contract");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp");
     ok &= require_exists (root

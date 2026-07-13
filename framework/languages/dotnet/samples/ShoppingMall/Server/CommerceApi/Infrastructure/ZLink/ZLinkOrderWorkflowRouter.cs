@@ -36,6 +36,17 @@ internal sealed class ZLinkOrderWorkflowRouter(
         return response.State;
     }
 
+    public async ValueTask<OrderState> PrepareInventoryReservedCheckpointAsync(
+        StartOrderWorkflowReq command,
+        CancellationToken cancellationToken)
+    {
+        var response = await RequestToOwner(
+                command.OrderId,
+                new PrepareInventoryReservedCheckpointReq(command))
+            .Async<StartOrderWorkflowRes>(cancellationToken);
+        return response.State;
+    }
+
     private IZLinkRequestCall RequestToOwner<TMessage>(string orderId, TMessage command)
     {
         var owner = topology.ForOrderId(orderId);

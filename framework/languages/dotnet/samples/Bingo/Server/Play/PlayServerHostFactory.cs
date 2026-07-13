@@ -65,7 +65,6 @@ public static class PlayServerHostFactory
                 .SetRoutingId(node.NodeRid)
                 .SetEntrySpotRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
-                .ConnectPeerPub(node.PeerSpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)

@@ -22,8 +22,6 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
     {
         using var apiA = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Build();
         using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Build();
-        using var missionA = ZLinkHttpClient.Create(topology.MissionAHttpBaseUrl).Build();
-        using var missionB = ZLinkHttpClient.Create(topology.MissionBHttpBaseUrl).Build();
 
         await apiAStream.Connect.Async(cancellationToken);
         var joined = await apiAStream.Request(new JoinSessionReq("player-alice"))
@@ -62,17 +60,9 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(auctionCompletePush.Payload.PlayerId == "player-alice");
         Ensure(auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction);
         Ensure(auctionCompletePush.Payload.RewardGranted);
-        var snapshot = apiA.Post("/internal/snapshot")
-            .Body(new GetGameplaySnapshotReq("player-alice"))
-            .Fetch<GetGameplaySnapshotRes>();
-        Ensure(snapshot.UnlockedFeatureIds.Contains("auction", StringComparer.Ordinal));
-
-        var closeOwnerA = await missionA.Post("/self-check/owner/player-alice/close")
+        var closeOwner = await apiA.Post("/self-check/owner/player-alice/close")
             .SubmitRawAsync(cancellationToken);
-        var closeOwnerB = await missionB.Post("/self-check/owner/player-alice/close")
-            .SubmitRawAsync(cancellationToken);
-        Ensure(closeOwnerA.Status is >= 200 and < 300);
-        Ensure(closeOwnerB.Status is >= 200 and < 300);
+        Ensure(closeOwner.Status is >= 200 and < 300);
 
         var tutorial = await apiAStream.Request(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
             .Async<CompleteMissionRes>(cancellationToken);
@@ -82,8 +72,9 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             .Async<EnterAreaRes>(cancellationToken);
         Ensure(ruins.EventId == "player-alice-enter-ruins");
 
-        var offlineItem = await apiAStream.Request(new CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
-            .Async<CollectItemRes>(cancellationToken);
+        // Simulate an authoritative server event while Bob has no bound session.
+        var offlineItem = apiA.Post("/self-check/gameplay/collect/player-bob/healing-herb/1/herb-1")
+            .Fetch<CollectItemRes>();
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
         await apiBStream.Connect.Async(cancellationToken);

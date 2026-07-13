@@ -16,7 +16,7 @@ internal sealed class OrderWorkflowService(
         CancellationToken cancellationToken)
     {
         var stored = await events.ReadAsync(command.OrderId, cancellationToken);
-        var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Payload));
+        var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Decode()));
         if (aggregate.HasProcessedMsg(command.IdempotencyKey))
         {
             await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);
@@ -98,7 +98,7 @@ internal sealed class OrderWorkflowService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var stored = await events.ReadAsync(orderId, cancellationToken);
-            var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Payload));
+            var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Decode()));
             var current = await SaveProjectionFromEventsAsync(stored, cancellationToken);
 
             if (aggregate.IsTerminal || shouldStop(aggregate.Status)) return current;
@@ -107,9 +107,10 @@ internal sealed class OrderWorkflowService(
             {
                 OrderStatuses.Created => aggregate.ApplyInventoryResult(
                     await commerce.ReserveInventoryAsync(
-                        orderId,
-                        ReservationId(orderId),
-                        stored.OfTypeStored<OrderStartedEvent>().Single().Lines,
+                        new ReserveInventoryCommand(
+                            orderId,
+                            ReservationId(orderId),
+                            stored.OfTypeStored<OrderStartedEvent>().Single().Lines),
                         cancellationToken),
                     NewEventId("inventory", orderId),
                     NewEventId("failed", orderId),
@@ -142,7 +143,7 @@ internal sealed class OrderWorkflowService(
     {
         var stored = await events.ReadAsync(orderId, cancellationToken);
         OrderState? state = null;
-        foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Payload);
+        foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Decode());
 
         if (state is null) throw new InvalidOperationException($"Order '{orderId}' has no event stream.");
 
@@ -157,11 +158,12 @@ internal sealed class OrderWorkflowService(
         CancellationToken cancellationToken)
     {
         var result = await commerce.AuthorizePaymentAsync(
-            current.OrderId,
-            PaymentId(current.OrderId),
-            paymentMethodId,
-            current.Amount ?? throw new InvalidOperationException("Order amount is required."),
-            current.Currency ?? throw new InvalidOperationException("Order currency is required."),
+            new AuthorizePaymentCommand(
+                current.OrderId,
+                PaymentId(current.OrderId),
+                paymentMethodId,
+                current.Amount ?? throw new InvalidOperationException("Order amount is required."),
+                current.Currency ?? throw new InvalidOperationException("Order currency is required.")),
             cancellationToken);
         return aggregate.ApplyPaymentResult(
             result,
@@ -177,10 +179,8 @@ internal sealed class OrderWorkflowService(
         var reservationId = current.ReservationId
                             ?? throw new InvalidOperationException("Reservation is required for compensation.");
         var reason = current.Reason ?? "payment failed";
-        await commerce.ReleaseInventoryAsync(
-            current.OrderId,
-            reservationId,
-            reason,
+        _ = await commerce.ReleaseInventoryAsync(
+            new ReleaseInventoryCommand(current.OrderId, reservationId, reason),
             cancellationToken);
         return aggregate.ReleaseInventory(
             NewEventId("release", current.OrderId),
@@ -215,7 +215,7 @@ internal sealed class OrderWorkflowService(
         CancellationToken cancellationToken)
     {
         OrderState? state = null;
-        foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Payload);
+        foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Decode());
 
         if (state is null)
             throw new InvalidOperationException("Order event stream is empty.");
@@ -250,6 +250,6 @@ internal static class StoredOrderEventExtensions
     public static IEnumerable<TEvent> OfTypeStored<TEvent>(this IEnumerable<StoredOrderEvent> events)
         where TEvent : OrderDomainEvent
     {
-        return events.Select(static item => item.Payload).OfType<TEvent>();
+        return events.Select(static item => item.Decode()).OfType<TEvent>();
     }
 }

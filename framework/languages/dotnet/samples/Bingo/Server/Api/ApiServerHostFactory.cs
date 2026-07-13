@@ -34,8 +34,7 @@ public static class ApiServerHostFactory
                 .SetRoutingId(node.RouteRid)
                 .AddHandlerGroup("api");
             options.AddClientServerChannel(SampleNames.PlayChannel)
-                .EnableClient(topology.PlayA.PlayChannelEndpoint)
-                .EnableClient(topology.PlayB.PlayChannelEndpoint);
+                .EnableClient();
         });
 
         return builder.Build();

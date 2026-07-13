@@ -12,6 +12,7 @@ mkdir -p "${LOG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
+RUN_SUCCEEDED=0
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -40,15 +41,28 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${GAMEQUEST_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${GAMEQUEST_KEEP_RUN_DIR:-}" != "1" ]]; then
     [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
   else
     echo "runDir=${RUN_DIR}"
   fi
 }
 trap cleanup EXIT
+
+dotnet build "${SCRIPT_DIR}/GameQuest.csproj" --maxcpucount:1
+
+# Provision shared dependencies before selecting application ports. Keeping the
+# bind window short prevents unrelated ephemeral connections from claiming a
+# port after the runner has checked it.
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the GameQuest sample (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="zlink-gamequest-dotnet-redis-${RUN_ID}"
+zlink_redis_start_scoped_assign REDIS_CONTAINER GAMEQUEST_REDIS_ENDPOINT "zlink-gamequest-dotnet-redis" redis:7.2-alpine
+export GAMEQUEST_REDIS_ENDPOINT
 
 read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
@@ -57,7 +71,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 16:
+    while len(sockets) < 21:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -89,6 +103,14 @@ export GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 export GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 export GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 export GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
+export GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
+export GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
+export GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
+export GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
+export GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
+export GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
+export GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
+export GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[20]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -148,39 +170,36 @@ start_server() {
   PIDS+=("$!")
 }
 
-dotnet build "${SCRIPT_DIR}/GameQuest.csproj" --maxcpucount:1
-
-# The sample owns its Redis: a dedicated, throwaway container is the shared
-# location store every server registers into (no registry process exists).
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the GameQuest sample (it provisions a dedicated Redis container)." >&2
-  exit 1
-fi
-REDIS_CONTAINER="zlink-gamequest-dotnet-redis-${RUN_ID}"
-zlink_redis_start_scoped_assign REDIS_CONTAINER GAMEQUEST_REDIS_ENDPOINT "zlink-gamequest-dotnet-redis" redis:7.2-alpine
-export GAMEQUEST_REDIS_ENDPOINT
 wait_port redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
 
 ASPNETCORE_URLS="${GAMEQUEST_MISSION_A_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-a" \
   start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-a-spot-pub "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}"
+wait_port mission-a-channel "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_MISSION_B_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-b" \
   start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-b-spot-pub "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}"
+wait_port mission-b-channel "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-a" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}" \
   start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-a-stream "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}"
+wait_port api-a-channel "${GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT}"
+wait_port api-a-spot "${GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT}"
+wait_port api-a-spot-router "${GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT}"
 wait_http api-a "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-b" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}" \
   start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
+wait_port api-b-channel "${GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT}"
+wait_port api-b-spot "${GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT}"
+wait_port api-b-spot-router "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" >"${LOG_DIR}/client.log" 2>&1
@@ -195,3 +214,4 @@ curl -fsS -X POST "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}/self-check/assert" | gre
 curl -fsS "${GAMEQUEST_MISSION_A_HTTP_URL}/self-check/events" | grep -q "QuestProgressReconciledEvent"
 grep -Rq "message flow" "${SAMPLE_LOG_DIR}"
 echo "gamequest-server-evidence=completed"
+RUN_SUCCEEDED=1

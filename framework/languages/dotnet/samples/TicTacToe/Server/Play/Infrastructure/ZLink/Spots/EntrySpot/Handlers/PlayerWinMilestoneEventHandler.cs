@@ -1,8 +1,11 @@
+using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
+[ZLinkSpotSubscriptionHandler(SampleTopics.PlayerMilestone)]
 internal sealed class PlayerWinMilestoneEventHandler(
     ILogger<PlayerWinMilestoneEventHandler> logger)
     : IZLinkSpotSubscriptionHandler<PlayEntrySpot, PlayerWinMilestoneEvent>

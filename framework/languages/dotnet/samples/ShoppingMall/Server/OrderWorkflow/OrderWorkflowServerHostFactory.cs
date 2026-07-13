@@ -25,10 +25,6 @@ public static class OrderWorkflowServerHostFactory
         WorkflowInstanceTopology instance,
         string[]? args = null)
     {
-        var peer = topology.ForWorkflowInstance(
-            string.Equals(instance.InstanceId, "workflow-a", StringComparison.Ordinal)
-                ? "workflow-b"
-                : "workflow-a");
         var builder = WebApplication.CreateBuilder(args ?? []);
         SampleLogging.Configure(
             builder.Logging,
@@ -57,20 +53,16 @@ public static class OrderWorkflowServerHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
+            options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
             options.AddClientServerChannel(SampleNames.OrderWorkflowChannelFor(instance.InstanceId))
                 .EnableServer(instance.ChannelEndpoint)
                 .SetRoutingId(instance.RouteRid)
-                .AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>()
-                .AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq,
-                    ContinueOrderWorkflowRes>()
-                .AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq,
-                    RebuildOrderProjectionRes>();
+                .AddHandlerGroup("order-workflow");
             options.AddSpotMesh(SampleNames.OrderWorkflowRouteChannel)
                 .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)
                 .EnableRouter(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)
                 .EnablePubSub(instance.SpotEndpoint)
-                .ConnectPeerPub(peer.SpotEndpoint)
                 .AddSpotFactory<OrderWorkflowSpot>();
         });
 
@@ -94,39 +86,6 @@ public static class OrderWorkflowServerHostFactory
             }
         });
         app.MapGet("/health", () => Results.Ok(new { ready = true, instance = instance.InstanceId }));
-        app.MapPost("/self-check/workflow/inventory-reserved", async (
-            StartOrderWorkflowReq request,
-            IZLinkSpotManager spots,
-            IZLinkRouteClient routes,
-            IZLinkSpotHandleResolver spotHandles,
-            ICommerceStateStore commerce,
-            RedisCommerceStores stores,
-            CancellationToken cancellationToken) =>
-        {
-            stores.SeedDefaults();
-            await commerce.CreatePendingMappingAsync(
-                request.IdempotencyKey,
-                request.OrderId,
-                instance.InstanceId,
-                cancellationToken);
-            await commerce.SaveOrderPaymentMethodAsync(
-                request.OrderId,
-                request.PaymentMethodId,
-                cancellationToken);
-            await spots.GetOrCreateAsync<OrderWorkflowSpot, OrderWorkflowSpotCreateReq>(
-                RoutingId.From(request.OrderId),
-                new OrderWorkflowSpotCreateReq(request.OrderId),
-                cancellationToken);
-            var address = await spotHandles.ResolveSpotHandleAsync(
-                              RoutingId.From(request.OrderId),
-                              cancellationToken)
-                          ?? throw new InvalidOperationException(
-                              $"Order workflow spot '{request.OrderId}' was not found.");
-            var response = await routes
-                .RequestToSpot(address, new PrepareInventoryReservedCheckpointReq(request))
-                .Async<StartOrderWorkflowRes>(cancellationToken);
-            return Results.Ok(response);
-        });
         app.MapPost("/self-check/projection/{orderId}/delete", async (
             string orderId,
             IOrderReadModelStore readModels,

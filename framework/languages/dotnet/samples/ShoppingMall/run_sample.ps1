@@ -6,6 +6,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunDir = New-SampleRunDirectory "shoppingmall-dotnet"
 $RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $RedisContainer = $null
+$RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir, $SampleLogDir | Out-Null
@@ -28,18 +29,9 @@ try {
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "ShoppingMall.csproj")
 
-    # The sample owns its Redis: a dedicated, throwaway container is the shared
-    # location store every server registers into (no registry process exists).
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the ShoppingMall sample (it provisions a dedicated Redis container)."
-    }
-    $RedisContainer = "zlink-shoppingmall-dotnet-redis-$RunId"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $env:SHOPPINGMALL_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redis = Start-SampleRedisContainer "zlink-shoppingmall-dotnet-redis"
+    $RedisContainer = $redis.ContainerId
+    $env:SHOPPINGMALL_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:SHOPPINGMALL_REDIS_ENDPOINT"
 
     Start-SampleDotnetAssembly -Name "workflow-a" -Project (Join-Path $ScriptDir "Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj") -LogDirectory $LogDir -Arguments @("--instance", "workflow-a") | Out-Null
@@ -72,13 +64,14 @@ try {
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "shoppingmall evidence:"
     Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"
     Write-Host "shoppingmall-server-evidence=completed"
+    $RunSucceeded = $true
 }
 finally {
     Stop-SampleProcesses
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer | Out-Null
+        Remove-SampleRedisContainer $RedisContainer
     }
-    if ($env:SHOPPINGMALL_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $env:SHOPPINGMALL_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

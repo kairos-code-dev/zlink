@@ -232,8 +232,9 @@ lifecycle은 framework가 처리한다.
 
 owner spot은 연결(session actor)과 분리돼 있어 어느 `Session Server`에 붙든 같은 `PlayerId`는
 항상 같은 owner spot으로 간다. owner spot의 호스팅은 spot-mesh에 맡기며 연결 노드와 같은 노드일
-필요가 없다 — 샘플에서는 `Session Server` 노드들이 entry-spot과 owner spot을 함께 호스팅하는 한
-mesh로 두고, 규모가 커지면 owner tier를 분리할 수 있다.
+필요가 없다. 샘플은 session actor를 호스팅하는 `GameApi` 2개와 `PlayerQuestSpot`을 호스팅하는
+`QuestMission` 2개를 분리한다. 두 역할 모두 공유 location store로 자동 연결되며, 고정된 상대
+endpoint를 직접 연결하지 않는다.
 
 | 구성 | 책임 |
 |------|------|
@@ -248,8 +249,8 @@ mesh로 두고, 규모가 커지면 owner tier를 분리할 수 있다.
 | `GameplayStateStore` | authoritative facts | kill/inventory/mission 누적 fact. `Session Server` gameplay module이 action 처리 시 기록한다(fact 기록은 웹 방식에도 동일하게 있는 비용). reset/reconcile 보정 원천. |
 | `QuestDefinition` | config | quest 조건. trigger event type으로 인덱싱. |
 
-샘플 실행은 `Session Server`를 2 노드로 띄워 session scale-out과 player owner 분산을 함께 본다.
-저장소는 공유 dependency로 둔다.
+샘플 실행은 `Session Server` 2개와 owner tier 2개를 띄워 session scale-out과 player owner
+분산을 함께 본다. 저장소는 공유 dependency로 둔다.
 
 ```mermaid
 graph LR
@@ -257,8 +258,8 @@ graph LR
     C2[Client B]
     SS1[Session Server 1]
     SS2[Session Server 2]
-    PA[PlayerQuestSpot A · owner]
-    PB[PlayerQuestSpot B · owner]
+    PA[QuestMission 1 · PlayerQuestSpot owner]
+    PB[QuestMission 2 · PlayerQuestSpot owner]
 
     C1 -->|WebSocket| SS1
     C2 -->|WebSocket| SS2
@@ -338,7 +339,7 @@ on GameplayMsg e:
   5. 생성한 domain event를 QuestEventStore에 append          # append-only = SoR
   6. 같은 event를 in-memory aggregate에 fold                  # 상태 = 이벤트의 fold
   7. QuestReadModelStore projection 갱신                      # 표시·조회용
-  8. notify (coalesced) → bound session
+  8. 변경된 진행과 완료 notify → bound session
 ```
 
 핵심은 **상태 = 이벤트의 fold**라는 것이다. 진행·완료·보상 여부의 기준은 `QuestEventStore`의
@@ -491,7 +492,7 @@ GetQuestProgressRes { ActiveQuests: QuestProgress[] }
 SyncQuestProgressReq { PlayerId }                      # 보정 트리거
 SyncQuestProgressRes { UpdatedQuests: QuestProgress[] }
 
-# server push (coalesced)
+# server push
 QuestProgressNotify  { PlayerId, Progress: QuestProgress }
 QuestCompletedNotify { PlayerId, Progress: QuestProgress, RewardGranted: bool }
 ```
@@ -563,7 +564,7 @@ sequenceDiagram
     P->>EVS: stream replay → aggregate 복원 (최초 활성)
     P->>P: e.EventId dedupe · 매칭 quest 평가 · fold
     P->>EVS: append QuestProgressed
-    P->>RM: projection 갱신 (coalesced)
+    P->>RM: 이번 event가 반영된 projection 저장
     P-->>ES: QuestProgressNotify
     ES-->>C: push 진행 (3/3)
 
@@ -592,7 +593,7 @@ per-player 처리는 owner spot에서 끝난다. 여러 player를 가로지르�
 game client는 하나의 WebSocket으로 join·action·progress push를 다룬다. self-check driver는 같은
 연결로 gameplay command를 보내 event를 만든다. store 검증은 server-side assertion으로 한다.
 
-- **성공/완료**: join → bind 검증 → KillMonster ×3 → 진행 push(coalesced) → 완료 push →
+- **성공/완료**: join → bind 검증 → KillMonster ×3 → 진행 push → 완료 push →
   `QuestEventStore`에 QuestProgressed/Completed/RewardGranted append 검증. 샘플은 reward 지급 요청
   자체가 아니라 reward 결정 event의 중복 방지를 검증한다.
 - **projection 재생성**: `QuestReadModelStore`를 지워도 `QuestEventStore` replay만으로 동일 진행이
@@ -617,7 +618,8 @@ game client는 하나의 WebSocket으로 join·action·progress push를 다룬�
 - `QuestReadModelStore` projection은 event stream replay로 재생성된다.
 - reward 결정 event는 중복 append되지 않는다. 실제 재화 지급의 durable/outbox 경로는 production
   확장 tier로 분리한다.
-- 진행 push는 coalesce되고, binding 없는 player의 push는 생략되지만 상태는 기록된다.
+- 진행 push는 owner event 적용 뒤 bound session으로 전달되고, binding 없는 player의 push는
+  생략되지만 상태는 기록된다.
 - reset/reconcile은 `GameplayStateStore`로 어긋난 진행을 보정한다.
 - scale-out self-check가 2 노드 구성을 검증한다.
 - `PlayerId`·`QuestId`·`EventId`는 명시적 domain id이며 routing id hex를 client에 노출하지 않는다.

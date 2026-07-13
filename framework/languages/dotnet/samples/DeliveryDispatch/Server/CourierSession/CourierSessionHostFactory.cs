@@ -32,8 +32,6 @@ public static class CourierSessionHostFactory
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
                 .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
                 .SetRoutingId(topology.CourierSessionSpotNodeRid)
-                .ConnectRouter(topology.CourierActorNode1Rid, topology.CourierActorNode1RouterEndpoint)
-                .ConnectRouter(topology.CourierActorNode2Rid, topology.CourierActorNode2RouterEndpoint)
                 .EnablePubSub(topology.CourierSessionSpotEndpoint);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)

@@ -12,6 +12,7 @@ rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
+RUN_SUCCEEDED=0
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -40,9 +41,9 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" != "1" ]]; then
     [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
   else
     echo "runDir=${RUN_DIR}"
@@ -86,6 +87,7 @@ fi
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:dotnet:${RANDOM}:$$:}"
 export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
+export DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[4]}"
 export DELIVERYDISPATCH_TRACKING_CHANNEL="tcp://127.0.0.1:${PORTS[5]}"
 export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
 export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
@@ -174,14 +176,8 @@ wait_log() {
   return 1
 }
 
-if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required to run the DeliveryDispatch sample when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  zlink_redis_start_scoped_assign REDIS_CONTAINER DELIVERYDISPATCH_REDIS_ENDPOINT "deliverydispatch-dotnet-redis" redis:7.2-alpine
-  export DELIVERYDISPATCH_REDIS_ENDPOINT
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER DELIVERYDISPATCH_REDIS_ENDPOINT "zlink-deliverydispatch-dotnet-redis" redis:7.2-alpine
+export DELIVERYDISPATCH_REDIS_ENDPOINT
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
@@ -206,6 +202,7 @@ wait_port courier-session-router "${DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
 
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"
+wait_port dispatch-spot-router "${DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER}"
 wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
@@ -224,3 +221,4 @@ wait_log "deliverydispatch courier-session: bound courier=courier-a" "${LOG_DIR}
 wait_log "deliverydispatch courier-session: bound courier=courier-b" "${LOG_DIR}/courier-session.log"
 grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"
 echo "deliverydispatch-runner-evidence=completed"
+RUN_SUCCEEDED=1

@@ -14,8 +14,8 @@ public sealed partial class RegressionTests
         var commerceApi = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Program.cs"));
         var commerceWorkflowPorts = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Ports",
             "Outbound", "WorkflowPorts.cs"));
-        var commerceSelfCheckClient = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi",
-            "Infrastructure", "Http", "HttpOrderWorkflowSelfCheckClient.cs"));
+        var commerceWorkflowRouter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi",
+            "Infrastructure", "ZLink", "ZLinkOrderWorkflowRouter.cs"));
         var workflowHostFactory = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow",
             "OrderWorkflowServerHostFactory.cs"));
         var workflowService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Application",
@@ -76,10 +76,7 @@ public sealed partial class RegressionTests
         Assert.Contains("$env:SHOPPINGMALL_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$env:SHOPPINGMALL_REDIS_KEY_PREFIX = \"shoppingmall:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$RedisContainer = \"zlink-shoppingmall-dotnet-redis-$RunId\"", powershellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-shoppingmall-dotnet-redis");
         Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("$env:SHOPPINGMALL_BASE_PORT", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("$env:SHOPPINGMALL_STORE_DIR", powershellRunner, StringComparison.Ordinal);
@@ -101,11 +98,13 @@ public sealed partial class RegressionTests
         Assert.Contains("new RedisCommerceStores(topology)", commerceApi, StringComparison.Ordinal);
         Assert.Contains("new RedisCommerceStores(topology)", workflowHostFactory, StringComparison.Ordinal);
         Assert.Contains("/self-check/workflow/inventory-reserved", commerceApi, StringComparison.Ordinal);
-        Assert.Contains("/self-check/workflow/inventory-reserved", workflowHostFactory, StringComparison.Ordinal);
+        Assert.DoesNotContain("/self-check/workflow/inventory-reserved", workflowHostFactory,
+            StringComparison.Ordinal);
         Assert.Contains("/self-check/workflow/{orderId}/continue", commerceApi, StringComparison.Ordinal);
         Assert.Contains("PrepareInventoryReservedOrderUseCase", commerceApi, StringComparison.Ordinal);
-        Assert.Contains("IOrderWorkflowSelfCheckClient", commerceWorkflowPorts, StringComparison.Ordinal);
-        Assert.Contains("HttpOrderWorkflowSelfCheckClient", commerceSelfCheckClient, StringComparison.Ordinal);
+        Assert.Contains("IOrderWorkflowRouter", commerceWorkflowPorts, StringComparison.Ordinal);
+        Assert.Contains("PrepareInventoryReservedCheckpointReq", commerceWorkflowRouter, StringComparison.Ordinal);
+        Assert.DoesNotContain("ZLinkHttpClient", commerceWorkflowRouter, StringComparison.Ordinal);
         Assert.DoesNotContain("var cart = await commerce.GetCartAsync", commerceApi, StringComparison.Ordinal);
         Assert.DoesNotContain("ReserveIdempotencyAsync", commerceApi, StringComparison.Ordinal);
         Assert.Contains("evidence.StartedIdempotencyCount == 7", commerceApi, StringComparison.Ordinal);
@@ -131,10 +130,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("workflow.RebuildProjectionAsync", routeHandlers, StringComparison.Ordinal);
         Assert.Contains("StartAndContinueAsync", workflowService, StringComparison.Ordinal);
         Assert.DoesNotContain("ContinueAfterStartAsync", workflowSpot, StringComparison.Ordinal);
-        Assert.Contains("!string.Equals(mapping.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal)",
-            startUseCase, StringComparison.Ordinal);
-        Assert.Contains("peers.ForwardStartAsync(mapping.OwnerInstanceId, request, cancellationToken)",
-            startUseCase, StringComparison.Ordinal);
+        Assert.Contains("await workflows.StartAsync(command, cancellationToken)", startUseCase,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("ForwardStartAsync", startUseCase, StringComparison.Ordinal);
         Assert.Contains("Task.WhenAll(concurrentA, concurrentB)", clientScenario, StringComparison.Ordinal);
         Assert.Contains("concurrentA.Result.OrderId == concurrentB.Result.OrderId", clientScenario,
             StringComparison.Ordinal);
@@ -173,13 +171,14 @@ public sealed partial class RegressionTests
         Assert.Contains("ConnectionMultiplexer.Connect(topology.RedisEndpoint)", stores, StringComparison.Ordinal);
         Assert.Contains("topology.RedisKeyPrefix", stores, StringComparison.Ordinal);
         Assert.Contains("_database.LockTakeAsync", stores, StringComparison.Ordinal);
-        Assert.Contains("string reservationId", stores, StringComparison.Ordinal);
-        Assert.Contains("string paymentId", stores, StringComparison.Ordinal);
-        Assert.Contains("state.Reservations.TryGetValue(reservationId", stores, StringComparison.Ordinal);
+        Assert.Contains("ReserveInventoryCommand command", stores, StringComparison.Ordinal);
+        Assert.Contains("ReleaseInventoryCommand command", stores, StringComparison.Ordinal);
+        Assert.Contains("AuthorizePaymentCommand command", stores, StringComparison.Ordinal);
+        Assert.Contains("state.Reservations.TryGetValue(command.ReservationId", stores, StringComparison.Ordinal);
         Assert.Contains("InventoryReservationLine", stores, StringComparison.Ordinal);
         Assert.Contains("state.Inventory[line.Sku] = state.Inventory.GetValueOrDefault(line.Sku) + line.Quantity",
             stores, StringComparison.Ordinal);
-        Assert.Contains("state.Payments.ContainsKey(paymentId)", stores, StringComparison.Ordinal);
+        Assert.Contains("state.Payments.ContainsKey(command.PaymentId)", stores, StringComparison.Ordinal);
         Assert.Contains("AcquireLockAsync(cancellationToken)", stores, StringComparison.Ordinal);
         Assert.Contains("Task.Delay(10, cancellationToken)", stores, StringComparison.Ordinal);
         Assert.DoesNotContain("File.ReadAllText", stores, StringComparison.Ordinal);

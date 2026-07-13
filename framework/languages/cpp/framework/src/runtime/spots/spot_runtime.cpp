@@ -285,14 +285,31 @@ void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state
 
     for (const auto &handler : state->handlers) {
         if (handler.kind == spot_handler_kind_t::subscription && !handler.topic.empty ()) {
-            try {
-                native->set_subscription (handler.topic);
+            /* The node creates its subscription receiver lazily on the first
+               subscription, and that creation waits a bounded time for the
+               inproc attachment pipe. Under congestion the wait can expire, and
+               the node reports every creation failure as "not supported"
+               (ledger CPP-SPOT-SUB-ACT-001), so a spot that merely arrived at a
+               busy moment would fail to be created at all. The failure is
+               transient by nature: retry a few times before giving up. */
+            constexpr int activation_attempts = 5;
+            std::string last_error;
+            bool activated = false;
+            for (int attempt = 0; attempt < activation_attempts && !activated; ++attempt) {
+                try {
+                    native->set_subscription (handler.topic);
+                    activated = true;
+                }
+                catch (const std::exception &error) {
+                    last_error = error.what ();
+                    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+                }
             }
-            catch (const std::exception &error) {
+            if (!activated) {
                 throw framework_exception_t (
                   framework_error_kind_t::spot_create_failed,
                   "native spot subscription activation failed for '" + state->spot_name
-                    + "' (rid='" + rid + "', topic='" + handler.topic + "'): " + error.what ());
+                    + "' (rid='" + rid + "', topic='" + handler.topic + "'): " + last_error);
             }
         }
     }

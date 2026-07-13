@@ -91,11 +91,10 @@ internal sealed class GameplayActionService(
 internal sealed class JoinQuestSessionUseCase(IQuestSessionStore sessions)
 {
     public async ValueTask<JoinSessionRes> ExecuteAsync(
-        BindQuestSessionReq binding,
+        string playerId,
         CancellationToken cancellationToken)
     {
-        await sessions.BindSessionAsync(binding, cancellationToken);
-        var projection = await sessions.ReadProjectionAsync(binding.PlayerId, cancellationToken);
+        var projection = await sessions.ReadProjectionAsync(playerId, cancellationToken);
         return new JoinSessionRes(projection);
     }
 }
@@ -123,10 +122,6 @@ internal interface IQuestProgressSynchronizer
 
 internal interface IQuestSessionStore
 {
-    ValueTask<BindQuestSessionRes> BindSessionAsync(
-        BindQuestSessionReq request,
-        CancellationToken cancellationToken);
-
     ValueTask<QuestProgress[]> ReadProjectionAsync(
         string playerId,
         CancellationToken cancellationToken);

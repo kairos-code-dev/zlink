@@ -1,32 +1,36 @@
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 
-internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionActorHandler> logger)
-    : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierSessionReq, BindCourierSessionRes>
+internal sealed class BindCourierSessionActorHandler(
+    IZLinkActorManager actorManager,
+    ILogger<BindCourierSessionActorHandler> logger)
+    : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierReq, BindCourierRes>
 {
-    public ValueTask<BindCourierSessionRes> HandleAsync(
+    public async ValueTask<BindCourierRes> HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
         ZLinkSpotActorRequestContext context,
-        BindCourierSessionReq message,
+        BindCourierReq message,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
         _ = context;
-        _ = cancellationToken;
-        var actorRef = message.Actor
-            ?? throw new InvalidOperationException("Courier bind relay requires actor ref.");
-        var sessionRoute = message.SessionRoute
-            ?? throw new InvalidOperationException("Courier bind relay requires session route.");
+        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
+                       ?? throw new InvalidOperationException(
+                           $"Courier actor ref is not available. actor={actor.ActorId}");
         logger.LogInformation(
             "deliverydispatch courier-actor: session bound courier={CourierId} actor={ActorId} node={NodeRid} session={SessionRoute}",
             message.CourierId,
             actor.ActorId,
             actorRef.NodeRid,
-            sessionRoute);
-        return ValueTask.FromResult(new BindCourierSessionRes(message.CourierId, actorRef.NodeRid.ToString(), sessionRoute));
+            message.SessionRoute);
+        return new BindCourierRes(
+            message.CourierId,
+            ActorRefSnapshot.From(actorRef),
+            message.SessionRoute);
     }
 }

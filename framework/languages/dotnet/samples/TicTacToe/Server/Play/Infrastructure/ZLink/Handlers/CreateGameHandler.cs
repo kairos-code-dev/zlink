@@ -4,6 +4,7 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Handlers;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class CreateGameHandler(
     TicTacToeGameCreator games,
     ILogger<CreateGameHandler> logger)

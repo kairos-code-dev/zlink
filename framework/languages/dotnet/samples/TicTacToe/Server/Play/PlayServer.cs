@@ -42,7 +42,7 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddClientServerChannel(SampleChannels.Play(settings.PlayIndex))
                 .EnableServer(settings.PlayChannelEndpoint)
-                .AddRequestHandler<CreateGameHandler>();
+                .AddHandlerGroup("play");
 
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)

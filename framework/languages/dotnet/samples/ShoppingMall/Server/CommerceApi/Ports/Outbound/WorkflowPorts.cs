@@ -15,18 +15,7 @@ internal interface IOrderWorkflowRouter
     ValueTask<OrderState> RebuildProjectionAsync(
         RebuildOrderProjectionReq command,
         CancellationToken cancellationToken);
-}
 
-internal interface ICommerceApiPeerClient
-{
-    ValueTask<StartOrderRes> ForwardStartAsync(
-        string ownerInstanceId,
-        StartOrderReq request,
-        CancellationToken cancellationToken);
-}
-
-internal interface IOrderWorkflowSelfCheckClient
-{
     ValueTask<OrderState> PrepareInventoryReservedCheckpointAsync(
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken);

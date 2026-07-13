@@ -9,7 +9,6 @@ internal sealed class StartOrderUseCase(
     ICommerceStateStore commerce,
     IOrderReadModelStore readModels,
     IOrderWorkflowRouter workflows,
-    ICommerceApiPeerClient peers,
     CommerceApiInstanceOptions options)
 {
     public async ValueTask<StartOrderRes> ExecuteAsync(
@@ -25,19 +24,12 @@ internal sealed class StartOrderUseCase(
             return new StartOrderRes(existingState.OrderId, existingState.Status);
         }
 
-        if (existing is not null
-            && !string.Equals(existing.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal))
-            return await peers.ForwardStartAsync(existing.OwnerInstanceId, request, cancellationToken);
-
         var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
 
         var mapping = existing ?? await commerce.ReserveIdempotencyAsync(
             request.IdempotencyKey,
             options.InstanceId,
             cancellationToken);
-        if (!string.Equals(mapping.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal))
-            return await peers.ForwardStartAsync(mapping.OwnerInstanceId, request, cancellationToken);
-
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
         var state = existing is null
             ? await workflows.StartAsync(command, cancellationToken)
@@ -85,7 +77,7 @@ internal sealed class OrderStartPreparation(ICommerceStateStore commerce)
 internal sealed class PrepareInventoryReservedOrderUseCase(
     OrderStartPreparation preparation,
     ICommerceStateStore commerce,
-    IOrderWorkflowSelfCheckClient workflowSelfChecks,
+    IOrderWorkflowRouter workflows,
     CommerceApiInstanceOptions options)
 {
     public async ValueTask<StartOrderRes> ExecuteAsync(
@@ -98,7 +90,7 @@ internal sealed class PrepareInventoryReservedOrderUseCase(
             options.InstanceId,
             cancellationToken);
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
-        var state = await workflowSelfChecks.PrepareInventoryReservedCheckpointAsync(command, cancellationToken);
+        var state = await workflows.PrepareInventoryReservedCheckpointAsync(command, cancellationToken);
         return new StartOrderRes(state.OrderId, state.Status);
     }
 }

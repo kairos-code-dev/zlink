@@ -52,6 +52,15 @@ public sealed record BindCourierSessionRes(
 public sealed record CourierActorBindingSnapshot(
     string NodeRid);
 
+public sealed record BindCourierReq(
+    string CourierId,
+    string SessionRoute);
+
+public sealed record BindCourierRes(
+    string CourierId,
+    ActorRefSnapshot Actor,
+    string SessionRoute);
+
 public sealed record EnsureCourierActorReq(
     string CourierId);
 

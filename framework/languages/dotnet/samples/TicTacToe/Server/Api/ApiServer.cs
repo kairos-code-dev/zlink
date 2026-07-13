@@ -20,10 +20,11 @@ internal sealed class ApiServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
+            options.AddHandlersFromAssemblyOf(typeof(ApiServer));
 
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableServer(settings.ApiChannelEndpoint)
-                .AddRequestHandler<AuthenticatePlayerHandler>();
+                .AddHandlerGroup("api");
 
             options.AddClientServerChannel(SampleChannels.Play(0))
                 .EnableClient(settings.PlayChannelEndpoints[0]);

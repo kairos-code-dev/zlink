@@ -1,0 +1,99 @@
+using GameQuest.Server.Configuration;
+using GameQuest.Shared;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
+
+namespace GameQuest.GameApi.Session;
+
+internal sealed class PlayerSessionActor(
+    string actorId,
+    IZLinkActorContext context) : IZLinkActor
+{
+    public string ActorId { get; } = actorId;
+
+    public IZLinkActorContext Context { get; } = context;
+
+    public void EnsurePlayer(string playerId)
+    {
+        if (!string.Equals(ActorId, playerId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Bound player '{ActorId}' cannot act for player '{playerId}'.");
+    }
+}
+
+internal sealed class PlayerSessionActorFactory : IZLinkActorFactory
+{
+    public ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        IZLinkActorContext context,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<IZLinkActor>(new PlayerSessionActor(actorId, context));
+}
+
+internal sealed class GameQuestEntrySpot(
+    IZLinkEntrySpotContext context,
+    ILogger<GameQuestEntrySpot> logger) : IZLinkEntrySpot<PlayerSessionActor>
+{
+    public IZLinkEntrySpotContext Context { get; } = context;
+
+    public ValueTask OnCreateActorAsync(
+        PlayerSessionActor actor,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("gamequest session actor created player={PlayerId}", actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        string actorId,
+        ZLinkMessage request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+
+    public ValueTask OnJoinedActorAsync(PlayerSessionActor actor, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(PlayerSessionActor actor, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public ValueTask OnDisconnectActorAsync(PlayerSessionActor actor, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("gamequest session actor disconnected player={PlayerId}", actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotActorSendHandler(nameof(NotifyQuestProgressActorReq))]
+internal sealed class NotifyQuestProgressActorHandler
+    : IZLinkEntrySpotActorSendHandler<
+        GameQuestEntrySpot,
+        PlayerSessionActor,
+        NotifyQuestProgressActorReq>
+{
+    public ValueTask HandleAsync(
+        GameQuestEntrySpot entrySpot,
+        PlayerSessionActor actor,
+        ZLinkSpotActorSendContext context,
+        NotifyQuestProgressActorReq request,
+        CancellationToken cancellationToken)
+    {
+        foreach (var progress in request.Notification.Projection)
+            actor.Context.BoundSession
+                .Send(new QuestProgressNotify(actor.ActorId, progress))
+                .Submit(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(request.Notification.CompletedQuestId))
+        {
+            var completed = request.Notification.Projection.First(
+                progress => progress.QuestId == request.Notification.CompletedQuestId);
+            actor.Context.BoundSession
+                .Send(new QuestCompletedNotify(actor.ActorId, completed, true))
+                .Submit(cancellationToken);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}

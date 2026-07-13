@@ -32,6 +32,10 @@ public sealed record SyncQuestProgressReq(string PlayerId);
 
 public sealed record SyncQuestProgressRes(QuestProgress[] UpdatedQuests);
 
+public sealed record ClosePlayerQuestOwnerReq(string PlayerId);
+
+public sealed record ClosePlayerQuestOwnerRes(bool Closed);
+
 public sealed record GetGameplaySnapshotReq(string PlayerId);
 
 public sealed record GetGameplaySnapshotRes(
@@ -47,19 +51,10 @@ public sealed record KillCountSnapshot(string MonsterId, string? AreaId, int Cou
 
 public sealed record ItemCountSnapshot(string ItemId, int Count);
 
-public sealed record BindQuestSessionReq(string PlayerId, string ConnectionId, string GameApiInstanceId);
-
-public sealed record BindQuestSessionRes(bool Bound);
-
-public sealed record UnbindQuestSessionReq(string PlayerId, string ConnectionId);
-
-public sealed record UnbindQuestSessionRes(bool Unbound);
-
-public sealed record QuestProgressNotify(string PlayerId, string? TargetConnectionId, QuestProgress Progress);
+public sealed record QuestProgressNotify(string PlayerId, QuestProgress Progress);
 
 public sealed record QuestCompletedNotify(
     string PlayerId,
-    string? TargetConnectionId,
     QuestProgress Progress,
     bool RewardGranted);
 

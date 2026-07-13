@@ -469,7 +469,11 @@ SetAgentAvailableRes {
 }
 
 JoinConversationReq {
-  // body 없음. 대상 ConversationId는 metadata로 전달 (§9.2)
+  // client 요청에서는 세 필드를 비워 둔다. 대상 ConversationId는 metadata로 전달한다(§9.2).
+  // Support 서버가 conversation actor join을 요청할 때는 실제 참가자 정보를 채운다.
+  ParticipantId: string
+  Role: string
+  DisplayName: string
 }
 
 JoinConversationRes {

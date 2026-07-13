@@ -144,78 +144,72 @@ public sealed class RedisCommerceStores :
     }
 
     public async ValueTask<ReserveInventoryResult> ReserveInventoryAsync(
-        string orderId,
-        string reservationId,
-        IReadOnlyList<OrderLineInput> lines,
+        ReserveInventoryCommand command,
         CancellationToken cancellationToken)
     {
         return await WithStateAsync(state =>
         {
-            if (state.Reservations.TryGetValue(reservationId, out var existing)
-                && string.Equals(existing.OrderId, orderId, StringComparison.Ordinal))
-                return new ReserveInventoryResult(true, reservationId, null);
+            if (state.Reservations.TryGetValue(command.ReservationId, out var existing)
+                && string.Equals(existing.OrderId, command.OrderId, StringComparison.Ordinal))
+                return new ReserveInventoryResult(true, command.ReservationId, null);
 
-            foreach (var line in lines)
+            foreach (var line in command.Lines)
             {
                 var available = state.Inventory.GetValueOrDefault(line.Sku);
                 if (available < line.Quantity)
                     return new ReserveInventoryResult(false, null, $"inventory unavailable for {line.Sku}");
             }
 
-            foreach (var line in lines) state.Inventory[line.Sku] -= line.Quantity;
+            foreach (var line in command.Lines) state.Inventory[line.Sku] -= line.Quantity;
 
-            state.Reservations[reservationId] = new InventoryReservation(
-                orderId,
-                lines.Select(static line => new InventoryReservationLine(line.Sku, line.Quantity)).ToArray());
-            return new ReserveInventoryResult(true, reservationId, null);
+            state.Reservations[command.ReservationId] = new InventoryReservation(
+                command.OrderId,
+                command.Lines.Select(static line => new InventoryReservationLine(line.Sku, line.Quantity)).ToArray());
+            return new ReserveInventoryResult(true, command.ReservationId, null);
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask ReleaseInventoryAsync(
-        string orderId,
-        string reservationId,
-        string reason,
+    public async ValueTask<ReleaseInventoryResult> ReleaseInventoryAsync(
+        ReleaseInventoryCommand command,
         CancellationToken cancellationToken)
     {
-        await WithStateAsync(state =>
+        return await WithStateAsync(state =>
         {
-            if (state.ReleasedReservations.ContainsKey(reservationId)) return;
-            if (state.Reservations.TryGetValue(reservationId, out var reservation)
-                && string.Equals(reservation.OrderId, orderId, StringComparison.Ordinal))
+            if (state.ReleasedReservations.ContainsKey(command.ReservationId))
+                return new ReleaseInventoryResult(true);
+            if (state.Reservations.TryGetValue(command.ReservationId, out var reservation)
+                && string.Equals(reservation.OrderId, command.OrderId, StringComparison.Ordinal))
             {
                 foreach (var line in reservation.Lines)
                     state.Inventory[line.Sku] = state.Inventory.GetValueOrDefault(line.Sku) + line.Quantity;
             }
 
-            state.ReleasedReservations[reservationId] = reason;
+            state.ReleasedReservations[command.ReservationId] = command.Reason;
+            return new ReleaseInventoryResult(true);
         }, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<AuthorizePaymentResult> AuthorizePaymentAsync(
-        string orderId,
-        string paymentId,
-        string paymentMethodId,
-        decimal amount,
-        string currency,
+        AuthorizePaymentCommand command,
         CancellationToken cancellationToken)
     {
         return await WithStateAsync(state =>
         {
-            if (state.Payments.ContainsKey(paymentId))
-                return new AuthorizePaymentResult(true, paymentId, null);
+            if (state.Payments.ContainsKey(command.PaymentId))
+                return new AuthorizePaymentResult(true, command.PaymentId, null);
 
-            if (state.PaymentAttempts.TryGetValue(orderId, out var existingFailure))
+            if (state.PaymentAttempts.TryGetValue(command.OrderId, out var existingFailure))
                 return new AuthorizePaymentResult(false, null, existingFailure);
 
-            var method = state.PaymentMethods[paymentMethodId];
+            var method = state.PaymentMethods[command.PaymentMethodId];
             if (!method.ShouldAuthorize)
             {
-                state.PaymentAttempts[orderId] = method.FailureReason ?? "payment failed";
-                return new AuthorizePaymentResult(false, null, state.PaymentAttempts[orderId]);
+                state.PaymentAttempts[command.OrderId] = method.FailureReason ?? "payment failed";
+                return new AuthorizePaymentResult(false, null, state.PaymentAttempts[command.OrderId]);
             }
 
-            state.Payments[paymentId] = $"{amount:0.00} {currency}";
-            return new AuthorizePaymentResult(true, paymentId, null);
+            state.Payments[command.PaymentId] = $"{command.Amount:0.00} {command.Currency}";
+            return new AuthorizePaymentResult(true, command.PaymentId, null);
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -263,7 +257,7 @@ public sealed class RedisCommerceStores :
                     sourceCommandId,
                     orderId,
                     domainEvent.GetType().Name,
-                    domainEvent,
+                    StoredOrderEventPayload.Encode(domainEvent),
                     ++currentVersion,
                     domainEvent.CreatedAtUnixMs));
             }
@@ -357,13 +351,13 @@ public sealed class RedisCommerceStores :
         return domainEvent switch
         {
             InventoryReservedEvent reserved => stream.Any(item =>
-                item.Payload is InventoryReservedEvent current
+                item.Decode() is InventoryReservedEvent current
                 && current.ReservationId == reserved.ReservationId),
             PaymentAuthorizedEvent paid => stream.Any(item =>
-                item.Payload is PaymentAuthorizedEvent current
+                item.Decode() is PaymentAuthorizedEvent current
                 && current.PaymentId == paid.PaymentId),
-            OrderConfirmedEvent => stream.Any(static item => item.Payload is OrderConfirmedEvent),
-            OrderFailedEvent => stream.Any(static item => item.Payload is OrderFailedEvent),
+            OrderConfirmedEvent => stream.Any(static item => item.Decode() is OrderConfirmedEvent),
+            OrderFailedEvent => stream.Any(static item => item.Decode() is OrderFailedEvent),
             _ => false
         };
     }

@@ -12,6 +12,7 @@ mkdir -p "${LOG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
+RUN_SUCCEEDED=0
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -40,9 +41,9 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${SHOPPINGMALL_KEEP_RUN_DIR:-}" != "1" ]]; then
     [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
   else
     echo "runDir=${RUN_DIR}"
@@ -185,3 +186,4 @@ grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-b.log"
 grep -q "shoppingmall evidence:" "${LOG_DIR}/api-a.log"
 grep -Rq "message flow" "${SHOPPINGMALL_LOG_DIR}"
 echo "shoppingmall-server-evidence=completed"
+RUN_SUCCEEDED=1

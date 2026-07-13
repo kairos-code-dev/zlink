@@ -5,7 +5,7 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
-    public void DeliveryDispatch_Runner_Reuses_External_Redis_And_Uses_Location_Store()
+    public void DeliveryDispatch_Runner_Uses_Isolated_Docker_Redis_And_Location_Store()
     {
         var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
         var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
@@ -13,11 +13,11 @@ public sealed partial class RegressionTests
         var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
         var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleTopology.cs"));
 
-        Assert.Contains("if [[ -z \"${DELIVERYDISPATCH_REDIS_ENDPOINT:-}\" ]]", shellRunner,
+        Assert.DoesNotContain("if [[ -z \"${DELIVERYDISPATCH_REDIS_ENDPOINT:-}\" ]]", shellRunner,
             StringComparison.Ordinal);
         AssertShellRunnerUsesRedisDockerHelper(
             shellRunner,
-            "deliverydispatch-dotnet-redis",
+            "zlink-deliverydispatch-dotnet-redis",
             "DELIVERYDISPATCH_REDIS_ENDPOINT");
         Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch=completed", shellRunner, StringComparison.Ordinal);
@@ -30,9 +30,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
 
-        Assert.Contains("if (-not $env:DELIVERYDISPATCH_REDIS_ENDPOINT)", powershellRunner,
+        Assert.DoesNotContain("if (-not $env:DELIVERYDISPATCH_REDIS_ENDPOINT)", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-deliverydispatch-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$env:DELIVERYDISPATCH_LOG_DIR = $SampleLogDir", powershellRunner,
             StringComparison.Ordinal);
@@ -58,8 +58,8 @@ public sealed partial class RegressionTests
             AssertLocationStoreHost(File.ReadAllText(hostFactory));
         }
 
-        Assert.Contains("`DELIVERYDISPATCH_REDIS_ENDPOINT`가 이미 있으면", readme, StringComparison.Ordinal);
-        Assert.Contains("그 Redis를 재사용하고 정리하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("전용 Docker Redis", readme, StringComparison.Ordinal);
+        Assert.Contains("외부 Redis endpoint", readme, StringComparison.Ordinal);
         Assert.Contains("`run_sample.sh`와 `run_sample.ps1`", readme, StringComparison.Ordinal);
         Assert.Contains("AssignDeliveryMsg", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("`AssignDelivery`", readme, StringComparison.Ordinal);
@@ -92,7 +92,8 @@ public sealed partial class RegressionTests
         Assert.Contains("ActorRefSnapshot? Actor = null", messages, StringComparison.Ordinal);
         Assert.Contains("string? SessionRoute = null", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("record DeliveryStatusUpdatedRes", messages, StringComparison.Ordinal);
-        Assert.DoesNotContain("record BindCourierReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record BindCourierReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record BindCourierRes", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("record ReassignDelivery", messages, StringComparison.Ordinal);
         Assert.Contains("FindAsync(request.CourierId", courierRoutes, StringComparison.Ordinal);
         Assert.Contains("FindAsync(request.CustomerId", customerAccess, StringComparison.Ordinal);

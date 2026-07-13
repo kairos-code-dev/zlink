@@ -6,12 +6,13 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunDir = New-SampleRunDirectory "gamequest-dotnet"
 $RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $RedisContainer = $null
+$RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir, $SampleLogDir | Out-Null
 
 try {
-    $ports = New-SamplePorts -Count 16 -BasePort 0
+    $ports = New-SamplePorts -Count 21 -BasePort 0
 
     $env:GAMEQUEST_LOG_DIR = $SampleLogDir
     $env:GAMEQUEST_REDIS_KEY_PREFIX = "gamequest:dotnet:${RunId}:"
@@ -27,21 +28,20 @@ try {
     $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[10])"
     $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[11])"
     $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[12])"
+    $env:GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[13])"
+    $env:GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[14])"
+    $env:GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[15])"
+    $env:GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[16])"
+    $env:GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[17])"
+    $env:GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[18])"
+    $env:GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[19])"
+    $env:GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[20])"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "GameQuest.csproj")
 
-    # The sample owns its Redis: a dedicated, throwaway container is the shared
-    # location store every server registers into (no registry process exists).
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the GameQuest sample (it provisions a dedicated Redis container)."
-    }
-    $RedisContainer = "zlink-gamequest-dotnet-redis-$RunId"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $env:GAMEQUEST_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redis = Start-SampleRedisContainer "zlink-gamequest-dotnet-redis"
+    $RedisContainer = $redis.ContainerId
+    $env:GAMEQUEST_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:GAMEQUEST_REDIS_ENDPOINT"
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_MISSION_A_HTTP_URL
@@ -49,6 +49,7 @@ try {
     Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "mission-a-spot-router" $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-a-spot-pub" $env:GAMEQUEST_MISSION_A_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "mission-a-channel" $env:GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
     Wait-SampleHttpHealth "mission-a" $env:GAMEQUEST_MISSION_A_HTTP_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_MISSION_B_HTTP_URL
@@ -56,6 +57,7 @@ try {
     Start-SampleDotnetAssembly -Name "mission-b" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "mission-b-spot-router" $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-b-spot-pub" $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "mission-b-channel" $env:GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
     Wait-SampleHttpHealth "mission-b" $env:GAMEQUEST_MISSION_B_HTTP_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
@@ -63,6 +65,9 @@ try {
     $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "api-a-stream" $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a-channel" $env:GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a-spot" $env:GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a-spot-router" $env:GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleHttpHealth "api-a" $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
@@ -70,6 +75,9 @@ try {
     $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "api-b-stream" $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b-channel" $env:GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b-spot" $env:GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b-spot-router" $env:GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleHttpHealth "api-b" $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/GameQuest.Client.csproj")
@@ -81,13 +89,14 @@ try {
     Invoke-WebRequest -Method Post -Uri "$($env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL)/self-check/assert" -UseBasicParsing | Select-String -Pattern '"passed":true' | Out-Null
     Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"
     Write-Host "gamequest-server-evidence=completed"
+    $RunSucceeded = $true
 }
 finally {
     Stop-SampleProcesses
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer | Out-Null
+        Remove-SampleRedisContainer $RedisContainer
     }
-    if ($env:GAMEQUEST_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $env:GAMEQUEST_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

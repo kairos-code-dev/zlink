@@ -2434,7 +2434,10 @@ public sealed partial class EntrySpotActorDispatchTests
             "entry",
             "entry-channel",
             TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(1));
+            new ZLinkSpotOutboundTransport(
+                spot,
+                TimeSpan.FromSeconds(1),
+                CancellationToken.None));
         activation.InitializeRuntimeResources();
         return (activation, runtime);
     }

@@ -10,11 +10,6 @@ internal sealed class PlaySession(
 {
     public IZLinkSessionContext Context { get; } = context;
 
-    public void Configure()
-    {
-        Context.Handlers.AddHandler<Handlers.AuthenticatePlaySessionHandler>();
-    }
-
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation(

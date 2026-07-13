@@ -39,8 +39,23 @@ internal sealed class BingoEntrySpot(
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "entry spot: actor joined. actor={ActorId}",
-            actor.ActorId);
+            "entry spot: actor joined. actor={ActorId}, destroyAfterJoin={DestroyAfterJoin}",
+            actor.ActorId,
+            actor.DestroyAfterEntrySpotJoin);
+        if (actor.DestroyAfterEntrySpotJoin)
+        {
+            logger.LogInformation(
+                "entry spot: actor destroy requested. actor={ActorId}",
+                actor.ActorId);
+            // Finished-room cleanup is server lifecycle work and must complete even
+            // when the client closes immediately after receiving the final result.
+            await Context.DestroyActorAsync(actor, CancellationToken.None);
+            logger.LogInformation(
+                "entry spot: actor destroy completed. actor={ActorId}",
+                actor.ActorId);
+            return;
+        }
+
         if (!string.IsNullOrEmpty(actor.RoomId))
             actor.Context.BoundSession
                 .Send(new BingoActorEntrySpotNotify
@@ -50,15 +65,6 @@ internal sealed class BingoEntrySpot(
                     TargetNodeRid = Context.NodeRid.ToString()
                 })
                 .Submit(cancellationToken);
-        if (!actor.DestroyAfterEntrySpotJoin) return;
-
-        logger.LogInformation(
-            "entry spot: actor destroy requested. actor={ActorId}",
-            actor.ActorId);
-        await Context.DestroyActorAsync(actor, cancellationToken);
-        logger.LogInformation(
-            "entry spot: actor destroy completed. actor={ActorId}",
-            actor.ActorId);
     }
 
     public ValueTask OnLeaveActorAsync(

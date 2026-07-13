@@ -807,7 +807,8 @@ InventorySeed     { Sku, AvailableQuantity: int }
 PaymentMethodSeed { PaymentMethodId, ShouldAuthorize: bool, FailureReason: string? }
 ```
 
-runner는 self-check 전에 위 시드 데이터를 `CommerceStateStore`에 넣는다. 재고 실패는
+runner가 시작한 `CommerceApi`는 self-check를 받기 전에 위 시드 데이터를
+`CommerceStateStore`에 멱등하게 넣는다. 재고 실패는
 `AvailableQuantity`가 부족한 장바구니를, 결제 실패는 `ShouldAuthorize=false`인 결제수단을 쓴다.
 
 ## 12. 메시지 흐름
@@ -971,9 +972,8 @@ sequenceDiagram
 - **죽은 뒤 재개**: test hook으로 배경 재개를 `InventoryReserved`까지만 진행하고 중단(중간 상태
   생성) → 복구용 `ContinueOrderWorkflowReq` → 예약 단계 건너뛰고 결제부터 재개해 `Confirmed`
   도달, 결정적 id로 중복 예약 없음 검증. 종료 이벤트 기록 후 조회 모델 갱신을 중단한 경우도
-  재개가 조회 모델을 치유하는지 검증. (**구현 목표** — 이 문서 작성 시점의 `.NET` client
-  self-check에는 "대기 복구"용 `/self-check/idempotency/pending` 같은 중단 test hook이 아직
-  없다. 새 구현이 이 시나리오를 실제로 돌리려면 같은 방식의 test hook을 먼저 추가해야 한다.)
+  재개가 조회 모델을 치유하는지 검증. 이 흐름은 중단 지점을 만드는 self-check hook과
+  `ContinueOrderWorkflowReq`를 사용해 실제 runner에서 검증한다.
 - **조회 모델 재생성**: 대상 `OrderId` 조회 모델 삭제 → `RebuildOrderProjectionReq` →
   `OrderEventStore` 재생만으로 조회 모델 복원 검증.
 - **조회 지연**: 시작 후 즉시 조회하지 않고 종료까지 둔 뒤 조회 → 반복 조회해도 같은 최종 상태,

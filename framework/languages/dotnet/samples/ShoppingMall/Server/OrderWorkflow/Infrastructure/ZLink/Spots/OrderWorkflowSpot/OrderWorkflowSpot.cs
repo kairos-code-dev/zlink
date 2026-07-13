@@ -90,5 +90,3 @@ internal sealed class OrderWorkflowSpot(
 }
 
 internal sealed record OrderWorkflowSpotCreateReq(string OrderId);
-
-internal sealed record PrepareInventoryReservedCheckpointReq(StartOrderWorkflowReq Command);

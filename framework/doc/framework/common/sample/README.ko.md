@@ -32,6 +32,19 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | channel handler, Spot actor join | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | event-sourced OrderWorkflowSpot, 조회 모델 adapter | JSON |
 | [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | owner routing handler, event-sourced PlayerQuestSpot, 조회 모델 adapter | JSON |
+| [ZoneWorld](zoneworld/README.ko.md) **⛔ 착수 금지 — 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | zone spot, player actor, owner 일관 channel, fanout subscriber | JSON |
+
+> **⛔ ZoneWorld는 아직 착수하지 않는다.**
+> [TypeScript connector의 브라우저 결함 수정](../draft/browser-stream-connector.ko.md)이
+> 완료되기 전까지 **서버·client 어느 쪽도 구현하지 않는다.** 이 샘플의 검증 수단이 브라우저
+> 화면인데 현재 connector가 브라우저에서 동작하지 않으므로, 서버만 먼저 구현하면 검증할 수
+> 없는 코드가 5개 언어에 쌓인다.
+>
+> **ZoneWorld는 다른 샘플과 두 가지가 다르다.** (1) **브라우저 UI**를 제공해 zone 이동과
+> 노드 관제를 눈으로 확인한다. (2) server는 언어별로 구현하되 **client는 TypeScript 하나만**
+> 구현해 모든 언어 server에 연결한다(wire가 언어 중립이므로). 또한 기존 6종이 다루지 않는
+> 축(channel fanout · runtime event · actor cross-node transfer · bound session 없는 actor ·
+> 브라우저 client)의 커버리지 공백을 채운다.
 
 ## 메시지 이름 원칙
 
@@ -100,6 +113,15 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   바꾸지 않는다.
 - 서버 간 연결은 공유 location store 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
+- **절대 규칙: TicTacToe만 수동 연결을 사용할 수 있다.** TicTacToe를 제외한 모든 샘플은
+  어떤 이유로도 수동 연결을 추가하거나 유지하면 안 된다. 빌드·실행 성공, 일시적인 자동 연결
+  실패, 디버깅 편의, 언어별 구현 차이는 예외 사유가 아니다. 그 밖의 샘플은 channel client에 상대
+  endpoint를 직접 넘기거나, Spot router/pub-sub peer를 직접 연결하거나, 서버 간 호출을
+  고정 HTTP endpoint로 우회하면 안 된다. 즉 `EnableClient(endpoint)`, `ConnectRouter(...)`,
+  `ConnectPeerPub(...)`, 서버 코드의 peer 대상 `ZLinkHttpClient.Create(...)`를 사용하지 않는다.
+  자동 연결이 실패하면 샘플에 수동 연결을 추가하지 말고 location store 등록·조회·연결
+  lifecycle이 끊긴 framework 구현을 수정한다. 이 금지는 언어별 sample 전체에 적용하며,
+  위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다.
 - framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
   누락을 client 시나리오가 늦게 발견하게 된다.

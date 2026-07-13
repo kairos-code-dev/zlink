@@ -98,12 +98,9 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$env:SUPPORTCHAT_REDIS_KEY_PREFIX = \"supportchat:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$RedisContainer = \"zlink-supportchat-dotnet-redis-$RunId\"", powershellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-supportchat-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("if (-not $env:SUPPORTCHAT_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when SUPPORTCHAT_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("$env:SUPPORTCHAT_BASE_PORT", powershellRunner, StringComparison.Ordinal);

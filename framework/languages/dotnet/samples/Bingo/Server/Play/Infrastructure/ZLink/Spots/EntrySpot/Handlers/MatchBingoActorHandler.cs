@@ -53,7 +53,8 @@ internal sealed class MatchBingoActorHandler(
             ZLinkActorJoinResult<BingoRoomJoinRes>.Rejected rejected => rejected.Reply.State,
             _ => throw new InvalidOperationException("Unknown actor join result.")
         };
-        // join 후에는 actor 객체를 다시 만지지 않는다 — game-started push 는 room 의 OnJoinedActorAsync 가 한다.
+        // The actor may have moved to a remote room, so this source handler does
+        // not access the actor again after JoinSpot completes.
 
         return new MatchBingoRes
         {

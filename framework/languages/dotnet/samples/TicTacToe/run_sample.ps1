@@ -11,6 +11,7 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 $env:TICTACTOE_LOG_DIR = $SampleLogDir
 $redisContainerId = $null
+$RunSucceeded = $false
 
 function Wait-LogContains {
     param(
@@ -74,15 +75,9 @@ try {
     $playAConfigFile = Join-Path $RunDir "appsettings.play-a.json"
     $playBConfigFile = Join-Path $RunDir "appsettings.play-b.json"
 
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the TicTacToe sample."
-    }
-    $redisContainerId = (& docker run -d --rm --tmpfs /data --name "zlink-tictactoe-dotnet-redis-$RunId" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker failed to start Redis."
-    }
-    $redisPort = (& docker port $redisContainerId "6379/tcp") -replace '^.*:', ''
-    $env:TICTACTOE_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redis = Start-SampleRedisContainer "zlink-tictactoe-dotnet-redis"
+    $redisContainerId = $redis.ContainerId
+    $env:TICTACTOE_REDIS_ENDPOINT = $redis.Endpoint
     $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
 
     function New-TicTacToeSettings {
@@ -168,13 +163,14 @@ try {
         throw "Unexpected message-flow error in TicTacToe sample logs."
     }
     Wait-SampleLogContains "message flow" "TicTacToe message-flow evidence"
+    $RunSucceeded = $true
 }
 finally {
     Stop-SampleProcesses
     if ($redisContainerId) {
-        & docker rm -f $redisContainerId *> $null
+        Remove-SampleRedisContainer $redisContainerId
     }
-    if ($env:TICTACTOE_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $env:TICTACTOE_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

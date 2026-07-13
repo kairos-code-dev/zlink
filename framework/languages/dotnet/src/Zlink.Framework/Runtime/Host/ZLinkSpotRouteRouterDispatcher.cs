@@ -77,18 +77,14 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         if (state.TryGetSpotNodeByRoutingId(targetNodeRid, out var localSpotNode)
             && localSpotNode.Registration.Router is not null)
             return new SpotNodeRouterTarget(
-                routerChannelId,
-                localSpotNode.Node.EntrySpot(),
-                "Local SPOT node");
+                localSpotNode.EntryOutbound);
 
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
             return new RouteChannelTarget(routeChannel);
 
         if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNodeRuntime))
             return new SpotNodeRouterTarget(
-                routerChannelId,
-                spotNodeRuntime.Node.EntrySpot(),
-                "SpotNode router");
+                spotNodeRuntime.EntryOutbound);
 
         throw new ZLinkConfigurationException(
             $"Router-capable channel '{routerChannelId}' is not registered in this process.");
@@ -111,9 +107,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     }
 
     private sealed class SpotNodeRouterTarget(
-        string routerChannelId,
-        IZLinkBackendSpot entrySpot,
-        string sourceLabel)
+        ZLinkSpotOutboundTransport outbound)
         : IRouterTarget
     {
         public ValueTask SendAsync(
@@ -121,18 +115,11 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             CancellationToken cancellationToken)
-        {
-            if (!entrySpot.SendToSpot(
-                    targetNodeRid,
-                    targetSpotRid,
-                    parts,
-                    SendFlags.DontWait))
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"{sourceLabel} for route channel '{routerChannelId}' is not ready for SPOT send.");
-
-            return ValueTask.CompletedTask;
-        }
+            => outbound.SendToSpotAsync(
+                targetNodeRid,
+                targetSpotRid,
+                parts,
+                cancellationToken);
 
         public async ValueTask<IReadOnlyList<Message>> RequestAsync(
             RoutingId targetNodeRid,
@@ -140,29 +127,13 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             IReadOnlyList<Message> parts,
             TimeSpan timeout,
             CancellationToken cancellationToken)
-        {
-            using var completion = new ZLinkNativeReplyCompletion<RequestResult>(
-                cancellationToken,
-                timeout,
-                "SPOT node router request timed out.");
-            if (!entrySpot.RequestToSpot(
+            => await outbound.RequestToSpotAsync(
                     targetNodeRid,
                     targetSpotRid,
                     parts,
-                    (result, reply) => CompleteRouteRequest(
-                        completion,
-                        result,
-                        reply,
-                        $"SpotNode router '{routerChannelId}' SPOT request failed with result '{result}'."),
-                    SendFlags.None,
-                    timeout))
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"SpotNode router '{routerChannelId}' is not ready for SPOT request.");
-
-            var (_, reply) = await completion.Task.ConfigureAwait(false);
-            return reply;
-        }
+                    timeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private sealed class RouteChannelTarget(ZLinkRouteChannelRuntime routeChannel)

@@ -1,13 +1,10 @@
-using GameQuest.GameApi.Infrastructure.Store;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
 namespace GameQuest.GameApi.Session;
 
 internal sealed class GameQuestSession(
-    IZLinkSessionContext context,
-    GameQuestSessionRegistry registry,
-    GameQuestStore store) : IZLinkSession
+    IZLinkSessionContext context) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -18,7 +15,8 @@ internal sealed class GameQuestSession(
 
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (var unbind in registry.Remove(Context)) await store.UnbindSessionAsync(unbind, cancellationToken);
+        foreach (var actor in Context.Actors.Bound)
+            await actor.NotifyDisconnectedAsync(cancellationToken);
     }
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
@@ -32,6 +30,15 @@ internal sealed class GameQuestSession(
         CancellationToken cancellationToken)
     {
         if (!await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
-            throw new InvalidOperationException($"Unsupported GameQuest packet '{dispatch.PacketName}'.");
+        {
+            var actor = Context.Actors.Bound.Count switch
+            {
+                1 => Context.Actors.Bound.Single(),
+                0 => throw new InvalidOperationException(
+                    $"Client must join a player session before sending '{dispatch.PacketName}'."),
+                _ => throw new InvalidOperationException("A GameQuest session may bind exactly one player actor.")
+            };
+            await actor.RelayAsync(payload, cancellationToken);
+        }
     }
 }

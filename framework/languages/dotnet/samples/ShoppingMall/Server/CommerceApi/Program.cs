@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
-using ShoppingMall.Server.CommerceApi.Infrastructure.Http;
 using ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 using ShoppingMall.Server.CommerceApi.Ports.Outbound;
 using ShoppingMall.Server.Configuration;
@@ -39,8 +38,6 @@ internal static class Program
         builder.Services.AddSingleton<ICommerceStateStore>(static provider =>
             provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<IOrderWorkflowRouter, ZLinkOrderWorkflowRouter>();
-        builder.Services.AddSingleton<IOrderWorkflowSelfCheckClient, HttpOrderWorkflowSelfCheckClient>();
-        builder.Services.AddSingleton<ICommerceApiPeerClient, HttpCommerceApiPeerClient>();
         builder.Services.AddSingleton<OrderStartPreparation>();
         builder.Services.AddSingleton<StartOrderUseCase>();
         builder.Services.AddSingleton<PrepareInventoryReservedOrderUseCase>();

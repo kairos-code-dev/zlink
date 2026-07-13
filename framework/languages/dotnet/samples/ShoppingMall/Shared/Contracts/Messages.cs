@@ -64,6 +64,8 @@ public sealed record RebuildOrderProjectionReq(string OrderId);
 
 public sealed record RebuildOrderProjectionRes(OrderState State);
 
+public sealed record PrepareInventoryReservedCheckpointReq(StartOrderWorkflowReq Command);
+
 public sealed record OrderProjectionUpdatedEvent(
     string OrderId,
     string Status,

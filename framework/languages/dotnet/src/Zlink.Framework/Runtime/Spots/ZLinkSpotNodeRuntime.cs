@@ -18,6 +18,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private Task? _disposeTask;
     private bool _stopSourceDisposed;
     private IZLinkBackendSpot? _entrySpot;
+    private ZLinkSpotOutboundTransport? _entryOutbound;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
     private int _entrySpotMetricActive;
     private int _entrySpotLifecycleClosed;
@@ -87,6 +88,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
     internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
+
+    internal ZLinkSpotOutboundTransport EntryOutbound => _entryOutbound
+        ?? throw new InvalidOperationException($"SPOT node '{Name}' entry outbound transport is not initialized.");
 
     internal void RequestStop()
     {
@@ -179,11 +183,16 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask InitializeEntrySpotAsync()
     {
+        _entrySpot ??= Node.EntrySpot();
+        _entryOutbound ??= new ZLinkSpotOutboundTransport(
+            _entrySpot,
+            Registration.Router?.SocketConfig.SendTimeout
+            ?? _frameworkRegistration.DefaultSocketSendTimeout,
+            _stopSource.Token);
         if (Registration.EntrySpotType is null)
         {
             if (ShouldAttachActorDispatchPump())
             {
-                _entrySpot = Node.EntrySpot();
                 new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner)
                     .Attach(_entrySpot);
                 if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
@@ -193,7 +202,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             return;
         }
 
-        _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
 
         var activation = await CreateEntrySpotActivationAsync(entrySpot)
@@ -328,8 +336,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 Registration.SpotNodeName,
                 _frameworkRegistration.SpotDiscovery?.ChannelName ?? Registration.SpotNodeName,
                 _frameworkRegistration.DefaultRequestTimeout,
-                Registration.Router?.SocketConfig.SendTimeout
-                ?? _frameworkRegistration.DefaultSocketSendTimeout);
+                EntryOutbound);
             activation.InitializeRuntimeResources();
             foreach (var handler in _frameworkRegistration.ScannedHandlerCatalog.SpotHandlers)
                 await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
@@ -373,6 +380,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             if (Volatile.Read(ref _entrySpotLifecycleClosed) == 0)
                 await CaptureAsync(() => activation.CloseAsync(CancellationToken.None)).ConfigureAwait(false);
             await CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
+        }
+
+        if (_entryOutbound is { } outbound)
+        {
+            await CaptureAsync(outbound.DisposeAsync).ConfigureAwait(false);
+            _entryOutbound = null;
         }
 
         await CaptureAsync(_entrySpot.DisposeAsync).ConfigureAwait(false);

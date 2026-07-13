@@ -12,6 +12,7 @@ mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER_ID=""
+RUN_SUCCEEDED=0
 export TICTACTOE_REDIS_KEY_PREFIX="tictactoe:dotnet:${RUN_ID}:"
 
 cleanup() {
@@ -44,9 +45,9 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${TICTACTOE_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${TICTACTOE_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
@@ -245,3 +246,4 @@ if grep -R -q "message flow outcome=error" "${TICTACTOE_LOG_DIR}"; then
   exit 1
 fi
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
+RUN_SUCCEEDED=1

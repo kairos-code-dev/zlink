@@ -1,9 +1,11 @@
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
+[ZLinkSpotActorSendHandler(nameof(LeaveGameReq))]
 internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandler> logger)
     : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, LeaveGameReq>
 {

@@ -2,10 +2,12 @@ using Systems.Zlink;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
+[ZLinkSpotActorRequestHandler(nameof(JoinGameReq))]
 internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayActor, JoinGameReq, JoinGameRes>
 {

@@ -34,9 +34,9 @@ stream session binding이 한 업무 흐름 안에서 어떻게 이어지는지�
 러너는 실행마다 전용 Redis 컨테이너를 location store로 띄우고
 (`DELIVERYDISPATCH_REDIS_ENDPOINT`, `DELIVERYDISPATCH_REDIS_KEY_PREFIX`), 서버 역할을
 별도 프로세스로 시작한 뒤 포트와 HTTP health를 확인하고 client scenario를 실행한다.
-`DELIVERYDISPATCH_REDIS_ENDPOINT`가 이미 있으면 `run_sample.sh`와 `run_sample.ps1`은
-그 Redis를 재사용하고 정리하지 않는다. 값이 없을 때만 실행 전용 Docker Redis 컨테이너를
-만든다. 서버들은 registry process 없이 공유 location store에 위치를 등록하고 자동 연결한다.
+`run_sample.sh`와 `run_sample.ps1`은 외부 Redis endpoint를 재사용하지 않는다. 각 실행은
+전용 Docker Redis 컨테이너를 만들고 종료할 때 컨테이너와 volume을 함께 제거한다. 서버들은
+registry process 없이 공유 location store에 위치를 등록하고 자동 연결한다.
 
 ## 왜 실시간성이 중요한가
 

@@ -12,6 +12,7 @@ New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
 $env:BINGO_LOG_DIR = $SampleLogDir
 $RedisContainer = $null
+$RunSucceeded = $false
 
 function Set-DefaultEnv {
     param([string]$Name, [string]$Value)
@@ -22,7 +23,7 @@ function Set-DefaultEnv {
 
 function Require-LogCount {
     param(
-        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Path,
         [Parameter(Mandatory = $true)][string]$Pattern,
         [Parameter(Mandatory = $true)][int]$Expected
     )
@@ -35,7 +36,7 @@ function Require-LogCount {
 
 function Wait-LogContains {
     param(
-        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Path,
         [Parameter(Mandatory = $true)][string]$Pattern,
         [Parameter(Mandatory = $true)][string]$Description,
         [int]$Attempts = 50
@@ -91,18 +92,9 @@ try {
     Set-DefaultEnv "BINGO_PLAY_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
     Set-DefaultEnv "BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[14])"
     Set-DefaultEnv "BINGO_API_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[15])"
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    if ($null -eq $docker) {
-        throw "Docker is required to run the Bingo sample."
-    }
-
-    $RedisContainer = "zlink-bingo-dotnet-redis-$RunId"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $env:BINGO_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redis = Start-SampleRedisContainer "zlink-bingo-dotnet-redis"
+    $RedisContainer = $redis.ContainerId
+    $env:BINGO_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "Bingo.csproj")
@@ -146,22 +138,24 @@ try {
 
     $playA = Join-Path $LogDir "play-a.out.log"
     $playB = Join-Path $LogDir "play-b.out.log"
-    Wait-LogContains $playB "bingo observer room: actor left. observedRoom=.*observer=observer" "Observer room leave evidence"
-    Wait-LogContains $playA "bingo room: actor left. room=.*actor=player-1" "player-1 room leave evidence"
-    Wait-LogContains $playA "bingo room: actor left. room=.*actor=player-2" "player-2 room leave evidence"
-    Require-LogCount -Path $playA -Pattern "entry spot: actor left\. actor=player-1" -Expected 1
-    Require-LogCount -Path $playA -Pattern "entry spot: actor left\. actor=player-2" -Expected 1
-    Require-LogCount -Path $playA -Pattern "entry spot: actor destroy completed\. actor=player-1" -Expected 1
-    Require-LogCount -Path $playA -Pattern "entry spot: actor destroy completed\. actor=player-2" -Expected 1
-    Require-LogCount -Path $playB -Pattern "entry spot: actor destroy completed\. actor=observer" -Expected 0
+    $playLogs = @($playA, $playB)
+    Wait-LogContains $playLogs "bingo observer room: actor left. observedRoom=.*observer=observer" "Observer room leave evidence"
+    Wait-LogContains $playLogs "bingo room: actor left. room=.*actor=player-1" "player-1 room leave evidence"
+    Wait-LogContains $playLogs "bingo room: actor left. room=.*actor=player-2" "player-2 room leave evidence"
+    Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-1" "player-1 destroy evidence"
+    Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-2" "player-2 destroy evidence"
+    Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-1" -Expected 1
+    Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-2" -Expected 1
+    Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=observer" -Expected 0
     Wait-SampleLogContains "message flow" "Bingo message-flow evidence"
+    $RunSucceeded = $true
 }
 finally {
     Stop-SampleProcesses
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer | Out-Null
+        Remove-SampleRedisContainer $RedisContainer
     }
-    if ($env:BINGO_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $env:BINGO_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

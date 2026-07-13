@@ -1,22 +1,21 @@
 using GameQuest.GameApi.Application;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
-using Zlink.HttpClient;
+using Zlink.Framework.Contracts.Channels;
 
-namespace GameQuest.GameApi.Infrastructure.Http;
+namespace GameQuest.GameApi.Infrastructure.ZLink;
 
-internal sealed class HttpQuestProgressSynchronizer(GameQuestTopology topology) : IQuestProgressSynchronizer
+internal sealed class ZLinkQuestProgressSynchronizer(
+    GameQuestTopology topology,
+    IZLinkChannelClient channels) : IQuestProgressSynchronizer
 {
     public async ValueTask<SyncQuestProgressRes> SyncAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
-        var missionBaseUrl = GameQuestRouting.OwnerIndex(playerId) == 1
-            ? topology.MissionBHttpBaseUrl
-            : topology.MissionAHttpBaseUrl;
-        using var mission = ZLinkHttpClient.Create(missionBaseUrl).Build();
-        return (await mission.Post("/internal/sync")
-            .Body(new SyncQuestProgressReq(playerId))
-            .SubmitAsync<SyncQuestProgressRes>(cancellationToken)).Body;
+        return await channels.RequestToChannel(
+                topology.QuestOwnerChannel(playerId),
+                new SyncQuestProgressReq(playerId))
+            .Async<SyncQuestProgressRes>(cancellationToken);
     }
 }

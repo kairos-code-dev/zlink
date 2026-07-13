@@ -46,9 +46,12 @@ class play_server_host_factory_t
               .trace_label ("tictactoe-play-" + topology.selected_play_node_rid ());
             options.services ()
               .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
-              .add_singleton<redis_room_route_store_t, sample_topology_t> ()
+              /* Application은 port(room_route_store_t)에만 의존하고, Redis 구현이 그 port로
+               * 등록된다(공통 sample spec §7). */
+              .add_singleton<room_route_store_t> (
+                std::make_unique<redis_room_route_store_t> (topology))
               .add_singleton<tictactoe_game_creator_t, sample_topology_t,
-                             redis_room_route_store_t> ();
+                             room_route_store_t> ();
             add_sample_location_store (options, topology);
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())

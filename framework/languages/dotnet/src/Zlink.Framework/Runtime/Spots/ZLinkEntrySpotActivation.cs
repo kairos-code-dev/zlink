@@ -26,7 +26,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private readonly SemaphoreSlim _routeDrainGate = new(1, 1);
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
-    private readonly TimeSpan? _sendTimeout;
     private ZLinkSerialExecutionQueue _serial = null!;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
@@ -46,7 +45,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         string spotNodeName,
         string channelName,
         TimeSpan defaultRequestTimeout,
-        TimeSpan? sendTimeout)
+        ZLinkSpotOutboundTransport outbound)
     {
         _runtime = runtime;
         _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
@@ -55,7 +54,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
         DefaultRequestTimeout = defaultRequestTimeout;
-        _sendTimeout = sendTimeout;
+        _outbound = outbound;
         _scope = scope;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         try
@@ -106,10 +105,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     internal void InitializeRuntimeResources()
     {
-        _outbound = new ZLinkSpotOutboundTransport(
-            _nativeSpot,
-            _sendTimeout,
-            _stopSource.Token);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(this, _outbound, _runtime);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             _runtime,
@@ -167,7 +162,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
         Capture(RequestStop);
         await CaptureAsync(_timers.DisposeAsync).ConfigureAwait(false);
         if (_serial is not null) await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
-        if (_outbound is not null) await CaptureAsync(_outbound.DisposeAsync).ConfigureAwait(false);
         Capture(_stopSource.Dispose);
         await CaptureAsync(_handlerInstances.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);

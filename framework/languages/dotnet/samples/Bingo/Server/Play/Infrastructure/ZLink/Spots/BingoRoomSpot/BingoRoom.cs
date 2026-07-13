@@ -54,12 +54,13 @@ internal sealed class BingoRoom(
             Context.SpotRid.ToString(),
             actor.ActorId);
 
-        // PublishAsync excludes the joining actor, so the room sends the
-        // start event here when this join fills the room.
+        // PublishAsync excludes the joining actor, so the destination room
+        // notifies it after the actor has completed the join lifecycle.
         if (_game is not null && _game.Status == BingoRoomStatus.Running)
             actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
                 .Submit(cancellationToken);
+
     }
 
     public async ValueTask OnLeaveActorAsync(
@@ -179,11 +180,17 @@ internal sealed class BingoRoom(
         if (_cleanupStarted || _game?.Status != BingoRoomStatus.Finished) return;
 
         _cleanupStarted = true;
-        foreach (var actor in _actors.Values.ToArray())
+        var actors = _actors.Values.ToArray();
+        foreach (var actor in actors)
         {
             actor.MarkForDestroyAfterRoomLeave();
-            await Context.LeaveActorAsync(actor, cancellationToken);
+            logger.LogInformation(
+                "bingo room: actor marked for destroy. room={RoomId}, actor={ActorId}",
+                Context.SpotRid.ToString(),
+                actor.ActorId);
         }
+        foreach (var actor in actors)
+            await Context.LeaveActorAsync(actor, cancellationToken);
     }
 
     public void ApplySettings(BingoRoomSettings settings)

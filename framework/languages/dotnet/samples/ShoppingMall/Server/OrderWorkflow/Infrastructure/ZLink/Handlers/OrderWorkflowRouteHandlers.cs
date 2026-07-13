@@ -10,6 +10,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 
+[ZLinkHandlerGroup("order-workflow")]
 internal sealed class StartOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
@@ -55,6 +56,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
     }
 }
 
+[ZLinkHandlerGroup("order-workflow")]
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
@@ -77,6 +79,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
     }
 }
 
+[ZLinkHandlerGroup("order-workflow")]
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
@@ -102,5 +105,28 @@ internal sealed class RebuildOrderProjectionRouteHandler(
             response.State.OrderId,
             response.State.Status);
         return response;
+    }
+}
+
+[ZLinkHandlerGroup("order-workflow")]
+internal sealed class PrepareInventoryReservedCheckpointRouteHandler(
+    IZLinkSpotManager spots,
+    IZLinkRouteClient routes,
+    IZLinkSpotHandleResolver spotHandles)
+    : IZLinkRequestHandler<PrepareInventoryReservedCheckpointReq, StartOrderWorkflowRes>
+{
+    public async ValueTask<StartOrderWorkflowRes> HandleAsync(
+        PrepareInventoryReservedCheckpointReq request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
+            spots,
+            spotHandles,
+            request.Command.OrderId,
+            cancellationToken);
+        return await routes
+            .RequestToSpot(address, request)
+            .Async<StartOrderWorkflowRes>(cancellationToken);
     }
 }

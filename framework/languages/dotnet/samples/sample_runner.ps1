@@ -3,6 +3,112 @@ $ErrorActionPreference = "Stop"
 
 $script:SampleProcesses = @()
 
+function Invoke-SampleDockerCommand {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [int]$TimeoutSeconds = 10,
+        [switch]$AllowFailure
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = "docker"
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Failed to start docker command."
+        }
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $process.Kill($true)
+            throw "Docker command timed out after $TimeoutSeconds seconds: docker $($Arguments -join ' ')"
+        }
+        $result = [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdOut = $stdout.GetAwaiter().GetResult().Trim()
+            StdErr = $stderr.GetAwaiter().GetResult().Trim()
+        }
+        if (-not $AllowFailure -and $result.ExitCode -ne 0) {
+            throw "Docker command failed ($($result.ExitCode)): docker $($Arguments -join ' ')`n$($result.StdErr)"
+        }
+        return $result
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+function Remove-SampleRedisContainer {
+    param([Parameter(Mandatory = $true)][string]$ContainerId)
+
+    if (-not $ContainerId) { return }
+    Invoke-SampleDockerCommand -Arguments @("rm", "-fv", $ContainerId) -AllowFailure | Out-Null
+}
+
+function Remove-SampleRedisScope {
+    param([Parameter(Mandatory = $true)][string]$Scope)
+
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return }
+    $listed = Invoke-SampleDockerCommand -Arguments @("ps", "-a", "--format", "{{.ID}} {{.Names}}")
+    foreach ($line in @($listed.StdOut -split "`r?`n")) {
+        if (-not $line) { continue }
+        $parts = $line -split "\s+", 2
+        if ($parts.Count -eq 2 -and $parts[1].StartsWith($Scope, [StringComparison]::Ordinal)) {
+            Remove-SampleRedisContainer $parts[0]
+        }
+    }
+}
+
+function Start-SampleRedisContainer {
+    param(
+        [Parameter(Mandatory = $true)][string]$Scope,
+        [string]$Image = "redis:7.2-alpine"
+    )
+
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker is required to run this sample."
+    }
+
+    $name = "$Scope-$PID-$([Guid]::NewGuid().ToString('N'))"
+    $created = Invoke-SampleDockerCommand -Arguments @(
+        "create", "--name", $name, "--tmpfs", "/data",
+        "-p", "127.0.0.1::6379", $Image)
+    $containerId = $created.StdOut
+    if ($containerId -notmatch '^[0-9a-f]{12,64}$') {
+        throw "Docker create did not return a Redis container id for $name."
+    }
+
+    try {
+        Invoke-SampleDockerCommand -Arguments @("start", $containerId) | Out-Null
+        $running = Invoke-SampleDockerCommand -Arguments @(
+            "inspect", "-f", "{{.State.Running}}", $containerId)
+        if ($running.StdOut -ne "true") {
+            throw "Redis container $name did not enter the running state."
+        }
+        $port = Invoke-SampleDockerCommand -Arguments @(
+            "inspect", "-f", "{{(index (index .NetworkSettings.Ports `"6379/tcp`") 0).HostPort}}", $containerId)
+        if ($port.StdOut -notmatch '^\d+$') {
+            throw "Docker inspect did not return a Redis host port for $name."
+        }
+        return [pscustomobject]@{
+            ContainerId = $containerId
+            Endpoint = "127.0.0.1:$($port.StdOut)"
+        }
+    }
+    catch {
+        Remove-SampleRedisContainer $containerId
+        throw
+    }
+}
+
 function New-SampleRunDirectory {
     param([Parameter(Mandatory = $true)][string]$Name)
 

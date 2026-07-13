@@ -12,6 +12,7 @@ rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
+RUN_SUCCEEDED=0
 export BINGO_REDIS_KEY_PREFIX="bingo:dotnet:${RUN_ID}:"
 
 cleanup() {
@@ -45,9 +46,9 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${BINGO_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" && "${BINGO_KEEP_RUN_DIR:-}" != "1" ]]; then
     [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
   else
     echo "runDir=${RUN_DIR}"
@@ -135,11 +136,11 @@ wait_port() {
 require_log_count() {
   local expected="$1"
   local pattern="$2"
-  local file="$3"
+  shift 2
   local actual
-  actual="$(grep -Ec "${pattern}" "${file}" || true)"
+  actual="$({ grep -Eh "${pattern}" "$@" 2>/dev/null || true; } | wc -l)"
   if [[ "${actual}" != "${expected}" ]]; then
-    echo "Expected ${expected} matches for '${pattern}' in ${file}, found ${actual}." >&2
+    echo "Expected ${expected} matches for '${pattern}' in $*, found ${actual}." >&2
     return 1
   fi
 }
@@ -199,14 +200,14 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
 # poll briefly instead of failing on the first read.
 wait_log() {
   local pattern="$1"
-  local file="$2"
+  shift
   for _ in $(seq 1 50); do
-    if grep -Eq "${pattern}" "${file}"; then
+    if grep -Eq "${pattern}" "$@"; then
       return 0
     fi
     sleep 0.2
   done
-  echo "Timed out waiting for '${pattern}' in ${file}" >&2
+  echo "Timed out waiting for '${pattern}' in $*" >&2
   return 1
 }
 
@@ -214,16 +215,16 @@ grep -q "bingo=completed" "${LOG_DIR}/client.log"
 grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
-wait_log "bingo observer room: actor left. observedRoom=.*observer=observer" "${LOG_DIR}/play-b.log"
-wait_log "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play-a.log"
-wait_log "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play-a.log"
-wait_log "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play-a.log"
-wait_log "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play-a.log"
-require_log_count 1 "entry spot: actor left\\. actor=player-1" "${LOG_DIR}/play-a.log"
-require_log_count 1 "entry spot: actor left\\. actor=player-2" "${LOG_DIR}/play-a.log"
-require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${LOG_DIR}/play-a.log"
-require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${LOG_DIR}/play-a.log"
-require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${LOG_DIR}/play-b.log"
+PLAY_LOGS=("${LOG_DIR}/play-a.log" "${LOG_DIR}/play-b.log")
+wait_log "bingo observer room: actor left. observedRoom=.*observer=observer" "${PLAY_LOGS[@]}"
+wait_log "bingo room: actor left. room=.*actor=player-1" "${PLAY_LOGS[@]}"
+wait_log "bingo room: actor left. room=.*actor=player-2" "${PLAY_LOGS[@]}"
+wait_log "entry spot: actor destroy completed. actor=player-1" "${PLAY_LOGS[@]}"
+wait_log "entry spot: actor destroy completed. actor=player-2" "${PLAY_LOGS[@]}"
+require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${PLAY_LOGS[@]}"
+require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${PLAY_LOGS[@]}"
+require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${PLAY_LOGS[@]}"
 grep -Rq "message flow" "${BINGO_LOG_DIR}"
 grep -Eq "zlink metric name=zlink\.stream\.connections\.(active|opened)" "${LOG_DIR}/session-a.log"
 grep -Eq "zlink metric name=zlink\.spot\.(count|queue\.depth)" "${LOG_DIR}/play-a.log"
+RUN_SUCCEEDED=1

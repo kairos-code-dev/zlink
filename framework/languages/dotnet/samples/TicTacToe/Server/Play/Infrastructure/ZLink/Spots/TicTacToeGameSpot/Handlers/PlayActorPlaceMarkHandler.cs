@@ -1,9 +1,11 @@
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
+[ZLinkSpotActorRequestHandler(nameof(PlaceMarkReq))]
 internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandler> logger)
     : IZLinkSpotActorRequestHandler<TicTacToeGame, PlayActor, PlaceMarkReq, PlaceMarkRes>
 {

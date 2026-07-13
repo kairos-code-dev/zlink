@@ -55,9 +55,7 @@ public sealed partial class RegressionTests
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("[Environment]::SetEnvironmentVariable(\"BINGO_REDIS_KEY_PREFIX\", \"bingo:dotnet:${RunId}:\", \"Process\")",
             powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$RedisContainer = \"zlink-bingo-dotnet-redis-$RunId\"", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-bingo-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("if (-not $env:BINGO_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when BINGO_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);

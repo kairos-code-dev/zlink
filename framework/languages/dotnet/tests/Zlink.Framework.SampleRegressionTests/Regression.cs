@@ -1,9 +1,46 @@
 using Xunit;
+using System.Text.RegularExpressions;
 
 namespace Zlink.Framework.SampleRegressionTests;
 
 public sealed partial class RegressionTests
 {
+    [Fact]
+    public void Only_TicTacToe_May_Use_Manual_Server_Connections()
+    {
+        var samplesRoot = ResolveSamplesRoot();
+        var offenders = Directory
+            .EnumerateDirectories(samplesRoot)
+            .Where(static path => !string.Equals(Path.GetFileName(path), "TicTacToe", StringComparison.Ordinal))
+            .SelectMany(EnumerateSourceFiles)
+            .Select(path => (Path: path, Text: File.ReadAllText(path)))
+            .SelectMany(source =>
+            {
+                var violations = new List<string>();
+                if (source.Text.Contains(".ConnectRouter(", StringComparison.Ordinal))
+                    violations.Add("ConnectRouter");
+                if (source.Text.Contains(".ConnectPeerPub(", StringComparison.Ordinal))
+                    violations.Add("ConnectPeerPub");
+                if (Regex.IsMatch(source.Text, @"\.EnableClient\s*\(\s*[^)]"))
+                    violations.Add("EnableClient(endpoint)");
+                if (source.Path.Contains(
+                        $"{Path.DirectorySeparatorChar}Server{Path.DirectorySeparatorChar}",
+                        StringComparison.Ordinal)
+                    && source.Text.Contains("ZLinkHttpClient.Create(", StringComparison.Ordinal))
+                    violations.Add("server-to-server ZLinkHttpClient");
+                return violations.Select(violation =>
+                    $"{Path.GetRelativePath(samplesRoot, source.Path)}:{violation}");
+            })
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "TicTacToe is the only sample allowed to wire servers manually. "
+            + "All other samples must use location-store automatic connections: "
+            + string.Join(", ", offenders));
+    }
+
     [Fact]
     public void Samples_Do_Not_Use_Location_Stores_Or_Resolvers_As_Business_Dependencies()
     {
@@ -93,9 +130,24 @@ public sealed partial class RegressionTests
             shellRunner,
             StringComparison.Ordinal);
         Assert.Contains($"if [[ -n \"${{{containerVariable}}}\" ]]; then", shellRunner, StringComparison.Ordinal);
-        Assert.Contains($"docker rm -f \"${{{containerVariable}}}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains($"docker rm -fv \"${{{containerVariable}}}\"", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("docker run -d --rm", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("RUN_SUCCEEDED=0", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("RUN_SUCCEEDED=1", shellRunner, StringComparison.Ordinal);
+    }
+
+    private static void AssertPowerShellRunnerUsesRedisDockerHelper(string powershellRunner, string scope)
+    {
+        Assert.Contains($"Start-SampleRedisContainer \"{scope}\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("Remove-SampleRedisContainer $RedisContainer", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("docker run", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("docker create", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$RunSucceeded = $false", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$RunSucceeded = $true", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("if (-not $RunSucceeded", powershellRunner, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -49,20 +49,20 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | ? | O | O |
 | 03 | [메시지 모델](03-message-model.ko.md) | O | O | ? | O | O |
 | 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | O |
-| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | **△** `FailCaller` 없음 [§10.7b](#107b-failcaller-action-c) |
+| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | O |
 
 ### 2.2 Channel (1x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 10 | [channel topology](10-channel-topology.ko.md) | O | O | ? | O | O |
-| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | O | ? 로그 수준 미대조 |
+| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
 
 ### 2.3 SPOT · Actor (2x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | ? | O | O |
+| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | ? | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
 | 21 | [SpotNode](21-spot-node.ko.md) | O | O | ? | O | O |
 | 22 | [Actor 모델](22-actor-model.ko.md) | O | O | ? | O | O |
 | 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | O | ? | O | O |
@@ -101,7 +101,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | gap | 언어 | 내용 |
 |---|---|---|
 | [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | **Node** | 브라우저 진입점에는 `AsyncLocalStorage`에 해당하는 표준이 없어 **handler가 `await`하는 동안 관련 없는 callback에 inbound flow가 노출될 수 있다.** `MFLOW-EXT-014` 미충족 |
-| [§10.7b](#107b-failcaller-action-c) | **C++** | dispatch error event의 `action`에 **`FailCaller`가 없다.** reply frame 없는 경로의 실패를 **관측할 수 없다** |
+| [§4.13](#413-startup-validation-누락) | **Node** | channel과 SPOT의 일부 잘못된 구성을 startup에서 거부하지 않는다 |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
 | 전 영역 | **Kotlin** | Kotlin 고유 표면(`suspend`·`Flow`·DSL)이 각 스펙을 만족하는지 **이 문서가 검증하지 않았다** |
@@ -382,6 +382,41 @@ observer event에 `FailCaller`를 기록한다. transport reply frame을 만들 
 두 항목은 contract test에서 로그 호출 횟수와 수준, local caller의 Promise 실패 및 observer
 event를 함께 검증한다.
 
+### 4.12 actor 소유권 변경 중 session relay
+
+2026-07-13 sample 반복 검증에서 actor가 다른 Spot node로 이동하는 동안 session binding의
+`ActorRef`를 갱신하는 짧은 구간에 다음 client request가 들어오면 `ActorSessionNotBound`로
+실패하는 경합을 확인했다. binding 갱신은 actor별 lifecycle coordinator를 사용했지만 session
+relay는 같은 직렬화 경로에 참여하지 않아, 이전 route를 제거한 뒤 새 route를 등록하기 전의
+중간 상태를 관찰할 수 있었다.
+
+session relay도 같은 actor별 lifecycle coordinator에서 실행하도록 수정했다. 이제 소유권 갱신
+중 들어온 relay는 갱신 완료 뒤 새 `ActorRef`와 binding route를 사용한다. contract test는 binding
+갱신을 의도적으로 중단한 동안 relay가 실패하거나 먼저 실행되지 않는지 검증한다. Bingo sample은
+서로 다른 play node 사이 actor 이동 직후 client request를 반복 실행해 이 경합의 실제 경로도
+검증한다.
+
+### 4.13 startup validation 누락
+
+2026-07-13에 [channel 메시징 §4](11-channel-messaging.ko.md)와
+[SPOT 메시징 §8](20-spot-messaging.ko.md)의 각 행을 Node.js registration validator에 직접
+대입해 다음 누락을 확인했다.
+
+- server에 request/send handler가 하나도 없어도 startup이 성공한다.
+- subscriber에 publish handler가 하나도 없어도 startup이 성공한다.
+- router와 pub/sub 역할을 모두 사용하지 않는 SpotNode가 허용된다.
+- actor factory를 등록한 SpotNode에 router 역할이 없어도 허용된다.
+- router 또는 pub/sub 역할을 사용하면서 bind endpoint를 지정하지 않아도 허용된다.
+- location store의 자동 연결과 같은 SPOT 수신 관계의 수동 peer endpoint를 함께 지정해도
+  허용된다.
+
+이 항목은 설정 오류를 첫 message 호출이나 연결 timeout까지 늦추므로 application 개발자가
+runtime 내부 연결 조건과 구동 순서를 알아야 하는 문제로 이어진다. Node.js는 registration과
+NestJS handler discovery가 끝난 뒤, socket을 만들기 전에 위 구성을
+`ZLinkConfigurationException`으로 거부해야 한다. 각 누락은 잘못된 구성이 startup 전에 실패하는
+회귀 검사로 고정하고, 수동 peer를 사용하는 sample은 같은 관계의 store 자동 연결에 의존하지
+않도록 구성을 분리한다.
+
 ## 5. C++
 
 C++ public header와 package는 이 문서가 추적하던 계약 차이를 해소했다. 아래는 각 항목의
@@ -396,6 +431,13 @@ C++ public header와 package는 이 문서가 추적하던 계약 차이를 해�
 | one-way, location watch와 message-flow control | 일반 one-way와 actor send 모두 `void submit()`, relay/disconnect는 `task_t<void>`. location watch와 message-flow 계약 표면 반영 |
 | actor membership와 join 결과 | `is_joined()` 제거 후 `std::optional<spot_rid_t> spot_rid()` 단일 상태, join 결과는 승인/거절 `std::variant` |
 | 관측·운영(metrics/flow/drain) | flow correlation, 계기 카탈로그, graceful drain(핸드오프·liveness·session-closing)을 구현하고 Config 1~11 E2E와 sample로 검증 |
+
+dispatch 실패의 로그 수준([channel 메시징 §3.1](11-channel-messaging.ko.md))도 2026-07-13에
+대조하고 정렬했다. 이전 C++ reporter는 **모든 dispatch 오류를 Error로 기록**해 원인별 구분이
+없었다. 지금은 application 코드가 던진 handler 예외를 one-way라도 Error로 남기고, handler 없음·
+payload decode 실패·invalid frame은 send(및 actor send)를 Warning, publish를 Debug로 낮춘다.
+request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogLevel`/`PublishLogLevel`
+기본값과 같은 의미). 검증은 `test_cpp_framework_message_flow`의 수준 매핑 케이스다.
 
 STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
 `[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의

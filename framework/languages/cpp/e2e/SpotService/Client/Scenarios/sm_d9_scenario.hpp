@@ -118,22 +118,24 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
             }
             return stream_summary.str ();
         };
-        auto has_response = [&] (std::uint64_t request_seq) {
+        /* stream connector §5.2: Response는 request의 packet name을 그대로 되돌린다. */
+        auto has_response = [&] (std::uint64_t request_seq, std::string_view packet_name) {
             for (const auto &observation : observations) {
                 if (observation.kind == zlink::stream_connector::message_kind_t::response
-                    && observation.name == "reply" && observation.request_seq == request_seq) {
+                    && observation.name == packet_name
+                    && observation.request_seq == request_seq) {
                     return true;
                 }
             }
             return false;
         };
-        if (!has_response (1)) {
+        if (!has_response (1, "StreamEnsureAuthReq")) {
             throw std::runtime_error ("SM-D9 auth response observation missing: " + summary ());
         }
-        if (!has_response (2)) {
+        if (!has_response (2, "ActorPingReq")) {
             throw std::runtime_error ("SM-D9 first ping response observation missing: " + summary ());
         }
-        if (!has_response (3)) {
+        if (!has_response (3, "ActorPingReq")) {
             throw std::runtime_error ("SM-D9 second ping response observation missing: " + summary ());
         }
     }

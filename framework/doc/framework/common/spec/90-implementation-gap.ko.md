@@ -49,7 +49,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | O | O | O |
 | 03 | [메시지 모델](03-message-model.ko.md) | O | O | O | O | O |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | O | O | **△** Config 8 ATD-C3B 미통과 [§5.1](#51-c-비동기-실행-정책-미해결-항목) |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | O | O | O |
 | 05 | [framework API](05-framework-api.ko.md) | O | O | O | O | O |
 
 ### 2.2 Channel (1x)
@@ -105,7 +105,6 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§4.13](#413-startup-validation-누락) | **Node** | channel과 SPOT의 일부 잘못된 구성을 startup에서 거부하지 않는다 |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
-| [§5.1](#51-c-비동기-실행-정책-미해결-항목) | **C++** | Config 8 `AutomaticTurnDispatch`의 **ATD-C3B가 통과하지 못한다.** spot timer 핸들러가 outbound channel 응답을 await하는 동안 route-channel 디스패치가 멈춘다 |
 
 **connector wire 계약(§10.1~§10.7)은 2026-07-13에 3개 구현 모두 해소했다**(§10).
 
@@ -450,18 +449,17 @@ payload decode 실패·invalid frame은 send(및 actor send)를 Warning, publish
 request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogLevel`/`PublishLogLevel`
 기본값과 같은 의미). 검증은 `test_cpp_framework_message_flow`의 수준 매핑 케이스다.
 
-### 5.1 C++ 비동기 실행 정책 미해결 항목
+### 5.1 C++ 비동기 실행 정책 — 해소
 
-**미충족(C++).** [비동기 실행 정책](04-async-execution-policy.ko.md)의 turn 계약을 검증하는
-Config 8 `AutomaticTurnDispatch`에서 **ATD-C3B가 통과하지 못한다.** spot timer 핸들러가
-outbound channel request를 await하는 동안 그 노드의 **route-channel 디스패치가 멈추고**,
-기다리던 응답과 그 사이 도착한 다른 route 요청이 프로세스 종료 시퀀스에서야 처리된다.
-같은 await를 actor 핸들러에서 하는 ATD-C3A는 정상이고, 형제 actor 요청도 그 사이 진행되므로
-**직렬 turn 해제·재개 배선 자체는 계약을 지킨다** — 막히는 것은 route-channel의 공유
-dispatch 자원이다.
+**해소(2026-07-14).** [비동기 실행 정책](04-async-execution-policy.ko.md)의 turn 계약을 검증하는
+Config 8 `AutomaticTurnDispatch`가 전 시나리오 통과한다(ATD-C3B·ATD-D2 포함).
 
-재현·증거·배제한 가설은 C++ 구현 로그의 `CPP-ATD-TIMER-RESUME-001`에 있다. 이 항목이 닫히기
-전에는 C++의 04 스펙을 충족으로 판정하지 않는다.
+간헐 실패의 원인은 turn 배선이 아니라 **stream connector의 heartbeat 응답 경로**였다. connector는
+server liveness ping의 pong을 `dispatch()` 경로에서만 썼는데, ATD client는 응답을 기다리는 동안
+`dispatch()`를 부르지 않는다. 그래서 수신 pump가 ping을 읽어 표시만 해 두고 pong은 나가지 않았고,
+응답이 heartbeat 창보다 오래 걸리는 정상 요청에서 서버가 세션을 heartbeat timeout으로 끊었다.
+client에는 그것이 `End of file`로 보였다. 지금은 수신 pump가 pong을 write 큐에 싣고, 동기 request
+루프도 자기 문맥에서 바로 답한다. 추적 기록은 C++ 구현 로그의 `CPP-ATD-TIMER-RESUME-001`에 있다.
 
 STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
 `[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의

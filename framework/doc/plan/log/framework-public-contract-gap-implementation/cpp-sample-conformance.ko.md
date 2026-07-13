@@ -112,18 +112,9 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 
 | CPP-CORE-SPOTDESTROY-002 | SpotService 종료 단계에서 play 노드가 10초 안에 끝나지 않아 러너가 강제 kill(137) → config FAIL. 시나리오는 전부 통과한 뒤였다 | 백트레이스: 메인 스레드가 `zlink_spot_node_destroy` → `wait_for_closing_sockets` → `ctx_t::wait_for_socket_removal`에서 대기. **정지가 아니라 느린 종료**(유예 60초로 돌리면 강제 kill 없이 exit=0). core의 소켓 제거 완료 대기가 부하에서 10초를 넘긴다 | core(성능) |
 
-| CPP-ATD-TIMER-RESUME-001 | E2E AutomaticTurnDispatch **ATD-C3B**(가끔 **ATD-D2**)가 간헐 실패한다 | **깨끗한 worktree(HEAD)에서 재검증한 결과**(작업 트리에는 다른 담당 세션의 커넥터 미커밋 변경이 있어 이전 관측 일부가 오염돼 있었다): (1) client가 받는 오류는 **`End of file`** — 즉 세션 서버가 client stream을 닫는다. (2) ATD 세션 픽스처는 control 요청을 route로 전달할 때 timeout을 **3000ms**로 두는데, play측 evidence-wait 핸들러는 marker를 **최대 3000ms**까지 기다린다. 두 값이 같아, 정상이지만 조금 느린 응답에도 전달이 timeout→핸들러 예외→**stream 종료**로 이어진다(중첩 timeout 결함, 이번에 15000ms로 수정). (3) 그래도 간헐 실패가 남는다 — outbound 채널 요청은 보통 ~400ms인데 드물게 ~1.5s가 걸리며(transport 회전은 없음), timer 재개가 그만큼 늦어지면 marker가 늦게 뜬다. 남은 조사는 이 지연의 출처(요청 재시도/readiness 폴링)와, 픽스처가 실패를 오류 응답 대신 stream close로 표현하는 문제다 | framework/fixture(열림) |
-경합 시 건너뛰게 해도 증상은 그대로였다(요청 timeout 여전히 미발동) — 대기 루프가 그
-mutex에 막힌 것은 아니다. 따라서 detached thread는 `request()` 진입 이전/직후(예: 클라이언트
-`_mutex`, `sync_connections()`, endpoint provider) 어딘가에서 막혀 있을 가능성이 높다.
-**채널 trace(`ZLINK_CPP_CHANNEL_TRACE=1`)로 얻은 결정적 단서**: C3B의 delay 요청이 제출된
-(`client request candidates=1`) 직후부터 play-a의 **route-channel 디스패치가 멈춘다**. 클라이언트가
-보낸 evidence-wait 요청(`route-channel recv ... requestSeq=23` → `dispatch-submit`)이 그대로 걸려 있고,
-기다리던 delay 응답(`client request reply parts=2`)과 그 evidence-wait의 `dispatch-complete`가
-**둘 다 프로세스 종료 시퀀스(`host-stop-*`, `loop-join-workers-begin`) 중에야** 처리된다. 즉 개별
-요청의 문제가 아니라, timer 핸들러가 await하는 동안 **route-channel 디스패치의 공유 자원(worker/executor)이
-막힌다**. 다음 담당자는 route-channel worker 풀과 handler invocation executor의 점유를 이 구간에서
-확인할 것(같은 시점에 actor 요청은 stream 경로로 들어와 정상 처리되므로 route 경로 전용 자원이 유력) | framework(열림) |
+| CPP-ATD-TIMER-RESUME-001 | E2E AutomaticTurnDispatch **ATD-C3B**(가끔 **ATD-D2**)가 간헐 실패한다. client가 받는 오류는 `End of file` — 세션 서버가 client stream을 닫는다 | **해결(2026-07-14).** stream connector는 server liveness ping의 pong을 `dispatch()` 경로에서만 썼다. ATD client는 async submit으로 응답을 기다리는 동안 `dispatch()`를 부르지 않으므로, 수신 pump가 ping을 읽어 `heartbeat_pong_due`만 세우고 pong은 나가지 않았다. 응답이 heartbeat 창보다 오래 걸리는 정상 요청에서 서버가 세션을 heartbeat timeout으로 끊었고, client는 그것을 `End of file`로 봤다. 수정: 수신 pump(async 체제)는 pong을 write 큐에 싣고, 동기 request 루프(sync 체제)는 자기 문맥에서 바로 답한다. 두 체제를 섞어 쓰면(io 스레드에서 동기 write) 같은 소켓에서 in-flight async write와 바이트가 섞여 abort까지 났다. 회귀 테스트는 `test_cpp_stream_connector`의 manual-dispatch pong 케이스. 동행 수정: 세션 픽스처의 중첩 timeout(3000ms → 15000ms), 러너 종료 유예(8s → 45s, `ZLINK_CPP_E2E_PROCESS_SHUTDOWN_TIMEOUT_SECONDS`) | framework/connector(완료) |
+
+남은 과제: ATD 세션 픽스처가 actor relay 실패를 오류 응답이 아니라 **stream close**로 표현한다. 계약상 실패는 error 프레임으로 돌려야 한다(열림).
 
 ATD-C3B 재현 조건(추가 확인): C1/C2/C3는 **같은 timer spot**(`timer_spot_rid`)을 공유하고
 runner의 `all` 모드에서 C1 → C2 → C3 순으로 한 프로세스 안에서 돈다. `run_e2e.sh ATD-C3`로

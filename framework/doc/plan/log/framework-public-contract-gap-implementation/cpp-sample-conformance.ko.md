@@ -112,5 +112,7 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 
 | CPP-CORE-SPOTDESTROY-002 | SpotService 종료 단계에서 play 노드가 10초 안에 끝나지 않아 러너가 강제 kill(137) → config FAIL. 시나리오는 전부 통과한 뒤였다 | 백트레이스: 메인 스레드가 `zlink_spot_node_destroy` → `wait_for_closing_sockets` → `ctx_t::wait_for_socket_removal`에서 대기. **정지가 아니라 느린 종료**(유예 60초로 돌리면 강제 kill 없이 exit=0). core의 소켓 제거 완료 대기가 부하에서 10초를 넘긴다 | core(성능) |
 
+| CPP-ATD-TIMER-RESUME-001 | E2E AutomaticTurnDispatch **ATD-C3B** 실패: spot timer 핸들러가 outbound channel request를 await하면 `timer-await-released`까지는 남지만 `timer-await-resumed`/`timer-await-completed`가 끝내 나오지 않는다(형제 actor 요청은 정상 진행). 즉 직렬 턴은 풀리는데 **재개가 안 된다** | 미확정. 채널 call은 턴을 release하고 detached thread로 submit한 뒤 `resume_scheduler()`로 재개하도록 되어 있으나, timer tick의 턴에서는 재개가 스케줄되지 않는 것으로 보인다 | framework(열림) |
+
 두 건은 sample 계약 편차가 아니므로 이 문서의 SMP-* 항목과 분리해 둔다. gate 판정에는
 영향이 있으므로(통합 러너 실패) plan §13.3에 상태를 남긴다.

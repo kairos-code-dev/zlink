@@ -263,8 +263,12 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     request_control (const TRequest &request, const std::string &packet, zlink::routing_id_t target)
     {
         const auto reply =
+            /* control 요청 중에는 서버측에서 최대 3초까지 증거 marker를 기다리는 것(evidence
+             * wait)이 있다. 전달 timeout을 그 대기와 같은 3초로 두면 정상적이지만 조금 느린
+             * 응답에도 세션이 timeout 예외로 끝나 client stream이 끊긴다. 내부 대기보다
+             * 넉넉한 값을 쓴다. */
             co_await _routes.request_to_node (yd::control_channel, target, request)
-            .timeout (std::chrono::milliseconds (3000))
+            .timeout (std::chrono::milliseconds (15000))
             .template async<TReply> ();
         co_return reply;
     }

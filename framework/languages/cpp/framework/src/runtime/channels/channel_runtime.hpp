@@ -193,6 +193,10 @@ class channel_runtime_t
                                        const std::string &endpoint);
     void remove_client_manual_connection (const std::string &channel_name,
                                           const std::string &endpoint);
+    void add_subscriber_manual_connection (const std::string &channel_name,
+                                           const std::string &endpoint);
+    void remove_subscriber_manual_connection (const std::string &channel_name,
+                                              const std::string &endpoint);
     std::size_t pending_count () const noexcept;
     std::size_t pending_limit () const noexcept;
     std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;

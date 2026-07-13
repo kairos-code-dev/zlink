@@ -18,7 +18,6 @@
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
@@ -102,7 +101,6 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_STREQ (sample_names_t::player_joined_packet, "PlayerJoinedNotify");
     EXPECT_STREQ (sample_names_t::game_started_packet, "BingoGameStartedNotify");
     EXPECT_STREQ (sample_names_t::number_drawn_packet, "BingoNumberDrawnNotify");
-    EXPECT_STREQ (sample_names_t::state_packet, "BingoStateNotify");
     EXPECT_STREQ (sample_names_t::game_ended_packet, "BingoGameEndedNotify");
 
     authenticate_player_handler_t auth;
@@ -181,16 +179,9 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
-    EXPECT_EQ (room.join (sample_names_t::x_actor_id, {created.room_id, authenticated.player})
-                 .state.x_actor_id,
+    EXPECT_EQ (room.join (sample_names_t::x_actor_id, created.room_id).state.x_actor_id,
                sample_names_t::x_actor_id);
-    EXPECT_EQ (
-      room
-        .join (sample_names_t::o_actor_id, {created.room_id,
-                                            {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
-                                             sample_names_t::required_level, 0}})
-        .state.status,
-      "InProgress");
+    EXPECT_EQ (room.join (sample_names_t::o_actor_id, created.room_id).state.status, "InProgress");
 
     tictactoe_entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
@@ -755,7 +746,9 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     }
 }
 
-TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryClientWithAutomaticActorGatewayRelay)
+/* 공통 sample spec §6: TicTacToe는 location store 자동 연결이 아니라 수동 endpoint
+ * scale-out을 보여 준다. API<->Play channel은 설정에 적힌 두 peer endpoint를 직접 연결한다. */
+TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActorGatewayRelay)
 {
     const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
     const auto api_factory = read_file (tictactoe_root / "Server/Api/api_server_host_factory.hpp");
@@ -771,9 +764,12 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryClientWithAutomaticAct
     EXPECT_EQ (api_factory.find ("options.use_discovery ()"), std::string::npos);
     EXPECT_EQ (play_factory.find ("options.use_discovery ()"), std::string::npos);
     EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
-    EXPECT_NE (api_factory.find (".enable_client ()"), std::string::npos);
-    EXPECT_EQ (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
-               std::string::npos);
+    EXPECT_EQ (api_factory.find (".enable_client ()"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".enable_client ()"), std::string::npos);
+    EXPECT_NE (api_factory.find ("topology.all_play_endpoints ()"), std::string::npos);
+    EXPECT_NE (play_factory.find ("topology.all_api_endpoints ()"), std::string::npos);
+    EXPECT_NE (api_factory.find (".enable_client (endpoint)"), std::string::npos);
+    EXPECT_NE (play_factory.find (".enable_client (endpoint)"), std::string::npos);
     EXPECT_EQ (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);

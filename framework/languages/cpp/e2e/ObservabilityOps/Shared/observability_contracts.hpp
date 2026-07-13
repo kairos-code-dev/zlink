@@ -119,4 +119,108 @@ inline void from_json (const nlohmann::json &json, drain_req_t &value)
     }
 }
 
+inline constexpr const char *actor_type = "obs-player";
+inline constexpr const char *projection_topic = "obs.projection";
+
+/* OBS-C2/C5: joins (or finds) the player actor on the serving node. */
+struct join_actor_req_t
+{
+    std::string actor_id;
+};
+
+inline void to_json (nlohmann::json &json, const join_actor_req_t &value)
+{
+    json = {{"actorId", value.actor_id}};
+}
+
+inline void from_json (const nlohmann::json &json, join_actor_req_t &value)
+{
+    json.at ("actorId").get_to (value.actor_id);
+}
+
+struct join_actor_res_t
+{
+    std::string actor_id;
+    std::string node_rid;
+    bool accepted = false;
+    std::string error;
+};
+
+inline void to_json (nlohmann::json &json, const join_actor_res_t &value)
+{
+    json = {{"actorId", value.actor_id},
+            {"nodeRid", value.node_rid},
+            {"accepted", value.accepted},
+            {"error", value.error}};
+}
+
+inline void from_json (const nlohmann::json &json, join_actor_res_t &value)
+{
+    json.at ("actorId").get_to (value.actor_id);
+    json.at ("nodeRid").get_to (value.node_rid);
+    json.at ("accepted").get_to (value.accepted);
+    json.at ("error").get_to (value.error);
+}
+
+/* Actor request packet: accumulates value so post-move continuity shows the
+ * request still reaches the (moved) actor. */
+struct actor_ping_req_t
+{
+    static constexpr const char *packet_name = "ObsActorPingReq";
+    std::string actor_id;
+    int value = 0;
+};
+
+inline void to_json (nlohmann::json &json, const actor_ping_req_t &value)
+{
+    json = {{"actorId", value.actor_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_ping_req_t &value)
+{
+    json.at ("actorId").get_to (value.actor_id);
+    json.at ("value").get_to (value.value);
+}
+
+struct actor_ping_res_t
+{
+    static constexpr const char *packet_name = "ObsActorPingRes";
+    std::string actor_id;
+    std::string node_rid;
+    int total = 0;
+};
+
+inline void to_json (nlohmann::json &json, const actor_ping_res_t &value)
+{
+    json = {{"actorId", value.actor_id}, {"nodeRid", value.node_rid}, {"total", value.total}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_ping_res_t &value)
+{
+    json.at ("actorId").get_to (value.actor_id);
+    json.at ("nodeRid").get_to (value.node_rid);
+    json.at ("total").get_to (value.total);
+}
+
+/* OBS-A4/B3: projection event fanned out to every mesh subscriber. */
+struct projection_event_t
+{
+    static constexpr const char *packet_name = "ObsProjectionEvent";
+    std::string spot_rid;
+    std::string marker;
+    int applied = 0;
+};
+
+inline void to_json (nlohmann::json &json, const projection_event_t &value)
+{
+    json = {{"spotRid", value.spot_rid}, {"marker", value.marker}, {"applied", value.applied}};
+}
+
+inline void from_json (const nlohmann::json &json, projection_event_t &value)
+{
+    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("applied").get_to (value.applied);
+}
+
 } // namespace zlink::framework::e2e::observability_ops

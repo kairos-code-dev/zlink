@@ -1108,7 +1108,7 @@ struct auto_destroy_entry_spot_t : public zlink::framework::entry_spot_t
         ++joined_count;
         last_joined_moved_value = actor.moved_value;
         if (destroy_on_join && !actor.current_ref.empty ()) {
-            const auto destroyed = entry_context.destroy_actor (actor.current_ref, actor).result ();
+            const auto destroyed = entry_context.destroy_actor (actor).result ();
             if (destroyed) {
                 ++destroyed_count;
             }
@@ -1599,12 +1599,16 @@ int main ()
     player_actor_factory_t lifecycle_actor_state;
     player_actor_factory_t destroy_actor_state;
     player_actor_factory_t rejected_actor_state;
+    player_actor_factory_t leave_actor_state;
     lifecycle_gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor_ref,
                                          zlink::framework::spot_rid_t spot_rid,
                                          const zlink::message_t &payload) {
-        auto &actor_state = actor_ref.actor_id () == "rejected-player"  ? rejected_actor_state
-                            : actor_ref.actor_id () == "destroy-player" ? destroy_actor_state
-                                                                        : lifecycle_actor_state;
+        auto &actor_state = actor_ref.actor_id () == "rejected-player" ? rejected_actor_state
+                            : actor_ref.actor_id () == "destroy-player"
+                              ? destroy_actor_state
+                            : actor_ref.actor_id () == "context-leave-player"
+                              ? leave_actor_state
+                              : lifecycle_actor_state;
         return lifecycle_runtime.join_actor_to_spot<stage_spot_t> (actor_ref, std::move (spot_rid),
                                                                    actor_state, payload);
     });
@@ -1737,8 +1741,10 @@ int main ()
                                                zlink::framework::node_rid_t node_rid,
                                                const zlink::message_t &request) {
         lifecycle_entry_dispatch_payloads.push_back (request.to_string ());
-        auto &actor_state =
-          actor_ref.actor_id () == "destroy-player" ? destroy_actor_state : lifecycle_actor_state;
+        auto &actor_state = actor_ref.actor_id () == "destroy-player" ? destroy_actor_state
+                            : actor_ref.actor_id () == "context-leave-player"
+                              ? leave_actor_state
+                              : lifecycle_actor_state;
         return lifecycle_runtime.join_actor_to_entry_spot<entry_spot_t> (
           actor_ref, std::move (node_rid), actor_state, request);
     });
@@ -1784,30 +1790,18 @@ int main ()
     if (!destroy_stage_join || lifecycle_stage_spot->joined_count != 2) {
         return 70;
     }
-    auto direct_destroy =
-      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
-        .result ();
+    auto direct_destroy = lifecycle_entry_context.destroy_actor (destroy_actor_state).result ();
     if (direct_destroy
         || direct_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 71;
     }
-    auto empty_destroy =
-      lifecycle_entry_context.destroy_actor (zlink::framework::actor_ref_t{}, destroy_actor_state)
-        .result ();
-    if (empty_destroy
-        || empty_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
+    /* An instance that was never joined on this node resolves to nothing:
+     * destroy is a successful no-op and the live actor stays intact. */
+    player_actor_factory_t unregistered_actor_state;
+    auto unregistered_destroy =
+      lifecycle_entry_context.destroy_actor (unregistered_actor_state).result ();
+    if (!unregistered_destroy || !lifecycle_gateway.manager ().find ("destroy-player")) {
         return 107;
-    }
-    auto wrong_owner_destroy =
-      lifecycle_entry_context
-        .destroy_actor (
-          zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("other-node"),
-                                         "player", "destroy-player", 1),
-          destroy_actor_state)
-        .result ();
-    if (wrong_owner_destroy
-        || wrong_owner_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
-        return 108;
     }
     auto destroy_entry_join =
       destroy_context
@@ -1819,25 +1813,12 @@ int main ()
         || lifecycle_entry_spot->joined_count != 3) {
         return 72;
     }
-    auto stale_destroy =
-      lifecycle_entry_context
-        .destroy_actor (
-          zlink::framework::actor_ref_t (destroy_context.actor_ref ().node_rid (),
-                                         std::string (destroy_context.actor_ref ().actor_type ()),
-                                         std::string (destroy_context.actor_ref ().actor_id ()),
-                                         destroy_context.actor_ref ().generation () + 1),
-          destroy_actor_state)
-        .result ();
-    if (!stale_destroy || !lifecycle_gateway.manager ().find ("destroy-player")) {
-        return 109;
-    }
     const auto entry_left_before_destroy = lifecycle_entry_spot->left_count;
-    auto destroy_result =
-      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
-        .result ();
-    auto duplicate_destroy =
-      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
-        .result ();
+    auto destroy_result = lifecycle_entry_context.destroy_actor (destroy_actor_state).result ();
+    /* The second call finds no registration for the instance anymore —
+     * duplicate destroy (and any stale/superseded instance) is a
+     * successful no-op. */
+    auto duplicate_destroy = lifecycle_entry_context.destroy_actor (destroy_actor_state).result ();
     if (!destroy_result || !duplicate_destroy
         || lifecycle_entry_spot->left_count != entry_left_before_destroy) {
         return 73;
@@ -1868,7 +1849,6 @@ int main ()
     auto leave_actor =
       lifecycle_gateway.manager ().create ("player", "context-leave-player").value ();
     auto leave_context = leave_actor.context ();
-    player_actor_factory_t leave_actor_state;
     auto leave_stage_join =
       leave_context.join_spot (lifecycle_stage.spot_rid, std::string ("44")).async ().result ();
     if (!leave_stage_join || lifecycle_stage_spot->joined_count != 3) {
@@ -1919,7 +1899,7 @@ int main ()
         return 77;
     }
     auto context_leave_destroy =
-      lifecycle_entry_context.destroy_actor (context_leave.value (), leave_actor_state).result ();
+      lifecycle_entry_context.destroy_actor (leave_actor_state).result ();
     if (!context_leave_destroy) {
         return 78;
     }
@@ -4176,6 +4156,27 @@ int main ()
     if (wrapper.node_rid.empty () || wrapper.spot_rid.empty () || wrapper.packet_count != 1
         || wrapper.state != 7) {
         return 19;
+    }
+
+    // runtime-metrics §4.3 (RMETRIC-004): only a source-remote move measures
+    // the out→commit-ack window; local moves and unknown keys complete without
+    // a duration, so no local move can inflate zlink.actor.transfers.
+    zlink::framework::detail::actor_transfer_coordinator_t transfer_metric_coordinator;
+    if (!transfer_metric_coordinator.try_begin_source_remote ("metric-actor")) {
+        return 20;
+    }
+    const auto remote_elapsed = transfer_metric_coordinator.complete_move ("metric-actor");
+    if (!remote_elapsed || *remote_elapsed < std::chrono::steady_clock::duration::zero ()) {
+        return 21;
+    }
+    if (!transfer_metric_coordinator.try_begin_local ("metric-actor")) {
+        return 22;
+    }
+    if (transfer_metric_coordinator.complete_move ("metric-actor")) {
+        return 23;
+    }
+    if (transfer_metric_coordinator.complete_move ("metric-actor")) {
+        return 24;
     }
 
     return 0;

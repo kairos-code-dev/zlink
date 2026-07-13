@@ -702,9 +702,12 @@ int main ()
             || compressed.to_string () == source.to_string ()) {
             return 20;
         }
+        /* LZ4 pickle frame (the cross-language wire): header 0xC0 = 4-byte
+         * size difference, so the declared decompressed size is the body plus
+         * the difference — here far past the receive limit. */
         const std::string oversized_declared_size{
-          static_cast<char> (0x00), static_cast<char> (0x10), static_cast<char> (0x00),
-          static_cast<char> (0x00)};
+          static_cast<char> (0xC0), static_cast<char> (0x40), static_cast<char> (0x42),
+          static_cast<char> (0x0f), static_cast<char> (0x00), static_cast<char> (0x01)};
         bool oversized_rejected = false;
         try {
             (void) lz4.decompress (zlink::message_t::from (oversized_declared_size), 1024);

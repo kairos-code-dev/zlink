@@ -246,6 +246,12 @@ result_t<packet_t> decode_packet (connector_state_t &state,
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());
         }
     }
+    if (header.kind == message_kind_t::control && header.name == "$zlink.heartbeat.ping") {
+        /* Server liveness ping (graceful-drain-handoff §7.2): answer with a
+         * pong on the next pump pass. Control packets stay out of the
+         * application inbound surface. */
+        state.heartbeat_pong_due = true;
+    }
     if (header.kind == message_kind_t::control
         && header.name == session_closing_codec_t::control_name) {
         /* graceful-drain-handoff §7.1: store the close reason before the
@@ -534,6 +540,19 @@ result_t<void> send_due_heartbeat (connector_state_t &state)
         state.last_heartbeat_sent = now;
     }
     return written;
+}
+
+result_t<void> send_due_pong (connector_state_t &state)
+{
+    if (!state.heartbeat_pong_due || !is_transport_connected (state)) {
+        return result_t<void>::success ();
+    }
+    state.heartbeat_pong_due = false;
+    packet_t pong;
+    pong.name = "$zlink.heartbeat.pong";
+    pong.codec = codec_t::raw;
+    pong.payload = zlink::message_t::from (std::string{});
+    return write_packet_frame (state, message_kind_t::control, pong, std::nullopt);
 }
 
 bool packet_matches_wait (const pending_wait_t &wait, const packet_t &packet)
@@ -1356,6 +1375,9 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
             }
             if (auto heartbeat = send_due_heartbeat (*state); !heartbeat) {
                 return heartbeat;
+            }
+            if (auto pong = send_due_pong (*state); !pong) {
+                return pong;
             }
         }
         std::deque<packet_t> packets;

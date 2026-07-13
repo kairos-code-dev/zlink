@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include "../../Shared/Contracts/messages.hpp"
+
 #include <stdexcept>
 #include <string>
 
@@ -23,8 +25,8 @@ struct sample_names_t
     static constexpr const char *customer_spot_node = "delivery-customer-node";
     static constexpr const char *tracking_spot_node = "delivery-tracking-spot-node";
     static constexpr const char *customer_actor_type = "delivery-customer";
-    static constexpr const char *courier_actor_node_1 = "delivery-courier-node-1";
-    static constexpr const char *courier_actor_node_2 = "delivery-courier-node-2";
+    static constexpr const char *courier_actor_node_1 = courier_actor_nodes_t::node_1;
+    static constexpr const char *courier_actor_node_2 = courier_actor_nodes_t::node_2;
     static constexpr const char *courier_session_spot_node = "delivery-courier-session-node";
     static constexpr const char *dispatch_route_node = "delivery-dispatch-channel";
     static constexpr const char *courier_route_node = "delivery-courier-gateway";

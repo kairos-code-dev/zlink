@@ -408,6 +408,20 @@ void channel_runtime_t::remove_client_manual_connection (const std::string &chan
     manager.get_or_create_client_bundle (channel_name).remove_manual_connection (endpoint);
 }
 
+void channel_runtime_t::add_subscriber_manual_connection (const std::string &channel_name,
+                                                          const std::string &endpoint)
+{
+    detail::channel_runtime_manager_t manager (_state);
+    manager.get_or_create_subscriber_bundle (channel_name).try_add_manual_connection (endpoint);
+}
+
+void channel_runtime_t::remove_subscriber_manual_connection (const std::string &channel_name,
+                                                             const std::string &endpoint)
+{
+    detail::channel_runtime_manager_t manager (_state);
+    manager.get_or_create_subscriber_bundle (channel_name).remove_manual_connection (endpoint);
+}
+
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options)
 {
     builder._state->runtime->dispatch = options;

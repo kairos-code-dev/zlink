@@ -146,6 +146,8 @@ struct open_conversation_req_t
 {
     static constexpr const char *packet_name = "OpenConversationReq";
     std::string subject;
+    /* Session이 API에서 받은 배정 결과를 actor join 요청에 실어 준다(클라이언트는 비운다). */
+    std::string conversation_id;
 };
 
 struct open_conversation_res_t
@@ -330,7 +332,15 @@ inline void from_json (const nlohmann::json &json, type &value) { value.field_na
 
 SUPPORTCHAT_JSON_STRING_REQ (authenticate_req_t, access_token, "accessToken")
 SUPPORTCHAT_JSON_STRING_REQ (authenticate_user_req_t, access_token, "accessToken")
-SUPPORTCHAT_JSON_STRING_REQ (open_conversation_req_t, subject, "subject")
+inline void to_json (nlohmann::json &json, const open_conversation_req_t &value)
+{
+    json = {{"subject", value.subject}, {"conversationId", value.conversation_id}};
+}
+inline void from_json (const nlohmann::json &json, open_conversation_req_t &value)
+{
+    value.subject = json.value ("subject", "");
+    value.conversation_id = json.value ("conversationId", "");
+}
 SUPPORTCHAT_JSON_STRING_REQ (send_chat_message_req_t, text, "text")
 
 #undef SUPPORTCHAT_JSON_STRING_REQ
@@ -572,14 +582,15 @@ inline void from_json (const nlohmann::json &json, close_conversation_res_t &val
     value.state = json.value ("state", conversation_state_t{});
 }
 
+/* 공통 sample spec §12: notify wire shape는 `{ConversationId, State}`다. state를 루트로
+ * 펼치지 않는다. */
 #define SUPPORTCHAT_NOTIFY_JSON(type) \
 inline void to_json (nlohmann::json &json, const type &value) { \
-    json = nlohmann::json (value.state); \
-    json["conversationId"] = value.conversation_id; \
+    json = {{"conversationId", value.conversation_id}, {"state", value.state}}; \
 } \
 inline void from_json (const nlohmann::json &json, type &value) { \
     value.conversation_id = json.value ("conversationId", ""); \
-    value.state = json.get<conversation_state_t> (); \
+    value.state = json.value ("state", conversation_state_t{}); \
 }
 
 SUPPORTCHAT_NOTIFY_JSON (conversation_assigned_notify_t)

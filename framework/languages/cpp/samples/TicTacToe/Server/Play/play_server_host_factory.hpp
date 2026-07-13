@@ -9,7 +9,6 @@
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "../sample_log_dir.hpp"
-#include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "Infrastructure/ZLink/Sessions/play_session.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_transfer_adapter.hpp"
@@ -55,8 +54,11 @@ class play_server_host_factory_t
               .enable_server (topology.selected_play_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .use_handler_group ("play");
-            options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client ();
+            /* 수동 endpoint scale-out(공통 sample spec §6/§18): API 두 노드를 직접 연결한다. */
+            auto api_peers = options.add_client_server_channel (sample_names_t::api_channel);
+            for (const auto &endpoint : topology.all_api_endpoints ()) {
+                api_peers.enable_client (endpoint);
+            }
             options.add_spot_mesh (sample_names_t::game_spot_node)
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
@@ -75,10 +77,9 @@ class play_server_host_factory_t
                     auto resolver_topology = topology;
                     redis_room_route_store_t routes (std::move (resolver_topology));
                     const auto route = routes.require (std::string (spot_rid.value ()));
-                    return spot_route_t{
-                      node_rid_t::from_string (route.owner_spot_node_rid),
-                      spot_rid_t::from_string (route.room_id),
-                      sample_names_t::match_spot};
+                    return spot_route_t{node_rid_t::from_string (route.owner_node_rid),
+                                        spot_rid_t::from_string (route.spot_rid),
+                                        route.spot_kind};
                 });
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())

@@ -77,6 +77,12 @@ class spot_node_builder_state_t
     std::map<std::string, std::map<std::string, std::optional<zlink::message_t>>>
       dispatched_request_replies;
     std::mutex dispatched_request_replies_mutex;
+    // Requests currently dispatched to each actor and not yet replied. Sampled
+    // once per transfer right at the moving transition (runtime-metrics §4.3
+    // pending_requests). Guarded by its own mutex: dispatch runs on the
+    // packet-drain thread while the sample is taken on the transfer path.
+    std::map<std::string, std::size_t> actor_pending_requests;
+    std::mutex actor_pending_requests_mutex;
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};
@@ -116,6 +122,12 @@ class spot_node_builder_state_t
     // fixed across languages; deployments may override it.
     std::chrono::milliseconds actor_transfer_forward_window{5000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
+    /* Address → (type, id) lookup for instance-identity public surfaces
+     * (destroy_actor). Never dereferenced — resolution only compares
+     * addresses — and maintained alongside every registration/erasure, so
+     * a freed instance can at worst leave an entry that no longer resolves
+     * to a live registration. */
+    std::map<const void *, std::pair<std::string, std::string>> actor_instance_index;
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::unique_ptr<service::actor_t>> native_actors;
@@ -135,6 +147,35 @@ class spot_node_builder_state_t
 };
 
 void drain_spot_node_executors (spot_node_builder_state_t &node);
+
+/* actor_instance_index maintenance (caller holds the node mutex). A record
+ * replaces any prior address for the same actor, so a re-registered actor
+ * never leaves an older address that would resolve to the live actor. */
+inline void erase_actor_instance_index_unlocked (spot_node_builder_state_t &node,
+                                                 std::string_view actor_type,
+                                                 std::string_view actor_id)
+{
+    for (auto it = node.actor_instance_index.begin ();
+         it != node.actor_instance_index.end ();) {
+        if (it->second.first == actor_type && it->second.second == actor_id) {
+            it = node.actor_instance_index.erase (it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+inline void record_actor_instance_index_unlocked (spot_node_builder_state_t &node,
+                                                  const actor_ref_t &actor_ref,
+                                                  const void *instance)
+{
+    if (instance == nullptr) {
+        return;
+    }
+    erase_actor_instance_index_unlocked (node, actor_ref.actor_type (), actor_ref.actor_id ());
+    node.actor_instance_index[instance] = {std::string (actor_ref.actor_type ()),
+                                           std::string (actor_ref.actor_id ())};
+}
 
 class spot_context_state_t
 {
@@ -296,6 +337,11 @@ class spot_node_runtime_t
     void cancel_timers () noexcept;
     void cancel_pending_dispatch () noexcept;
     void cancel_pending_work () noexcept;
+
+    /* Releases the native SPOT/actor handles this node created on its own
+     * zlink context. The host service must call this before terminating the
+     * context: a live socket keeps `zlink_ctx_term()` waiting forever. */
+    void release_native_handles () noexcept;
     std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);
@@ -306,6 +352,12 @@ class spot_node_runtime_t
     /* In-flight probe for the drain worker: true while any spot callback of
      * this node is still executing (graceful-drain-handoff §4-4). */
     bool has_active_callbacks () const;
+    /* Actors still joined to this node's spots, for the drain handoff pass
+     * (graceful-drain-handoff §5.2). */
+    std::vector<actor_ref_t> local_actor_refs () const;
+    /* Domain snapshot for the drain handoff join — the same shape the erased
+     * cross-node leave path sends alongside the entry-spot join. */
+    std::optional<zlink::message_t> serialize_actor_snapshot (const actor_ref_t &actor_ref) const;
     std::shared_ptr<service::spot_node_t> native_node () const;
     result_t<void> send_spot_mesh_parts (
       const zlink::routing_id_t &target_node_rid,
@@ -321,6 +373,11 @@ class spot_node_runtime_t
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,
                                           const zlink::message_t &message,
+                                          service_provider_t &services,
+                                          serializer_registry_t &serializers) const;
+    result_t<void> dispatch_subscription (const spot_context_t &context,
+                                          std::string topic,
+                                          const std::vector<zlink::message_t> &parts,
                                           service_provider_t &services,
                                           serializer_registry_t &serializers) const;
     std::size_t drain_routed_packets (service_provider_t &services,
@@ -645,6 +702,48 @@ class spot_node_runtime_t
         return std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ());
     }
 
+    /* Registration of a factory-owned actor instance. The lookup and the
+     * install both run under the node mutex and keep the registry and its
+     * identity index in step; the factory itself stays outside the mutex
+     * (user code must not be able to invert lock order), so the caller
+     * constructs only after the lookup misses. */
+    std::shared_ptr<void> registered_actor_instance (const actor_ref_t &actor_ref,
+                                                     const std::string &key) const
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        const auto found = _state->actor_instances.find (key);
+        if (found == _state->actor_instances.end () || !found->second) {
+            return {};
+        }
+        detail::record_actor_instance_index_unlocked (*_state, actor_ref, found->second.get ());
+        return found->second;
+    }
+
+    /* `refuse_destroyed` re-checks the destroy tombstone under the same lock
+     * that installs, so a destroy landing inside the factory window cannot be
+     * resurrected by a late install; the caller then reports the actor as
+     * destroyed. Join paths pass false: a join legitimately recreates a
+     * destroyed actor in a new generation and clears the tombstone on commit. */
+    std::shared_ptr<void> install_actor_instance (const actor_ref_t &actor_ref,
+                                                  const std::string &key,
+                                                  std::shared_ptr<void> instance,
+                                                  bool refuse_destroyed = false) const
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        auto &slot = _state->actor_instances[key];
+        if (!slot) {
+            if (refuse_destroyed && _state->destroyed_actor_keys.contains (key)) {
+                _state->actor_instances.erase (key);
+                return {};
+            }
+            /* A concurrent creator that won the race keeps its instance; the
+             * loser's copy is released when this frame ends. */
+            slot = std::move (instance);
+        }
+        detail::record_actor_instance_index_unlocked (*_state, actor_ref, slot.get ());
+        return slot;
+    }
+
     std::optional<spot_context_t> find_context (const spot_rid_t &spot_rid) const
     {
         const auto found = _state->spot_contexts_by_rid.find (std::string (spot_rid.value ()));
@@ -663,6 +762,13 @@ class spot_node_runtime_t
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
+        {
+            /* Typed joins hold externally-owned actors: they are indexed
+             * for instance-identity surfaces (destroy_actor) but never
+             * stored in actor_instances, whose consumers dereference. */
+            std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+            record_actor_instance_index_unlocked (*_state, actor_ref, std::addressof (actor));
+        }
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {

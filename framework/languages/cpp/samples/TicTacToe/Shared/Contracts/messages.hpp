@@ -90,20 +90,6 @@ struct authenticate_player_res_t
     std::string reason;
 };
 
-struct ensure_player_actor_req_t
-{
-    static constexpr const char *packet_name = "EnsurePlayerActorReq";
-    std::string actor_id;
-};
-
-struct ensure_player_actor_res_t
-{
-    static constexpr const char *packet_name = "EnsurePlayerActorRes";
-    std::string actor_id;
-    std::string actor_type;
-    actor_ref_snapshot_t actor;
-};
-
 struct create_game_req_t
 {
     static constexpr const char *packet_name = "CreateGameReq";
@@ -138,11 +124,12 @@ struct create_game_http_res_t
     int required_level = 0;
 };
 
+/* 공통 sample spec §11: JoinGameReq에는 RoomId만 담는다. PlayerInfo는 인증 때 actor에
+ * 설정되고, room join payload(TicTacToeGameJoinReq)에 actor가 직접 실어 보낸다. */
 struct join_game_req_t
 {
     static constexpr const char *packet_name = "JoinGameReq";
     std::string room_id;
-    player_info_t player;
 };
 
 struct tictactoe_game_join_req_t
@@ -306,28 +293,6 @@ inline void from_json (const nlohmann::json &json, authenticate_player_res_t &va
     value.reason = json.value ("reason", "");
 }
 
-inline void to_json (nlohmann::json &json, const ensure_player_actor_req_t &value)
-{
-    json = {{"actorId", value.actor_id}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &value)
-{
-    value.actor_id = json.value ("actorId", "");
-}
-
-inline void to_json (nlohmann::json &json, const ensure_player_actor_res_t &value)
-{
-    json = {{"actorId", value.actor_id}, {"actorType", value.actor_type}, {"actor", value.actor}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_player_actor_res_t &value)
-{
-    value.actor_id = json.value ("actorId", "");
-    value.actor_type = json.value ("actorType", "");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-}
-
 inline void to_json (nlohmann::json &json, const create_game_req_t &value)
 {
     json = {{"gameName", value.game_name}};
@@ -350,13 +315,12 @@ inline void from_json (const nlohmann::json &json, create_game_http_req_t &value
 
 inline void to_json (nlohmann::json &json, const join_game_req_t &value)
 {
-    json = {{"roomId", value.room_id}, {"player", value.player}};
+    json = {{"roomId", value.room_id}};
 }
 
 inline void from_json (const nlohmann::json &json, join_game_req_t &value)
 {
     value.room_id = json.value ("roomId", "");
-    value.player = json.value ("player", player_info_t{});
 }
 
 inline void to_json (nlohmann::json &json, const tictactoe_game_join_req_t &value)

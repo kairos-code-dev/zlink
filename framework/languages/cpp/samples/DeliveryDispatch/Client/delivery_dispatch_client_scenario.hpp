@@ -50,8 +50,8 @@ class delivery_dispatch_client_scenario_t
             auto courier_b_connected = courier_b.connect ().submit ();
             ensure (static_cast<bool> (courier_b_connected), "courier-b stream connect failed");
 
-            bind_courier (courier_a, "courier-a");
-            bind_courier (courier_b, "courier-b");
+            bind_courier (courier_a, "courier-a", courier_actor_nodes_t::node_1);
+            bind_courier (courier_b, "courier-b", courier_actor_nodes_t::node_2);
 
             auto http = zlink::http_client::client_t::create (api_http_url)
                           .timeout (std::chrono::seconds (12))
@@ -70,7 +70,11 @@ class delivery_dispatch_client_scenario_t
   private:
     using connector_t = zlink::stream_e2e_client::coroutine_connector_t;
 
-    static void bind_courier (connector_t &courier, const std::string &courier_id)
+    /* 공통 sample spec §16: courier-a actor는 node-1에, courier-b actor는 node-2에 bind된다.
+     * bind 응답의 actor node rid로 배치를 확인한다. */
+    static void bind_courier (connector_t &courier,
+                              const std::string &courier_id,
+                              const std::string &expected_node_rid)
     {
         const auto bound = courier.request (bind_courier_session_req_t{courier_id})
                              .async<bind_courier_session_res_t> ()
@@ -80,6 +84,8 @@ class delivery_dispatch_client_scenario_t
                                                      : "courier bind failed");
         }
         ensure (bound.value ().courier_id == courier_id, "courier bind id mismatch");
+        ensure (std::string (bound.value ().actor.node_rid.value ()) == expected_node_rid,
+                "courier actor was bound to an unexpected spot node");
     }
 
     static void run_successful_delivery (zlink::http_client::client_t &http,

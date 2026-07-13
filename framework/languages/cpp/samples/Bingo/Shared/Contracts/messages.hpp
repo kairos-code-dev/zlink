@@ -77,9 +77,9 @@ struct bingo_reward_items_t
 
 struct bingo_room_status_t
 {
-    static constexpr const char *waiting = "waiting";
-    static constexpr const char *running = "running";
-    static constexpr const char *finished = "finished";
+    static constexpr const char *waiting = "WaitingForPlayers";
+    static constexpr const char *running = "Running";
+    static constexpr const char *finished = "Finished";
 };
 
 struct authenticate_req_t
@@ -284,12 +284,6 @@ struct number_drawn_notify_t
     std::string room_id;
     int draw_seq = 0;
     int number = 0;
-    bingo_room_state_t state;
-};
-
-struct state_notify_t
-{
-    static constexpr const char *packet_name = "BingoStateNotify";
     bingo_room_state_t state;
 };
 
@@ -660,16 +654,6 @@ inline void to_json (nlohmann::json &json, const game_started_notify_t &value)
 }
 
 inline void from_json (const nlohmann::json &json, game_started_notify_t &value)
-{
-    value.state = json.value ("state", bingo_room_state_t{});
-}
-
-inline void to_json (nlohmann::json &json, const state_notify_t &value)
-{
-    json = {{"state", value.state}};
-}
-
-inline void from_json (const nlohmann::json &json, state_notify_t &value)
 {
     value.state = json.value ("state", bingo_room_state_t{});
 }

@@ -48,8 +48,12 @@ class api_server_host_factory_t
               .listen (topology.selected_api_http_endpoint ())
               .map_post<create_game_http_handler_t> ("/games");
 
-            options.add_client_server_channel (sample_names_t::play_channel)
-              .enable_client ();
+            /* 정본 TicTacToe는 location store 자동 연결 대신 수동 endpoint scale-out을
+             * 보여 준다(공통 sample spec §6/§18): Play 두 노드를 직접 연결한다. */
+            auto play_peers = options.add_client_server_channel (sample_names_t::play_channel);
+            for (const auto &endpoint : topology.all_play_endpoints ()) {
+                play_peers.enable_client (endpoint);
+            }
 
             options.handlers ()
               .group ("api")

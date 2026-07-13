@@ -1,157 +1,96 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+/* TicTacToe room route store.
+ *
+ * 공통 sample spec §6.2: `tictactoe:rooms:{RoomId}` hash에 RouteChannelId, OwnerNodeRid,
+ * SpotRid, SpotKind를 기록한다. Redis 접근은 redis-plus-plus를 사용하고 RESP를 샘플에서
+ * 직접 구현하지 않는다. 없는 room id는 fallback 생성 없이 route-not-found 오류로 올린다. */
+
+#include "sample_names.hpp"
 #include "sample_topology.hpp"
 
-#include <boost/asio.hpp>
+#include <sw/redis++/redis++.h>
 
-#include <istream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace zlink::samples::tictactoe
 {
 
 struct room_route_t
 {
-    std::string room_id;
-    std::string owner_play_endpoint;
-    std::string owner_spot_node_rid;
+    std::string route_channel_id;
+    std::string owner_node_rid;
+    std::string spot_rid;
+    std::string spot_kind = sample_names_t::match_spot;
 };
 
 class redis_room_route_store_t
 {
   public:
-    explicit redis_room_route_store_t (sample_topology_t topology) : _topology (std::move (topology)) {}
+    explicit redis_room_route_store_t (sample_topology_t topology) :
+        _topology (std::move (topology)), _redis (connection_uri (_topology.redis_endpoint))
+    {
+    }
 
     void save (const room_route_t &route)
     {
-        const auto stored = execute ({"SET", key (route.room_id), encode_route (route)});
-        if (stored != "OK") {
-            throw std::runtime_error ("Redis did not store TicTacToe room route.");
-        }
+        const std::unordered_map<std::string, std::string> fields{
+          {"RouteChannelId", route.route_channel_id},
+          {"OwnerNodeRid", route.owner_node_rid},
+          {"SpotRid", route.spot_rid},
+          {"SpotKind", route.spot_kind}};
+        _redis.hset (key (route.spot_rid), fields.begin (), fields.end ());
     }
 
-    room_route_t require (std::string_view room_id)
+    room_route_t require (std::string_view spot_rid)
     {
-        const auto stored = execute ({"GET", key (room_id)});
+        std::unordered_map<std::string, std::string> stored;
+        _redis.hgetall (key (std::string (spot_rid)),
+                        std::inserter (stored, stored.begin ()));
         if (stored.empty ()) {
             throw std::runtime_error ("TicTacToe room route was not found in Redis.");
         }
-        return decode_route (stored);
+        return {field (stored, "RouteChannelId"), field (stored, "OwnerNodeRid"),
+                field (stored, "SpotRid"), field (stored, "SpotKind")};
     }
 
   private:
-    std::string key (std::string_view room_id) const
+    std::string key (const std::string &spot_rid) const
     {
-        return _topology.redis_key_prefix + std::string (room_id);
+        return _topology.redis_key_prefix + spot_rid;
     }
 
-    static std::pair<std::string, std::string> split_endpoint (std::string endpoint)
+    static std::string field (const std::unordered_map<std::string, std::string> &stored,
+                              const std::string &name)
+    {
+        const auto found = stored.find (name);
+        if (found == stored.end ()) {
+            throw std::runtime_error ("TicTacToe room route is missing field " + name + ".");
+        }
+        return found->second;
+    }
+
+    /* 샘플 설정은 tcp://host:port를 쓰고 redis-plus-plus도 tcp:// URI를 받는다. */
+    static std::string connection_uri (std::string endpoint)
     {
         if (endpoint.rfind ("redis://", 0) == 0) {
-            endpoint = endpoint.substr (8);
+            endpoint = "tcp://" + endpoint.substr (8);
+        } else if (endpoint.rfind ("tcp://", 0) != 0) {
+            endpoint = "tcp://" + endpoint;
         }
-        const auto separator = endpoint.rfind (':');
-        if (separator == std::string::npos || separator == 0 || separator + 1 == endpoint.size ()) {
+        if (endpoint.substr (6).find (':') == std::string::npos) {
             throw std::runtime_error ("Redis endpoint must use host:port.");
         }
-        return {endpoint.substr (0, separator), endpoint.substr (separator + 1)};
-    }
-
-    static std::string encode_route (const room_route_t &route)
-    {
-        return route.room_id + "\n" + route.owner_play_endpoint + "\n" + route.owner_spot_node_rid;
-    }
-
-    static room_route_t decode_route (const std::string &stored)
-    {
-        const auto first = stored.find ('\n');
-        const auto second = first == std::string::npos ? std::string::npos
-                                                       : stored.find ('\n', first + 1);
-        if (first == std::string::npos || second == std::string::npos) {
-            throw std::runtime_error ("Redis TicTacToe room route has an invalid format.");
-        }
-        return {stored.substr (0, first),
-                stored.substr (first + 1, second - first - 1),
-                stored.substr (second + 1)};
-    }
-
-    std::string execute (const std::vector<std::string> &args)
-    {
-        const auto [host, port] = split_endpoint (_topology.redis_endpoint);
-        boost::asio::io_context io;
-        boost::asio::ip::tcp::resolver resolver (io);
-        boost::asio::ip::tcp::socket socket (io);
-        boost::asio::connect (socket, resolver.resolve (host, port));
-        boost::asio::write (socket, boost::asio::buffer (encode_command (args)));
-        boost::asio::streambuf buffer;
-        return read_response (socket, buffer);
-    }
-
-    static std::string encode_command (const std::vector<std::string> &args)
-    {
-        std::string command = "*" + std::to_string (args.size ()) + "\r\n";
-        for (const auto &arg : args) {
-            command += "$" + std::to_string (arg.size ()) + "\r\n";
-            command += arg;
-            command += "\r\n";
-        }
-        return command;
-    }
-
-    static std::string read_line (boost::asio::ip::tcp::socket &socket,
-                                  boost::asio::streambuf &buffer)
-    {
-        boost::asio::read_until (socket, buffer, "\r\n");
-        std::istream input (&buffer);
-        std::string line;
-        std::getline (input, line);
-        if (!line.empty () && line.back () == '\r') {
-            line.pop_back ();
-        }
-        return line;
-    }
-
-    static std::string read_response (boost::asio::ip::tcp::socket &socket,
-                                      boost::asio::streambuf &buffer)
-    {
-        const auto header = read_line (socket, buffer);
-        if (header.empty ()) {
-            throw std::runtime_error ("Redis returned an empty response.");
-        }
-        if (header[0] == '+') {
-            return header.substr (1);
-        }
-        if (header[0] == '$') {
-            const auto length = std::stoi (header.substr (1));
-            if (length < 0) {
-                return {};
-            }
-            while (buffer.size () < static_cast<std::size_t> (length + 2)) {
-                boost::asio::read (socket, buffer,
-                                   boost::asio::transfer_at_least (
-                                     static_cast<std::size_t> (length + 2) - buffer.size ()));
-            }
-            std::string value (static_cast<std::size_t> (length), '\0');
-            std::istream input (&buffer);
-            input.read (value.data (), length);
-            char cr = 0;
-            char lf = 0;
-            input.get (cr);
-            input.get (lf);
-            return value;
-        }
-        if (header[0] == '-') {
-            throw std::runtime_error ("Redis error: " + header.substr (1));
-        }
-        throw std::runtime_error ("Unsupported Redis response: " + header);
+        return endpoint;
     }
 
     sample_topology_t _topology;
+    sw::redis::Redis _redis;
 };
 
 } // namespace zlink::samples::tictactoe

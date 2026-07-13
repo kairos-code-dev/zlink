@@ -22,13 +22,6 @@ inline std::string read_option (int argc, char **argv, const std::string &name)
     return "";
 }
 
-inline void write_flow (const std::string &instance, const std::string &line)
-{
-    std::filesystem::create_directories (shoppingmall_log_dir ());
-    std::ofstream output (shoppingmall_log_dir () + "/flow-" + instance + ".log", std::ios::app);
-    output << "message flow role=" << instance << " " << line << "\n";
-}
-
 class commerce_api_handlers_t
 {
   public:
@@ -93,8 +86,6 @@ class commerce_api_handlers_t
         state = _store.read ([&] (const nlohmann::json &saved) {
             return saved["readModels"][command.order_id].get<order_state_t> ();
         });
-        write_flow (_instance.instance_id,
-                    "action=start-order order=" + state.order_id + " owner=" + owner.instance_id);
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
         co_return start_order_res_t{state.order_id, state.status};
@@ -254,37 +245,25 @@ class commerce_api_handlers_t
     spot_handle_resolver_t &_spot_handles;
 };
 
-class start_order_handler_t
-{
-  public:
-    using request_type = start_order_req_t;
-    using reply_type = start_order_res_t;
-    using dependency_types = dependency_list_t<commerce_api_handlers_t>;
-    static constexpr const char *topic_name = "StartOrderReq";
-    explicit start_order_handler_t (commerce_api_handlers_t &handlers) : _handlers (handlers) {}
-    auto handle (const request_type &request)
-    {
-        try {
-            return _handlers.start_order (request);
-        }
-        catch (const std::exception &error) {
-            std::cerr << "shoppingmall api handler failed: endpoint=/orders/start error="
-                      << error.what () << "\n";
-            throw;
-        }
-    }
-  private:
-    commerce_api_handlers_t &_handlers;
-};
+/* 공통 sample spec: 샘플 handler는 framework가 처리하는 dispatch 오류를 다시 잡아
+ * 로그만 남기고 되던지지 않는다. 실패는 dispatch 경계(error reply/observer/기본 로그)가
+ * 소유한다. */
+#define SHOPPINGMALL_HANDLER(name, req, res, method)                                               \
+    class name                                                                                     \
+    {                                                                                              \
+      public:                                                                                      \
+        using request_type = req;                                                                  \
+        using reply_type = res;                                                                    \
+        using dependency_types = dependency_list_t<commerce_api_handlers_t>;                       \
+        static constexpr const char *topic_name = req::packet_name;                                \
+        explicit name (commerce_api_handlers_t &handlers) : _handlers (handlers) {}                \
+        auto handle (const request_type &request) { return _handlers.method (request); }           \
+                                                                                                   \
+      private:                                                                                     \
+        commerce_api_handlers_t &_handlers;                                                        \
+    };
 
-#define SHOPPINGMALL_HANDLER(name, req, res, method) \
-class name { public: using request_type = req; using reply_type = res; \
-using dependency_types = dependency_list_t<commerce_api_handlers_t>; \
-static constexpr const char *topic_name = #req; explicit name (commerce_api_handlers_t &h): _h(h) {} \
-    auto handle (const request_type &r) { try { return _h.method (r); } \
-catch (const std::exception &error) { std::cerr << "shoppingmall api handler failed: packet=" #req \
-<< " error=" << error.what () << "\n"; throw; } } private: commerce_api_handlers_t &_h; };
-
+SHOPPINGMALL_HANDLER (start_order_handler_t, start_order_req_t, start_order_res_t, start_order)
 SHOPPINGMALL_HANDLER (get_order_handler_t, get_order_state_req_t, get_order_state_res_t, get_order)
 SHOPPINGMALL_HANDLER (pending_handler_t, pending_mapping_req_t, ok_res_t, create_pending)
 SHOPPINGMALL_HANDLER (prepare_handler_t, start_order_req_t, start_order_res_t, prepare_inventory_reserved)
@@ -306,10 +285,6 @@ int main (int argc, char **argv)
     auto instance = topology.for_api_instance (instance_id);
     redis_state_store_t store{topology};
     store.seed_defaults ();
-    write_flow (instance.instance_id,
-                "action=location-store-claim redis=" + topology.redis_endpoint
-                  + " prefix=" + topology.redis_key_prefix);
-
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.services ().add_singleton<sample_topology_t> (

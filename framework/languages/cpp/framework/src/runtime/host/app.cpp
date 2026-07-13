@@ -664,6 +664,18 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   channel_state.remove_client_manual_connection (connections_channel, endpoint);
               });
         }
+        for (auto &[connections_channel, connections] :
+             options.subscriber_endpoint_connections ()) {
+            detail::endpoint_connections_runtime_t::attach (
+              connections,
+              [channel_state, connections_channel] (const std::string &endpoint) mutable {
+                  channel_state.add_subscriber_manual_connection (connections_channel, endpoint);
+              },
+              [channel_state, connections_channel] (const std::string &endpoint) mutable {
+                  channel_state.remove_subscriber_manual_connection (connections_channel,
+                                                                     endpoint);
+              });
+        }
     }
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();
     add_hosted_service (std::make_unique<runtime::location_host_service_t> (
@@ -698,8 +710,21 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                       return spot_runtime.request_spot_mesh_parts (
                         target_node_rid, target_spot_rid, std::move (parts), timeout);
                   });
-                spot_node_runtimes.push_back (
-                  runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime});
+                auto node_runtime =
+                  runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime};
+                {
+                    auto router_connections = options.spot_router_endpoint_connections ();
+                    if (const auto found = router_connections.find (spot_node.name);
+                        found != router_connections.end ()) {
+                        node_runtime.router_connections = found->second;
+                    }
+                    auto pub_sub_connections = options.spot_pub_sub_endpoint_connections ();
+                    if (const auto found = pub_sub_connections.find (spot_node.name);
+                        found != pub_sub_connections.end ()) {
+                        node_runtime.pub_sub_connections = found->second;
+                    }
+                }
+                spot_node_runtimes.push_back (std::move (node_runtime));
             }
         }
         add_hosted_service (
@@ -988,6 +1013,47 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         }
     }
 
+    /* Actor handoff (graceful-drain-handoff §5.2/§5.3): bounded sequential
+     * passes move every locally joined actor to an eligible non-draining
+     * entry-spot node; each pass refreshes the store view. No eligible target
+     * keeps the actor on the source and the shared deadline owns the forced
+     * outcome. */
+    if (std::holds_alternative<drained_t> (result)) {
+        runtime::runtime_metrics_t handoff_metrics (
+          detail::monitoring_runtime_t::from (state.monitoring).state ());
+        bool actors_done = false;
+        while (!actors_done) {
+            detail::drain_actor_handoff_result_t pass;
+            try {
+                auto provider = state.services.build_provider ();
+                pass =
+                  detail::drain_actors_through_route (state.zlink, provider, state.serializers);
+            }
+            catch (...) {
+                pass.completed = false;
+            }
+            if (pass.moved > 0 && handoff_metrics.enabled ()) {
+                handoff_metrics.counter ("zlink.drain.actors.handed_off", "{actor}",
+                                         static_cast<double> (pass.moved));
+            }
+            actors_done = pass.completed;
+            if (actors_done) {
+                break;
+            }
+            if (std::chrono::steady_clock::now () >= deadline_at) {
+                emit_state (drain_state_t::force_stopping);
+                result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+                if (pass.remaining > 0 && handoff_metrics.enabled ()) {
+                    handoff_metrics.counter ("zlink.drain.forced", "{event}",
+                                             static_cast<double> (pass.remaining),
+                                             {{"kind", "actor"}});
+                }
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+    }
+
     /* In-flight completion wait (graceful-drain-handoff §4-4): outbound
      * pending requests and running spot callbacks must complete within the
      * shared deadline; otherwise the drain force-stops. */
@@ -1083,7 +1149,7 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
             for (const auto &service : state.hosted_services) {
                 if (auto *stream_service =
                       dynamic_cast<runtime::stream_host_service_t *> (service.get ())) {
-                    stream_service->notify_sessions_closing (
+                    stream_service->force_close_sessions (
                       stream_close_reason_t::server_drain, "drain force stop");
                     runtime::runtime_metrics_t metrics (
                       detail::monitoring_runtime_t::from (state.monitoring).state ());

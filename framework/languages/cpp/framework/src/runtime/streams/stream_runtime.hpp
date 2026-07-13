@@ -105,6 +105,10 @@ class stream_runtime_t
                                stream_close_reason_t reason,
                                std::string_view diagnostic) const noexcept;
 
+    /* Server liveness ping (graceful-drain-handoff §7.2): empty control frame
+     * on the session's transport writer; the sweep loop owns the cadence. */
+    void send_heartbeat_ping (stream_t &stream) const noexcept;
+
   private:
     std::shared_ptr<stream_runtime_state_t> _state;
 };

@@ -32,6 +32,7 @@ class session_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.logging ().use_console ().set_min_level (log_level_t::info);
+        observe_runtime_metrics (app, "session-" + topology.session_node);
         app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
             options.configure_dispatch ()
               .message_flow (message_flow_log_mode_t::key_transitions)

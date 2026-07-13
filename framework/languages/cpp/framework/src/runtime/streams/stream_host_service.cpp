@@ -194,19 +194,109 @@ class stream_host_service_t::listener_t
     {
     }
 
+    /* Server liveness policy (graceful-drain-handoff §7.2): fixed 1s ping /
+     * 5s pong / 30s application idle — the owning service drives ONE sweep
+     * loop per node across all listeners, no per-session timers. Control
+     * packets never refresh the application idle clock; a same-cycle double
+     * expiry resolves to heartbeat_timeout. */
+    struct session_liveness_t
+    {
+        std::mutex gate;
+        std::chrono::steady_clock::time_point last_application_inbound =
+          std::chrono::steady_clock::now ();
+        std::chrono::steady_clock::time_point last_ping = std::chrono::steady_clock::now ();
+        bool heartbeat_outstanding = false;
+        bool terminated = false;
+        std::optional<stream_close_reason_t> forced_reason;
+
+        enum class decision_t
+        {
+            none,
+            send_heartbeat,
+            idle_timeout,
+            heartbeat_timeout
+        };
+
+        void record_application_inbound ()
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            last_application_inbound = std::chrono::steady_clock::now ();
+        }
+
+        void record_pong ()
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            heartbeat_outstanding = false;
+        }
+
+        void record_ping ()
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            last_ping = std::chrono::steady_clock::now ();
+            heartbeat_outstanding = true;
+        }
+
+        decision_t evaluate ()
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            if (terminated) {
+                return decision_t::none;
+            }
+            const auto now = std::chrono::steady_clock::now ();
+            if (heartbeat_outstanding && now - last_ping >= std::chrono::seconds (5)) {
+                return decision_t::heartbeat_timeout;
+            }
+            if (now - last_application_inbound >= std::chrono::seconds (30)) {
+                return decision_t::idle_timeout;
+            }
+            if (!heartbeat_outstanding && now - last_ping >= std::chrono::seconds (1)) {
+                return decision_t::send_heartbeat;
+            }
+            return decision_t::none;
+        }
+
+        // The terminal close runs once even when sweeps race the reader exit.
+        bool try_terminate (stream_close_reason_t reason)
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            if (terminated) {
+                return false;
+            }
+            terminated = true;
+            forced_reason = reason;
+            return true;
+        }
+
+        std::optional<stream_close_reason_t> forced ()
+        {
+            const std::lock_guard<std::mutex> lock (gate);
+            return forced_reason;
+        }
+    };
+
+    struct active_session_t
+    {
+        stream_t stream;
+        std::shared_ptr<session_liveness_t> liveness;
+        std::function<void ()> force_close;
+    };
+
     /* zlink.stream.connections.* (runtime-metrics §4.1): session accept and
      * close on the server edge; reconnect attempts belong to the connector. */
-    void register_active_stream (const stream_t &stream)
+    void register_active_stream (const stream_t &stream,
+                                 std::shared_ptr<session_liveness_t> liveness,
+                                 std::function<void ()> force_close)
     {
         const std::lock_guard<std::mutex> lock (_active_streams_mutex);
-        _active_streams.push_back (stream);
+        _active_streams.push_back (
+          active_session_t{stream, std::move (liveness), std::move (force_close)});
     }
 
     void unregister_active_stream (const stream_t &stream)
     {
         const std::lock_guard<std::mutex> lock (_active_streams_mutex);
         for (auto it = _active_streams.begin (); it != _active_streams.end (); ++it) {
-            if (it->session_id () == stream.session_id ()) {
+            if (it->stream.session_id () == stream.session_id ()) {
                 _active_streams.erase (it);
                 break;
             }
@@ -215,13 +305,92 @@ class stream_host_service_t::listener_t
 
     void notify_sessions_closing (stream_close_reason_t reason, std::string_view diagnostic)
     {
-        std::vector<stream_t> streams;
+        std::vector<active_session_t> sessions;
         {
             const std::lock_guard<std::mutex> lock (_active_streams_mutex);
-            streams = _active_streams;
+            sessions = _active_streams;
         }
-        for (auto &stream : streams) {
-            _runtime.send_session_closing (stream, reason, diagnostic);
+        for (auto &entry : sessions) {
+            _runtime.send_session_closing (entry.stream, reason, diagnostic);
+        }
+    }
+
+    /* Forced teardown (graceful-drain-handoff §7): the notified sessions are
+     * closed so the reason the client keeps is the forced one — a lingering
+     * connection would later be re-labeled by the liveness loop. */
+    void force_close_sessions (stream_close_reason_t reason, std::string_view diagnostic)
+    {
+        std::vector<active_session_t> sessions;
+        {
+            const std::lock_guard<std::mutex> lock (_active_streams_mutex);
+            sessions = _active_streams;
+        }
+        for (auto &entry : sessions) {
+            terminate_session (entry, reason, diagnostic);
+        }
+    }
+
+    void terminate_session (active_session_t &entry,
+                            stream_close_reason_t reason,
+                            std::string_view diagnostic)
+    {
+        if (!entry.liveness->try_terminate (reason)) {
+            return;
+        }
+        _runtime.send_session_closing (entry.stream, reason, diagnostic);
+        if (entry.force_close) {
+            entry.force_close ();
+        }
+    }
+
+    /* One liveness pass over this listener's sessions; the owning service
+     * drives all listeners from a single per-node sweep loop (§7.2: no
+     * per-session timers, one loop per node). */
+    void sweep_liveness_once ()
+    {
+        std::vector<active_session_t> sessions;
+        {
+            const std::lock_guard<std::mutex> lock (_active_streams_mutex);
+            sessions = _active_streams;
+        }
+        for (auto &entry : sessions) {
+            switch (entry.liveness->evaluate ()) {
+                case session_liveness_t::decision_t::none:
+                    break;
+                case session_liveness_t::decision_t::send_heartbeat:
+                    /* Stamp before writing: a same-instant pong then clears
+                     * the outstanding flag instead of racing the stamp and
+                     * being treated as stale. A failed write leaves the stamp
+                     * in place — the transport is broken and the 5s pong
+                     * timeout closes the session. */
+                    entry.liveness->record_ping ();
+                    _runtime.send_heartbeat_ping (entry.stream);
+                    break;
+                case session_liveness_t::decision_t::idle_timeout:
+                    terminate_session (entry, stream_close_reason_t::idle_timeout,
+                                       "application idle timeout");
+                    break;
+                case session_liveness_t::decision_t::heartbeat_timeout:
+                    terminate_session (entry, stream_close_reason_t::heartbeat_timeout,
+                                       "heartbeat pong timeout");
+                    break;
+            }
+        }
+    }
+
+    static const char *liveness_close_label (stream_close_reason_t reason) noexcept
+    {
+        switch (reason) {
+            case stream_close_reason_t::idle_timeout:
+                return "idle_timeout";
+            case stream_close_reason_t::heartbeat_timeout:
+                return "heartbeat_timeout";
+            case stream_close_reason_t::server_drain:
+                return "server_drain";
+            case stream_close_reason_t::protocol_error:
+                return "protocol_error";
+            default:
+                return "transport_error";
         }
     }
 
@@ -932,19 +1101,33 @@ class stream_host_service_t::listener_t
         }
         std::size_t flushed = 0;
         bool connected_session = false;
+        auto liveness = std::make_shared<session_liveness_t> ();
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
                 return;
             }
             connected_session = true;
             record_connection_opened ();
-            register_active_stream (stream);
+            // close_connection owns the _io_mutex acquisition itself.
+            register_active_stream (stream, liveness,
+                                    [this, connection] { close_connection (*connection); });
             flush_writes (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
                 auto frame = read_frame (*connection);
                 if (frame.header.kind () == stream_message_kind_t::control) {
+                    if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
+                        liveness->record_pong ();
+                    } else if (frame.header.packet_name () == "$zlink.heartbeat.ping") {
+                        detail::stream_header_t pong (stream_message_kind_t::control,
+                                                      stream_codec_t::raw,
+                                                      stream_header_flags_t::none, std::nullopt,
+                                                      "$zlink.heartbeat.pong", {});
+                        const std::lock_guard<std::mutex> lock (*write_mutex);
+                        write_frame (*connection, pong, zlink::message_t{});
+                    }
                     continue;
                 }
+                liveness->record_application_inbound ();
                 trace_stream_host ("dispatch", _stream, frame.header);
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
@@ -992,9 +1175,9 @@ class stream_host_service_t::listener_t
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
-                record_connection_closed (_stop->load (std::memory_order_acquire)
-                                            ? "server_drain"
-                                            : "client_close");
+                const auto forced = liveness->forced ();
+                record_connection_closed (forced ? liveness_close_label (*forced)
+                                                 : "client_close");
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }
@@ -1062,19 +1245,32 @@ class stream_host_service_t::listener_t
           });
         std::size_t flushed = 0;
         bool connected_session = false;
+        auto liveness = std::make_shared<session_liveness_t> ();
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
                 return;
             }
             connected_session = true;
             record_connection_opened ();
-            register_active_stream (stream);
+            register_active_stream (stream, liveness,
+                                    [this, connection] { close_connection (*connection); });
             flush_writes_native (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
                 auto frame = read_frame_native (*connection);
                 if (frame.header.kind () == stream_message_kind_t::control) {
+                    if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
+                        liveness->record_pong ();
+                    } else if (frame.header.packet_name () == "$zlink.heartbeat.ping") {
+                        detail::stream_header_t pong (stream_message_kind_t::control,
+                                                      stream_codec_t::raw,
+                                                      stream_header_flags_t::none, std::nullopt,
+                                                      "$zlink.heartbeat.pong", {});
+                        const std::lock_guard<std::mutex> lock (*write_mutex);
+                        write_frame_native (*connection, pong, zlink::message_t{});
+                    }
                     continue;
                 }
+                liveness->record_application_inbound ();
                 trace_stream_host ("dispatch", _stream, frame.header);
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
@@ -1098,9 +1294,9 @@ class stream_host_service_t::listener_t
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
-                record_connection_closed (_stop->load (std::memory_order_acquire)
-                                            ? "server_drain"
-                                            : "client_close");
+                const auto forced = liveness->forced ();
+                record_connection_closed (forced ? liveness_close_label (*forced)
+                                                 : "client_close");
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }
@@ -1146,7 +1342,7 @@ class stream_host_service_t::listener_t
     std::shared_ptr<std::atomic_bool> _drain_flag;
     std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
     std::mutex _active_streams_mutex;
-    std::vector<stream_t> _active_streams;
+    std::vector<active_session_t> _active_streams;
     asio::io_context _io;
     std::mutex _io_mutex;
     tcp::acceptor _acceptor;
@@ -1196,6 +1392,27 @@ void stream_host_service_t::start (service_provider_t &services)
         _threads.emplace_back ([raw] { raw->run (); });
         raw->wait_started ();
     }
+    if (!_listeners.empty ()) {
+        /* One liveness sweep loop per node (graceful-drain-handoff §7.2):
+         * the service drives every listener's sessions from a single
+         * thread; no per-session timers exist. */
+        _liveness_thread = std::thread ([this] {
+            auto last_sweep = std::chrono::steady_clock::now ();
+            while (!_stop.load (std::memory_order_acquire)) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (100));
+                const auto now = std::chrono::steady_clock::now ();
+                if (now - last_sweep < std::chrono::seconds (1)) {
+                    continue;
+                }
+                last_sweep = now;
+                for (const auto &listener : _listeners) {
+                    if (listener) {
+                        listener->sweep_liveness_once ();
+                    }
+                }
+            }
+        });
+    }
 }
 
 void stream_host_service_t::notify_sessions_closing (stream_close_reason_t reason,
@@ -1205,6 +1422,20 @@ void stream_host_service_t::notify_sessions_closing (stream_close_reason_t reaso
         if (listener) {
             try {
                 listener->notify_sessions_closing (reason, diagnostic);
+            }
+            catch (...) {
+            }
+        }
+    }
+}
+
+void stream_host_service_t::force_close_sessions (stream_close_reason_t reason,
+                                                  std::string_view diagnostic) noexcept
+{
+    for (const auto &listener : _listeners) {
+        if (listener) {
+            try {
+                listener->force_close_sessions (reason, diagnostic);
             }
             catch (...) {
             }
@@ -1223,6 +1454,9 @@ void stream_host_service_t::request_stop () noexcept
 void stream_host_service_t::stop () noexcept
 {
     request_stop ();
+    if (_liveness_thread.joinable ()) {
+        _liveness_thread.join ();
+    }
     for (auto &listener : _listeners) {
         listener->stop_connections ();
     }

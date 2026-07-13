@@ -40,7 +40,6 @@ struct bingo_protobuf_codecs_t
         ZLINK_BINGO_REGISTER_PROTOBUF (player_joined_notify_t);
         ZLINK_BINGO_REGISTER_PROTOBUF (game_started_notify_t);
         ZLINK_BINGO_REGISTER_PROTOBUF (number_drawn_notify_t);
-        ZLINK_BINGO_REGISTER_PROTOBUF (state_notify_t);
         ZLINK_BINGO_REGISTER_PROTOBUF (game_ended_notify_t);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_reward_announced_notify_t);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_reward_acquired_msg_t);

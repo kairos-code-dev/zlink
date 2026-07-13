@@ -3271,6 +3271,24 @@ int main ()
         if (listed != std::vector<std::string>{"tcp://127.0.0.1:19002"}) {
             return 146;
         }
+        // subscriber role uses the same live-mutation seam
+        live_builder.channel ("live.sub.channel").enable_subscriber ();
+        zlink::framework::endpoint_connections_t subscriber_handle;
+        subscriber_handle.connect ("tcp://127.0.0.1:19003");
+        zlink::framework::detail::endpoint_connections_runtime_t::attach (
+          subscriber_handle,
+          [&live_runtime] (const std::string &endpoint) {
+              live_runtime.add_subscriber_manual_connection ("live.sub.channel", endpoint);
+          },
+          [&live_runtime] (const std::string &endpoint) {
+              live_runtime.remove_subscriber_manual_connection ("live.sub.channel", endpoint);
+          });
+        subscriber_handle.connect ("tcp://127.0.0.1:19004");
+        subscriber_handle.disconnect ("tcp://127.0.0.1:19003");
+        if (subscriber_handle.list_connections ()
+            != std::vector<std::string>{"tcp://127.0.0.1:19004"}) {
+            return 147;
+        }
     }
     std::atomic_int no_refresh_calls{0};
     const auto second_stale_handle = zlink::framework::detail::spot_handle_access_t::make (

@@ -3,7 +3,6 @@
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
-#include "../DispatchInternal/dispatch_messages.hpp"
 #include "../common_codecs.hpp"
 
 #include <zlink/framework.hpp>
@@ -24,17 +23,18 @@ inline std::string now_text ()
     return std::to_string (static_cast<long long> (std::time (nullptr)));
 }
 
+/* 배차 투입은 응답 없는 one-way send(`AssignDeliveryMsg`)다: HTTP edge는 접수만 확인하고
+ * 배차 진행 상태는 Tracking과 고객 stream push로 전달한다(공통 sample spec §7.2). */
 class assign_delivery_handler_t
 {
   public:
-    using request_type = assign_delivery_req_t;
-    using reply_type = assign_delivery_result_t;
+    using message_type = assign_delivery_msg_t;
     using dependency_types = dependency_list_t<channel_client_t>;
-    static constexpr const char *topic_name = "AssignDelivery";
+    static constexpr const char *topic_name = "AssignDeliveryMsg";
 
     explicit assign_delivery_handler_t (channel_client_t &channels) : _channels (channels) {}
 
-    task_t<assign_delivery_result_t> handle (const assign_delivery_req_t &request)
+    task_t<void> handle (const assign_delivery_msg_t &request)
     {
         std::cerr << "deliverydispatch dispatch: assign delivery=" << request.delivery_id
                   << " customer=" << request.customer_id << "\n";
@@ -44,7 +44,7 @@ class assign_delivery_handler_t
         if (first.accepted) {
             co_await continue_delivery (request.delivery_id, request.customer_id,
                                         first.courier_id);
-            co_return assign_delivery_result_t{request.delivery_id, first.courier_id};
+            co_return;
         }
 
         co_await publish_status (request.delivery_id, request.customer_id,
@@ -57,11 +57,11 @@ class assign_delivery_handler_t
             throw std::runtime_error ("delivery was rejected by all couriers");
         }
         co_await continue_delivery (request.delivery_id, request.customer_id, second.courier_id);
-        co_return assign_delivery_result_t{request.delivery_id, second.courier_id};
+        co_return;
     }
 
   private:
-    task_t<offer_delivery_res_t> offer (const assign_delivery_req_t &request,
+    task_t<offer_delivery_res_t> offer (const assign_delivery_msg_t &request,
                                         const std::string &courier_id)
     {
         offer_delivery_req_t offer{courier_id, request.delivery_id, request.pickup_address,
@@ -92,8 +92,7 @@ class assign_delivery_handler_t
                                  const std::string &status,
                                  const std::string &courier_id)
     {
-        delivery_status_changed_req_t changed{delivery_id, customer_id, status, courier_id,
-                                              now_text ()};
+        delivery_status_changed_req_t changed{delivery_id, status, courier_id, now_text ()};
         (void) co_await _channels.request (sample_names_t::tracking_route_channel, changed)
           .async<delivery_status_changed_res_t> ();
     }
@@ -125,7 +124,7 @@ int main (int argc, char **argv)
           .enable_client ();
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
           .enable_client ();
-        options.handlers ().group ("dispatch").add<assign_delivery_handler_t> ();
+        options.handlers ().group ("dispatch").add_send<assign_delivery_handler_t> ();
     });
     return app.run (argc, argv);
 }

@@ -36,6 +36,19 @@ struct profile_msg_t
     std::string command_id;
 };
 
+/* Negative-path wire packets: the names deliberately have no handler on
+ * the provider, so senders use dedicated DTOs instead of a per-call name
+ * override (CPP-G0-DISPATCH-001). */
+struct missing_profile_req_t : profile_req_t
+{
+    static constexpr const char *packet_name = "MissingProfileReq";
+};
+
+struct missing_profile_msg_t : profile_msg_t
+{
+    static constexpr const char *packet_name = "MissingProfileMsg";
+};
+
 struct payload_req_t
 {
     std::string marker;
@@ -78,6 +91,7 @@ struct workflow_res_t
 
 struct scenario_route_req_t
 {
+    static constexpr const char *packet_name = "ScenarioRouteReq";
     std::string value;
 };
 
@@ -147,6 +161,26 @@ inline void to_json (nlohmann::json &json, const profile_msg_t &value)
 inline void from_json (const nlohmann::json &json, profile_msg_t &value)
 {
     json.at ("command_id").get_to (value.command_id);
+}
+
+inline void to_json (nlohmann::json &json, const missing_profile_req_t &value)
+{
+    to_json (json, static_cast<const profile_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, missing_profile_req_t &value)
+{
+    from_json (json, static_cast<profile_req_t &> (value));
+}
+
+inline void to_json (nlohmann::json &json, const missing_profile_msg_t &value)
+{
+    to_json (json, static_cast<const profile_msg_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, missing_profile_msg_t &value)
+{
+    from_json (json, static_cast<profile_msg_t &> (value));
 }
 
 inline void to_json (nlohmann::json &json, const payload_req_t &value)

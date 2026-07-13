@@ -26,19 +26,6 @@ inline int run_role_process (const std::string &role_name)
     std::signal (SIGTERM, stop_role);
     std::signal (SIGINT, stop_role);
 
-    std::filesystem::create_directories (supportchat_log_dir ());
-    std::ofstream flow (supportchat_log_dir () + "/flow-" + role_name + ".log",
-                        std::ios::app);
-    const sample_topology_t topology;
-    flow << "message flow role=" << role_name
-         << " action=location-store-claim redis=" << topology.redis_endpoint
-         << " prefix=" << topology.redis_key_prefix << "\n";
-    flow << "message flow role=" << role_name << " action=topology-ready"
-         << " sessionStream=" << topology.session_stream_endpoint
-         << " apiRoute=" << topology.api_route_endpoint
-         << " supportRoute=" << topology.support_route_endpoint << "\n";
-    flow.flush ();
-
     std::cout << "supportchat " << role_name << " role=ready" << std::endl;
     while (keep_running != 0) {
         std::this_thread::sleep_for (std::chrono::milliseconds (100));

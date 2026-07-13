@@ -119,6 +119,9 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
      * stored from a received session-closing control, or synthesized as
      * client_close/transport_error when no control arrived. */
     std::optional<close_reason_t> last_close_reason;
+    /* Server liveness ping received (graceful-drain-handoff §7.2): the pump
+     * answers with a heartbeat pong on its next maintenance pass. */
+    bool heartbeat_pong_due = false;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;

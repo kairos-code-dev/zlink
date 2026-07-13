@@ -234,6 +234,14 @@ inline void from_json (const nlohmann::json &json, conversation_create_req_t &va
     }
 }
 
+class conversation_spot_t;
+
+/* conversation Spot의 유휴 tick handler(공통 sample spec §14). */
+struct conversation_idle_timer_handler_t
+{
+    void handle (conversation_spot_t &spot, const zlink::framework::timer_tick_t &tick) const;
+};
+
 class conversation_spot_t : public spot_t
 {
   public:
@@ -251,6 +259,43 @@ class conversation_spot_t : public spot_t
             send_chat_message_req_t::packet_name)
           .add_actor_send<&conversation_spot_t::set_typing> (set_typing_req_t::packet_name)
           .add_actor_request<&conversation_spot_t::close> (close_conversation_req_t::packet_name);
+    }
+
+    /* 공통 sample spec §14: 유휴 감지는 conversation Spot의 server-side timer가 소유한다.
+     * idle deadline이 지나면 `WaitingForClose`로 바꾸고 idle 알림을, close grace가 지나면
+     * 대화를 닫고 closed 알림을 **모든 참가자**에게 보낸다. */
+    void on_initialize ()
+    {
+        _idle_timer =
+          _context.add_timer<conversation_idle_timer_handler_t> ("conversation-idle",
+                                                                 std::chrono::milliseconds (500));
+    }
+
+    void on_idle_tick ()
+    {
+        if (!_conversation) {
+            return;
+        }
+        const auto state = _conversation->snapshot ();
+        if (state.status == conversation_status_t::closed) {
+            return;
+        }
+        const auto now = now_unix_ms ();
+        if (state.status == conversation_status_t::active) {
+            if (state.idle_deadline_unix_ms > 0 && now >= state.idle_deadline_unix_ms) {
+                auto idle = _conversation->mark_idle ();
+                _close_deadline_unix_ms = now + close_grace_ms;
+                broadcast (idle, conversation_idle_notify_t::packet_name);
+            }
+            return;
+        }
+        if (state.status == conversation_status_t::waiting_for_close
+            && _close_deadline_unix_ms > 0 && now >= _close_deadline_unix_ms) {
+            auto closed = _conversation->close ();
+            _close_deadline_unix_ms = 0;
+            broadcast (conversation_closed_notify_t{closed.state.conversation_id, closed.state},
+                       conversation_closed_notify_t::packet_name);
+        }
     }
 
     spot_create_response_t on_create (const zlink::framework::message_t &request)
@@ -329,19 +374,12 @@ class conversation_spot_t : public spot_t
                                     spot_actor_request_context_t &,
                                     const close_conversation_req_t &request)
     {
-        if (request.reason && *request.reason == "idle") {
-            auto idle = require_conversation ().mark_idle ();
-            if (auto peer = peer_for (actor.participant_id)) {
-                send_to_actor (*peer, idle, conversation_idle_notify_t::packet_name);
-            }
-        }
+        (void) request;
         auto closed = require_conversation ().close ();
-        if (auto peer = peer_for (actor.participant_id)) {
-            send_to_actor (*peer,
-                           conversation_closed_notify_t{closed.state.conversation_id,
-                                                        closed.state},
-                           conversation_closed_notify_t::packet_name);
-        }
+        _close_deadline_unix_ms = 0;
+        /* 종료 알림은 대화의 모든 참가자가 받는다(공통 sample spec §14). */
+        broadcast (conversation_closed_notify_t{closed.state.conversation_id, closed.state},
+                   conversation_closed_notify_t::packet_name);
         return {closed.state};
     }
 
@@ -383,6 +421,22 @@ class conversation_spot_t : public spot_t
         return state.agent_actor_id;
     }
 
+    template <typename TMessage> void broadcast (const TMessage &message, const char *packet_name)
+    {
+        const auto state = require_conversation ().snapshot ();
+        send_to_actor (state.customer_actor_id, message, packet_name);
+        if (state.agent_actor_id && !state.agent_actor_id->empty ()) {
+            send_to_actor (*state.agent_actor_id, message, packet_name);
+        }
+    }
+
+    static std::int64_t now_unix_ms ()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds> (
+                 std::chrono::system_clock::now ().time_since_epoch ())
+          .count ();
+    }
+
     template <typename TMessage>
     void send_to_actor (const std::string &participant_id,
                         const TMessage &message,
@@ -418,7 +472,11 @@ class conversation_spot_t : public spot_t
     }
 
     supportchat_conversation_runtime_t &_runtime;
+    static constexpr std::int64_t close_grace_ms = 2000;
+
     spot_context_t _context;
+    zlink::framework::timer_t _idle_timer;
+    std::int64_t _close_deadline_unix_ms{0};
     std::optional<conversation_t> _conversation;
     std::set<std::string> _pending_actor_joins;
 };
@@ -430,6 +488,12 @@ struct support_user_actor_factory_t
         return support_user_actor_t (std::move (actor_id));
     }
 };
+
+inline void conversation_idle_timer_handler_t::handle (conversation_spot_t &spot,
+                                                      const zlink::framework::timer_tick_t &) const
+{
+    spot.on_idle_tick ();
+}
 
 class support_entry_spot_t : public entry_spot_t
 {
@@ -492,15 +556,10 @@ class support_entry_spot_t : public entry_spot_t
                                                        spot_actor_request_context_t &,
                                                        const open_conversation_req_t &request)
     {
-        const auto conversation_id = _runtime.next_conversation_id ();
+        /* 대화 배정은 API -> Support 채널(`AllocateConversationReq`)이 이미 끝냈다. Entry
+         * Spot은 배정된 대화에 actor를 join시키는 lifecycle 작업만 한다. */
+        const auto conversation_id = request.conversation_id;
         const auto spot_rid = spot_rid_t::from_string (conversation_id);
-        (void) _context.manager ().get_or_create_spot (
-          support_conversation_spot, spot_rid,
-          conversation_create_req_t{conversation_id,
-                                    request.subject,
-                                    actor.participant_id,
-                                    actor.display_name,
-                                    _runtime.assign_agent ()});
         auto joined =
           co_await actor.context.join_spot (spot_rid, join_conversation_req_t {})
             .async<join_conversation_res_t> ();
@@ -571,6 +630,43 @@ class ensure_support_user_actor_handler_t
 
   private:
     session_actor_manager_t &_actors;
+};
+
+/* 공통 sample spec §12: 대화 개설은 API가 접수하고 Support가 배정한다. 이 채널 handler가
+ * conversation id를 만들고 conversation Spot을 생성한다(참가자 join은 actor 경로가 수행). */
+class allocate_conversation_handler_t
+{
+  public:
+    using request_type = allocate_conversation_req_t;
+    using reply_type = allocate_conversation_res_t;
+    using dependency_types =
+      dependency_list_t<spot_node_manager_t, supportchat_conversation_runtime_t>;
+    static constexpr const char *topic_name = allocate_conversation_req_t::packet_name;
+
+    allocate_conversation_handler_t (spot_node_manager_t &spots,
+                                     supportchat_conversation_runtime_t &runtime) :
+        _spots (spots), _runtime (runtime)
+    {
+    }
+
+    allocate_conversation_res_t handle (const allocate_conversation_req_t &request)
+    {
+        const auto conversation_id = _runtime.next_conversation_id ();
+        const auto assigned_agent = _runtime.assign_agent ();
+        (void) _spots.get_or_create_spot (
+          support_conversation_spot, spot_rid_t::from_string (conversation_id),
+          zlink::framework::message_t::from (conversation_create_req_t{conversation_id, request.subject,
+                                                     request.customer_actor_id,
+                                                     request.customer_display_name,
+                                                     assigned_agent}));
+        return allocate_conversation_res_t{conversation_id,
+                                           assigned_agent ? conversation_status_t::active
+                                                          : conversation_status_t::waiting_for_agent};
+    }
+
+  private:
+    spot_node_manager_t &_spots;
+    supportchat_conversation_runtime_t &_runtime;
 };
 
 class ensure_agent_conversation_handler_t
@@ -765,15 +861,10 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::supportchat;
 
+    /* dispatch 로그는 framework message-flow가 남긴다(공통 sample spec §5). 샘플이 직접
+     * "message flow" 줄을 쓰지 않는다. */
     std::filesystem::create_directories (supportchat_log_dir ());
     const sample_topology_t topology;
-    std::ofstream flow (supportchat_log_dir () + "/flow-support.log", std::ios::app);
-    flow << "message flow role=support action=location-store-claim redis="
-         << topology.redis_endpoint << " prefix=" << topology.redis_key_prefix << "\n";
-    flow << "message flow role=support action=topology-ready sessionStream="
-         << topology.session_stream_endpoint << " apiRoute=" << topology.api_route_endpoint
-         << " supportRoute=" << topology.support_route_endpoint << "\n";
-    flow.flush ();
 
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
@@ -793,7 +884,8 @@ int main (int argc, char **argv)
         options.handlers ()
           .group ("supportchat-support")
           .add<ensure_support_user_actor_handler_t> ()
-          .add<ensure_agent_conversation_handler_t> ();
+          .add<ensure_agent_conversation_handler_t> ()
+          .add<allocate_conversation_handler_t> ();
         options.http ()
           .listen (topology.support_http_url)
           .map_health ("/health")

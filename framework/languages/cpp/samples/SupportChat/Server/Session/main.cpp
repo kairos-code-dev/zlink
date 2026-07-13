@@ -55,7 +55,20 @@ class supportchat_session_t final : public packet_stream_session_t
                             const zlink::message_t &payload) override
     {
         if (dispatch.packet_name () == authenticate_req_t::packet_name) {
-            auto authenticated = authenticate (payload.parse_json<authenticate_req_t> ().access_token);
+            /* 인증은 API 서버가 소유한다(공통 sample spec §11). Session은 access token을
+             * 그대로 넘기고 사용자 프로필을 만들어 내지 않는다. */
+            auto verified =
+              co_await _channels
+                .request ("supportchat.api",
+                          authenticate_user_req_t{
+                            payload.parse_json<authenticate_req_t> ().access_token})
+                .async<authenticate_user_res_t> ();
+            if (!verified.accepted) {
+                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                             verified.reason.value_or ("AuthenticationRejected"));
+            }
+            const authenticate_res_t authenticated{*verified.actor_id, *verified.display_name,
+                                                   *verified.role};
             auto ensure = ensure_support_user_actor_req_t{authenticated.actor_id,
                                                           authenticated.display_name,
                                                           authenticated.role,
@@ -82,6 +95,25 @@ class supportchat_session_t final : public packet_stream_session_t
               .submit ();
             co_return;
         }
+        if (dispatch.packet_name () == open_conversation_req_t::packet_name) {
+            /* 대화 개설 접수는 API가 소유한다(공통 sample spec §12). Session은 배정 결과를
+             * 받아 고객 actor의 join lifecycle에 넘긴다. */
+            const auto opened = payload.parse_json<open_conversation_req_t> ();
+            auto allocated =
+              co_await _channels
+                .request ("supportchat.api",
+                          open_conversation_api_req_t{_identity_actor_id, _identity_display_name,
+                                                      opened.subject})
+                .async<open_conversation_api_res_t> ();
+            auto actor = co_await select_actor (stream, dispatch);
+            auto reply =
+              co_await actor
+                .relay_request (zlink::message_t::from_json (
+                  open_conversation_req_t{opened.subject, allocated.conversation_id}))
+                .async ();
+            stream.reply_packet (reply).submit ();
+            co_return;
+        }
         auto actor = co_await select_actor (stream, dispatch);
         if (dispatch.can_reply ()) {
             auto reply = co_await actor.relay_request (payload).async ();
@@ -92,14 +124,6 @@ class supportchat_session_t final : public packet_stream_session_t
     }
 
   private:
-    static authenticate_res_t authenticate (const std::string &token)
-    {
-        if (token == "agent") {
-            return {"agent-1", "Agent One", role_t::agent};
-        }
-        return {"customer-1", "Customer One", role_t::customer};
-    }
-
     static zlink::framework::actor_ref_t to_actor_ref (
       const support_actor_ref_snapshot_t &snapshot)
     {
@@ -195,12 +219,6 @@ int main (int argc, char **argv)
 
     std::filesystem::create_directories (supportchat_log_dir ());
     const sample_topology_t topology;
-    std::ofstream flow (supportchat_log_dir () + "/flow-session.log", std::ios::app);
-    flow << "message flow role=session action=location-store-claim redis="
-         << topology.redis_endpoint << " prefix=" << topology.redis_key_prefix << "\n";
-    flow << "message flow role=session action=topology-ready sessionStream="
-         << topology.session_stream_endpoint << "\n";
-    flow.flush ();
 
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
@@ -210,6 +228,7 @@ int main (int argc, char **argv)
           .trace_label ("supportchat-session");
         add_supportchat_location_store (options, topology);
         options.add_client_server_channel ("supportchat.support").enable_client ();
+        options.add_client_server_channel ("supportchat.api").enable_client ();
         options.add_route_mesh ("supportchat.session.actor.route")
           .enable_server (topology.session_actor_route_endpoint)
           .enable_client ()

@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace obs = zlink::framework::e2e::observability_ops;
@@ -109,23 +110,201 @@ struct drain_control_t
     std::function<bool ()> is_ready;
 };
 
+class room_spot_t;
+
+/* OBS-A4(b): timer-originated callbacks start a fresh flow (origin=timer);
+ * the tick publishes so the fresh flow shows up as a `sent` line. */
+struct room_timer_handler_t
+{
+    void handle (room_spot_t &spot, const fw::timer_tick_t &tick) const;
+};
+
 class room_spot_t : public fw::spot_t
 {
   public:
     void configure (fw::spot_context_t &context)
     {
+        _context = context;
         context.handlers ().add_handler<&room_spot_t::apply_action> (
           obs::obs_action_req_t::packet_name);
+        context.handlers ().add_subscribe<&room_spot_t::on_projection> (obs::projection_topic);
+    }
+
+    void on_initialize ()
+    {
+        if (env_or ("ZLINK_CPP_E2E_ROOM_TIMER") == "1") {
+            _timer = _context.add_timer<room_timer_handler_t> ("obs-tick",
+                                                               std::chrono::milliseconds (200));
+        }
     }
 
     obs::obs_action_res_t apply_action (const obs::obs_action_req_t &request)
     {
         _applied += request.value;
+        /* OBS-A4(a)/B3: one action fans out to every mesh subscriber under
+         * the same flow. */
+        _context
+          .publish (obs::projection_topic,
+                    obs::projection_event_t{request.spot_rid, request.marker, _applied})
+          .submit ();
         return obs::obs_action_res_t{request.spot_rid, request.marker, _applied};
     }
 
+    void on_projection (const obs::projection_event_t &) { ++_projections_seen; }
+
+    void publish_timer_marker ()
+    {
+        _context
+          .publish (obs::projection_topic,
+                    obs::projection_event_t{std::string (_context.spot_rid ().value ()),
+                                            "obs-timer", _applied})
+          .submit ();
+    }
+
   private:
+    fw::spot_context_t _context;
+    fw::timer_t _timer;
     int _applied = 0;
+    int _projections_seen = 0;
+};
+
+void room_timer_handler_t::handle (room_spot_t &spot, const fw::timer_tick_t &) const
+{
+    spot.publish_timer_marker ();
+}
+
+struct obs_actor_t
+{
+    explicit obs_actor_t (std::string id) : actor_id (std::move (id)) {}
+
+    void set_actor_ref (const fw::actor_ref_t &value) { actor_ref = value; }
+
+    std::string actor_id;
+    int total = 0;
+    fw::actor_ref_t actor_ref;
+};
+
+struct obs_actor_factory_t
+{
+    obs_actor_t create (std::string actor_id) const { return obs_actor_t (std::move (actor_id)); }
+};
+
+/* Entry spot hosts the player actors: admission accepts every join and the
+ * ping handler accumulates state, so post-transfer pings prove continuity. */
+class obs_entry_spot_t : public fw::entry_spot_t
+{
+  public:
+    void configure (fw::entry_spot_context_t &context)
+    {
+        _context = context;
+        context.handlers ().add_actor_request<&obs_entry_spot_t::actor_ping> (
+          obs::actor_ping_req_t::packet_name);
+    }
+
+    void configure (fw::spot_context_t &context)
+    {
+        fw::entry_spot_context_t entry_context (context);
+        configure (entry_context);
+    }
+
+    fw::spot_actor_join_response_t on_actor_join (std::string_view actor_id,
+                                                  const fw::message_t &)
+    {
+        return fw::spot_actor_join_response_t::accept (
+          obs::join_actor_res_t{std::string (actor_id),
+                                std::string (_context.node_rid ().value ()), true, {}});
+    }
+
+    obs::actor_ping_res_t actor_ping (obs_actor_t &actor,
+                                      fw::spot_actor_request_context_t &,
+                                      const obs::actor_ping_req_t &request)
+    {
+        actor.total += request.value;
+        return obs::actor_ping_res_t{actor.actor_id,
+                                     std::string (_context.node_rid ().value ()), actor.total};
+    }
+
+  private:
+    fw::entry_spot_context_t _context;
+};
+
+class join_actor_handler_t
+{
+  public:
+    using request_type = obs::join_actor_req_t;
+    using reply_type = obs::join_actor_res_t;
+    using dependency_types = fw::dependency_list_t<fw::session_actor_manager_t>;
+
+    explicit join_actor_handler_t (fw::session_actor_manager_t &actors) : _actors (actors) {}
+
+    obs::join_actor_res_t handle (const obs::join_actor_req_t &request)
+    {
+        try {
+            auto actor = _actors.get_or_create (obs::actor_type, request.actor_id);
+            if (!actor) {
+                const auto *error = actor.error ();
+                return obs::join_actor_res_t{request.actor_id, {}, false,
+                                             error != nullptr ? error->what () : "join failed"};
+            }
+            /* The drain handoff moves actors that hold a spot placement, so
+             * the fixture joins the local entry spot (rid == node rid). */
+            const auto role = env_or ("ZLINK_CPP_E2E_ROLE", "play-a");
+            auto joined = actor.value ()
+                            .context ()
+                            .join_spot (fw::spot_rid_t::from_string (role),
+                                        obs::join_actor_req_t{request.actor_id})
+                            .async ()
+                            .result ();
+            if (!joined) {
+                const auto *error = joined.error ();
+                return obs::join_actor_res_t{request.actor_id, {}, false,
+                                             error != nullptr ? error->what ()
+                                                              : "entry join failed"};
+            }
+            const auto *accepted =
+              std::get_if<fw::actor_join_accepted_t<fw::message_t>> (&joined.value ());
+            if (accepted == nullptr) {
+                return obs::join_actor_res_t{request.actor_id, {}, false, "join rejected"};
+            }
+            return obs::join_actor_res_t{
+              request.actor_id, std::string (accepted->actor.node_rid ().value ()), true, {}};
+        }
+        catch (const std::exception &error) {
+            return obs::join_actor_res_t{request.actor_id, {}, false, error.what ()};
+        }
+    }
+
+  private:
+    fw::session_actor_manager_t &_actors;
+};
+
+class actor_ping_handler_t
+{
+  public:
+    using request_type = obs::actor_ping_req_t;
+    using reply_type = obs::actor_ping_res_t;
+    using dependency_types = fw::dependency_list_t<fw::actor_client_t, fw::actor_directory_t>;
+
+    actor_ping_handler_t (fw::actor_client_t &actors, fw::actor_directory_t &directory) :
+        _actors (actors), _directory (directory)
+    {
+    }
+
+    fw::task_t<obs::actor_ping_res_t> handle (const obs::actor_ping_req_t &request)
+    {
+        auto actor_ref = co_await _directory.find (request.actor_id);
+        if (!actor_ref) {
+            throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
+                                             "player actor route was not found");
+        }
+        co_return co_await _actors.request_to_actor (*actor_ref, request)
+          .timeout (std::chrono::milliseconds (5000))
+          .async<obs::actor_ping_res_t> ();
+    }
+
+  private:
+    fw::actor_client_t &_actors;
+    fw::actor_directory_t &_directory;
 };
 
 /* play-a session gateway: forwards ObsActionReq packets to the target room
@@ -309,8 +488,15 @@ int main (int argc, char **argv)
     };
     drain_control->is_ready = [&app] { return app.is_ready (); };
 
-    app.monitoring ().on<fw::metric_event_payload_t> (
-      [evidence] (const fw::metric_event_payload_t &event) { evidence->record_metric (event); });
+    /* OBS-B4: a node without a metric reader must keep messaging intact on
+     * the inactive instrument path. */
+    const bool metrics_enabled = env_or ("ZLINK_CPP_E2E_METRICS", "on") != "off";
+    if (metrics_enabled) {
+        app.monitoring ().on<fw::metric_event_payload_t> (
+          [evidence] (const fw::metric_event_payload_t &event) {
+              evidence->record_metric (event);
+          });
+    }
     app.monitoring ().on<fw::drain_event_t> (
       [evidence] (const fw::drain_event_t &event) { evidence->record_drain (event); });
 
@@ -329,8 +515,12 @@ int main (int argc, char **argv)
             locations.polling_interval = std::chrono::milliseconds (250);
             locations.spot_router_channels[obs::spot_mesh] = obs::spot_route_channel;
         }
+        /* OBS-A3(b): an off node must not create flows but still propagates
+         * the received pair to the next hop. */
+        const auto trace_mode = env_or ("ZLINK_CPP_E2E_TRACE_MODE", "key_transitions");
         framework.configure_dispatch ()
-          .message_flow (fw::message_flow_log_mode_t::key_transitions)
+          .message_flow (trace_mode == "off" ? fw::message_flow_log_mode_t::off
+                                             : fw::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/" + role + "-flow.log")
           .trace_label ("cpp-obs-" + role);
 
@@ -342,12 +532,19 @@ int main (int argc, char **argv)
         }
 
         auto spot_mesh = framework.add_spot_mesh (obs::spot_mesh);
-        spot_mesh.use_drain_policy (fw::spot_drain_policy_t::drain_natural);
+        /* OBS-C3: room mesh policy is configurable per run — drain_natural
+         * keeps in-progress rooms; release_and_recreate frees the rows for
+         * a GetOrCreate rebuild on another owner. */
+        spot_mesh.use_drain_policy (env_or ("ZLINK_CPP_E2E_DRAIN_POLICY") == "release_and_recreate"
+                                      ? fw::spot_drain_policy_t::release_and_recreate
+                                      : fw::spot_drain_policy_t::drain_natural);
         spot_mesh.set_routing_id (zlink::routing_id_t::from (role))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (spot_pub_endpoint)
           .accept_route_mesh (obs::spot_route_channel)
-          .add_spot<room_spot_t> (obs::room_spot);
+          .add_entry_spot<obs_entry_spot_t> ()
+          .add_spot<room_spot_t> (obs::room_spot)
+          .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
 
         if (!stream_endpoint.empty ()) {
             framework.add_stream_node ("obs.session")
@@ -360,6 +557,8 @@ int main (int argc, char **argv)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<create_room_handler_t> ("/spot/create")
+          .map_post<join_actor_handler_t> ("/actor/join")
+          .map_post<actor_ping_handler_t> ("/actor/ping")
           .map_post<drain_handler_t> ("/drain");
     });
     return app.run (argc, argv);

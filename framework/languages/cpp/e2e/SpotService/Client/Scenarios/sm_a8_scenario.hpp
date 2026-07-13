@@ -5,8 +5,11 @@
 
 #include <zlink/http_client.hpp>
 
+#include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -57,6 +60,27 @@ inline int find_evidence_index (const evidence_snapshot_t &snapshot,
     return -1;
 }
 
+inline void wait_for_evidence (zlink::http_client::client_t &api,
+                               const std::string &marker,
+                               const std::string &spot_rid,
+                               const std::string &value,
+                               const std::string &label)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto raw = api.get ("/evidence").submit_raw ().result ();
+        if (raw && raw.value ().status < 400) {
+            const auto snapshot =
+              nlohmann::json::parse (raw.value ().body).get<evidence_snapshot_t> ();
+            if (find_evidence_index (snapshot, marker, spot_rid, value) >= 0) {
+                return;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error (label + " evidence did not appear");
+}
+
 inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)
 {
@@ -99,23 +123,72 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-A8 worker spot route did not become ready");
     }
 
-    const auto worker = post_json<spot_worker_start_res_t> (
-      play_b, "/spot/worker/start",
-      spot_worker_start_req_t{.spot_rid = spot_rid, .marker = marker, .delay_ms = 600},
-      "SM-A8 worker start");
-    if (worker.spot_rid != spot_rid || worker.owner_node_rid != "play-a"
-        || worker.marker != marker) {
-        throw std::runtime_error ("SM-A8 worker start reply mismatch");
-    }
+    /* The worker must still be running when the same-spot request lands
+     * (async-execution-policy §1: the spot serial line yields at the await),
+     * so the start call stays in flight while the state request goes out —
+     * the .NET SM-A8 reference issues the same two calls concurrently. */
+    /* The worker must still be running when the same-spot request lands
+     * (async-execution-policy §1: the spot serial line yields at the await).
+     * The HTTP client performs a request synchronously on the calling thread,
+     * so the start call gets its own thread and its own client — exactly the
+     * concurrency the .NET SM-A8 reference expresses with an un-awaited task. */
+    std::optional<spot_worker_start_res_t> worker;
+    std::optional<std::string> worker_error;
+    std::thread worker_thread ([&] {
+        try {
+            auto worker_api = zlink::http_client::client_t::create ()
+                                .base_url (play_http_endpoint)
+                                .timeout (std::chrono::seconds (30))
+                                .build ();
+            worker = post_json<spot_worker_start_res_t> (
+              worker_api, "/spot/worker/start",
+              spot_worker_start_req_t{
+                .spot_rid = spot_rid, .marker = marker, .delay_ms = 5000},
+              "SM-A8 worker start");
+        }
+        catch (const std::exception &error) {
+            worker_error = error.what ();
+        }
+    });
+    std::this_thread::sleep_for (std::chrono::milliseconds (500));
 
-    const auto during = post_routed_state (
-      play_b,
-      spot_state_route_req_t{.target_node_rid = "play-a",
-                             .spot_rid = spot_rid,
-                             .state = state_req_t{.op = "add", .amount = 1}},
-      "SM-A8 concurrent state");
+    /* A pooled keep-alive connection can be closed under the concurrent load of
+     * the in-flight worker call; the routed state request is idempotent enough
+     * to retry on a transport error (a fresh client opens a new connection). */
+    std::optional<state_res_t> during_reply;
+    std::string during_error;
+    for (int attempt = 0; attempt < 3 && !during_reply; attempt++) {
+        try {
+            auto state_api = zlink::http_client::client_t::create ()
+                               .base_url (play_b_http_endpoint)
+                               .timeout (std::chrono::seconds (10))
+                               .build ();
+            during_reply = post_routed_state (
+              state_api,
+              spot_state_route_req_t{.target_node_rid = "play-a",
+                                     .spot_rid = spot_rid,
+                                     .state = state_req_t{.op = "add", .amount = 1}},
+              "SM-A8 concurrent state");
+        }
+        catch (const std::exception &error) {
+            during_error = error.what ();
+            std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        }
+    }
+    worker_thread.join ();
+    if (!during_reply) {
+        throw std::runtime_error ("SM-A8 concurrent state failed: " + during_error);
+    }
+    const auto during = *during_reply;
+    if (worker_error) {
+        throw std::runtime_error (*worker_error);
+    }
     if (during.value != 1) {
         throw std::runtime_error ("SM-A8 same-spot request was blocked by worker");
+    }
+    if (!worker || worker->spot_rid != spot_rid || worker->owner_node_rid != "play-a"
+        || worker->marker != marker) {
+        throw std::runtime_error ("SM-A8 worker start reply mismatch");
     }
 
     const auto completed = post_json<spot_worker_complete_res_t> (

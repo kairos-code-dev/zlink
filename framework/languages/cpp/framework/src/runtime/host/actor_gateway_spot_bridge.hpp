@@ -30,4 +30,19 @@ void configure_actor_gateway_spot_bridge (
   serializer_registry_t &serializers,
   const std::vector<spot_node_snapshot_t> &spot_node_snapshot);
 
+/* One drain handoff pass (graceful-drain-handoff §5.2/§5.3): sequentially
+ * moves every locally joined actor toward an eligible entry-spot node —
+ * draining peers excluded, capability-matched ("actor:<type>"), round-robin
+ * across targets. The drain worker repeats passes until completed or the
+ * shared deadline forces. */
+struct drain_actor_handoff_result_t
+{
+    bool completed = true;
+    std::size_t moved = 0;
+    std::size_t remaining = 0;
+};
+drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
+                                                         service_provider_t &provider,
+                                                         serializer_registry_t &serializers);
+
 } // namespace zlink::framework::detail

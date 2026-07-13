@@ -48,7 +48,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
-    docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [[ "${SUPPORTCHAT_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
@@ -92,33 +92,20 @@ finally:
 PY
 )"
 if [[ "$PORT_ALLOCATION_OUTPUT" == SOCKETLESS* ]]; then
-  echo "SupportChat runner using socketless endpoints: ${PORT_ALLOCATION_OUTPUT#SOCKETLESS }" >&2
-  SUPPORTCHAT_RESERVED_PORT=""
-  SUPPORTCHAT_API_ROUTE="socketless://supportchat-api"
-  SUPPORTCHAT_SUPPORT_ROUTE="socketless://supportchat-support"
-  SUPPORTCHAT_SUPPORT_SPOT_ROUTER="socketless://supportchat-support-spot-router"
-  SUPPORTCHAT_SUPPORT_SPOT="socketless://supportchat-support-spot"
-  SUPPORTCHAT_SUPPORT_HTTP_URL="http://127.0.0.1:7508"
-  SUPPORTCHAT_SUPPORT_ACTOR_ROUTE="socketless://supportchat-support-actor-route"
-  SUPPORTCHAT_SESSION_STREAM="socketless://supportchat-session-stream"
-  SUPPORTCHAT_SESSION_SPOT_ROUTER="socketless://supportchat-session-spot-router"
-  SUPPORTCHAT_SESSION_SPOT="socketless://supportchat-session-spot"
-  SUPPORTCHAT_SESSION_ACTOR_ROUTE="socketless://supportchat-session-actor-route"
-else
-  read -r SUPPORTCHAT_RESERVED_PORT SUPPORTCHAT_API_ROUTE SUPPORTCHAT_SUPPORT_ROUTE SUPPORTCHAT_SUPPORT_SPOT_ROUTER SUPPORTCHAT_SUPPORT_SPOT SUPPORTCHAT_SESSION_STREAM SUPPORTCHAT_SESSION_SPOT_ROUTER SUPPORTCHAT_SESSION_SPOT SUPPORTCHAT_SUPPORT_HTTP_URL SUPPORTCHAT_SESSION_ACTOR_ROUTE SUPPORTCHAT_SUPPORT_ACTOR_ROUTE <<<"$PORT_ALLOCATION_OUTPUT"
-  if [[ -z "$SUPPORTCHAT_RESERVED_PORT" || -z "$SUPPORTCHAT_SESSION_SPOT" ]]; then
-    echo "Failed to allocate local TCP ports for the SupportChat sample." >&2
-    echo "This environment may block local socket creation." >&2
-    exit 1
-  fi
+  echo "Failed to allocate local TCP ports for the SupportChat sample: ${PORT_ALLOCATION_OUTPUT#SOCKETLESS }" >&2
+  exit 1
 fi
-if [[ -z "$SUPPORTCHAT_RESERVED_PORT" ]]; then
-  export SUPPORTCHAT_REDIS_ENDPOINT="socketless://supportchat-redis"
-else
-  zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
-    "zlink-redis-cpp-sample-supportchat" "redis:7-alpine"
-  export SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
+read -r SUPPORTCHAT_RESERVED_PORT SUPPORTCHAT_API_ROUTE SUPPORTCHAT_SUPPORT_ROUTE SUPPORTCHAT_SUPPORT_SPOT_ROUTER SUPPORTCHAT_SUPPORT_SPOT SUPPORTCHAT_SESSION_STREAM SUPPORTCHAT_SESSION_SPOT_ROUTER SUPPORTCHAT_SESSION_SPOT SUPPORTCHAT_SUPPORT_HTTP_URL SUPPORTCHAT_SESSION_ACTOR_ROUTE SUPPORTCHAT_SUPPORT_ACTOR_ROUTE <<<"$PORT_ALLOCATION_OUTPUT"
+if [[ -z "$SUPPORTCHAT_RESERVED_PORT" || -z "$SUPPORTCHAT_SESSION_SPOT" ]]; then
+  echo "Failed to allocate local TCP ports for the SupportChat sample." >&2
+  exit 1
 fi
+
+# 공통 sample spec: Redis가 필요한 실행은 전용 Docker container를 띄운다. 만들지 못하면
+# host Redis나 다른 실행 endpoint로 대체하지 않고 즉시 실패한다.
+zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+  "zlink-redis-cpp-sample-supportchat" "redis:7-alpine"
+export SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-supportchat:$$:}"
 export SUPPORTCHAT_API_ROUTE
 export SUPPORTCHAT_SUPPORT_ROUTE
@@ -188,6 +175,7 @@ wait_port support-http "$(port_of "$SUPPORTCHAT_SUPPORT_HTTP_URL")"
   dump_logs
   exit 1
 }
+grep -q "supportchat server-invariants=verified" "$LOG_DIR/probe.log"
 grep -q "topology=ready" "$LOG_DIR/probe.log"
 
 "$BIN_DIR/sample_cpp_framework_supportchat_client" >"$LOG_DIR/client.log" 2>&1 || {
@@ -205,7 +193,6 @@ grep -Rq "message flow" "$SUPPORTCHAT_LOG_DIR"
 grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-api.log"
 grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-session.log"
 grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-support.log"
-grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-probe.log"
 
 echo "PASS SupportChat.Cpp"
 echo "supportchat sample result=passed"

@@ -2,8 +2,11 @@
 
 #include "runtime/diagnostics/flow_context.hpp"
 
+#include <zlink/framework/contracts/dispatch/task.hpp>
+
 #include <array>
 #include <chrono>
+#include <memory>
 #include <random>
 
 namespace zlink::framework::runtime
@@ -17,6 +20,33 @@ std::uint64_t random_u64 ()
     thread_local std::mt19937_64 engine{std::random_device{} ()};
     return engine ();
 }
+
+/* Coroutine-suspension flow propagation (flow-correlation MFLOW-EXT-014):
+ * the task machinery captures the ambient flow when a continuation or
+ * callback registers and re-enters it around the resume. The guard restores
+ * the previous value, so the id never leaks into unrelated callbacks. */
+std::shared_ptr<void> capture_ambient_flow ()
+{
+    const auto &current = flow_context_t::current ();
+    if (!current) {
+        return nullptr;
+    }
+    return std::make_shared<flow_value_t> (*current);
+}
+
+std::shared_ptr<void> enter_ambient_flow (const std::shared_ptr<void> &snapshot)
+{
+    auto *value = static_cast<flow_value_t *> (snapshot.get ());
+    return std::make_shared<flow_context_t::scope_t> (std::make_optional (*value));
+}
+
+constexpr framework::detail::ambient_context_hooks_t ambient_flow_hooks{&capture_ambient_flow,
+                                                                        &enter_ambient_flow};
+
+const bool ambient_flow_hooks_installed = [] {
+    framework::detail::ambient_context_hooks.store (&ambient_flow_hooks);
+    return true;
+}();
 
 } // namespace
 

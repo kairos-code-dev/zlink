@@ -41,7 +41,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
-    docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
@@ -190,9 +190,9 @@ grep -q "shoppingmall order: started.*spot=" "$LOG_DIR/workflow-a.log"
 grep -q "shoppingmall order: started.*spot=" "$LOG_DIR/workflow-b.log"
 grep -q "shoppingmall evidence:" "$LOG_DIR/api-a.log"
 grep -Rq "message flow" "$SHOPPINGMALL_LOG_DIR"
-grep -q "location-store-claim" "$SHOPPINGMALL_LOG_DIR/flow-api-a.log"
-grep -q "location-store-claim" "$SHOPPINGMALL_LOG_DIR/flow-api-b.log"
-grep -q "location-store-claim" "$SHOPPINGMALL_LOG_DIR/flow-workflow-a.log"
-grep -q "location-store-claim" "$SHOPPINGMALL_LOG_DIR/flow-workflow-b.log"
+grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-api-a.log"
+grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-api-b.log"
+grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-workflow-a.log"
+grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-workflow-b.log"
 echo "shoppingmall-server-evidence=completed"
 echo "PASS ShoppingMall.Cpp"

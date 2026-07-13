@@ -92,10 +92,9 @@
 struct contract_actor_t;
 
 template <typename TContext>
-concept has_destroy_actor = requires (
-  TContext & context, const zlink::framework::actor_ref_t &actor_ref, contract_actor_t &actor)
+concept has_destroy_actor = requires (TContext & context, contract_actor_t &actor)
 {
-    context.destroy_actor (actor_ref, actor);
+    context.destroy_actor (actor);
 };
 
 template <typename TContext>
@@ -994,7 +993,6 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spo
                               zlink::framework::worker_call_t<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ().destroy_actor (
-                   std::declval<const zlink::framework::actor_ref_t &> (),
                    std::declval<contract_actor_t &> ())),
                  zlink::framework::task_t<void>>);
 static_assert (

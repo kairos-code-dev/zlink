@@ -440,6 +440,8 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
         state->actor_created_keys.erase (key);
         state->destroyed_actor_keys.insert (key);
         state->actor_instances.erase (key);
+        detail::erase_actor_instance_index_unlocked (*state, actor.actor_type (),
+                                                     actor.actor_id ());
         state->actor_mailboxes.erase (key);
         {
             const std::lock_guard<std::mutex> dedup_lock (state->dispatched_request_replies_mutex);
@@ -1187,6 +1189,31 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
     }
 }
 
+task_t<void> entry_spot_context_t::destroy_actor_instance_erased (const void *instance)
+{
+    if (!_state || !_state->node || instance == nullptr) {
+        return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                                      "actor instance is not registered"));
+    }
+    /* Resolution and destruction stay under one node lock (the mutex is
+     * recursive), so a concurrent transfer cannot move the actor between
+     * the identity lookup and the location decision. */
+    std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
+    const auto found = _state->node->actor_instance_index.find (instance);
+    if (found == _state->node->actor_instance_index.end ()) {
+        /* Instance not registered on this node: already destroyed or
+         * superseded — duplicate destroy is a successful no-op. */
+        return task_t<void> (result_t<void>::success ());
+    }
+    const auto key = found->second.first + ":" + found->second.second;
+    const auto found_generation = _state->node->actor_generations.find (key);
+    return destroy_actor_erased (
+      actor_ref_t (_state->node_rid, found->second.first, found->second.second,
+                   found_generation != _state->node->actor_generations.end ()
+                     ? found_generation->second
+                     : 1));
+}
+
 task_t<void> entry_spot_context_t::destroy_actor_erased (const actor_ref_t &actor)
 {
     if (!_state || !_state->node || actor.empty ()) {
@@ -1224,6 +1251,8 @@ task_t<void> entry_spot_context_t::destroy_actor_erased (const actor_ref_t &acto
         _state->node->actor_created_keys.erase (key);
         _state->node->destroyed_actor_keys.insert (key);
         _state->node->actor_instances.erase (key);
+        detail::erase_actor_instance_index_unlocked (*_state->node, actor.actor_type (),
+                                                     actor.actor_id ());
         _state->node->actor_mailboxes.erase (key);
         {
             const std::lock_guard<std::mutex> dedup_lock (
@@ -1266,8 +1295,51 @@ send_call_t spot_context_t::publish_erased (std::string topic,
           auto native = state->native_spot.lock ();
           if (native) {
               try {
-                  auto outbound = payload;
-                  std::move (native->publish (topic)).message (std::move (outbound)).submit ();
+                  /* Fan-out wire envelope (flow-correlation §4.1, .NET
+                   * ZLinkSpotPublishEnvelope 동형): the header carries the
+                   * ambient flow pair so every subscriber line shares one
+                   * flow id across the tree. */
+                  const bool capture_enabled =
+                    state->node
+                    && detail::message_flow_tracer_t (state->node->dispatch).capture_enabled ();
+                  auto flow_scope = runtime::flow_context_t::enter_current_or_create (
+                    flow_origin_t::application, capture_enabled);
+                  runtime::messaging::envelope_header_t header;
+                  header.kind = runtime::messaging::message_kind_t::publish;
+                  header.channel_name = state->node ? state->node->snapshot.name : std::string{};
+                  header.message_name = submitted_packet_name;
+                  header.topic = topic;
+                  header.source = header.channel_name;
+                  /* Self-delimited single frame: ['Z''L''F''E'][u32 BE
+                   * header_len][header JSON][body]. The node-attached fanout
+                   * path does not keep multipart boundaries end to end, so
+                   * the envelope frames itself; the decode side also accepts
+                   * a true two-part frame from peers whose wire preserves
+                   * parts. The magic makes the format discriminable from a
+                   * legacy raw payload, so a validation failure after a
+                   * magic match is definitively a corrupted framework frame. */
+                  const auto header_message =
+                    runtime::messaging::envelope_codec_t{}.encode_header (header);
+                  const auto header_bytes = header_message.to_bytes ();
+                  const auto body_bytes = payload.to_bytes ();
+                  std::vector<std::uint8_t> frame;
+                  frame.reserve (8 + header_bytes.size () + body_bytes.size ());
+                  frame.push_back (static_cast<std::uint8_t> ('Z'));
+                  frame.push_back (static_cast<std::uint8_t> ('L'));
+                  frame.push_back (static_cast<std::uint8_t> ('F'));
+                  frame.push_back (static_cast<std::uint8_t> ('E'));
+                  const auto header_size = static_cast<std::uint32_t> (header_bytes.size ());
+                  frame.push_back (static_cast<std::uint8_t> (header_size >> 24));
+                  frame.push_back (static_cast<std::uint8_t> (header_size >> 16));
+                  frame.push_back (static_cast<std::uint8_t> (header_size >> 8));
+                  frame.push_back (static_cast<std::uint8_t> (header_size));
+                  frame.insert (frame.end (), header_bytes.begin (), header_bytes.end ());
+                  frame.insert (frame.end (), body_bytes.begin (), body_bytes.end ());
+                  auto frame_part = zlink::message_t::from (frame);
+                  if (!std::move (native->publish (topic)).message (frame_part).submit ()) {
+                      return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                      "spot publish failed");
+                  }
               }
               catch (const std::exception &error) {
                   return result_t<void>::failure (framework_error_kind_t::request_failed,
@@ -2492,13 +2564,24 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
         return detail::propagate_failure<actor_join_reply_t> (actor_factory, "actor factory failed");
     }
     const auto key = actor_key (actor_ref);
-    auto &actor_instance = _state->actor_instances[key];
+    /* Registration is double-checked: an already-registered actor is taken
+     * under the node mutex without touching the factory, and only a first
+     * registration constructs — outside the mutex, because the factory is user
+     * code and must not be able to invert lock order. The map entry and its
+     * identity index entry are then installed together under the mutex, so a
+     * concurrent destroy never sees one without the other. */
+    std::shared_ptr<void> actor_instance = registered_actor_instance (actor_ref, key);
     if (!actor_instance) {
-        actor_instance =
+        auto created_instance =
           actor_factory.value ().get ().create_instance (std::string (actor_ref.actor_id ()));
-        if (!actor_instance) {
+        if (!created_instance) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
+        }
+        actor_instance = install_actor_instance (actor_ref, key, std::move (created_instance));
+        if (!actor_instance) {
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor has been destroyed");
         }
     }
     if (actor_snapshot) {
@@ -2605,13 +2688,24 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
     }
 
     const auto key = actor_key (actor_ref);
-    auto &actor_instance = _state->actor_instances[key];
+    /* Registration is double-checked: an already-registered actor is taken
+     * under the node mutex without touching the factory, and only a first
+     * registration constructs — outside the mutex, because the factory is user
+     * code and must not be able to invert lock order. The map entry and its
+     * identity index entry are then installed together under the mutex, so a
+     * concurrent destroy never sees one without the other. */
+    std::shared_ptr<void> actor_instance = registered_actor_instance (actor_ref, key);
     if (!actor_instance) {
-        actor_instance =
+        auto created_instance =
           actor_factory.value ().get ().create_instance (std::string (actor_ref.actor_id ()));
-        if (!actor_instance) {
+        if (!created_instance) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
+        }
+        actor_instance = install_actor_instance (actor_ref, key, std::move (created_instance));
+        if (!actor_instance) {
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor has been destroyed");
         }
     }
     auto committed_context = actor_context_t (actor_context._state, actor_ref);
@@ -2778,6 +2872,25 @@ spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref)
         return result_t<remote_actor_transfer_t>::failure (framework_error_kind_t::request_rejected,
                                                            "actor transfer is already in progress");
     }
+    // One histogram sample per transfer, taken right at the moving transition
+    // (runtime-metrics §4.3): the coordinator now blocks new dispatches, so the
+    // counter is exactly the requests still in flight across the move.
+    {
+        runtime::runtime_metrics_t metrics (_state->monitoring);
+        if (metrics.enabled ()) {
+            std::size_t pending = 0;
+            {
+                const std::lock_guard<std::mutex> pending_lock (
+                  _state->actor_pending_requests_mutex);
+                const auto found = _state->actor_pending_requests.find (key);
+                if (found != _state->actor_pending_requests.end ()) {
+                    pending = found->second;
+                }
+            }
+            metrics.histogram ("zlink.actor.transfer.pending_requests.count", "{request}",
+                               static_cast<double> (pending));
+        }
+    }
     if (transfer == _state->actor_transfers.end ()) {
         return result_t<remote_actor_transfer_t>::success (
           remote_actor_transfer_t{source_spot->second, zlink::message_t{}});
@@ -2868,8 +2981,20 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (source_actor);
     _state->actor_instances.erase (key);
+    detail::erase_actor_instance_index_unlocked (*_state, source_actor.actor_type (),
+                                                 source_actor.actor_id ());
     _state->actor_mailboxes.erase (key);
-    _state->actor_transfer_coordinator.complete_move (key);
+    const auto transfer_elapsed = _state->actor_transfer_coordinator.complete_move (key);
+    if (transfer_elapsed) {
+        // Commit ack confirmed: one transfers count and one duration sample per
+        // completed out→commit-ack move (runtime-metrics §4.3, RMETRIC-004).
+        runtime::runtime_metrics_t metrics (_state->monitoring);
+        if (metrics.enabled ()) {
+            metrics.counter ("zlink.actor.transfers", "{transfer}", 1.0);
+            metrics.histogram ("zlink.actor.transfer.duration", "s",
+                               std::chrono::duration<double> (*transfer_elapsed).count ());
+        }
+    }
     detail::record_actor_route_unlocked (*_state, key, std::move (target_route),
                                          target_actor.generation ());
     // The route recorded above is the forwarding mapping of §10.4: stragglers
@@ -3013,12 +3138,14 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     }
     catch (const framework_exception_t &error) {
         node_lock.lock ();
+        detail::record_actor_instance_index_unlocked (*_state, committed, actor.get ());
         _state->actor_instances[actor_key (committed)] = actor;
         fail_target_commit (true);
         return detail::result_access_t::failure<actor_join_reply_t> (error);
     }
     catch (const std::exception &error) {
         node_lock.lock ();
+        detail::record_actor_instance_index_unlocked (*_state, committed, actor.get ());
         _state->actor_instances[actor_key (committed)] = actor;
         fail_target_commit (true);
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
@@ -3026,6 +3153,7 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     }
     catch (...) {
         node_lock.lock ();
+        detail::record_actor_instance_index_unlocked (*_state, committed, actor.get ());
         _state->actor_instances[actor_key (committed)] = actor;
         fail_target_commit (true);
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
@@ -3033,6 +3161,7 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     }
 
     const auto key = actor_key (committed);
+    detail::record_actor_instance_index_unlocked (*_state, committed, actor.get ());
     _state->actor_instances[key] = std::move (actor);
     _state->destroyed_actor_keys.erase (key);
     // In-flight handoff replay (§10.2-3): the preserved backlog goes onto the
@@ -3264,16 +3393,21 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         return result_t<std::optional<zlink::message_t>>::failure (
           framework_error_kind_t::actor_route_not_found, "actor has been destroyed");
     }
-    auto &actor_instance_slot = _state->actor_instances[key];
-    if (!actor_instance_slot) {
-        actor_instance_slot =
+    /* Same double-checked registration as the join paths. */
+    std::shared_ptr<void> actor_instance = registered_actor_instance (actor_ref, key);
+    if (!actor_instance) {
+        auto created_instance =
           found_factory->second.create_instance (std::string (actor_ref.actor_id ()));
-        if (!actor_instance_slot) {
+        if (!created_instance) {
             return result_t<std::optional<zlink::message_t>>::failure (
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
         }
+        actor_instance = install_actor_instance (actor_ref, key, std::move (created_instance), true);
+        if (!actor_instance) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor has been destroyed");
+        }
     }
-    auto actor_instance = actor_instance_slot;
 
     if (found_location == _state->actor_spot_rids.end ()) {
         if (!_state->snapshot.entry_spot_name) {
@@ -3386,6 +3520,38 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             }
             replies.emplace (dedup_request_id, std::nullopt);
         }
+    }
+    // In-flight request window for the transfer pending sample (runtime-metrics
+    // §4.3): counted from dispatch start until the reply (or error) is produced,
+    // so a moving transition that lands mid-dispatch sees this request.
+    struct pending_request_scope_t
+    {
+        std::shared_ptr<detail::spot_node_builder_state_t> state;
+        std::string key;
+
+        pending_request_scope_t (std::shared_ptr<detail::spot_node_builder_state_t> state_,
+                                 std::string key_) :
+            state (std::move (state_)), key (std::move (key_))
+        {
+        }
+        pending_request_scope_t (const pending_request_scope_t &) = delete;
+        pending_request_scope_t &operator= (const pending_request_scope_t &) = delete;
+        ~pending_request_scope_t ()
+        {
+            const std::lock_guard<std::mutex> lock (state->actor_pending_requests_mutex);
+            const auto found = state->actor_pending_requests.find (key);
+            if (found != state->actor_pending_requests.end () && --found->second == 0) {
+                state->actor_pending_requests.erase (found);
+            }
+        }
+    };
+    std::optional<pending_request_scope_t> pending_request_scope;
+    if (message_kind == stream_message_kind_t::request) {
+        {
+            const std::lock_guard<std::mutex> lock (_state->actor_pending_requests_mutex);
+            _state->actor_pending_requests[key]++;
+        }
+        pending_request_scope.emplace (_state, key);
     }
     report_spot_dispatch_trace (_state, message_flow_outcome_t::received,
                                 dispatch_error_surface_t::spot_actor, dispatch_kind, packet_name,
@@ -3905,6 +4071,18 @@ void spot_node_runtime_t::cancel_pending_work () noexcept
     }
 }
 
+void spot_node_runtime_t::release_native_handles () noexcept
+{
+    try {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        _state->native_actors.clear ();
+        _state->native_spots_by_rid.clear ();
+        _state->routed_control_spot.reset ();
+    }
+    catch (...) {
+    }
+}
+
 void spot_node_runtime_t::request_stop () noexcept
 {
     _state->stopping.store (true, std::memory_order_release);
@@ -4047,6 +4225,41 @@ bool spot_node_runtime_t::has_active_callbacks () const
         }
     }
     return false;
+}
+
+std::vector<actor_ref_t> spot_node_runtime_t::local_actor_refs () const
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    std::vector<actor_ref_t> refs;
+    refs.reserve (_state->actor_spot_rids.size ());
+    const auto node_rid = detail::effective_spot_node_rid (_state->snapshot);
+    for (const auto &[key, spot_rid] : _state->actor_spot_rids) {
+        const auto split = key.find (':');
+        if (split == std::string::npos) {
+            continue;
+        }
+        const auto generation = _state->actor_generations.find (key);
+        refs.emplace_back (node_rid_t::from_string (node_rid), key.substr (0, split),
+                           key.substr (split + 1),
+                           generation != _state->actor_generations.end () ? generation->second
+                                                                          : 0);
+    }
+    return refs;
+}
+
+std::optional<zlink::message_t>
+spot_node_runtime_t::serialize_actor_snapshot (const actor_ref_t &actor_ref) const
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    const auto actor = _state->actor_instances.find (actor_key (actor_ref));
+    const auto factory = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
+    if (actor == _state->actor_instances.end () || !actor->second
+        || factory == _state->actor_factories.end () || !_state->channel_runtime
+        || !_state->channel_runtime->serializers) {
+        return std::nullopt;
+    }
+    return factory->second.serialize_instance (actor->second.get (),
+                                               *_state->channel_runtime->serializers);
 }
 
 void spot_node_runtime_t::bind_drain_flag (std::shared_ptr<std::atomic_bool> flag)
@@ -4521,10 +4734,97 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (const spot_context_t 
                                                            service_provider_t &services,
                                                            serializer_registry_t &serializers) const
 {
+    return dispatch_subscription (context, std::move (topic),
+                                  std::vector<zlink::message_t>{message}, services, serializers);
+}
+
+result_t<void>
+spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
+                                            std::string topic,
+                                            const std::vector<zlink::message_t> &parts,
+                                            service_provider_t &services,
+                                            serializer_registry_t &serializers) const
+{
     if (!context._state || !context._state->spot_instance) {
         return result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
                                         "spot context is not registered");
     }
+    if (parts.empty ()) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "spot subscription frame is empty");
+    }
+    /* Fan-out wire envelope (flow-correlation §4.1): the decoded header
+     * carries the publisher's flow pair, so every subscriber line — including
+     * skip/drop lines — shares the tree's flow id. The frame is either the
+     * framework's self-delimited single part (['Z''L''F''E'][u32 BE
+     * header_len][header JSON][body]), a true two-part envelope from a
+     * parts-preserving wire, or a bare payload from a non-framework publisher
+     * (dispatched without a flow pair). */
+    const runtime::messaging::envelope_codec_t codec;
+    zlink::message_t body = parts.front ();
+    std::optional<std::string> flow_id;
+    std::optional<flow_origin_t> flow_origin;
+    bool report_decode_failure = false;
+    if (parts.size () >= 2) {
+        const runtime::messaging::message_parts_t envelope_parts{std::vector (parts)};
+        auto header = codec.decode_header (envelope_parts);
+        auto decoded_body = codec.decode_body (envelope_parts);
+        if (header && decoded_body) {
+            body = decoded_body.value ();
+            flow_id = header.value ().flow_id;
+            flow_origin = header.value ().flow_origin;
+        } else {
+            report_decode_failure = true;
+        }
+    } else {
+        const auto &frame = parts.front ();
+        const auto bytes = frame.to_bytes ();
+        const bool framed = bytes.size () >= 8 && bytes[0] == static_cast<std::uint8_t> ('Z')
+                            && bytes[1] == static_cast<std::uint8_t> ('L')
+                            && bytes[2] == static_cast<std::uint8_t> ('F')
+                            && bytes[3] == static_cast<std::uint8_t> ('E');
+        if (framed) {
+            /* The 'ZLFE' prefix is reserved by the fanout wire contract for
+             * framework frames — a raw publisher whose payload begins with
+             * it is out of contract (CPP-FANOUT-WIRE-001 tracks the final
+             * cross-language wire). On a magic match any failure past this
+             * point drops the message instead of handing a corrupted body
+             * to the application handler. header_size is compared against
+             * the remainder (never added to the prefix width) so an
+             * adversarial length cannot wrap std::size_t. */
+            const std::size_t header_size = (static_cast<std::size_t> (bytes[4]) << 24)
+                                            | (static_cast<std::size_t> (bytes[5]) << 16)
+                                            | (static_cast<std::size_t> (bytes[6]) << 8)
+                                            | static_cast<std::size_t> (bytes[7]);
+            report_decode_failure = true;
+            if (header_size > 0 && header_size <= bytes.size () - 8) {
+                auto header = codec.decode_header (zlink::message_t::from (
+                  std::vector<std::uint8_t> (bytes.begin () + 8,
+                                             bytes.begin () + 8
+                                               + static_cast<std::ptrdiff_t> (header_size))));
+                if (header) {
+                    body = zlink::message_t::from (std::vector<std::uint8_t> (
+                      bytes.begin () + 8 + static_cast<std::ptrdiff_t> (header_size),
+                      bytes.end ()));
+                    flow_id = header.value ().flow_id;
+                    flow_origin = header.value ().flow_origin;
+                    report_decode_failure = false;
+                }
+            }
+        }
+    }
+    if (report_decode_failure) {
+        report_spot_dispatch_error (
+          _state, dispatch_error_surface_t::spot_subscription, dispatch_message_kind_t::publish,
+          dispatch_error_reason_t::payload_decode_failed, dispatch_error_action_t::drop,
+          std::nullopt, topic, std::string (context._state->spot_rid.value ()));
+        return result_t<void>::success ();
+    }
+    const bool capture_enabled =
+      detail::message_flow_tracer_t (_state->dispatch).capture_enabled ();
+    auto flow_scope = runtime::flow_context_t::enter (std::move (flow_id), flow_origin,
+                                                      capture_enabled, flow_origin_t::inbound);
+    const auto &message = body;
     report_spot_dispatch_trace (
       _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, {}, topic, context._state->spot_rid.value ());
@@ -4916,8 +5216,9 @@ std::size_t spot_node_runtime_t::drain_subscriptions (service_provider_t &servic
             if (inbound.parts ().empty ()) {
                 continue;
             }
-            auto dispatched_result = dispatch_subscription (
-              context, inbound.topic (), inbound.parts ().front (), services, serializers);
+            auto dispatched_result = dispatch_subscription (context, inbound.topic (),
+                                                            inbound.parts (), services,
+                                                            serializers);
             if (dispatched_result) {
                 ++dispatched;
             }

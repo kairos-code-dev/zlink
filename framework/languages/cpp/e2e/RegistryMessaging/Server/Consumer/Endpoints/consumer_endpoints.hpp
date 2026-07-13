@@ -132,7 +132,7 @@ class missing_request_handler_t
 
     request_failure_res_t handle (const profile_req_t &request)
     {
-        auto call = _channels.request (api_channel, request)
+        auto call = _channels.request (api_channel, missing_profile_req_t{request})
                       .timeout (std::chrono::milliseconds (3000))
                       .async<profile_res_t> ();
         const auto &reply = call.result ();
@@ -161,7 +161,7 @@ class missing_command_handler_t
 
     operation_status_t handle (const profile_msg_t &command)
     {
-        _channels.send (api_channel, command).submit ();
+        _channels.send (api_channel, missing_profile_msg_t{command}).submit ();
         return {.status = "sent"};
     }
 

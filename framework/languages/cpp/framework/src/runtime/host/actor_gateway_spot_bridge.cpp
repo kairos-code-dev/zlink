@@ -907,6 +907,25 @@ std::optional<std::string> default_spot_route_channel (const spot_node_snapshot_
     return spot_node.accepted_route_channels.front ().channel_name;
 }
 
+/* Single owner of the spot-node routing decision (route client, local node
+ * identity, default route channel, accepted-channel interpretation): the
+ * configure-time wiring and the drain handoff both consume this binding so
+ * normal joins and drain moves cannot diverge. */
+actor_gateway_spot_node_binding_t
+make_actor_gateway_spot_node_binding (zlink_builder_t &zlink,
+                                      const spot_node_snapshot_t &spot_node,
+                                      spot_node_runtime_t runtime,
+                                      serializer_registry_t &serializers)
+{
+    auto route_client = zlink.route_client (serializers);
+    runtime.set_route_client (route_client);
+    auto local_rid = std::string (runtime.node_rid ().value ());
+    return actor_gateway_spot_node_binding_t{std::move (runtime), std::move (route_client),
+                                             std::move (local_rid),
+                                             default_spot_route_channel (spot_node),
+                                             !spot_node.accepted_route_channels.empty ()};
+}
+
 template <typename Relay>
 result_t<std::optional<zlink::message_t>>
 relay_actor_with_local_binding_first (std::vector<actor_gateway_spot_node_binding_t> &bindings,
@@ -1002,6 +1021,106 @@ build_route_internal_dispatchers (const zlink_builder_t &builder,
     return dispatchers;
 }
 
+drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
+                                                         service_provider_t &provider,
+                                                         serializer_registry_t &serializers)
+{
+    drain_actor_handoff_result_t outcome;
+    auto peers = provider.get<peer_location_resolver_t> ();
+    auto actor_gateway = provider.get<actor_gateway_runtime_t> ();
+    for (const auto &spot_node : zlink.spot_nodes ()) {
+        auto runtime = spot_node_runtime_t::from (zlink, spot_node.name);
+        if (!runtime) {
+            continue;
+        }
+        const auto actors = runtime->local_actor_refs ();
+        if (actors.empty ()) {
+            continue;
+        }
+        if (!peers || !actor_gateway) {
+            // No peer resolver or gateway: nothing to select targets from.
+            // The actors stay on the source and the shared deadline owns the
+            // outcome (§5.3 "no eligible target").
+            outcome.completed = false;
+            outcome.remaining += actors.size ();
+            continue;
+        }
+        const auto mesh_name = spot_node.discovery_channel_name ? *spot_node.discovery_channel_name
+                                                                : spot_node.name;
+        std::vector<peer_location_t> mesh_peers;
+        try {
+            mesh_peers =
+              peers->get ()
+                .list_live_peers (peer_location_filter_t{
+                  .auto_connect_type = location_auto_connect_type_t::spot_mesh,
+                  .mesh_name = mesh_name,
+                  .role = location_role_t::spot})
+                .result ()
+                .value ();
+        }
+        catch (...) {
+            outcome.completed = false;
+            outcome.remaining += actors.size ();
+            continue;
+        }
+        auto binding =
+          make_actor_gateway_spot_node_binding (zlink, spot_node, *runtime, serializers);
+        std::size_t next_target = 0;
+        for (const auto &actor_ref : actors) {
+            const auto capability = "actor:" + std::string (actor_ref.actor_type ());
+            std::vector<node_rid_t> eligible;
+            for (const auto &peer : mesh_peers) {
+                if (peer.draining || !peer.node_rid) {
+                    continue;
+                }
+                const auto peer_rid = peer.node_rid->to_string ();
+                if (peer_rid.empty () || peer_rid == binding.local_spot_node_rid) {
+                    continue;
+                }
+                if (std::find (peer.capabilities.begin (), peer.capabilities.end (), capability)
+                    == peer.capabilities.end ()) {
+                    continue;
+                }
+                eligible.push_back (node_rid_t::from_string (peer_rid));
+            }
+            if (eligible.empty ()) {
+                outcome.completed = false;
+                outcome.remaining++;
+                continue;
+            }
+            // One in-flight handoff at a time is the v1 concurrency bound; a
+            // rejected/left peer just advances to the next round-robin target
+            // and the next pass retries with a refreshed store view. The
+            // general join runs the full admission/transfer/commit transaction
+            // toward the target's entry spot (rid == node rid), mirroring the
+            // .NET drain handoff.
+            bool moved = false;
+            for (std::size_t attempt = 0; attempt < eligible.size () && !moved; attempt++) {
+                const auto &target = eligible[(next_target + attempt) % eligible.size ()];
+                try {
+                    auto joined = join_actor_to_spot_through_route (
+                      binding.runtime, actor_gateway->get (), binding.route_client,
+                      binding.local_spot_node_rid, binding.route_channel_name,
+                      binding.accepts_route_channels, actor_ref,
+                      spot_rid_t::from_string (std::string (target.value ())),
+                      zlink::message_t{}, serializers);
+                    moved = joined && joined.value ().result_code == 0;
+                }
+                catch (...) {
+                }
+            }
+            next_target++;
+            if (moved) {
+                outcome.moved++;
+            } else {
+                outcome.completed = false;
+                outcome.remaining++;
+            }
+        }
+    }
+    return outcome;
+}
+
 void configure_actor_gateway_spot_bridge (
   zlink_builder_t &zlink,
   service_collection_t &services,
@@ -1039,11 +1158,8 @@ void configure_actor_gateway_spot_bridge (
         runtime->on_actor_ref_updated ([&actor_gateway] (const actor_ref_t &actor_ref) {
             return actor_gateway.update_actor_ref (actor_ref);
         });
-        auto route_client = zlink.route_client (serializers);
-        runtime->set_route_client (route_client);
-        actor_gateway_spot_nodes.push_back (actor_gateway_spot_node_binding_t{
-          *runtime, std::move (route_client), std::string (runtime->node_rid ().value ()),
-          default_spot_route_channel (spot_node), !spot_node.accepted_route_channels.empty ()});
+        actor_gateway_spot_nodes.push_back (
+          make_actor_gateway_spot_node_binding (zlink, spot_node, *runtime, serializers));
         auto binding = actor_gateway_spot_nodes.back ();
         runtime->on_actor_entry_spot_join (
           [binding, &serializers] (const actor_ref_t &actor_ref, node_rid_t node_rid,

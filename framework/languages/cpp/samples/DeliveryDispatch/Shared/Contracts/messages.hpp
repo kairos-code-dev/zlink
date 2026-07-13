@@ -33,6 +33,14 @@ inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 namespace zlink::samples::deliverydispatch
 {
 
+/* courier actor가 bind되는 SpotNode routing id. bind 응답의 actor node rid로 client가
+ * 노드 배치를 확인한다(공통 sample spec §16). */
+struct courier_actor_nodes_t
+{
+    static constexpr const char *node_1 = "delivery-courier-node-1";
+    static constexpr const char *node_2 = "delivery-courier-node-2";
+};
+
 using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct delivery_status_t
@@ -130,9 +138,10 @@ struct subscribe_delivery_res_t
     std::string delivery_id;
 };
 
-struct assign_delivery_req_t
+/* 공통 sample spec: 배차 투입은 응답 없는 one-way send다(`AssignDeliveryMsg`). */
+struct assign_delivery_msg_t
 {
-    static constexpr const char *packet_name = "AssignDelivery";
+    static constexpr const char *packet_name = "AssignDeliveryMsg";
     std::string delivery_id;
     std::string customer_id;
     std::string pickup_address;
@@ -175,11 +184,12 @@ struct courier_decision_msg_t
     std::string reason;
 };
 
+/* 공통 sample spec §10: DeliveryStatusChangedReq = {DeliveryId, Status, CourierId, OccurredAt}.
+ * 고객 식별자는 Tracking이 delivery로부터 찾는다. */
 struct delivery_status_changed_req_t
 {
     static constexpr const char *packet_name = "DeliveryStatusChangedReq";
     std::string delivery_id;
-    std::string customer_id;
     std::string status;
     std::string courier_id;
     std::string occurred_at;
@@ -377,7 +387,7 @@ inline void from_json (const nlohmann::json &json, subscribe_delivery_res_t &val
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const assign_delivery_req_t &value)
+inline void to_json (nlohmann::json &json, const assign_delivery_msg_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
             {"customerId", value.customer_id},
@@ -385,7 +395,7 @@ inline void to_json (nlohmann::json &json, const assign_delivery_req_t &value)
             {"dropoffAddress", value.dropoff_address}};
 }
 
-inline void from_json (const nlohmann::json &json, assign_delivery_req_t &value)
+inline void from_json (const nlohmann::json &json, assign_delivery_msg_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.customer_id = json_string (json, "customerId", "customer_id");
@@ -460,7 +470,6 @@ inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value
 inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
-            {"customerId", value.customer_id},
             {"status", value.status},
             {"courierId", value.courier_id},
             {"occurredAt", value.occurred_at}};
@@ -469,7 +478,6 @@ inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &
 inline void from_json (const nlohmann::json &json, delivery_status_changed_req_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
-    value.customer_id = json_string (json, "customerId", "customer_id");
     value.status = json.value ("status", "");
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.occurred_at = json_string (json, "occurredAt", "occurred_at");

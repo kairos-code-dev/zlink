@@ -64,8 +64,8 @@ class location_runtime_t
     bool republish_peer_rows_draining ()
     {
         try {
-            auto peers =
-              _store->list_peers (peer_location_filter_t{}).result ().value ();
+            auto peers = store_call (
+              [&] { return _store->list_peers (peer_location_filter_t{}).result ().value (); });
             bool all_written = true;
             for (auto &peer : peers) {
                 if (peer.owner_id != _owner_id || peer.draining) {
@@ -129,6 +129,7 @@ class location_runtime_t
             _store->remove_all_by_owner (_owner_id).result ().value ();
         }
         catch (const std::exception &error) {
+            record_store_error ();
             record_failure (error.what ());
         }
     }
@@ -152,6 +153,7 @@ class location_runtime_t
             return true;
         }
         catch (const std::exception &error) {
+            record_store_error ();
             record_failure (error.what ());
             return false;
         }
@@ -200,6 +202,29 @@ class location_runtime_t
         }
     }
 
+    /* Store access failed (read or register): one error count per failure
+     * (runtime-metrics §4.5 store.errors). The polling and write surfaces all
+     * report here so the counter aggregates store health in one series. */
+    void record_store_error () const
+    {
+        runtime_metrics_t metrics (_monitoring);
+        if (metrics.enabled ()) {
+            metrics.counter ("zlink.location.store.errors", "{error}", 1);
+        }
+    }
+
+    /* Discovered peer total observed on the auto-connect polling tick
+     * (runtime-metrics §7.2: the polling diff doubles as the gauge source, so
+     * observable freshness follows the tick cadence). */
+    void observe_discovered_peers (std::size_t count) const
+    {
+        runtime_metrics_t metrics (_monitoring);
+        if (metrics.enabled ()) {
+            metrics.observable ("zlink.location.peers", "{peer}",
+                                static_cast<double> (count));
+        }
+    }
+
     location_write_result_t write_peer (peer_location_t peer, location_write_intent_t intent)
     {
         peer.owner_id = _owner_id;
@@ -208,7 +233,8 @@ class location_runtime_t
         }
         auto canonical = location_key_codec_t::encode_peer_key (peer_location_key_t{
           peer.auto_connect_type, peer.mesh_name, peer.role, peer.node_rid, peer.endpoint});
-        auto result = _store->update_peer (std::move (peer), intent).result ().value ();
+        auto result = store_call (
+          [&] { return _store->update_peer (std::move (peer), intent).result ().value (); });
         if (result.status == location_write_status_t::rejected_conflict
             || result.status == location_write_status_t::ignored_stale) {
             runtime_metrics_t metrics (_monitoring);
@@ -223,10 +249,11 @@ class location_runtime_t
     location_write_result_t remove_peer (peer_location_key_t key, std::int64_t generation)
     {
         auto canonical = location_key_codec_t::encode_peer_key (key);
-        auto result =
-          _store->remove_peer (std::move (key), location_owner_token_t{_owner_id, generation})
-            .result ()
-            .value ();
+        auto result = store_call ([&] {
+            return _store->remove_peer (std::move (key), location_owner_token_t{_owner_id, generation})
+              .result ()
+              .value ();
+        });
         notify_if_stale (result, location_kind_t::peer, canonical);
         return result;
     }
@@ -236,7 +263,8 @@ class location_runtime_t
         spot.owner_id = _owner_id;
         auto canonical = location_key_codec_t::encode_spot_key (
           spot_location_key_t{spot.mesh_name, spot.spot_rid});
-        auto result = _store->update_spot (std::move (spot), intent).result ().value ();
+        auto result = store_call (
+          [&] { return _store->update_spot (std::move (spot), intent).result ().value (); });
         notify_if_stale (result, location_kind_t::spot, canonical);
         return result;
     }
@@ -244,10 +272,11 @@ class location_runtime_t
     location_write_result_t remove_spot (spot_location_key_t key, std::int64_t generation)
     {
         auto canonical = location_key_codec_t::encode_spot_key (key);
-        auto result =
-          _store->remove_spot (std::move (key), location_owner_token_t{_owner_id, generation})
-            .result ()
-            .value ();
+        auto result = store_call ([&] {
+            return _store->remove_spot (std::move (key), location_owner_token_t{_owner_id, generation})
+              .result ()
+              .value ();
+        });
         notify_if_stale (result, location_kind_t::spot, canonical);
         return result;
     }
@@ -257,7 +286,8 @@ class location_runtime_t
         actor.owner_id = _owner_id;
         auto canonical =
           location_key_codec_t::encode_actor_key (actor_location_key_t{actor.actor_id});
-        auto result = _store->update_actor (std::move (actor), intent).result ().value ();
+        auto result = store_call (
+          [&] { return _store->update_actor (std::move (actor), intent).result ().value (); });
         notify_if_stale (result, location_kind_t::actor, canonical);
         return result;
     }
@@ -267,7 +297,8 @@ class location_runtime_t
         route.owner_id = _owner_id;
         auto canonical = location_key_codec_t::encode_route_key (
           route_location_key_t{route.route_kind, route.route_key});
-        auto result = _store->update_route (std::move (route), intent).result ().value ();
+        auto result = store_call (
+          [&] { return _store->update_route (std::move (route), intent).result ().value (); });
         notify_if_stale (result, location_kind_t::route, canonical);
         return result;
     }
@@ -275,10 +306,11 @@ class location_runtime_t
     location_write_result_t remove_actor (actor_location_key_t key, std::int64_t generation)
     {
         auto canonical = location_key_codec_t::encode_actor_key (key);
-        auto result =
-          _store->remove_actor (std::move (key), location_owner_token_t{_owner_id, generation})
-            .result ()
-            .value ();
+        auto result = store_call ([&] {
+            return _store->remove_actor (std::move (key), location_owner_token_t{_owner_id, generation})
+              .result ()
+              .value ();
+        });
         notify_if_stale (result, location_kind_t::actor, canonical);
         return result;
     }
@@ -340,6 +372,19 @@ class location_runtime_t
         std::lock_guard lock (_state_gate);
         _owner_lease_healthy = false;
         _last_error = std::move (message);
+    }
+
+    /* Every store lookup/register goes through here so a thrown store failure
+     * lands in the store.errors counter exactly once before it propagates. */
+    template <typename Call> auto store_call (Call &&call) -> decltype (call ())
+    {
+        try {
+            return call ();
+        }
+        catch (...) {
+            record_store_error ();
+            throw;
+        }
     }
 
     location_store_t *_store;

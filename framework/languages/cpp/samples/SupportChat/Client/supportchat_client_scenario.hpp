@@ -4,7 +4,6 @@
 #include "../Shared/Contracts/messages.hpp"
 
 #include <zlink/framework/codecs/json_stream_connector.hpp>
-#include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
@@ -25,9 +24,10 @@ inline constexpr const char *conversation_id_metadata_key = "ConversationId";
 class supportchat_client_scenario_t
 {
   public:
-    void run (const std::string &support_http_url, const std::string &session_stream_endpoint)
+    /* 공통 sample spec §1: client는 Session stream 하나만 사용한다. 서버 내부 불변식
+     * (상담원 가용성, 대화 순서 등) 검증은 probe 프로세스가 Support self-check로 수행한다. */
+    void run (const std::string &session_stream_endpoint)
     {
-        assert_support_server (support_http_url);
         run_stream_conversation (session_stream_endpoint);
 
         std::cout << "supportchat authentication=verified" << std::endl;
@@ -80,10 +80,6 @@ class supportchat_client_scenario_t
         auto agent_message = wait_chat (agent, "Payment keeps failing.");
         auto customer_typing = wait_typing (customer, "agent-1", true);
         auto customer_message = wait_chat (customer, "Please retry your card.");
-        auto agent_idle = wait_packet<conversation_idle_notify_t> (
-          agent, conversation_idle_notify_t::packet_name, "idle wait failed");
-        auto agent_closed = wait_packet<conversation_closed_notify_t> (
-          agent, conversation_closed_notify_t::packet_name, "closed wait failed");
 
         auto opened = request<open_conversation_res_t> (
           customer, open_conversation_req_t{"checkout payment failed"}, "open conversation failed");
@@ -117,36 +113,157 @@ class supportchat_client_scenario_t
         expect (customer_message.get ().message.text == "Please retry your card.",
                 "customer did not receive agent message");
 
+        /* 같은 상담원이 용량 안에서 두 번째 방을 받는다(공통 sample spec §17-13~17). */
+        auto second_customer_core = make_connector (endpoint);
+        auto second_customer = zlink::stream_e2e_client::use (second_customer_core);
+        expect (static_cast<bool> (second_customer.connect ().submit ()),
+                "second customer stream connect failed");
+        auto second_auth = request<authenticate_res_t> (
+          second_customer, authenticate_req_t{"customer-2"}, "second customer auth failed");
+        expect (second_auth.role == role_t::customer, "second customer role mismatch");
+
+        auto second_assigned = wait_assigned_packet (agent);
+        auto second_joined = wait_packet<participant_joined_notify_t> (
+          second_customer, participant_joined_notify_t::packet_name,
+          "second participant join wait failed");
+        auto second_message = wait_chat (second_customer, "Checking your refund now.");
+
+        auto second_opened =
+          request<open_conversation_res_t> (second_customer,
+                                            open_conversation_req_t{"refund not received"},
+                                            "second open conversation failed");
+        expect (second_opened.conversation_id != opened.conversation_id,
+                "second conversation must have its own id");
+        expect (second_assigned.get ().conversation_id == second_opened.conversation_id,
+                "second assignment notification mismatch");
+
+        auto second_agent_joined = request_in_conversation<join_conversation_res_t> (
+          agent, second_opened.conversation_id, join_conversation_req_t{},
+          "agent join of second conversation failed");
+        expect (second_agent_joined.state.status == conversation_status_t::active,
+                "second conversation was not activated");
+        expect (second_joined.get ().actor_id == "agent-1",
+                "second participant join notification mismatch");
+
+        auto second_sent = request_in_conversation<send_chat_message_res_t> (
+          agent, second_opened.conversation_id,
+          send_chat_message_req_t{"Checking your refund now."}, "second conversation send failed");
+        expect (second_sent.message.message_seq == 1,
+                "second conversation sequence must start at 1");
+        expect (second_message.get ().message.text == "Checking your refund now.",
+                "second customer did not receive agent message");
+
+        /* 방마다 MessageSeq와 push가 독립인지 확인한다(§17-17). */
+        auto first_state = request_in_conversation<join_conversation_res_t> (
+          agent, opened.conversation_id, join_conversation_req_t{}, "first conversation re-join failed");
+        expect (first_state.state.last_message_seq == 2,
+                "first conversation sequence must be independent of the second");
+
+        /* conversation Spot의 idle 판정은 마지막 메시지 기준이다(§14). reconnect 검증이
+         * idle 전이와 겹치지 않도록 첫 방에 메시지를 하나 더 보내 창을 다시 연다. */
+        auto agent_keepalive = wait_chat (agent, "Still looking into it.");
+        auto keepalive = request_in_conversation<send_chat_message_res_t> (
+          customer, opened.conversation_id, send_chat_message_req_t{"Still looking into it."},
+          "first conversation keep-alive failed");
+        expect (keepalive.message.message_seq == 3, "keep-alive sequence mismatch");
+        expect (agent_keepalive.get ().message.message_seq == 3,
+                "agent did not receive the keep-alive message");
+
+        /* reconnect: 같은 token으로 새 stream을 열고 열려 있던 방에 다시 join한다(§15, §17-19~20). */
+        auto reconnected_core = make_connector (endpoint);
+        auto reconnected_agent = zlink::stream_e2e_client::use (reconnected_core);
+        expect (static_cast<bool> (reconnected_agent.connect ().submit ()),
+                "agent reconnect failed");
+        auto reconnected_auth = request<authenticate_res_t> (
+          reconnected_agent, authenticate_req_t{"agent"}, "agent re-authentication failed");
+        expect (reconnected_auth.actor_id == agent_auth.actor_id,
+                "reconnected agent must bind the same actor");
+        auto reconnected_available = request<set_agent_available_res_t> (
+          reconnected_agent, set_agent_available_req_t{true}, "agent re-availability failed");
+        expect (reconnected_available.is_available, "reconnected agent was not made available");
+
+        auto rejoined_first = request_in_conversation<join_conversation_res_t> (
+          reconnected_agent, opened.conversation_id, join_conversation_req_t{},
+          "reconnected agent could not re-join the first conversation");
+        expect (rejoined_first.state.status == conversation_status_t::active,
+                "first conversation state must survive the reconnect");
+        expect (rejoined_first.state.last_message_seq == 3,
+                "first conversation history must survive the reconnect");
+        auto rejoined_second = request_in_conversation<join_conversation_res_t> (
+          reconnected_agent, second_opened.conversation_id, join_conversation_req_t{},
+          "reconnected agent could not re-join the second conversation");
+        expect (rejoined_second.state.last_message_seq == 1,
+                "second conversation history must survive the reconnect");
+
+        auto agent_idle = wait_idle (reconnected_agent, opened.conversation_id);
+        auto customer_idle = wait_idle (customer, opened.conversation_id);
+        auto agent_closed = wait_closed (reconnected_agent, opened.conversation_id);
+        auto customer_closed = wait_closed (customer, opened.conversation_id);
+
+        /* 명시적 close와 closed 대화 오류(§17-22, 명시적 close 시나리오). */
+        auto second_closed_notify = wait_closed (reconnected_agent, second_opened.conversation_id);
         auto closed = request_in_conversation<close_conversation_res_t> (
-          customer, opened.conversation_id, close_conversation_req_t{std::string ("idle")},
-          "close failed");
+          second_customer, second_opened.conversation_id, close_conversation_req_t{"resolved"},
+          "explicit close failed");
         expect (closed.state.status == conversation_status_t::closed,
-                "conversation did not close");
+                "explicit close did not close the conversation");
+        expect (second_closed_notify.get ().state.status == conversation_status_t::closed,
+                "agent did not receive the closed notification");
+
+        expect_error<close_conversation_res_t> (second_customer, second_opened.conversation_id,
+                                                close_conversation_req_t{"resolved"},
+                                                "closing a closed conversation must fail");
+        expect_error<send_chat_message_res_t> (second_customer, second_opened.conversation_id,
+                                               send_chat_message_req_t{"anyone there?"},
+                                               "sending to a closed conversation must fail");
+
+        /* 유휴 감지와 종료는 conversation Spot timer가 소유한다(공통 sample spec §14):
+         * 클라이언트는 아무것도 보내지 않고 idle -> closed 알림을 양쪽에서 기다린다(§17-21). */
         expect (agent_idle.get ().state.status == conversation_status_t::waiting_for_close,
                 "agent did not receive idle notification");
+        expect (customer_idle.get ().state.status == conversation_status_t::waiting_for_close,
+                "customer did not receive idle notification");
         expect (agent_closed.get ().state.status == conversation_status_t::closed,
                 "agent did not receive closed notification");
+        expect (customer_closed.get ().state.status == conversation_status_t::closed,
+                "customer did not receive closed notification");
     }
 
-    static void assert_support_server (const std::string &support_http_url)
+    static std::future<conversation_idle_notify_t> wait_idle (connector_t &connector,
+                                                              std::string conversation_id)
     {
-        auto client = zlink::http_client::client_t::create ()
-                        .base_url (support_http_url)
-                        .timeout (std::chrono::seconds (30))
-                        .build ();
-        const auto assertion =
-          client.post ("/self-check/assert")
-            .body (supportchat_server_assertion_req_t {})
-            .fetch<supportchat_server_assertion_res_t> ();
-        expect (assertion.ok, "support server self-check failed");
-        require_evidence (assertion.evidence, "agent-availability=registered");
-        require_evidence (assertion.evidence, "one-agent-many-conversations=verified");
-        require_evidence (assertion.evidence, "conversation-sequence=verified");
-        require_evidence (assertion.evidence, "typing-one-way=verified");
-        require_evidence (assertion.evidence, "reconnect-state=verified");
-        require_evidence (assertion.evidence, "explicit-close=verified");
-        require_evidence (assertion.evidence, "idle-close=verified");
-        require_evidence (assertion.evidence, "no-agent-waiting=verified");
+        return std::async (std::launch::async, [&connector, conversation_id] {
+            return connector.wait_for<conversation_idle_notify_t> ()
+              .where (&conversation_idle_notify_t::conversation_id, conversation_id)
+              .timeout (std::chrono::seconds (12))
+              .to_future ("idle notification wait failed")
+              .get ();
+        });
+    }
+
+    static std::future<conversation_closed_notify_t> wait_closed (connector_t &connector,
+                                                                  std::string conversation_id)
+    {
+        return std::async (std::launch::async, [&connector, conversation_id] {
+            return connector.wait_for<conversation_closed_notify_t> ()
+              .where (&conversation_closed_notify_t::conversation_id, conversation_id)
+              .timeout (std::chrono::seconds (12))
+              .to_future ("closed notification wait failed")
+              .get ();
+        });
+    }
+
+    template <typename TReply, typename TRequest>
+    static void expect_error (connector_t &connector,
+                              const std::string &conversation_id,
+                              const TRequest &request,
+                              const char *message)
+    {
+        auto reply = connector.request (request)
+                       .metadata (conversation_id_metadata_key, conversation_id)
+                       .template async<TReply> ()
+                       .result ();
+        expect (!reply, message);
     }
 
     template <typename TReply, typename TRequest>

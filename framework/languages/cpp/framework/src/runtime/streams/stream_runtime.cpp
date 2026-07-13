@@ -1045,6 +1045,18 @@ void stream_runtime_t::send_session_closing (stream_t &stream,
     }
 }
 
+void stream_runtime_t::send_heartbeat_ping (stream_t &stream) const noexcept
+{
+    try {
+        stream_header_t ping (stream_message_kind_t::control, stream_codec_t::raw,
+                              stream_header_flags_t::none, std::nullopt, "$zlink.heartbeat.ping",
+                              {});
+        stream.write_packet_with_header (std::move (ping), zlink::message_t{}).submit ();
+    }
+    catch (...) {
+    }
+}
+
 stream_t stream_runtime_t::open_session (std::string stream_name) const
 {
     if (_state->streams.find (stream_name) == _state->streams.end ()) {

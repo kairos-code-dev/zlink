@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include "../../Handlers/ensure_player_actor_handler.hpp"
+#include "../../../../../Configuration/sample_names.hpp"
 #include "../../../../../Configuration/sample_topology.hpp"
+#include "../../../../../../Shared/Contracts/messages.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -38,13 +39,10 @@ inline void trace_tictactoe_auth (std::string_view stage, std::string_view detai
 class authenticate_play_session_handler_t
 {
   public:
-    using dependency_types =
-      dependency_list_t<channel_client_t, ensure_player_actor_handler_t, sample_topology_t>;
+    using dependency_types = dependency_list_t<channel_client_t, sample_topology_t>;
 
-    authenticate_play_session_handler_t (channel_client_t &client,
-                                         ensure_player_actor_handler_t &ensure_actor,
-                                         sample_topology_t &topology) :
-        _client (client), _ensure_actor (ensure_actor), _topology (topology)
+    authenticate_play_session_handler_t (channel_client_t &client, sample_topology_t &topology) :
+        _client (client), _topology (topology)
     {
     }
 
@@ -74,30 +72,28 @@ class authenticate_play_session_handler_t
                                                             : authenticated.reason);
         }
 
-        const auto create_request = ensure_player_actor_req_t{authenticated.player.actor_id};
-        trace_tictactoe_auth ("ensure-actor-start", authenticated.player.actor_id);
-        const auto ensured = _ensure_actor.handle (create_request);
-        trace_tictactoe_auth ("ensure-actor-complete", ensured.actor.actor_id);
-        trace_tictactoe_auth ("bind-actor-start", ensured.actor.actor_id);
-        auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
-        trace_tictactoe_auth ("bind-actor-complete", ensured.actor.actor_id);
-        trace_tictactoe_auth ("join-entry-spot-start", ensured.actor.actor_id);
-        auto joined =
-          co_await bound.context ()
-            .join_entry_spot (node_rid_t::from_string (_topology.selected_play_node_rid ()),
-                              create_request)
-            .async ();
-        trace_tictactoe_auth ("join-entry-spot-complete", ensured.actor.actor_id);
+        /* 공통 sample spec §13: 인증 응답의 PlayerInfo.ActorId로 actor를 만들고, 같은
+         * PlayerInfo를 actor 생성 payload로 실어 보낸다(별도 EnsurePlayerActor 계약 없음). */
+        const auto &player = authenticated.player;
+        const auto play_node_rid = node_rid_t::from_string (_topology.selected_play_node_rid ());
+        const actor_ref_t actor_ref (play_node_rid, sample_names_t::actor_type, player.actor_id,
+                                     ++_generation);
+        trace_tictactoe_auth ("bind-actor-start", player.actor_id);
+        auto bound = co_await actors.bind_or_get (actor_ref).async ();
+        trace_tictactoe_auth ("bind-actor-complete", player.actor_id);
+        trace_tictactoe_auth ("join-entry-spot-start", player.actor_id);
+        auto joined = co_await bound.context ().join_entry_spot (play_node_rid, player).async ();
+        trace_tictactoe_auth ("join-entry-spot-complete", player.actor_id);
         if (!std::holds_alternative<
               framework::actor_join_accepted_t<framework::message_t>> (joined)) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
                                                           "Player entry spot join was rejected.");
         }
-        auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
+        auto actor = actors.find (player.actor_id).value_or (bound);
 
-        const auto reply_payload = authenticate_res_t{authenticated.player};
+        const auto reply_payload = authenticate_res_t{player};
         const auto reply_message = zlink::message_t::from_json (reply_payload);
-        trace_tictactoe_auth ("reply-submit", authenticated.player.actor_id);
+        trace_tictactoe_auth ("reply-submit", player.actor_id);
         stream.reply_packet (reply_message).submit ();
 
         co_return actor;
@@ -105,8 +101,8 @@ class authenticate_play_session_handler_t
 
   private:
     channel_client_t &_client;
-    ensure_player_actor_handler_t &_ensure_actor;
     sample_topology_t &_topology;
+    unsigned long long _generation = 0;
 };
 
 } // namespace zlink::samples::tictactoe

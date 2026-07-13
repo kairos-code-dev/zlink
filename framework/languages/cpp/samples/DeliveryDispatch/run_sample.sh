@@ -60,7 +60,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
-    docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"

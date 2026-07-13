@@ -6,6 +6,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace zlink::samples::tictactoe
 {
@@ -120,6 +121,18 @@ struct sample_topology_t
     std::string selected_play_endpoint () const
     {
         return play_node == "b" ? play_b_endpoint : play_a_endpoint;
+    }
+
+    /* TicTacToe 정본은 수동 endpoint scale-out을 보여 준다: channel client는 모든 상대
+     * 역할 endpoint를 직접 지정한다(공통 sample spec §6). */
+    std::vector<std::string> all_play_endpoints () const
+    {
+        return {play_a_endpoint, play_b_endpoint};
+    }
+
+    std::vector<std::string> all_api_endpoints () const
+    {
+        return {api_a_endpoint, api_b_endpoint};
     }
 
     std::string peer_play_endpoint () const

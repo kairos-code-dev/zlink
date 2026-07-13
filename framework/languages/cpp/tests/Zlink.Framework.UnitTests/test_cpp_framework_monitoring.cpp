@@ -7,6 +7,8 @@
 
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/location_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <chrono>
@@ -304,6 +306,30 @@ int main ()
       std::make_shared<zlink::framework::detail::monitoring_runtime_state_t> ();
     if (zlink::framework::runtime::runtime_metrics_t (unsubscribed_state).enabled ()) {
         return 26;
+    }
+
+    /* runtime-metrics §4.5: the location runtime emits the peers observable
+     * and the store.errors counter through the same catalog emitter. */
+    catalog_events.clear ();
+    zlink::framework::runtime::in_memory_location_store_t catalog_store;
+    zlink::framework::runtime::location_runtime_t catalog_location (catalog_store);
+    catalog_location.bind_monitoring (runtime.state ());
+    catalog_location.observe_discovered_peers (3);
+    catalog_location.record_store_error ();
+    if (catalog_events.size () != 2) {
+        return 27;
+    }
+    if (catalog_events[0].name != "zlink.location.peers" || catalog_events[0].value != 3
+        || catalog_events[0].instrument_kind
+             != zlink::framework::metric_instrument_kind_t::observable) {
+        return 28;
+    }
+    if (catalog_events[1].name != "zlink.location.store.errors"
+        || catalog_events[1].value != 1
+        || catalog_events[1].instrument_kind
+             != zlink::framework::metric_instrument_kind_t::counter
+        || catalog_events[1].unit != "{error}") {
+        return 29;
     }
 
     if (socket_events != 1 || filtered_socket_events != 1 || location_events != 1

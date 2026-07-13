@@ -169,6 +169,39 @@ class multi_node_create_local_handler_t
     zlink::framework::route_client_t &_routes;
 };
 
+/* Spot-addressed messaging is a mesh member's surface: a spot handle carries
+ * its mesh, so a node outside the SPOT mesh (the requester) cannot route to it
+ * directly. The requester therefore forwards over its route channel and the
+ * mesh member resolves the handle locally — the same split the .NET fixture
+ * has, where /spot/state/request lives on the multi-node server itself. */
+/* Mesh-member side of the forwarded state request: resolves the spot handle in
+ * its own mesh and routes to the spot. */
+class multi_node_state_member_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t,
+                                          zlink::framework::spot_handle_resolver_t>;
+    using request_type = e2e::multi_node_state_route_req_t;
+    using reply_type = e2e::state_res_t;
+
+    multi_node_state_member_handler_t (zlink::framework::route_client_t &routes,
+                                       zlink::framework::spot_handle_resolver_t &handles) :
+        _routes (routes), _handles (handles)
+    {
+    }
+
+    e2e::state_res_t handle (const e2e::multi_node_state_route_req_t &request,
+                             const zlink::framework::route_handler_context_t &)
+    {
+        return request_multi_node_state (_routes, _handles, request.spot_rid, request.delta);
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+    zlink::framework::spot_handle_resolver_t &_handles;
+};
+
 class multi_node_state_route_handler_t
 {
   public:
@@ -188,7 +221,18 @@ class multi_node_state_route_handler_t
 
     e2e::state_res_t handle (const e2e::multi_node_state_route_req_t &request)
     {
-        return request_multi_node_state (_routes, _handles, request.spot_rid, request.delta);
+        auto reply = _routes
+                       .request_to_node (multi_node_route_channel_for (_state.node_rid),
+                                         zlink::routing_id_t::from (_state.node_rid), request)
+                       .timeout (std::chrono::milliseconds (5000))
+                       .async<e2e::state_res_t> ()
+                       .result ();
+        if (reply) {
+            return reply.value ();
+        }
+        throw std::runtime_error (
+          "multi-node state route failed for '" + request.spot_rid + "': "
+          + (reply.error () ? reply.error ()->what () : "unknown route error"));
     }
 
   private:

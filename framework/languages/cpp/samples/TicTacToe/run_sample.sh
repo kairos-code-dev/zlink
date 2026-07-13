@@ -170,7 +170,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   if [[ "${TICTACTOE_CPP_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
@@ -258,6 +258,8 @@ wait_grep "observer-connected endpoint=tcp://127.0.0.1:" "$LOG_DIR/client.log"
 wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.log"
 wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-" "$LOG_DIR/client.log"
 wait_grep "tictactoe completed" "$LOG_DIR/client.log"
+grep -q "stream-inbound sample=TicTacToe" "$LOG_DIR/client.log"
+grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "$LOG_DIR/client.log"
 wait_grep "tictactoe=completed" "$LOG_DIR/client.log"
 grep -q "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR"/play-*.log
 grep -q "actor: LeaveGameReq completed. actor=player-o" "$LOG_DIR"/play-*.log

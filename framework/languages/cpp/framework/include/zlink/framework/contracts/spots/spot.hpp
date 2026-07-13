@@ -834,17 +834,20 @@ class entry_spot_context_t : public spot_context_t
 
     explicit entry_spot_context_t (const spot_context_t &context);
 
-    template <typename TActor>
-    task_t<void> destroy_actor (const actor_ref_t &actor_ref, TActor &actor)
+    /* Resolves the actor's identity from the live instance registered on
+     * this node, so a stale instance (already destroyed or superseded by a
+     * newer generation) is a successful no-op and never destroys the new
+     * actor. */
+    template <typename TActor> task_t<void> destroy_actor (TActor &actor)
     {
-        (void) actor;
-        return destroy_actor_erased (actor_ref);
+        return destroy_actor_instance_erased (std::addressof (actor));
     }
 
   private:
     friend class detail::spot_node_runtime_t;
     explicit entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
+    task_t<void> destroy_actor_instance_erased (const void *instance);
     task_t<void> destroy_actor_erased (const actor_ref_t &actor_ref);
 };
 

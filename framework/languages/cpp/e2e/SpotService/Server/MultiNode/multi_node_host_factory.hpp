@@ -50,7 +50,9 @@ inline int run_multi_node_server (int argc, char **argv)
           .add_transient<multi_node_spot_only_mesh_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<multi_node_spot_only_join_handler_t, scenario_state_t,
-                         zlink::framework::session_actor_manager_t> ();
+                         zlink::framework::session_actor_manager_t> ()
+          .add_transient<multi_node_state_member_handler_t, zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ();
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
@@ -69,7 +71,12 @@ inline int run_multi_node_server (int argc, char **argv)
                                    e2e::multi_node_create_spot_req_t,
                                    e2e::multi_node_create_spot_res_t> (
                 "MultiNodeCreateSpotReq",
-                &multi_node_create_local_handler_t::handle_route);
+                &multi_node_create_local_handler_t::handle_route)
+              .add_request_handler<multi_node_state_member_handler_t,
+                                   e2e::multi_node_state_route_req_t,
+                                   e2e::state_res_t> (
+                e2e::multi_node_state_route_req_t::packet_name,
+                &multi_node_state_member_handler_t::handle);
         }
         auto spot = options.add_spot_mesh (disable_route_mesh ? e2e::spot_only_mesh
                                                               : e2e::spot_mesh)

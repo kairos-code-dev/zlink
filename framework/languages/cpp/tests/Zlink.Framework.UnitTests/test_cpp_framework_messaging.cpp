@@ -392,6 +392,38 @@ int main ()
                  != zlink::framework::framework_error_kind_t::request_protocol_error) {
             return 50;
         }
+
+        /* MFLOW-EXT-014: an async continuation re-enters the flow captured at
+         * registration even when the task completes from a flow-less thread,
+         * and nothing leaks into the completing thread afterwards. */
+        {
+            zlink::framework::detail::task_completion_source_t<int> source;
+            std::string observed_in_callback;
+            bool leaked_on_completer = false;
+            {
+                auto scope =
+                  rt::flow_context_t::enter (created, zlink::framework::flow_origin_t::inbound,
+                                             false, zlink::framework::flow_origin_t::inbound);
+                auto task = source.task ();
+                zlink::framework::detail::observe_task_completion (
+                  task, [&observed_in_callback] (const zlink::framework::result_t<int> &) {
+                      if (const auto &flow = rt::flow_context_t::current ()) {
+                          observed_in_callback = flow->flow_id;
+                      }
+                  });
+            }
+            std::thread completer ([&source, &leaked_on_completer] {
+                source.complete (zlink::framework::result_t<int>::success (1));
+                leaked_on_completer = rt::flow_context_t::current ().has_value ();
+            });
+            completer.join ();
+            if (observed_in_callback != created) {
+                return 51;
+            }
+            if (leaked_on_completer || rt::flow_context_t::current ()) {
+                return 52;
+            }
+        }
     }
 
     return 0;

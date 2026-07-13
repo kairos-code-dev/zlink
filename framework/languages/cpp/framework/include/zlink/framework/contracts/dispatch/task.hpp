@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/errors/result.hpp>
 
+#include <atomic>
 #include <condition_variable>
 #include <coroutine>
 #include <functional>
@@ -57,6 +58,36 @@ class serial_turn_scope_t
     std::shared_ptr<serial_turn_t> _previous;
 };
 
+/* Ambient dispatch-context propagation across coroutine suspension
+ * (flow-correlation MFLOW-EXT-014). The runtime installs the hooks once; a
+ * continuation or callback re-enters the context captured at registration
+ * and the guard ends with the resume call, so a finished continuation never
+ * leaks its context into unrelated work. Without hooks the machinery costs
+ * one atomic pointer load. Both functions publish through a single atomic
+ * table pointer so a concurrent task can never observe a half-installed
+ * pair; installation runs from a dynamic initializer while other
+ * initializers may already schedule tasks. An atomic plain pointer is
+ * lock-free on every supported platform. */
+struct ambient_context_hooks_t
+{
+    std::shared_ptr<void> (*capture) ();
+    std::shared_ptr<void> (*enter) (const std::shared_ptr<void> &);
+};
+
+inline std::atomic<const ambient_context_hooks_t *> ambient_context_hooks{nullptr};
+
+inline std::shared_ptr<void> capture_ambient_context ()
+{
+    const auto *hooks = ambient_context_hooks.load (std::memory_order_acquire);
+    return hooks != nullptr ? hooks->capture () : nullptr;
+}
+
+inline std::shared_ptr<void> enter_ambient_context (const std::shared_ptr<void> &snapshot)
+{
+    const auto *hooks = ambient_context_hooks.load (std::memory_order_acquire);
+    return hooks != nullptr && snapshot ? hooks->enter (snapshot) : nullptr;
+}
+
 template <typename T>
 class task_shared_state_t : public std::enable_shared_from_this<task_shared_state_t<T>>
 {
@@ -68,8 +99,9 @@ class task_shared_state_t : public std::enable_shared_from_this<task_shared_stat
 
     void complete (result_t<T> result)
     {
-        std::vector<std::coroutine_handle<>> continuations;
-        std::vector<std::function<void (const result_t<T> &)>> callbacks;
+        std::vector<std::pair<std::coroutine_handle<>, std::shared_ptr<void>>> continuations;
+        std::vector<std::pair<std::function<void (const result_t<T> &)>, std::shared_ptr<void>>>
+          callbacks;
         auto self = this->shared_from_this ();
         {
             std::lock_guard lock (_mutex);
@@ -82,10 +114,16 @@ class task_shared_state_t : public std::enable_shared_from_this<task_shared_stat
         }
         _ready.notify_all ();
         for (auto &callback : callbacks) {
-            schedule ([self, callback = std::move (callback)] { callback (*self->_result); });
+            schedule ([self, callback = std::move (callback)] {
+                const auto ambient_guard = enter_ambient_context (callback.second);
+                callback.first (*self->_result);
+            });
         }
-        for (auto continuation : continuations) {
-            schedule ([continuation] { continuation.resume (); });
+        for (auto &continuation : continuations) {
+            schedule ([continuation] {
+                const auto ambient_guard = enter_ambient_context (continuation.second);
+                continuation.first.resume ();
+            });
         }
     }
 
@@ -97,17 +135,21 @@ class task_shared_state_t : public std::enable_shared_from_this<task_shared_stat
 
     void set_continuation (std::coroutine_handle<> continuation)
     {
+        auto snapshot = capture_ambient_context ();
         bool resume_now = false;
         {
             std::lock_guard lock (_mutex);
             if (_result) {
                 resume_now = true;
             } else {
-                _continuations.push_back (continuation);
+                _continuations.emplace_back (continuation, std::move (snapshot));
             }
         }
         if (resume_now) {
-            schedule ([continuation] { continuation.resume (); });
+            schedule ([continuation, snapshot = std::move (snapshot)] {
+                const auto ambient_guard = enter_ambient_context (snapshot);
+                continuation.resume ();
+            });
         }
     }
 
@@ -127,12 +169,19 @@ class task_shared_state_t : public std::enable_shared_from_this<task_shared_stat
             if (_result) {
                 completed = true;
             } else {
-                _callbacks.push_back (std::move (callback));
+                _callbacks.emplace_back (std::move (callback), capture_ambient_context ());
                 return;
             }
         }
         if (completed) {
-            schedule ([self, callback = std::move (callback)] { callback (*self->_result); });
+            /* The already-completed path may still defer through a scheduler,
+             * so the registration-time context travels with the callback the
+             * same way the pending path stores it. */
+            schedule ([self, callback = std::move (callback),
+                       snapshot = capture_ambient_context ()] {
+                const auto ambient_guard = enter_ambient_context (snapshot);
+                callback (*self->_result);
+            });
         }
     }
 
@@ -154,8 +203,9 @@ class task_shared_state_t : public std::enable_shared_from_this<task_shared_stat
     std::condition_variable _ready;
     task_scheduler_t _scheduler;
     std::optional<result_t<T>> _result;
-    std::vector<std::coroutine_handle<>> _continuations;
-    std::vector<std::function<void (const result_t<T> &)>> _callbacks;
+    std::vector<std::pair<std::coroutine_handle<>, std::shared_ptr<void>>> _continuations;
+    std::vector<std::pair<std::function<void (const result_t<T> &)>, std::shared_ptr<void>>>
+      _callbacks;
 };
 
 template <typename T> class task_completion_source_t

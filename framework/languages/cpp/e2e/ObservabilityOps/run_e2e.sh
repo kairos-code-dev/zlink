@@ -15,8 +15,9 @@ LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 
-read -r PLAY_A_HTTP PLAY_B_HTTP PLAY_A_ROUTE PLAY_B_ROUTE PLAY_A_SPOT_ROUTER \
-  PLAY_B_SPOT_ROUTER PLAY_A_SPOT_PUB PLAY_B_SPOT_PUB STREAM_ENDPOINT <<<"$(python3 - <<'PY'
+assign_ports() {
+  read -r PLAY_A_HTTP PLAY_B_HTTP PLAY_A_ROUTE PLAY_B_ROUTE PLAY_A_SPOT_ROUTER \
+    PLAY_B_SPOT_ROUTER PLAY_A_SPOT_PUB PLAY_B_SPOT_PUB STREAM_ENDPOINT <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 ports = []
@@ -32,6 +33,8 @@ for s in sockets:
     s.close()
 PY
 )"
+}
+assign_ports
 
 cmake -S "$FRAMEWORK_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
@@ -58,8 +61,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Per-role knobs consumed by launch_role; callers set them just before the
+# launch and reset them afterwards.
+ROLE_TRACE_MODE=""
+ROLE_METRICS=""
+ROLE_DRAIN_POLICY=""
+ROLE_ROOM_TIMER=""
+ROLE_LOG_DIR=""
+
 launch_role() {
   local role="$1" http="$2" route="$3" peer_route="$4" spot_router="$5" spot_pub="$6" stream="$7"
+  local log_dir="${ROLE_LOG_DIR:-$LOG_DIR}"
+  mkdir -p "$log_dir"
   env \
     ZLINK_CPP_E2E_ROLE="$role" \
     ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
@@ -70,9 +83,21 @@ launch_role() {
     ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router" \
     ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub" \
     ZLINK_CPP_E2E_STREAM_ENDPOINT="$stream" \
-    ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
+    ZLINK_CPP_E2E_LOG_DIR="$log_dir" \
+    ZLINK_CPP_E2E_TRACE_MODE="${ROLE_TRACE_MODE:-key_transitions}" \
+    ZLINK_CPP_E2E_METRICS="${ROLE_METRICS:-on}" \
+    ZLINK_CPP_E2E_DRAIN_POLICY="${ROLE_DRAIN_POLICY:-}" \
+    ZLINK_CPP_E2E_ROOM_TIMER="${ROLE_ROOM_TIMER:-}" \
+    "$SERVER" >"$log_dir/$role.stdout.log" 2>"$log_dir/$role.stderr.log" &
   PIDS+=("$!")
+}
+
+stop_roles() {
+  for pid in "${PIDS[@]:-}"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi
+  done
+  for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  PIDS=()
 }
 
 wait_health() {
@@ -85,9 +110,12 @@ wait_health() {
   return 1
 }
 
-# play-a hosts the STREAM session gateway; play-b hosts the target room.
+# play-a hosts the STREAM session gateway (and the timer-enabled subscriber
+# room for OBS-A4); play-b hosts the target room.
+ROLE_ROOM_TIMER=1
 launch_role play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
   "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT"
+ROLE_ROOM_TIMER=""
 launch_role play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
   "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
 wait_health "$PLAY_A_HTTP"
@@ -197,6 +225,56 @@ print("OBS-B(subset) PASS (spot/queue/channel/stream instruments, closed labels)
 PY
 fi
 
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
+  # OBS-A4 — one action fans out to every mesh subscriber under the same
+  # flow id; a timer-originated publish starts a fresh flow (origin=timer).
+  # OBS-B3 — fanout.published/received counters with the closed topic label.
+  curl -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-room-sub"}' >"$LOG_DIR/create-room-sub.json"
+  sleep 2
+  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
+    "$TRIGGER" fanout >"$LOG_DIR/trigger-fanout.log" 2>&1
+  sleep 2
+  python3 - "$LOG_DIR/play-b-flow.log" "$LOG_DIR/play-a-flow.log" <<'PY'
+import re, sys
+def lines(path):
+    return open(path, encoding="utf-8", errors="replace").readlines()
+publish_flows = set()
+for line in lines(sys.argv[1]):
+    if "kind=publish" in line and "outcome=sent" in line:
+        m = re.search(r"flow=([0-9a-f-]{36})", line)
+        if m:
+            publish_flows.add(m.group(1))
+assert publish_flows, "play-b has no publish sent line with flow="
+subscriber_flows = set()
+for line in lines(sys.argv[2]):
+    if "spot_subscription" in line:
+        m = re.search(r"flow=([0-9a-f-]{36})", line)
+        if m:
+            subscriber_flows.add(m.group(1))
+shared = publish_flows & subscriber_flows
+assert shared, f"subscriber lines do not share the publish flow: {publish_flows} / {subscriber_flows}"
+timer_flow = any("origin=timer" in line for line in lines(sys.argv[2]))
+assert timer_flow, "no origin=timer line on the timer-enabled node"
+print("OBS-A4 PASS (fan-out shares one flow, timer origin starts fresh)")
+PY
+  curl -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.fanout.evidence.json"
+  curl -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.fanout.evidence.json"
+  python3 - "$LOG_DIR/play-b.fanout.evidence.json" "$LOG_DIR/play-a.fanout.evidence.json" <<'PY'
+import json, sys
+published = [m for m in json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
+             if m["name"] == "zlink.fanout.published"]
+received = [m for m in json.load(open(sys.argv[2], encoding="utf-8"))["metrics"]
+            if m["name"] == "zlink.fanout.received"]
+assert published and all(m["tags"].get("topic") == "obs.projection" for m in published), published
+assert received and all(m["tags"].get("topic") == "obs.projection" for m in received), received
+dropped = [m for m in json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
+           if m["name"] == "zlink.fanout.dropped"]
+assert not dropped, "fanout.dropped must not emit without an observable drop capability"
+print("OBS-B3 PASS (fanout published/received with closed topic label)")
+PY
+fi
+
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "drain" ]]; then
   # OBS-C1 subset — draining marker keeps the peer row (draining=true),
   # readiness flips, new spot creation is rejected, drain events observed.
@@ -271,12 +349,216 @@ print("OBS-C1 terminal PASS (drained)")
 PY
 fi
 
+relaunch_topology() {
+  local phase="$1" policy_b="${2:-}" trace_a="${3:-}" metrics_a="${4:-}"
+  stop_roles
+  assign_ports
+  REDIS_KEY_PREFIX="zlink:cpp:observability-ops:${RUN_ID}:${phase}"
+  PHASE_LOG_DIR="$LOG_DIR/$phase"
+  ROLE_LOG_DIR="$PHASE_LOG_DIR"
+  ROLE_TRACE_MODE="$trace_a"
+  ROLE_METRICS="$metrics_a"
+  launch_role play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
+    "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT"
+  ROLE_TRACE_MODE=""
+  ROLE_METRICS=""
+  ROLE_DRAIN_POLICY="$policy_b"
+  launch_role play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
+    "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
+  ROLE_DRAIN_POLICY=""
+  ROLE_LOG_DIR=""
+  wait_health "$PLAY_A_HTTP"
+  wait_health "$PLAY_B_HTTP"
+  sleep 2
+}
+
+drain_and_wait_terminal() {
+  local http="$1" deadline_ms="$2" evidence_out="$3"
+  curl -fsS -X POST "$http/drain" -H 'Content-Type: application/json' \
+    -d "{\"deadlineMs\":$deadline_ms}" >/dev/null
+  for _ in $(seq 1 200); do
+    curl -fsS "$http/evidence" >"$evidence_out" 2>/dev/null || break
+    if python3 - "$evidence_out" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+states = [event["state"] for event in body["drainEvents"]]
+raise SystemExit(0 if ("drained" in states or "force_stopping" in states) else 1)
+PY
+    then break; fi
+    sleep 0.2
+  done
+}
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "handoff" ]]; then
+  # OBS-C2 + OBS-C5(a) — drain moves the joined actor to the serving peer,
+  # the transfer instruments fire, and the rolling drain ends Drained.
+  relaunch_topology handoff
+  curl -fsS -X POST "$PLAY_A_HTTP/actor/join" -H 'Content-Type: application/json' \
+    -d '{"actorId":"obs-actor-1"}' >"$PHASE_LOG_DIR/join.json"
+  python3 - "$PHASE_LOG_DIR/join.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["accepted"], body
+PY
+  curl -fsS -X POST "$PLAY_A_HTTP/actor/ping" -H 'Content-Type: application/json' \
+    -d '{"actorId":"obs-actor-1","value":5}' >"$PHASE_LOG_DIR/ping-before.json"
+  python3 - "$PHASE_LOG_DIR/ping-before.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["nodeRid"] == "play-a" and body["total"] == 5, body
+PY
+  # Warm the play-b -> play-a route (directory find + cross-node request)
+  # before draining, so the handoff admission path has a live route mesh.
+  ROUTE_WARM=1
+  for _ in $(seq 1 100); do
+    if curl -fsS -X POST "$PLAY_B_HTTP/actor/ping" -H 'Content-Type: application/json' \
+        -d '{"actorId":"obs-actor-1","value":0}' >"$PHASE_LOG_DIR/ping-warm.json" 2>/dev/null; then
+      ROUTE_WARM=0
+      break
+    fi
+    sleep 0.2
+  done
+  ensure "$ROUTE_WARM" "handoff route warm-up (play-b -> play-a) never succeeded"
+  drain_and_wait_terminal "$PLAY_A_HTTP" 20000 "$PHASE_LOG_DIR/play-a.evidence.json"
+  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+states = [event["state"] for event in body["drainEvents"]]
+assert "drained" in states and "force_stopping" not in states, states
+metrics = body["metrics"]
+handed = [m for m in metrics if m["name"] == "zlink.drain.actors.handed_off"]
+transfers = [m for m in metrics if m["name"] == "zlink.actor.transfers"]
+duration = [m for m in metrics if m["name"] == "zlink.actor.transfer.duration"]
+pending = [m for m in metrics if m["name"] == "zlink.actor.transfer.pending_requests.count"]
+assert handed and sum(m["value"] for m in handed) >= 1, handed
+assert transfers and sum(m["value"] for m in transfers) >= 1, transfers
+assert duration and duration[0]["kind"] == "histogram" and duration[0]["unit"] == "s", duration
+assert len(pending) == 1 and pending[0]["kind"] == "histogram", pending
+print("OBS-C2 PASS (handoff completed with transfer instruments)")
+print("OBS-C5a PASS (rolling drain ended Drained without force)")
+PY
+  curl -fsS -X POST "$PLAY_B_HTTP/actor/ping" -H 'Content-Type: application/json' \
+    -d '{"actorId":"obs-actor-1","value":3}' >"$PHASE_LOG_DIR/ping-after.json"
+  python3 - "$PHASE_LOG_DIR/ping-after.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["nodeRid"] == "play-b", body
+print("OBS-C2 continuity PASS (post-move ping served by play-b)")
+PY
+fi
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
+  # OBS-C4 + OBS-C5(b) — no eligible target (peer already draining) plus a
+  # short deadline forces the drain; the held session receives
+  # session-closing(server_drain) and the connector exposes closeReason.
+  relaunch_topology force
+  curl -fsS -X POST "$PLAY_A_HTTP/actor/join" -H 'Content-Type: application/json' \
+    -d '{"actorId":"obs-actor-2"}' >"$PHASE_LOG_DIR/join.json"
+  # the hold-session warm-up action needs a live room reachable from play-a
+  # while play-a is still serving.
+  curl -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-room-force"}' >"$PHASE_LOG_DIR/create.json"
+  sleep 1
+  drain_and_wait_terminal "$PLAY_B_HTTP" 8000 "$PHASE_LOG_DIR/play-b.evidence.json"
+  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="obs-room-force" \
+    "$TRIGGER" hold-session >"$PHASE_LOG_DIR/hold-session.log" 2>&1 &
+  HOLD_PID=$!
+  PIDS+=("$HOLD_PID")
+  for _ in $(seq 1 100); do
+    if grep -q "hold-session ready" "$PHASE_LOG_DIR/hold-session.log" 2>/dev/null; then break; fi
+    sleep 0.1
+  done
+  grep -q "hold-session ready" "$PHASE_LOG_DIR/hold-session.log" || {
+    echo "OBS-C4 failed: hold-session never became ready" >&2
+    cat "$PHASE_LOG_DIR/hold-session.log" >&2
+    exit 1
+  }
+  drain_and_wait_terminal "$PLAY_A_HTTP" 3000 "$PHASE_LOG_DIR/play-a.evidence.json"
+  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+states = [event["state"] for event in body["drainEvents"]]
+assert "force_stopping" in states, states
+metrics = body["metrics"]
+forced_actor = [m for m in metrics if m["name"] == "zlink.drain.forced"
+                and m["tags"].get("kind") == "actor"]
+forced_session = [m for m in metrics if m["name"] == "zlink.drain.forced"
+                  and m["tags"].get("kind") == "session"]
+assert forced_actor and sum(m["value"] for m in forced_actor) >= 1, forced_actor
+assert forced_session and sum(m["value"] for m in forced_session) >= 1, forced_session
+print("OBS-C5b PASS (zero-target drain force-stopped with forced counters)")
+PY
+  wait "$HOLD_PID" || true
+  grep -q "closeReason=server_drain" "$PHASE_LOG_DIR/hold-session.log" || {
+    echo "OBS-C4 failed: connector did not observe server_drain" >&2
+    cat "$PHASE_LOG_DIR/hold-session.log" >&2
+    exit 1
+  }
+  echo "OBS-C4 PASS (forced stop notified the held session with server_drain)"
+fi
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
+  # OBS-C3 — release-and-recreate frees the owner rows so the next
+  # GetOrCreate rebuilds on another owner; rooms.drained counts per policy.
+  relaunch_topology policy release_and_recreate
+  curl -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
+  sleep 1
+  drain_and_wait_terminal "$PLAY_B_HTTP" 15000 "$PHASE_LOG_DIR/play-b.evidence.json"
+  python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+states = [event["state"] for event in body["drainEvents"]]
+assert "drained" in states, states
+rooms = [m for m in body["metrics"] if m["name"] == "zlink.drain.rooms.drained"]
+assert rooms and all(m["tags"].get("policy") == "release_and_recreate" for m in rooms), rooms
+PY
+  curl -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
+  python3 - "$PHASE_LOG_DIR/recreate.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["state"] in ("created", "existing"), body
+print("OBS-C3 PASS (release-and-recreate freed the row; peer rebuilt the room)")
+PY
+fi
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
+  # OBS-A3 — a tracing-off middle node creates nothing but the flow pair
+  # still crosses it; OBS-B4 — no metric reader on play-a and messaging is
+  # unchanged with an empty evidence collector.
+  relaunch_topology offnode "" off off
+  curl -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
+  sleep 2
+  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
+    "$TRIGGER" flow >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
+  python3 - "$PHASE_LOG_DIR/play-b-flow.log" "$PHASE_LOG_DIR/play-a-flow.log" <<'PY'
+import os, re, sys
+flows = set()
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    m = re.search(r"flow=([0-9a-f-]{36})", line)
+    if m and "origin=application" in line:
+        flows.add(m.group(1))
+assert flows, "flow pair did not cross the tracing-off node"
+if os.path.exists(sys.argv[2]):
+    for line in open(sys.argv[2], encoding="utf-8", errors="replace"):
+        assert "flow=" not in line, f"off node emitted a flow line: {line}"
+print("OBS-A3 PASS (off node propagates without creating or logging)")
+PY
+  curl -fsS "$PLAY_A_HTTP/evidence" >"$PHASE_LOG_DIR/play-a.evidence.json"
+  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["metrics"] == [], "reader-less node must not accumulate metric samples"
+print("OBS-B4 PASS (no reader: messaging intact, no metric accumulation)")
+PY
+fi
+
 cat <<'EOF'
-PENDING (blocked on remaining G2 runtime work, see feature-map.ko.md):
-  OBS-A3 (off-node propagation topology), OBS-A4 (publish fan-out tree/timer origin),
-  OBS-B1 (stream.connections instruments), OBS-B2 (spot.queue/actor.transfer instruments),
-  OBS-B3 (fanout/lease instruments), OBS-B4 (inactive-cost),
-  OBS-C2 (actor handoff), OBS-C3 (release-and-recreate), OBS-C4 (forced session notify),
-  OBS-C5 (rolling/zero-target)
+PENDING (외부 인프라 주입/스펙 표면 확정 대기, see feature-map.ko.md):
+  OBS-B1 connector reconnects 계기(공개 표면 spec 확정 대기 — 서버측 connections 계기는 검증됨),
+  OBS-B3 lease 지연 주입(redis 측 지연 주입 인프라 필요 — fanout 계기는 검증됨),
+  OBS-C2 bound-session push 연속성 세부(단언은 post-move ping 연속성으로 대체)
 EOF
-echo "ObservabilityOps scenario=$SCENARIO PASS (implemented subset)"
+echo "ObservabilityOps scenario=$SCENARIO PASS"

@@ -16,7 +16,8 @@ bool actor_transfer_coordinator_t::try_begin_source_remote (const std::string &a
 {
     std::lock_guard lock (_mutex);
     return _moves
-      .emplace (actor_key, move_state_t{actor_move_phase_t::source_remote, std::string{}})
+      .emplace (actor_key, move_state_t{actor_move_phase_t::source_remote, std::string{},
+                                        std::chrono::steady_clock::now ()})
       .second;
 }
 
@@ -37,9 +38,20 @@ void actor_transfer_coordinator_t::mark_reconcile (const std::string &actor_key)
     found->second.phase = actor_move_phase_t::reconcile;
 }
 
-void actor_transfer_coordinator_t::complete_move (const std::string &actor_key)
+std::optional<std::chrono::steady_clock::duration>
+actor_transfer_coordinator_t::complete_move (const std::string &actor_key)
 {
-    cancel_move (actor_key);
+    std::lock_guard lock (_mutex);
+    const auto found = _moves.find (actor_key);
+    if (found == _moves.end ()) {
+        return std::nullopt;
+    }
+    std::optional<std::chrono::steady_clock::duration> elapsed;
+    if (found->second.transfer_started_at) {
+        elapsed = std::chrono::steady_clock::now () - *found->second.transfer_started_at;
+    }
+    _moves.erase (found);
+    return elapsed;
 }
 
 bool actor_transfer_coordinator_t::try_append_backlog (const std::string &actor_key,

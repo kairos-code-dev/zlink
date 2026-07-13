@@ -54,7 +54,11 @@ class actor_transfer_coordinator_t
     bool try_begin_source_remote (const std::string &actor_key);
     void cancel_move (const std::string &actor_key);
     void mark_reconcile (const std::string &actor_key);
-    void complete_move (const std::string &actor_key);
+    // Returns the out→commit-ack elapsed time when the completed move was a
+    // source-remote transfer (runtime-metrics §4.3 duration window); local
+    // moves complete with nullopt.
+    std::optional<std::chrono::steady_clock::duration>
+    complete_move (const std::string &actor_key);
     bool blocks_dispatch (const std::string &actor_key) const;
     std::optional<actor_move_phase_t> phase (const std::string &actor_key) const;
 
@@ -91,6 +95,7 @@ class actor_transfer_coordinator_t
     {
         actor_move_phase_t phase;
         std::string transfer_id;
+        std::optional<std::chrono::steady_clock::time_point> transfer_started_at;
     };
 
     struct forwarding_entry_t

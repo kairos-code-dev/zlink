@@ -58,6 +58,11 @@ class stream_host_service_t final : public hosted_service_t
     void notify_sessions_closing (stream_close_reason_t reason,
                                   std::string_view diagnostic) noexcept;
 
+    /* graceful-drain-handoff §7 forced teardown: notifies and closes every
+     * active session so the client-visible reason stays the forced one. */
+    void force_close_sessions (stream_close_reason_t reason,
+                               std::string_view diagnostic) noexcept;
+
   private:
     class listener_t;
 
@@ -70,6 +75,7 @@ class stream_host_service_t final : public hosted_service_t
     std::atomic_bool _stop{false};
     std::vector<std::unique_ptr<listener_t>> _listeners;
     std::vector<std::thread> _threads;
+    std::thread _liveness_thread;
 };
 
 } // namespace zlink::framework::runtime

@@ -178,8 +178,47 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::map<std::string, target_t> active;
         std::function<void (const target_t &)> connect_target;
         std::function<void (const target_t &)> disconnect_target;
+        std::size_t discovered = 0;
         std::thread thread;
     };
+
+    /* Discovered peers for the location.peers observable (runtime-metrics
+     * §4.5): everything discoverable in this loop's mesh view minus self —
+     * intentionally wider than the dial set, matching the .NET reconciler. */
+    static std::size_t count_discovered (const local_t &local,
+                                         const std::vector<peer_location_t> &peers)
+    {
+        std::size_t count = 0;
+        for (const auto &peer : peers) {
+            if (peer.auto_connect_type == local.type && peer.mesh_name == local.mesh_name
+                && role_allowed (local.type, peer.role) && !peer.endpoint.empty ()
+                && !is_self (local, peer)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /* Folds this loop's count into the service total and emits one observable
+     * sample when the total changes; each loop polls on its own thread, so the
+     * gauge freshness follows the fastest tick (§7.2 polling reuse). */
+    void observe_discovered (loop_t &loop, const std::vector<peer_location_t> &rows)
+    {
+        const auto count = count_discovered (loop.local, rows);
+        std::size_t total = 0;
+        {
+            std::lock_guard lock (_peers_gate);
+            _peers_total += count;
+            _peers_total -= loop.discovered;
+            loop.discovered = count;
+            if (_peers_observed && *_peers_observed == _peers_total) {
+                return;
+            }
+            _peers_observed = _peers_total;
+            total = _peers_total;
+        }
+        _runtime->observe_discovered_peers (total);
+    }
 
     static local_t make_local (location_auto_connect_type_t type,
                                std::string mesh_name,
@@ -245,12 +284,19 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     void tick (loop_t &loop)
     {
         publish_local (loop);
-        const auto rows =
-          _store
-            ->list_peers (peer_location_filter_t{.auto_connect_type = loop.local.type,
-                                                 .mesh_name = loop.local.mesh_name})
-            .result ()
-            .value ();
+        std::vector<peer_location_t> rows;
+        try {
+            rows = _store
+                     ->list_peers (peer_location_filter_t{.auto_connect_type = loop.local.type,
+                                                          .mesh_name = loop.local.mesh_name})
+                     .result ()
+                     .value ();
+        }
+        catch (...) {
+            _runtime->record_store_error ();
+            throw;
+        }
+        observe_discovered (loop, rows);
         auto desired = compute_desired (loop.local, rows);
         trace_scan (loop.local, rows.size (), desired.size ());
         for (const auto &[key, target] : desired) {
@@ -541,6 +587,9 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::set<std::string> _route_mesh_client_channels;
     location_runtime_t *_runtime = nullptr;
     location_store_t *_store = nullptr;
+    std::mutex _peers_gate;
+    std::size_t _peers_total = 0;
+    std::optional<std::size_t> _peers_observed;
     std::atomic_bool _stop{false};
     std::vector<loop_t> _loops;
 };

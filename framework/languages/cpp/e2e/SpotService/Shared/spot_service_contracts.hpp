@@ -50,6 +50,7 @@ struct actor_ref_dto_t
 
 struct ensure_actor_req_t
 {
+    static constexpr const char *packet_name = "EnsureActor";
     std::string actor_id;
     std::string display_name;
     bool bind_session_route = false;
@@ -82,6 +83,7 @@ struct join_res_t
 
 struct state_req_t
 {
+    static constexpr const char *packet_name = "StateReq";
     std::string op;
     int amount = 0;
 };
@@ -146,12 +148,14 @@ struct spot_state_route_req_t
 
 struct stage_probe_req_t
 {
+    static constexpr const char *packet_name = "StageProbeReq";
     std::string marker;
     int delta = 0;
 };
 
 struct stage_timer_start_msg_t
 {
+    static constexpr const char *packet_name = "StageTimerStartMsg";
     std::string name;
     int period_ms = 0;
 };
@@ -194,6 +198,7 @@ struct multi_node_create_spot_res_t
 
 struct multi_node_state_route_req_t
 {
+    static constexpr const char *packet_name = "MultiNodeStateReq";
     std::string spot_rid;
     int delta = 0;
 };
@@ -286,6 +291,7 @@ struct disconnect_res_t
 
 struct channel_echo_req_t
 {
+    static constexpr const char *packet_name = "ChannelEchoReq";
     std::string value;
 };
 
@@ -297,6 +303,7 @@ struct channel_echo_res_t
 
 struct channel_control_ping_req_t
 {
+    static constexpr const char *packet_name = "MultiNodeRoutePing";
     std::string target_node_rid;
     std::string value;
 };
@@ -310,6 +317,19 @@ struct channel_control_ping_res_t
 struct channel_msg_t
 {
     std::string command_id;
+};
+
+/* Negative-path wire packets: these names deliberately have no handler on
+ * the api channel, so senders pick the variant type instead of a per-call
+ * name override (CPP-G0-DISPATCH-001). */
+struct missing_channel_req_t : channel_echo_req_t
+{
+    static constexpr const char *packet_name = "MissingChannelReq";
+};
+
+struct missing_channel_msg_t : channel_msg_t
+{
+    static constexpr const char *packet_name = "MissingChannelMsg";
 };
 
 struct channel_slow_req_t
@@ -331,7 +351,15 @@ struct mesh_msg_t
 
 struct outbound_req_t
 {
+    static constexpr const char *packet_name = "SpotOutboundReq";
     std::string value;
+};
+
+/* Wire variant: the negative path targets its own handler registration
+ * name (CPP-G0-DISPATCH-001). */
+struct outbound_negative_req_t : outbound_req_t
+{
+    static constexpr const char *packet_name = "SpotOutboundNegativeReq";
 };
 
 struct outbound_res_t
@@ -369,6 +397,7 @@ struct spot_worker_req_t
 
 struct spot_worker_start_req_t
 {
+    static constexpr const char *packet_name = "WorkerStartReq";
     std::string spot_rid;
     std::string marker;
     int delay_ms = 0;
@@ -397,6 +426,7 @@ struct worker_res_t
 
 struct direct_spot_req_t
 {
+    static constexpr const char *packet_name = "DirectSpotReq";
     std::string source_actor_id;
     std::string value;
 };
@@ -430,6 +460,7 @@ struct direct_spot_res_t
 
 struct direct_spot_msg_t
 {
+    static constexpr const char *packet_name = "DirectSpotMsg";
     std::string source_actor_id;
     std::string value;
 };
@@ -459,6 +490,7 @@ struct spot_publish_route_res_t
 
 struct slow_spot_req_t
 {
+    static constexpr const char *packet_name = "SlowSpotReq";
     std::string value;
 };
 
@@ -477,7 +509,15 @@ struct spot_slow_route_res_t
 
 struct unhandled_spot_req_t
 {
+    static constexpr const char *packet_name = "MissingSpotReq";
     std::string value;
+};
+
+/* One-way negative variant: the drop path asserts its own packet name
+ * (CPP-G0-DISPATCH-001). */
+struct unhandled_spot_msg_t : unhandled_spot_req_t
+{
+    static constexpr const char *packet_name = "MissingSpotMsg";
 };
 
 struct spot_missing_route_req_t
@@ -537,6 +577,24 @@ struct spot_to_spot_route_req_t
     std::string target_node_rid;
     std::string target_spot_rid;
     std::string marker;
+};
+
+/* Wire variants: each registered handler name is its own packet, so the
+ * sender picks the variant type instead of a per-call name override
+ * (CPP-G0-DISPATCH-001). */
+struct spot_to_spot_direct_req_t : spot_to_spot_route_req_t
+{
+    static constexpr const char *packet_name = "SpotToSpotDirectReq";
+};
+
+struct spot_to_spot_timeout_req_t : spot_to_spot_route_req_t
+{
+    static constexpr const char *packet_name = "SpotToSpotTimeoutReq";
+};
+
+struct spot_to_spot_negative_req_t : spot_to_spot_route_req_t
+{
+    static constexpr const char *packet_name = "SpotToSpotNegativeReq";
 };
 
 struct spot_to_spot_route_res_t
@@ -647,6 +705,7 @@ struct stream_auth_res_t
 
 struct actor_push_req_t
 {
+    static constexpr const char *packet_name = "PushReq";
     std::string value;
 };
 
@@ -1343,6 +1402,26 @@ inline void from_json (const nlohmann::json &json, channel_msg_t &value)
     json.at ("command_id").get_to (value.command_id);
 }
 
+inline void to_json (nlohmann::json &json, const missing_channel_req_t &value)
+{
+    to_json (json, static_cast<const channel_echo_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, missing_channel_req_t &value)
+{
+    from_json (json, static_cast<channel_echo_req_t &> (value));
+}
+
+inline void to_json (nlohmann::json &json, const missing_channel_msg_t &value)
+{
+    to_json (json, static_cast<const channel_msg_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, missing_channel_msg_t &value)
+{
+    from_json (json, static_cast<channel_msg_t &> (value));
+}
+
 inline void to_json (nlohmann::json &json, const channel_slow_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}, {"delay_ms", value.delay_ms}};
@@ -1383,6 +1462,16 @@ inline void to_json (nlohmann::json &json, const outbound_req_t &value)
 inline void from_json (const nlohmann::json &json, outbound_req_t &value)
 {
     json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const outbound_negative_req_t &value)
+{
+    to_json (json, static_cast<const outbound_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, outbound_negative_req_t &value)
+{
+    from_json (json, static_cast<outbound_req_t &> (value));
 }
 
 inline void to_json (nlohmann::json &json, const outbound_res_t &value)
@@ -1673,6 +1762,16 @@ inline void from_json (const nlohmann::json &json, unhandled_spot_req_t &value)
     json.at ("value").get_to (value.value);
 }
 
+inline void to_json (nlohmann::json &json, const unhandled_spot_msg_t &value)
+{
+    to_json (json, static_cast<const unhandled_spot_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, unhandled_spot_msg_t &value)
+{
+    from_json (json, static_cast<unhandled_spot_req_t &> (value));
+}
+
 inline void to_json (nlohmann::json &json, const spot_missing_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
@@ -1786,6 +1885,36 @@ inline void from_json (const nlohmann::json &json, spot_to_spot_route_req_t &val
     json.at ("target_node_rid").get_to (value.target_node_rid);
     json.at ("target_spot_rid").get_to (value.target_spot_rid);
     json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_to_spot_direct_req_t &value)
+{
+    to_json (json, static_cast<const spot_to_spot_route_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, spot_to_spot_direct_req_t &value)
+{
+    from_json (json, static_cast<spot_to_spot_route_req_t &> (value));
+}
+
+inline void to_json (nlohmann::json &json, const spot_to_spot_timeout_req_t &value)
+{
+    to_json (json, static_cast<const spot_to_spot_route_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, spot_to_spot_timeout_req_t &value)
+{
+    from_json (json, static_cast<spot_to_spot_route_req_t &> (value));
+}
+
+inline void to_json (nlohmann::json &json, const spot_to_spot_negative_req_t &value)
+{
+    to_json (json, static_cast<const spot_to_spot_route_req_t &> (value));
+}
+
+inline void from_json (const nlohmann::json &json, spot_to_spot_negative_req_t &value)
+{
+    from_json (json, static_cast<spot_to_spot_route_req_t &> (value));
 }
 
 inline void to_json (nlohmann::json &json, const spot_to_spot_route_res_t &value)

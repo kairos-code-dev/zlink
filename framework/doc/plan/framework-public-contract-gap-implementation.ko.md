@@ -173,9 +173,9 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 순서 | 언어 | G0 | G1 | G2 | G3 | G4 | G5 | G6 | G7 | 상태 |
 |------|------|----|----|----|----|----|----|----|----|------|
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
-| 2 | Java | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
-| 3 | Kotlin | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
-| 4 | Node.js | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
+| 2 | Java | [x] | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | 진행 |
+| 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | 진행 |
+| 4 | Node.js | [x] | [x] | [x] | [x] | [ ] | [ ] | [x] | [ ] | G5 수정 및 반복 재검토 진행 |
 | 5 | C++ | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 
 현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
@@ -686,6 +686,23 @@ sample은 public contract 사용 예제다. framework 내부 helper, raw frame, 
 테스트 전용 adapter를 sample에 넣지 않는다.
 
 - sample runner 전체를 실행하고 모든 sample을 통과시킨다.
+- 언어별 sample 문서를 계약 기준으로 사용하지 않는다. 각 sample은
+  `framework/doc/framework/common/sample/`의 대응하는 공통 spec을 서버 역할,
+  메시지 이름·필드, 상태 전이, codec, self-check 순서와 완료 기준별로 대조한다.
+- 대조에서 찾은 불일치는 현재 public contract로 표현할 수 있는지 먼저 확인한다.
+  가능하면 sample 구현·runner·self-check를 공통 spec에 맞게 수정하고, 새 public API가
+  필요하면 sample에서 우회하지 않고 public contract gap으로 분리한다.
+- 각 sample은 정적 대조만으로 완료 표시하지 않는다. 개별 runner의 실제 client
+  self-check와 통합 runner 통과 결과를 함께 기록한다.
+- 공통 sample spec 6종 각각에 대해 언어별로 `역할과 연결`, `메시지 이름과 필드`,
+  `상태 전이`, `codec`, `client self-check`, `runner와 완료 marker`를 한 행씩 확인한다.
+  결과는 [Java/Kotlin G5 공통 sample spec ledger](./log/framework-public-contract-gap-implementation/java-kotlin-g5-sample-ledger.ko.md)에
+  언어별로 기록하며, Node.js 결과는
+  [Node.js G5 공통 샘플 대조 기록](./log/framework-public-contract-gap-implementation/node-g5-sample-ledger.ko.md)에
+  기록한다. 여섯 영역 중 하나라도 `gap` 또는 `검토 중`이면 해당 언어 G5는 완료로 표시하지 않는다.
+- 기존 runner PASS나 `.NET` 파일 대응 inventory는 구현 증거로 재사용할 수 있지만 공통 spec 대조를
+  대신하지 않는다. 공통 spec과 다른 이름·필드·역할·검증 순서를 찾으면 inventory의 과거 `done`
+  표기도 다시 열고 구현과 runner를 함께 수정한다.
 - E2E all runner 전체를 실행한다.
 - runner 목록과 공통 E2E 문서의 모든 scenario ID를 대조해 누락 scenario가 없는지 확인한다.
 - retry로 성공한 경우 실제 transient bind 실패인지 로그로 확인한다.
@@ -697,8 +714,8 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 | 언어 | 종류 | scenario/sample | 공통 문서 | runner 포함 | 개별 실행 필요 | 결과 | 증거 |
 |------|------|-----------------|-----------|-------------|----------------|------|------|
 | `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `.NET` 구현 로그 |
-| Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
-| Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` |
+| Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` |
 | Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | Node.js 구현 로그와 `npm run verify:samples` |
 | C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 
@@ -763,6 +780,29 @@ topology는 해당 공통 spec이 요구하는 direct, registry/store discovery,
 | feature | producer | consumer | topology | contract 근거 | runner/selector | 기대 marker | 결과 | 비적용 승인 근거 |
 |---------|----------|----------|----------|---------------|-----------------|-------------|------|------------------|
 | messaging | Node.js | `.NET` | public channel/fanout topology | Node.js G6 ledger | `framework/languages/node/cross-language/run_cross_language_smoke.sh` | request/send/fanout marker | [x] | - |
+| messaging | `.NET` | Node.js | public channel/fanout topology | Node.js G6 ledger | 같은 runner | request/fanout marker | [x] | - |
+| messaging/flow-wire | Node.js | `.NET` | public route-mesh | Node.js G6 ledger | 같은 runner | route request/reply와 typed JSON marker | [x] | - |
+| messaging/flow-wire | `.NET` | Node.js | public route-mesh | Node.js G6 ledger | 같은 runner | route request/reply와 typed JSON marker | [x] | - |
+| codec/flow-wire | Node.js | `.NET` | STREAM | Node.js G6 ledger | 같은 runner | UUIDv7 flow, JSON reply | [x] | - |
+| codec/flow-wire | `.NET` | Node.js | STREAM | Node.js G6 ledger | 같은 runner | UUIDv7 flow, JSON reply | [x] | - |
+| store/draining-row | Node.js | `.NET` | shared Redis location store | Node.js G6 ledger | 같은 runner | typed `Draining=true` row | [x] | - |
+| store/draining-row | `.NET` | Node.js | shared Redis location store | Node.js G6 ledger | 같은 runner | typed `draining=true` row | [x] | - |
+| session-closing | Node.js server | `.NET` connector | STREAM drain | Node.js G6 ledger | 같은 runner | `ServerDrain` 뒤 disconnect | [x] | - |
+| session-closing | `.NET` server | Node.js connector | STREAM drain | Node.js G6 ledger | 같은 runner | `ServerDrain` 뒤 disconnect | [x] | - |
+| messaging | C++ | `.NET` | public client-server channel | C++ G6 로그 | `framework/languages/cpp/cross-language/run_cross_language_smoke.sh` | request/reply + one-way send marker | [x] | - |
+| messaging | `.NET` | C++ | public client-server channel | C++ G6 로그 | 같은 runner | request/reply marker | [x] | - |
+| flow-wire | C++ | `.NET` | fanout channel(topic) | C++ G6 로그 | 같은 runner | `<topic>:<value>` subscriber marker | [x] | - |
+| flow-wire | `.NET` | C++ | fanout channel(topic) | C++ G6 로그 | 같은 runner | `<topic>:<value>` subscriber marker | [x] | - |
+| codec | C++ | `.NET` | STREAM(frame+LZ4 압축) | C++ G6 로그, CPP-STREAM-LZ4-001 | 같은 runner | raw ping/pong marker | [x] | - |
+| codec | `.NET` | C++ | STREAM(frame+LZ4 압축) | C++ G6 로그, CPP-STREAM-LZ4-001 | 같은 runner | raw ping marker | [x] | - |
+| messaging | C++ | Node.js | public client-server channel | C++ G6 로그 | 같은 runner(`node_peer_host.js`) | request/reply + one-way send marker | [x] | - |
+| messaging | Node.js | C++ | public client-server channel | C++ G6 로그 | 같은 runner | request/reply + one-way send marker | [x] | - |
+| flow-wire | C++ | Node.js | fanout channel(topic) | C++ G6 로그 | 같은 runner | `<topic>:<value>` subscriber marker | [x] | - |
+| flow-wire | Node.js | C++ | fanout channel(topic) | C++ G6 로그 | 같은 runner | `<topic>:<value>` subscriber marker | [x] | - |
+| codec | Node.js | C++ | STREAM(frame+LZ4 압축) | C++ G6 로그, CPP-STREAM-LZ4-001 | 같은 runner | raw ping + `pong` reply marker | [x] | - |
+| store/draining-row | C++ | `.NET`/Node.js | 공유 redis location store | location-store 공통 골든 픽스처(row codec 바이트 동일) | `test_cpp_framework_locations_redis`(RowCodecMatchesCommonFixtureBytes) | 공통 픽스처 바이트 일치 | [x] | 언어별 store 행은 공통 골든 픽스처로 고정된다 |
+| flow-wire | C++ | `.NET`/Node.js | SPOT mesh pub/sub | `flow-correlation` §4.1, CPP-FANOUT-WIRE-001 | - | envelope 2-part 수신 | 열림 | **core 결함 차단**: framework 부착 SPOT의 multipart publish가 첫 파트만 전달해 C++은 self-delimited 단일 프레임(`ZLFE`)으로 발행한다. 피어 언어의 SPOT 구독자는 2-part envelope만 해석하므로 이 행은 core의 multipart publish 수정 후 실행한다(ledger CPP-FANOUT-WIRE-001). channel fanout 행(위 4행)은 2-part envelope로 양방향 PASS |
+| session-closing | C++ server | `.NET`/Node.js connector | STREAM drain | `graceful-drain-handoff` §7.1 | - | `server_drain` 뒤 disconnect | 비적용 | 피어 언어의 test host에 close-reason 관측 표면이 없어 실행 불가. C++ 방향 계약은 OBS-C4(자체 E2E, connector 공개 `closeReason`)로 검증됨. 피어 test host 확장은 해당 언어 소유 |
 | flow-wire | 현재 언어 | 이전 언어 | stream/channel/actor relay | `flow-correlation` §3 | 언어 단계에서 추가 | UUIDv7 id와 root origin 바이트 동일 | [ ] | - |
 | draining-row | 현재 언어 | 이전 언어 | shared location store | `location-runtime` §2.1 | 언어 단계에서 추가 | typed `Draining=true` 소비 | [ ] | - |
 | session-closing | 현재 언어 server | 이전 언어 connector | STREAM | `graceful-drain-handoff` §7.1 | 언어 단계에서 추가 | `server_drain` 뒤 disconnect | [ ] | - |
@@ -848,42 +888,42 @@ dotnet test Zlink.Framework.sln --no-build
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
 - [x] G3 전체 contract/unit/integration green
-- [x] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
+- [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — 2차 finding 수정 완료, 독립 reviewer 대기
 - [x] G5 `samples/run_samples.sh` PASS
 - [x] G6 `e2e/run_e2e_all.sh` PASS
 - [x] G6 이전 완료 언어와 cross-language 양방향 matrix PASS/승인된 비적용
-- [x] G7 gap/doc/package 최종 리뷰
+- [ ] G7 gap/doc/package 최종 리뷰 — 문서와 package 정렬 완료, 별도 read-only 최종 리뷰 대기
 - [x] Java 작업 시작 승인
 
 ## 10. Java 실행 계획
 
 ### 10.1 필수 gap checklist
 
-- [ ] handler/lifecycle/factory를 `CompletionStage` 완료 계약으로 변경
-- [ ] Java callback/runtime이 blocking 없이 완료될 수 있는 capability 구현
-- [ ] Java production 범위의 `join()`과 blocking wait 경로 제거
-- [ ] one-way `ZLinkSubmitStage`와 blocking `await()` 제거
-- [ ] typed session handler와 raw dispatcher 경계 분리
-- [ ] actor context의 항상 예외인 default join method 제거
-- [ ] Java 전용 framework cancellation token 제거
-- [ ] 비동기 method의 불필요한 `Async` suffix 제거
-- [ ] `ZLinkLocationKey`와 누락 interface inventory 구현
-- [ ] 단일 `ZLinkEndpointConnections` 재사용 및 runtime handle 구현
-- [ ] `SpotHandle`와 resolver 구현
-- [ ] dispatch mode와 typed packet-name override 제거
-- [ ] `getSpot()`과 `isJoined()` 제거
-- [ ] actor join sealed result와 공통 join call 구현
-- [ ] Spot context registry/close와 manager request overload 구현
-- [ ] socket/registry/Spot/location monitoring 등록과 sealed event 구현
-- [ ] route-mesh runtime options와 public export 정렬
-- [ ] 정식 spec 경로 regression test 수정
+- [x] handler/lifecycle/factory를 `CompletionStage` 완료 계약으로 변경
+- [x] Java callback/runtime이 blocking 없이 완료될 수 있는 capability 구현
+- [x] Java production 범위의 `join()`과 blocking wait 경로 제거
+- [x] one-way `ZLinkSubmitStage`와 blocking `await()` 제거
+- [x] typed session handler와 raw dispatcher 경계 분리
+- [x] actor context의 항상 예외인 default join method 제거
+- [x] Java 전용 framework cancellation token 제거
+- [x] 비동기 method의 불필요한 `Async` suffix 제거
+- [x] `ZLinkLocationKey`와 누락 interface inventory 구현
+- [x] 단일 `ZLinkEndpointConnections` 재사용 및 runtime handle 구현
+- [x] `SpotHandle`와 resolver 구현
+- [x] dispatch mode와 typed packet-name override 제거
+- [x] `getSpot()`과 `isJoined()` 제거
+- [x] actor join sealed result와 공통 join call 구현
+- [x] Spot context registry/close와 manager request overload 구현
+- [x] socket/registry/Spot/location monitoring 등록과 sealed event 구현
+- [x] route-mesh runtime options와 public export 정렬
+- [x] 정식 spec 경로 regression test 수정
 - [x] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
-- [ ] Micrometer catalog와 connector 소유 reconnect 계기 구현
-- [ ] 자동 flow id, `CompletionStage` 문맥 전파·정리와 `0xF2` marker codec 교체
-- [ ] `ZLinkDrainControl` 결과, `SmartLifecycle` 종료 순서와 typed `Draining` field 구현
-- [ ] `session-closing` 제어 프레임과 connector close reason 구현
-- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
-- [ ] Bingo §17의 Java flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [x] Micrometer catalog와 connector 소유 reconnect 계기 구현
+- [x] 자동 flow id, `CompletionStage` 문맥 전파·정리와 `0xF2` marker codec 교체
+- [x] `ZLinkDrainControl` 결과, `SmartLifecycle` 종료 순서와 typed `Draining` field 구현
+- [x] `session-closing` 제어 프레임과 connector close reason 구현
+- [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [x] Bingo §17의 Java flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 10.2 검증 명령
 
@@ -900,38 +940,45 @@ ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh
 ### 10.3 Java 완료 확인표
 
 - [x] G0 inventory/실패 테스트
-- [ ] G1 interface/export
-- [ ] G2 runtime/unit test
-- [ ] G3 전체 Gradle test source set green
+- [x] G1 interface/export
+- [x] G2 runtime/unit test
+- [x] G3 전체 Gradle test source set green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 Java sample 전체 PASS
+- [ ] G5 Java 공통 sample spec 6종 대조와 sample 전체 PASS
 - [ ] G6 Java E2E 전체 PASS
 - [ ] G6 `.NET`↔Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
-- [ ] Kotlin 작업 시작 승인
+- [x] Kotlin 작업 시작 승인
+
+Java `AutomaticTurnDispatch`는
+`e2e/AutomaticTurnDispatch/logs/20260713-151721-1434501/`에서 일반 시나리오 18개와 종료 대기가
+통과했다. 그러나 같은 routing ID로 `play-a`를 재기동하는 ATD-E3 복구 단계는 readiness가 16회
+연속 실패해 G6를 닫지 않는다. 원인과 core 회귀 요구 사항은
+[`core ROUTER callback dispatch 재연결 handover 버그`](../../../doc/internals/core-router-callback-dispatch-reconnect-handover-bug.ko.md)에
+기록했다. framework나 E2E에서 재시도 횟수, 대기 시간 또는 서버 구동 순서로 우회하지 않는다.
 
 ## 11. Kotlin 실행 계획
 
 ### 11.1 필수 gap checklist
 
-- [ ] Java 목표 interface를 coroutine에서 자연스럽게 사용할 wrapper 구현
-- [ ] `ZLinkSuspendingHandlers.kt`, `ZLinkCoroutineTurnAwait.kt` 등 Kotlin bridge의
+- [x] Java 목표 interface를 coroutine에서 자연스럽게 사용할 wrapper 구현
+- [x] `ZLinkSuspendingHandlers.kt`, `ZLinkCoroutineTurnAwait.kt` 등 Kotlin bridge의
   `runBlocking`, `join()`과 blocking wait 제거
-- [ ] value bridge와 Unit-to-Void bridge의 nonblocking 완료 검증
-- [ ] public yield extension 제거
-- [ ] JVM signature clash가 없는 `await`, `awaitReply`, `awaitJoinReply` 구현
-- [ ] typed/raw stream request와 send wrapper 정렬
-- [ ] coroutine cancellation이 Java framework token을 새로 노출하지 않음을 검증
-- [ ] `Flow` wrapper가 callback registration과 cleanup을 소유함을 검증
-- [ ] Java runtime의 모든 공통 기능이 Kotlin surface에서도 도달 가능한지 검증
-- [ ] Kotlin interface/function inventory 전체 contract test 추가
-- [ ] Kotlin `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
-- [ ] Java의 metrics/flow/drain 공개 기능이 Kotlin에서 별도 중복 설정 없이 도달 가능함을 검증
-- [ ] coroutine 전환 뒤 flow 문맥이 유지되고 완료·취소 뒤 다음 작업으로 누출되지 않음을 검증
-- [ ] drain의 `CompletionStage<ZLinkDrainResult>`를 nonblocking `await()`로 대기하고 waiter 취소만
+- [x] value bridge와 Unit-to-Void bridge의 nonblocking 완료 검증
+- [x] public yield extension 제거
+- [x] JVM signature clash가 없는 `await`, `awaitReply`, `awaitJoinReply` 구현
+- [x] typed/raw stream request와 send wrapper 정렬
+- [x] coroutine cancellation이 Java framework token을 새로 노출하지 않음을 검증
+- [x] `Flow` wrapper가 callback registration과 cleanup을 소유함을 검증
+- [x] Java runtime의 모든 공통 기능이 Kotlin surface에서도 도달 가능한지 검증
+- [x] Kotlin interface/function inventory 전체 contract test 추가
+- [x] Kotlin `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [x] Java의 metrics/flow/drain 공개 기능이 Kotlin에서 별도 중복 설정 없이 도달 가능함을 검증
+- [x] coroutine 전환 뒤 flow 문맥이 유지되고 완료·취소 뒤 다음 작업으로 누출되지 않음을 검증
+- [x] drain의 `CompletionStage<ZLinkDrainResult>`를 nonblocking `await()`로 대기하고 waiter 취소만
   전파함을 검증
-- [ ] Config 11 OBS-A1~C5 Kotlin fixture, runner와 evidence 구현
-- [ ] Bingo §17의 Kotlin flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [x] Config 11 OBS-A1~C5 Kotlin fixture, runner와 evidence 구현
+- [x] Bingo §17의 Kotlin flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 11.2 검증 명령
 
@@ -948,15 +995,21 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 
 ### 11.3 Kotlin 완료 확인표
 
-- [ ] G0 Kotlin extension/interface inventory
-- [ ] G1 Kotlin public surface
-- [ ] G2 coroutine/runtime unit test
-- [ ] G3 Kotlin Gradle test green
+- [x] G0 Kotlin extension/interface inventory
+- [x] G1 Kotlin public surface
+- [x] G2 coroutine/runtime unit test
+- [x] G3 Kotlin Gradle test green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 Kotlin sample 전체 PASS
+- [ ] G5 Kotlin 공통 sample spec 6종 대조와 sample 전체 PASS
 - [ ] G6 Kotlin E2E 전체 PASS
 - [ ] G6 Kotlin↔`.NET`/Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
+
+Kotlin ATD-E3와 ObservabilityOps OBS-C2/C3도 같은 core handover 결함으로 차단되어 G6를 닫지
+않는다. Kotlin fixture의 구현 완료와 core 결함 해소 뒤 전체 E2E 통과는 별도 상태로 유지한다.
+세부 원인과 필수 회귀 조합은
+[`core ROUTER callback dispatch 재연결 handover 버그`](../../../doc/internals/core-router-callback-dispatch-reconnect-handover-bug.ko.md)를
+따른다.
 
 ## 12. Node.js 실행 계획
 
@@ -988,6 +1041,9 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 - [x] `session-closing` 제어 프레임과 connector `closeReason` 구현
 - [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
 - [x] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [ ] 공통 sample spec 6종과 Node.js sample 6종의 역할·메시지·상태·codec·self-check
+  항목별 대조, 불일치 수정과 개별·통합 runner 재검증
+  ([Node.js G5 공통 샘플 대조 기록](./log/framework-public-contract-gap-implementation/node-g5-sample-ledger.ko.md))
 
 ### 12.2 검증 명령
 
@@ -1014,17 +1070,17 @@ npm run verify:release
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
 - [x] G3 build/typecheck/lint/test/coverage green
-- [x] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [x] G5 sample 전체 PASS
+- [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — 구현 agent 검토와 수정 완료, 별도 read-only reviewer 대기
+- [ ] G5 sample 전체 PASS — 공통 sample 스펙과 다시 대조하여 발견한 불일치를 수정하고 반복 재검토 중
 - [x] G6 E2E와 cross-language 전체 PASS
 - [x] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS; Java/Kotlin은 아직 G7 이전이므로 Node.js 단계 분모에서 제외
-- [x] G7 gap/doc/package 최종 리뷰
+- [ ] G7 gap/doc/package 최종 리뷰 — 문서와 package 정렬 완료, 별도 read-only 최종 리뷰 대기
 
 ## 13. C++ 실행 계획
 
 ### 13.1 필수 gap checklist
 
-- [ ] lifecycle/transfer의 `.result()` blocking bridge 제거
+- [x] lifecycle/transfer의 `.result()` blocking bridge 제거
 - [x] public error enum의 공통 계약 밖 값 제거
 - [x] callback 이름을 `snake_case`로 통일
 - [x] typed stream handler와 raw runtime 경계 분리
@@ -1039,18 +1095,18 @@ npm run verify:release
 - [x] async `find_spot`, `list_spots`, `close_spot` 구현
 - [x] `endpoint_connections_t` runtime handle 구현
 - [x] dispatch mode와 typed `packet_name(...)` override 제거
-- [ ] monitoring event가 유효 variant만 표현하는지 검증
+- [x] monitoring event가 유효 variant만 표현하는지 검증
 - [x] installed header에서 runtime state/helper 비노출
 - [x] 정식 spec 경로 regression test를 fail-closed로 수정
-- [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [x] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
 - [x] CMake Framework/StreamConnector/FrameworkDependency/HttpClient install component와
   export set 분리
-- [ ] `metric_event_payload_t` 기반 catalog와 test collector 집계 구현
-- [ ] 자동 flow id, coroutine 문맥 전파·정리와 `0xF2` marker codec 교체
-- [ ] `drain_result_t`, typed `Draining` field와 애플리케이션 소유 signal 종료 순서 구현
-- [ ] `session-closing` 제어 프레임과 connector close reason 구현
-- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
-- [ ] Bingo §17의 C++ flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [x] `metric_event_payload_t` 기반 catalog와 test collector 집계 구현
+- [x] 자동 flow id, coroutine 문맥 전파·정리와 `0xF2` marker codec 교체
+- [x] `drain_result_t`, typed `Draining` field와 애플리케이션 소유 signal 종료 순서 구현
+- [x] `session-closing` 제어 프레임과 connector close reason 구현
+- [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [x] Bingo §17의 C++ flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 13.2 검증 명령
 
@@ -1089,12 +1145,32 @@ ctest --test-dir <coverage-build-dir> \
 
 - [x] G0 inventory/실패 테스트
 - [x] G1 public/install header
-- [ ] G2 runtime/unit test
-- [ ] G3 build/ctest/install consumer green
+- [x] G2 runtime/unit test
+- [x] G3 build/ctest/install consumer green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 sample 전체 PASS
+- [x] G5 sample 전체 PASS(개별 runner 기준)
+- [ ] G5-b 공통 sample spec 대조 — 정본 6종(Bingo/TicTacToe/SupportChat/DeliveryDispatch/
+      ShoppingMall/GameQuest)을 `framework/doc/framework/common/sample/`의 시나리오 문서와
+      역할 분리·메시지 이름(`Req`/`Res`/`Msg`/`Notify`)·DTO 필드·codec·서버 간 연결 방식·
+      자동 turn dispatch·dispatch 오류 로그·runner Redis 격리 기준으로 대조하고, 불일치는
+      공통 spec에 맞게 sample/runner/self-check를 수정한다(새 public API가 필요하면 계약
+      gap으로 분리). 수정 후 개별 runner와 통합 runner를 다시 통과시킨다.
+      진행 상태와 항목별 판정은
+      [cpp sample conformance ledger](./log/framework-public-contract-gap-implementation/cpp-sample-conformance.ko.md).
+      1차 정렬 완료(닫힘 23/열림 23): TicTacToe(수동 endpoint scale-out·`JoinGameReq{RoomId}`·
+      EnsurePlayerActor 제거·redis-plus-plus room route store), Bingo(status 대소문자·사장된
+      `BingoStateNotify` 제거·self-check 선인증 순서), SupportChat(API 서버 실체화·conversation
+      Spot idle timer·multi-room/reconnect/closed 오류 시나리오·notify `State` 중첩·client는
+      Session stream만 사용), DeliveryDispatch(`AssignDeliveryMsg`·DTO 필드·node 배치 단언),
+      공통(runner `docker rm -fv`·수기 message-flow 로그 제거).
+      남은 열림 항목은 event sourcing(ShoppingMall/GameQuest)과 DeliveryDispatch 역할 분리처럼
+      샘플 재작성 규모의 작업이다.
+      **통합 러너 상태**: 개별 runner는 전 샘플 반복 통과. `run_samples.sh`(연속 실행)는 부하
+      의존 core 결함 2건(CPP-SPOT-SUB-ACT-001, CPP-AUTOCONNECT-CFG-001, 위 ledger §9)으로
+      간헐 실패하며, 이 두 건은 sample 계약 편차가 아니라 core 소유 결함이다.
 - [ ] G6 E2E 전체 start-order variant PASS
-- [ ] G6 C++↔이전 4개 언어 양방향 matrix PASS/승인된 비적용
+- [x] G6 C++↔`.NET` 양방향 matrix PASS(messaging/flow-wire/codec 6행; 신규 runner `cross-language/run_cross_language_smoke.sh`)
+- [x] G6 C++↔Node.js 양방향 matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
 - [ ] 모든 언어 gap closure 완료
 

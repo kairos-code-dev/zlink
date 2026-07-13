@@ -39,7 +39,7 @@ set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PA
   "Path to the zlink repository root")
 set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
   "Root directory containing local package outputs")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "8.6.4" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "9.0.1" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -1573,6 +1573,17 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   # as the framework objects.
   zlink_framework_cpp_add_boost_headers(zlink_cpp_e2e_runtime_monitoring_trigger)
 
+  # Cross-language host (G6): the same role modes the peer languages' test
+  # hosts expose, so every producer/consumer direction runs against the other
+  # language's real package.
+  add_executable(zlink_cpp_cross_language_host
+    cross-language/cross_language_host.cpp)
+  target_link_libraries(zlink_cpp_cross_language_host PRIVATE
+    zlink::framework
+    zlink::stream_e2e_client)
+  target_include_directories(zlink_cpp_cross_language_host PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
@@ -1753,7 +1764,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/SupportChat/Probe/main.cpp
     "framework-sample-supportchat;framework-sample-probe"
     zlink::framework
-    zlink::framework_locations_redis)
+    zlink::framework_locations_redis
+    zlink::http_client)
   add_executable(sample_cpp_framework_supportchat_client
     samples/SupportChat/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE

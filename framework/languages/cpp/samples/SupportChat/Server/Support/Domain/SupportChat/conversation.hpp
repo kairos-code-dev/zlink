@@ -108,8 +108,10 @@ class conversation_t
         return {_conversation_id, snapshot ()};
     }
 
+    /* 이미 닫힌 대화를 다시 닫는 것은 오류다(공통 sample spec §9, §17 명시적 close 시나리오). */
     conversation_closed_notify_t close ()
     {
+        ensure_open ("close");
         _status = conversation_status_t::closed;
         return {_conversation_id, snapshot ()};
     }

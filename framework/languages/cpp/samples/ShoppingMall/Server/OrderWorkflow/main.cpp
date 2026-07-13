@@ -21,13 +21,6 @@ inline std::string read_option (int argc, char **argv, const std::string &name)
     return "";
 }
 
-inline void write_workflow_flow (const std::string &instance, const std::string &line)
-{
-    std::filesystem::create_directories (shoppingmall_log_dir ());
-    std::ofstream output (shoppingmall_log_dir () + "/flow-" + instance + ".log", std::ios::app);
-    output << "message flow role=" << instance << " " << line << "\n";
-}
-
 struct order_workflow_spot_create_req_t
 {
     static constexpr const char *packet_name = "OrderWorkflowSpotCreateReq";
@@ -149,10 +142,6 @@ int main (int argc, char **argv)
     auto instance = topology.for_workflow_instance (instance_id);
     redis_state_store_t store{topology};
     store.seed_defaults ();
-    write_workflow_flow (instance.instance_id,
-                         "action=location-store-claim redis=" + topology.redis_endpoint
-                           + " prefix=" + topology.redis_key_prefix);
-
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.services ()

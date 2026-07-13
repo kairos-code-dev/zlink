@@ -372,7 +372,7 @@ class spot_worker_start_route_handler_t
         auto reply =
           _routes
             .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid), request)
-            .timeout (std::chrono::seconds (3))
+            .timeout (std::chrono::seconds (30))
             .async<e2e::spot_worker_start_res_t> ()
             .result ();
         if (!reply) {
@@ -611,7 +611,8 @@ class spot_missing_route_handler_t
             request_failed = !missing_request.has_value ();
             try {
                 _routes
-                  .send_to_spot (*target, e2e::unhandled_spot_req_t{request.value + ":send"})
+                  .send_to_spot (*target, e2e::unhandled_spot_msg_t{e2e::unhandled_spot_req_t{
+                                            request.value + ":send"}})
                   .submit ();
             }
             catch (const zlink::framework::framework_exception_t &) {
@@ -694,7 +695,7 @@ class spot_missing_handler_command_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_missing_command_req_t> ();
         _routes
           .send_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
-                         e2e::unhandled_spot_req_t{request.marker})
+                         e2e::unhandled_spot_msg_t{e2e::unhandled_spot_req_t{request.marker}})
           .submit ();
 
         zlink::framework::http_response_t response;
@@ -818,7 +819,7 @@ class spot_outbound_negative_route_handler_t
         auto reply =
           _routes
             .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
-                              e2e::outbound_req_t{request.marker})
+                              e2e::outbound_negative_req_t{e2e::outbound_req_t{request.marker}})
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::outbound_res_t> ()
             .result ();
@@ -883,7 +884,7 @@ class spot_to_spot_route_handler_t
                 std::this_thread::sleep_for (std::chrono::milliseconds (100));
                 continue;
             }
-            auto reply = _routes.request_to_spot (*source, request)
+            auto reply = _routes.request_to_spot (*source, e2e::spot_to_spot_direct_req_t{request})
                            .timeout (std::chrono::milliseconds (2000))
                            .async<e2e::spot_to_spot_route_res_t> ()
                            .result ();
@@ -920,7 +921,7 @@ class spot_to_spot_timeout_route_handler_t
         auto reply =
           _routes
             .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_rid),
-                              request)
+                              e2e::spot_to_spot_timeout_req_t{request})
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::spot_to_spot_timeout_route_res_t> ()
             .result ();
@@ -960,7 +961,7 @@ class spot_to_spot_negative_route_handler_t
         auto reply =
           _routes
             .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_rid),
-                              request)
+                              e2e::spot_to_spot_negative_req_t{request})
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::spot_to_spot_negative_route_res_t> ()
             .result ();

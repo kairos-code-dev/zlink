@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
@@ -10,6 +11,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -23,6 +25,11 @@ class spot_node_host_service_t final : public hosted_service_t
     {
         spot_node_snapshot_t snapshot;
         detail::spot_node_runtime_t runtime;
+        /* Role handles for live manual endpoint mutation (endpoint
+         * connections contract): attached once the native node exists;
+         * attach replays the handle-configured set as the initial connects. */
+        std::optional<endpoint_connections_t> router_connections;
+        std::optional<endpoint_connections_t> pub_sub_connections;
     };
 
     explicit spot_node_host_service_t (std::vector<node_runtime_t> spot_nodes);

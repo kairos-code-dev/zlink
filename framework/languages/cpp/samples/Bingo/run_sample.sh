@@ -204,7 +204,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   if [[ "${BINGO_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
@@ -223,7 +223,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-  "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine" "127.0.0.1:${PORTS[16]}:6379"
+  "zlink-redis-cpp-sample-bingo" "redis:7-alpine"
 BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
@@ -334,6 +334,11 @@ grep -q "zlink auto-connect publish .* type=spot mesh=bingo.rooms" "$LOG_DIR/pla
 grep -q "zlink auto-connect scan type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
 grep -q "zlink auto-connect dial type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
 grep -Rq "message flow" "$BINGO_LOG_DIR"
+# Bingo §17.2 — the ambient runtime metrics reach the sample's metric log:
+# Session sees the STREAM CCU counters, Play sees the room queue instruments.
+grep -Rq "zlink.stream.connections.active" "$BINGO_LOG_DIR"/bingo-session-*-metrics.log
+grep -Rq "zlink.spot.queue.depth" "$BINGO_LOG_DIR"/bingo-play-*-metrics.log
+grep -Rq "kind=user" "$BINGO_LOG_DIR"/bingo-play-*-metrics.log
 
 cleanup
 trap - EXIT

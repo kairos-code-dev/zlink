@@ -6,17 +6,20 @@
 |----------|------|------|
 | OBS-A1 flow 관통 | 구현 | connector 발원 flow가 session inbound→room-spot dispatch까지 `flow=` 동일, `origin=application` |
 | OBS-A2 error 라인 flow | 구현 | 미등록 packet dispatch error 라인에 `flow=` |
-| OBS-A3 create-if-absent·off 전파 | 대기 | off 중간 노드 토폴로지 필요(unit은 MFLOW-EXT-003/008 케이스가 소유) |
-| OBS-A4 fan-out 트리·timer 발원 | 대기 | publish fan-out flow 배선·timer origin e2e 관측 잔여 |
-| OBS-B1 CCU·재접속 | 구현(부분) | 서버측 `connections.active/opened/closed(close_reason)` 실측. connector `reconnects` 계기 잔여 |
-| OBS-B2 SPOT 큐·transfer 계기 | 구현(부분) | `spot.queue.depth/wait.duration(kind)` 실측. `actor.transfer*` 계기 잔여 |
-| OBS-B3 fanout·lease 계기 | 대기 | `fanout.*`/`location.*` 계기 미배선 |
-| OBS-B4 비활성 최소 비용 | 부분 | emitter fold는 unit이 소유(RMETRIC-001/009), e2e 장시간 검증 잔여 |
+| OBS-A3 create-if-absent·off 전파 | 구현 | `offnode` 페이즈: play-a trace off — flow 무생성·무로그, 하류(play-b)에 같은 pair 도달 |
+| OBS-A4 fan-out 트리·timer 발원 | 구현 | `fanout` 페이즈: publish 트리 구독자 라인 동일 flow, timer tick publish는 `origin=timer` 신규 flow |
+| OBS-B1 CCU·재접속 | 구현(부분) | 서버측 `connections.active/opened/closed(close_reason)` 실측. connector `reconnects` 계기는 공개 표면 spec 확정 대기 |
+| OBS-B2 SPOT 큐·transfer 계기 | 구현 | `spot.queue.depth/wait.duration(kind)` + `actor.transfers/transfer.duration/pending_requests.count`(핸드오프 페이즈 실측) |
+| OBS-B3 fanout·lease 계기 | 구현(부분) | `fanout.published/received(topic)` 1:N 실측·dropped 미방출. lease 갱신 지연은 redis 측 지연 주입 인프라 필요 |
+| OBS-B4 비활성 최소 비용 | 구현 | reader 무등록 노드(`offnode` 페이즈 play-a) 메시징 불변+계기 무적재. 핫패스 clock 생략은 unit(RMETRIC-001/009) 소유 |
 | OBS-B(부분) spot/channel 계기 | 구현 | `spot.created/count(kind)`·`channel.request.duration(s)`·고카디널리티 라벨 부재 |
-| OBS-C1 draining 마커 | 구현(부분) | 마커 게시+연결 유지+readiness flip+생성 거부+terminal Drained. 전파 지연 창 request 무오류 검증은 잔여 |
-| OBS-C2 actor 핸드오프 | 대기 | drain 핸드오프 실행 미구현 |
-| OBS-C3 SPOT 정책 | 대기 | `release-and-recreate` 실행 미구현(선언 표면만) |
-| OBS-C4 강제 종료 통지 | 대기 | 활성 세션 `session-closing` 발신 orchestration 잔여(신규 연결 거부 통지는 구현) |
-| OBS-C5 롤아웃/zero-target | 대기 | 핸드오프 의존 |
+| OBS-C1 draining 마커 | 구현 | 마커 게시+연결 유지+readiness flip+생성 거부+peer 격리+terminal Drained |
+| OBS-C2 actor 핸드오프 | 구현 | `handoff` 페이즈: 일반 join(admission/transfer/commit) 완주, `drain.actors.handed_off`+transfer 계기, post-move ping 연속성. bound-session push 세부는 ping 연속성으로 대체 |
+| OBS-C3 SPOT 정책 | 구현 | `policy` 페이즈: release-and-recreate row 해제 → 타 노드 GetOrCreate 재구성, `rooms.drained{policy}` |
+| OBS-C4 강제 종료 통지 | 구현 | `force` 페이즈: ForceStopped 시 활성 세션 `session-closing(server_drain)`+종료, connector 공개 `closeReason` 확인 |
+| OBS-C5 롤아웃/zero-target | 구현 | (a) rolling drain은 무강제 Drained, (b) zero-target은 deadline 강제+`drain.forced{actor,session}` |
 
-실행: `./run_e2e.sh [all|flow|metrics|drain]`
+실행: `./run_e2e.sh [all|flow|metrics|fanout|drain|handoff|force|policy|offnode]`
+
+잔여(외부 의존): connector `stream.reconnects` 계기(spec 표면 확정), lease 지연 주입(redis 인프라),
+cross-language fanout wire 대조(G6 — ledger CPP-FANOUT-WIRE-001).

@@ -24,8 +24,7 @@ int main ()
 {
     try {
         zlink::samples::supportchat::supportchat_client_scenario_t scenario;
-        scenario.run (env_or ("SUPPORTCHAT_SUPPORT_HTTP_URL", "http://127.0.0.1:7508"),
-                      env_or ("SUPPORTCHAT_SESSION_STREAM", "tcp://127.0.0.1:7505"));
+        scenario.run (env_or ("SUPPORTCHAT_SESSION_STREAM", "tcp://127.0.0.1:7505"));
         return 0;
     } catch (const std::exception &error) {
         std::cerr << "supportchat client failed: " << error.what () << std::endl;

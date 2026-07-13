@@ -50,11 +50,25 @@ class bingo_client_scenario_t
             trace ("connect observer");
             co_await observer.connect ().async ();
 
+            /* 공통 sample spec §10-1: 세 client(player-1/player-2/observer)를 먼저 인증하고
+             * player-1과 player-2의 actor node rid가 서로 다른지 확인한 뒤 matching으로 넘어간다. */
             trace ("authenticate client1");
             const auto client1_auth_request = authenticate_req_t{bingo_sample_players_t::player1};
             auto client1_auth = co_await authenticate (client1, client1_auth_request);
             ensure (client1_auth.actor_id == bingo_sample_players_t::player1);
             ensure (!client1_auth.actor_node_rid.empty ());
+
+            trace ("authenticate client2");
+            const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
+            auto client2_auth = co_await authenticate (client2, client2_auth_request);
+            ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
+            ensure (client2_auth.actor_id != client1_auth.actor_id);
+            ensure (client2_auth.actor_node_rid != client1_auth.actor_node_rid);
+
+            trace ("authenticate observer");
+            const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
+            auto observer_auth = co_await authenticate (observer, observer_auth_request);
+            ensure (observer_auth.actor_id == bingo_sample_players_t::observer);
 
             trace ("match client1");
             const auto client1_match_request = match_bingo_req_t{bingo_sample_modes_t::two_player};
@@ -72,10 +86,6 @@ class bingo_client_scenario_t
                 .result ();
             ensure (!client1_self_join, "self join notify must not be delivered");
 
-            trace ("authenticate observer");
-            const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
-            auto observer_auth = co_await authenticate (observer, observer_auth_request);
-            ensure (observer_auth.actor_id == bingo_sample_players_t::observer);
             ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
             trace ("observe reward events");
@@ -85,13 +95,6 @@ class bingo_client_scenario_t
             ensure (observed.subscribed);
             ensure (observed.observer_node_rid == observer_auth.actor_node_rid);
             ensure (observed.observer_node_rid != client1_match.room_owner_node_rid);
-
-            trace ("authenticate client2");
-            const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
-            auto client2_auth = co_await authenticate (client2, client2_auth_request);
-            ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
-            ensure (client2_auth.actor_id != client1_auth.actor_id);
-            ensure (client2_auth.actor_node_rid != client1_auth.actor_node_rid);
 
             trace ("match client2");
             auto client1_joined_future =

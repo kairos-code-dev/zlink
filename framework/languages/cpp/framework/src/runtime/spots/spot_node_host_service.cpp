@@ -2,6 +2,8 @@
 
 #include "runtime/spots/spot_node_host_service.hpp"
 
+#include "runtime/configuration/endpoint_connections.hpp"
+
 #include <zlink.hpp>
 
 #include "runtime/locations/location_value_codec.hpp"
@@ -406,6 +408,28 @@ void spot_node_host_service_t::start (service_provider_t &services)
         for (const auto &endpoint : snapshot.pub_sub_manual_connections) {
             native->node->connect_peer (endpoint);
         }
+        /* endpoint_connections live attach (CONN-001): role handles mutate
+         * this native node from now on; attach replays only the endpoints
+         * added through the handle (builder connects stay in the loops
+         * above). */
+        if (configured.router_connections) {
+            auto handle = *configured.router_connections;
+            detail::endpoint_connections_runtime_t::attach (
+              handle,
+              [node = native->node] (const std::string &endpoint) { node->connect_peer (endpoint); },
+              [node = native->node] (const std::string &endpoint) {
+                  node->disconnect_peer (endpoint);
+              });
+        }
+        if (configured.pub_sub_connections) {
+            auto handle = *configured.pub_sub_connections;
+            detail::endpoint_connections_runtime_t::attach (
+              handle,
+              [node = native->node] (const std::string &endpoint) { node->connect_peer (endpoint); },
+              [node = native->node] (const std::string &endpoint) {
+                  node->disconnect_peer (endpoint);
+              });
+        }
         if (snapshot.discovery_channel_name && snapshot.router_bind_endpoint) {
             native->local_peer =
               peer_location_t{.auto_connect_type = location_auto_connect_type_t::spot_mesh,
@@ -417,6 +441,17 @@ void spot_node_host_service_t::start (service_provider_t &services)
                               .value = 0};
             if (snapshot.pub_bind_endpoint) {
                 native->local_peer->metadata["pub-endpoint"] = *snapshot.pub_bind_endpoint;
+            }
+            if (!snapshot.actor_types.empty ()) {
+                // Framework-reserved capability encoding ("actor:<type>"): drain
+                // handoff target selection compares the configured actor type,
+                // not a language runtime type name (.NET ZLinkPeerCapabilities).
+                std::set<std::string> capabilities;
+                for (const auto &actor_type : snapshot.actor_types) {
+                    capabilities.insert ("actor:" + actor_type);
+                }
+                native->local_peer->capabilities.assign (capabilities.begin (),
+                                                         capabilities.end ());
             }
             publish_local_spot_peer (*native, *_location_runtime);
         }
@@ -551,6 +586,15 @@ void spot_node_host_service_t::stop () noexcept
     for (auto &native : _nodes) {
         if (!native) {
             continue;
+        }
+        try {
+            /* The runtime still owns the native SPOT and actor handles created
+             * on this context; a live socket keeps the context term waiting
+             * forever, so they are released before the node and the context. */
+            trace_spot_node_stop ("release-native-handles");
+            native->runtime.release_native_handles ();
+        }
+        catch (...) {
         }
         try {
             trace_spot_node_stop ("node-reset");

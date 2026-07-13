@@ -4,7 +4,6 @@
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
-#include "../DispatchInternal/dispatch_messages.hpp"
 #include "../common_codecs.hpp"
 
 #include <zlink/framework.hpp>
@@ -26,17 +25,17 @@ class create_delivery_http_handler_t
 
     explicit create_delivery_http_handler_t (channel_client_t &channels) : _channels (channels) {}
 
-    task_t<create_delivery_res_t> handle (const create_delivery_req_t &request)
+    create_delivery_res_t handle (const create_delivery_req_t &request)
     {
-        assign_delivery_req_t assign{request.delivery_id,
-                                     request.customer_id,
-                                     request.pickup_address,
-                                     request.dropoff_address};
-        auto assigned = co_await _channels.request (sample_names_t::dispatch_route_channel, assign)
-                          .async<assign_delivery_result_t> ();
-        std::cerr << "deliverydispatch api: created delivery=" << assigned.delivery_id
-                  << " courier=" << assigned.courier_id << "\n";
-        co_return create_delivery_res_t{assigned.delivery_id};
+        /* 배차 투입은 응답 없는 one-way send(`AssignDeliveryMsg`)다. HTTP edge는 접수만
+         * 확인하고, 진행 상태는 Tracking 기록과 고객 stream push로 전달된다. */
+        _channels
+          .send (sample_names_t::dispatch_route_channel,
+                 assign_delivery_msg_t{request.delivery_id, request.customer_id,
+                                       request.pickup_address, request.dropoff_address})
+          .submit ();
+        std::cerr << "deliverydispatch api: created delivery=" << request.delivery_id << "\n";
+        return create_delivery_res_t{request.delivery_id};
     }
 
   private:

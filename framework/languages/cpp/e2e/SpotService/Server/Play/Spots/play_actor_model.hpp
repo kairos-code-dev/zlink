@@ -483,7 +483,8 @@ class user_spot_t : public zlink::framework::spot_t
         bool request_failed = false;
         try {
             (void) co_await _context.outbound ()
-              .request (e2e::api_channel, e2e::channel_echo_req_t{request.value})
+              .request (e2e::api_channel,
+                        e2e::missing_channel_req_t{e2e::channel_echo_req_t{request.value}})
               .timeout (std::chrono::milliseconds (1000))
               .async<e2e::channel_echo_res_t> ();
         }
@@ -491,7 +492,8 @@ class user_spot_t : public zlink::framework::spot_t
             request_failed = true;
         }
         _context.outbound ()
-          .send (e2e::api_channel, e2e::channel_msg_t{"missing-" + request.value})
+          .send (e2e::api_channel,
+                 e2e::missing_channel_msg_t{e2e::channel_msg_t{"missing-" + request.value}})
           .submit ();
         _state.record ("SpotOutboundNegative", {}, std::string (_context.spot_rid ().value ()),
                        std::string ("requestFailed=") + (request_failed ? "true" : "false"));
@@ -688,7 +690,7 @@ class user_spot_t : public zlink::framework::spot_t
             (void) co_await _context
               .request_to<e2e::direct_spot_res_t> (
                 target_ref.node_rid, target_ref.spot_rid,
-                e2e::direct_spot_req_t{source_spot, request.marker})
+                e2e::unhandled_spot_req_t{request.marker})
               .timeout (std::chrono::milliseconds (1000))
               .async ();
         }
@@ -697,8 +699,8 @@ class user_spot_t : public zlink::framework::spot_t
         }
         _context
           .send_to (target_ref.node_rid, target_ref.spot_rid,
-                    e2e::direct_spot_msg_t{source_spot,
-                                               "missing-" + request.marker})
+                    e2e::unhandled_spot_msg_t{
+                      e2e::unhandled_spot_req_t{"missing-" + request.marker}})
           .submit ();
         _state.record ("SpotToSpotNegative", {}, source_spot,
                        "target=" + request.target_spot_rid + "|requestFailed="
@@ -925,7 +927,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                    zlink::framework::spot_actor_request_context_t &,
                    const e2e::destroy_actor_req_t &request)
     {
-        co_await _context.destroy_actor (actor.actor_ref, actor);
+        co_await _context.destroy_actor (actor);
         _state.record ("ActorDestroyed", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), request.reason);
         co_return e2e::destroy_actor_res_t{true, actor.actor_id};

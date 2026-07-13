@@ -71,9 +71,8 @@ class bingo_entry_spot_t : public entry_spot_t
             return;
         }
         const auto actor_id = actor.actor.actor_id;
-        const auto actor_ref = actor_ref_for (actor);
         std::cout << "entry spot: actor destroy requested. actor=" << actor_id << std::endl;
-        (void) _context.destroy_actor (actor_ref, const_cast<player_actor_t &> (actor));
+        (void) _context.destroy_actor (const_cast<player_actor_t &> (actor));
         std::cout << "entry spot: actor destroy completed. actor=" << actor_id << std::endl;
     }
 

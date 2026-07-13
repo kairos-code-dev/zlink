@@ -20,9 +20,9 @@ class tictactoe_match_t
     {
     }
 
-    join_game_res_t join (const std::string &actor_id, const join_game_req_t &request)
+    join_game_res_t join (const std::string &actor_id, const std::string &room_id)
     {
-        if (request.room_id != _state.room_id) {
+        if (room_id != _state.room_id) {
             throw std::runtime_error ("room id mismatch");
         }
         if (actor_id.empty ()) {

@@ -1827,7 +1827,7 @@ assert not any((item["actor_id"] == actor or item["spot_rid"] == spot)
 print("scenario SM-B5 evidence passed")
 PY
   grep -q "surface=spot_actor.*reason=handler_missing.*action=reply_error.*packet=MissingActorPacket" \
-    "$LOG_DIR/play-a.stderr.log"
+    "$LOG_DIR/play-a-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
 fi
@@ -2139,9 +2139,9 @@ assert not any(item["spot_rid"] == spot for item in play_b["entries"])
 print("scenario SM-C1 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
-    "$LOG_DIR/play-a.stderr.log"
+    "$LOG_DIR/play-a-flow.log"
   grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
-    "$LOG_DIR/play-a.stderr.log"
+    "$LOG_DIR/play-a-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
 fi
@@ -2258,9 +2258,9 @@ assert has(play_b, "SpotToSpotNegative", f"target={target}|requestFailed=true", 
 print("scenario SM-C3 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
-    "$LOG_DIR/play-a.stderr.log"
+    "$LOG_DIR/play-a-flow.log"
   grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
-    "$LOG_DIR/play-a.stderr.log"
+    "$LOG_DIR/play-a-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
 fi

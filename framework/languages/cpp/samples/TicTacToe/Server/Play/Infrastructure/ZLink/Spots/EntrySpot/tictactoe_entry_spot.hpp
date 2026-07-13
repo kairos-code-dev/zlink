@@ -46,11 +46,11 @@ class tictactoe_entry_spot_t : public entry_spot_t
                                                spot_actor_request_context_t &,
                                                const observe_milestone_req_t &);
 
+    /* 공통 sample spec §13: 인증에서 받은 PlayerInfo가 actor 생성 payload로 들어오고,
+     * actor는 그 값(display name/level/wins)을 그대로 보관한다. */
     void on_create_actor (const player_actor_t &actor, const message_t &create_request)
     {
-        const auto request = create_request.decode<ensure_player_actor_req_t> ();
-        actor.apply_player (
-          player_info_t{request.actor_id, request.actor_id, sample_names_t::required_level, 0});
+        actor.apply_player (create_request.decode<player_info_t> ());
         created_actor_ids.push_back (actor.actor_id);
     }
 
@@ -61,7 +61,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
             return;
         }
         std::cout << "entry spot: actor destroy requested. actor=" << actor.actor_id << std::endl;
-        (void) _context.destroy_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        (void) _context.destroy_actor (const_cast<player_actor_t &> (actor));
         std::cout << "entry spot: actor destroy completed. actor=" << actor.actor_id << std::endl;
     }
 

@@ -96,6 +96,16 @@ class tictactoe_client_scenario_t
                             << " bytes=" << observation.payload_length << '\n';
               });
 
+            [[maybe_unused]] auto inbound_log3 = core_observer.observe_inbound (
+              [] (const zlink::stream_connector::inbound_observation_t &observation) {
+                  std::cout << "stream-inbound sample=TicTacToe client=observer kind="
+                            << static_cast<int> (observation.kind) << " name=" << observation.name
+                            << " seq="
+                            << (observation.request_seq ? std::to_string (*observation.request_seq)
+                                                        : std::string ("-"))
+                            << " bytes=" << observation.payload_length << '\n';
+              });
+
             auto client1 = zlink::stream_e2e_client::use (core_client1);
             auto client2 = zlink::stream_e2e_client::use (core_client2);
             auto observer = zlink::stream_e2e_client::use (core_observer);
@@ -192,7 +202,7 @@ class tictactoe_client_scenario_t
             std::cout << "observer-subscription=verified subscribed=true\n";
 
             trace ("join client1");
-            const auto client1_join_request = join_game_req_t{room.room_id, client1_auth.player};
+            const auto client1_join_request = join_game_req_t{room.room_id};
             auto client1_join =
               co_await client1.request (client1_join_request)
                 .async<join_game_res_t> ();
@@ -221,7 +231,7 @@ class tictactoe_client_scenario_t
                 })
                 .to_future ("client1 game start notify wait failed");
             trace ("join client2");
-            const auto client2_join_request = join_game_req_t{room.room_id, client2_auth.player};
+            const auto client2_join_request = join_game_req_t{room.room_id};
             auto client2_join =
               co_await client2.request (client2_join_request)
                 .async<join_game_res_t> ();

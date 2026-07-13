@@ -75,8 +75,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             return spot_actor_join_response_t::reject ();
         }
         auto projected = static_cast<const tictactoe_match_t &> (*this);
-        auto response = projected.join (
-          std::string (actor_id), join_game_req_t{request.room_id, request.player});
+        auto response = projected.join (std::string (actor_id), request.room_id);
         _pending_joins[std::string (actor_id)] = request;
         return spot_actor_join_response_t::accept (
           std::move (response));
@@ -100,7 +99,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         _pending_joins.erase (pending);
         players[actor.actor_id] = request.player;
         actor.apply_player (request.player);
-        (void) join (actor.actor_id, join_game_req_t{request.room_id, request.player});
+        (void) join (actor.actor_id, request.room_id);
         actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
         player_joined_notify_t notify{

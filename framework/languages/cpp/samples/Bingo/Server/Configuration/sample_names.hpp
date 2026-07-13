@@ -21,7 +21,6 @@ struct sample_names_t
     static constexpr const char *player_joined_packet = "PlayerJoinedNotify";
     static constexpr const char *game_started_packet = "BingoGameStartedNotify";
     static constexpr const char *number_drawn_packet = "BingoNumberDrawnNotify";
-    static constexpr const char *state_packet = "BingoStateNotify";
     static constexpr const char *game_ended_packet = "BingoGameEndedNotify";
     static constexpr const char *reward_announced_packet = "BingoRewardAnnouncedNotify";
 };

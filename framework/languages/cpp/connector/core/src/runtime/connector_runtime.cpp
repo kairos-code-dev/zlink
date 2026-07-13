@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "connector_runtime.hpp"
 
@@ -301,7 +301,21 @@ void change_state (std::shared_ptr<connector_state_t> state,
         && (next == connection_state_t::disconnected || next == connection_state_t::closed)) {
         state->last_disconnect_error = error;
     }
-    connection_state_changed_t changed{previous, next, error};
+    if (next == connection_state_t::disconnected || next == connection_state_t::closed) {
+        if (!state->last_close_reason) {
+            /* No session-closing control arrived: a transport failure is
+             * synthesized, a caller-initiated close is client_close. */
+            state->last_close_reason =
+              error ? close_reason_t::transport_error : close_reason_t::client_close;
+        }
+    } else if (next == connection_state_t::connected) {
+        state->last_close_reason.reset ();
+    }
+    connection_state_changed_t changed{previous, next, error,
+                                       (next == connection_state_t::disconnected
+                                        || next == connection_state_t::closed)
+                                         ? state->last_close_reason
+                                         : std::nullopt};
     for (const auto &handler : state->state_handlers) {
         handler (changed);
     }

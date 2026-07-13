@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include "runtime/request_performer.hpp"
 
@@ -66,8 +66,7 @@ finish_response (raw_http_response_t response,
                  std::chrono::milliseconds timeout)
 {
     if (std::chrono::steady_clock::now () - started_at > timeout) {
-        return zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::timeout, "HTTP request exceeded timeout", true);
+        return zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::timed_out, "HTTP request exceeded timeout", true);
     }
     return zlink::framework::result_t<raw_http_response_t>::success (std::move (response));
 }
@@ -390,8 +389,7 @@ zlink::framework::result_t<raw_http_response_t> perform_once (const http_client_
     catch (const boost::system::system_error &ex) {
         if (ex.code () == boost::beast::error::timeout
             || ex.code () == boost::asio::error::timed_out) {
-            return zlink::framework::result_t<raw_http_response_t>::failure (
-              zlink::framework::framework_error_kind_t::timeout, ex.what (), true);
+            return zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::timed_out, ex.what (), true);
         }
         return map_transport_exception (ex);
     }

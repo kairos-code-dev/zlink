@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "Handlers/session_session_handlers.hpp"
@@ -42,7 +42,7 @@ inline int run_session_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        options.add_route_mesh_channel (e2e::route_channel)
+        options.add_route_mesh (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_client ();

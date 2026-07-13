@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/route_channel_runtime.hpp"
 
@@ -180,9 +180,7 @@ route_channel_runtime_t::submit_request_parts (const zlink::routing_id_t &target
 {
     std::lock_guard lock (_mutex);
     if (auto connected = ensure_connected (); !connected) {
-        return result_t<std::uint64_t>::failure (
-          connected.error_kind (),
-          connected.error () ? connected.error ()->what () : "route channel is not connected");
+        return detail::propagate_failure<std::uint64_t> (connected, "route channel is not connected");
     }
     return register_request_unlocked (target_node_rid, std::nullopt, std::move (parts));
 }
@@ -195,28 +193,21 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
     request_backend_t backend;
     std::uint64_t request_seq = 0;
     if (auto connected = wait_until_connected (timeout); !connected) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          connected.error_kind (),
-          connected.error () ? connected.error ()->what () : "route channel is not connected");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (connected, "route channel is not connected");
     }
     if (auto ready = wait_until_peer_ready (target_node_rid, timeout); !ready) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          ready.error_kind (),
-          ready.error () ? ready.error ()->what () : "route channel peer is not ready");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (ready, "route channel peer is not ready");
     }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              connected.error_kind (),
-              connected.error () ? connected.error ()->what () : "route channel is not connected");
+            return detail::propagate_failure<runtime::messaging::message_parts_t> (connected, "route channel is not connected");
         }
         auto registered = register_request_unlocked (target_node_rid, std::nullopt, parts);
         request_seq = registered.value ();
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::timeout,
+            return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out,
               "route request reply was not completed by a backend");
         }
         backend = _request_backend;
@@ -275,9 +266,7 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
-            return result_t<std::uint64_t>::failure (
-              connected.error_kind (),
-              connected.error () ? connected.error ()->what () : "route channel is not connected");
+            return detail::propagate_failure<std::uint64_t> (connected, "route channel is not connected");
         }
         auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
         request_seq = registered.value ();
@@ -307,28 +296,21 @@ route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &ta
     request_backend_t backend;
     std::uint64_t request_seq = 0;
     if (auto connected = wait_until_connected (timeout); !connected) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          connected.error_kind (),
-          connected.error () ? connected.error ()->what () : "route channel is not connected");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (connected, "route channel is not connected");
     }
     if (auto ready = wait_until_peer_ready (target_node_rid, timeout); !ready) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          ready.error_kind (),
-          ready.error () ? ready.error ()->what () : "route channel peer is not ready");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (ready, "route channel peer is not ready");
     }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              connected.error_kind (),
-              connected.error () ? connected.error ()->what () : "route channel is not connected");
+            return detail::propagate_failure<runtime::messaging::message_parts_t> (connected, "route channel is not connected");
         }
         auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
         request_seq = registered.value ();
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::timeout,
+            return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out,
               "route spot request reply was not completed by a backend");
         }
         backend = _request_backend;

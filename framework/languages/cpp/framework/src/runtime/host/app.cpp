@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/configuration/app.hpp>
 
@@ -19,6 +19,8 @@
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_monitoring_host_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/configuration/endpoint_connections.hpp"
+#include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/spots/spot_node_host_service.hpp"
 #include "runtime/spots/spot_runtime.hpp"
@@ -267,6 +269,31 @@ class app_state_t
             stop_service (*it);
         }
     }
+
+    /* Shared drain operation (graceful-drain-handoff §6): drain() is
+     * idempotent, the first call fixes the deadline, and every waiter joins
+     * the same terminal result. */
+    struct drain_operation_t
+    {
+        std::mutex mutex;
+        bool started = false;
+        bool terminal = false;
+        drain_result_t result = drained_t{};
+        std::chrono::milliseconds deadline{30000};
+        std::vector<detail::task_completion_source_t<drain_result_t>> waiters;
+        std::thread worker;
+
+        ~drain_operation_t ()
+        {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+    };
+
+    std::shared_ptr<std::atomic_bool> draining = std::make_shared<std::atomic_bool> (false);
+    std::map<std::string, spot_drain_policy_t> spot_drain_policies;
+    drain_operation_t drain_operation;
 
     service_collection_t services;
     handler_registry_t handlers;
@@ -522,10 +549,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!_state->services.contains (
           std::type_index (typeid (runtime::store_location_resolvers_t)))) {
+        const auto resolver_location_options = options.location_options ();
         _state->services.add_factory<runtime::store_location_resolvers_t> (
-          [] (service_provider_t &provider) {
+          [resolver_location_options] (service_provider_t &provider) {
               return std::make_unique<runtime::store_location_resolvers_t> (
-                provider.get_required<location_store_t> ());
+                provider.get_required<location_store_t> (), resolver_location_options);
           },
           service_lifetime_t::singleton);
     }
@@ -538,21 +566,39 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (spot_location_resolver_t)))) {
-        _state->services.add_factory<spot_location_resolver_t> (
+    if (!_state->services.contains (std::type_index (typeid (spot_handle_resolver_t)))) {
+        _state->services.add_factory<spot_handle_resolver_t> (
           [] (service_provider_t &provider) {
-              return std::shared_ptr<spot_location_resolver_t> (
+              return std::shared_ptr<spot_handle_resolver_t> (
                 &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (spot_location_resolver_t *) noexcept {});
+                [] (spot_handle_resolver_t *) noexcept {});
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (actor_location_resolver_t)))) {
-        _state->services.add_factory<actor_location_resolver_t> (
+    if (!_state->services.contains (std::type_index (typeid (actor_spot_handle_resolver_t)))) {
+        _state->services.add_factory<actor_spot_handle_resolver_t> (
           [] (service_provider_t &provider) {
-              return std::shared_ptr<actor_location_resolver_t> (
+              return std::shared_ptr<actor_spot_handle_resolver_t> (
                 &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (actor_location_resolver_t *) noexcept {});
+                [] (actor_spot_handle_resolver_t *) noexcept {});
+          },
+          service_lifetime_t::singleton);
+    }
+    if (!_state->services.contains (std::type_index (typeid (runtime::spot_address_resolver_t)))) {
+        _state->services.add_factory<runtime::spot_address_resolver_t> (
+          [] (service_provider_t &provider) {
+              return std::shared_ptr<runtime::spot_address_resolver_t> (
+                &provider.get_required<runtime::store_location_resolvers_t> (),
+                [] (runtime::spot_address_resolver_t *) noexcept {});
+          },
+          service_lifetime_t::singleton);
+    }
+    if (!_state->services.contains (std::type_index (typeid (runtime::actor_address_resolver_t)))) {
+        _state->services.add_factory<runtime::actor_address_resolver_t> (
+          [] (service_provider_t &provider) {
+              return std::shared_ptr<runtime::actor_address_resolver_t> (
+                &provider.get_required<runtime::store_location_resolvers_t> (),
+                [] (runtime::actor_address_resolver_t *) noexcept {});
           },
           service_lifetime_t::singleton);
     }
@@ -591,14 +637,34 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> ();
     auto &location_lifecycle =
       _state->services.build_provider ().get_required<runtime::location_lifecycle_t> ();
+    _state->services.build_provider ()
+      .get_required<runtime::location_runtime_t> ()
+      .bind_monitoring (detail::monitoring_runtime_t::from (_state->monitoring).state ());
     auto &spot_location_resolver =
-      _state->services.build_provider ().get_required<spot_location_resolver_t> ();
+      _state->services.build_provider ().get_required<runtime::spot_address_resolver_t> ();
     actor_gateway_runtime.bind_serializers (_state->serializers);
     actor_gateway_runtime.set_dispatch (options.configure_dispatch ());
+    _state->spot_drain_policies = options.spot_drain_policies ();
     const auto channel_snapshot = _state->zlink.channels ();
     auto channel_runtime = detail::channel_runtime_t::from (_state->zlink.message_bus ());
     detail::channel_runtime_manager_t::from (_state->zlink).initialize_route_channels (
       _state->zlink);
+    /* endpoint_connections live attach (CONN-001): client-channel handles
+     * mutate the runtime connection bundle from now on; disconnects apply to
+     * the same set the requests iterate. */
+    {
+        auto channel_state = detail::channel_runtime_t::from (_state->zlink.message_bus ());
+        for (auto &[connections_channel, connections] : options.client_endpoint_connections ()) {
+            detail::endpoint_connections_runtime_t::attach (
+              connections,
+              [channel_state, connections_channel] (const std::string &endpoint) mutable {
+                  channel_state.add_client_manual_connection (connections_channel, endpoint);
+              },
+              [channel_state, connections_channel] (const std::string &endpoint) mutable {
+                  channel_state.remove_client_manual_connection (connections_channel, endpoint);
+              });
+        }
+    }
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();
     add_hosted_service (std::make_unique<runtime::location_host_service_t> (
       detail::location_owner_node_rid (spot_node_snapshot)));
@@ -616,6 +682,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             if (runtime) {
                 runtime->bind_location_lifecycle (location_lifecycle);
                 runtime->bind_spot_location_resolver (spot_location_resolver);
+                runtime->bind_drain_flag (_state->draining);
                 channel_runtime.bind_spot_mesh_transport (
                   spot_node.name,
                   [spot_runtime = *runtime] (const zlink::routing_id_t &target_node_rid,
@@ -693,9 +760,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!stream_snapshot.empty ()) {
         detail::configure_stream_dispatch_executor ();
-        add_hosted_service (std::make_unique<runtime::stream_host_service_t> (
+        auto stream_service = std::make_unique<runtime::stream_host_service_t> (
           detail::stream_runtime_t::from (_state->zlink), stream_snapshot,
-          options.stream_session_factories ()));
+          options.stream_session_factories ());
+        stream_service->bind_drain_flag (_state->draining);
+        stream_service->bind_monitoring (
+          detail::monitoring_runtime_t::from (_state->monitoring).state ());
+        add_hosted_service (std::move (stream_service));
     }
     if (!http_snapshot.endpoints.empty ()) {
         add_hosted_service (std::make_unique<runtime::http_host_service_t> (
@@ -793,6 +864,265 @@ int app_t::run (int argc, char **argv)
         std::cerr << "zlink-cpp-host-stop stage=after-provider-close" << std::endl;
     }
     return _state->stop_requested.load (std::memory_order_acquire) ? 0 : _state->exit_code;
+}
+
+namespace
+{
+
+const char *drain_state_name (drain_state_t state) noexcept
+{
+    switch (state) {
+        case drain_state_t::serving:
+            return "serving";
+        case drain_state_t::draining:
+            return "draining";
+        case drain_state_t::drained:
+            return "drained";
+        case drain_state_t::force_stopping:
+            return "force_stopping";
+    }
+    return "unknown";
+}
+
+} // namespace
+
+bool app_t::is_ready () const noexcept
+{
+    return !_state->draining->load (std::memory_order_acquire);
+}
+
+task_t<drain_result_t> app_t::await_drained ()
+{
+    auto &operation = _state->drain_operation;
+    std::lock_guard lock (operation.mutex);
+    if (operation.terminal) {
+        return task_t<drain_result_t> (result_t<drain_result_t>::success (operation.result));
+    }
+    detail::task_completion_source_t<drain_result_t> waiter;
+    auto task = waiter.task ();
+    operation.waiters.push_back (std::move (waiter));
+    return task;
+}
+
+task_t<drain_result_t> app_t::drain ()
+{
+    return drain (std::chrono::milliseconds (30000));
+}
+
+task_t<drain_result_t> app_t::drain (std::chrono::milliseconds deadline)
+{
+    if (deadline <= std::chrono::milliseconds::zero ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "drain deadline must be greater than zero");
+    }
+    auto &operation = _state->drain_operation;
+    {
+        std::lock_guard lock (operation.mutex);
+        if (!operation.started) {
+            operation.started = true;
+            operation.deadline = deadline;
+            _state->draining->store (true, std::memory_order_release);
+            auto *state = _state.get ();
+            operation.worker = std::thread ([state] { run_shared_drain (*state); });
+        }
+    }
+    return await_drained ();
+}
+
+void app_t::run_shared_drain (detail::app_state_t &state) noexcept
+{
+    const auto started_at = std::chrono::steady_clock::now ();
+    auto publisher = state.monitoring.publisher ();
+    auto emit_state = [&] (drain_state_t drain_state) {
+        try {
+            publisher.publish (drain_event_t{runtime_event_base_t{"drain"}, drain_state});
+            runtime::runtime_metrics_t drain_metrics (
+              detail::monitoring_runtime_t::from (state.monitoring).state ());
+            if (drain_metrics.enabled ()) {
+                drain_metrics.observable ("zlink.drain.state", "{state}", 1,
+                                          {{"state", drain_state_name (drain_state)}});
+            }
+        }
+        catch (...) {
+        }
+    };
+
+    emit_state (drain_state_t::draining);
+
+    /* Draining marker (graceful-drain-handoff §3.1): keep the connection,
+     * leave placement. The auto-connect writer preserves this flag on every
+     * registration/lease renewal republish. */
+    bool marker_published = false;
+    try {
+        auto provider = state.services.build_provider ();
+        if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
+            location_runtime->get ().set_draining (true);
+            marker_published = location_runtime->get ().republish_peer_rows_draining ();
+        } else {
+            marker_published = true; // no location runtime: nothing to publish
+        }
+    }
+    catch (...) {
+        marker_published = false;
+    }
+
+    const auto deadline_at = started_at + state.drain_operation.deadline;
+    drain_result_t result = drained_t{};
+    if (!marker_published) {
+        while (std::chrono::steady_clock::now () < deadline_at && !marker_published) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+            try {
+                auto provider = state.services.build_provider ();
+                if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
+                    marker_published =
+                      location_runtime->get ().republish_peer_rows_draining ();
+                }
+            }
+            catch (...) {
+            }
+        }
+        if (!marker_published) {
+            emit_state (drain_state_t::force_stopping);
+            result =
+              force_stopped_t{drain_force_reason_t::draining_state_publish_failed};
+        }
+    }
+
+    /* In-flight completion wait (graceful-drain-handoff §4-4): outbound
+     * pending requests and running spot callbacks must complete within the
+     * shared deadline; otherwise the drain force-stops. */
+    if (std::holds_alternative<drained_t> (result)) {
+        auto in_flight_pending = [&state] () -> bool {
+            try {
+                if (detail::channel_runtime_t::from (state.zlink.message_bus ()).pending_count ()
+                    > 0) {
+                    return true;
+                }
+                for (const auto &spot_node : state.zlink.spot_nodes ()) {
+                    auto runtime = detail::spot_node_runtime_t::from (state.zlink, spot_node.name);
+                    if (runtime && runtime->has_active_callbacks ()) {
+                        return true;
+                    }
+                }
+            }
+            catch (...) {
+            }
+            return false;
+        };
+        bool timed_out = false;
+        while (in_flight_pending ()) {
+            if (std::chrono::steady_clock::now () >= deadline_at) {
+                timed_out = true;
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        }
+        if (timed_out) {
+            emit_state (drain_state_t::force_stopping);
+            result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+        }
+    }
+
+    /* SPOT drain policies (graceful-drain-handoff §5.1): release-and-recreate
+     * meshes close their spots after the serial queues emptied so the next
+     * GetOrCreate rebuilds the state on another owner; drain-natural meshes
+     * only rely on the in-flight wait above. */
+    if (std::holds_alternative<drained_t> (result)) {
+        try {
+            for (const auto &[mesh_name, policy] : state.spot_drain_policies) {
+                if (policy != spot_drain_policy_t::release_and_recreate) {
+                    continue;
+                }
+                auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name);
+                if (!runtime) {
+                    continue;
+                }
+                runtime::runtime_metrics_t drain_metrics (
+                  detail::monitoring_runtime_t::from (state.monitoring).state ());
+                for (auto &context : runtime->active_contexts ()) {
+                    try {
+                        const auto closed = runtime->close_spot (context.spot_rid ()).result ();
+                        if (closed && closed.value () && drain_metrics.enabled ()) {
+                            drain_metrics.counter ("zlink.drain.rooms.drained", "{room}", 1,
+                                                   {{"policy", "release_and_recreate"}});
+                        }
+                    }
+                    catch (...) {
+                    }
+                }
+            }
+        }
+        catch (...) {
+        }
+    }
+
+    /* Owner cleanup (graceful-drain-handoff §4-5): lease and rows are removed
+     * before the terminal result completes; the store stays usable. */
+    if (std::holds_alternative<drained_t> (result)) {
+        try {
+            auto provider = state.services.build_provider ();
+            if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
+                if (!location_runtime->get ().cleanup_owner ()) {
+                    emit_state (drain_state_t::force_stopping);
+                    result = force_stopped_t{drain_force_reason_t::owner_cleanup_failed};
+                }
+            }
+        }
+        catch (...) {
+            emit_state (drain_state_t::force_stopping);
+            result = force_stopped_t{drain_force_reason_t::owner_cleanup_failed};
+        }
+    }
+
+    const bool force_stopped = std::holds_alternative<force_stopped_t> (result);
+    if (force_stopped) {
+        /* graceful-drain-handoff §7: active sessions receive the reason code
+         * before forced teardown; the notification is bounded and never
+         * blocks the terminal result indefinitely. */
+        try {
+            for (const auto &service : state.hosted_services) {
+                if (auto *stream_service =
+                      dynamic_cast<runtime::stream_host_service_t *> (service.get ())) {
+                    stream_service->notify_sessions_closing (
+                      stream_close_reason_t::server_drain, "drain force stop");
+                    runtime::runtime_metrics_t metrics (
+                      detail::monitoring_runtime_t::from (state.monitoring).state ());
+                    if (metrics.enabled ()) {
+                        metrics.counter ("zlink.drain.forced", "{event}", 1,
+                                         {{"kind", "session"}});
+                    }
+                }
+            }
+        }
+        catch (...) {
+        }
+    }
+    emit_state (force_stopped ? drain_state_t::force_stopping : drain_state_t::drained);
+    try {
+        runtime::runtime_metrics_t drain_metrics (
+          detail::monitoring_runtime_t::from (state.monitoring).state ());
+        if (drain_metrics.enabled ()) {
+            const auto elapsed = std::chrono::duration<double> (
+                                   std::chrono::steady_clock::now () - started_at)
+                                   .count ();
+            drain_metrics.histogram ("zlink.drain.duration", "s", elapsed,
+                                     {{"outcome", force_stopped ? "force_stopped" : "drained"}});
+        }
+    }
+    catch (...) {
+    }
+
+    std::vector<detail::task_completion_source_t<drain_result_t>> waiters;
+    {
+        std::lock_guard lock (state.drain_operation.mutex);
+        state.drain_operation.terminal = true;
+        state.drain_operation.result = result;
+        waiters = std::move (state.drain_operation.waiters);
+        state.drain_operation.waiters.clear ();
+    }
+    for (auto &waiter : waiters) {
+        waiter.complete (result_t<drain_result_t>::success (result));
+    }
 }
 
 void app_t::stop () noexcept

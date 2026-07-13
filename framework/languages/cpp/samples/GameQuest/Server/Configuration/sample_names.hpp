@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <string>
@@ -12,6 +12,7 @@ struct sample_names_t
     static constexpr const char *quest_spot_route_channel_prefix =
       "gamequest.quest.spot.route.";
     static constexpr const char *quest_spot_discovery = "gamequest.quest.spot";
+    static constexpr const char *quest_spot_route = "gamequest.quest.spot.route";
     static constexpr const char *player_quest_spot = "gamequest.player.quest";
     static constexpr const char *stream_node = "gamequest.stream";
     static constexpr const char *mission_a_rid = "gamequest-mission-a";

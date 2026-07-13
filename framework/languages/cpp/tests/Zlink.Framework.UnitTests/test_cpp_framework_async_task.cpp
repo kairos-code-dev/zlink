@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
@@ -40,8 +40,7 @@ zlink::framework::task_t<int> await_shared (zlink::framework::task_t<int> &task,
 
 zlink::framework::task_t<int> timeout_task ()
 {
-    co_return zlink::framework::result_t<int>::failure (
-      zlink::framework::framework_error_kind_t::timeout, "timeout preserved");
+    co_return zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::timed_out, "timeout preserved");
 }
 
 zlink::framework::task_t<int> await_timeout ()
@@ -78,23 +77,25 @@ int main ()
         return 2;
     }
 
-    zlink::framework::request_call_t<int> call (zlink::framework::result_t<int>::failure (
-      zlink::framework::framework_error_kind_t::timeout, "timeout"));
+    zlink::framework::request_call_t<int> call (zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::timed_out, "timeout"));
     auto coroutine_result = call.async ().result ();
-    if (coroutine_result.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
+    if ((coroutine_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*coroutine_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 3;
     }
 
     const auto preserved_failure = await_timeout ().result ();
     if (preserved_failure
-        || preserved_failure.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
+        || (preserved_failure.error () != nullptr
+         && zlink::framework::detail::boundary_state (*preserved_failure.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 4;
     }
 
-    zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
-      zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
-    if (shutdown_call.async ().result ().error_kind ()
-        != zlink::framework::framework_error_kind_t::shutdown) {
+    zlink::framework::request_call_t<int> shutdown_call (zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::shutdown, "shutdown"));
+    const auto shutdown_result = shutdown_call.async ().result ();
+    if (shutdown_result || shutdown_result.error () == nullptr
+        || zlink::framework::detail::boundary_state (*shutdown_result.error ())
+             != zlink::framework::detail::boundary_error_t::shutdown) {
         return 5;
     }
 
@@ -145,38 +146,6 @@ int main ()
         return 9;
     }
 
-    zlink::framework::detail::task_completion_source_t<int> cancellable_completion;
-    auto cancellable = cancellable_completion.task ();
-    zlink::framework::cancellation_token_source_t cancellation;
-    auto cancelled_task =
-      zlink::framework::detail::cancelable_task (std::move (cancellable), cancellation.token ());
-    if (!cancellation.cancel ()) {
-        return 10;
-    }
-    auto cancelled_result = cancelled_task.result ();
-    if (cancelled_result
-        || cancelled_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::cancelled) {
-        return 11;
-    }
-    cancellable_completion.complete (zlink::framework::result_t<int>::success (600));
-    if (cancelled_task.result ().error_kind ()
-        != zlink::framework::framework_error_kind_t::cancelled) {
-        return 12;
-    }
-
-    zlink::framework::detail::task_completion_source_t<int> complete_first_source;
-    auto complete_first = complete_first_source.task ();
-    zlink::framework::cancellation_token_source_t late_cancellation;
-    auto complete_first_task = zlink::framework::detail::cancelable_task (
-      std::move (complete_first), late_cancellation.token ());
-    complete_first_source.complete (zlink::framework::result_t<int>::success (700));
-    if (complete_first_task.result ().value () != 700) {
-        return 13;
-    }
-    if (!late_cancellation.cancel () || complete_first_task.result ().value () != 700) {
-        return 14;
-    }
 
     return 0;
 }

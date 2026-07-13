@@ -26,10 +26,10 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - callback submit
 - coroutine submit
 - user Spot 생성과 room spot node 구성
-- `onCreateActor`, room join, room leave callback 흐름
+- `on_create_actor`, room join, room leave callback 흐름
 - room user Spot의 `leave_actor` 호출과 Entry Spot 복귀
-- Entry Spot의 `destroyActor` 호출
-- destroy는 `onLeaveActor`를 호출하지 않는다
+- Entry Spot의 `destroy_actor` 호출
+- destroy는 `on_leave_actor`를 호출하지 않는다
 - SPOT timer 등록
 - monitoring source 등록
 - offload handler option
@@ -50,8 +50,8 @@ Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 �
 각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
-Entry Spot에서만 `destroyActor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
-Entry Spot destroy와 destroy가 `onLeaveActor`를 호출하지 않는다라는 callback isolation을
+Entry Spot에서만 `destroy_actor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
+Entry Spot destroy와 destroy가 `on_leave_actor`를 호출하지 않는다라는 callback isolation을
 검증한다. 같은 gate는 destroy 뒤 actor lookup에서 사라지는지와 같은 actor id 재생성이
 가능한지도 확인한다. runner는 API, Play, Session 서버를 별도 process로 계속
 실행한 뒤 public client 실행 파일로 authenticate, match, card submit, server draw, winner

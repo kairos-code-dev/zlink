@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "Handlers/multi_node_handlers.hpp"
@@ -43,7 +43,8 @@ inline int run_multi_node_server (int argc, char **argv)
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::route_client_t> ()
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<multi_node_create_user_local_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<multi_node_spot_only_mesh_handler_t, scenario_state_t,
@@ -55,7 +56,7 @@ inline int run_multi_node_server (int argc, char **argv)
 
         if (!disable_route_mesh) {
             (void) peer_route_endpoint;
-            options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
+            options.add_route_mesh (multi_node_route_channel_for (node_rid))
               .enable_server (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (node_rid))
               .enable_client ()

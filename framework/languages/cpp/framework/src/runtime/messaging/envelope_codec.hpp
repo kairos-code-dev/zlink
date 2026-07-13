@@ -1,8 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <chrono>
@@ -37,6 +38,10 @@ struct envelope_header_t
     std::optional<std::string> error_message;
     std::optional<std::string> source;
     std::map<std::string, std::string> metadata;
+    /* Optional pair (flow-correlation §3.1): always together or absent.
+     * Every route/actor/spot relay preserves both values as-is. */
+    std::optional<std::string> flow_id;
+    std::optional<flow_origin_t> flow_origin;
 };
 
 class message_parts_t

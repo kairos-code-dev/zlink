@@ -20,10 +20,10 @@ endpoint에 직접 연결한다.
 - join game response
 - place mark response
 - Play session actor bind
-- `onCreateActor`, actor join, place mark, player joined, game state 흐름
+- `on_create_actor`, actor join, place mark, player joined, game state 흐름
 - room user Spot의 `leave_actor` 호출과 Entry Spot 복귀
-- Entry Spot의 `destroyActor` 호출
-- destroy는 `onLeaveActor`를 호출하지 않는다
+- Entry Spot의 `destroy_actor` 호출
+- destroy는 `on_leave_actor`를 호출하지 않는다
 - JSON stream/channel/actor/Spot payload
 - disconnect cleanup
 
@@ -44,8 +44,8 @@ Stream Connector로 접속한다. API와 Play 실행
 target은 샘플 트리에 두지 않는다.
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
-Entry Spot에서만 `destroyActor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
-Entry Spot destroy와 destroy가 `onLeaveActor`를 호출하지 않는다라는 callback isolation을
+Entry Spot에서만 `destroy_actor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
+Entry Spot destroy와 destroy가 `on_leave_actor`를 호출하지 않는다라는 callback isolation을
 검증한다. 같은 gate는 destroy 뒤 actor lookup에서 사라지는지와 같은 actor id 재생성이
 가능한지도 확인한다. runner는 Play 서버와 API 서버를 별도 process로 계속 실행한 뒤
 public client 실행 파일을 실행한다. client scenario는 HTTP `POST /games`, Stream Connector

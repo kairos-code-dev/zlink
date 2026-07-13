@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
@@ -55,6 +55,7 @@ class actor_gateway_state_t
     using relay_dispatcher_t = std::function<result_t<std::optional<zlink::message_t>> (
       const actor_ref_t &, actor_context_t, const stream_header_t &, const zlink::message_t &)>;
     using disconnect_dispatcher_t = std::function<result_t<void> (const actor_ref_t &)>;
+    using membership_query_t = std::function<std::optional<spot_rid_t> (const actor_ref_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
     std::map<std::string, std::function<task_t<void> (std::string, const zlink::message_t &)>>
@@ -65,6 +66,7 @@ class actor_gateway_state_t
     join_entry_spot_dispatcher_t join_entry_spot_dispatcher;
     relay_dispatcher_t relay_dispatcher;
     disconnect_dispatcher_t disconnect_dispatcher;
+    membership_query_t membership_query;
     serializer_registry_t *serializers = nullptr;
     dispatch_options_t dispatch;
 };
@@ -110,6 +112,7 @@ class actor_gateway_runtime_t
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);
     void on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher);
+    void on_membership (actor_gateway_state_t::membership_query_t query);
     void on_disconnect (actor_gateway_state_t::disconnect_dispatcher_t dispatcher);
     void bind_serializers (serializer_registry_t &serializers);
     void set_dispatch (dispatch_options_t options);

@@ -1,13 +1,16 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 
 #include "runtime/diagnostics/diagnostic_event_sink.hpp"
 #include "runtime/diagnostics/dispatch_diagnostics_names.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -53,6 +56,13 @@ class message_flow_tracer_t
         return enabled (required_mode (outcome));
     }
 
+    /* flow-correlation §2.2: host entry points create new flow ids only when
+     * tracing is not fully off; propagation of inbound ids is unconditional. */
+    bool capture_enabled () const noexcept
+    {
+        return enabled (message_flow_log_mode_t::errors_only);
+    }
+
     // Lazy form: the event (and its string fields) is built only after the cheap
     // mode/sample gate passes, so an "off" dispatch pays nothing but the gate.
     template <typename Fn>
@@ -61,14 +71,17 @@ class message_flow_tracer_t
         if (!enabled_for (outcome)) {
             return;
         }
-        if (outcome != message_flow_outcome_t::dropped && outcome != message_flow_outcome_t::error
-            && !sample (_options->diagnostics.sample_rate ())) {
-            return;
-        }
         // build_event() builds the event (allocates strings); guard it so a throw
         // (e.g. bad_alloc) never terminates this noexcept tracing call.
         try {
-            emit (build_event ());
+            auto event = build_event ();
+            stamp_flow (event);
+            if (outcome != message_flow_outcome_t::dropped
+                && outcome != message_flow_outcome_t::error
+                && !sample (_options->diagnostics.sample_rate (), event.flow_id)) {
+                return;
+            }
+            emit (std::move (event));
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
@@ -82,9 +95,10 @@ class message_flow_tracer_t
         if (!enabled_for (event.outcome)) {
             return;
         }
+        stamp_flow (event);
         if (event.outcome != message_flow_outcome_t::dropped
             && event.outcome != message_flow_outcome_t::error
-            && !sample (_options->diagnostics.sample_rate ())) {
+            && !sample (_options->diagnostics.sample_rate (), event.flow_id)) {
             return;
         }
         emit (std::move (event));
@@ -131,13 +145,51 @@ class message_flow_tracer_t
   private:
     static int rank (message_flow_log_mode_t mode) noexcept { return static_cast<int> (mode); }
 
-    bool sample (double rate) const noexcept
+    static const char *flow_origin_name (flow_origin_t origin) noexcept
+    {
+        switch (origin) {
+            case flow_origin_t::inbound:
+                return "inbound";
+            case flow_origin_t::timer:
+                return "timer";
+            case flow_origin_t::application:
+                return "application";
+            case flow_origin_t::lifecycle:
+                return "lifecycle";
+        }
+        return "unknown";
+    }
+
+    /* Fills the optional flow pair from the ambient context when the caller
+     * did not carry it (flow-correlation §8: both or neither). */
+    static void stamp_flow (message_flow_event_t &event)
+    {
+        if (event.flow_id.has_value () != event.flow_origin.has_value ()) {
+            event.flow_id.reset ();
+            event.flow_origin.reset ();
+        }
+        if (!event.flow_id) {
+            if (const auto &flow = runtime::flow_context_t::current ()) {
+                event.flow_id = flow->flow_id;
+                event.flow_origin = flow->origin;
+            }
+        }
+    }
+
+    /* Flow-consistent sampling (flow-correlation §5): thinning is keyed by
+     * the flow id hash so one flow is kept or dropped as a whole; events
+     * without a flow fall back to stride sampling. */
+    bool sample (double rate, const std::optional<std::string> &flow_id) const noexcept
     {
         if (rate >= 1.0) {
             return true;
         }
         if (rate <= 0.0) {
             return false;
+        }
+        if (flow_id) {
+            const auto hash = std::hash<std::string>{} (*flow_id);
+            return (static_cast<double> (hash % 10000) / 10000.0) < rate;
         }
         auto stride = static_cast<std::uint64_t> (1.0 / rate + 0.5);
         if (stride == 0) {
@@ -173,6 +225,12 @@ class message_flow_tracer_t
             }
             if (event.correlation_id) {
                 add ("corr", *event.correlation_id);
+            }
+            if (event.flow_id) {
+                add ("flow", *event.flow_id);
+            }
+            if (event.flow_origin) {
+                add ("origin", std::string (flow_origin_name (*event.flow_origin)));
             }
             if (event.source_rid) {
                 add ("src", *event.source_rid);

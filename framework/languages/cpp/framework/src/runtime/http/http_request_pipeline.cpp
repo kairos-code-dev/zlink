@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/http/http_request_pipeline.hpp"
 
@@ -48,8 +48,7 @@ class http_route_invoker_access_t
                     route.invoke (services, context, owned_request, owned_body));
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<http_response_t>::failure (error.kind (), error.what (),
-                                                               error.is_retriable ());
+                  co_return detail::result_access_t::failure<http_response_t> (error);
               }
               catch (...) {
                   co_return result_t<http_response_t>::failure (
@@ -508,16 +507,12 @@ const char *error_kind_name (framework_error_kind_t kind) noexcept
             return "request_target_not_found";
         case framework_error_kind_t::request_protocol_error:
             return "request_protocol_error";
-        case framework_error_kind_t::timeout:
-            return "timeout";
         case framework_error_kind_t::worker_queue_full:
             return "worker_queue_full";
         case framework_error_kind_t::worker_timed_out:
             return "worker_timed_out";
         case framework_error_kind_t::worker_failed:
             return "worker_failed";
-        case framework_error_kind_t::shutdown:
-            return "shutdown";
         case framework_error_kind_t::request_failed:
             return "request_failed";
         default:
@@ -533,13 +528,10 @@ http::status status_for_error (framework_error_kind_t kind) noexcept
             return http::status::bad_request;
         case framework_error_kind_t::request_target_not_found:
             return http::status::not_found;
-        case framework_error_kind_t::timeout:
         case framework_error_kind_t::worker_timed_out:
             return http::status::gateway_timeout;
         case framework_error_kind_t::worker_queue_full:
             return http::status::too_many_requests;
-        case framework_error_kind_t::shutdown:
-            return http::status::service_unavailable;
         default:
             return http::status::internal_server_error;
     }
@@ -549,8 +541,32 @@ void apply_framework_error (http::response<http::string_body> &response,
                             const framework_exception_t &error,
                             const http_context_t &context)
 {
-    response.result (status_for_error (error.kind ()));
-    response.body () = nlohmann::json{{"error", error_kind_name (error.kind ())},
+    const auto boundary = detail::boundary_state (error);
+    auto status = status_for_error (error.kind ());
+    const char *error_name = error_kind_name (error.kind ());
+    switch (boundary) {
+        case detail::boundary_error_t::timed_out:
+            status = http::status::gateway_timeout;
+            error_name = "timeout";
+            break;
+        case detail::boundary_error_t::shutdown:
+            status = http::status::service_unavailable;
+            error_name = "shutdown";
+            break;
+        case detail::boundary_error_t::disconnected:
+        case detail::boundary_error_t::closed:
+        case detail::boundary_error_t::cancelled:
+        case detail::boundary_error_t::stale_generation:
+            error_name = boundary == detail::boundary_error_t::disconnected ? "disconnected"
+                         : boundary == detail::boundary_error_t::closed     ? "closed"
+                         : boundary == detail::boundary_error_t::cancelled  ? "cancelled"
+                                                                            : "stale_generation";
+            break;
+        case detail::boundary_error_t::none:
+            break;
+    }
+    response.result (status);
+    response.body () = nlohmann::json{{"error", error_name},
                                       {"message", error.what ()},
                                       {"correlationId", context.correlation_id}}
                          .dump ();

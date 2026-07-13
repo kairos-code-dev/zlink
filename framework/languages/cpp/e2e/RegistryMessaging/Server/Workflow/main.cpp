@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Configuration/workflow_options.hpp"
 #include "Endpoints/workflow_endpoints.hpp"

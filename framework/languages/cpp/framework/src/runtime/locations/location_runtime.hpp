@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "runtime/locations/location_key_codec.hpp"
+#include "runtime/diagnostics/runtime_metrics.hpp"
 
 #include <zlink/framework/contracts/locations/options.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
@@ -35,6 +36,53 @@ class location_runtime_t
     const std::string &owner_id () const noexcept { return _owner_id; }
 
     const location_options_t &options () const noexcept { return _options; }
+
+    /* Draining marker (graceful-drain-handoff §3.1): peer rows written while
+     * draining carry the typed flag; a started drain generation never flips
+     * the flag back to false. */
+    /* Metric surface binding (runtime-metrics §4.5): the host wires the
+     * monitoring state so lease renew failures/lateness and write conflicts
+     * emit catalog instruments; unset keeps the zero-cost path. */
+    void bind_monitoring (
+      std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring) noexcept
+    {
+        _monitoring = std::move (monitoring);
+    }
+
+    void set_draining (bool value) noexcept
+    {
+        if (value) {
+            _draining.store (true, std::memory_order_release);
+        }
+    }
+
+    bool draining () const noexcept { return _draining.load (std::memory_order_acquire); }
+
+    /* Re-publishes every peer row owned by this runtime with draining=true.
+     * Returns false when the store rejects the writes (retry until deadline
+     * belongs to the drain worker). */
+    bool republish_peer_rows_draining ()
+    {
+        try {
+            auto peers =
+              _store->list_peers (peer_location_filter_t{}).result ().value ();
+            bool all_written = true;
+            for (auto &peer : peers) {
+                if (peer.owner_id != _owner_id || peer.draining) {
+                    continue;
+                }
+                peer.draining = true;
+                const auto written = write_peer (std::move (peer), location_write_intent_t::renew);
+                if (written.status != location_write_status_t::stored) {
+                    all_written = false;
+                }
+            }
+            return all_written;
+        }
+        catch (...) {
+            return false;
+        }
+    }
 
     bool owner_lease_healthy () const noexcept
     {
@@ -85,8 +133,54 @@ class location_runtime_t
         }
     }
 
+    /* Drain owner cleanup (graceful-drain-handoff §4-5): stops the lease
+     * heartbeat, then removes this owner's lease and rows while the store
+     * stays usable for the rest of teardown. Returns false when the store
+     * rejects the cleanup (the drain worker maps it to OwnerCleanupFailed). */
+    bool cleanup_owner () noexcept
+    {
+        if (_started.exchange (false)) {
+            _heartbeat_stop.store (true, std::memory_order_release);
+            _heartbeat_wake.notify_all ();
+            if (_heartbeat.joinable ()) {
+                _heartbeat.join ();
+            }
+        }
+        try {
+            _store->remove_owner_lease (_owner_id).result ().value ();
+            _store->remove_all_by_owner (_owner_id).result ().value ();
+            return true;
+        }
+        catch (const std::exception &error) {
+            record_failure (error.what ());
+            return false;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     owner_lease_renewal_t renew_owner_lease_once ()
     {
+        runtime_metrics_t metrics (_monitoring);
+        const auto metrics_enabled = metrics.enabled ();
+        std::optional<std::chrono::steady_clock::time_point> due_at;
+        if (metrics_enabled) {
+            std::lock_guard lock (_state_gate);
+            if (_last_renew_started_at) {
+                due_at = *_last_renew_started_at + _options.heartbeat_interval;
+            }
+        }
+        const auto started_at = std::chrono::steady_clock::now ();
+        if (metrics_enabled) {
+            std::lock_guard lock (_state_gate);
+            _last_renew_started_at = started_at;
+            if (due_at && started_at > *due_at) {
+                metrics.histogram (
+                  "zlink.location.owner_lease.renew.lateness", "s",
+                  std::chrono::duration<double> (started_at - *due_at).count ());
+            }
+        }
         try {
             auto result = _store->renew_owner_lease (_owner_id, _node_rid, _options.owner_lease_ttl)
                             .result ()
@@ -98,6 +192,9 @@ class location_runtime_t
             return result;
         }
         catch (const std::exception &error) {
+            if (metrics_enabled) {
+                metrics.counter ("zlink.location.owner_lease.renew.failures", "{failure}", 1);
+            }
             record_failure (error.what ());
             return {};
         }
@@ -106,9 +203,19 @@ class location_runtime_t
     location_write_result_t write_peer (peer_location_t peer, location_write_intent_t intent)
     {
         peer.owner_id = _owner_id;
+        if (_draining.load (std::memory_order_acquire)) {
+            peer.draining = true;
+        }
         auto canonical = location_key_codec_t::encode_peer_key (peer_location_key_t{
           peer.auto_connect_type, peer.mesh_name, peer.role, peer.node_rid, peer.endpoint});
         auto result = _store->update_peer (std::move (peer), intent).result ().value ();
+        if (result.status == location_write_status_t::rejected_conflict
+            || result.status == location_write_status_t::ignored_stale) {
+            runtime_metrics_t metrics (_monitoring);
+            if (metrics.enabled ()) {
+                metrics.counter ("zlink.location.write.conflicts", "{write}", 1);
+            }
+        }
         notify_if_stale (result, location_kind_t::peer, canonical);
         return result;
     }
@@ -238,6 +345,9 @@ class location_runtime_t
     location_store_t *_store;
     location_options_t _options;
     std::string _owner_id;
+    std::atomic_bool _draining = false;
+    std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
+    std::optional<std::chrono::steady_clock::time_point> _last_renew_started_at;
     zlink::routing_id_t _node_rid = zlink::routing_id_t::from (std::uint32_t{0});
     std::atomic_bool _started = false;
     std::atomic_bool _heartbeat_stop = false;

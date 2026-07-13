@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
@@ -45,6 +45,9 @@ struct connection_state_changed_t
     connection_state_t previous = connection_state_t::created;
     connection_state_t current = connection_state_t::created;
     std::optional<error_t> error;
+    /* Last observed close reason: set from a received `session-closing`
+     * control before the server closes, or synthesized by the connector. */
+    std::optional<close_reason_t> close_reason;
 };
 
 struct inbound_observation_t

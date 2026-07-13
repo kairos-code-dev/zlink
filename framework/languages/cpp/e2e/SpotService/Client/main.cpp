@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Shared/spot_service_contracts.hpp"
 #include "Scenarios/sm_a1_scenario.hpp"

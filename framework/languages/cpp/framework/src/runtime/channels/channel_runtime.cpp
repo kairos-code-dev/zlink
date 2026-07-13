@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "channel_runtime.hpp"
 
@@ -9,8 +9,11 @@
 #include "runtime/channels/channel_outbound_exchange.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
+#include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/locations/spot_handle_state.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
@@ -196,9 +199,7 @@ class pending_operation_controller_t
     result_t<std::uint64_t> reserve_request (std::string channel_name)
     {
         if (auto admission = ensure_admission (); !admission) {
-            return result_t<std::uint64_t>::failure (
-              admission.error_kind (),
-              admission.error () ? admission.error ()->what () : "channel request was rejected");
+            return detail::propagate_failure<std::uint64_t> (admission, "channel request was rejected");
         }
 
         const auto request_seq = _state.pending_requests.next_request_seq ();
@@ -210,16 +211,15 @@ class pending_operation_controller_t
     result_t<std::uint64_t> queue_send (std::string channel_name, std::string idempotency_key)
     {
         if (auto admission = ensure_admission (); !admission) {
-            return result_t<std::uint64_t>::failure (
-              admission.error_kind (),
-              admission.error () ? admission.error ()->what () : "channel send was rejected");
+            return detail::propagate_failure<std::uint64_t> (admission, "channel send was rejected");
         }
 
         const auto operation_id = _state.pending_requests.next_request_seq ();
         _state.pending_operations.emplace (
           operation_id, channel_reliability_event_t{
                           std::move (channel_name), std::move (idempotency_key),
-                          framework_error_kind_t::timeout, "pending operation timed out"});
+                          framework_error_kind_t::request_failed,
+                          "pending operation timed out"});
         ++_state.pending;
         return result_t<std::uint64_t>::success (operation_id);
     }
@@ -294,11 +294,11 @@ class pending_operation_controller_t
     result_t<void> ensure_admission () const
     {
         if (_state.shutdown) {
-            return result_t<void>::failure (framework_error_kind_t::shutdown,
+            return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
                                             "channel runtime is shutting down");
         }
         if (_state.closed) {
-            return result_t<void>::failure (framework_error_kind_t::closed,
+            return detail::boundary_failure<void> (detail::boundary_error_t::closed,
                                             "channel runtime is closed");
         }
         if (_state.pending >= _state.max_pending) {
@@ -394,6 +394,20 @@ void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t
     }
 }
 
+void channel_runtime_t::add_client_manual_connection (const std::string &channel_name,
+                                                      const std::string &endpoint)
+{
+    detail::channel_runtime_manager_t manager (_state);
+    manager.get_or_create_client_bundle (channel_name).try_add_manual_connection (endpoint);
+}
+
+void channel_runtime_t::remove_client_manual_connection (const std::string &channel_name,
+                                                         const std::string &endpoint)
+{
+    detail::channel_runtime_manager_t manager (_state);
+    manager.get_or_create_client_bundle (channel_name).remove_manual_connection (endpoint);
+}
+
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options)
 {
     builder._state->runtime->dispatch = options;
@@ -444,7 +458,7 @@ result_t<std::uint64_t> channel_runtime_t::reserve_outbound_request (std::string
     std::lock_guard lock (_state->mutex);
     const auto *client = client_capability (*_state, channel_name);
     if (!has_connection (client)) {
-        return result_t<std::uint64_t>::failure (framework_error_kind_t::disconnected,
+        return detail::boundary_failure<std::uint64_t> (detail::boundary_error_t::disconnected,
                                                  "channel client is not connected");
     }
     return pending_operation_controller_t (*_state).reserve_request (std::move (channel_name));
@@ -493,7 +507,7 @@ result_t<void> channel_runtime_t::expire_pending (std::uint64_t operation_id)
     if (dispatch.value ().dead_letter_hook) {
         dispatch.value ().dead_letter_hook (dispatch.value ().event);
     }
-    return result_t<void>::failure (framework_error_kind_t::timeout, "pending operation timed out");
+    return detail::boundary_failure<void> (detail::boundary_error_t::timed_out, "pending operation timed out");
 }
 
 result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
@@ -1047,6 +1061,28 @@ client_server_channel_runtime_options_t::configure_server_socket () const
     return channel_server_socket_runtime_options_t (_state, _channel_name);
 }
 
+route_mesh_channel_runtime_options_t::route_mesh_channel_runtime_options_t () = default;
+
+route_mesh_channel_runtime_options_t::route_mesh_channel_runtime_options_t (
+  std::shared_ptr<detail::channel_runtime_state_t> state, std::string channel_name) :
+    _state (std::move (state)), _channel_name (std::move (channel_name))
+{
+}
+
+route_mesh_channel_runtime_options_t::~route_mesh_channel_runtime_options_t () = default;
+
+route_mesh_channel_runtime_options_t::route_mesh_channel_runtime_options_t (
+  route_mesh_channel_runtime_options_t &&) noexcept = default;
+
+route_mesh_channel_runtime_options_t &route_mesh_channel_runtime_options_t::operator= (
+  route_mesh_channel_runtime_options_t &&) noexcept = default;
+
+channel_server_socket_runtime_options_t
+route_mesh_channel_runtime_options_t::configure_server_socket () const
+{
+    return channel_server_socket_runtime_options_t (_state, _channel_name);
+}
+
 channel_runtime_options_t::channel_runtime_options_t () = default;
 
 channel_runtime_options_t::channel_runtime_options_t (message_bus_t bus) : _state (bus._state)
@@ -1067,6 +1103,12 @@ channel_runtime_options_t::client_server_channel (std::string channel_name) cons
     return client_server_channel_runtime_options_t (_state, std::move (channel_name));
 }
 
+route_mesh_channel_runtime_options_t
+channel_runtime_options_t::route_mesh_channel (std::string_view channel_name) const
+{
+    return route_mesh_channel_runtime_options_t (_state, std::string (channel_name));
+}
+
 request_client_t::request_client_t (message_bus_t bus, std::string channel_name) :
     _bus (std::move (bus)), _channel_name (std::move (channel_name))
 {
@@ -1079,12 +1121,6 @@ publisher_t::publisher_t (message_bus_t bus) : _bus (std::move (bus))
 route_send_call_t::route_send_call_t (std::string packet_name, submit_fn_t submit) :
     _packet_name (std::move (packet_name)), _submit (std::move (submit))
 {
-}
-
-route_send_call_t &route_send_call_t::packet_name (std::string packet_name)
-{
-    _packet_name = std::move (packet_name);
-    return *this;
 }
 
 route_send_call_t &route_send_call_t::metadata (std::string key, std::string value)
@@ -1102,9 +1138,9 @@ result_t<void> route_send_call_t::submit_now ()
     return _submit (_packet_name, _metadata);
 }
 
-result_t<void> route_send_call_t::submit ()
+void route_send_call_t::submit ()
 {
-    return submit_now ();
+    submit_now ().value ();
 }
 
 route_client_t::route_client_t () = default;
@@ -1130,6 +1166,10 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                     payload_encoder_t encode_payload,
                                     const route_send_call_t::metadata_map_t &metadata)
 {
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "route client is not configured");
@@ -1167,7 +1207,7 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     try {
         if (mesh_sender) {
@@ -1178,7 +1218,7 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
         return runtime.submit_send_parts (target_node_rid, std::move (parts));
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
@@ -1195,6 +1235,10 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
                                        std::chrono::milliseconds timeout,
                                        const channel_request_call_t::metadata_map_t &metadata)
 {
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
@@ -1229,7 +1273,7 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+          detail::result_access_t::failure<std::uint64_t> (error));
     }
     try {
         detail::channel_runtime_manager_t manager (state->runtime);
@@ -1239,7 +1283,7 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+          detail::result_access_t::failure<std::uint64_t> (error));
     }
     catch (const std::exception &error) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
@@ -1257,6 +1301,10 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
                                          payload_encoder_t encode_payload,
                                          const route_send_call_t::metadata_map_t &metadata)
 {
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "route client is not configured");
@@ -1295,7 +1343,7 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     try {
         if (mesh_sender) {
@@ -1306,7 +1354,7 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
         return runtime.submit_spot_send_parts (target_node_rid, spot_rid, std::move (parts));
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
@@ -1324,6 +1372,10 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
   std::chrono::milliseconds timeout,
   const channel_request_call_t::metadata_map_t &metadata)
 {
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
@@ -1359,7 +1411,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+          detail::result_access_t::failure<std::uint64_t> (error));
     }
     try {
         detail::channel_runtime_manager_t manager (state->runtime);
@@ -1369,7 +1421,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+          detail::result_access_t::failure<std::uint64_t> (error));
     }
     catch (const std::exception &error) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
@@ -1387,6 +1439,10 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
   std::chrono::milliseconds timeout,
   std::map<std::string, std::string> metadata)
 {
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
@@ -1421,8 +1477,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          error.kind (), error.what (), error.is_retriable ()));
+        return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
     }
     auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
     auto output = source->task ();
@@ -1441,9 +1496,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                   auto reply = runtime.request_reply_parts (target_node_rid, std::move (parts),
                                                             effective_timeout);
                   if (!reply) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        reply.error_kind (),
-                        reply.error () ? reply.error ()->what () : "route request failed"));
+                      source->complete (detail::propagate_failure<zlink::message_t> (reply, "route request failed"));
                       return;
                   }
                   auto reply_header = envelope.decode_header (reply.value ());
@@ -1462,9 +1515,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                   }
                   auto body = envelope.decode_body (reply.value ());
                   if (!body) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        body.error_kind (),
-                        body.error () ? body.error ()->what () : "route reply body decode failed"));
+                      source->complete (detail::propagate_failure<zlink::message_t> (body, "route reply body decode failed"));
                       return;
                   }
                   detail::message_flow_tracer_t (runtime_state->dispatch)
@@ -1484,8 +1535,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                   source->complete (result_t<zlink::message_t>::success (body.value ()));
               }
               catch (const framework_exception_t &error) {
-                  source->complete (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  source->complete (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (const std::exception &error) {
                   source->complete (result_t<zlink::message_t>::failure (
@@ -1513,6 +1563,11 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
   std::chrono::milliseconds timeout,
   std::map<std::string, std::string> metadata)
 {
+    const auto metrics_channel = router_channel_id;
+    auto submit_flow = runtime::flow_context_t::enter_current_or_create (
+      flow_origin_t::application,
+      state && state->runtime
+        && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
@@ -1561,8 +1616,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          error.kind (), error.what (), error.is_retriable ()));
+        return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
     }
     auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
     auto output = source->task ();
@@ -1591,9 +1645,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                    target_node_rid, spot_rid, std::move (parts), effective_timeout);
                   } ();
                   if (!reply) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        reply.error_kind (),
-                        reply.error () ? reply.error ()->what () : "route spot request failed"));
+                      source->complete (detail::propagate_failure<zlink::message_t> (reply, "route spot request failed"));
                       return;
                   }
                   auto reply_header = envelope.decode_header (reply.value ());
@@ -1636,8 +1688,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                   source->complete (result_t<zlink::message_t>::success (body.value ()));
               }
               catch (const framework_exception_t &error) {
-                  source->complete (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  source->complete (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (const std::exception &error) {
                   source->complete (result_t<zlink::message_t>::failure (
@@ -1651,7 +1702,100 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
         source->complete (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, "route client executor is stopped"));
     }
+    if (state->runtime && state->runtime->monitoring) {
+        runtime::runtime_metrics_t metrics (state->runtime->monitoring);
+        if (metrics.enabled ()) {
+            const auto started = std::chrono::steady_clock::now ();
+            metrics.updown ("zlink.channel.request.inflight", "{request}", 1,
+                            {{"channel", metrics_channel}});
+            detail::observe_task_completion (
+              output, [metrics, started, metrics_channel] (
+                        const result_t<zlink::message_t> &completed) mutable {
+                  metrics.updown ("zlink.channel.request.inflight", "{request}", -1,
+                                  {{"channel", metrics_channel}});
+                  const auto elapsed = std::chrono::duration<double> (
+                                         std::chrono::steady_clock::now () - started)
+                                         .count ();
+                  metrics.histogram ("zlink.channel.request.duration", "s", elapsed,
+                                     {{"channel", metrics_channel}});
+                  if (!completed && completed.error () != nullptr
+                      && detail::boundary_state (*completed.error ())
+                           == detail::boundary_error_t::timed_out) {
+                      metrics.counter ("zlink.channel.request.timeouts", "{request}", 1,
+                                       {{"channel", metrics_channel}});
+                  }
+              });
+        }
+    }
     return output;
+}
+
+namespace
+{
+
+/* Refresh-and-retry is only safe when the target is known not to have
+ * handled the first attempt. Timeouts and transport failures may have
+ * delivered the request, so they never retry. */
+bool is_spot_handle_refresh_candidate (framework_error_kind_t kind)
+{
+    return kind == framework_error_kind_t::spot_route_not_found
+           || kind == framework_error_kind_t::request_target_not_found;
+}
+
+} // namespace
+
+result_t<void> route_client_t::submit_spot_handle_send_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const spot_handle_t &target,
+  const std::string &packet_name,
+  std::type_index message_type,
+  payload_encoder_t encode_payload,
+  const route_send_call_t::metadata_map_t &metadata)
+{
+    const auto &handle_state = detail::spot_handle_access_t::state (target);
+    if (!handle_state) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "spot handle is not resolved");
+    }
+    const auto address = handle_state->snapshot ();
+    return submit_spot_send_erased (state, address.mesh_name, address.node_rid,
+                                    spot_rid_t::from_string (address.spot_rid.to_string ()),
+                                    packet_name, message_type, std::move (encode_payload),
+                                    metadata);
+}
+
+task_t<zlink::message_t> route_client_t::submit_spot_handle_request_reply_message_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  spot_handle_t target,
+  std::string packet_name,
+  std::type_index request_type,
+  payload_encoder_t encode_payload,
+  std::chrono::milliseconds timeout,
+  std::map<std::string, std::string> metadata)
+{
+    auto handle_state = detail::spot_handle_access_t::state (target);
+    if (!handle_state) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "spot handle is not resolved");
+    }
+    const auto address = handle_state->snapshot ();
+    try {
+        co_return co_await submit_spot_request_reply_message_erased (
+          state, address.mesh_name, address.node_rid,
+          spot_rid_t::from_string (address.spot_rid.to_string ()), packet_name, request_type,
+          encode_payload, timeout, metadata);
+    }
+    catch (const framework_exception_t &error) {
+        if (!is_spot_handle_refresh_candidate (error.kind ())
+            || !handle_state->refresh_snapshot ()) {
+            throw;
+        }
+    }
+    const auto refreshed = handle_state->snapshot ();
+    co_return co_await submit_spot_request_reply_message_erased (
+      state, refreshed.mesh_name, refreshed.node_rid,
+      spot_rid_t::from_string (refreshed.spot_rid.to_string ()), std::move (packet_name),
+      request_type, std::move (encode_payload), timeout, std::move (metadata));
 }
 
 zlink_builder_t::zlink_builder_t () : _state (std::make_shared<detail::zlink_builder_state_t> ())

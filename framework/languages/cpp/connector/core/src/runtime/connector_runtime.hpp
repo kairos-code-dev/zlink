@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/stream_connector/contracts/connector.hpp>
@@ -115,6 +115,10 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     // that observe the transport already down report this instead of a generic
     // "not connected" when the pump consumed the inbound error first.
     std::optional<error_t> last_disconnect_error;
+    /* Last observed session close reason (graceful-drain-handoff §7.1):
+     * stored from a received session-closing control, or synthesized as
+     * client_close/transport_error when no control arrived. */
+    std::optional<close_reason_t> last_close_reason;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;

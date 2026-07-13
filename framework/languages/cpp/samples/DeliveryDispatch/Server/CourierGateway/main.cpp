@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
@@ -75,7 +75,6 @@ class bind_courier_handler_t
         auto ensured =
           co_await _channels.request (courier_actor_node_channel_for (node),
                                       ensure_courier_actor_req_t{request.courier_id})
-            .packet_name (ensure_courier_actor_req_t::packet_name)
             .template async<ensure_courier_actor_res_t> ();
         auto binding = _directory.remember (ensured, request.session_route);
         co_return bind_courier_res_t{binding.courier_id, binding.actor, binding.session_route};
@@ -106,7 +105,6 @@ class gateway_offer_delivery_handler_t
           co_await _channels.request (
             courier_actor_node_channel_for (std::string (binding.actor.node_rid.value ())),
             request)
-            .packet_name (offer_delivery_req_t::packet_name)
             .template async<offer_delivery_res_t> ();
         co_return reply;
     }

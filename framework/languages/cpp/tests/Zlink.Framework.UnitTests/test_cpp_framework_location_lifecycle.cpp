@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/location_lifecycle.hpp"

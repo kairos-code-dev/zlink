@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 
@@ -75,9 +75,7 @@ result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
 {
     auto header = runtime::messaging::envelope_codec_t{}.decode_header (received.parts);
     if (!header) {
-        return result_t<void>::failure (
-          header.error_kind (),
-          header.error () ? header.error ()->what () : "route internal send header decode failed");
+        return detail::propagate_failure<void> (header, "route internal send header decode failed");
     }
     const auto *dispatcher = resolve_send (header.value ().message_name);
     if (dispatcher == nullptr) {

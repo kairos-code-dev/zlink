@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../bingo_entry_spot.hpp"
@@ -23,13 +23,15 @@ bingo_entry_spot_t::ensure_player_actor (const ensure_player_actor_req_t &reques
                    .value ();
     auto joined = co_await actor.context ()
                     .join_entry_spot (node_rid_t::from_string (node_rid), request)
-                    .yield ();
-    if (joined.result_code != 0 || !joined.actor) {
+                    .async ();
+    const auto *joined_accepted =
+      std::get_if<framework::actor_join_accepted_t<framework::message_t>> (&joined);
+    if (joined_accepted == nullptr) {
         throw std::runtime_error ("Player actor entry spot join was rejected.");
     }
     co_return ensure_player_actor_res_t{
       request.actor_id, sample_names_t::player_actor_type,
-      actor_ref_snapshot_t::from (*joined.actor)};
+      actor_ref_snapshot_t::from (joined_accepted->actor)};
 }
 
 } // namespace zlink::samples::bingo

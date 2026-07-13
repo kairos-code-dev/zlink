@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/channels/channel.hpp>
@@ -187,6 +187,12 @@ class channel_runtime_t
     result_t<void> retry_pending (std::uint64_t operation_id);
     void close () noexcept;
     void shutdown () noexcept;
+    /* Live manual endpoint mutation for a client channel (endpoint
+     * connections contract): requests iterate the same bundle set. */
+    void add_client_manual_connection (const std::string &channel_name,
+                                       const std::string &endpoint);
+    void remove_client_manual_connection (const std::string &channel_name,
+                                          const std::string &endpoint);
     std::size_t pending_count () const noexcept;
     std::size_t pending_limit () const noexcept;
     std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;

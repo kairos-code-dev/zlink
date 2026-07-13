@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/configuration/transport.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>

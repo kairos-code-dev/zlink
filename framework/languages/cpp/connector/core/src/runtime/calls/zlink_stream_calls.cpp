@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/connector_runtime.hpp"
 
@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstring>
 #include <cstdint>
 #include <cstdlib>
 #include <future>
@@ -245,6 +246,19 @@ result_t<packet_t> decode_packet (connector_state_t &state,
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());
         }
     }
+    if (header.kind == message_kind_t::control
+        && header.name == session_closing_codec_t::control_name) {
+        /* graceful-drain-handoff §7.1: store the close reason before the
+         * server closes the connection; malformed controls close as a
+         * protocol error. */
+        auto closing = session_closing_codec_t::decode (message_to_bytes (payload));
+        if (!closing) {
+            state.last_close_reason = close_reason_t::protocol_error;
+            return result_t<packet_t>::failure (closing.error_code (),
+                                                closing.error ()->message);
+        }
+        state.last_close_reason = closing.value ().reason;
+    }
     return result_t<packet_t>::success (
       packet_t{header.name, header.metadata, header.codec, compressed, payload});
 }
@@ -391,6 +405,11 @@ result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &stat
                                 request_seq, packet.name,  packet.metadata};
     if (kind != message_kind_t::control) {
         header_data.correlation_id = next_correlation_id ();
+        /* Client-originated flows are created without any configuration
+         * (flow-correlation §2.1): the connector is the first hop, so every
+         * outbound send/request without an id starts a new flow. */
+        header_data.flow_id = flow_id_codec_t::create ();
+        header_data.flow_origin = flow_origin_t::application;
     }
     auto header = header_codec.encode (header_data);
     if (!header) {

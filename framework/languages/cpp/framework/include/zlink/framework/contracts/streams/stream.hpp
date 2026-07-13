@@ -1,11 +1,14 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
+#include <zlink/framework/contracts/codecs/serializer.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
 
+#include <concepts>
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -42,7 +45,8 @@ enum class stream_header_flags_t : std::uint8_t
     has_request_seq = 0x01,
     has_metadata = 0x02,
     payload_compressed = 0x04,
-    has_correlation_id = 0x08
+    has_correlation_id = 0x08,
+    has_flow_id = 0x10
 };
 
 constexpr stream_header_flags_t operator| (stream_header_flags_t lhs,
@@ -74,6 +78,19 @@ enum class stream_session_error_t
     internal = 0,
     transport_error = 1,
     handshake_failed = 2
+};
+
+/* Closed set of session close reasons (graceful-drain-handoff §7.1). The
+ * server sends a versioned `session-closing` control with this reason before
+ * intentionally closing a STREAM connection. */
+enum class stream_close_reason_t : std::uint8_t
+{
+    client_close = 1,
+    idle_timeout = 2,
+    heartbeat_timeout = 3,
+    server_drain = 4,
+    protocol_error = 5,
+    transport_error = 6
 };
 
 class stream_compression_codec_t
@@ -147,6 +164,12 @@ class stream_header_t
     // onto replies. Empty means "not set".
     stream_header_t &with_correlation_id (std::string correlation_id);
 
+    // flow_id/flow_origin are an optional pair (flow-correlation §3.2):
+    // both present or both absent, preserved as-is by every relay.
+    std::optional<std::string_view> flow_id () const;
+    std::optional<flow_origin_t> flow_origin () const noexcept;
+    stream_header_t &with_flow (std::string flow_id, flow_origin_t origin);
+
   private:
     stream_message_kind_t _kind = stream_message_kind_t::send;
     stream_codec_t _codec = stream_codec_t::raw;
@@ -155,6 +178,8 @@ class stream_header_t
     std::string _packet_name;
     stream_metadata_t _metadata;
     std::string _correlation_id;
+    std::string _flow_id;
+    std::optional<flow_origin_t> _flow_origin;
 };
 
 } // namespace detail
@@ -203,6 +228,27 @@ class stream_t
     std::shared_ptr<detail::stream_state_t> _state;
     std::optional<detail::stream_header_t> _reply_header;
 };
+
+/* Typed session packet handler contract: the serializer registry decodes the
+ * payload first, then the handler completes with task_t<void>. The raw
+ * message_t on_packet callback stays at the session runtime boundary. */
+template <typename THandler, typename TSessionContext, typename TPayload>
+concept typed_session_packet_handler_for =
+  requires (THandler &handler, TSessionContext &context, const TPayload &payload) {
+      { handler.handle (context, payload) } -> std::same_as<task_t<void>>;
+  };
+
+template <typename TPayload, typename THandler>
+  requires typed_session_packet_handler_for<THandler, stream_t, TPayload>
+task_t<void> dispatch_typed_session_packet (THandler &handler,
+                                            stream_t &stream,
+                                            serializer_registry_t &serializers,
+                                            const zlink::message_t &payload)
+{
+    const auto decoded =
+      serializers.get<TPayload> ().deserialize (detail::encoded_payload_from_raw (payload));
+    co_await handler.handle (stream, decoded);
+}
 
 class packet_stream_session_t
 {

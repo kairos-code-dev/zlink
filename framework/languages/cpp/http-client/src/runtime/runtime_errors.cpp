@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include "runtime/runtime_errors.hpp"
 
@@ -13,8 +13,7 @@ zlink::framework::framework_exception_t request_error (const std::string &messag
 
 zlink::framework::result_t<raw_http_response_t> timeout_before_exchange ()
 {
-    return zlink::framework::result_t<raw_http_response_t>::failure (
-      zlink::framework::framework_error_kind_t::timeout,
+    return zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::timed_out,
       "HTTP request timed out before the scheduler started it", true);
 }
 

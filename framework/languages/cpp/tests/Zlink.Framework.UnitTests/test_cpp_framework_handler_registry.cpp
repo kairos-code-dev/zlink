@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
@@ -218,8 +218,7 @@ zlink::framework::task_t<int> await_shared_reply (zlink::framework::task_t<reply
 
 zlink::framework::task_t<int> timeout_task ()
 {
-    co_return zlink::framework::result_t<int>::failure (
-      zlink::framework::framework_error_kind_t::timeout, "timeout preserved");
+    co_return zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::timed_out, "timeout preserved");
 }
 
 zlink::framework::task_t<int> await_timeout_task ()
@@ -434,7 +433,8 @@ int main ()
 
     auto preserved_failure = await_timeout_task ().result ();
     if (preserved_failure
-        || preserved_failure.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
+        || (preserved_failure.error () != nullptr
+         && zlink::framework::detail::boundary_state (*preserved_failure.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 34;
     }
 

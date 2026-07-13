@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Shared/spot_service_contracts.hpp"
@@ -28,7 +28,6 @@ class channel_control_ping_route_handler_t
           _routes
             .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       e2e::channel_echo_req_t{request.value})
-            .packet_name ("ChannelEchoReq")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::channel_echo_res_t> ()
             .result ();

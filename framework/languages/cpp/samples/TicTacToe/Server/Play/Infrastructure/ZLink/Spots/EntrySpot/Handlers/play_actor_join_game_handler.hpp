@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../tictactoe_entry_spot.hpp"
@@ -17,7 +17,7 @@ tictactoe_entry_spot_t::join_game (const player_actor_t &actor,
         payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
     }
     auto joined = co_await actor.context.join_spot (spot_rid, payload).async<join_game_res_t> ();
-    co_return joined.reply;
+    co_return std::visit ([] (const auto &value) { return value.reply; }, joined);
 }
 
 } // namespace zlink::samples::tictactoe

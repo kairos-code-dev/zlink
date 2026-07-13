@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/configuration/services.hpp>
@@ -614,8 +614,7 @@ class http_options_builder_t
                 }
             }
             catch (const framework_exception_t &ex) {
-                co_return result_t<http_response_t>::failure (ex.kind (), ex.what (),
-                                                              ex.is_retriable ());
+                co_return detail::result_access_t::failure<http_response_t> (ex);
             }
             catch (const std::exception &ex) {
                 co_return result_t<http_response_t>::failure (
@@ -641,7 +640,31 @@ class http_options_builder_t
           THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
     }
 
-    template <typename T> void register_json_serializer () {}
+    /* Fulfills route DTO serializer registration at map_* time instead of
+     * relying on the lazy get<T>() fallback (HTTP serializer contract). A
+     * custom serializer registered beforehand is kept as-is. */
+    template <typename T> void register_json_serializer ()
+    {
+        if (_serializers == nullptr) {
+            return;
+        }
+        if (!_json_serializer_types.emplace (std::type_index (typeid (T))).second) {
+            return;
+        }
+        if (_serializers->contains (std::type_index (typeid (T)))) {
+            return;
+        }
+        if constexpr (detail::is_json_serializer_compatible_v<T>) {
+            _serializers->template add<T> (
+              [] (const T &value) {
+                  return detail::encoded_payload_from_raw (zlink::message_t::from_json (value));
+              },
+              [] (const encoded_payload_t &payload) {
+                  return detail::encoded_payload_to_raw (payload).template parse_json<T> ();
+              },
+              "application/json");
+        }
+    }
 
     template <typename THandler> void register_route_serializers ()
     {

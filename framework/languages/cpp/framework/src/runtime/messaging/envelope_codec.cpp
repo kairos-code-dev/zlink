@@ -1,6 +1,8 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/messaging/envelope_codec.hpp"
+
+#include "runtime/diagnostics/flow_context.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -63,24 +65,72 @@ message_parts_t envelope_codec_t::encode_parts (const envelope_header_t &header,
       typed_header, detail::encoded_payload_to_raw (serializers.serialize (body_type, body)));
 }
 
+namespace
+{
+
+result_t<void> validate_protocol_header (const envelope_header_t &header,
+                                         int format_marker)
+{
+    if (format_marker != static_cast<int> (flow_id_t::format_marker)) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "ZLink envelope format marker is invalid");
+    }
+    if (header.flow_id.has_value () != header.flow_origin.has_value ()) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "ZLink envelope flow id and origin must be present together");
+    }
+    if (header.flow_id && !flow_id_t::is_valid (*header.flow_id)) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "ZLink envelope flow id must be UUIDv7");
+    }
+    if (header.flow_origin) {
+        const auto raw = static_cast<std::uint8_t> (*header.flow_origin);
+        if (raw < 1 || raw > 4) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "ZLink envelope flow origin is invalid");
+        }
+    }
+    return result_t<void>::success ();
+}
+
+} // namespace
+
 zlink::message_t envelope_codec_t::encode_header (const envelope_header_t &header) const
 {
+    auto stamped = header;
+    if (!stamped.flow_id) {
+        if (const auto &flow = flow_context_t::current ()) {
+            stamped.flow_id = flow->flow_id;
+            stamped.flow_origin = flow->origin;
+        }
+    }
+    if (auto valid = validate_protocol_header (stamped, flow_id_t::format_marker); !valid) {
+        throw framework_exception_t (valid.error_kind (), valid.error ()->what ());
+    }
     nlohmann::json json{
-      {"kind", static_cast<int> (header.kind)},
-      {"channelName", header.channel_name},
-      {"messageName", header.message_name},
-      {"contentType", header.content_type},
-      {"correlationId", header.correlation_id.empty () ? nlohmann::json (nullptr)
-                                                       : nlohmann::json (header.correlation_id)},
-      {"deadline", header.deadline ? nlohmann::json (*header.deadline) : nlohmann::json (nullptr)},
-      {"topic", header.topic ? nlohmann::json (*header.topic) : nlohmann::json (nullptr)},
+      {"formatMarker", static_cast<int> (flow_id_t::format_marker)},
+      {"flowId",
+       stamped.flow_id ? nlohmann::json (*stamped.flow_id) : nlohmann::json (nullptr)},
+      {"flowOrigin", stamped.flow_origin
+                       ? nlohmann::json (static_cast<int> (*stamped.flow_origin))
+                       : nlohmann::json (nullptr)},
+      {"kind", static_cast<int> (stamped.kind)},
+      {"channelName", stamped.channel_name},
+      {"messageName", stamped.message_name},
+      {"contentType", stamped.content_type},
+      {"correlationId", stamped.correlation_id.empty () ? nlohmann::json (nullptr)
+                                                        : nlohmann::json (stamped.correlation_id)},
+      {"deadline",
+       stamped.deadline ? nlohmann::json (*stamped.deadline) : nlohmann::json (nullptr)},
+      {"topic", stamped.topic ? nlohmann::json (*stamped.topic) : nlohmann::json (nullptr)},
       {"errorCode",
-       header.error_code ? nlohmann::json (*header.error_code) : nlohmann::json (nullptr)},
+       stamped.error_code ? nlohmann::json (*stamped.error_code) : nlohmann::json (nullptr)},
       {"errorMessage",
-       header.error_message ? nlohmann::json (*header.error_message) : nlohmann::json (nullptr)},
-      {"source", header.source ? nlohmann::json (*header.source) : nlohmann::json (nullptr)},
+       stamped.error_message ? nlohmann::json (*stamped.error_message) : nlohmann::json (nullptr)},
+      {"source", stamped.source ? nlohmann::json (*stamped.source) : nlohmann::json (nullptr)},
       {"metadata",
-       header.metadata.empty () ? nlohmann::json::object () : nlohmann::json (header.metadata)}};
+       stamped.metadata.empty () ? nlohmann::json::object () : nlohmann::json (stamped.metadata)}};
     return zlink::message_t::from (json.dump ());
 }
 
@@ -104,6 +154,17 @@ result_t<envelope_header_t> envelope_codec_t::decode_header (const zlink::messag
         header.source = optional_json_value<std::string> (json, "source");
         if (json.contains ("metadata") && json.at ("metadata").is_object ()) {
             header.metadata = json.at ("metadata").get<std::map<std::string, std::string>> ();
+        }
+        header.flow_id = optional_json_value<std::string> (json, "flowId");
+        if (const auto origin = optional_json_value<int> (json, "flowOrigin")) {
+            header.flow_origin = static_cast<flow_origin_t> (*origin);
+        }
+        const auto format_marker = json.contains ("formatMarker") && !json.at ("formatMarker").is_null ()
+                                     ? json.at ("formatMarker").get<int> ()
+                                     : 0;
+        if (auto valid = validate_protocol_header (header, format_marker); !valid) {
+            return result_t<envelope_header_t>::failure (valid.error_kind (),
+                                                         valid.error ()->what ());
         }
         return result_t<envelope_header_t>::success (std::move (header));
     }

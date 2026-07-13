@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/backend/native_route_backend.hpp"
 
@@ -69,7 +69,7 @@ framework_exception_t map_native_route_exception (const std::exception &error)
     if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
         request_error != nullptr) {
         if (request_error->result () == zlink::request_result_t::timed_out) {
-            return framework_exception_t (framework_error_kind_t::timeout,
+            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
                                           "native route request timed out", true);
         }
         if (request_error->result () == zlink::request_result_t::not_connected
@@ -117,7 +117,7 @@ result_t<void> wait_for_route_request_callback (
             }
         }
         if (stopping && stopping ()) {
-            return result_t<void>::failure (framework_error_kind_t::shutdown,
+            return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
                                             "native route backend is shutting down");
         }
         if (progress) {
@@ -128,7 +128,7 @@ result_t<void> wait_for_route_request_callback (
             }
         }
         if (has_deadline && std::chrono::steady_clock::now () >= deadline) {
-            return result_t<void>::failure (framework_error_kind_t::disconnected,
+            return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                             "native route request disconnected before reply");
         }
         auto wait_time = std::chrono::milliseconds (50);
@@ -221,7 +221,7 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
     }
     catch (const std::exception &ex) {
         const auto error = map_native_route_exception (ex);
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
 }
 
@@ -297,9 +297,7 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
                       "bridge-request-wait-failed error="
                       + std::string (waited.error () ? waited.error ()->what ()
                                                      : "native route request failed"));
-                    return result_t<runtime::messaging::message_parts_t>::failure (
-                      waited.error_kind (),
-                      waited.error () ? waited.error ()->what () : "native route request failed");
+                    return detail::propagate_failure<runtime::messaging::message_parts_t> (waited, "native route request failed");
                 }
                 if (callback_state->result != zlink::request_result_t::ok) {
                     throw zlink::request_error_t (callback_state->result);
@@ -355,9 +353,7 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
               "router-request-wait-failed error="
               + std::string (waited.error () ? waited.error ()->what ()
                                              : "native route request failed"));
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              waited.error_kind (),
-              waited.error () ? waited.error ()->what () : "native route request failed");
+            return detail::propagate_failure<runtime::messaging::message_parts_t> (waited, "native route request failed");
         }
         if (callback_state->result != zlink::request_result_t::ok) {
             throw zlink::request_error_t (callback_state->result);
@@ -368,8 +364,7 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
     }
     catch (const std::exception &ex) {
         const auto error = map_native_route_exception (ex);
-        return result_t<runtime::messaging::message_parts_t>::failure (error.kind (), error.what (),
-                                                                       error.is_retriable ());
+        return detail::result_access_t::failure<runtime::messaging::message_parts_t> (error);
     }
 }
 

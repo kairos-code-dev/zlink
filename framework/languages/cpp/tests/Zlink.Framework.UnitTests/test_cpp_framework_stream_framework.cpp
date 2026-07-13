@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
@@ -122,7 +122,13 @@ class delayed_reply_session_t final : public zlink::framework::packet_stream_ses
     {
         _entered.set_value ();
         co_await _resume.task ();
-        reply_result = stream.reply_packet (payload).submit ();
+        try {
+            stream.reply_packet (payload).submit ();
+            reply_result = zlink::framework::result_t<void>::success ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            reply_result = zlink::framework::detail::result_access_t::failure<void> (error);
+        }
     }
 
     void wait_until_suspended () { _entered_future.wait (); }
@@ -308,34 +314,34 @@ int main ()
     }
     const std::vector<std::vector<std::uint8_t>> invalid_headers{
       {},
-      {static_cast<std::uint8_t> (stream_message_kind_t::request),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::request),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_request_seq), 1},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::none), 0},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n'},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e'},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 3,
        'k'},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 1,
        'k'},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::has_metadata), 4, 'n', 'a', 'm', 'e', 1, 1,
        'k', 3, 'v'},
-      {static_cast<std::uint8_t> (stream_message_kind_t::send),
+      {0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
        static_cast<std::uint8_t> (stream_codec_t::json),
        static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n', 'a', 'm', 'e', 0}};
     for (const auto &invalid_header : invalid_headers) {
@@ -344,6 +350,53 @@ int main ()
                  != framework_error_kind_t::payload_decode_failed) {
             return 22;
         }
+    }
+
+    /* flow-correlation §3.2/§3.4: missing/wrong marker and malformed flow
+     * fields fail as protocol errors; a valid flow pair round-trips. */
+    const std::vector<std::uint8_t> no_marker_header{
+      static_cast<std::uint8_t> (stream_message_kind_t::send),
+      static_cast<std::uint8_t> (stream_codec_t::json),
+      static_cast<std::uint8_t> (stream_header_flags_t::none), 4, 'n', 'a', 'm', 'e'};
+    auto no_marker = runtime.decode_header (no_marker_header);
+    if (no_marker
+        || no_marker.error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 220;
+    }
+    const std::vector<std::uint8_t> truncated_flow_header{
+      0xF2, static_cast<std::uint8_t> (stream_message_kind_t::send),
+      static_cast<std::uint8_t> (stream_codec_t::json),
+      static_cast<std::uint8_t> (stream_header_flags_t::has_flow_id), 4, 'n', 'a', 'm', 'e', 'x'};
+    if (runtime.decode_header (truncated_flow_header)) {
+        return 221;
+    }
+    const std::string sample_flow_id = "01890a5d-ac96-774b-bcce-b302099a8057";
+    zlink::framework::detail::stream_header_t flow_header (
+      stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none,
+      std::nullopt, "flowed", {});
+    flow_header.with_flow (sample_flow_id, zlink::framework::flow_origin_t::inbound);
+    auto flow_encoded = runtime.encode_header (flow_header);
+    if (!flow_encoded || flow_encoded.value ()[0] != 0xF2) {
+        return 222;
+    }
+    auto flow_decoded = runtime.decode_header (flow_encoded.value ());
+    if (!flow_decoded || !flow_decoded.value ().flow_id ()
+        || *flow_decoded.value ().flow_id () != sample_flow_id
+        || flow_decoded.value ().flow_origin () != zlink::framework::flow_origin_t::inbound) {
+        return 223;
+    }
+    if (runtime.encode_header (flow_decoded.value ())
+          .value ()
+          != flow_encoded.value ()) {
+        return 224;
+    }
+    zlink::framework::detail::stream_header_t bad_flow_header (
+      stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none,
+      std::nullopt, "flowed", {});
+    bad_flow_header.with_flow ("UPPERCASE-not-a-uuid7-value-000000000", // 37 bytes, invalid
+                               zlink::framework::flow_origin_t::inbound);
+    if (runtime.encode_header (bad_flow_header)) {
+        return 225;
     }
 
     auto stream = runtime.open_session ("client-stream");
@@ -412,11 +465,30 @@ int main ()
         return 23;
     }
     const auto close_result = fluent_stream.close ().result ();
-    fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close"))).submit ();
+    const auto write_rejected_disconnected = [] (auto &&write_fn) {
+        try {
+            write_fn ();
+            return false;
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            return zlink::framework::detail::boundary_state (error) == zlink::framework::detail::boundary_error_t::disconnected;
+        }
+    };
+    if (!write_rejected_disconnected ([&] {
+            fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close")))
+              .submit ();
+        })) {
+        return 24;
+    }
     if (!close_result || runtime.written_headers (fluent_stream).size () != 1) {
         return 19;
     }
-    stream.write_packet (zlink::message_t::from (std::string ("after-disconnect"))).submit ();
+    if (!write_rejected_disconnected ([&] {
+            stream.write_packet (zlink::message_t::from (std::string ("after-disconnect")))
+              .submit ();
+        })) {
+        return 25;
+    }
     if (runtime.written_headers (stream).size () != 1) {
         return 16;
     }
@@ -500,9 +572,18 @@ int main ()
     disabled_options.apply ();
     auto disabled_runtime = zlink::framework::detail::stream_runtime_t::from (disabled_zlink);
     auto disabled_stream = disabled_runtime.open_session ("disabled-stream");
-    disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
-      .compress ()
-      .submit ();
+    bool disabled_compress_rejected = false;
+    try {
+        disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
+          .compress ()
+          .submit ();
+    }
+    catch (const zlink::framework::framework_exception_t &) {
+        disabled_compress_rejected = true;
+    }
+    if (!disabled_compress_rejected) {
+        return 27;
+    }
     sample_session_t disabled_session;
     const auto disabled_receive = disabled_runtime.dispatch_packet (
       disabled_session, disabled_stream, custom_inbound_header,

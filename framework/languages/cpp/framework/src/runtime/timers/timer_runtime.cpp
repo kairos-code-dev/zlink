@@ -1,7 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "timer_runtime.hpp"
 
+#include "runtime/diagnostics/flow_context.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
@@ -197,7 +199,7 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
                                       std::function<void (const timer_tick_t &)> handler) const
 {
     if (timer.is_disposed ()) {
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::closed,
+        return detail::boundary_failure<timer_tick_t> (detail::boundary_error_t::closed,
                                                 "SPOT timer is disposed");
     }
     if (timer._state->running) {
@@ -248,7 +250,7 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
     auto state = timer._state;
     auto context = _context;
     if (!state || state->disposed) {
-        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::closed,
+        co_return detail::boundary_failure<timer_tick_t> (detail::boundary_error_t::closed,
                                                    "SPOT timer is disposed");
     }
     {
@@ -292,6 +294,11 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
     try {
         auto tick = make_tick (*state, fire_count);
         auto spot_keep_alive = context->spot_instance;
+        /* Timer callbacks have no inbound message: they start a new flow with
+         * origin=timer when tracing capture is enabled (flow-correlation §4.2). */
+        auto timer_flow = framework::runtime::flow_context_t::enter_current_or_create (
+          flow_origin_t::timer,
+          message_flow_tracer_t (context->channel_runtime->dispatch).capture_enabled ());
         auto handler_task = state->handler_invoker (spot_keep_alive.get (),
                                                     *context->channel_runtime->serializers, tick);
         (void) co_await handler_task;
@@ -305,8 +312,7 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
             state->disposed = true;
         }
         reset_running ();
-        co_return result_t<timer_tick_t>::failure (error.kind (), error.what (),
-                                                   error.is_retriable ());
+        co_return detail::result_access_t::failure<timer_tick_t> (error);
     }
     catch (const std::exception &error) {
         const auto stopped = state->options.stop_on_unhandled_exception;

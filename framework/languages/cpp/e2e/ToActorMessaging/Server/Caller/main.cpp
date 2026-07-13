@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../Shared/messages.hpp"
 
@@ -147,9 +147,8 @@ class send_handler_t
                   zlink::framework::framework_error_kind_t::actor_route_not_found,
                   "actor route was not found");
             }
-            co_await _actors.send_to_actor (*actor_ref, notify)
-              .packet_name (e2e::actor_notify_t::packet_name)
-              .async ();
+            _actors.send_to_actor (*actor_ref, notify)
+              .submit ();
             co_return e2e::actor_call_response_t{request.scenario, request.actor_id, "sent", ""};
         }
         catch (const zlink::framework::framework_exception_t &error) {
@@ -188,7 +187,6 @@ class request_handler_t
                   "actor route was not found");
             }
             auto reply = co_await _actors.request_to_actor (*actor_ref, ask)
-                           .packet_name (e2e::actor_ask_t::packet_name)
                            .timeout (std::chrono::seconds (5))
                            .async<e2e::actor_reply_t> ();
             co_return e2e::actor_call_response_t{

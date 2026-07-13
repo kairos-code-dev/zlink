@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/locations/stores.hpp>
@@ -489,6 +489,7 @@ class redis_location_row_codec_t
         json["Role"] = static_cast<int> (row.role);
         json["Endpoint"] = row.endpoint;
         json["Weight"] = row.weight;
+        json["Draining"] = row.draining;
         json["Value"] = row.value;
         json["Metadata"] = row.metadata.empty () ? nlohmann::json (nullptr)
                                                  : nlohmann::json (row.metadata);
@@ -514,6 +515,8 @@ class redis_location_row_codec_t
         row.role = static_cast<location_role_t> (json.at ("Role").get<int> ());
         row.endpoint = json.at ("Endpoint").get<std::string> ();
         row.weight = json.at ("Weight").get<std::uint32_t> ();
+        row.draining = json.contains ("Draining") && !json.at ("Draining").is_null ()
+                         && json.at ("Draining").get<bool> ();
         row.value = json.at ("Value").get<std::int64_t> ();
         if (json.contains ("Metadata") && !json.at ("Metadata").is_null ()) {
             row.metadata = json.at ("Metadata").get<std::map<std::string, std::string>> ();

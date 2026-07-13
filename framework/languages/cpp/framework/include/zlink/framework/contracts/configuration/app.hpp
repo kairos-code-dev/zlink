@@ -1,7 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/configuration/configuration.hpp>
+#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
@@ -11,9 +13,11 @@
 #include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <utility>
+#include <variant>
 
 namespace zlink::framework
 {
@@ -82,11 +86,23 @@ class app_t
 
     int run (int argc, char **argv);
 
+    /* Starts (or joins) the shared graceful-drain operation. Every caller
+     * receives the same terminal result; later calls never move the deadline.
+     * The parameterless overload uses the contract-wide 30 second default. */
+    task_t<drain_result_t> drain (std::chrono::milliseconds deadline);
+    task_t<drain_result_t> drain ();
+    /* Joins the shared terminal result; may be awaited before drain starts. */
+    task_t<drain_result_t> await_drained ();
+    /* Placement-candidate readiness: false from the moment draining starts. */
+    bool is_ready () const noexcept;
+
     void stop () noexcept;
     void request_stop () noexcept;
 
   private:
     friend class app_advanced_t;
+
+    static void run_shared_drain (detail::app_state_t &state) noexcept;
 
     service_collection_t &_services () noexcept;
     handler_registry_t &_handlers () noexcept;

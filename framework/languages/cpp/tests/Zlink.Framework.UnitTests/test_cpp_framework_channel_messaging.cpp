@@ -1,8 +1,10 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
+#include "runtime/configuration/endpoint_connections.hpp"
+#include "runtime/locations/spot_handle_state.hpp"
 #include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_runtime.hpp"
@@ -143,9 +145,7 @@ class test_route_receive_pump_t
             _packets.pop_front ();
             auto dispatch = _dispatcher.dispatch (packet);
             if (!dispatch) {
-                return zlink::framework::result_t<test_route_receive_result_t>::failure (
-                  dispatch.error_kind (),
-                  dispatch.error () ? dispatch.error ()->what () : "route packet dispatch failed");
+                return zlink::framework::detail::propagate_failure<test_route_receive_result_t> (dispatch, "route packet dispatch failed");
             }
             ++result.dispatched;
             if (dispatch.value ().has_value ()) {
@@ -163,6 +163,7 @@ class test_route_receive_pump_t
 
 struct request_t
 {
+    static constexpr const char *packet_name = "profile.lookup";
     int value{};
 };
 
@@ -173,6 +174,31 @@ struct reply_t
 
 struct event_t
 {
+    static constexpr const char *packet_name = "profile.changed.event";
+    int value{};
+};
+
+struct outer_route_request_t
+{
+    static constexpr const char *packet_name = "outer";
+    int value{};
+};
+
+struct inner_route_request_t
+{
+    static constexpr const char *packet_name = "inner";
+    int value{};
+};
+
+struct api_hop_request_t
+{
+    static constexpr const char *packet_name = "api-hop";
+    int value{};
+};
+
+struct missing_probe_request_t
+{
+    static constexpr const char *packet_name = "missing.request";
     int value{};
 };
 
@@ -232,7 +258,6 @@ class route_orchestrating_handler_t
     {
         co_return co_await _routes
           .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")), request)
-          .packet_name ("request")
           .timeout (std::chrono::milliseconds (500))
           .async<reply_t> ();
     }
@@ -249,19 +274,18 @@ class reentrant_play_route_handler_t
     {
     }
 
-    zlink::framework::task_t<reply_t> handle_outer (const request_t &request)
+    zlink::framework::task_t<reply_t> handle_outer (const outer_route_request_t &request)
     {
         auto api_reply = co_await _routes
                            .request_to_node (
                              "bingo.play", zlink::routing_id_t::from (std::string ("3302")),
-                             request_t{request.value + 1})
-                           .packet_name ("api-hop")
+                             api_hop_request_t{request.value + 1})
                            .timeout (std::chrono::milliseconds (500))
                            .async<reply_t> ();
         co_return reply_t{api_reply.value + 1};
     }
 
-    reply_t handle_inner (const request_t &request) { return {request.value + 200}; }
+    reply_t handle_inner (const inner_route_request_t &request) { return {request.value + 200}; }
 
   private:
     zlink::framework::route_client_t _routes;
@@ -275,13 +299,12 @@ class reentrant_api_route_handler_t
     {
     }
 
-    zlink::framework::task_t<reply_t> handle_api_hop (const request_t &request)
+    zlink::framework::task_t<reply_t> handle_api_hop (const api_hop_request_t &request)
     {
         auto play_reply =
           co_await _routes
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
-                              request_t{request.value + 1})
-            .packet_name ("inner")
+                              inner_route_request_t{request.value + 1})
             .timeout (std::chrono::milliseconds (500))
             .async<reply_t> ();
         co_return reply_t{play_reply.value + 1};
@@ -469,7 +492,6 @@ class nested_request_handler_t
     {
         if (request.value == 50) {
             auto nested = co_await _client.request ("hosted-nested", request_t{51})
-                            .packet_name ("request")
                             .timeout (std::chrono::milliseconds (2000))
                             .async<reply_t> ();
             co_return reply_t{nested.value + 1};
@@ -739,27 +761,33 @@ int main ()
         return 128;
     }
     zlink::framework::route_client_t default_route_client;
-    default_route_client
-      .send_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{1})
-      .packet_name ("missing.send")
-      .metadata ("trace", "default")
-      .submit ();
+    bool default_route_send_rejected = false;
+    try {
+        default_route_client
+          .send_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{1})
+          .metadata ("trace", "default")
+          .submit ();
+    }
+    catch (const zlink::framework::framework_exception_t &) {
+        default_route_send_rejected = true;
+    }
+    if (!default_route_send_rejected) {
+        return 411;
+    }
     auto default_route_request =
       default_route_client
         .request_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{2})
-        .packet_name ("missing.request")
         .metadata ("trace", "default")
         .timeout (std::chrono::milliseconds (25))
         .async<reply_t> ()
         .result ();
     auto default_spot_route_request =
       default_route_client
-        .request_to_node ("missing.route",
-                          zlink::framework::spot_ref_t{
-                            .node_rid = zlink::routing_id_t::from ("missing-node"),
-                            .spot_rid = zlink::routing_id_t::from ("missing-spot")},
+        .request_to_spot (zlink::framework::runtime::make_fixed_spot_handle (
+                            zlink::framework::runtime::spot_address_t{
+                              "missing.route", zlink::routing_id_t::from ("missing-node"),
+                              zlink::routing_id_t::from ("missing-spot")}),
                           request_t{3})
-        .packet_name ("missing.spot.request")
         .async<reply_t> ()
         .result ();
     if (default_route_request
@@ -822,7 +850,6 @@ int main ()
     auto outbound_runtime =
       zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ());
     auto request_call = client.request (request_t{1})
-                          .packet_name ("profile.lookup")
                           .metadata ("trace-id", "request-trace")
                           .timeout (std::chrono::milliseconds (3000));
     if (!outbound_runtime.outbound_calls ().empty ()) {
@@ -830,7 +857,8 @@ int main ()
     }
     auto request_result = request_call.async<reply_t> ().result ();
     if (request_result
-        || request_result.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
+        || (request_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*request_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 2;
     }
     if (outbound_runtime.outbound_calls ().size () != 1
@@ -842,22 +870,21 @@ int main ()
     }
 
     auto default_timeout_result =
-      client.request (request_t{10}).packet_name ("profile.default").async<reply_t> ().result ();
+      client.request (request_t{10}).async<reply_t> ().result ();
     if (default_timeout_result
-        || default_timeout_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::timeout) {
+        || (default_timeout_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*default_timeout_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 35;
     }
     if (outbound_runtime.outbound_calls ().size () != 2
         || outbound_runtime.outbound_calls ()[1].kind != "request"
-        || outbound_runtime.outbound_calls ()[1].packet_name != "profile.default"
+        || outbound_runtime.outbound_calls ()[1].packet_name != "profile.lookup"
         || outbound_runtime.outbound_calls ()[1].timeout != std::chrono::milliseconds (1500)) {
         return 36;
     }
 
     auto bus = zlink.message_bus ();
     auto send_call = bus.send ("profile", request_t{2})
-                       .packet_name ("profile.command")
                        .metadata ("trace-id", "send-trace");
     if (outbound_runtime.outbound_calls ().size () != 2) {
         return 32;
@@ -865,14 +892,13 @@ int main ()
     send_call.submit ();
     if (outbound_runtime.outbound_calls ().size () != 3
         || outbound_runtime.outbound_calls ()[2].kind != "send"
-        || outbound_runtime.outbound_calls ()[2].packet_name != "profile.command"
+        || outbound_runtime.outbound_calls ()[2].packet_name != "profile.lookup"
         || outbound_runtime.outbound_calls ()[2].metadata.at ("trace-id") != "send-trace") {
         return 33;
     }
 
     zlink.publisher ()
       .publish ("events", "profile.changed", event_t{3})
-      .packet_name ("profile.changed.event")
       .metadata ("trace-id", "publish-trace")
       .submit ();
     if (outbound_runtime.outbound_calls ().size () != 4
@@ -883,7 +909,13 @@ int main ()
         return 34;
     }
 
-    bus.send ("missing", request_t{4}).submit ();
+    try {
+        bus.send ("missing", request_t{4}).submit ();
+    }
+    catch (const zlink::framework::framework_exception_t &) {
+        // A send to an unknown channel is rejected synchronously by the one-way
+        // contract; this probe only checks that the runtime stays alive.
+    }
 
     zlink::framework::zlink_builder_t full_queue;
     full_queue.max_pending (0);
@@ -974,6 +1006,10 @@ int main ()
 
     zlink::framework::serializer_registry_t serializers;
     add_int_serializer<request_t> (serializers);
+    add_int_serializer<outer_route_request_t> (serializers);
+    add_int_serializer<inner_route_request_t> (serializers);
+    add_int_serializer<api_hop_request_t> (serializers);
+    add_int_serializer<missing_probe_request_t> (serializers);
     add_int_serializer<reply_t> (serializers);
     add_int_serializer<event_t> (serializers);
 
@@ -987,29 +1023,47 @@ int main ()
       zlink::framework::detail::channel_runtime_t::from (shutdown_outbound.message_bus ());
     shutdown_runtime.bind_serializers (serializers);
     shutdown_runtime.shutdown ();
-    const auto shutdown_send = shutdown_outbound.message_bus ().send ("shutdown-client", event_t{1})
-                                 .packet_name ("event")
-                                 .submit ();
-    const auto shutdown_publish =
-      shutdown_outbound.message_bus ().publish ("shutdown-client", "events", event_t{2})
-        .packet_name ("event")
-        .submit ();
-    if (shutdown_send
-        || shutdown_send.error_kind () != zlink::framework::framework_error_kind_t::shutdown
-        || shutdown_publish
-        || shutdown_publish.error_kind () != zlink::framework::framework_error_kind_t::shutdown) {
+    const auto throws_shutdown = [] (auto &&submit_fn) {
+        try {
+            submit_fn ();
+            return false;
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            return zlink::framework::detail::boundary_state (error) == zlink::framework::detail::boundary_error_t::shutdown;
+        }
+    };
+    if (!throws_shutdown ([&] {
+            shutdown_outbound.message_bus ()
+              .send ("shutdown-client", event_t{1})
+              .submit ();
+        })
+        || !throws_shutdown ([&] {
+            shutdown_outbound.message_bus ()
+              .publish ("shutdown-client", "events", event_t{2})
+              .submit ();
+        })) {
         return 407;
     }
     auto outbound_only_request =
       outbound_only.message_bus ().request ("client-only", request_t{6}).async<reply_t> ().result ();
     if (outbound_only_request
-        || outbound_only_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::disconnected) {
+        || (outbound_only_request.error () != nullptr
+         && zlink::framework::detail::boundary_state (*outbound_only_request.error ()) != zlink::framework::detail::boundary_error_t::disconnected)) {
         return 404;
     }
 
     zlink::framework::route_send_call_t unbound_route_send ("event", {});
-    unbound_route_send.submit ();
+    bool unbound_route_send_rejected = false;
+    try {
+        unbound_route_send.submit ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        unbound_route_send_rejected =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
+    if (!unbound_route_send_rejected) {
+        return 408;
+    }
     zlink::framework::channel_request_call_t unbound_route_request ("request", nullptr, {});
     const auto unbound_route_request_result = unbound_route_request.async<reply_t> ().result ();
     if (unbound_route_request_result
@@ -1019,15 +1073,27 @@ int main ()
     }
     zlink::framework::route_client_t unconfigured_route_client;
     const auto unconfigured_target = zlink::routing_id_t::from (std::string ("unconfigured-node"));
-    const auto unconfigured_spot = zlink::framework::spot_ref_t{
-      .node_rid = unconfigured_target,
-      .spot_rid = zlink::routing_id_t::from (std::uint32_t{0})};
-    unconfigured_route_client.send_to_node ("game.route", unconfigured_target, event_t{7})
-      .packet_name ("event")
-      .submit ();
+    const auto unconfigured_spot = zlink::framework::runtime::make_fixed_spot_handle (
+      zlink::framework::runtime::spot_address_t{
+        "game.route", unconfigured_target, zlink::routing_id_t::from (std::uint32_t{0})});
+    const auto route_send_rejected = [] (auto &&send_fn) {
+        try {
+            send_fn ();
+            return false;
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            return error.kind ()
+                   == zlink::framework::framework_error_kind_t::request_protocol_error;
+        }
+    };
+    if (!route_send_rejected ([&] {
+            unconfigured_route_client.send_to_node ("game.route", unconfigured_target, event_t{7})
+              .submit ();
+        })) {
+        return 409;
+    }
     const auto unconfigured_route_request =
       unconfigured_route_client.request_to_node ("game.route", unconfigured_target, request_t{8})
-        .packet_name ("request")
         .async<reply_t> ()
         .result ();
     if (unconfigured_route_request
@@ -1035,14 +1101,15 @@ int main ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
         return 408;
     }
-    unconfigured_route_client
-      .send_to_node ("game.route", unconfigured_spot, event_t{9})
-      .packet_name ("event")
-      .submit ();
+    if (!route_send_rejected ([&] {
+            unconfigured_route_client.send_to_spot (unconfigured_spot, event_t{9})
+              .submit ();
+        })) {
+        return 410;
+    }
     const auto unconfigured_spot_request =
       unconfigured_route_client
-        .request_to_node ("game.route", unconfigured_spot, request_t{10})
-        .packet_name ("request")
+        .request_to_spot (unconfigured_spot, request_t{10})
         .async<reply_t> ()
         .result ();
     if (unconfigured_spot_request
@@ -1060,8 +1127,21 @@ int main ()
       "hosted-manual", "request", &local_handler_t::handle_request, {.packet_name = "request"});
     handlers.on_request<throwing_handler_t, request_t, reply_t> (
       "local", "request", &throwing_handler_t::handle_request, {.packet_name = "throw"});
+    handlers.on_request<local_handler_t, request_t, reply_t> (
+      "local", "request", &local_handler_t::handle_request,
+      {.packet_name = request_t::packet_name});
+    handlers.on_request<local_handler_t, request_t, reply_t> (
+      "hosted", "request", &local_handler_t::handle_request,
+      {.packet_name = request_t::packet_name});
+    handlers.on_request<local_handler_t, request_t, reply_t> (
+      "hosted-manual", "request", &local_handler_t::handle_request,
+      {.packet_name = request_t::packet_name});
     handlers.on_send<local_handler_t, event_t> ("local", "send", &local_handler_t::handle_send,
                                                 {.packet_name = "event"});
+    handlers.on_send<local_handler_t, event_t> ("local", "send", &local_handler_t::handle_send,
+                                                {.packet_name = event_t::packet_name});
+    handlers.on_send<local_handler_t, event_t> ("hosted", "send", &local_handler_t::handle_send,
+                                                {.packet_name = event_t::packet_name});
     handlers.on_send<local_handler_t, event_t> ("hosted", "send", &local_handler_t::handle_send,
                                                 {.packet_name = "event"});
     handlers.on_event<local_handler_t, event_t> ("local", "publish", &local_handler_t::handle_send,
@@ -1445,7 +1525,6 @@ int main ()
     });
     auto native_bus_reply = native_bus_builder.request_client ("native-bus")
                               .request (request_t{27})
-                              .packet_name ("request")
                               .timeout (std::chrono::milliseconds (2000))
                               .async<reply_t> ()
                               .result ();
@@ -1453,8 +1532,7 @@ int main ()
         return 82;
     }
     auto native_bus_missing_reply = native_bus_builder.request_client ("native-bus")
-                                      .request (request_t{27})
-                                      .packet_name ("missing")
+                                      .request (missing_probe_request_t{27})
                                       .timeout (std::chrono::milliseconds (2000))
                                       .async<reply_t> ()
                                       .result ();
@@ -1513,7 +1591,6 @@ int main ()
     hosted_service.start (provider);
     auto hosted_reply = hosted_builder.request_client ("hosted")
                           .request (request_t{28})
-                          .packet_name ("request")
                           .timeout (std::chrono::milliseconds (2000))
                           .async<reply_t> ()
                           .result ();
@@ -1523,7 +1600,6 @@ int main ()
     }
     auto hosted_bus_reply = hosted_builder.message_bus ()
                               .request ("hosted", request_t{29})
-                              .packet_name ("request")
                               .timeout (std::chrono::milliseconds (2000))
                               .async<reply_t> ()
                               .result ();
@@ -1531,7 +1607,7 @@ int main ()
         hosted_service.stop ();
         return 246;
     }
-    hosted_builder.message_bus ().send ("hosted", event_t{30}).packet_name ("event").submit ();
+    hosted_builder.message_bus ().send ("hosted", event_t{30}).submit ();
     for (int attempt = 0;
          attempt < 50 && provider.get_required<local_handler_t> ().last_event != 30; ++attempt) {
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
@@ -1618,7 +1694,6 @@ int main ()
     while (std::chrono::steady_clock::now () < manual_deadline && !manual_reply_completed) {
         auto manual_reply = manual_client_builder.request_client ("hosted-manual")
                               .request (request_t{33})
-                              .packet_name ("request")
                               .timeout (std::chrono::milliseconds (500))
                               .async<reply_t> ()
                               .result ();
@@ -1635,7 +1710,6 @@ int main ()
     }
     auto outage_reply = manual_client_builder.request_client ("hosted-manual")
                           .request (request_t{35})
-                          .packet_name ("request")
                           .timeout (std::chrono::milliseconds (1000))
                           .async<reply_t> ()
                           .result ();
@@ -1647,13 +1721,13 @@ int main ()
     const auto stale_start = std::chrono::steady_clock::now ();
     auto stale_reply = manual_client_builder.request_client ("hosted-manual")
                          .request (request_t{34})
-                         .packet_name ("request")
                          .timeout (std::chrono::milliseconds (100))
                          .async<reply_t> ()
                          .result ();
     const auto stale_elapsed = std::chrono::steady_clock::now () - stale_start;
     if (stale_reply
-        || stale_reply.error_kind () != zlink::framework::framework_error_kind_t::timeout
+        || (stale_reply.error () != nullptr
+         && zlink::framework::detail::boundary_state (*stale_reply.error ()) != zlink::framework::detail::boundary_error_t::timed_out)
         || stale_elapsed > std::chrono::seconds (2)) {
         return 89;
     }
@@ -1673,14 +1747,13 @@ int main ()
     zlink::framework::handler_registry_t nested_handlers;
     nested_handlers.on_request<nested_request_handler_t, request_t, reply_t> (
       "hosted-nested", "request", &nested_request_handler_t::handle_request,
-      {.packet_name = "request"});
+      {.packet_name = request_t::packet_name});
     zlink::framework::runtime::channel_host_service_t nested_hosted_service (
       nested_hosted_builder.message_bus (), nested_hosted_builder.channels (), nested_handlers,
       serializers);
     nested_hosted_service.start (nested_provider);
     auto nested_hosted_reply = nested_hosted_builder.request_client ("hosted-nested")
                                  .request (request_t{50})
-                                 .packet_name ("request")
                                  .timeout (std::chrono::milliseconds (2000))
                                  .async<reply_t> ()
                                  .result ();
@@ -1703,14 +1776,13 @@ int main ()
     zlink::framework::handler_registry_t scoped_handlers;
     scoped_handlers.on_request<scoped_channel_handler_t, request_t, reply_t> (
       "hosted-scoped", "request", &scoped_channel_handler_t::handle_request,
-      {.packet_name = "request"});
+      {.packet_name = request_t::packet_name});
     zlink::framework::runtime::channel_host_service_t scoped_hosted_service (
       scoped_hosted_builder.message_bus (), scoped_hosted_builder.channels (), scoped_handlers,
       serializers);
     scoped_hosted_service.start (scoped_provider);
     auto scoped_hosted_reply = scoped_hosted_builder.request_client ("hosted-scoped")
                                  .request (request_t{40})
-                                 .packet_name ("request")
                                  .timeout (std::chrono::milliseconds (2000))
                                  .async<reply_t> ()
                                  .result ();
@@ -1720,17 +1792,21 @@ int main ()
     }
 
     zlink::framework::detail::channel_reply_writer_t reply_writer;
-    const zlink::framework::framework_error_kind_t reply_error_kinds[] = {
-      zlink::framework::framework_error_kind_t::route_not_connected,
-      zlink::framework::framework_error_kind_t::route_handler_not_found,
-      zlink::framework::framework_error_kind_t::request_target_not_found,
-      zlink::framework::framework_error_kind_t::request_rejected,
-      zlink::framework::framework_error_kind_t::request_protocol_error,
-      zlink::framework::framework_error_kind_t::timeout,
-      zlink::framework::framework_error_kind_t::shutdown,
-      zlink::framework::framework_error_kind_t::disconnected,
-      zlink::framework::framework_error_kind_t::closed,
-      zlink::framework::framework_error_kind_t::request_failed};
+    const zlink::framework::framework_exception_t reply_errors[] = {
+      {zlink::framework::framework_error_kind_t::route_not_connected, "mapped error"},
+      {zlink::framework::framework_error_kind_t::route_handler_not_found, "mapped error"},
+      {zlink::framework::framework_error_kind_t::request_target_not_found, "mapped error"},
+      {zlink::framework::framework_error_kind_t::request_rejected, "mapped error"},
+      {zlink::framework::framework_error_kind_t::request_protocol_error, "mapped error"},
+      zlink::framework::detail::make_boundary_exception (
+        zlink::framework::detail::boundary_error_t::timed_out, "mapped error"),
+      zlink::framework::detail::make_boundary_exception (
+        zlink::framework::detail::boundary_error_t::shutdown, "mapped error"),
+      zlink::framework::detail::make_boundary_exception (
+        zlink::framework::detail::boundary_error_t::disconnected, "mapped error"),
+      zlink::framework::detail::make_boundary_exception (
+        zlink::framework::detail::boundary_error_t::closed, "mapped error"),
+      {zlink::framework::framework_error_kind_t::request_failed, "mapped error"}};
     const std::string reply_error_codes[] = {"route_not_connected",
                                              "route_handler_not_found",
                                              "request_target_not_found",
@@ -1741,9 +1817,8 @@ int main ()
                                              "disconnected",
                                              "closed",
                                              "request_failed"};
-    for (std::size_t index = 0; index < std::size (reply_error_kinds); ++index) {
-        zlink::framework::framework_exception_t reply_error (reply_error_kinds[index],
-                                                             "mapped error");
+    for (std::size_t index = 0; index < std::size (reply_errors); ++index) {
+        const auto &reply_error = reply_errors[index];
         const auto error_header =
           reply_writer.create_error_header ("local", request_header, reply_error);
         if (error_header.kind != zlink::framework::runtime::messaging::message_kind_t::error
@@ -2091,12 +2166,12 @@ int main ()
       .bind (play_a_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
       .add_request_handler<local_handler_t, request_t, reply_t> (
-        "request", &local_handler_t::handle_route_request);
+        request_t::packet_name, &local_handler_t::handle_route_request);
     play_b_route_builder.route_channel ("bingo.play")
       .bind (play_b_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("2202")))
       .add_request_handler<local_handler_t, request_t, reply_t> (
-        "request", &local_handler_t::handle_route_request);
+        request_t::packet_name, &local_handler_t::handle_route_request);
     api_a_route_builder.route_channel ("bingo.play")
       .bind (api_a_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("3301")))
@@ -2141,7 +2216,6 @@ int main ()
                            .request_to_node (
                              "bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                              request_t{value})
-                           .packet_name ("request")
                            .timeout (std::chrono::milliseconds (500))
                            .async<reply_t> ()
                            .result ();
@@ -2179,15 +2253,15 @@ int main ()
     reentrant_play_builder.route_channel ("bingo.play")
       .bind (reentrant_play_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
-      .add_request_handler<reentrant_play_route_handler_t, request_t, reply_t> (
+      .add_request_handler<reentrant_play_route_handler_t, outer_route_request_t, reply_t> (
         "outer", &reentrant_play_route_handler_t::handle_outer)
-      .add_request_handler<reentrant_play_route_handler_t, request_t, reply_t> (
+      .add_request_handler<reentrant_play_route_handler_t, inner_route_request_t, reply_t> (
         "inner", &reentrant_play_route_handler_t::handle_inner);
     reentrant_api_builder.route_channel ("bingo.play")
       .bind (reentrant_api_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("3302")))
       .connect (reentrant_play_route_endpoint)
-      .add_request_handler<reentrant_api_route_handler_t, request_t, reply_t> (
+      .add_request_handler<reentrant_api_route_handler_t, api_hop_request_t, reply_t> (
         "api-hop", &reentrant_api_route_handler_t::handle_api_hop);
 
     zlink::framework::service_collection_t reentrant_services;
@@ -2223,8 +2297,7 @@ int main ()
         auto reply =
           reentrant_api_builder.route_client (serializers)
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
-                              request_t{45})
-            .packet_name ("outer")
+                              outer_route_request_t{45})
             .timeout (std::chrono::milliseconds (500))
             .async<reply_t> ()
             .result ();
@@ -2256,7 +2329,7 @@ int main ()
       .bind (orchestrated_play_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
       .add_request_handler<local_handler_t, request_t, reply_t> (
-        "request", &local_handler_t::handle_route_request);
+        request_t::packet_name, &local_handler_t::handle_route_request);
     zlink::framework::detail::channel_runtime_t::from (orchestrated_api_builder.message_bus ())
       .bind_serializers (serializers);
     zlink::framework::detail::channel_runtime_manager_t::from (
@@ -2278,7 +2351,7 @@ int main ()
     zlink::framework::handler_registry_t orchestrated_handlers;
     orchestrated_handlers.on_request<route_orchestrating_handler_t, request_t, reply_t> (
       "bingo.api", "request", &route_orchestrating_handler_t::handle_request,
-      {.packet_name = "request"});
+      {.packet_name = request_t::packet_name});
 
     zlink::framework::runtime::channel_host_service_t orchestrated_api_channel_service (
       orchestrated_api_builder.message_bus (), orchestrated_api_builder.channels (),
@@ -2299,7 +2372,6 @@ int main ()
           orchestrated_api_builder.route_client (serializers)
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                               request_t{44})
-            .packet_name ("request")
             .timeout (std::chrono::milliseconds (500))
             .async<reply_t> ()
             .result ();
@@ -2324,7 +2396,6 @@ int main ()
       .bind_serializers (serializers);
     auto orchestrated_reply = orchestrated_client_builder.request_client ("bingo.api")
                                 .request (request_t{44})
-                                .packet_name ("request")
                                 .timeout (std::chrono::milliseconds (3000))
                                 .async<reply_t> ()
                                 .result ();
@@ -2780,7 +2851,7 @@ int main ()
         -> zlink::framework::result_t<void> {
           auto header = envelope_codec.decode_header (parts);
           if (target.to_string () != "target-node" || spot || !header
-              || header.value ().message_name != "client.event"
+              || header.value ().message_name != event_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-send") {
               return zlink::framework::result_t<void>::failure (
@@ -2792,7 +2863,6 @@ int main ()
       });
     public_route_client
       .send_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")), event_t{31})
-      .packet_name ("client.event")
       .metadata ("trace-id", "trace-send")
       .submit ();
     const auto send_backend_deadline =
@@ -2810,7 +2880,7 @@ int main ()
         || public_send_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::command
         || public_send_header.value ().channel_name != "public.route"
-        || public_send_header.value ().message_name != "client.event"
+        || public_send_header.value ().message_name != event_t::packet_name
         || public_send_header.value ().metadata.at ("trace-id") != "trace-send"
         || public_route.outbound_packets ()[0].target_node_rid.to_string () != "target-node") {
         return 59;
@@ -2830,7 +2900,7 @@ int main ()
           }
           auto header = envelope_codec.decode_header (parts);
           auto body = envelope_codec.decode_body (parts);
-          if (!header || !body || header.value ().message_name != "client.request"
+          if (!header || !body || header.value ().message_name != request_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-request"
               || serializers.get<request_t> ()
@@ -2857,7 +2927,6 @@ int main ()
       public_route_client
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{41})
-        .packet_name ("client.request")
         .metadata ("trace-id", "trace-request")
         .timeout (std::chrono::milliseconds (25))
         .async<reply_t> ()
@@ -2874,7 +2943,7 @@ int main ()
         || public_request_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::request
         || public_request_header.value ().channel_name != "public.route"
-        || public_request_header.value ().message_name != "client.request"
+        || public_request_header.value ().message_name != request_t::packet_name
         || public_request_header.value ().metadata.at ("trace-id") != "trace-request"
         || !public_request_header.value ().deadline) {
         return 61;
@@ -2893,7 +2962,6 @@ int main ()
       public_route_client
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{50})
-        .packet_name ("typed.client.request")
         .timeout (std::chrono::milliseconds (10))
         .async<reply_t> ()
         .result ();
@@ -2918,7 +2986,7 @@ int main ()
           }
           auto header = envelope_codec.decode_header (parts);
           auto body = envelope_codec.decode_body (parts);
-          if (!header || !body || header.value ().message_name != "typed.client.request"
+          if (!header || !body || header.value ().message_name != request_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-typed"
               || serializers.get<request_t> ()
@@ -2945,7 +3013,6 @@ int main ()
       public_route_client
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{51})
-        .packet_name ("typed.client.request")
         .metadata ("trace-id", "trace-typed")
         .timeout (std::chrono::milliseconds (50))
         .async<reply_t> ()
@@ -2965,7 +3032,7 @@ int main ()
           auto header = envelope_codec.decode_header (parts);
           if (target.to_string () != "target-node" || !spot
               || spot->to_string () != "target-spot" || !header
-              || header.value ().message_name != "spot.client.event"
+              || header.value ().message_name != event_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-spot-send") {
               return zlink::framework::result_t<void>::failure (
@@ -2976,12 +3043,11 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       });
     public_route_client
-      .send_to_node ("public.route",
-                     zlink::framework::spot_ref_t{
-                       .node_rid = zlink::routing_id_t::from (std::string ("target-node")),
-                       .spot_rid = zlink::routing_id_t::from ("target-spot")},
+      .send_to_spot (zlink::framework::runtime::make_fixed_spot_handle (
+                       zlink::framework::runtime::spot_address_t{
+                         "public.route", zlink::routing_id_t::from (std::string ("target-node")),
+                         zlink::routing_id_t::from ("target-spot")}),
                      event_t{32})
-      .packet_name ("spot.client.event")
       .metadata ("trace-id", "trace-spot-send")
       .submit ();
     const auto spot_send_backend_deadline =
@@ -3010,7 +3076,7 @@ int main ()
           }
           auto header = envelope_codec.decode_header (parts);
           auto body = envelope_codec.decode_body (parts);
-          if (!header || !body || header.value ().message_name != "spot.client.request"
+          if (!header || !body || header.value ().message_name != request_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-spot-typed"
               || serializers.get<request_t> ()
@@ -3035,12 +3101,12 @@ int main ()
       });
     auto public_spot_typed_reply =
       public_route_client
-        .request_to_node ("public.route",
-                          zlink::framework::spot_ref_t{
-                            .node_rid = zlink::routing_id_t::from (std::string ("target-node")),
-                            .spot_rid = zlink::routing_id_t::from ("target-spot")},
+        .request_to_spot (zlink::framework::runtime::make_fixed_spot_handle (
+                            zlink::framework::runtime::spot_address_t{
+                              "public.route",
+                              zlink::routing_id_t::from (std::string ("target-node")),
+                              zlink::routing_id_t::from ("target-spot")}),
                           request_t{52})
-        .packet_name ("spot.client.request")
         .metadata ("trace-id", "trace-spot-typed")
         .timeout (std::chrono::milliseconds (50))
         .async<reply_t> ()
@@ -3097,27 +3163,134 @@ int main ()
                                          serializers));
       });
     auto spot_only_client = spot_only_builder.route_client (serializers);
-    const auto spot_only_ref = zlink::framework::spot_ref_t{
-      .node_rid = zlink::routing_id_t::from ("spot-node"),
-      .spot_rid = zlink::routing_id_t::from ("spot-rid")};
-    const auto spot_only_send = spot_only_client
-                                  .send_to_node ("spot-only", spot_only_ref, event_t{33})
-                                  .packet_name ("spot-only.send")
-                                  .submit ();
-    const auto spot_only_node_send =
-      spot_only_client
-        .send_to_node ("spot-only", zlink::routing_id_t::from ("spot-node"), event_t{34})
-        .packet_name ("spot-only.node.send")
-        .submit ();
+    const auto spot_only_ref = zlink::framework::runtime::make_fixed_spot_handle (
+      zlink::framework::runtime::spot_address_t{"spot-only",
+                                                zlink::routing_id_t::from ("spot-node"),
+                                                zlink::routing_id_t::from ("spot-rid")});
+    spot_only_client.send_to_spot (spot_only_ref, event_t{33})
+      .submit ();
+    spot_only_client
+      .send_to_node ("spot-only", zlink::routing_id_t::from ("spot-node"), event_t{34})
+      .submit ();
     const auto spot_only_reply = spot_only_client
-                                   .request_to_node ("spot-only", spot_only_ref, request_t{53})
-                                   .packet_name ("spot-only.request")
+                                   .request_to_spot (spot_only_ref, request_t{53})
                                    .timeout (std::chrono::milliseconds (75))
                                    .async<reply_t> ()
                                    .result ();
-    if (!spot_only_send || !spot_only_node_send || spot_only_send_count != 2 || !spot_only_reply
-        || !spot_only_request_called || spot_only_reply.value ().value != 353) {
+    if (spot_only_send_count != 2 || !spot_only_reply || !spot_only_request_called
+        || spot_only_reply.value ().value != 353) {
         return 142;
+    }
+
+    /* Spot handle stale address: the first attempt fails with a
+     * refresh-candidate kind, the framework refreshes the handle snapshot
+     * exactly once and retries against the fresh address. Sends never
+     * retry, and non-candidate kinds propagate without a refresh. */
+    zlink::framework::zlink_builder_t retry_builder;
+    auto retry_runtime =
+      zlink::framework::detail::channel_runtime_t::from (retry_builder.message_bus ());
+    std::atomic_int retry_stale_attempts{0};
+    std::atomic_int retry_fresh_attempts{0};
+    retry_runtime.bind_spot_mesh_transport (
+      "retry-mesh",
+      [] (const zlink::routing_id_t &, const zlink::routing_id_t &,
+          zlink::framework::runtime::messaging::message_parts_t) {
+          return zlink::framework::result_t<void>::success ();
+      },
+      [&retry_stale_attempts, &retry_fresh_attempts, &envelope_codec, &serializers] (
+        const zlink::routing_id_t &, const zlink::routing_id_t &target_spot_rid,
+        zlink::framework::runtime::messaging::message_parts_t parts, std::chrono::milliseconds) {
+          if (target_spot_rid.to_string () == "stale-spot") {
+              ++retry_stale_attempts;
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::spot_route_not_found,
+                "spot moved away from the stale address");
+          }
+          if (target_spot_rid.to_string () != "fresh-spot") {
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::request_failed,
+                "unexpected retry target");
+          }
+          ++retry_fresh_attempts;
+          const auto header = envelope_codec.decode_header (parts);
+          auto reply_header = header.value ();
+          reply_header.kind = zlink::framework::runtime::messaging::message_kind_t::response;
+          reply_t reply{454};
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::success (
+            envelope_codec.encode_parts (reply_header, std::type_index (typeid (reply_t)), &reply,
+                                         serializers));
+      });
+    auto retry_client = retry_builder.route_client (serializers);
+    std::atomic_int retry_refresh_calls{0};
+    const auto stale_handle = zlink::framework::detail::spot_handle_access_t::make (
+      zlink::framework::runtime::spot_address_t{"retry-mesh",
+                                                zlink::routing_id_t::from ("retry-node"),
+                                                zlink::routing_id_t::from ("stale-spot")},
+      [&retry_refresh_calls] () -> std::optional<zlink::framework::runtime::spot_address_t> {
+          ++retry_refresh_calls;
+          return zlink::framework::runtime::spot_address_t{
+            "retry-mesh", zlink::routing_id_t::from ("retry-node"),
+            zlink::routing_id_t::from ("fresh-spot")};
+      });
+    const auto retried_reply = retry_client.request_to_spot (stale_handle, request_t{54})
+                                 .timeout (std::chrono::milliseconds (75))
+                                 .async<reply_t> ()
+                                 .result ();
+    if (!retried_reply || retried_reply.value ().value != 454 || retry_refresh_calls.load () != 1
+        || retry_stale_attempts.load () != 1 || retry_fresh_attempts.load () != 1) {
+        return 143;
+    }
+    if (stale_handle.spot_rid ().value () != "fresh-spot") {
+        return 144;
+    }
+
+    /* endpoint_connections live attach: post-apply connect/disconnect on the
+     * public handle mutates the same bundle set requests iterate. */
+    {
+        zlink::framework::zlink_builder_t live_builder;
+        live_builder.channel ("live.channel").enable_client ();
+        auto live_runtime =
+          zlink::framework::detail::channel_runtime_t::from (live_builder.message_bus ());
+        zlink::framework::endpoint_connections_t handle;
+        handle.connect ("tcp://127.0.0.1:19001");
+        zlink::framework::detail::endpoint_connections_runtime_t::attach (
+          handle,
+          [&live_runtime] (const std::string &endpoint) {
+              live_runtime.add_client_manual_connection ("live.channel", endpoint);
+          },
+          [&live_runtime] (const std::string &endpoint) {
+              live_runtime.remove_client_manual_connection ("live.channel", endpoint);
+          });
+        // configured endpoint replayed on attach
+        handle.connect ("tcp://127.0.0.1:19002");
+        handle.disconnect ("tcp://127.0.0.1:19001");
+        const auto listed = handle.list_connections ();
+        if (listed != std::vector<std::string>{"tcp://127.0.0.1:19002"}) {
+            return 146;
+        }
+    }
+    std::atomic_int no_refresh_calls{0};
+    const auto second_stale_handle = zlink::framework::detail::spot_handle_access_t::make (
+      zlink::framework::runtime::spot_address_t{"retry-mesh",
+                                                zlink::routing_id_t::from ("retry-node"),
+                                                zlink::routing_id_t::from ("stale-spot")},
+      [&no_refresh_calls] () -> std::optional<zlink::framework::runtime::spot_address_t> {
+          ++no_refresh_calls;
+          return std::nullopt;
+      });
+    retry_stale_attempts.store (0);
+    const auto exhausted_reply = retry_client.request_to_spot (second_stale_handle, request_t{55})
+                                   .timeout (std::chrono::milliseconds (75))
+                                   .async<reply_t> ()
+                                   .result ();
+    if (exhausted_reply
+        || exhausted_reply.error_kind ()
+             != zlink::framework::framework_error_kind_t::spot_route_not_found
+        || no_refresh_calls.load () != 1 || retry_stale_attempts.load () != 1) {
+        return 145;
     }
 
     std::promise<void> delayed_backend_entered;
@@ -3135,7 +3308,7 @@ int main ()
           zlink::framework::runtime::messaging::envelope_header_t reply_header;
           reply_header.kind = zlink::framework::runtime::messaging::message_kind_t::response;
           reply_header.channel_name = "public.route";
-          reply_header.message_name = "delayed.client.request";
+          reply_header.message_name = request_t::packet_name;
           reply_t reply{451};
           return zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t>::
             success (envelope_codec.encode_parts (reply_header, std::type_index (typeid (reply_t)),
@@ -3145,7 +3318,6 @@ int main ()
       public_route_client
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{52})
-        .packet_name ("delayed.client.request")
         .timeout (std::chrono::milliseconds (50))
         .async<reply_t> ();
     zlink::framework::detail::observe_task_completion (

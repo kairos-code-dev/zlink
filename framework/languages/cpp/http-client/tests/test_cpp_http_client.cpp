@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include <zlink/http_client.hpp>
 
@@ -995,7 +995,9 @@ TEST (ZLinkHttpClient, ExecuteSchedulerRejectionCompletesTaskAsClosed)
     const auto result = client.get ("/games").submit_raw ().result ();
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::closed);
+    ASSERT_NE (result.error (), nullptr);
+    EXPECT_EQ (zlink::framework::detail::boundary_state (*result.error ()),
+               zlink::framework::detail::boundary_error_t::closed);
 }
 
 TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
@@ -1016,7 +1018,9 @@ TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
 
     const auto result = task.result ();
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::timeout);
+    ASSERT_NE (result.error (), nullptr);
+    EXPECT_EQ (zlink::framework::detail::boundary_state (*result.error ()),
+               zlink::framework::detail::boundary_error_t::timed_out);
     EXPECT_EQ (server.connections (), 0);
 }
 
@@ -1034,7 +1038,9 @@ TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
     const auto elapsed = std::chrono::steady_clock::now () - started;
 
     ASSERT_FALSE (result);
-    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::timeout);
+    ASSERT_NE (result.error (), nullptr);
+    EXPECT_EQ (zlink::framework::detail::boundary_state (*result.error ()),
+               zlink::framework::detail::boundary_error_t::timed_out);
     EXPECT_EQ (server.connections (), 1);
     EXPECT_LT (elapsed, 50ms);
 }
@@ -1143,7 +1149,9 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 
     const auto timeout = client.get ("/slow").submit_raw ().result ();
     ASSERT_FALSE (timeout);
-    EXPECT_EQ (timeout.error_kind (), zlink::framework::framework_error_kind_t::timeout);
+    ASSERT_NE (timeout.error (), nullptr);
+    EXPECT_EQ (zlink::framework::detail::boundary_state (*timeout.error ()),
+               zlink::framework::detail::boundary_error_t::timed_out);
 }
 
 TEST (ZLinkHttpClient, SupportsPatchHeadAndOptionsMethods)
@@ -1600,7 +1608,8 @@ TEST (ZLinkHttpClient, PerRequestTimeoutOverridesClientTimeout)
     const auto timed_out =
       client.get ("/slow").timeout (std::chrono::milliseconds (100)).submit_raw ().result ();
     ASSERT_FALSE (timed_out);
-    EXPECT_EQ (timed_out.error ()->kind (), zlink::framework::framework_error_kind_t::timeout);
+    EXPECT_EQ (zlink::framework::detail::boundary_state (*timed_out.error ()),
+               zlink::framework::detail::boundary_error_t::timed_out);
 
     // The same client without the override completes within its own timeout.
     const auto completed = client.get ("/slow").submit_raw ().result ();

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
@@ -274,12 +274,10 @@ struct create_game_http_handler_t
     reply_type handle (const request_type &request, zlink::framework::http_context_t &context)
     {
         if (request.name == "timeout") {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::timeout, "handler timeout");
+            throw zlink::framework::detail::make_boundary_exception (zlink::framework::detail::boundary_error_t::timed_out, "handler timeout");
         }
         if (request.name == "shutdown") {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::shutdown, "handler shutdown");
+            throw zlink::framework::detail::make_boundary_exception (zlink::framework::detail::boundary_error_t::shutdown, "handler shutdown");
         }
         if (request.name == "protocol") {
             throw zlink::framework::framework_exception_t (
@@ -306,8 +304,7 @@ struct async_game_http_handler_t
                                                  zlink::framework::http_context_t &context)
     {
         if (request.name == "async-timeout") {
-            co_return zlink::framework::result_t<reply_type>::failure (
-              zlink::framework::framework_error_kind_t::timeout, "async handler timeout");
+            co_return zlink::framework::detail::boundary_failure<reply_type> (zlink::framework::detail::boundary_error_t::timed_out, "async handler timeout");
         }
         co_return reply_type{.id = request.id,
                              .name = request.name,

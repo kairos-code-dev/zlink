@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_topology.hpp"
@@ -88,7 +88,7 @@ class supportchat_session_t final : public packet_stream_session_t
             stream.reply_packet (reply).submit ();
             co_return;
         }
-        actor.relay (payload).submit ();
+        co_await actor.relay (payload);
     }
 
   private:
@@ -210,7 +210,7 @@ int main (int argc, char **argv)
           .trace_label ("supportchat-session");
         add_supportchat_location_store (options, topology);
         options.add_client_server_channel ("supportchat.support").enable_client ();
-        options.add_route_mesh_channel ("supportchat.session.actor.route")
+        options.add_route_mesh ("supportchat.session.actor.route")
           .enable_server (topology.session_actor_route_endpoint)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (supportchat_session_node));

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Shared/spot_service_contracts.hpp"
@@ -136,7 +136,6 @@ class gateway_actor_push_handler_t
             }
             auto reply =
               _actors.request_to_actor (*actor_ref.value (), e2e::actor_push_req_t{request.value})
-                .packet_name ("PushReq")
                 .timeout (std::chrono::milliseconds (10000))
                 .async<e2e::actor_push_res_t> ()
                 .result ();
@@ -221,7 +220,7 @@ inline int run_gateway_server (int argc, char **argv)
                          zlink::framework::actor_directory_t> ();
         configure_gateway_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        options.add_route_mesh_channel (e2e::route_channel)
+        options.add_route_mesh (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_client ();

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../Spots/multi_node_spots.hpp"
@@ -36,19 +36,21 @@ inline const char *multi_node_route_channel_for (const std::string &node_rid)
 }
 
 inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client_t &routes,
-                                                  const std::string &node_rid,
+                                                  zlink::framework::spot_handle_resolver_t &handles,
                                                   const std::string &spot_rid,
                                                   int delta)
 {
-    auto reply =
-      routes
-        .request_to_node (multi_node_route_channel_for (node_rid),
-                          multi_node_spot_ref (node_rid, spot_rid),
-                          e2e::state_req_t{.op = "add", .amount = delta})
-        .packet_name ("StateReq")
-        .timeout (std::chrono::milliseconds (3000))
-        .async<e2e::state_res_t> ()
-        .result ();
+    auto handle = handles.resolve_spot_handle (zlink::framework::spot_rid_t::from_string (spot_rid))
+                    .result ()
+                    .value ();
+    if (!handle) {
+        throw std::runtime_error ("multi-node spot '" + spot_rid + "' has no live location row");
+    }
+    auto reply = routes
+                   .request_to_spot (*handle, e2e::state_req_t{.op = "add", .amount = delta})
+                   .timeout (std::chrono::milliseconds (3000))
+                   .async<e2e::state_res_t> ()
+                   .result ();
     if (reply) {
         return reply.value ();
     }
@@ -98,7 +100,6 @@ class multi_node_route_ping_proxy_handler_t
           _routes
             .request_to_node (multi_node_route_channel_for (_state.node_rid),
                               zlink::routing_id_t::from (request.target_node_rid), request)
-            .packet_name ("MultiNodeRoutePing")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::channel_control_ping_res_t> ()
             .result ();
@@ -171,25 +172,29 @@ class multi_node_create_local_handler_t
 class multi_node_state_route_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t,
-                                                                zlink::framework::route_client_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::route_client_t,
+                                          zlink::framework::spot_handle_resolver_t>;
     using request_type = e2e::multi_node_state_route_req_t;
     using reply_type = e2e::state_res_t;
 
     multi_node_state_route_handler_t (scenario_state_t &state,
-                                      zlink::framework::route_client_t &routes) :
-        _state (state), _routes (routes)
+                                      zlink::framework::route_client_t &routes,
+                                      zlink::framework::spot_handle_resolver_t &handles) :
+        _state (state), _routes (routes), _handles (handles)
     {
     }
 
     e2e::state_res_t handle (const e2e::multi_node_state_route_req_t &request)
     {
-        return request_multi_node_state (_routes, _state.node_rid, request.spot_rid, request.delta);
+        return request_multi_node_state (_routes, _handles, request.spot_rid, request.delta);
     }
 
   private:
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
+    zlink::framework::spot_handle_resolver_t &_handles;
 };
 
 class multi_node_create_user_local_handler_t

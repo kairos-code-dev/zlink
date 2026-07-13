@@ -1,10 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Service/actor_models.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
-#include <zlink/framework/contracts/locations/spot_ref.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 
 #include <chrono>
@@ -31,6 +30,10 @@ struct peer_location_t
     std::string owner_id;
     std::int64_t generation = 0;
     std::chrono::system_clock::time_point updated_at{};
+    /* Typed draining marker (graceful-drain-handoff §3.1): keeps the
+     * connection while excluding this peer from placement decisions. Lease
+     * renew and registration writers preserve the current value. */
+    bool draining = false;
 };
 
 struct spot_location_t

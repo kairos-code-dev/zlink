@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Shared/spot_service_contracts.hpp"
@@ -95,14 +95,21 @@ class ensure_actor_handler_t
                               zlink::framework::message_t {})
             .async ()
             .result ();
-        if (!joined || !joined.value ().actor) {
+        const auto *joined_accepted =
+          joined ? std::get_if<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (&joined.value ()) : nullptr;
+        if (joined_accepted == nullptr) {
+            if (!joined) {
+                throw zlink::framework::framework_exception_t (
+                  joined.error_kind (),
+                  joined.error () ? joined.error ()->what () : "ensure actor entry join failed");
+            }
             throw zlink::framework::framework_exception_t (
-              joined.error_kind (),
-              joined.error () ? joined.error ()->what () : "ensure actor entry join failed");
+              zlink::framework::framework_error_kind_t::request_rejected,
+              "ensure actor entry join was rejected");
         }
-        bind_session_route_if_requested (request, context, *joined.value ().actor);
+        bind_session_route_if_requested (request, context, joined_accepted->actor);
         _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
-        return {.actor = from_actor_ref (*joined.value ().actor)};
+        return {.actor = from_actor_ref (joined_accepted->actor)};
     }
 
   private:

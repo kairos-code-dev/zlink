@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Scenarios/auto_registration_scenario.hpp"
 #include "Scenarios/attribute_registration_scenario.hpp"

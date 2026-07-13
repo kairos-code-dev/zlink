@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/messaging/request_failure_mapper.hpp"
 
@@ -11,7 +11,7 @@ request_failure_mapper_t::completion_exception (request_result_t result,
 {
     switch (result) {
         case request_result_t::timed_out:
-            return framework_exception_t (framework_error_kind_t::timeout,
+            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
                                           operation_name + " timed out.");
         case request_result_t::not_connected:
             return framework_exception_t (
@@ -49,7 +49,7 @@ request_failure_mapper_t::error_header_exception (const std::string &error_code,
                                                   const std::string &operation_name) const
 {
     if (error_code == "timeout") {
-        return framework_exception_t (framework_error_kind_t::timeout,
+        return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
                                       error_message.empty () ? operation_name + " timed out."
                                                              : error_message);
     }

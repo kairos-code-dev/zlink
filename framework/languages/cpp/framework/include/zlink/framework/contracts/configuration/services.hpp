@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/errors/error.hpp>
@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <typeindex>
 #include <type_traits>
 
@@ -56,6 +57,15 @@ class service_provider_t
         return *std::static_pointer_cast<T> (resolve (std::type_index (typeid (T))));
     }
 
+    template <typename T> std::optional<std::reference_wrapper<T>> get ()
+    {
+        auto resolved = try_resolve (std::type_index (typeid (T)));
+        if (!resolved) {
+            return std::nullopt;
+        }
+        return std::ref (*std::static_pointer_cast<T> (resolved));
+    }
+
     service_scope_t
     create_scope (service_scope_kind_t kind = service_scope_kind_t::handler_invocation);
     void close () noexcept;
@@ -69,6 +79,7 @@ class service_provider_t
                         std::shared_ptr<detail::service_scope_state_t> scope);
 
     std::shared_ptr<void> resolve (std::type_index type);
+    std::shared_ptr<void> try_resolve (std::type_index type);
 
     std::shared_ptr<detail::service_registry_t> _registry;
     std::shared_ptr<detail::service_scope_state_t> _scope;

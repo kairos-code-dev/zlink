@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../Shared/messages.hpp"
 
@@ -91,7 +91,7 @@ class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
           e2e::actor_ask_t::packet_name);
     }
 
-    void onCreateActor (to_actor_e2e_actor_t &actor, const zlink::framework::message_t &)
+    void on_create_actor (to_actor_e2e_actor_t &actor, const zlink::framework::message_t &)
     {
         _evidence.append ({"create", actor.actor_id (), "create", "created"});
     }

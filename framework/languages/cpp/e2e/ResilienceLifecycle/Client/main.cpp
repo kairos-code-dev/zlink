@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Scenarios/rl_a1_provider_restart_scenario.hpp"
 #include "Scenarios/rl_a2_provider_endpoint_remap_scenario.hpp"

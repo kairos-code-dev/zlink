@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Common/store.hpp"
 #include "../Configuration/location_store.hpp"
@@ -35,8 +35,10 @@ class commerce_api_handlers_t
     commerce_api_handlers_t (sample_topology_t &topology,
                              api_instance_topology_t &instance,
                              route_client_t &routes,
-                             redis_state_store_t &store) :
-        _topology (topology), _instance (instance), _routes (routes), _store (store)
+                             redis_state_store_t &store,
+                             spot_handle_resolver_t &spot_handles) :
+        _topology (topology), _instance (instance), _routes (routes), _store (store),
+        _spot_handles (spot_handles)
     {
     }
 
@@ -226,7 +228,6 @@ class commerce_api_handlers_t
             .request_to_node (order_workflow_channel_for (owner.instance_id),
                               owner.route_rid,
                               ensure_order_workflow_spot_req_t{request.order_id})
-            .packet_name (ensure_order_workflow_spot_req_t::packet_name)
             .timeout (std::chrono::milliseconds (5000))
             .template async<ok_res_t> ();
         if (!ensured.ok) {
@@ -234,14 +235,14 @@ class commerce_api_handlers_t
                                          "ShoppingMall workflow spot ensure failed");
         }
 
-        co_return co_await _routes
-          .request_to_node (order_workflow_spot_route_channel_for (owner.instance_id),
-                            spot_ref_t{
-                              .mesh_name = sample_names_t::order_spot_discovery,
-                              .node_rid = owner.spot_rid,
-                              .spot_rid = routing_id_t::from (request.order_id)},
-                            request)
-          .packet_name (TRequest::packet_name)
+        auto target = co_await _spot_handles.resolve_spot_handle (
+          spot_rid_t::from_string (request.order_id));
+        if (!target) {
+            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
+                                         "Order workflow spot '" + request.order_id
+                                           + "' has no live location row");
+        }
+        co_return co_await _routes.request_to_spot (*target, request)
           .timeout (std::chrono::milliseconds (5000))
           .template async<TReply> ();
     }
@@ -250,6 +251,7 @@ class commerce_api_handlers_t
     api_instance_topology_t &_instance;
     route_client_t &_routes;
     redis_state_store_t &_store;
+    spot_handle_resolver_t &_spot_handles;
 };
 
 class start_order_handler_t
@@ -320,20 +322,22 @@ int main (int argc, char **argv)
                          sample_topology_t,
                          api_instance_topology_t,
                          route_client_t,
-                         redis_state_store_t> ();
+                         redis_state_store_t,
+                         spot_handle_resolver_t> ();
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
-        options.add_route_mesh_channel (order_workflow_channel_for ("workflow-a"))
+        options.add_route_mesh (order_workflow_channel_for ("workflow-a"))
           .enable_client (topology.workflow_a_route_endpoint);
-        options.add_route_mesh_channel (order_workflow_channel_for ("workflow-b"))
+        options.add_route_mesh (order_workflow_channel_for ("workflow-b"))
           .enable_client (topology.workflow_b_route_endpoint);
-        options.add_route_mesh_channel (order_workflow_spot_route_channel_for ("workflow-a"))
-          .enable_client (topology.workflow_a_spot_route_endpoint);
-        options.add_route_mesh_channel (order_workflow_spot_route_channel_for ("workflow-b"))
-          .enable_client (topology.workflow_b_spot_route_endpoint);
+        auto order_spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
+        order_spot_route.enable_client (topology.workflow_a_spot_route_endpoint);
+        order_spot_route.enable_client (topology.workflow_b_spot_route_endpoint);
+        options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
+          sample_names_t::order_spot_route;
         options.add_spot_mesh (std::string (sample_names_t::order_spot_discovery) + "."
                                + instance.instance_id)
           .set_routing_id (instance.spot_rid)
@@ -342,8 +346,7 @@ int main (int argc, char **argv)
                            topology.workflow_a_spot_router_endpoint)
           .connect_router (topology.for_workflow_instance ("workflow-b").spot_rid,
                            topology.workflow_b_spot_router_endpoint)
-          .accept_route_mesh (order_workflow_spot_route_channel_for ("workflow-a"))
-          .accept_route_mesh (order_workflow_spot_route_channel_for ("workflow-b"));
+          .accept_route_mesh (sample_names_t::order_spot_route);
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health")

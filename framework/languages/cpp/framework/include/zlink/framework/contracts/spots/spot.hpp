@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
@@ -11,7 +11,7 @@
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
-#include <zlink/framework/contracts/locations/spot_ref.hpp>
+#include <zlink/framework/contracts/locations/spot_handle.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -305,9 +305,9 @@ struct spot_actor_admission_callbacks_t
       join;
     std::function<void (void *, void *)> on_actor_joined;
     std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>
-      onCreateActor;
-    std::function<void (void *, void *)> onLeaveActor;
-    std::function<void (void *, void *)> onDisconnectActor;
+      on_create_actor;
+    std::function<void (void *, void *)> on_leave_actor;
+    std::function<void (void *, void *)> on_disconnect_actor;
     bool entry_spot = false;
 };
 
@@ -379,8 +379,7 @@ task_t<zlink::message_t> complete_spot_member_call (TResult &&result,
             }
         }
         catch (const framework_exception_t &error) {
-            co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                           error.is_retriable ());
+            co_return detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (const std::exception &error) {
             co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
@@ -488,7 +487,7 @@ struct spot_create_result_t;
 
 namespace detail
 {
-inline bool is_default_spot_ref_routing_id (const zlink::routing_id_t &rid)
+inline bool is_default_target_routing_id (const zlink::routing_id_t &rid)
 {
     const auto bytes = rid.to_bytes ();
     return bytes.size () == sizeof (std::uint32_t)
@@ -497,17 +496,17 @@ inline bool is_default_spot_ref_routing_id (const zlink::routing_id_t &rid)
               });
 }
 
-inline node_rid_t node_rid_from_spot_ref (const zlink::routing_id_t &rid)
+inline node_rid_t node_rid_from_target (const zlink::routing_id_t &rid)
 {
-    if (is_default_spot_ref_routing_id (rid)) {
+    if (is_default_target_routing_id (rid)) {
         return node_rid_t {};
     }
     return node_rid_t::from_string (rid.to_string ());
 }
 
-inline spot_rid_t spot_rid_from_spot_ref (const zlink::routing_id_t &rid)
+inline spot_rid_t spot_rid_from_target (const zlink::routing_id_t &rid)
 {
-    if (is_default_spot_ref_routing_id (rid)) {
+    if (is_default_target_routing_id (rid)) {
         return spot_rid_t {};
     }
     return spot_rid_t::from_string (rid.to_string ());
@@ -549,12 +548,14 @@ class spot_context_t
         }
         catch (const framework_exception_t &error) {
             return send_call_t (
-              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+              detail::result_access_t::failure<void> (error));
         }
     }
 
     template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to (const spot_ref_t &target, TRequest request)
+    request_call_t<TReply> request_to (zlink::routing_id_t target_node_rid,
+                                       zlink::routing_id_t target_spot_rid,
+                                       TRequest request)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -565,19 +566,21 @@ class spot_context_t
         try {
             auto payload =
               detail::encoded_payload_to_raw (serializers->get<TRequest> ().serialize (request));
-            return request_to_erased (detail::node_rid_from_spot_ref (target.node_rid),
-                                      detail::spot_rid_from_spot_ref (target.spot_rid),
+            return request_to_erased (detail::node_rid_from_target (target_node_rid),
+                                      detail::spot_rid_from_target (target_spot_rid),
                                       detail::message_name<TRequest> (), std::move (payload))
               .template as<TReply> ();
         }
         catch (const framework_exception_t &error) {
             return request_call_t<TReply> (
-              result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ()));
+              detail::result_access_t::failure<TReply> (error));
         }
     }
 
     template <typename TMessage>
-    send_call_t send_to (const spot_ref_t &target, TMessage message)
+    send_call_t send_to (zlink::routing_id_t target_node_rid,
+                         zlink::routing_id_t target_spot_rid,
+                         TMessage message)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -588,13 +591,13 @@ class spot_context_t
         try {
             auto payload =
               detail::encoded_payload_to_raw (serializers->get<TMessage> ().serialize (message));
-            return send_to_erased (detail::node_rid_from_spot_ref (target.node_rid),
-                                   detail::spot_rid_from_spot_ref (target.spot_rid),
+            return send_to_erased (detail::node_rid_from_target (target_node_rid),
+                                   detail::spot_rid_from_target (target_spot_rid),
                                    detail::message_name<TMessage> (), std::move (payload));
         }
         catch (const framework_exception_t &error) {
             return send_call_t (
-              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+              detail::result_access_t::failure<void> (error));
         }
     }
 
@@ -608,9 +611,9 @@ class spot_context_t
     {
         using result_type = std::invoke_result_t<TWork>;
         auto scheduler = _worker_scheduler;
-        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        auto turn_handle = detail::capture_current_serial_turn ();
         return worker_call_t<result_type> (
-          [scheduler, yield_turn, work = std::move (work)] (
+          [scheduler, turn_handle, work = std::move (work)] (
             std::optional<std::chrono::milliseconds> timeout,
             detail::worker_completion_mode_t completion_mode) mutable -> task_t<result_type> {
               (void) timeout;
@@ -620,9 +623,9 @@ class spot_context_t
               }
 
               const auto complete_on_current_turn =
-                completion_mode == detail::worker_completion_mode_t::current_turn && yield_turn;
+                completion_mode == detail::worker_completion_mode_t::current_turn && turn_handle;
               detail::task_completion_source_t<result_type> completion (
-                complete_on_current_turn ? yield_turn->resume_scheduler ()
+                complete_on_current_turn ? turn_handle->resume_scheduler ()
                                          : detail::task_scheduler_t{});
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
@@ -766,8 +769,7 @@ class spot_context_t
                         detail::encoded_payload_from_raw (reply));
                   }
                   catch (const framework_exception_t &error) {
-                      co_return result_t<TReply>::failure (error.kind (), error.what (),
-                                                           error.is_retriable ());
+                      co_return detail::result_access_t::failure<TReply> (error);
                   }
               });
         }
@@ -833,17 +835,17 @@ class entry_spot_context_t : public spot_context_t
     explicit entry_spot_context_t (const spot_context_t &context);
 
     template <typename TActor>
-    task_t<void> destroyActor (const actor_ref_t &actor_ref, TActor &actor)
+    task_t<void> destroy_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
         (void) actor;
-        return destroyActor_erased (actor_ref);
+        return destroy_actor_erased (actor_ref);
     }
 
   private:
     friend class detail::spot_node_runtime_t;
     explicit entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
-    task_t<void> destroyActor_erased (const actor_ref_t &actor_ref);
+    task_t<void> destroy_actor_erased (const actor_ref_t &actor_ref);
 };
 
 struct spot_create_result_t
@@ -1035,41 +1037,41 @@ class spot_handler_registry_t
                 static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
             }
         };
-        callbacks.onCreateActor = [] (void *spot, void *actor, const zlink::message_t &request,
+        callbacks.on_create_actor = [] (void *spot, void *actor, const zlink::message_t &request,
                                       serializer_registry_t &serializers) {
             if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                              static_cast<TSpot *> (spot)->onCreateActor (
+                              static_cast<TSpot *> (spot)->on_create_actor (
                                 *static_cast<TActor *> (actor), message_t{});
                           }) {
-                static_cast<TSpot *> (spot)->onCreateActor (
+                static_cast<TSpot *> (spot)->on_create_actor (
                   *static_cast<TActor *> (actor), message_t::from_raw (request, &serializers));
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                                     static_cast<TSpot *> (spot)->onCreateActor (
+                                     static_cast<TSpot *> (spot)->on_create_actor (
                                        *static_cast<TActor *> (actor), request);
                                  }) {
-                static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor),
+                static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor),
                                                             request);
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                                     static_cast<TSpot *> (spot)->onCreateActor (
+                                     static_cast<TSpot *> (spot)->on_create_actor (
                                        *static_cast<TActor *> (actor));
                                  }) {
-                static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
+                static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor));
             }
         };
-        callbacks.onLeaveActor = [] (void *spot, void *actor) {
+        callbacks.on_leave_actor = [] (void *spot, void *actor) {
             if constexpr (requires {
-                              static_cast<TSpot *> (spot)->onLeaveActor (
+                              static_cast<TSpot *> (spot)->on_leave_actor (
                                 *static_cast<TActor *> (actor));
                           }) {
-                static_cast<TSpot *> (spot)->onLeaveActor (*static_cast<TActor *> (actor));
+                static_cast<TSpot *> (spot)->on_leave_actor (*static_cast<TActor *> (actor));
             }
         };
-        callbacks.onDisconnectActor = [] (void *spot, void *actor) {
+        callbacks.on_disconnect_actor = [] (void *spot, void *actor) {
             if constexpr (requires {
-                              static_cast<TSpot *> (spot)->onDisconnectActor (
+                              static_cast<TSpot *> (spot)->on_disconnect_actor (
                                 *static_cast<TActor *> (actor));
                           }) {
-                static_cast<TSpot *> (spot)->onDisconnectActor (*static_cast<TActor *> (actor));
+                static_cast<TSpot *> (spot)->on_disconnect_actor (*static_cast<TActor *> (actor));
             }
         };
         register_actor_admission_erased (std::type_index (typeid (TActor)), std::move (callbacks));
@@ -1183,8 +1185,8 @@ class spot_node_manager_t
                                    message_t::from (request));
     }
 
-    std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
-    std::vector<spot_info_t> list_spots () const;
+    task_t<std::optional<spot_info_t>> find_spot (spot_rid_t spot_rid) const;
+    task_t<std::vector<spot_info_t>> list_spots () const;
     task_t<bool> close_spot (spot_rid_t spot_rid);
     std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
     std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
@@ -1240,7 +1242,7 @@ class spot_publisher_client_t
         }
         catch (const framework_exception_t &error) {
             return task_t<void> (
-              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+              detail::result_access_t::failure<void> (error));
         }
     }
 
@@ -1508,21 +1510,19 @@ class spot_node_builder_t
                        "C++ actor transfer adapters must be default constructible");
         return add_actor_transfer_erased (
           std::move (actor_type), std::type_index (typeid (TActor)),
-          [] (const void *actor) {
+          [] (const void *actor) -> task_t<message_t> {
+              /* Coroutine invoker: the adapter task is awaited by the
+               * transfer chain, no result() bridge in the contract layer. */
               TAdapter adapter;
-              return adapter.transfer_out (*static_cast<const TActor *> (actor)).result ();
+              auto state = co_await adapter.transfer_out (*static_cast<const TActor *> (actor));
+              co_return state;
           },
-          [] (std::string actor_id, message_t state) -> result_t<std::shared_ptr<void>> {
+          [] (std::string actor_id, message_t state) -> task_t<std::shared_ptr<void>> {
               TAdapter adapter;
-              auto transferred = adapter.transfer_in (std::move (actor_id), std::move (state)).result ();
-              if (!transferred) {
-                  return result_t<std::shared_ptr<void>>::failure (
-                    transferred.error_kind (),
-                    transferred.error () ? transferred.error ()->what () : "actor transfer failed");
-              }
-              return result_t<std::shared_ptr<void>>::success (
-                std::static_pointer_cast<void> (
-                  std::make_shared<TActor> (std::move (transferred).value ())));
+              auto transferred =
+                co_await adapter.transfer_in (std::move (actor_id), std::move (state));
+              co_return std::static_pointer_cast<void> (
+                std::make_shared<TActor> (std::move (transferred)));
           });
     }
 
@@ -1536,8 +1536,8 @@ class spot_node_builder_t
     spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
     spot_create_result_t
     get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
-    std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
-    std::vector<spot_info_t> list_spots () const;
+    task_t<std::optional<spot_info_t>> find_spot (spot_rid_t spot_rid) const;
+    task_t<std::vector<spot_info_t>> list_spots () const;
     task_t<bool> close_spot (spot_rid_t spot_rid);
     std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
     std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
@@ -1568,8 +1568,8 @@ class spot_node_builder_t
     spot_node_builder_t &add_actor_transfer_erased (
       std::string actor_type,
       std::type_index actor_instance_type,
-      std::function<result_t<message_t> (const void *)> transfer_out,
-      std::function<result_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in);
+      std::function<task_t<message_t> (const void *)> transfer_out,
+      std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in);
 
     template <typename TSpot>
     void register_lifecycle (std::string spot_name,

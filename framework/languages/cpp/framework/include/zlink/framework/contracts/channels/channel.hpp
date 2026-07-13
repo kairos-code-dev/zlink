@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/Contracts/Core/routing_id.hpp>
@@ -8,7 +8,7 @@
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
-#include <zlink/framework/contracts/locations/spot_ref.hpp>
+#include <zlink/framework/contracts/locations/spot_handle.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include <cstddef>
@@ -45,6 +45,7 @@ void connect_route_channel_peer (route_channel_builder_t &builder,
 class spot_context_t;
 class channel_runtime_options_t;
 class client_server_channel_runtime_options_t;
+class route_mesh_channel_runtime_options_t;
 class channel_server_socket_runtime_options_t;
 enum class channel_capability_t
 {
@@ -207,8 +208,7 @@ class route_channel_builder_t
                     result_t<zlink::message_t>::success (zlink::message_t{}));
               }
               catch (const framework_exception_t &error) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (...) {
                   return task_t<zlink::message_t> (
@@ -239,8 +239,7 @@ class route_channel_builder_t
                     result_t<zlink::message_t>::success (zlink::message_t{}));
               }
               catch (const framework_exception_t &error) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (...) {
                   return task_t<zlink::message_t> (
@@ -270,8 +269,7 @@ class route_channel_builder_t
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                                 error.is_retriable ());
+                  co_return detail::result_access_t::failure<zlink::message_t> (error);
               }
               catch (...) {
                   co_return result_t<zlink::message_t>::failure (
@@ -303,8 +301,7 @@ class route_channel_builder_t
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply))));
               }
               catch (const framework_exception_t &error) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (...) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -335,8 +332,7 @@ class route_channel_builder_t
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply))));
               }
               catch (const framework_exception_t &error) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    error.kind (), error.what (), error.is_retriable ()));
+                  return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
               }
               catch (...) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -368,8 +364,7 @@ class route_channel_builder_t
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply)));
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                                 error.is_retriable ());
+                  co_return detail::result_access_t::failure<zlink::message_t> (error);
               }
               catch (...) {
                   co_return result_t<zlink::message_t>::failure (
@@ -405,11 +400,11 @@ class message_bus_t
     message_bus_t &operator= (const message_bus_t &) = default;
 
     template <typename TRequest>
-    channel_yield_request_call_t request (std::string channel_name, TRequest request)
+    channel_request_call_t request (std::string channel_name, TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
-        return channel_yield_request_call_t (
+        return channel_request_call_t (
           detail::message_name<TRequest> (), serializers (),
           [state, channel_name = std::move (channel_name),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
@@ -488,8 +483,7 @@ class message_bus_t
             if (_reply) {
                 return result_t<zlink::message_t>::success (*_reply);
             }
-            return result_t<zlink::message_t>::failure (_error.kind (), _error.what (),
-                                                        _error.is_retriable ());
+            return detail::result_access_t::failure<zlink::message_t> (_error);
         }
 
         template <typename TReply> result_t<TReply> as () const
@@ -505,12 +499,10 @@ class message_bus_t
                       detail::encoded_payload_from_raw (*_reply)));
                 }
                 catch (const framework_exception_t &error) {
-                    return result_t<TReply>::failure (error.kind (), error.what (),
-                                                      error.is_retriable ());
+                    return detail::result_access_t::failure<TReply> (error);
                 }
             }
-            return result_t<TReply>::failure (_error.kind (), _error.what (),
-                                              _error.is_retriable ());
+            return detail::result_access_t::failure<TReply> (_error);
         }
 
       private:
@@ -570,6 +562,7 @@ class channel_server_socket_runtime_options_t
 
   private:
     friend class client_server_channel_runtime_options_t;
+    friend class route_mesh_channel_runtime_options_t;
     channel_server_socket_runtime_options_t (std::shared_ptr<detail::channel_runtime_state_t> state,
                                              std::string channel_name);
 
@@ -602,6 +595,30 @@ class client_server_channel_runtime_options_t
     std::string _channel_name;
 };
 
+class route_mesh_channel_runtime_options_t
+{
+  public:
+    route_mesh_channel_runtime_options_t ();
+    ~route_mesh_channel_runtime_options_t ();
+
+    route_mesh_channel_runtime_options_t (route_mesh_channel_runtime_options_t &&) noexcept;
+    route_mesh_channel_runtime_options_t &
+    operator= (route_mesh_channel_runtime_options_t &&) noexcept;
+    route_mesh_channel_runtime_options_t (const route_mesh_channel_runtime_options_t &) = default;
+    route_mesh_channel_runtime_options_t &
+    operator= (const route_mesh_channel_runtime_options_t &) = default;
+
+    channel_server_socket_runtime_options_t configure_server_socket () const;
+
+  private:
+    friend class channel_runtime_options_t;
+    route_mesh_channel_runtime_options_t (std::shared_ptr<detail::channel_runtime_state_t> state,
+                                          std::string channel_name);
+
+    std::shared_ptr<detail::channel_runtime_state_t> _state;
+    std::string _channel_name;
+};
+
 class channel_runtime_options_t
 {
   public:
@@ -615,6 +632,7 @@ class channel_runtime_options_t
     channel_runtime_options_t &operator= (const channel_runtime_options_t &) = default;
 
     client_server_channel_runtime_options_t client_server_channel (std::string channel_name) const;
+    route_mesh_channel_runtime_options_t route_mesh_channel (std::string_view channel_name) const;
 
   private:
     std::shared_ptr<detail::channel_runtime_state_t> _state;
@@ -628,9 +646,8 @@ class route_send_call_t
 
     route_send_call_t (std::string packet_name, submit_fn_t submit);
 
-    route_send_call_t &packet_name (std::string packet_name);
     route_send_call_t &metadata (std::string key, std::string value);
-    result_t<void> submit ();
+    void submit ();
 
   private:
     result_t<void> submit_now ();
@@ -675,23 +692,20 @@ class route_client_t
           });
     }
 
+    /* Sends one-way to the spot the opaque handle tracks. The handle owns the
+     * route channel and address snapshot; one-way sends are never retried. */
     template <typename TMessage>
-    route_send_call_t send_to_node (std::string router_channel_id,
-                            const spot_ref_t &target,
-                            TMessage message)
+    route_send_call_t send_to_spot (spot_handle_t target, TMessage message)
     {
         auto state = _state;
         auto message_value = std::make_shared<TMessage> (std::move (message));
         return route_send_call_t (
           detail::message_name<TMessage> (),
-          [state, router_channel_id = std::move (router_channel_id),
-           target_node_rid = target.node_rid,
-           spot_target = spot_rid_t::from_string (target.spot_rid.to_string ()),
+          [state, target = std::move (target),
            message_value] (const std::string &packet_name,
                            const route_send_call_t::metadata_map_t &metadata) -> result_t<void> {
-              return submit_spot_send_erased (
-                state, router_channel_id, target_node_rid, spot_target, packet_name,
-                std::type_index (typeid (TMessage)),
+              return submit_spot_handle_send_erased (
+                state, target, packet_name, std::type_index (typeid (TMessage)),
                 [message_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TMessage> ().serialize (*message_value);
                 },
@@ -721,24 +735,22 @@ class route_client_t
           });
     }
 
+    /* Requests against the spot the opaque handle tracks. When the target is
+     * known not to have handled the first attempt, the framework refreshes
+     * the handle snapshot and retries once. */
     template <typename TRequest>
-    channel_request_call_t request_to_node (std::string router_channel_id,
-                                  const spot_ref_t &target,
-                                  TRequest request)
+    channel_request_call_t request_to_spot (spot_handle_t target, TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
         return channel_request_call_t (
           detail::message_name<TRequest> (), _serializers,
-          [state, router_channel_id,
-           target_node_rid = target.node_rid,
-           spot_target = spot_rid_t::from_string (target.spot_rid.to_string ()),
+          [state, target = std::move (target),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
                            const channel_request_call_t::metadata_map_t &metadata) mutable
           -> task_t<zlink::message_t> {
-              return submit_spot_request_reply_message_erased (
-                state, router_channel_id, target_node_rid, spot_target, packet_name,
-                std::type_index (typeid (TRequest)),
+              return submit_spot_handle_request_reply_message_erased (
+                state, target, packet_name, std::type_index (typeid (TRequest)),
                 [request_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TRequest> ().serialize (*request_value);
                 },
@@ -824,6 +836,23 @@ class route_client_t
       std::chrono::milliseconds timeout,
       std::map<std::string, std::string> metadata);
 
+    static result_t<void>
+    submit_spot_handle_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                                    const spot_handle_t &target,
+                                    const std::string &packet_name,
+                                    std::type_index message_type,
+                                    payload_encoder_t encode_payload,
+                                    const route_send_call_t::metadata_map_t &metadata);
+
+    static task_t<zlink::message_t> submit_spot_handle_request_reply_message_erased (
+      const std::shared_ptr<detail::route_client_state_t> &state,
+      spot_handle_t target,
+      std::string packet_name,
+      std::type_index request_type,
+      payload_encoder_t encode_payload,
+      std::chrono::milliseconds timeout,
+      std::map<std::string, std::string> metadata);
+
     std::shared_ptr<detail::route_client_state_t> _state;
     serializer_registry_t *_serializers = nullptr;
 };
@@ -852,7 +881,7 @@ task_t<TReply> route_client_t::submit_request_reply_erased (
           serializers->get<TReply> ().deserialize (detail::encoded_payload_from_raw (reply)));
     }
     catch (const framework_exception_t &error) {
-        co_return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());
+        co_return detail::result_access_t::failure<TReply> (error);
     }
 }
 
@@ -861,7 +890,7 @@ class request_client_t
   public:
     request_client_t (message_bus_t bus, std::string channel_name);
 
-    template <typename TRequest> channel_yield_request_call_t request (TRequest request)
+    template <typename TRequest> channel_request_call_t request (TRequest request)
     {
         return _bus.request (_channel_name, std::move (request));
     }
@@ -877,13 +906,13 @@ class channel_client_t
     explicit channel_client_t (message_bus_t bus) : _bus (std::move (bus)) {}
 
     template <typename TRequest>
-    channel_yield_request_call_t request_to_channel (std::string channel_name, TRequest request)
+    channel_request_call_t request_to_channel (std::string channel_name, TRequest request)
     {
         return _bus.request (std::move (channel_name), std::move (request));
     }
 
     template <typename TRequest>
-    channel_yield_request_call_t request (std::string channel_name, TRequest request)
+    channel_request_call_t request (std::string channel_name, TRequest request)
     {
         return request_to_channel (std::move (channel_name), std::move (request));
     }

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/errors/result.hpp>
@@ -66,8 +66,7 @@ class coroutine_executor_t
                   result = co_await work ();
               }
               catch (const framework_exception_t &error) {
-                  result = result_t<TResult>::failure (error.kind (), error.what (),
-                                                       error.is_retriable ());
+                  result = detail::result_access_t::failure<TResult> (error);
               }
               catch (...) {
                   result = result_t<TResult>::failure (framework_error_kind_t::request_failed,

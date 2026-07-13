@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -62,6 +62,12 @@ class stream_runtime_t
 
     result_t<std::vector<std::uint8_t>> encode_header (const stream_header_t &header) const;
     result_t<stream_header_t> decode_header (const std::vector<std::uint8_t> &bytes) const;
+    /* Encodes the versioned session-closing control payload
+     * (graceful-drain-handoff §7.1): u8 version=1, u8 reason, u16 diagnostic
+     * length (network order, <=512), UTF-8 diagnostic bytes. */
+    static std::vector<std::uint8_t>
+    encode_session_closing_payload (stream_close_reason_t reason, std::string_view diagnostic);
+
     result_t<void> validate_header (const stream_header_t &header) const;
 
     stream_t open_session (std::string stream_name) const;
@@ -89,6 +95,17 @@ class stream_runtime_t
                                     std::string operation,
                                     std::function<task_t<void> ()> callback) const;
 
+  public:
+    const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
+
+    /* Sends the versioned session-closing control on an active session
+     * (graceful-drain-handoff §7): best effort, bounded by the transport
+     * writer; the caller closes the connection afterwards. */
+    void send_session_closing (stream_t &stream,
+                               stream_close_reason_t reason,
+                               std::string_view diagnostic) const noexcept;
+
+  private:
     std::shared_ptr<stream_runtime_state_t> _state;
 };
 

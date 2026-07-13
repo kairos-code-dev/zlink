@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Shared/spot_service_contracts.hpp"
@@ -43,7 +43,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (_notify_on_disconnect.contains (actor_id)) {
                 if (auto actor = _bound_session_actors.find (actor_id);
                     actor != _bound_session_actors.end ()) {
-                    actor->second.notify_disconnected ().submit ();
+                    co_await actor->second.notify_disconnected ();
                     _state.record ("StreamDisconnectNotified", actor_id);
                 }
             }
@@ -84,7 +84,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                           e2e::ensure_actor_req_t{.actor_id = request.actor_id,
                                                   .display_name = request.display_name,
                                                   .bind_session_route = true})
-                .packet_name ("EnsureActor")
                 .async<e2e::ensure_actor_res_t> ()
                 .result ();
             if (!ensured_result) {
@@ -119,17 +118,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                                request.target_node_rid);
                 co_return;
             }
-            auto replied =
               stream
                 .reply_packet (
                   zlink::message_t::from_json (
                     e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
                 .submit ();
-            if (!replied) {
-                throw zlink::framework::framework_exception_t (
-                  replied.error_kind (),
-                  replied.error () ? replied.error ()->what () : "stream auth reply failed");
-            }
             _state.record ("StreamAuthReplied", actor_id, {}, request.target_node_rid);
             co_return;
         }
@@ -147,7 +140,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                           e2e::ensure_actor_req_t{.actor_id = request.actor_id,
                                                   .display_name = request.display_name,
                                                   .bind_session_route = true})
-                .packet_name ("EnsureActor")
                 .async<e2e::ensure_actor_res_t> ()
                 .result ();
             if (!ensured_result) {
@@ -179,18 +171,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                                request.target_node_rid);
                 co_return;
             }
-            auto replied =
               stream
                 .reply_packet (
                   zlink::message_t::from_json (
                     e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
                 .submit ();
-            if (!replied) {
-                throw zlink::framework::framework_exception_t (
-                  replied.error_kind (),
-                  replied.error () ? replied.error ()->what ()
-                                  : "stream ensure auth reply failed");
-            }
             co_return;
         }
 
@@ -215,15 +200,10 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                 auto rebound = rebound_result.value ();
                 _bound_session_actors[std::string (rebound.actor_id ())] = rebound;
             }
-            auto replied = stream.reply_packet (reply).submit ();
-            if (!replied) {
-                throw zlink::framework::framework_exception_t (
-                  replied.error_kind (),
-                  replied.error () ? replied.error ()->what () : "stream relay reply failed");
-            }
+            stream.reply_packet (reply).submit ();
             co_return;
         }
-        actor.value ().relay (payload).submit ();
+        co_await actor.value ().relay (payload);
         co_return;
     }
 

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../MultiNode/Handlers/multi_node_handlers.hpp"
 #include "../Shared/Support/codecs.hpp"
@@ -41,10 +41,11 @@ int main (int argc, char **argv)
           .add_transient<multi_node_route_ping_proxy_handler_t, scenario_state_t,
                          zlink::framework::route_client_t> ()
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
-                         zlink::framework::route_client_t> ();
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ();
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
+        options.add_route_mesh (multi_node_route_channel_for (node_rid))
           .enable_server (route_client_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-" + node_rid))
           .enable_client ();

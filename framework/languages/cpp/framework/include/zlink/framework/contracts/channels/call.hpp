@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/detail/call_facade.hpp>
-#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 
 #include <chrono>
@@ -56,12 +55,6 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    request_call_t &packet_name (std::string packet_name)
-    {
-        _packet_name = std::move (packet_name);
-        return *this;
-    }
-
     request_call_t &metadata (std::string key, std::string value)
     {
         _metadata[std::move (key)] = std::move (value);
@@ -78,41 +71,16 @@ template <typename TReply> class request_call_t
               result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                          "request call is not bound to a channel client"));
         }
-        return _submit (_packet_name, _timeout, _metadata);
-    }
-
-    task_t<TReply> yield ()
-    {
-        return yield (cancellation_token_t ());
-    }
-
-    task_t<TReply> yield (cancellation_token_t cancellation_token)
-    {
-        if (_immediate) {
-            return task_t<TReply> (*_immediate);
-        }
-        if (!_submit) {
-            return task_t<TReply> (
-              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                         "request call is not bound to a channel client"));
-        }
-        auto yield_turn = detail::capture_current_serial_yield_turn ();
-        if (!yield_turn) {
-            return task_t<TReply> (
-              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                         "yield requires a framework Spot handler turn"));
-        }
-        if (!yield_turn->release ()) {
-            return task_t<TReply> (
-              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                         "yield could not release the current Spot handler turn"));
+        auto turn_handle = detail::capture_current_serial_turn ();
+        if (!turn_handle || turn_handle->released () || !turn_handle->release ()) {
+            return _submit (_packet_name, _timeout, _metadata);
         }
         // The underlying submit blocks the calling thread until the reply
         // arrives, so it must run OFF the released Spot serial turn — otherwise
         // the single serial-execution thread stays parked in the blocking call
         // and no other serial work (sibling timers, other actors) can progress
-        // while this handler is "yielded". Offload to a detached thread and
-        // resume the coroutine back on the serial queue when the reply lands.
+        // while this handler awaits. Offload to a detached thread and resume the
+        // coroutine back on the serial queue when the reply lands.
         auto source = std::make_shared<detail::task_completion_source_t<TReply>> ();
         auto pending = source->task ();
         std::thread ([source, submit = _submit, packet_name = _packet_name, timeout = _timeout,
@@ -121,17 +89,14 @@ template <typename TReply> class request_call_t
                 source->complete (submit (packet_name, timeout, metadata).result ());
             }
             catch (const framework_exception_t &error) {
-                source->complete (result_t<TReply>::failure (error.kind (), error.what (),
-                                                             error.is_retriable ()));
+                source->complete (detail::result_access_t::failure<TReply> (error));
             }
             catch (...) {
                 source->complete (result_t<TReply>::failure (
-                  framework_error_kind_t::request_failed, "yield request failed"));
+                  framework_error_kind_t::request_failed, "awaited request failed"));
             }
         }).detach ();
-        return detail::reschedule_task (
-          detail::cancelable_task (std::move (pending), std::move (cancellation_token)),
-          yield_turn->resume_scheduler ());
+        return detail::reschedule_task (std::move (pending), turn_handle->resume_scheduler ());
     }
 
   private:
@@ -166,12 +131,6 @@ class channel_request_call_t
         return *this;
     }
 
-    channel_request_call_t &packet_name (std::string packet_name)
-    {
-        _packet_name = std::move (packet_name);
-        return *this;
-    }
-
     channel_request_call_t &metadata (std::string key, std::string value)
     {
         _metadata[std::move (key)] = std::move (value);
@@ -184,7 +143,33 @@ class channel_request_call_t
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "request call is not bound to a channel client");
         }
-        auto reply = co_await _submit (_packet_name, _timeout, _metadata);
+        zlink::message_t reply;
+        auto turn_handle = detail::capture_current_serial_turn ();
+        if (!turn_handle || turn_handle->released () || !turn_handle->release ()) {
+            reply = co_await _submit (_packet_name, _timeout, _metadata);
+        } else {
+            // The channel request blocks its calling thread until the reply
+            // arrives. Run it on a detached thread instead of the released Spot
+            // serial turn so the single serial-execution thread is free to run
+            // other serial work (sibling timers, other actors) while this
+            // handler awaits.
+            auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
+            auto pending = source->task ();
+            std::thread ([source, submit = blocking_submit ()] () mutable {
+                try {
+                    source->complete (submit ());
+                }
+                catch (const framework_exception_t &error) {
+                    source->complete (detail::result_access_t::failure<zlink::message_t> (error));
+                }
+                catch (...) {
+                    source->complete (result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed, "awaited channel request failed"));
+                }
+            }).detach ();
+            reply = co_await detail::reschedule_task (std::move (pending),
+                                                      turn_handle->resume_scheduler ());
+        }
         if (_serializers == nullptr) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "channel request has no serializer registry");
@@ -194,8 +179,7 @@ class channel_request_call_t
               detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
-            co_return result_t<TReply>::failure (error.kind (), error.what (),
-                                                 error.is_retriable ());
+            co_return detail::result_access_t::failure<TReply> (error);
         }
     }
 
@@ -239,82 +223,6 @@ class channel_request_call_t
     submit_fn_t _submit;
 };
 
-class channel_yield_request_call_t : public channel_request_call_t
-{
-  public:
-    using channel_request_call_t::channel_request_call_t;
-
-    channel_yield_request_call_t &timeout (std::chrono::milliseconds timeout)
-    {
-        channel_request_call_t::timeout (timeout);
-        return *this;
-    }
-
-    channel_yield_request_call_t &packet_name (std::string packet_name)
-    {
-        channel_request_call_t::packet_name (std::move (packet_name));
-        return *this;
-    }
-
-    channel_yield_request_call_t &metadata (std::string key, std::string value)
-    {
-        channel_request_call_t::metadata (std::move (key), std::move (value));
-        return *this;
-    }
-
-    template <typename TReply> task_t<TReply> yield ()
-    {
-        return yield<TReply> (cancellation_token_t ());
-    }
-
-    template <typename TReply> task_t<TReply> yield (cancellation_token_t cancellation_token)
-    {
-        auto yield_turn = detail::capture_current_serial_yield_turn ();
-        if (!yield_turn) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                 "yield requires a framework Spot handler turn");
-        }
-        if (!yield_turn->release ()) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield could not release the current Spot handler turn");
-        }
-        // The channel request blocks its calling thread until the reply arrives.
-        // Run it on a detached thread instead of the released Spot serial turn so
-        // the single serial-execution thread is free to run other serial work
-        // (sibling timers, other actors) while this handler is yielded.
-        auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
-        auto pending = source->task ();
-        std::thread ([source, submit = blocking_submit ()] () mutable {
-            try {
-                source->complete (submit ());
-            }
-            catch (const framework_exception_t &error) {
-                source->complete (result_t<zlink::message_t>::failure (
-                  error.kind (), error.what (), error.is_retriable ()));
-            }
-            catch (...) {
-                source->complete (result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::request_failed, "channel yield request failed"));
-            }
-        }).detach ();
-        auto reply = co_await detail::reschedule_task (
-          detail::cancelable_task (std::move (pending), std::move (cancellation_token)),
-          yield_turn->resume_scheduler ());
-        if (serializers () == nullptr) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                 "channel request has no serializer registry");
-        }
-        try {
-            co_return serializers ()->get<TReply> ().deserialize (
-              detail::encoded_payload_from_raw (reply));
-        }
-        catch (const framework_exception_t &error) {
-            co_return result_t<TReply>::failure (error.kind (), error.what (),
-                                                 error.is_retriable ());
-        }
-    }
-};
 
 class send_call_t
 {
@@ -336,19 +244,13 @@ class send_call_t
         return *this;
     }
 
-    send_call_t &packet_name (std::string packet_name)
-    {
-        _packet_name = std::move (packet_name);
-        return *this;
-    }
-
     send_call_t &metadata (std::string key, std::string value)
     {
         _metadata[std::move (key)] = std::move (value);
         return *this;
     }
 
-    result_t<void> submit () { return submit_now (); }
+    void submit () { submit_now ().value (); }
 
   private:
     result_t<void> submit_now ()
@@ -381,19 +283,13 @@ class bound_session_send_call_t
         return *this;
     }
 
-    bound_session_send_call_t &packet_name (std::string packet_name)
-    {
-        _call.packet_name (std::move (packet_name));
-        return *this;
-    }
-
     bound_session_send_call_t &metadata (std::string key, std::string value)
     {
         _call.metadata (std::move (key), std::move (value));
         return *this;
     }
 
-    result_t<void> submit () { return _call.submit (); }
+    void submit () { _call.submit (); }
 
   private:
     send_call_t _call;
@@ -428,7 +324,7 @@ class stream_write_call_t
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
-    result_t<void> submit ();
+    void submit ();
 
   private:
     using submit_fn_t =

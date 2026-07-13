@@ -1,9 +1,10 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <exception>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace zlink::framework
@@ -32,15 +33,48 @@ enum class framework_error_kind_t
     worker_timed_out = 18,
     worker_failed = 19,
     actor_location_stale = 20,
-    actor_create_rejected = 21,
-    // C++-only public values; common promotion is pending in the shared 5.2 table.
-    actor_stale_generation = 22,
-    timeout = 23,
-    shutdown = 24,
-    disconnected = 25,
-    closed = 26,
-    cancelled = 27
+    actor_create_rejected = 21
 };
+
+namespace detail
+{
+
+/* Lifecycle/transport boundary conditions demoted from the public error enum
+ * (shared implementation-gap §5.2). They surface at the awaited boundary as
+ * the C++ standard convention — std::system_error with the mapped errc — while
+ * the internal runtime keeps the precise state. */
+enum class boundary_error_t
+{
+    none = 0,
+    timed_out = 1,
+    shutdown = 2,
+    disconnected = 3,
+    closed = 4,
+    cancelled = 5,
+    stale_generation = 6
+};
+
+inline std::error_code boundary_error_code (boundary_error_t state) noexcept
+{
+    switch (state) {
+        case boundary_error_t::timed_out:
+            return std::make_error_code (std::errc::timed_out);
+        case boundary_error_t::shutdown:
+        case boundary_error_t::cancelled:
+            return std::make_error_code (std::errc::operation_canceled);
+        case boundary_error_t::disconnected:
+            return std::make_error_code (std::errc::not_connected);
+        case boundary_error_t::closed:
+            return std::make_error_code (std::errc::connection_aborted);
+        case boundary_error_t::stale_generation:
+            return std::make_error_code (std::errc::operation_not_permitted);
+        case boundary_error_t::none:
+            break;
+    }
+    return {};
+}
+
+} // namespace detail
 
 class framework_exception_t : public std::exception
 {
@@ -58,9 +92,20 @@ class framework_exception_t : public std::exception
 
     bool is_retriable () const noexcept { return _retriable; }
 
+    /* Boundary conditions demoted from the public kind enum surface through
+     * the standard error-code facet: an empty code means a plain framework
+     * error, otherwise the mapped std::errc identifies the boundary. */
+    std::error_code code () const noexcept { return detail::boundary_error_code (_boundary); }
+
     const char *what () const noexcept override { return _message.c_str (); }
 
   private:
+    friend framework_exception_t detail_make_boundary_exception (detail::boundary_error_t state,
+                                                                 std::string message,
+                                                                 bool retriable);
+    friend detail::boundary_error_t
+    detail_boundary_state (const framework_exception_t &error) noexcept;
+
     static bool is_retriable_by_default (framework_error_kind_t kind) noexcept
     {
         return kind == framework_error_kind_t::route_not_connected
@@ -70,6 +115,39 @@ class framework_exception_t : public std::exception
     framework_error_kind_t _kind;
     std::string _message;
     bool _retriable;
+    detail::boundary_error_t _boundary = detail::boundary_error_t::none;
 };
+
+inline framework_exception_t detail_make_boundary_exception (detail::boundary_error_t state,
+                                                             std::string message,
+                                                             bool retriable)
+{
+    framework_exception_t error (framework_error_kind_t::request_failed, std::move (message),
+                                 retriable);
+    error._boundary = state;
+    return error;
+}
+
+inline detail::boundary_error_t
+detail_boundary_state (const framework_exception_t &error) noexcept
+{
+    return error._boundary;
+}
+
+namespace detail
+{
+
+inline framework_exception_t
+make_boundary_exception (boundary_error_t state, std::string message, bool retriable = false)
+{
+    return detail_make_boundary_exception (state, std::move (message), retriable);
+}
+
+inline boundary_error_t boundary_state (const framework_exception_t &error) noexcept
+{
+    return detail_boundary_state (error);
+}
+
+} // namespace detail
 
 } // namespace zlink::framework

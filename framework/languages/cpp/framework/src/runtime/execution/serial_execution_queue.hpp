@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "runtime/dispatch/offload_executor.hpp"
@@ -60,7 +60,7 @@ class serial_execution_queue_t
     mutable std::mutex _mutex;
     std::condition_variable _empty;
     std::deque<work_item_t> _queue;
-    std::vector<std::shared_ptr<detail::serial_yield_turn_t>> _active_turns;
+    std::vector<std::shared_ptr<detail::serial_turn_t>> _active_turns;
     std::vector<std::string> _active_names;
     bool _closed = false;
     bool _drain_scheduled = false;

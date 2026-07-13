@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Actors/player_actor.hpp"
@@ -56,7 +56,7 @@ class bingo_entry_spot_t : public entry_spot_t
     task_t<ensure_player_actor_res_t>
     ensure_player_actor (const ensure_player_actor_req_t &request);
 
-    void onCreateActor (player_actor_t &actor, const message_t &create_request)
+    void on_create_actor (player_actor_t &actor, const message_t &create_request)
     {
         const auto request = create_request.decode<ensure_player_actor_req_t> ();
         actor.display_name =
@@ -73,18 +73,18 @@ class bingo_entry_spot_t : public entry_spot_t
         const auto actor_id = actor.actor.actor_id;
         const auto actor_ref = actor_ref_for (actor);
         std::cout << "entry spot: actor destroy requested. actor=" << actor_id << std::endl;
-        (void) _context.destroyActor (actor_ref, const_cast<player_actor_t &> (actor));
+        (void) _context.destroy_actor (actor_ref, const_cast<player_actor_t &> (actor));
         std::cout << "entry spot: actor destroy completed. actor=" << actor_id << std::endl;
     }
 
-    void onLeaveActor (const player_actor_t &actor)
+    void on_leave_actor (const player_actor_t &actor)
     {
         joined_actor_ids.erase (
           std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor.actor_id),
           joined_actor_ids.end ());
     }
 
-    void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
     std::vector<std::string> created_actor_ids;
     std::vector<std::string> joined_actor_ids;

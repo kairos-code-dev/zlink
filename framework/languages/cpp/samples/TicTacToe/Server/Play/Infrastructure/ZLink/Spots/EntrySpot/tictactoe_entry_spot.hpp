@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Actors/player_actor.hpp"
@@ -46,7 +46,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
                                                spot_actor_request_context_t &,
                                                const observe_milestone_req_t &);
 
-    void onCreateActor (const player_actor_t &actor, const message_t &create_request)
+    void on_create_actor (const player_actor_t &actor, const message_t &create_request)
     {
         const auto request = create_request.decode<ensure_player_actor_req_t> ();
         actor.apply_player (
@@ -61,18 +61,18 @@ class tictactoe_entry_spot_t : public entry_spot_t
             return;
         }
         std::cout << "entry spot: actor destroy requested. actor=" << actor.actor_id << std::endl;
-        (void) _context.destroyActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        (void) _context.destroy_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
         std::cout << "entry spot: actor destroy completed. actor=" << actor.actor_id << std::endl;
     }
 
-    void onLeaveActor (const player_actor_t &actor)
+    void on_leave_actor (const player_actor_t &actor)
     {
         actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id),
                          actor_ids.end ());
         observers.erase (actor.actor_id);
     }
 
-    void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
     tictactoe_match_t room{"entry-match"};
     std::vector<std::string> created_actor_ids;

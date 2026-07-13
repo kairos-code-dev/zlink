@@ -1,10 +1,11 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "stream_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
@@ -149,7 +150,7 @@ class stream_session_dispatcher_t
         auto task = completion.task ();
         auto executor = stream_dispatch_executor ();
         if (!executor) {
-            return result_t<void>::failure (framework_error_kind_t::shutdown,
+            return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
                                             "stream dispatch executor is not running");
         }
         auto shared_completion =
@@ -165,8 +166,7 @@ class stream_session_dispatcher_t
                       });
                 }
                 catch (const framework_exception_t &error) {
-                    shared_completion->complete (result_t<void>::failure (
-                      error.kind (), error.what (), error.is_retriable ()));
+                    shared_completion->complete (detail::result_access_t::failure<void> (error));
                 }
                 catch (...) {
                     shared_completion->complete (result_t<void>::failure (
@@ -276,9 +276,9 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-result_t<void> stream_write_call_t::submit ()
+void stream_write_call_t::submit ()
 {
-    return _state->submit_now ();
+    _state->submit_now ().value ();
 }
 
 result_t<void> stream_write_call_t::submit_now ()
@@ -404,6 +404,26 @@ stream_header_t &stream_header_t::with_correlation_id (std::string correlation_i
     return *this;
 }
 
+std::optional<std::string_view> stream_header_t::flow_id () const
+{
+    if (_flow_id.empty ()) {
+        return std::nullopt;
+    }
+    return _flow_id;
+}
+
+std::optional<flow_origin_t> stream_header_t::flow_origin () const noexcept
+{
+    return _flow_origin;
+}
+
+stream_header_t &stream_header_t::with_flow (std::string flow_id, flow_origin_t origin)
+{
+    _flow_id = std::move (flow_id);
+    _flow_origin = origin;
+    return *this;
+}
+
 std::optional<std::string_view> stream_header_t::content_type () const
 {
     return metadata ("content_type");
@@ -466,25 +486,32 @@ stream_write_call_t stream_t::write_packet (const zlink::message_t &payload)
 stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t header,
                                                         zlink::message_t payload)
 {
+    /* Stream writes propagate the ambient flow (flow-correlation §3.2);
+     * control packets never carry the pair. */
+    if (!header.flow_id () && header.kind () != stream_message_kind_t::control) {
+        if (const auto &flow = runtime::flow_context_t::current ()) {
+            header.with_flow (flow->flow_id, flow->origin);
+        }
+    }
     auto state = _state;
     return stream_write_call_t (
       std::move (header), std::move (payload), state->compression_codec,
       [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
           if (state->closed.load (std::memory_order_acquire)) {
-              return result_t<void>::failure (framework_error_kind_t::disconnected,
+              return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                               "STREAM session is disconnected");
           }
           {
               const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
               if (state->closed.load (std::memory_order_acquire)) {
-                  return result_t<void>::failure (framework_error_kind_t::disconnected,
+                  return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                                   "STREAM session is disconnected");
               }
               if (state->transport_writer)
                   return state->transport_writer (submitted_header, submitted_payload);
           }
           if (state->closed.load (std::memory_order_acquire)) {
-              return result_t<void>::failure (framework_error_kind_t::disconnected,
+              return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                               "STREAM session is disconnected");
           }
           const std::lock_guard<std::mutex> lock (state->state_mutex);
@@ -701,10 +728,31 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
       static_cast<std::uint8_t> (stream_header_flags_t::has_request_seq)
       | static_cast<std::uint8_t> (stream_header_flags_t::has_metadata)
       | static_cast<std::uint8_t> (stream_header_flags_t::payload_compressed)
-      | static_cast<std::uint8_t> (stream_header_flags_t::has_correlation_id);
+      | static_cast<std::uint8_t> (stream_header_flags_t::has_correlation_id)
+      | static_cast<std::uint8_t> (stream_header_flags_t::has_flow_id);
     if ((raw_flags & ~known_flags) != 0) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "STREAM header contains unknown flags");
+    }
+    if (header.flow_id ().has_value () != header.flow_origin ().has_value ()) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "STREAM header flow id and origin must be present together");
+    }
+    if (header.flow_id () && !runtime::flow_id_t::is_valid (*header.flow_id ())) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "STREAM header flow id must be UUIDv7");
+    }
+    if (header.flow_origin ()) {
+        const auto raw_origin = static_cast<std::uint8_t> (*header.flow_origin ());
+        if (raw_origin < 1 || raw_origin > 4) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "STREAM header flow origin is invalid");
+        }
+        if (header.kind () == stream_message_kind_t::control) {
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "STREAM control packet must not carry flow fields");
+        }
     }
 
     if (auto valid_name =
@@ -767,8 +815,13 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
         return result_t<std::vector<std::uint8_t>>::failure (
           framework_error_kind_t::request_protocol_error, "STREAM correlation id is too large");
     }
+    const auto flow = header.flow_id ();
+    if (flow) {
+        flags = flags | stream_header_flags_t::has_flow_id;
+    }
 
     std::vector<std::uint8_t> bytes;
+    bytes.push_back (runtime::flow_id_t::format_marker);
     bytes.push_back (static_cast<std::uint8_t> (header.kind ()));
     bytes.push_back (static_cast<std::uint8_t> (header.codec ()));
     bytes.push_back (static_cast<std::uint8_t> (flags));
@@ -808,17 +861,25 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
         bytes.push_back (static_cast<std::uint8_t> (correlation->size ()));
         bytes.insert (bytes.end (), correlation->begin (), correlation->end ());
     }
+    if (flow) {
+        bytes.insert (bytes.end (), flow->begin (), flow->end ());
+        bytes.push_back (static_cast<std::uint8_t> (*header.flow_origin ()));
+    }
     return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
 }
 
 result_t<stream_header_t>
 stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
 {
-    if (bytes.size () < 4) {
+    if (bytes.size () < 5) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    "STREAM header is too short");
     }
     std::size_t offset = 0;
+    if (bytes[offset++] != runtime::flow_id_t::format_marker) {
+        return result_t<stream_header_t>::failure (framework_error_kind_t::request_protocol_error,
+                                                   "STREAM format marker is invalid");
+    }
     const auto kind = static_cast<stream_message_kind_t> (bytes[offset++]);
     const auto codec = static_cast<stream_codec_t> (bytes[offset++]);
     auto flags = static_cast<stream_header_flags_t> (bytes[offset++]);
@@ -914,6 +975,20 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
                        bytes.begin () + static_cast<std::ptrdiff_t> (offset + correlation_size));
         offset += correlation_size;
     }
+    std::string flow_id;
+    std::optional<flow_origin_t> flow_origin;
+    if (has_flag (flags, stream_header_flags_t::has_flow_id)) {
+        if (bytes.size () - offset < runtime::flow_id_t::encoded_length + 1) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM header flow fields are incomplete");
+        }
+        flow_id = std::string (
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset),
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset + runtime::flow_id_t::encoded_length));
+        offset += runtime::flow_id_t::encoded_length;
+        flow_origin = static_cast<flow_origin_t> (bytes[offset++]);
+    }
     if (offset != bytes.size ()) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    "STREAM header has trailing bytes");
@@ -924,11 +999,50 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
     if (!correlation.empty ()) {
         header.with_correlation_id (std::move (correlation));
     }
+    if (!flow_id.empty () && flow_origin) {
+        header.with_flow (std::move (flow_id), *flow_origin);
+    }
     if (auto valid = validate_header (header); !valid) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    valid.error ()->what ());
     }
     return result_t<stream_header_t>::success (std::move (header));
+}
+
+std::vector<std::uint8_t>
+stream_runtime_t::encode_session_closing_payload (stream_close_reason_t reason,
+                                                  std::string_view diagnostic)
+{
+    if (diagnostic.size () > 512) {
+        diagnostic = diagnostic.substr (0, 512);
+    }
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve (4 + diagnostic.size ());
+    bytes.push_back (1);
+    bytes.push_back (static_cast<std::uint8_t> (reason));
+    bytes.push_back (static_cast<std::uint8_t> ((diagnostic.size () >> 8) & 0xff));
+    bytes.push_back (static_cast<std::uint8_t> (diagnostic.size () & 0xff));
+    bytes.insert (bytes.end (), diagnostic.begin (), diagnostic.end ());
+    return bytes;
+}
+
+void stream_runtime_t::send_session_closing (stream_t &stream,
+                                             stream_close_reason_t reason,
+                                             std::string_view diagnostic) const noexcept
+{
+    try {
+        const auto payload_bytes = encode_session_closing_payload (reason, diagnostic);
+        stream_header_t closing (stream_message_kind_t::control, stream_codec_t::raw,
+                                 stream_header_flags_t::none, std::nullopt, "session-closing",
+                                 {});
+        stream
+          .write_packet_with_header (
+            std::move (closing),
+            zlink::message_t::from (std::string (payload_bytes.begin (), payload_bytes.end ())))
+          .submit ();
+    }
+    catch (...) {
+    }
 }
 
 stream_t stream_runtime_t::open_session (std::string stream_name) const
@@ -986,6 +1100,14 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
               "STREAM decompressed payload exceeds configured receive limit");
         }
     }
+    std::optional<std::string> inbound_flow_id;
+    if (auto id = header.flow_id ()) {
+        inbound_flow_id = std::string (*id);
+    }
+    auto flow_scope = runtime::flow_context_t::enter (
+      std::move (inbound_flow_id), header.flow_origin (),
+      detail::message_flow_tracer_t (_state->dispatch).capture_enabled (),
+      flow_origin_t::inbound);
     detail::message_flow_tracer_t (_state->dispatch).trace (message_flow_outcome_t::received, [&] {
         std::optional<std::string> correlation;
         if (auto id = header.correlation_id ()) {
@@ -1003,6 +1125,7 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                                     std::nullopt,
                                     std::nullopt};
     });
+    auto current_flow = runtime::flow_context_t::current ();
     auto dispatch_stream = stream;
     dispatch_stream._reply_header = header;
     auto dispatch_header = std::make_shared<stream_header_t> (header);
@@ -1014,7 +1137,9 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                              dispatch_stream = std::move (dispatch_stream),
                              dispatch_header = std::move (dispatch_header),
                              dispatch_context = std::move (dispatch_context),
-                             dispatch_payload = std::move (dispatch_payload)] () mutable {
+                             dispatch_payload = std::move (dispatch_payload),
+                             current_flow = std::move (current_flow)] () mutable {
+        runtime::flow_context_t::scope_t callback_flow (std::move (current_flow));
         return dispatch_packet_session (
           session, std::move (dispatch_stream), std::move (dispatch_header),
           std::move (dispatch_context), std::move (dispatch_payload));

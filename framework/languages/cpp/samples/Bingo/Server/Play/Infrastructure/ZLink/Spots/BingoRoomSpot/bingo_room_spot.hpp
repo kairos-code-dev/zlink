@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Actors/player_actor.hpp"
@@ -136,14 +136,14 @@ class bingo_room_spot_t : public spot_t
         }
     }
 
-    void onLeaveActor (const player_actor_t &actor)
+    void on_leave_actor (const player_actor_t &actor)
     {
         actors.erase (actor.actor.actor_id);
         observers.erase (actor.actor.actor_id);
         _game.leave (actor.actor.actor_id);
     }
 
-    void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
     const bingo_room_state_t &snapshot () const noexcept { return _game.snapshot (); }
 

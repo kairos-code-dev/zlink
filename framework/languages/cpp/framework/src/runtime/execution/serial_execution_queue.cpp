@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/execution/serial_execution_queue.hpp"
 
@@ -11,11 +11,11 @@
 namespace zlink::framework::runtime
 {
 
-class serial_yield_turn_impl_t final : public detail::serial_yield_turn_t,
-                                       public std::enable_shared_from_this<serial_yield_turn_impl_t>
+class serial_turn_handle_impl_t final : public detail::serial_turn_t,
+                                       public std::enable_shared_from_this<serial_turn_handle_impl_t>
 {
   public:
-    serial_yield_turn_impl_t (serial_execution_queue_t &queue,
+    serial_turn_handle_impl_t (serial_execution_queue_t &queue,
                               std::string name,
                               serial_execution_queue_t::async_completion_t complete) :
         _queue (queue), _name (std::move (name)), _complete (std::move (complete))
@@ -36,7 +36,7 @@ class serial_yield_turn_impl_t final : public detail::serial_yield_turn_t,
     detail::task_scheduler_t resume_scheduler () override
     {
         return [self = shared_from_this ()] (std::function<void ()> work) mutable {
-            if (self->_queue.try_post_async (self->_name + "-yield-resume",
+            if (self->_queue.try_post_async (self->_name + "-await-resume",
                                              [work = std::move (work)] (auto complete) mutable {
                                                  try {
                                                      work ();
@@ -173,7 +173,7 @@ void serial_execution_queue_t::close ()
 
 void serial_execution_queue_t::cancel_pending ()
 {
-    std::vector<std::shared_ptr<detail::serial_yield_turn_t>> active_turns;
+    std::vector<std::shared_ptr<detail::serial_turn_t>> active_turns;
     {
         std::lock_guard<std::mutex> lock (_mutex);
         _closed = true;
@@ -230,7 +230,7 @@ void serial_execution_queue_t::drain_loop ()
 
         auto name = item.name;
         try {
-            auto turn = std::make_shared<serial_yield_turn_impl_t> (
+            auto turn = std::make_shared<serial_turn_handle_impl_t> (
               *this, name, [this, name] (std::function<void ()> completion) mutable {
                   bool queue_closed = false;
                   {
@@ -251,7 +251,7 @@ void serial_execution_queue_t::drain_loop ()
                 _active_turns.push_back (turn);
                 _active_names.push_back (name);
             }
-            detail::serial_yield_turn_scope_t scope (turn);
+            detail::serial_turn_scope_t scope (turn);
             item.work ([turn = std::move (turn)] (std::function<void ()> completion) mutable {
                 (void) turn->complete (std::move (completion));
             });

@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
+
+#include "runtime/diagnostics/monitoring_runtime.hpp"
+#include "runtime/diagnostics/runtime_metrics.hpp"
 
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
@@ -253,6 +256,56 @@ int main ()
     app.metrics ().add_runtime_metrics ().record_runtime_metric ("active_http_requests", 3,
                                                                  {{"surface", "http"}});
 
+    /* runtime-metrics §4 catalog surface: the internal emitter fills unit,
+     * instrument kind and temporality; emission folds when no handler. */
+    std::vector<zlink::framework::metric_event_payload_t> catalog_events;
+    app.monitoring ().on<zlink::framework::metric_event_payload_t> (
+      [&] (const zlink::framework::metric_event_payload_t &event) {
+          if (event.source_name == "zlink.framework") {
+              catalog_events.push_back (event);
+          }
+      });
+    zlink::framework::runtime::runtime_metrics_t catalog_metrics (runtime.state ());
+    if (!catalog_metrics.enabled ()) {
+        return 20;
+    }
+    catalog_metrics.updown ("zlink.spot.count", "{spot}", 1, {{"kind", "user"}});
+    catalog_metrics.counter ("zlink.spot.created", "{spot}", 1, {{"kind", "user"}});
+    catalog_metrics.histogram ("zlink.channel.request.duration", "s", 0.25,
+                               {{"channel", "profile"}});
+    catalog_metrics.observable ("zlink.location.peers", "{peer}", 4);
+    if (catalog_events.size () != 4) {
+        return 21;
+    }
+    if (catalog_events[0].instrument_kind
+          != zlink::framework::metric_instrument_kind_t::updown
+        || catalog_events[0].temporality != zlink::framework::metric_temporality_t::delta
+        || catalog_events[0].unit != "{spot}"
+        || catalog_events[0].tags.at ("kind") != "user") {
+        return 22;
+    }
+    if (catalog_events[1].instrument_kind
+          != zlink::framework::metric_instrument_kind_t::counter
+        || catalog_events[1].temporality != zlink::framework::metric_temporality_t::delta) {
+        return 23;
+    }
+    if (catalog_events[2].instrument_kind
+          != zlink::framework::metric_instrument_kind_t::histogram
+        || catalog_events[2].temporality != zlink::framework::metric_temporality_t::sample
+        || catalog_events[2].unit != "s" || catalog_events[2].value != 0.25) {
+        return 24;
+    }
+    if (catalog_events[3].instrument_kind
+          != zlink::framework::metric_instrument_kind_t::observable
+        || catalog_events[3].temporality != zlink::framework::metric_temporality_t::current) {
+        return 25;
+    }
+    auto unsubscribed_state =
+      std::make_shared<zlink::framework::detail::monitoring_runtime_state_t> ();
+    if (zlink::framework::runtime::runtime_metrics_t (unsubscribed_state).enabled ()) {
+        return 26;
+    }
+
     if (socket_events != 1 || filtered_socket_events != 1 || location_events != 1
         || location_summary_events != 1 || spot_events != 1
         || stream_events != 2 || actor_events != 1 || metric_events != 1) {
@@ -448,6 +501,57 @@ int main ()
     if (auto_channel_events != 1 || auto_spot_events != 1) {
         return 15;
     }
+
+    /* graceful drain state machine (graceful-drain-handoff §6): idempotent
+     * shared operation, shared terminal result, readiness flip and drain
+     * lifecycle events without source registration. */
+    {
+        auto drain_app = zlink::framework::app_t::create ();
+        std::vector<zlink::framework::drain_state_t> transitions;
+        drain_app.monitoring ().on<zlink::framework::drain_event_t> (
+          [&] (const zlink::framework::drain_event_t &event) {
+              if (event.source_name == "drain") {
+                  transitions.push_back (event.state);
+              }
+          });
+        if (!drain_app.is_ready ()) {
+            return 30;
+        }
+        bool zero_deadline_rejected = false;
+        try {
+            (void) drain_app.drain (std::chrono::milliseconds (0));
+        }
+        catch (const zlink::framework::framework_exception_t &) {
+            zero_deadline_rejected = true;
+        }
+        if (!zero_deadline_rejected) {
+            return 31;
+        }
+        auto early_waiter = drain_app.await_drained ();
+        auto first = drain_app.drain (std::chrono::milliseconds (2000));
+        auto second = drain_app.drain (std::chrono::milliseconds (1));
+        const auto first_result = first.result ().value ();
+        const auto second_result = second.result ().value ();
+        const auto early_result = early_waiter.result ().value ();
+        if (!std::holds_alternative<zlink::framework::drained_t> (first_result)
+            || !std::holds_alternative<zlink::framework::drained_t> (second_result)
+            || !std::holds_alternative<zlink::framework::drained_t> (early_result)) {
+            return 32;
+        }
+        if (drain_app.is_ready ()) {
+            return 33;
+        }
+        const auto late_result = drain_app.await_drained ().result ().value ();
+        if (!std::holds_alternative<zlink::framework::drained_t> (late_result)) {
+            return 34;
+        }
+        if (transitions.empty ()
+            || transitions.front () != zlink::framework::drain_state_t::draining
+            || transitions.back () != zlink::framework::drain_state_t::drained) {
+            return 35;
+        }
+    }
+
 
     return 0;
 }

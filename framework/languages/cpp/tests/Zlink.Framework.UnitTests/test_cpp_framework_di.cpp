@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
@@ -82,6 +82,17 @@ int main ()
         return 12;
     }
 
+    struct unregistered_t
+    {
+    };
+    if (provider.get<unregistered_t> ().has_value ()) {
+        return 13;
+    }
+    const auto optional_singleton = provider.get<singleton_t> ();
+    if (!optional_singleton.has_value () || &optional_singleton->get () != &singleton_a) {
+        return 14;
+    }
+
     bool scoped_from_root_failed = false;
     try {
         (void) provider.get_required<scoped_t> ();
@@ -140,7 +151,7 @@ int main ()
     }
     catch (const zlink::framework::framework_exception_t &error) {
         shutdown_resolve_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::shutdown;
+          zlink::framework::detail::boundary_state (error) == zlink::framework::detail::boundary_error_t::shutdown;
     }
     if (!shutdown_resolve_failed) {
         return 10;

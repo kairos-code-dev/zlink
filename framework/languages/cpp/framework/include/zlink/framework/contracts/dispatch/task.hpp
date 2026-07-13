@@ -1,7 +1,6 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <condition_variable>
@@ -24,38 +23,38 @@ namespace detail
 
 using task_scheduler_t = std::function<void (std::function<void ()>)>;
 
-class serial_yield_turn_t
+class serial_turn_t
 {
   public:
-    virtual ~serial_yield_turn_t () = default;
+    virtual ~serial_turn_t () = default;
     virtual bool release () = 0;
     virtual bool released () const = 0;
     virtual task_scheduler_t resume_scheduler () = 0;
 };
 
-inline thread_local std::shared_ptr<serial_yield_turn_t> current_serial_yield_turn;
+inline thread_local std::shared_ptr<serial_turn_t> current_serial_turn_handle;
 
-inline std::shared_ptr<serial_yield_turn_t> capture_current_serial_yield_turn ()
+inline std::shared_ptr<serial_turn_t> capture_current_serial_turn ()
 {
-    return current_serial_yield_turn;
+    return current_serial_turn_handle;
 }
 
-class serial_yield_turn_scope_t
+class serial_turn_scope_t
 {
   public:
-    explicit serial_yield_turn_scope_t (std::shared_ptr<serial_yield_turn_t> turn) :
-        _previous (std::move (current_serial_yield_turn))
+    explicit serial_turn_scope_t (std::shared_ptr<serial_turn_t> turn) :
+        _previous (std::move (current_serial_turn_handle))
     {
-        current_serial_yield_turn = std::move (turn);
+        current_serial_turn_handle = std::move (turn);
     }
 
-    ~serial_yield_turn_scope_t () { current_serial_yield_turn = std::move (_previous); }
+    ~serial_turn_scope_t () { current_serial_turn_handle = std::move (_previous); }
 
-    serial_yield_turn_scope_t (const serial_yield_turn_scope_t &) = delete;
-    serial_yield_turn_scope_t &operator= (const serial_yield_turn_scope_t &) = delete;
+    serial_turn_scope_t (const serial_turn_scope_t &) = delete;
+    serial_turn_scope_t &operator= (const serial_turn_scope_t &) = delete;
 
   private:
-    std::shared_ptr<serial_yield_turn_t> _previous;
+    std::shared_ptr<serial_turn_t> _previous;
 };
 
 template <typename T>
@@ -199,7 +198,7 @@ template <typename T> class task_t
             }
             catch (const framework_exception_t &error) {
                 completion.complete (
-                  result_t<T>::failure (error.kind (), error.what (), error.is_retriable ()));
+                  detail::result_access_t::failure<T> (error));
             }
             catch (const std::exception &error) {
                 completion.complete (
@@ -272,7 +271,7 @@ template <> class task_t<void>
             }
             catch (const framework_exception_t &error) {
                 completion.complete (
-                  result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+                  detail::result_access_t::failure<void> (error));
             }
             catch (const std::exception &error) {
                 completion.complete (
@@ -353,25 +352,6 @@ template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_
     return output;
 }
 
-template <typename T> task_t<T> cancelable_task (task_t<T> task, cancellation_token_t token)
-{
-    if (!token.can_be_cancelled ()) {
-        return task;
-    }
-
-    auto source = std::make_shared<task_completion_source_t<T>> ();
-    auto output = source->task ();
-    auto observed = std::make_shared<task_t<T>> (std::move (task));
-    detail::observe_task_completion (
-      *observed, [source, observed] (const result_t<T> &result) mutable {
-          source->complete (result);
-      });
-    token.register_callback ([source] {
-        source->complete (result_t<T>::failure (framework_error_kind_t::cancelled,
-                                                "operation was cancelled"));
-    });
-    return output;
-}
 
 } // namespace detail
 

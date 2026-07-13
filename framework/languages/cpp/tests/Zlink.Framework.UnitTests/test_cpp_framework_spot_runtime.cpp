@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 #include <zlink.hpp>
@@ -11,6 +11,7 @@
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
@@ -33,10 +34,14 @@
 namespace
 {
 
-zlink::framework::spot_ref_t make_spot_ref (std::string node_rid, std::string spot_rid)
+zlink::routing_id_t make_target_rid (std::string value)
 {
-    return zlink::framework::spot_ref_t{.node_rid = zlink::routing_id_t::from (node_rid),
-                                        .spot_rid = zlink::routing_id_t::from (spot_rid)};
+    return zlink::routing_id_t::from (std::move (value));
+}
+
+zlink::routing_id_t default_target_rid ()
+{
+    return zlink::routing_id_t::from (std::uint32_t{0});
 }
 
 void add_string_serializer (zlink::framework::serializer_registry_t &serializers)
@@ -58,21 +63,23 @@ class test_spot_context_t : public zlink::framework::spot_context_t
     }
 };
 
-class recording_spot_location_resolver_t final : public zlink::framework::spot_location_resolver_t
+class recording_spot_location_resolver_t final
+    : public zlink::framework::runtime::spot_address_resolver_t
 {
   public:
-    zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>>
-    resolve_spot_ref (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    zlink::framework::task_t<std::optional<zlink::framework::runtime::spot_address_t>>
+    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
     {
         last_mesh_name = std::move (mesh_name);
         last_spot_rid = spot_rid.to_string ();
         ++calls;
-        return zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>> (
-          zlink::framework::result_t<std::optional<zlink::framework::spot_ref_t>>::success (
-            address));
+        return zlink::framework::task_t<
+          std::optional<zlink::framework::runtime::spot_address_t>> (
+          zlink::framework::result_t<
+            std::optional<zlink::framework::runtime::spot_address_t>>::success (address));
     }
 
-    std::optional<zlink::framework::spot_ref_t> address;
+    std::optional<zlink::framework::runtime::spot_address_t> address;
     int calls = 0;
     std::string last_mesh_name;
     std::string last_spot_rid;
@@ -174,7 +181,7 @@ inline void from_json (const nlohmann::json &json, player_actor_factory_t &value
 
 struct entry_spot_t : public zlink::framework::entry_spot_t
 {
-    void onCreateActor (player_actor_factory_t &actor, const zlink::framework::message_t &request)
+    void on_create_actor (player_actor_factory_t &actor, const zlink::framework::message_t &request)
     {
         ++created_count;
         created_payloads.push_back (request.decode<std::string> ());
@@ -187,7 +194,7 @@ struct entry_spot_t : public zlink::framework::entry_spot_t
         actor.joined_value += 10;
     }
 
-    void onLeaveActor (player_actor_factory_t &actor)
+    void on_leave_actor (player_actor_factory_t &actor)
     {
         ++left_count;
         actor.moved_value += 10;
@@ -196,7 +203,7 @@ struct entry_spot_t : public zlink::framework::entry_spot_t
         }
     }
 
-    void onDisconnectActor (player_actor_factory_t &) { ++disconnected_count; }
+    void on_disconnect_actor (player_actor_factory_t &) { ++disconnected_count; }
 
     int created_count{};
     int joined_count{};
@@ -382,7 +389,7 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void onLeaveActor (const stateful_relay_actor_t &)
+    void on_leave_actor (const stateful_relay_actor_t &)
     {
         if (fail_leave) {
             throw std::runtime_error ("leave-failed");
@@ -502,7 +509,7 @@ struct relay_entry_spot_t : public zlink::framework::entry_spot_t
         configure (entry_context);
     }
 
-    void onCreateActor (relay_actor_t &, const zlink::framework::message_t &request)
+    void on_create_actor (relay_actor_t &, const zlink::framework::message_t &request)
     {
         ++created_count;
         created_payloads.push_back (request.decode<std::string> ());
@@ -536,11 +543,11 @@ struct relay_spot_t : public zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void onLeaveActor (relay_actor_t &) { left_count++; }
+    void on_leave_actor (relay_actor_t &) { left_count++; }
 
     void on_actor_joined (relay_actor_t &) { joined_count++; }
 
-    void onDisconnectActor (relay_actor_t &) { disconnected_count++; }
+    void on_disconnect_actor (relay_actor_t &) { disconnected_count++; }
 
     relay_reply_t on_relay (relay_actor_t &actor,
                             zlink::framework::spot_actor_request_context_t &,
@@ -585,10 +592,10 @@ struct entry_dispatch_probe_spot_t : public zlink::framework::entry_spot_t
     {
         context.handlers ()
           .add_actor_request<&entry_dispatch_probe_spot_t::on_block> ("entry.block")
-          .add_actor_request<&entry_dispatch_probe_spot_t::on_yield> ("entry.yield");
+          .add_actor_request<&entry_dispatch_probe_spot_t::on_awaited> ("entry.await");
     }
 
-    void onCreateActor (entry_dispatch_probe_actor_t &, const zlink::framework::message_t &)
+    void on_create_actor (entry_dispatch_probe_actor_t &, const zlink::framework::message_t &)
     {
         ++created_count;
     }
@@ -619,17 +626,17 @@ struct entry_dispatch_probe_spot_t : public zlink::framework::entry_spot_t
     }
 
     zlink::framework::task_t<relay_reply_t>
-    on_yield (entry_dispatch_probe_actor_t &,
+    on_awaited (entry_dispatch_probe_actor_t &,
               zlink::framework::spot_actor_request_context_t &,
               const relay_request_t &)
     {
         zlink::framework::request_call_t<int> call (
-          "entry.yield", [] (const std::string &, std::chrono::milliseconds,
+          "entry.await", [] (const std::string &, std::chrono::milliseconds,
                              const zlink::framework::request_call_t<int>::metadata_map_t &) {
               return zlink::framework::task_t<int> (zlink::framework::result_t<int>::failure (
                 zlink::framework::framework_error_kind_t::request_failed, "should not submit"));
           });
-        const auto value = co_await call.yield ();
+        const auto value = co_await call.async ();
         co_return relay_reply_t{std::to_string (value)};
     }
 
@@ -730,7 +737,7 @@ struct stage_spot_t : public zlink::framework::spot_t
         actor.joined_value += 100;
     }
 
-    void onLeaveActor (player_actor_factory_t &actor)
+    void on_leave_actor (player_actor_factory_t &actor)
     {
         ++left_count;
         actor.moved_value += 100;
@@ -742,7 +749,7 @@ struct stage_spot_t : public zlink::framework::spot_t
         ++global_closing_count;
     }
 
-    void onDisconnectActor (player_actor_factory_t &) { ++disconnected_count; }
+    void on_disconnect_actor (player_actor_factory_t &) { ++disconnected_count; }
 
     int join_seen{};
     int packet_seen{};
@@ -782,7 +789,7 @@ struct erased_disconnect_spot_t : public zlink::framework::spot_t
     {
     }
 
-    void onDisconnectActor (player_actor_factory_t &) { ++disconnected_count; }
+    void on_disconnect_actor (player_actor_factory_t &) { ++disconnected_count; }
 
     int disconnected_count{};
 };
@@ -866,9 +873,9 @@ struct async_probe_spot_t : public zlink::framework::spot_t
         _context = context;
         context.handlers ()
           .add_actor_request<&async_probe_spot_t::slow> ("async.slow")
-          .add_actor_request<&async_probe_spot_t::slow_yield> ("async.slow-yield")
-          .add_actor_request<&async_probe_spot_t::request_yield> ("async.request-yield")
-          .add_actor_request<&async_probe_spot_t::join_yield> ("async.join-yield")
+          .add_actor_request<&async_probe_spot_t::slow_await> ("async.slow-await")
+          .add_actor_request<&async_probe_spot_t::request_await> ("async.request-await")
+          .add_actor_request<&async_probe_spot_t::join_await> ("async.join-await")
           .add_actor_request<&async_probe_spot_t::quick> ("async.quick");
     }
 
@@ -878,7 +885,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::task_t<move_reply_t>
-    slow_yield (player_actor_factory_t &,
+    slow_await (player_actor_factory_t &,
                 zlink::framework::spot_actor_request_context_t &context,
                 const move_request_t &request)
     {
@@ -887,18 +894,18 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_started = true;
             changed.notify_all ();
         }
-        const auto value = co_await _context.run_worker ([] { return 77; }).yield ();
+        const auto value = co_await _context.run_worker ([] { return 77; }).async ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
             changed.notify_all ();
         }
         co_return move_reply_t{value + request.value
-                               + (context.packet_name == "async.slow-yield" ? 0 : 1000)};
+                               + (context.packet_name == "async.slow-await" ? 0 : 1000)};
     }
 
     zlink::framework::task_t<move_reply_t>
-    request_yield (player_actor_factory_t &,
+    request_await (player_actor_factory_t &,
                    zlink::framework::spot_actor_request_context_t &,
                    const move_request_t &request)
     {
@@ -910,12 +917,12 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             changed.notify_all ();
         }
         zlink::framework::request_call_t<int> call (
-          "async.request-yield",
+          "async.request-await",
           [source] (const std::string &, std::chrono::milliseconds,
                     const zlink::framework::request_call_t<int>::metadata_map_t &) {
               return source->task ();
           });
-        const auto value = co_await call.yield ();
+        const auto value = co_await call.async ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
@@ -925,7 +932,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::task_t<move_reply_t>
-    join_yield (player_actor_factory_t &,
+    join_await (player_actor_factory_t &,
                 zlink::framework::spot_actor_request_context_t &,
                 const move_request_t &request)
     {
@@ -938,13 +945,14 @@ struct async_probe_spot_t : public zlink::framework::spot_t
           co_await _join_context
             .join_spot (zlink::framework::spot_rid_t::from_string ("async-join-target"),
                         zlink::framework::message_t::from (std::string ("join")))
-            .yield ();
+            .async ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
             changed.notify_all ();
         }
-        co_return move_reply_t{static_cast<int> (joined.actor->generation ()) + request.value};
+        co_return move_reply_t{
+          static_cast<int> (std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined).actor.generation ()) + request.value};
     }
 
     zlink::framework::task_t<move_reply_t>
@@ -1100,7 +1108,7 @@ struct auto_destroy_entry_spot_t : public zlink::framework::entry_spot_t
         ++joined_count;
         last_joined_moved_value = actor.moved_value;
         if (destroy_on_join && !actor.current_ref.empty ()) {
-            const auto destroyed = entry_context.destroyActor (actor.current_ref, actor).result ();
+            const auto destroyed = entry_context.destroy_actor (actor.current_ref, actor).result ();
             if (destroyed) {
                 ++destroyed_count;
             }
@@ -1130,7 +1138,7 @@ struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void onLeaveActor (player_actor_factory_t &) { ++left_count; }
+    void on_leave_actor (player_actor_factory_t &) { ++left_count; }
 
     relay_reply_t on_leave_request (player_actor_factory_t &actor,
                                     zlink::framework::spot_actor_request_context_t &,
@@ -1261,15 +1269,15 @@ int main ()
     const auto manager_created = context_manager.create_spot ("stage");
     if (manager_created.state != zlink::framework::spot_create_state_t::created
         || manager_created.context.spot_name () != "stage"
-        || !context_manager.find_spot (manager_created.spot_rid)
+        || !context_manager.find_spot (manager_created.spot_rid).result ().value ()
         || context_manager.spot_name_for (manager_created.spot_rid) != "stage"
         || !context_manager.resolve_spot (manager_created.spot_rid)
-        || context_manager.list_spots ().empty ()) {
+        || context_manager.list_spots ().result ().value ().empty ()) {
         return 133;
     }
     const auto manager_close = context_manager.close_spot (manager_created.spot_rid).result ();
     if (!manager_close || !manager_close.value ()
-        || context_manager.find_spot (manager_created.spot_rid)) {
+        || context_manager.find_spot (manager_created.spot_rid).result ().value ()) {
         return 135;
     }
     const auto manager_typed_create_count = stage_spot_t::create_count;
@@ -1290,7 +1298,7 @@ int main ()
         || manager_existing.state != zlink::framework::spot_create_state_t::existing
         || manager_get_or_create.spot_rid.value () != "manager-requested-stage"
         || manager_existing.spot_rid.value () != "manager-requested-stage"
-        || !context_manager.find_spot (manager_requested_rid)) {
+        || !context_manager.find_spot (manager_requested_rid).result ().value ()) {
         return 138;
     }
     if (!context_manager.close_spot (manager_typed_created.spot_rid).result ().value ()
@@ -1306,16 +1314,25 @@ int main ()
         empty_manager_create_failed =
           error.kind () == zlink::framework::framework_error_kind_t::spot_create_failed;
     }
-    if (!empty_manager_create_failed || empty_manager.find_spot (context.spot_rid ())
-        || !empty_manager.list_spots ().empty ()) {
+    if (!empty_manager_create_failed || empty_manager.find_spot (context.spot_rid ()).result ().value ()
+        || !empty_manager.list_spots ().result ().value ().empty ()) {
         return 136;
     }
-    context.send_to (zlink::framework::spot_ref_t{}, move_request_t{1})
-      .packet_name ("move")
-      .submit ();
+    bool empty_spot_route_send_rejected = false;
+    try {
+        context.send_to (default_target_rid (), default_target_rid (), move_request_t{1})
+          .submit ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_spot_route_send_rejected =
+          error.kind () == zlink::framework::framework_error_kind_t::spot_route_not_found;
+    }
+    if (!empty_spot_route_send_rejected) {
+        return 140;
+    }
     const auto empty_spot_route_request =
-      context.request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{1})
-        .packet_name ("move")
+      context.request_to<move_reply_t> (default_target_rid (), default_target_rid (),
+                                        move_request_t{1})
         .async ()
         .result ();
     if (empty_spot_route_request
@@ -1332,8 +1349,8 @@ int main ()
     auto no_route_context = no_route_spot.context;
     const auto no_route_request =
       no_route_context
-        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"), move_request_t{2})
-        .packet_name ("move")
+        .request_to<move_reply_t> (make_target_rid ("remote-node"),
+                                   make_target_rid ("remote-spot"), move_request_t{2})
         .async ()
         .result ();
     if (no_route_request
@@ -1369,9 +1386,9 @@ int main ()
     }
     const auto location_resolved_rid = zlink::framework::spot_rid_t::from_string ("location-stage");
     recording_spot_location_resolver_t location_resolver;
-    location_resolver.address =
-      zlink::framework::spot_ref_t{"manual-stage", zlink::routing_id_t::from ("location-node"),
-                                   zlink::routing_id_t::from ("location-stage")};
+    location_resolver.address = zlink::framework::runtime::spot_address_t{
+      "manual-stage", zlink::routing_id_t::from ("location-node"),
+      zlink::routing_id_t::from ("location-stage")};
     auto builder_runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
     builder_runtime.bind_spot_location_resolver (location_resolver);
     const auto location_resolved_route = builder_runtime.resolve_spot (location_resolved_rid);
@@ -1382,13 +1399,35 @@ int main ()
         return 114;
     }
 
+    /* graceful-drain-handoff §4-2: a draining node rejects new spot
+     * creation while existing spots keep serving. */
+    {
+        auto drain_flag = std::make_shared<std::atomic_bool> (true);
+        auto draining_runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
+        draining_runtime.bind_drain_flag (drain_flag);
+        bool draining_create_rejected = false;
+        try {
+            (void) builder.create_spot ("stage");
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            draining_create_rejected =
+              error.kind () == zlink::framework::framework_error_kind_t::request_rejected;
+        }
+        if (!draining_create_rejected) {
+            return 150;
+        }
+        drain_flag->store (false);
+    }
+
     auto close_create = builder.create_spot ("stage");
-    if (!builder.find_spot (close_create.spot_rid) || builder.list_spots ().empty ()) {
+    if (!builder.find_spot (close_create.spot_rid).result ().value ()
+        || builder.list_spots ().result ().value ().empty ()) {
         return 49;
     }
     const auto closing_count_before = stage_spot_t::global_closing_count;
     const auto close_result = close_create.context.close ().result ();
-    if (!close_result || !close_result.value () || builder.find_spot (close_create.spot_rid)
+    if (!close_result || !close_result.value ()
+        || builder.find_spot (close_create.spot_rid).result ().value ()
         || stage_spot_t::global_closing_count != closing_count_before + 1) {
         return 50;
     }
@@ -1420,7 +1459,7 @@ int main ()
         spot_type_mismatch_failed =
           error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch;
     }
-    if (!spot_type_mismatch_failed || builder.find_spot (requested_rid)->spot_name != "stage") {
+    if (!spot_type_mismatch_failed || builder.find_spot (requested_rid).result ().value ()->spot_name != "stage") {
         return 53;
     }
     stage_spot_t::reject_create = true;
@@ -1430,7 +1469,7 @@ int main ()
     if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
         || !rejected_create.reply
         || rejected_create.reply->decode<std::string> (manual_serializers) != "create-rejected"
-        || builder.find_spot (rejected_create.spot_rid)) {
+        || builder.find_spot (rejected_create.spot_rid).result ().value ()) {
         return 54;
     }
 
@@ -1558,13 +1597,13 @@ int main ()
         .value ();
     auto lifecycle_actor_context = lifecycle_actor.context ();
     player_actor_factory_t lifecycle_actor_state;
-    player_actor_factory_t destroyActor_state;
+    player_actor_factory_t destroy_actor_state;
     player_actor_factory_t rejected_actor_state;
     lifecycle_gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor_ref,
                                          zlink::framework::spot_rid_t spot_rid,
                                          const zlink::message_t &payload) {
         auto &actor_state = actor_ref.actor_id () == "rejected-player"  ? rejected_actor_state
-                            : actor_ref.actor_id () == "destroy-player" ? destroyActor_state
+                            : actor_ref.actor_id () == "destroy-player" ? destroy_actor_state
                                                                         : lifecycle_actor_state;
         return lifecycle_runtime.join_actor_to_spot<stage_spot_t> (actor_ref, std::move (spot_rid),
                                                                    actor_state, payload);
@@ -1573,20 +1612,23 @@ int main ()
       lifecycle_actor_context.join_spot (lifecycle_stage.spot_rid, std::string ("41"))
         .async ()
         .result ();
-    if (!lifecycle_join || lifecycle_join.value ().result_code != 0
-        || lifecycle_join.value ().reply.decode<std::string> (manual_serializers) != "42"
+    const auto *lifecycle_join_accepted =
+      lifecycle_join ? std::get_if<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (&lifecycle_join.value ()) : nullptr;
+    if (lifecycle_join_accepted == nullptr
+        || lifecycle_join_accepted->reply.decode<std::string> (manual_serializers) != "42"
         || lifecycle_stage_spot->join_seen != 41 || lifecycle_stage_spot->joined_count != 1
         || lifecycle_actor_state.joined_value != 100) {
         return 59;
     }
     auto stale_disconnect =
-      lifecycle_runtime.notify_onDisconnectActor (lifecycle_actor.ref (), lifecycle_actor_state);
+      lifecycle_runtime.notify_on_disconnect_actor (lifecycle_actor.ref (), lifecycle_actor_state);
     if (stale_disconnect
-        || stale_disconnect.error_kind () != framework_error_kind_t::actor_stale_generation
+        || (stale_disconnect.error () != nullptr
+         && zlink::framework::detail::boundary_state (*stale_disconnect.error ()) != zlink::framework::detail::boundary_error_t::stale_generation)
         || lifecycle_stage_spot->disconnected_count != 0) {
         return 67;
     }
-    auto current_disconnect = lifecycle_runtime.notify_onDisconnectActor (
+    auto current_disconnect = lifecycle_runtime.notify_on_disconnect_actor (
       lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
     if (!current_disconnect || lifecycle_stage_spot->disconnected_count != 1) {
         return 68;
@@ -1626,8 +1668,8 @@ int main ()
         zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("remote-session"),
                                        "player", "erased-player", 2));
     if (erased_stale_disconnect
-        || erased_stale_disconnect.error_kind ()
-             != framework_error_kind_t::actor_stale_generation) {
+        || (erased_stale_disconnect.error () != nullptr
+         && zlink::framework::detail::boundary_state (*erased_stale_disconnect.error ()) != zlink::framework::detail::boundary_error_t::stale_generation)) {
         return 131;
     }
     const auto erased_missing_disconnect =
@@ -1670,7 +1712,7 @@ int main ()
     }
     auto close_joined_spot = lifecycle_stage.context.close ().result ();
     if (!close_joined_spot || close_joined_spot.value ()
-        || !lifecycle_builder.find_spot (lifecycle_stage.spot_rid)) {
+        || !lifecycle_builder.find_spot (lifecycle_stage.spot_rid).result ().value ()) {
         return 60;
     }
 
@@ -1681,9 +1723,10 @@ int main ()
     auto rejected_runtime_join =
       rejected_context.join_spot (lifecycle_stage.spot_rid, std::string ("50")).async ().result ();
     lifecycle_stage_spot->accept_join = true;
-    if (!rejected_runtime_join || rejected_runtime_join.value ().result_code == 0
-        || rejected_runtime_join.value ().reply.decode<std::string> (manual_serializers)
-             != "rejected"
+    const auto *rejected_runtime_rejection =
+      rejected_runtime_join ? std::get_if<zlink::framework::actor_join_rejected_t<zlink::framework::message_t>> (&rejected_runtime_join.value ()) : nullptr;
+    if (rejected_runtime_rejection == nullptr
+        || rejected_runtime_rejection->reply.decode<std::string> (manual_serializers) != "rejected"
         || lifecycle_stage_spot->joined_count != 1
         || rejected_context.actor_ref ().node_rid ().value () != "local") {
         return 61;
@@ -1695,7 +1738,7 @@ int main ()
                                                const zlink::message_t &request) {
         lifecycle_entry_dispatch_payloads.push_back (request.to_string ());
         auto &actor_state =
-          actor_ref.actor_id () == "destroy-player" ? destroyActor_state : lifecycle_actor_state;
+          actor_ref.actor_id () == "destroy-player" ? destroy_actor_state : lifecycle_actor_state;
         return lifecycle_runtime.join_actor_to_entry_spot<entry_spot_t> (
           actor_ref, std::move (node_rid), actor_state, request);
     });
@@ -1726,7 +1769,7 @@ int main ()
         || lifecycle_entry_spot->created_payloads.size () != 1) {
         return 106;
     }
-    auto entry_disconnect = lifecycle_runtime.notify_onDisconnectActor (
+    auto entry_disconnect = lifecycle_runtime.notify_on_disconnect_actor (
       lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
     if (!entry_disconnect || lifecycle_entry_spot->disconnected_count != 1) {
         return 69;
@@ -1734,22 +1777,22 @@ int main ()
     if (!lifecycle_gateway.manager ().find ("joined-player")) {
         return 86;
     }
-    auto destroyActor = lifecycle_gateway.manager ().create ("player", "destroy-player").value ();
-    auto destroy_context = destroyActor.context ();
+    auto destroy_actor = lifecycle_gateway.manager ().create ("player", "destroy-player").value ();
+    auto destroy_context = destroy_actor.context ();
     auto destroy_stage_join =
       destroy_context.join_spot (lifecycle_stage.spot_rid, std::string ("43")).async ().result ();
     if (!destroy_stage_join || lifecycle_stage_spot->joined_count != 2) {
         return 70;
     }
     auto direct_destroy =
-      lifecycle_entry_context.destroyActor (destroy_context.actor_ref (), destroyActor_state)
+      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
         .result ();
     if (direct_destroy
         || direct_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 71;
     }
     auto empty_destroy =
-      lifecycle_entry_context.destroyActor (zlink::framework::actor_ref_t{}, destroyActor_state)
+      lifecycle_entry_context.destroy_actor (zlink::framework::actor_ref_t{}, destroy_actor_state)
         .result ();
     if (empty_destroy
         || empty_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
@@ -1757,10 +1800,10 @@ int main ()
     }
     auto wrong_owner_destroy =
       lifecycle_entry_context
-        .destroyActor (
+        .destroy_actor (
           zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("other-node"),
                                          "player", "destroy-player", 1),
-          destroyActor_state)
+          destroy_actor_state)
         .result ();
     if (wrong_owner_destroy
         || wrong_owner_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
@@ -1778,22 +1821,22 @@ int main ()
     }
     auto stale_destroy =
       lifecycle_entry_context
-        .destroyActor (
+        .destroy_actor (
           zlink::framework::actor_ref_t (destroy_context.actor_ref ().node_rid (),
                                          std::string (destroy_context.actor_ref ().actor_type ()),
                                          std::string (destroy_context.actor_ref ().actor_id ()),
                                          destroy_context.actor_ref ().generation () + 1),
-          destroyActor_state)
+          destroy_actor_state)
         .result ();
     if (!stale_destroy || !lifecycle_gateway.manager ().find ("destroy-player")) {
         return 109;
     }
     const auto entry_left_before_destroy = lifecycle_entry_spot->left_count;
     auto destroy_result =
-      lifecycle_entry_context.destroyActor (destroy_context.actor_ref (), destroyActor_state)
+      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
         .result ();
     auto duplicate_destroy =
-      lifecycle_entry_context.destroyActor (destroy_context.actor_ref (), destroyActor_state)
+      lifecycle_entry_context.destroy_actor (destroy_context.actor_ref (), destroy_actor_state)
         .result ();
     if (!destroy_result || !duplicate_destroy
         || lifecycle_entry_spot->left_count != entry_left_before_destroy) {
@@ -1853,7 +1896,8 @@ int main ()
                                        leave_actor_state)
                          .result ();
     if (stale_leave
-        || stale_leave.error_kind () != framework_error_kind_t::actor_stale_generation) {
+        || (stale_leave.error () != nullptr
+         && zlink::framework::detail::boundary_state (*stale_leave.error ()) != zlink::framework::detail::boundary_error_t::stale_generation)) {
         return 112;
     }
     auto unjoined_actor =
@@ -1875,7 +1919,7 @@ int main ()
         return 77;
     }
     auto context_leave_destroy =
-      lifecycle_entry_context.destroyActor (context_leave.value (), leave_actor_state).result ();
+      lifecycle_entry_context.destroy_actor (context_leave.value (), leave_actor_state).result ();
     if (!context_leave_destroy) {
         return 78;
     }
@@ -1931,7 +1975,7 @@ int main ()
         .async ()
         .result ();
     if (!auto_destroy_initial_entry_join
-        || auto_destroy_initial_entry_join.value ().result_code != 0
+        || !std::holds_alternative<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (auto_destroy_initial_entry_join.value ())
         || auto_destroy_entry->joined_count != 1 || auto_destroy_entry->destroyed_count != 0) {
         return 95;
     }
@@ -1939,14 +1983,15 @@ int main ()
       auto_destroy_context.join_spot (auto_destroy_stage_created.spot_rid, std::string ("46"))
         .async ()
         .result ();
-    if (!auto_destroy_stage_join || auto_destroy_stage_join.value ().result_code != 0
-        || auto_destroy_stage->joined_count != 1) {
+    const auto *auto_destroy_stage_accepted =
+      auto_destroy_stage_join ? std::get_if<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (&auto_destroy_stage_join.value ()) : nullptr;
+    if (auto_destroy_stage_accepted == nullptr || auto_destroy_stage->joined_count != 1) {
         return 96;
     }
     auto_destroy_entry->destroy_on_join = true;
     auto auto_destroy_leave =
       auto_destroy_stage_created.context
-        .leave_actor (auto_destroy_stage_join.value ().actor.value (), auto_destroy_actor_state)
+        .leave_actor (auto_destroy_stage_accepted->actor, auto_destroy_actor_state)
         .result ();
     if (!auto_destroy_leave) {
         return 97;
@@ -2004,7 +2049,8 @@ int main ()
         .result ();
     auto packet_leave_stage_join =
       packet_leave_runtime.join_actor_to_spot<actor_packet_self_leave_spot_t> (
-        packet_leave_initial_join.value ().actor.value (), packet_leave_stage_created.spot_rid,
+        std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (packet_leave_initial_join.value ()).actor,
+        packet_leave_stage_created.spot_rid,
         packet_leave_actor_state, zlink::message_t{});
     if (!packet_leave_stage_join || packet_leave_stage_join.value ().result_code != 0) {
         return 101;
@@ -3437,29 +3483,28 @@ int main ()
     }
     auto yield_actor =
       entry_dispatch_gateway.manager ()
-        .create ("entry-dispatch-player", "actor-yield", std::string ("create-yield"))
+        .create ("entry-dispatch-player", "actor-await_turn", std::string ("create-await_turn"))
         .value ();
-    auto yield_dispatch = entry_dispatch_runtime.relay_actor_packet (
-      yield_actor.ref (), yield_actor.context (), "entry.yield",
+    auto local_actor_dispatch = entry_dispatch_runtime.relay_actor_packet (
+      yield_actor.ref (), yield_actor.context (), "entry.await",
       zlink::message_t::from (std::string ("3")), relay_provider, relay_serializers);
-    if (yield_dispatch) {
+    if (local_actor_dispatch) {
         return 125;
     }
-    if (!yield_dispatch.error ()
-        || std::string (yield_dispatch.error ()->what ())
-               .find ("yield requires a framework Spot handler turn")
+    if (!local_actor_dispatch.error ()
+        || std::string (local_actor_dispatch.error ()->what ()).find ("should not submit")
              == std::string::npos) {
         return 126;
     }
 
     auto close_after_actor_left = lifecycle_stage.context.close ().result ();
     if (!close_after_actor_left || !close_after_actor_left.value ()
-        || lifecycle_builder.find_spot (lifecycle_stage.spot_rid)) {
+        || lifecycle_builder.find_spot (lifecycle_stage.spot_rid).result ().value ()) {
         return 63;
     }
     auto close_entry_with_actor = lifecycle_entry.context.close ().result ();
     if (!close_entry_with_actor || close_entry_with_actor.value ()
-        || !lifecycle_builder.find_spot (lifecycle_entry.spot_rid)) {
+        || !lifecycle_builder.find_spot (lifecycle_entry.spot_rid).result ().value ()) {
         return 64;
     }
     const auto entry_left_before_manual_leave = lifecycle_entry_spot->left_count;
@@ -3476,7 +3521,7 @@ int main ()
     }
     auto close_empty_entry = lifecycle_entry.context.close ().result ();
     if (!close_empty_entry || !close_empty_entry.value ()
-        || lifecycle_builder.find_spot (lifecycle_entry.spot_rid)) {
+        || lifecycle_builder.find_spot (lifecycle_entry.spot_rid).result ().value ()) {
         return 66;
     }
 
@@ -3623,7 +3668,8 @@ int main ()
     }
     auto empty_context_request =
       empty_context
-        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"), move_request_t{1})
+        .request_to<move_reply_t> (make_target_rid ("remote-node"),
+                                   make_target_rid ("remote-spot"), move_request_t{1})
         .async ()
         .result ();
     if (empty_context_request
@@ -3876,7 +3922,7 @@ int main ()
     }
     auto quick_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.quick", 9); });
-    if (quick_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
+    if (quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
         return 53;
     }
     if (slow_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
@@ -3912,7 +3958,7 @@ int main ()
 
     async_spot.reset_probe ();
     auto yield_future =
-      std::async (std::launch::async, [&] { return invoke_async ("async.slow-yield", 2); });
+      std::async (std::launch::async, [&] { return invoke_async ("async.slow-await", 2); });
     if (!async_spot.wait_slow_started () || !async_scheduler->wait_worker_job_count (1)) {
         return 59;
     }
@@ -3948,8 +3994,8 @@ int main ()
     }
 
     async_spot.reset_probe ();
-    auto request_yield_future =
-      std::async (std::launch::async, [&] { return invoke_async ("async.request-yield", 4); });
+    auto request_await_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.request-await", 4); });
     auto request_source = async_spot.wait_request_source ();
     if (!request_source) {
         return 64;
@@ -3971,23 +4017,23 @@ int main ()
         return 66;
     }
     request_source->complete (zlink::framework::result_t<int>::success (90));
-    if (request_yield_future.wait_for (std::chrono::milliseconds (500))
+    if (request_await_future.wait_for (std::chrono::milliseconds (500))
         != std::future_status::ready) {
         return 67;
     }
-    const auto request_yield_result = request_yield_future.get ();
-    if (!request_yield_result
+    const auto request_await_result = request_await_future.get ();
+    if (!request_await_result
         || spot_serializers.get<move_reply_t> ()
                .deserialize (
-                 zlink::framework::detail::encoded_payload_from_raw (request_yield_result.value ()))
+                 zlink::framework::detail::encoded_payload_from_raw (request_await_result.value ()))
                .value
              != 94) {
         return 68;
     }
 
     async_spot.reset_probe ();
-    auto join_yield_future =
-      std::async (std::launch::async, [&] { return invoke_async ("async.join-yield", 5); });
+    auto join_await_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.join-await", 5); });
     {
         std::unique_lock lock (async_join_mutex);
         if (!async_join_changed.wait_for (lock, std::chrono::milliseconds (500),
@@ -4015,20 +4061,20 @@ int main ()
         async_join_release = true;
         async_join_changed.notify_all ();
     }
-    if (join_yield_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+    if (join_await_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
         return 72;
     }
-    const auto join_yield_result = join_yield_future.get ();
-    if (!join_yield_result
+    const auto join_await_result = join_await_future.get ();
+    if (!join_await_result
         || spot_serializers.get<move_reply_t> ()
                .deserialize (
-                 zlink::framework::detail::encoded_payload_from_raw (join_yield_result.value ()))
+                 zlink::framework::detail::encoded_payload_from_raw (join_await_result.value ()))
                .value
              != 36) {
         return 73;
     }
 
-    stage_spot.onLeaveActor (actor);
+    stage_spot.on_leave_actor (actor);
     if (stage_spot.left_count != 1 || actor.moved_value != 156) {
         return 26;
     }
@@ -4088,24 +4134,26 @@ int main ()
     }
 
     context
-      .send_to (make_spot_ref (std::string (remote_route->node_rid.value ()),
-                               std::string (remote_route->spot_rid.value ())),
+      .send_to (make_target_rid (std::string (remote_route->node_rid.value ())),
+                make_target_rid (std::string (remote_route->spot_rid.value ())),
                 state_update_t{2})
       .submit ();
 
     auto request_result =
       context
-        .request_to<move_reply_t> (make_spot_ref (std::string (remote_route->node_rid.value ()),
-                                                  std::string (remote_route->spot_rid.value ())),
+        .request_to<move_reply_t> (make_target_rid (std::string (remote_route->node_rid.value ())),
+                                   make_target_rid (std::string (remote_route->spot_rid.value ())),
                                    move_request_t{3})
         .async ()
         .result ();
-    if (request_result || request_result.error_kind () != framework_error_kind_t::timeout) {
+    if (request_result || (request_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*request_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 16;
     }
 
     auto missing_route_result =
-      context.request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{4})
+      context.request_to<move_reply_t> (default_target_rid (), default_target_rid (),
+                                        move_request_t{4})
         .async ()
         .result ();
     if (missing_route_result

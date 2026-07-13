@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Configuration/consumer_options.hpp"
 #include "consumer_host_factory.hpp"

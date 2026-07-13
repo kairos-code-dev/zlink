@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
@@ -76,7 +76,6 @@ class bind_courier_handler_t
           co_await _routes.request_to_node (sample_names_t::courier_actor_node_route_channel,
                                     zlink::routing_id_t::from (node),
                                     ensure_courier_actor_req_t{request.courier_id})
-            .packet_name (ensure_courier_actor_req_t::packet_name)
             .template async<ensure_courier_actor_res_t> ();
         auto binding = _directory.remember (ensured, request.session_route);
         co_return bind_courier_res_t{binding.courier_id, binding.actor, binding.session_route};
@@ -107,7 +106,6 @@ class gateway_offer_delivery_handler_t
           co_await _routes.request_to_node (sample_names_t::courier_actor_node_route_channel,
                                     zlink::routing_id_t::from (
                                       std::string (binding.actor.node_rid.value ())), request)
-            .packet_name (offer_delivery_req_t::packet_name)
             .template async<offer_delivery_res_t> ();
         co_return reply;
     }
@@ -137,7 +135,7 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::courier_route_channel)
           .enable_server (topology.courier_route_endpoint)
           .use_handler_group ("courier-gateway");
-        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
+        options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from ("delivery-courier-gateway"));
         options.handlers ()

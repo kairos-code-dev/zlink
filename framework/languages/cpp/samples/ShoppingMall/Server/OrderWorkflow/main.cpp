@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Common/workflow_logic.hpp"
 #include "../Configuration/location_store.hpp"
@@ -166,21 +166,21 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
-        options.add_route_mesh_channel (order_workflow_channel_for (instance.instance_id))
+        options.add_route_mesh (order_workflow_channel_for (instance.instance_id))
           .enable_server (instance.route_endpoint)
           .set_routing_id (instance.route_rid)
           .add_request_handler<workflow_route_handlers_t,
                                ensure_order_workflow_spot_req_t,
                                ok_res_t> (
             ensure_order_workflow_spot_req_t::packet_name, &workflow_route_handlers_t::ensure);
-        options.add_route_mesh_channel (order_workflow_spot_route_channel_for (instance.instance_id))
+        options.add_route_mesh (sample_names_t::order_spot_route)
           .enable_server (instance.spot_route_endpoint)
           .set_routing_id (instance.spot_rid);
         options.add_spot_mesh (sample_names_t::order_spot_discovery)
           .enable_router (instance.spot_router_endpoint)
           .set_routing_id (instance.spot_rid)
           .enable_pub_sub (instance.spot_endpoint)
-          .accept_route_mesh (order_workflow_spot_route_channel_for (instance.instance_id))
+          .accept_route_mesh (sample_names_t::order_spot_route)
           .add_spot<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
             [topology] { return std::make_shared<order_workflow_spot_t> (topology); });

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
@@ -166,12 +166,12 @@ int main ()
       close_timer, 1, [&] (const zlink::framework::timer_tick_t &) {
           const auto close_result = close_context.close ().result ();
           close_requested_inside_callback = close_result && close_result.value ();
-          spot_visible_during_callback = builder.find_spot (close_created.spot_rid).has_value ();
+          spot_visible_during_callback = builder.find_spot (close_created.spot_rid).result ().value ().has_value ();
       });
     if (!close_tick || !close_requested_inside_callback || !spot_visible_during_callback) {
         return 14;
     }
-    if (builder.find_spot (close_created.spot_rid)) {
+    if (builder.find_spot (close_created.spot_rid).result ().value ()) {
         return 15;
     }
 
@@ -222,7 +222,8 @@ int main ()
     }
 
     auto closed_result = runtime.dispatch_fire_count (timer, 1);
-    if (closed_result || closed_result.error_kind () != framework_error_kind_t::closed) {
+    if (closed_result || (closed_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*closed_result.error ()) != zlink::framework::detail::boundary_error_t::closed)) {
         return 11;
     }
 

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -28,6 +28,16 @@ class dispatch_error_reporter_t
     void report (message_dispatch_error_event_t event) const noexcept
     {
         reported_count ().fetch_add (1, std::memory_order_relaxed);
+        if (event.flow_id.has_value () != event.flow_origin.has_value ()) {
+            event.flow_id.reset ();
+            event.flow_origin.reset ();
+        }
+        if (!event.flow_id) {
+            if (const auto &flow = runtime::flow_context_t::current ()) {
+                event.flow_id = flow->flow_id;
+                event.flow_origin = flow->origin;
+            }
+        }
         // off silences the default error log; every other mode keeps reporting
         // errors (errors_only is the default). A registered observer still fires
         // regardless of mode — it is an explicit, separate subscription.
@@ -39,7 +49,7 @@ class dispatch_error_reporter_t
           std::move (event.packet_name), std::move (event.channel_name), std::move (event.topic),
           std::move (event.correlation_id), std::move (event.source_rid),
           std::move (event.spot_rid), std::move (event.actor_id), std::nullopt, event.reason,
-          event.action, event.exception});
+          event.action, event.exception, event.flow_id, event.flow_origin});
     }
 
     static std::uint64_t reported () noexcept
@@ -84,6 +94,9 @@ class dispatch_error_reporter_t
             }
             if (event.correlation_id) {
                 add ("corr", *event.correlation_id);
+            }
+            if (event.flow_id) {
+                add ("flow", *event.flow_id);
             }
             if (event.source_rid) {
                 add ("src", *event.source_rid);

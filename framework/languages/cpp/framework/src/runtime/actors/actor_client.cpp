@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 
@@ -32,16 +32,10 @@ actor_send_call_t::actor_send_call_t (actor_client_t &client,
 {
 }
 
-actor_send_call_t &actor_send_call_t::packet_name (std::string packet_name)
+void actor_send_call_t::submit ()
 {
-    _packet_name = std::move (packet_name);
-    return *this;
-}
-
-task_t<void> actor_send_call_t::async ()
-{
-    return _client->send_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
-                                          std::move (_message));
+    detail::submit_one_way_task (_client->send_to_actor_erased (
+      std::move (_actor_ref), std::move (_packet_name), std::move (_message)));
 }
 
 actor_request_call_t::actor_request_call_t (actor_client_t &client,
@@ -53,12 +47,6 @@ actor_request_call_t::actor_request_call_t (actor_client_t &client,
     _packet_name (std::move (packet_name)),
     _request (std::move (request))
 {
-}
-
-actor_request_call_t &actor_request_call_t::packet_name (std::string packet_name)
-{
-    _packet_name = std::move (packet_name);
-    return *this;
 }
 
 actor_request_call_t &actor_request_call_t::timeout (std::chrono::milliseconds timeout)
@@ -165,7 +153,7 @@ class actor_client_impl_t final : public actor_client_t
         // the actor was reachable, just still moving (config-10 ST-F6). Any other
         // stale is terminal and already returned from the loop body below.
         const auto on_deadline = [] () -> result_t<message_t> {
-            return result_t<message_t>::failure (framework_error_kind_t::timeout,
+            return detail::boundary_failure<message_t> (detail::boundary_error_t::timed_out,
                                                  "actor request timed out", true);
         };
         // A stale means "retry" only while the actor is moving/committing; a

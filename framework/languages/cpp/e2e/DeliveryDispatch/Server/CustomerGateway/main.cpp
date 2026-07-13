@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
@@ -146,7 +146,6 @@ class customer_entry_spot_t : public entry_spot_t
         actor.context.bound_session ()
           .send (delivery_status_notify_t{status.delivery_id, status.status, status.courier_id,
                                           status.occurred_at})
-          .packet_name (delivery_status_notify_t::packet_name)
           .submit ();
     }
 
@@ -196,7 +195,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
                 stream.reply_packet (reply).submit ();
                 co_return;
             }
-            actor.relay (payload).submit ();
+            co_await actor.relay (payload);
             co_return;
         }
         const auto request = payload.parse_json<subscribe_delivery_req_t> ();
@@ -226,7 +225,9 @@ class customer_gateway_session_t final : public packet_stream_session_t
         _sessions.subscribe (actor_id, request.delivery_id, stream);
         stream.reply_packet (reply).submit ();
         std::cerr << "deliverydispatch customer-session: bound customer actor="
-                  << std::string (joined.actor->actor_id ()) << "\n";
+                  << std::string (
+                       std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined).actor.actor_id ())
+                  << "\n";
         std::cerr << "deliverydispatch customer-session: subscribed customer="
                   << sample_names_t::customer_id << " delivery=" << request.delivery_id << "\n";
     }
@@ -286,7 +287,6 @@ class delivery_status_fanout_handler_t
                   << notify.delivery_id << " status=" << notify.status << "\n";
         actor->bound_session ()
           .send (notify)
-          .packet_name (delivery_status_notify_t::packet_name)
           .submit ();
         co_return;
     }

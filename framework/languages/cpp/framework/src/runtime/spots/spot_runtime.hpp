@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "actor_transfer_coordinator.hpp"
@@ -6,6 +6,7 @@
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -57,7 +58,8 @@ class spot_node_builder_state_t
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     dispatch_options_t dispatch;
     runtime::location_lifecycle_t *location_lifecycle = nullptr;
-    spot_location_resolver_t *spot_location_resolver = nullptr;
+    runtime::spot_address_resolver_t *spot_location_resolver = nullptr;
+    std::shared_ptr<std::atomic_bool> drain_flag;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::atomic_bool stopping{false};
     std::map<std::string, spot_rid_t> actor_spot_rids;
@@ -88,8 +90,8 @@ class spot_node_builder_state_t
     struct actor_transfer_registration_t
     {
         std::type_index actor_type{typeid (void)};
-        std::function<result_t<message_t> (const void *)> transfer_out;
-        std::function<result_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in;
+        std::function<task_t<message_t> (const void *)> transfer_out;
+        std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in;
     };
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
     std::function<result_t<void> (const actor_ref_t &)> update_actor_registry_ref;
@@ -201,15 +203,21 @@ class spot_context_state_t
     std::map<
       std::type_index,
       std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>>
-      onCreateActor_callbacks;
-    std::map<std::type_index, std::function<void (void *, void *)>> onLeaveActor_callbacks;
-    std::map<std::type_index, std::function<void (void *, void *)>> onDisconnectActor_callbacks;
+      on_create_actor_callbacks;
+    std::map<std::type_index, std::function<void (void *, void *)>> on_leave_actor_callbacks;
+    std::map<std::type_index, std::function<void (void *, void *)>> on_disconnect_actor_callbacks;
     bool close_requested = false;
     bool closed = false;
     std::size_t actor_count = 0;
     mutable std::mutex callback_mutex;
     std::thread::id callback_thread;
     std::size_t callback_depth = 0;
+
+    bool has_active_callback () const
+    {
+        std::lock_guard<std::mutex> lock (callback_mutex);
+        return callback_depth > 0;
+    }
 };
 
 inline void record_actor_route_unlocked (spot_node_builder_state_t &state,
@@ -293,7 +301,11 @@ class spot_node_runtime_t
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);
     void detach_native_node ();
     void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
-    void bind_spot_location_resolver (spot_location_resolver_t &resolver);
+    void bind_spot_location_resolver (runtime::spot_address_resolver_t &resolver);
+    void bind_drain_flag (std::shared_ptr<std::atomic_bool> flag);
+    /* In-flight probe for the drain worker: true while any spot callback of
+     * this node is still executing (graceful-drain-handoff §4-4). */
+    bool has_active_callbacks () const;
     std::shared_ptr<service::spot_node_t> native_node () const;
     result_t<void> send_spot_mesh_parts (
       const zlink::routing_id_t &target_node_rid,
@@ -511,7 +523,7 @@ class spot_node_runtime_t
     }
 
     template <typename TActor>
-    result_t<void> notify_onDisconnectActor (const actor_ref_t &actor_ref, TActor &actor)
+    result_t<void> notify_on_disconnect_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
         if (actor_ref.empty ()) {
             return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
@@ -525,7 +537,7 @@ class spot_node_runtime_t
         const auto found_generation = _state->actor_generations.find (key);
         if (found_generation != _state->actor_generations.end ()
             && found_generation->second != actor_ref.generation ()) {
-            return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
+            return detail::boundary_failure<void> (detail::boundary_error_t::stale_generation,
                                             "actor generation is stale");
         }
         auto context = find_context (found_location->second);
@@ -533,11 +545,11 @@ class spot_node_runtime_t
             return result_t<void>::success ();
         }
         try {
-            notify_onDisconnectActor<TActor> (*context->_state, actor);
+            notify_on_disconnect_actor<TActor> (*context->_state, actor);
             return result_t<void>::success ();
         }
         catch (const framework_exception_t &error) {
-            return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+            return detail::result_access_t::failure<void> (error);
         }
         catch (const std::exception &error) {
             return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
@@ -597,35 +609,35 @@ class spot_node_runtime_t
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_onCreateActor_callback = requires (TSpot & spot, TActor &actor)
+    static constexpr bool has_on_create_actor_callback = requires (TSpot & spot, TActor &actor)
     {
-        spot.onCreateActor (actor);
+        spot.on_create_actor (actor);
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_framework_payload_onCreateActor_callback =
+    static constexpr bool has_framework_payload_on_create_actor_callback =
       requires (TSpot & spot, TActor &actor, const message_t &request)
     {
-        spot.onCreateActor (actor, request);
+        spot.on_create_actor (actor, request);
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_raw_payload_onCreateActor_callback =
+    static constexpr bool has_raw_payload_on_create_actor_callback =
       requires (TSpot & spot, TActor &actor, const zlink::message_t &request)
     {
-        spot.onCreateActor (actor, request);
+        spot.on_create_actor (actor, request);
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_onLeaveActor_callback = requires (TSpot & spot, TActor &actor)
+    static constexpr bool has_on_leave_actor_callback = requires (TSpot & spot, TActor &actor)
     {
-        spot.onLeaveActor (actor);
+        spot.on_leave_actor (actor);
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_onDisconnectActor_callback = requires (TSpot & spot, TActor &actor)
+    static constexpr bool has_on_disconnect_actor_callback = requires (TSpot & spot, TActor &actor)
     {
-        spot.onDisconnectActor (actor);
+        spot.on_disconnect_actor (actor);
     };
 
     static std::string actor_key (const actor_ref_t &actor_ref)
@@ -657,32 +669,32 @@ class spot_node_runtime_t
                   static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
               }
           };
-        context_state.onCreateActor_callbacks[std::type_index (typeid (TActor))] =
+        context_state.on_create_actor_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor, const zlink::message_t &request,
               serializer_registry_t &serializers) {
               if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                            && has_framework_payload_onCreateActor_callback<TSpot, TActor>) {
-                  static_cast<TSpot *> (spot)->onCreateActor (
+                            && has_framework_payload_on_create_actor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_create_actor (
                     *static_cast<TActor *> (actor), message_t::from_raw (request, &serializers));
               } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                                   && has_raw_payload_onCreateActor_callback<TSpot, TActor>) {
-                  static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor),
+                                   && has_raw_payload_on_create_actor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor),
                                                               request);
               } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                                   && has_onCreateActor_callback<TSpot, TActor>) {
-                  static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
+                                   && has_on_create_actor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor));
               }
           };
-        context_state.onLeaveActor_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
+        context_state.on_leave_actor_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
                                                                                       void *actor) {
-            if constexpr (has_onLeaveActor_callback<TSpot, TActor>) {
-                static_cast<TSpot *> (spot)->onLeaveActor (*static_cast<TActor *> (actor));
+            if constexpr (has_on_leave_actor_callback<TSpot, TActor>) {
+                static_cast<TSpot *> (spot)->on_leave_actor (*static_cast<TActor *> (actor));
             }
         };
-        context_state.onDisconnectActor_callbacks[std::type_index (typeid (TActor))] =
+        context_state.on_disconnect_actor_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
-              if constexpr (has_onDisconnectActor_callback<TSpot, TActor>) {
-                  static_cast<TSpot *> (spot)->onDisconnectActor (*static_cast<TActor *> (actor));
+              if constexpr (has_on_disconnect_actor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_disconnect_actor (*static_cast<TActor *> (actor));
               }
           };
         auto committed =
@@ -691,7 +703,7 @@ class spot_node_runtime_t
                        actor_ref.generation () + 1);
         if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
-                notify_onCreateActor<TActor> (context_state, actor, create_request);
+                notify_on_create_actor<TActor> (context_state, actor, create_request);
             }
         }
         notify_on_actor_joined<TActor> (context_state, actor);
@@ -719,16 +731,16 @@ class spot_node_runtime_t
         if (state.actor_count > 0) {
             state.actor_count--;
         }
-        notify_onLeaveActor<TActor> (state, actor);
+        notify_on_leave_actor<TActor> (state, actor);
     }
 
     template <typename TActor>
-    void notify_onCreateActor (spot_context_state_t &state,
+    void notify_on_create_actor (spot_context_state_t &state,
                                TActor &actor,
                                const zlink::message_t &request)
     {
-        const auto found = state.onCreateActor_callbacks.find (std::type_index (typeid (TActor)));
-        if (found != state.onCreateActor_callbacks.end () && state.spot_instance) {
+        const auto found = state.on_create_actor_callbacks.find (std::type_index (typeid (TActor)));
+        if (found != state.on_create_actor_callbacks.end () && state.spot_instance) {
             if (!state.channel_runtime || !state.channel_runtime->serializers) {
                 throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                              "spot create actor requires a serializer registry");
@@ -757,10 +769,10 @@ class spot_node_runtime_t
         }
     }
 
-    template <typename TActor> void notify_onLeaveActor (spot_context_state_t &state, TActor &actor)
+    template <typename TActor> void notify_on_leave_actor (spot_context_state_t &state, TActor &actor)
     {
-        const auto found = state.onLeaveActor_callbacks.find (std::type_index (typeid (TActor)));
-        if (found != state.onLeaveActor_callbacks.end () && state.spot_instance) {
+        const auto found = state.on_leave_actor_callbacks.find (std::type_index (typeid (TActor)));
+        if (found != state.on_leave_actor_callbacks.end () && state.spot_instance) {
             if (!state.run_serial_sync ("spot-lifecycle-leave", [&] {
                     found->second (state.spot_instance.get (), &actor);
                 })) {
@@ -771,11 +783,11 @@ class spot_node_runtime_t
     }
 
     template <typename TActor>
-    void notify_onDisconnectActor (spot_context_state_t &state, TActor &actor)
+    void notify_on_disconnect_actor (spot_context_state_t &state, TActor &actor)
     {
         const auto found =
-          state.onDisconnectActor_callbacks.find (std::type_index (typeid (TActor)));
-        if (found != state.onDisconnectActor_callbacks.end () && state.spot_instance) {
+          state.on_disconnect_actor_callbacks.find (std::type_index (typeid (TActor)));
+        if (found != state.on_disconnect_actor_callbacks.end () && state.spot_instance) {
             if (!state.run_serial_sync ("spot-lifecycle-disconnect", [&] {
                     found->second (state.spot_instance.get (), &actor);
                 })) {

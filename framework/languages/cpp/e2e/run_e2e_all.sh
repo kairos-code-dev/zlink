@@ -23,8 +23,9 @@ CONFIGS=(
   DiscoveryRegistryHa
   DeliveryDispatch
   RuntimeMonitoring
-  YieldDispatch
+  AutomaticTurnDispatch
   ToActorMessaging
+  ObservabilityOps
 )
 
 START_ORDER_VARIANTS=(

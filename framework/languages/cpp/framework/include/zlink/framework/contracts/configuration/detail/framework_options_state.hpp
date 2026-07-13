@@ -1,7 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <zlink/framework/contracts/configuration/drain.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
+#include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
@@ -318,6 +320,10 @@ struct framework_options_state_t
     zlink_builder_t *active_zlink = nullptr;
     std::set<std::string> client_server_channels;
     std::set<std::string> fanout_channels;
+    std::map<std::string, endpoint_connections_t> client_endpoint_connections;
+    std::map<std::string, endpoint_connections_t> subscriber_endpoint_connections;
+    std::map<std::string, endpoint_connections_t> spot_router_endpoint_connections;
+    std::map<std::string, endpoint_connections_t> spot_pub_sub_endpoint_connections;
     std::set<std::string> client_server_channels_with_client;
     std::set<std::string> client_server_channels_with_server;
     std::set<std::string> fanout_channels_with_publisher;
@@ -330,6 +336,7 @@ struct framework_options_state_t
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
+    std::map<std::string, spot_drain_policy_t> spot_drain_policies;
     bool use_in_memory_location_stores = false;
     bool has_location_store_instance = false;
     // In-flight handoff (spot-actor.ko.md 10.4): deployment override for the

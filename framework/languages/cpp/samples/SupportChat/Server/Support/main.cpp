@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_topology.hpp"
@@ -394,7 +394,7 @@ class conversation_spot_t : public spot_t
                       << " participant=" << participant_id << "\n";
             return;
         }
-        (*actor)->context.bound_session ().send (message).packet_name (packet_name).submit ();
+        (*actor)->context.bound_session ().send (message).submit ();
         std::cerr << "supportchat conversation: bound push packet=" << packet_name
                   << " participant=" << participant_id << "\n";
     }
@@ -463,7 +463,7 @@ class support_entry_spot_t : public entry_spot_t
         return spot_actor_join_response_t::accept ();
     }
 
-    void onCreateActor (support_user_actor_t &actor, const zlink::framework::message_t &request)
+    void on_create_actor (support_user_actor_t &actor, const zlink::framework::message_t &request)
     {
         apply_actor_profile (actor, request.decode<ensure_support_user_actor_req_t> ());
     }
@@ -504,7 +504,9 @@ class support_entry_spot_t : public entry_spot_t
         auto joined =
           co_await actor.context.join_spot (spot_rid, join_conversation_req_t {})
             .async<join_conversation_res_t> ();
-        co_return open_conversation_res_t{conversation_id, joined.reply.state};
+        const auto join_state =
+          std::visit ([] (const auto &value) { return value.reply.state; }, joined);
+        co_return open_conversation_res_t{conversation_id, join_state};
     }
 
   private:
@@ -617,8 +619,14 @@ class ensure_agent_conversation_handler_t
             .join_spot (spot_rid_t::from_string (request.conversation_id),
                         join_conversation_req_t {})
             .async<join_conversation_res_t> ();
+        const auto *joined_accepted =
+          std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
+        const auto join_state =
+          std::visit ([] (const auto &value) { return value.reply.state; }, joined);
         co_return ensure_agent_conversation_res_t{
-          snapshot_of (joined.actor.value_or (actor.value ().ref ())), joined.reply.state};
+          snapshot_of (joined_accepted != nullptr ? joined_accepted->actor
+                                                  : actor.value ().ref ()),
+          join_state};
     }
 
   private:
@@ -790,7 +798,7 @@ int main (int argc, char **argv)
           .listen (topology.support_http_url)
           .map_health ("/health")
           .map_post<supportchat_assert_handler_t> ("/self-check/assert");
-        options.add_route_mesh_channel ("supportchat.session.actor.route")
+        options.add_route_mesh ("supportchat.session.actor.route")
           .enable_server (topology.support_actor_route_endpoint)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from ("supportchat-support"));

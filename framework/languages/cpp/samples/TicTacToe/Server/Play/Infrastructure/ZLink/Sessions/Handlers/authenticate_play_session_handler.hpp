@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Handlers/ensure_player_actor_handler.hpp"
@@ -88,7 +88,8 @@ class authenticate_play_session_handler_t
                               create_request)
             .async ();
         trace_tictactoe_auth ("join-entry-spot-complete", ensured.actor.actor_id);
-        if (joined.result_code != 0) {
+        if (!std::holds_alternative<
+              framework::actor_join_accepted_t<framework::message_t>> (joined)) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
                                                           "Player entry spot join was rejected.");
         }

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Shared/registry_messaging_contracts.hpp"
@@ -133,7 +133,6 @@ class missing_request_handler_t
     request_failure_res_t handle (const profile_req_t &request)
     {
         auto call = _channels.request (api_channel, request)
-                      .packet_name ("MissingProfileReq")
                       .timeout (std::chrono::milliseconds (3000))
                       .async<profile_res_t> ();
         const auto &reply = call.result ();
@@ -162,7 +161,7 @@ class missing_command_handler_t
 
     operation_status_t handle (const profile_msg_t &command)
     {
-        _channels.send (api_channel, command).packet_name ("MissingProfileMsg").submit ();
+        _channels.send (api_channel, command).submit ();
         return {.status = "sent"};
     }
 

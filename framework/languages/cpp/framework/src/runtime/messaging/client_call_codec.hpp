@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "runtime/messaging/envelope_codec.hpp"
@@ -55,7 +55,7 @@ class client_call_codec_t
             const auto error = _failure_mapper.error_header_exception (
               header.value ().error_code.value_or ("request_failed"),
               header.value ().error_message.value_or (error_message), operation_name);
-            return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());
+            return detail::result_access_t::failure<TReply> (error);
         }
         auto body = _codec.decode_body (reply);
         if (!body) {
@@ -68,7 +68,7 @@ class client_call_codec_t
               detail::encoded_payload_from_raw (body.value ())));
         }
         catch (const framework_exception_t &error) {
-            return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());
+            return detail::result_access_t::failure<TReply> (error);
         }
     }
 

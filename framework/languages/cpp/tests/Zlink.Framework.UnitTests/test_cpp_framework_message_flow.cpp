@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 // Verifies the message-flow tracing feature: dispatch_diagnostics_options_t::
 // message_flow now actually gates a structured, correlation-id-keyed log stream

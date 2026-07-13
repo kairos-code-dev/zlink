@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../Shared/messages.hpp"
 
@@ -293,7 +293,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t
         _context = fw::entry_spot_context_t (context);
     }
 
-    void onCreateActor (transfer_actor_t &actor, const fw::message_t &create_request)
+    void on_create_actor (transfer_actor_t &actor, const fw::message_t &create_request)
     {
         if (!create_request.empty ()) {
             const auto request = create_request.decode<e2e::actor_create_req_t> ();
@@ -320,7 +320,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                          std::to_string (actor.state_version));
     }
 
-    void onLeaveActor (const transfer_actor_t &actor)
+    void on_leave_actor (const transfer_actor_t &actor)
     {
         if (actor.actor_type == e2e::actor_type_no_adapter) {
             g_evidence->add ("transfer", actor.actor_id, "transfer_out_empty_default",
@@ -346,9 +346,12 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                         .async<e2e::join_target_res_t> ();
         g_evidence->add (request.scenario, actor.actor_id, "commit_request",
                          request.target_spot_rid);
+        const auto *joined_accepted =
+          std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
-                                         joined.result_code == 0 && joined.reply.accepted,
+                                         joined_accepted != nullptr
+                                           && joined_accepted->reply.accepted,
                                          g_evidence->node_rid (),
                                          request.target_spot_rid,
                                          actor.state_version,
@@ -364,7 +367,6 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                                           std::string (_context.spot_rid ().value ()),
                                           g_evidence->node_rid (), request.marker,
                                           actor.state_version})
-          .packet_name (e2e::bound_push_notify_t::packet_name)
           .submit ();
         g_evidence->add (request.scenario, actor.actor_id, "bound_push", request.marker);
         return e2e::bound_push_res_t{request.scenario,      actor.actor_id,
@@ -451,7 +453,7 @@ class transfer_user_spot_t : public fw::spot_t
         }
     }
 
-    void onLeaveActor (const transfer_actor_t &actor)
+    void on_leave_actor (const transfer_actor_t &actor)
     {
         g_evidence->add ("transfer", actor.actor_id, "target_leave",
                          std::string (_context.spot_rid ().value ()));
@@ -468,9 +470,12 @@ class transfer_user_spot_t : public fw::spot_t
                         .async<e2e::join_target_res_t> ();
         g_evidence->add (request.scenario, actor.actor_id, "commit_request",
                          request.target_spot_rid);
+        const auto *joined_accepted =
+          std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
-                                         joined.result_code == 0 && joined.reply.accepted,
+                                         joined_accepted != nullptr
+                                           && joined_accepted->reply.accepted,
                                          g_evidence->node_rid (),
                                          request.target_spot_rid,
                                          actor.state_version,
@@ -511,7 +516,6 @@ class transfer_user_spot_t : public fw::spot_t
                                           std::string (_context.spot_rid ().value ()),
                                           g_evidence->node_rid (), request.marker,
                                           actor.state_version})
-          .packet_name (e2e::bound_push_notify_t::packet_name)
           .submit ();
         g_evidence->add (request.scenario, actor.actor_id, "bound_push", request.marker);
         return e2e::bound_push_res_t{request.scenario,      actor.actor_id,
@@ -607,7 +611,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
             stream.reply_packet (reply).submit ();
             co_return;
         }
-        actor->relay (payload).submit ();
+        co_await actor->relay (payload);
     }
 
   private:
@@ -755,7 +759,9 @@ class create_actor_handler_t
                         .join_entry_spot (fw::node_rid_t::from_string (_evidence.node_rid ()),
                                           request)
                         .async ();
-        const auto &ref = joined.actor ? *joined.actor : bound.context ().actor_ref ();
+        const auto *joined_accepted = std::get_if<fw::actor_join_accepted_t<fw::message_t>> (&joined);
+        const auto &ref =
+          joined_accepted != nullptr ? joined_accepted->actor : bound.context ().actor_ref ();
         co_return json_response (nlohmann::json (e2e::actor_create_res_t{
           request.actor_id, request.actor_type, std::string (ref.node_rid ().value ()),
           static_cast<std::int64_t> (ref.generation ())}));
@@ -796,17 +802,18 @@ class actor_ref_handler_t
     fw::actor_directory_t &_directory;
 };
 
-std::string error_kind_name (fw::framework_error_kind_t kind)
+std::string error_kind_name (const fw::framework_exception_t &error)
 {
-    switch (kind) {
+    if (fw::detail::boundary_state (error) == fw::detail::boundary_error_t::timed_out) {
+        return "TimeoutException";
+    }
+    switch (error.kind ()) {
         case fw::framework_error_kind_t::actor_location_stale:
             return "ActorLocationStale";
-        case fw::framework_error_kind_t::timeout:
-            return "TimeoutException";
         case fw::framework_error_kind_t::actor_route_not_found:
             return "ActorRouteNotFound";
         default:
-            return "FrameworkError:" + std::to_string (static_cast<int> (kind));
+            return "FrameworkError:" + std::to_string (static_cast<int> (error.kind ()));
     }
 }
 
@@ -830,7 +837,6 @@ class join_actor_handler_t
         try {
             const auto ref = require_actor_ref (_directory, actor_id);
             auto result = co_await _actors.request_to_actor (ref, request)
-                            .packet_name (e2e::join_target_req_t::packet_name)
                             .timeout (std::chrono::seconds (10))
                             .async<e2e::join_target_res_t> ();
             _evidence.add (request.scenario, actor_id,
@@ -840,10 +846,10 @@ class join_actor_handler_t
         }
         catch (const fw::framework_exception_t &error) {
             _evidence.add (request.scenario, actor_id, "join_failed",
-                           error_kind_name (error.kind ()));
+                           error_kind_name (error));
             co_return json_response (nlohmann::json (e2e::join_target_res_t{
               request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
-              error_kind_name (error.kind ())}));
+              error_kind_name (error)}));
         }
     }
 
@@ -869,7 +875,6 @@ class probe_actor_handler_t
         const auto request = parse_body (http_request).get<e2e::probe_req_t> ();
         const auto ref = require_actor_ref (_directory, actor_id);
         auto response = co_await _actors.request_to_actor (ref, request)
-                          .packet_name (e2e::probe_req_t::packet_name)
                           .timeout (std::chrono::seconds (10))
                           .async<e2e::probe_res_t> ();
         co_return json_response (nlohmann::json (response));
@@ -898,7 +903,6 @@ class probe_ref_handler_t
             auto reply = co_await _actors
                            .request_to_actor (ref,
                                               e2e::probe_req_t{request.scenario, request.marker})
-                           .packet_name (e2e::probe_req_t::packet_name)
                            .timeout (std::chrono::milliseconds (request.timeout_ms))
                            .async<e2e::probe_res_t> ();
             co_return json_response (
@@ -906,7 +910,7 @@ class probe_ref_handler_t
         }
         catch (const fw::framework_exception_t &error) {
             co_return json_response (nlohmann::json (e2e::actor_ref_probe_res_t{
-              false, std::nullopt, error_kind_name (error.kind ())}));
+              false, std::nullopt, error_kind_name (error)}));
         }
     }
 
@@ -928,10 +932,8 @@ class send_ref_handler_t
         const auto ref = fw::actor_ref_t (fw::node_rid_t::from_string (request.node_rid),
                                           e2e::actor_type_stateful, actor_id,
                                           static_cast<std::uint64_t> (request.generation));
-        co_await _actors
-          .send_to_actor (ref, e2e::handoff_packet_msg_t{request.scenario, request.marker})
-          .packet_name (e2e::handoff_packet_msg_t::packet_name)
-          .async ();
+        _actors.send_to_actor (ref, e2e::handoff_packet_msg_t{request.scenario, request.marker})
+          .submit ();
         co_return json_response (nlohmann::json::object ());
     }
 
@@ -955,7 +957,6 @@ class bound_push_handler_t
         const auto request = parse_body (http_request).get<e2e::bound_push_req_t> ();
         const auto ref = require_actor_ref (_directory, actor_id);
         auto response = co_await _actors.request_to_actor (ref, request)
-                          .packet_name (e2e::bound_push_req_t::packet_name)
                           .timeout (std::chrono::seconds (10))
                           .async<e2e::bound_push_res_t> ();
         co_return json_response (nlohmann::json (response));

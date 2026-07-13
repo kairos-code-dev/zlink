@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/codecs/serializer.hpp>
@@ -17,8 +17,7 @@ inline result_t<zlink::message_t> current_exception_to_message_result (const cha
         throw;
     }
     catch (const framework_exception_t &error) {
-        return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                    error.is_retriable ());
+        return detail::result_access_t::failure<zlink::message_t> (error);
     }
     catch (const std::exception &error) {
         return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,

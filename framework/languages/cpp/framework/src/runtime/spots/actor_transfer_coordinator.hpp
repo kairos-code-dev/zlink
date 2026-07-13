@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
-#include <zlink/framework/contracts/locations/spot_ref.hpp>
 
 #include <chrono>
 #include <cstddef>

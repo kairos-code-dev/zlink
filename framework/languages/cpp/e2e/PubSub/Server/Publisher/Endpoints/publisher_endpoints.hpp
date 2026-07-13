@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../Configuration/publisher_options.hpp"
@@ -25,7 +25,7 @@ inline zlink::framework::http_response_t publish_from_query (
 
     auto call = publisher.publish (event_channel, topic->second, event_msg_t{value->second});
     if (packet_name != nullptr) {
-        call.packet_name (packet_name);
+        call;
     }
     call.submit ();
     evidence.add (std::string ("published|topic=") + topic->second + "|value=" + value->second

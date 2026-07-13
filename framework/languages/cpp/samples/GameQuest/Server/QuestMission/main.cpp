@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
@@ -281,14 +281,14 @@ int main (int argc, char **argv)
           .enable_server (topology.selected_mission_route_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
-        options.add_route_mesh_channel (quest_spot_route_channel_for (topology.mission_name))
+        options.add_route_mesh (sample_names_t::quest_spot_route)
           .enable_server (topology.selected_mission_spot_route_endpoint ())
           .set_routing_id (topology.selected_mission_rid ());
         options.add_spot_mesh (sample_names_t::quest_spot_discovery)
           .enable_router (topology.selected_mission_spot_router_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .enable_pub_sub (topology.selected_mission_spot_endpoint ())
-          .accept_route_mesh (quest_spot_route_channel_for (topology.mission_name))
+          .accept_route_mesh (sample_names_t::quest_spot_route)
           .add_spot<player_quest_spot_t> (
             sample_names_t::player_quest_spot,
             [quest_store_ptr, topology] {

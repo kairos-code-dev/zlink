@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework.hpp>
@@ -30,6 +30,7 @@ struct sample_names_t
       "shoppingmall.order.workflow.";
     static constexpr const char *order_workflow_spot_route_channel_prefix =
       "shoppingmall.order.workflow.spot.route.";
+    static constexpr const char *order_spot_route = "shoppingmall.order.spot.route";
 };
 
 inline std::string order_workflow_channel_for (const std::string &instance_id)

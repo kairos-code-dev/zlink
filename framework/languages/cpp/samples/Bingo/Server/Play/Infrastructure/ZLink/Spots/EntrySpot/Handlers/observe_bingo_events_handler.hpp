@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../bingo_entry_spot.hpp"
@@ -24,8 +24,10 @@ bingo_entry_spot_t::observe_bingo_events (
       request.room_id, actor.actor.actor_id, display_name, true};
     auto joined = co_await actor.context.join_spot (observer_rid, join_request)
                     .async<bingo_room_join_res_t> ();
+    const auto &joined_accepted =
+      std::get<framework::actor_join_accepted_t<bingo_room_join_res_t>> (joined);
     co_return observe_bingo_events_res_t{
-      true, std::string (joined.actor->node_rid ().value ())};
+      true, std::string (joined_accepted.actor.node_rid ().value ())};
 }
 
 } // namespace zlink::samples::bingo

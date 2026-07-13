@@ -1,10 +1,11 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/configuration/logging.hpp>
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -19,12 +20,6 @@ enum class handler_execution_t
 {
     inline_on_runtime = 0,
     offload = 1
-};
-
-enum class dispatch_mode_t
-{
-    compiled = 1,
-    dynamic = 2
 };
 
 enum class unhandled_dispatch_action_t
@@ -147,6 +142,16 @@ enum class dispatch_error_action_t
     drop = 1
 };
 
+/* Root origin of a message flow (flow-correlation §4.2). Wire values are
+ * fixed: 1=inbound, 2=timer, 3=application, 4=lifecycle. */
+enum class flow_origin_t : std::uint8_t
+{
+    inbound = 1,
+    timer = 2,
+    application = 3,
+    lifecycle = 4
+};
+
 struct message_dispatch_error_event_t
 {
     dispatch_error_surface_t surface;
@@ -161,6 +166,9 @@ struct message_dispatch_error_event_t
     std::optional<std::string> source_rid;
     std::optional<std::string> correlation_id;
     std::exception_ptr exception;
+    /* Optional pair: both present or both absent (flow-correlation §8). */
+    std::optional<std::string> flow_id;
+    std::optional<flow_origin_t> flow_origin;
 };
 
 struct message_flow_event_t
@@ -179,6 +187,9 @@ struct message_flow_event_t
     std::optional<dispatch_error_reason_t> error_reason;
     std::optional<dispatch_error_action_t> error_action;
     std::exception_ptr exception;
+    /* Optional pair: both present or both absent (flow-correlation §8). */
+    std::optional<std::string> flow_id;
+    std::optional<flow_origin_t> flow_origin;
 };
 
 class message_flow_observer_t
@@ -190,8 +201,6 @@ class message_flow_observer_t
 
 struct dispatch_options_t
 {
-    dispatch_mode_t spot_dispatch_mode = dispatch_mode_t::compiled;
-    dispatch_mode_t stream_dispatch_mode = dispatch_mode_t::compiled;
     unhandled_dispatch_options_t unhandled;
     dispatch_diagnostics_options_t diagnostics;
     std::shared_ptr<message_flow_observer_t> message_flow_observer;

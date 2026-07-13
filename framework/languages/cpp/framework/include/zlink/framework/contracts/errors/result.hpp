@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/errors/error.hpp>
@@ -8,6 +8,11 @@
 
 namespace zlink::framework
 {
+
+namespace detail
+{
+struct result_access_t;
+} // namespace detail
 
 template <typename T> class result_t
 {
@@ -52,6 +57,8 @@ template <typename T> class result_t
     }
 
   private:
+    friend struct detail::result_access_t;
+
     explicit result_t (T value) : _value (std::move (value)) {}
     explicit result_t (framework_exception_t error) : _error (std::move (error)) {}
 
@@ -93,10 +100,46 @@ template <> class result_t<void>
     }
 
   private:
+    friend struct detail::result_access_t;
+
     result_t () = default;
     explicit result_t (framework_exception_t error) : _error (std::move (error)) {}
 
     std::optional<framework_exception_t> _error;
 };
+
+namespace detail
+{
+
+struct result_access_t
+{
+    template <typename T> static result_t<T> failure (framework_exception_t error)
+    {
+        return result_t<T> (std::move (error));
+    }
+};
+
+template <typename T>
+result_t<T> boundary_failure (boundary_error_t state, std::string message, bool retriable = false)
+{
+    return result_access_t::failure<T> (
+      make_boundary_exception (state, std::move (message), retriable));
+}
+
+/* Copies the source failure (kind, retriable, message AND boundary state) into
+ * a result of another value type, so awaited-boundary information survives
+ * cross-type propagation. */
+template <typename T, typename U>
+result_t<T> propagate_failure (const result_t<U> &from, std::string fallback_message)
+{
+    const auto *error = from.error ();
+    if (error != nullptr) {
+        return result_access_t::failure<T> (*error);
+    }
+    return result_access_t::failure<T> (framework_exception_t (
+      framework_error_kind_t::request_failed, std::move (fallback_message)));
+}
+
+} // namespace detail
 
 } // namespace zlink::framework

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/location_auto_connect_host_service.hpp"
@@ -726,7 +726,6 @@ class auto_connect_publish_client_t final : public zlink::framework::hosted_serv
         for (int attempt = 0; attempt < 80; ++attempt) {
             try {
                 publisher.publish ("events", "profile.changed", auto_connect_event_t{attempt + 1})
-                  .packet_name (zlink::framework::detail::message_name<auto_connect_event_t> ())
                   .timeout (std::chrono::milliseconds (500))
                   .submit ();
             }
@@ -896,7 +895,7 @@ std::uint16_t bindable_loopback_port (std::uint16_t base_port)
 #endif
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotRefFromStore)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
 {
     in_memory_location_store_t store;
     ASSERT_TRUE (store
@@ -920,7 +919,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotRefFromStore)
     store_location_resolvers_t resolvers (store);
 
     const auto address =
-      resolvers.resolve_spot_ref ("mesh-a", zlink::routing_id_t::from ("spot-a"))
+      resolvers.resolve_spot_address ("mesh-a", zlink::routing_id_t::from ("spot-a"))
         .result ()
         .value ();
 
@@ -997,11 +996,82 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeRef)
     store_location_resolvers_t resolvers (store);
 
     const auto address =
-      resolvers.resolve_actor_spot_ref ("actor-a").result ().value ();
+      resolvers.resolve_actor_address ("actor-a").result ().value ();
 
     ASSERT_TRUE (address.has_value ());
     EXPECT_EQ ("node-a", address->node_rid.to_string ());
     EXPECT_EQ ("node-a", address->spot_rid.to_string ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes)
+{
+    in_memory_location_store_t store;
+    ASSERT_TRUE (store
+                   .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
+                                       std::chrono::seconds (30))
+                   .result ()
+                   .has_value ());
+    ASSERT_EQ (location_write_status_t::stored,
+               store.update_spot (spot_location_t{.mesh_name = "mesh-b",
+                                                  .spot_rid =
+                                                    zlink::routing_id_t::from ("spot-b"),
+                                                  .spot_type = "play",
+                                                  .node_rid =
+                                                    zlink::routing_id_t::from ("node-a"),
+                                                  .spot_kind = zlink::spot_kind::user,
+                                                  .owner_id = "owner-a"},
+                                  location_write_intent_t::new_claim)
+                 .result ()
+                 .value ()
+                 .status);
+    store_location_resolvers_t resolvers (store);
+
+    /* No mesh name in the lookup: the rid is searched across every mesh. */
+    const auto handle =
+      resolvers.resolve_spot_handle (zlink::framework::spot_rid_t::from_string ("spot-b"))
+        .result ()
+        .value ();
+    ASSERT_TRUE (handle.has_value ());
+    EXPECT_EQ ("spot-b", std::string (handle->spot_rid ().value ()));
+
+    const auto missing =
+      resolvers.resolve_spot_handle (zlink::framework::spot_rid_t::from_string ("missing"))
+        .result ()
+        .value ();
+    EXPECT_FALSE (missing.has_value ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
+{
+    in_memory_location_store_t store;
+    ASSERT_TRUE (store
+                   .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
+                                       std::chrono::seconds (30))
+                   .result ()
+                   .has_value ());
+    ASSERT_EQ (location_write_status_t::stored,
+               store.update_actor (actor_location_t{.actor_id = "actor-b",
+                                                    .actor_type = "player",
+                                                    .actor_ref = std::nullopt,
+                                                    .node_rid =
+                                                      zlink::routing_id_t::from ("node-a"),
+                                                    .location_kind = zlink::spot_kind::user,
+                                                    .spot_mesh_name = "mesh-b",
+                                                    .spot_rid =
+                                                      zlink::routing_id_t::from ("spot-b"),
+                                                    .owner_id = "owner-a"},
+                                   location_write_intent_t::new_claim)
+                 .result ()
+                 .value ()
+                 .status);
+    store_location_resolvers_t resolvers (store);
+
+    const auto handle = resolvers.resolve_actor_spot_handle ("actor-b").result ().value ();
+    ASSERT_TRUE (handle.has_value ());
+    EXPECT_EQ ("spot-b", std::string (handle->spot_rid ().value ()));
+
+    const auto missing = resolvers.resolve_actor_spot_handle ("nobody").result ().value ();
+    EXPECT_FALSE (missing.has_value ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)

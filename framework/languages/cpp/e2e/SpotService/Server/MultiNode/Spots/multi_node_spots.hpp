@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Shared/spot_service_contracts.hpp"
@@ -16,13 +16,9 @@ namespace e2e = zlink::framework::e2e::spot_service;
 inline constexpr char multi_node_a_name[] = "multi-a";
 inline constexpr char multi_node_b_name[] = "multi-b";
 
-inline zlink::framework::spot_ref_t multi_node_spot_ref (const std::string &node_rid,
-                                                         const std::string &spot_rid)
+inline zlink::routing_id_t multi_node_target_rid (const std::string &value)
 {
-    return zlink::framework::spot_ref_t{
-      .mesh_name = e2e::spot_only_mesh,
-      .node_rid = zlink::routing_id_t::from (node_rid),
-      .spot_rid = zlink::routing_id_t::from (spot_rid)};
+    return zlink::routing_id_t::from (value);
 }
 
 struct multi_node_actor_t
@@ -89,24 +85,17 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
                                                               : multi_node_a_name;
                 auto reply = co_await _context
                                .request_to<e2e::state_res_t> (
-                                 multi_node_spot_ref (target_node, command->target_spot_rid),
+                                 multi_node_target_rid (target_node),
+                                 multi_node_target_rid (command->target_spot_rid),
                                  e2e::state_req_t{.op = "add", .amount = 7})
-                               .packet_name ("StateReq")
                                .timeout (std::chrono::milliseconds (3000))
                                .async ();
-                auto sent =
-                  _context
-                    .send_to (
-                      multi_node_spot_ref (target_node, command->target_spot_rid),
-                      e2e::direct_spot_msg_t{.source_actor_id = command->source_spot_rid,
-                                             .value = "sm-f6-send-" + command->marker})
-                    .packet_name ("StateMsg")
-                    .submit ();
-                if (!sent) {
-                    throw zlink::framework::framework_exception_t (
-                      sent.error_kind (),
-                      sent.error () ? sent.error ()->what () : "spot-only StateMsg send failed");
-                }
+                _context
+                  .send_to (multi_node_target_rid (target_node),
+                            multi_node_target_rid (command->target_spot_rid),
+                            e2e::direct_spot_msg_t{.source_actor_id = command->source_spot_rid,
+                                                   .value = "sm-f6-send-" + command->marker})
+                  .submit ();
                 _state.record ("SpotOnlyRequest", {}, std::string (_context.spot_rid ().value ()),
                                "target=" + command->target_spot_rid + "|value="
                                  + std::to_string (reply.value)
@@ -199,7 +188,7 @@ class multi_node_entry_spot_t : public zlink::framework::entry_spot_t
             .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
                         zlink::framework::message_t {})
             .async ();
-        const auto accepted = joined.result_code == 0 && joined.actor.has_value ();
+        const auto accepted = std::holds_alternative<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined);
         _state.record ("SpotOnlyActorJoin", actor.actor_id, request.target_spot_rid,
                        "accepted=" + std::string (accepted ? "true" : "false")
                          + "|marker=" + request.marker);

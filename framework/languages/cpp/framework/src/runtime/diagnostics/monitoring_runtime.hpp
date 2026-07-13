@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/eventing/events.hpp>
@@ -58,6 +58,7 @@ class monitoring_runtime_t
     void publish_timer_failure (std::string source_name,
                                 spot_rid_t spot_rid,
                                 timer_failure_event_t failure) const;
+    void publish_metric (metric_event_payload_t event) const;
 
   private:
     template <typename TEvent> void publish (TEvent event) const

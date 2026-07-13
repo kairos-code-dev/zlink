@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/configuration/services.hpp>
 
@@ -89,7 +89,7 @@ service_provider_t &service_provider_t::operator= (service_provider_t &&) noexce
 service_scope_t service_provider_t::create_scope (service_scope_kind_t kind)
 {
     if (is_closed ()) {
-        throw framework_exception_t (framework_error_kind_t::shutdown,
+        throw detail::make_boundary_exception (detail::boundary_error_t::shutdown,
                                      "service provider is closed");
     }
     return service_scope_t (
@@ -113,7 +113,7 @@ bool service_provider_t::is_closed () const noexcept
 std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
 {
     if (is_closed ()) {
-        throw framework_exception_t (framework_error_kind_t::shutdown,
+        throw detail::make_boundary_exception (detail::boundary_error_t::shutdown,
                                      "service provider is closed");
     }
 
@@ -146,6 +146,18 @@ std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
 
     throw framework_exception_t (framework_error_kind_t::request_failed,
                                  "unknown service lifetime");
+}
+
+std::shared_ptr<void> service_provider_t::try_resolve (std::type_index type)
+{
+    if (is_closed ()) {
+        throw detail::make_boundary_exception (detail::boundary_error_t::shutdown,
+                                     "service provider is closed");
+    }
+    if (!_registry->contains (type)) {
+        return nullptr;
+    }
+    return resolve (type);
 }
 
 service_scope_t::service_scope_t (service_provider_t provider) : _provider (std::move (provider))

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 
@@ -65,7 +65,7 @@ framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
 {
     switch (result) {
         case zlink::submit_result_t::not_connected:
-            return framework_error_kind_t::disconnected;
+            return framework_error_kind_t::route_not_connected;
         case zlink::submit_result_t::backpressured:
             return framework_error_kind_t::request_failed;
         case zlink::submit_result_t::invalid_argument:
@@ -132,7 +132,7 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                                                           zlink::message_t::from (request.payload));
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
@@ -178,9 +178,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
     (void) header;
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
-        return result_t<zlink::message_t>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "SPOT route request body missing");
+        return detail::propagate_failure<zlink::message_t> (body, "SPOT route request body missing");
     }
 
     try {
@@ -196,9 +194,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               spot_rid_t::from_string (request.target_spot_rid),
               zlink::message_t::from (request.payload));
             if (!admitted) {
-                return result_t<zlink::message_t>::failure (
-                  admitted.error_kind (),
-                  admitted.error () ? admitted.error ()->what () : "remote actor admission failed");
+                return detail::propagate_failure<zlink::message_t> (admitted, "remote actor admission failed");
             }
             const auto reply = spot_actor_admission_route_reply_t{
               .accepted = admitted.value ().accepted,
@@ -233,9 +229,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               actor_gateway.actor_context (actor_ref), std::move (handoff_backlog), &services);
             trace_actor_transfer_target ("commit-applied", request.actor_id, request.transfer_id);
             if (!committed) {
-                return result_t<zlink::message_t>::failure (
-                  committed.error_kind (),
-                  committed.error () ? committed.error ()->what () : "remote actor commit failed");
+                return detail::propagate_failure<zlink::message_t> (committed, "remote actor commit failed");
             }
             const auto actor_ref_updated =
               actor_gateway.update_actor_ref (committed.value ().actor);
@@ -264,9 +258,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto actor_gateway = _actor_gateway;
             auto updated = actor_gateway.update_actor_ref (actor_ref);
             if (!updated) {
-                return result_t<zlink::message_t>::failure (
-                  updated.error_kind (),
-                  updated.error () ? updated.error ()->what () : "actor ref update failed");
+                return detail::propagate_failure<zlink::message_t> (updated, "actor ref update failed");
             }
             auto dispatched = actor_gateway.dispatch_bound_session_send (
               actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
@@ -297,9 +289,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               request.packet_name_value, zlink::message_t::from (request.payload), services,
               *_serializers, std::move (metadata));
             if (!relayed) {
-                return result_t<zlink::message_t>::failure (
-                  relayed.error_kind (),
-                  relayed.error () ? relayed.error ()->what () : "remote actor packet failed");
+                return detail::propagate_failure<zlink::message_t> (relayed, "remote actor packet failed");
             }
             auto current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
             (void) actor_gateway.update_actor_ref (current_actor_ref);
@@ -346,9 +336,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 actor_ref, spot_rid_t::from_string (request.spot_rid),
                 zlink::message_t::from (request.payload), actor_gateway.actor_context (actor_ref));
         if (!joined) {
-            return result_t<zlink::message_t>::failure (
-              joined.error_kind (),
-              joined.error () ? joined.error ()->what () : "remote actor join failed");
+            return detail::propagate_failure<zlink::message_t> (joined, "remote actor join failed");
         }
         (void) actor_gateway.update_actor_ref (joined.value ().actor);
         auto reply = make_spot_actor_join_route_reply (joined.value ());
@@ -356,8 +344,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
           _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply)));
     }
     catch (const framework_exception_t &error) {
-        return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                    error.is_retriable ());
+        return detail::result_access_t::failure<zlink::message_t> (error);
     }
     catch (const std::exception &error) {
         return result_t<zlink::message_t>::failure (

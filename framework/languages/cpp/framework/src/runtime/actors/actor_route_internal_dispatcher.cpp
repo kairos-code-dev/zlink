@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
 
@@ -51,7 +51,7 @@ actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t 
                                                     zlink::message_t::from (request.payload));
     }
     catch (const framework_exception_t &error) {
-        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        return detail::result_access_t::failure<void> (error);
     }
     catch (const std::exception &error) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
@@ -69,9 +69,7 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
     (void) services;
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
-        return result_t<zlink::message_t>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "actor route request body missing");
+        return detail::propagate_failure<zlink::message_t> (body, "actor route request body missing");
     }
 
     try {
@@ -81,9 +79,7 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
         auto runtime = _runtime;
         auto updated = runtime.update_actor_ref (actor_ref);
         if (!updated) {
-            return result_t<zlink::message_t>::failure (
-              updated.error_kind (),
-              updated.error () ? updated.error ()->what () : "actor ref update failed");
+            return detail::propagate_failure<zlink::message_t> (updated, "actor ref update failed");
         }
         auto dispatched = runtime.dispatch_bound_session_send (
           actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
@@ -98,8 +94,7 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
             actor_bound_session_route_reply_t{.accepted = true})));
     }
     catch (const framework_exception_t &error) {
-        return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                    error.is_retriable ());
+        return detail::result_access_t::failure<zlink::message_t> (error);
     }
     catch (const std::exception &error) {
         return result_t<zlink::message_t>::failure (

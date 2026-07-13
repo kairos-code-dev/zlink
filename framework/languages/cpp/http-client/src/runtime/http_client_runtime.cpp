@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include "runtime/http_client_runtime.hpp"
 
@@ -92,14 +92,12 @@ http_client_runtime_t::submit (http_request_t request) const
           });
     }
     catch (const std::exception &ex) {
-        completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::closed,
+        completion.complete (zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::closed,
           std::string ("HTTP client coroutine execute scheduler rejected work: ") + ex.what (),
           true));
     }
     catch (...) {
-        completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::closed,
+        completion.complete (zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::closed,
           "HTTP client coroutine execute scheduler rejected work", true));
     }
     return task;

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/route_handler_invoker.hpp"
 
@@ -27,15 +27,12 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
                 router_channel_id, runtime::messaging::message_kind_t::command, packet_name,
                 invocation_services, serializers, message, context));
               if (!result) {
-                  co_return result_t<void>::failure (
-                    result.error_kind (),
-                    result.error () ? result.error ()->what () : "routed send handler failed");
+                  co_return detail::propagate_failure<void> (result, "routed send handler failed");
               }
               co_return result_t<void>::success ();
           }
           catch (const framework_exception_t &error) {
-              co_return result_t<void>::failure (error.kind (), error.what (),
-                                                error.is_retriable ());
+              co_return detail::result_access_t::failure<void> (error);
           }
           catch (...) {
               co_return result_t<void>::failure (framework_error_kind_t::request_failed,
@@ -65,8 +62,7 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
                 invocation_services, serializers, message, context));
           }
           catch (const framework_exception_t &error) {
-              co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                            error.is_retriable ());
+              co_return detail::result_access_t::failure<zlink::message_t> (error);
           }
           catch (...) {
               co_return result_t<zlink::message_t>::failure (

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <filesystem>
 #include <fstream>
@@ -230,6 +230,8 @@ bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path
 
     for (const auto &scan_root : scan_roots) {
         if (!std::filesystem::exists (scan_root)) {
+            std::cerr << "contract scan root is missing: " << scan_root << '\n';
+            ok = false;
             continue;
         }
         for (const auto &entry : std::filesystem::recursive_directory_iterator (scan_root)) {
@@ -393,7 +395,7 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
       "room leave, Entry Spot 복귀,",
       "actor destroy는 disconnect cleanup에서 자동으로 실행하지 않는다",
       "user Spot에서",
-      "`leaveActor`로 actor를 Entry Spot에 돌려보낸 뒤",
+      "`leaveActor`로 actor를 Entry Spot으로 이동한 뒤",
       "Entry Spot context의 destroy API를",
       "| disconnect does not destroy |",
       "room leave나 Entry Spot destroy를 자동으로 실행하지 않는다"};

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/channels/channel.hpp>
@@ -387,7 +387,10 @@ class client_server_channel_builder_t
     {
         _client_enabled = true;
         _client_uses_discovery = true;
-        _client_endpoints.clear ();
+        auto connections = client_connections ();
+        for (const auto &endpoint : connections.list_connections ()) {
+            connections.disconnect (endpoint);
+        }
         apply_channel ();
         return *this;
     }
@@ -397,9 +400,14 @@ class client_server_channel_builder_t
         detail::require_non_blank (endpoint, "client/server client endpoint is required");
         _client_enabled = true;
         _client_uses_discovery = false;
-        _client_endpoints.push_back (std::move (endpoint));
+        client_connections ().connect (std::move (endpoint));
         apply_channel ();
         return *this;
+    }
+
+    endpoint_connections_t client_connections ()
+    {
+        return _options->client_endpoint_connections[_channel_name];
     }
 
     client_server_channel_builder_t &client_send_high_water_mark (zlink::message_count_t value)
@@ -462,7 +470,8 @@ class client_server_channel_builder_t
         const auto server_max_message_size = _server_max_message_size;
         const auto server_peer_weight = _server_peer_weight;
         const auto client_enabled = _client_enabled;
-        const auto client_endpoints = _client_endpoints;
+        const auto client_endpoints =
+          _options->client_endpoint_connections[_channel_name].list_connections ();
         const auto client_uses_discovery = _client_uses_discovery;
         const auto client_send_high_water_mark = _client_send_high_water_mark;
         const auto client_receive_high_water_mark = _client_receive_high_water_mark;
@@ -546,7 +555,6 @@ class client_server_channel_builder_t
     std::optional<zlink::message_count_t> _client_receive_high_water_mark;
     std::optional<zlink::byte_size_t> _client_max_message_size;
     std::optional<zlink::peer_weight_t> _client_peer_weight;
-    std::vector<std::string> _client_endpoints;
     bool _client_enabled = false;
     bool _client_uses_discovery = false;
 };
@@ -585,7 +593,10 @@ class fanout_channel_builder_t
     {
         _subscriber_enabled = true;
         _subscriber_uses_discovery = true;
-        _subscriber_endpoints.clear ();
+        auto connections = subscriber_connections ();
+        for (const auto &endpoint : connections.list_connections ()) {
+            connections.disconnect (endpoint);
+        }
         apply ();
         return *this;
     }
@@ -595,9 +606,14 @@ class fanout_channel_builder_t
         detail::require_non_blank (endpoint, "fanout subscriber endpoint is required");
         _subscriber_enabled = true;
         _subscriber_uses_discovery = false;
-        _subscriber_endpoints.push_back (std::move (endpoint));
+        subscriber_connections ().connect (std::move (endpoint));
         apply ();
         return *this;
+    }
+
+    endpoint_connections_t subscriber_connections ()
+    {
+        return _options->subscriber_endpoint_connections[_channel_name];
     }
 
     fanout_channel_builder_t &use_handler_group (std::string group_name)
@@ -615,7 +631,8 @@ class fanout_channel_builder_t
         const auto publisher_endpoint = _publisher_endpoint;
         const auto routing_id = _routing_id;
         const auto subscriber_enabled = _subscriber_enabled;
-        const auto subscriber_endpoints = _subscriber_endpoints;
+        const auto subscriber_endpoints =
+          _options->subscriber_endpoint_connections[_channel_name].list_connections ();
         const auto subscriber_uses_discovery = _subscriber_uses_discovery;
         if (subscriber_enabled) {
             _options->fanout_channels_with_subscriber.insert (channel_name);
@@ -655,7 +672,6 @@ class fanout_channel_builder_t
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _publisher_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
-    std::vector<std::string> _subscriber_endpoints;
     bool _subscriber_enabled = false;
     bool _subscriber_uses_discovery = false;
 };
@@ -848,7 +864,12 @@ class spot_node_options_builder_t
     {
         detail::require_non_blank (endpoint, "SPOT router endpoint is required");
         _router_endpoint = std::move (endpoint);
-        _router_manual_connections.clear ();
+        {
+            auto connections = router_connections ();
+            for (const auto &existing : connections.list_connections ()) {
+                connections.disconnect (existing);
+            }
+        }
         _options->spot_nodes_with_router.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
         apply ();
@@ -858,9 +879,14 @@ class spot_node_options_builder_t
     spot_node_options_builder_t &connect_router (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
-        _router_manual_connections.push_back (std::move (endpoint));
+        router_connections ().connect (std::move (endpoint));
         apply ();
         return *this;
+    }
+
+    endpoint_connections_t router_connections ()
+    {
+        return _options->spot_router_endpoint_connections[_spot_node_name];
     }
 
     spot_node_options_builder_t &connect_router (zlink::routing_id_t peer_rid,
@@ -880,7 +906,12 @@ class spot_node_options_builder_t
     {
         detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
         _pub_endpoint = std::move (endpoint);
-        _pub_sub_manual_connections.clear ();
+        {
+            auto connections = pub_sub_connections ();
+            for (const auto &existing : connections.list_connections ()) {
+                connections.disconnect (existing);
+            }
+        }
         _options->spot_nodes_with_pub_sub.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
         apply ();
@@ -890,9 +921,14 @@ class spot_node_options_builder_t
     spot_node_options_builder_t &connect_pub_sub (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "SPOT pub/sub manual endpoint is required");
-        _pub_sub_manual_connections.push_back (std::move (endpoint));
+        pub_sub_connections ().connect (std::move (endpoint));
         apply ();
         return *this;
+    }
+
+    endpoint_connections_t pub_sub_connections ()
+    {
+        return _options->spot_pub_sub_endpoint_connections[_spot_node_name];
     }
 
     spot_node_options_builder_t &connect_peer_pub (std::string endpoint)
@@ -1020,9 +1056,11 @@ class spot_node_options_builder_t
         const auto router_endpoint = _router_endpoint;
         const auto pub_endpoint = _pub_endpoint;
         const auto routing_id = _routing_id;
-        const auto router_manual_connections = _router_manual_connections;
+        const auto router_manual_connections =
+          _options->spot_router_endpoint_connections[_spot_node_name].list_connections ();
         const auto router_manual_rid_connections = _router_manual_rid_connections;
-        const auto pub_sub_manual_connections = _pub_sub_manual_connections;
+        const auto pub_sub_manual_connections =
+          _options->spot_pub_sub_endpoint_connections[_spot_node_name].list_connections ();
         const auto accepted_route_channels = _accepted_route_channels;
         const auto options = _options;
         auto spot_route_channel_name = _spot_route_channel_name;
@@ -1090,9 +1128,7 @@ class spot_node_options_builder_t
     std::string _router_endpoint;
     std::string _pub_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
-    std::vector<std::string> _router_manual_connections;
     std::vector<std::pair<zlink::routing_id_t, std::string>> _router_manual_rid_connections;
-    std::vector<std::string> _pub_sub_manual_connections;
     std::vector<std::string> _accepted_route_channels;
     std::optional<std::string> _spot_route_channel_name;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
@@ -1103,9 +1139,24 @@ class spot_mesh_builder_t : public spot_node_options_builder_t
   public:
     spot_mesh_builder_t (std::string channel_name,
                          std::shared_ptr<detail::framework_options_state_t> options) :
-        spot_node_options_builder_t (std::move (channel_name), std::move (options))
+        spot_node_options_builder_t (channel_name, options),
+        _mesh_name (std::move (channel_name)),
+        _mesh_options (std::move (options))
     {
     }
+
+    /* Drain policy for the spots of this mesh (graceful-drain-handoff §5.1).
+     * release_and_recreate is only valid when the application declares the
+     * spot rebuildable from external persistent state. */
+    spot_mesh_builder_t &use_drain_policy (spot_drain_policy_t policy)
+    {
+        _mesh_options->spot_drain_policies[_mesh_name] = policy;
+        return *this;
+    }
+
+  private:
+    std::string _mesh_name;
+    std::shared_ptr<detail::framework_options_state_t> _mesh_options;
 };
 
 class stream_node_options_builder_t
@@ -1358,7 +1409,7 @@ class zlink_framework_options_t
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    route_mesh_channel_builder_t add_route_mesh_channel (std::string channel_name)
+    route_mesh_channel_builder_t add_route_mesh (std::string channel_name)
     {
         return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
@@ -1386,6 +1437,36 @@ class zlink_framework_options_t
     stream_session_factories () const noexcept
     {
         return _options->stream_session_factories;
+    }
+
+    const std::map<std::string, spot_drain_policy_t> &spot_drain_policies () const noexcept
+    {
+        return _options->spot_drain_policies;
+    }
+
+    /* Live endpoint handles per manual role (endpoint_connections contract):
+     * the host attaches runtime connect/disconnect appliers after apply(). */
+    std::map<std::string, endpoint_connections_t> &client_endpoint_connections () const noexcept
+    {
+        return _options->client_endpoint_connections;
+    }
+
+    std::map<std::string, endpoint_connections_t> &
+    subscriber_endpoint_connections () const noexcept
+    {
+        return _options->subscriber_endpoint_connections;
+    }
+
+    std::map<std::string, endpoint_connections_t> &
+    spot_router_endpoint_connections () const noexcept
+    {
+        return _options->spot_router_endpoint_connections;
+    }
+
+    std::map<std::string, endpoint_connections_t> &
+    spot_pub_sub_endpoint_connections () const noexcept
+    {
+        return _options->spot_pub_sub_endpoint_connections;
     }
 
     template <typename TFilter> zlink_framework_options_t &use_filter ()

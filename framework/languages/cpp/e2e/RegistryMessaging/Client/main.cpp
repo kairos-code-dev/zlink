@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Scenarios/rm_a1_discovery_request_scenario.hpp"
 #include "Scenarios/rm_a2_manual_endpoint_scenario.hpp"

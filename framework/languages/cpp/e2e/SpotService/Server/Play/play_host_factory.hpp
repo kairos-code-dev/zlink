@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "Endpoints/operational_endpoints.hpp"
@@ -73,40 +73,54 @@ inline int run_play_server (int argc, char **argv)
           .add_transient<create_alternate_spot_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<spot_state_command_route_handler_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_publish_route_handler_t,
                          zlink::framework::spot_publisher_client_t> ()
           .add_transient<spot_publish_wait_handler_t, scenario_state_t> ()
           .add_transient<spot_worker_start_route_handler_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_worker_complete_handler_t, scenario_state_t> ()
           .add_transient<spot_stage_probe_route_handler_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_stage_timer_route_handler_t,
                          zlink::framework::route_client_t,
-                         scenario_state_t> ()
+                         scenario_state_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_idle_close_route_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<spot_overrun_start_route_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
-          .add_transient<spot_slow_route_handler_t, zlink::framework::route_client_t> ()
+          .add_transient<spot_slow_route_handler_t, zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_missing_handler_request_handler_t,
                          zlink::framework::route_client_t,
-                         scenario_state_t> ()
+                         scenario_state_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_missing_handler_command_handler_t,
                          zlink::framework::route_client_t,
-                         scenario_state_t> ()
+                         scenario_state_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_missing_target_request_handler_t,
-                         zlink::framework::route_client_t> ()
-          .add_transient<spot_missing_route_handler_t, zlink::framework::route_client_t> ()
-          .add_transient<spot_outbound_route_handler_t, zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
+          .add_transient<spot_missing_route_handler_t, zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
+          .add_transient<spot_outbound_route_handler_t, zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_outbound_negative_route_handler_t,
-                         zlink::framework::route_client_t> ()
-          .add_transient<spot_to_spot_route_handler_t, zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
+          .add_transient<spot_to_spot_route_handler_t, zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_to_spot_timeout_route_handler_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<spot_to_spot_negative_route_handler_t,
-                         zlink::framework::route_client_t> ()
+                         zlink::framework::route_client_t,
+                         zlink::framework::spot_handle_resolver_t> ()
           .add_transient<lifecycle_spot_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<close_spot_handler_t, scenario_state_t,
@@ -117,7 +131,7 @@ inline int run_play_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        options.add_route_mesh_channel (e2e::route_channel)
+        options.add_route_mesh (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_client ()

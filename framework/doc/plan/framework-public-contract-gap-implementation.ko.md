@@ -3,8 +3,8 @@
 ## 1. 목적
 
 이 계획은 `framework/doc/framework/common/spec/`에 고정된 목표 계약과 각 언어의 실제
-framework 구현 사이의 차이를 모두 없애기 위한 실행 문서다. 첫 작업 언어는 `.NET`이며,
-한 언어의 모든 완료 조건을 통과하기 전에는 다음 언어 작업을 시작하지 않는다.
+framework 구현 사이의 차이를 모두 없애기 위한 실행 문서다. 첫 작업 언어는 `.NET`이다.
+각 언어의 구현과 완료 판정은 서로 독립적으로 진행한다.
 
 작업 순서는 다음과 같이 고정한다.
 
@@ -12,9 +12,9 @@ framework 구현 사이의 차이를 모두 없애기 위한 실행 문서다. �
 .NET -> Java -> Kotlin -> Node.js -> C++
 ```
 
-Java와 Kotlin은 runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다르므로
-완료 판정을 분리한다. Java 완료 뒤 Kotlin을 검증하며, Kotlin gate가 끝나기 전에는
-Node.js로 넘어가지 않는다.
+위 순서는 결과를 정리하는 기준이다. 여러 언어를 동시에 작업할 수 있으며, 앞 언어의 gate가
+끝나지 않았다는 이유만으로 뒤 언어의 작업이나 완료 표시를 막지 않는다. Java와 Kotlin은
+runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다르므로 완료 판정을 분리한다.
 
 이 문서는 실행 가이드이자 현재 상태 보드다. 작업이 끝난 뒤 한꺼번에 채우지 않고, 구현과
 검증이 끝날 때마다 체크박스와 결과 요약을 갱신한다. 시간순 명령 결과와 반복 리뷰 이력은
@@ -175,10 +175,10 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
 | 2 | Java | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
 | 3 | Kotlin | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
-| 4 | Node.js | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
-| 5 | C++ | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
+| 4 | Node.js | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | 차단 |
+| 5 | C++ | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
 
-현재 실행 대상은 Java G1이다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
+현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
 계약 ledger, G4 finding ledger와 구현 로그에서 확인한다.
 
 `flow-correlation.ko.md`, `runtime-metrics.ko.md`, `graceful-drain-handoff.ko.md`와 Config 11도
@@ -252,30 +252,30 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | Java | `stream-connector.ko.md` | `JV-DOC-009` | [x] |
 | Kotlin | `README.ko.md` | - | [ ] |
 | Kotlin | `handler-interfaces.ko.md` | - | [ ] |
-| Node.js | `README.ko.md` | - | [ ] |
-| Node.js | `handler-interfaces.ko.md` | - | [ ] |
-| Node.js | `nestjs-actor.ko.md` | - | [ ] |
-| Node.js | `nestjs-channel-messaging.ko.md` | - | [ ] |
-| Node.js | `nestjs-monitoring.ko.md` | - | [ ] |
-| Node.js | `nestjs-overview.ko.md` | - | [ ] |
-| Node.js | `nestjs-registry.ko.md` | - | [ ] |
-| Node.js | `nestjs-spot.ko.md` | - | [ ] |
-| Node.js | `nestjs-stream.ko.md` | - | [ ] |
-| Node.js | `session-actor-dispatch.ko.md` | - | [ ] |
-| Node.js | `spot-node.ko.md` | - | [ ] |
-| Node.js | `stream-connector.ko.md` | - | [ ] |
-| C++ | `README.ko.md` | - | [ ] |
-| C++ | `cpp-framework-interfaces.ko.md` | - | [ ] |
-| C++ | `actor-gateway-session-relay.ko.md` | - | [ ] |
-| C++ | `cpp-application-framework.ko.md` | - | [ ] |
-| C++ | `cpp-channel-messaging.ko.md` | - | [ ] |
-| C++ | `cpp-embedded-http-server.ko.md` | - | [ ] |
-| C++ | `cpp-http-hosting.ko.md` | - | [ ] |
-| C++ | `cpp-monitoring.ko.md` | - | [ ] |
-| C++ | `cpp-registry.ko.md` | - | [ ] |
-| C++ | `cpp-spot.ko.md` | - | [ ] |
-| C++ | `cpp-stream.ko.md` | - | [ ] |
-| C++ | `handler-interfaces.ko.md` | - | [ ] |
+| Node.js | `README.ko.md` | `ND-DOC-001` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-002` | [x] |
+| Node.js | `nestjs-actor.ko.md` | `ND-DOC-003` | [x] |
+| Node.js | `nestjs-channel-messaging.ko.md` | `ND-DOC-004` | [x] |
+| Node.js | `nestjs-monitoring.ko.md` | `ND-DOC-005` | [x] |
+| Node.js | `nestjs-overview.ko.md` | `ND-DOC-006` | [x] |
+| Node.js | `nestjs-registry.ko.md` | `ND-DOC-007` | [x] |
+| Node.js | `nestjs-spot.ko.md` | `ND-DOC-008` | [x] |
+| Node.js | `nestjs-stream.ko.md` | `ND-DOC-009` | [x] |
+| Node.js | `session-actor-dispatch.ko.md` | `ND-DOC-010` | [x] |
+| Node.js | `spot-node.ko.md` | `ND-DOC-011` | [x] |
+| Node.js | `stream-connector.ko.md` | `ND-DOC-012` | [x] |
+| C++ | `README.ko.md` | `CPP-DOC-001` | [x] |
+| C++ | `cpp-framework-interfaces.ko.md` | `CPP-DOC-002` | [x] |
+| C++ | `actor-gateway-session-relay.ko.md` | `CPP-DOC-008` | [x] |
+| C++ | `cpp-application-framework.ko.md` | `CPP-DOC-004` | [x] |
+| C++ | `cpp-channel-messaging.ko.md` | `CPP-DOC-005` | [x] |
+| C++ | `cpp-embedded-http-server.ko.md` | `CPP-DOC-012` | [x] |
+| C++ | `cpp-http-hosting.ko.md` | `CPP-DOC-011` | [x] |
+| C++ | `cpp-monitoring.ko.md` | `CPP-DOC-009` | [x] |
+| C++ | `cpp-registry.ko.md` | `CPP-DOC-010` | [x] |
+| C++ | `cpp-spot.ko.md` | `CPP-DOC-006` | [x] |
+| C++ | `cpp-stream.ko.md` | `CPP-DOC-007` | [x] |
+| C++ | `handler-interfaces.ko.md` | `CPP-DOC-003` | [x] |
 
 다음 파일은 정식 interface coverage 분모에서 제외하되 G7 문서 정합성 검토에는 포함한다.
 
@@ -283,7 +283,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 |------|------------|-----------|---------|
 | `.NET` | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
 | Java | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
-| Node.js | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
+| Node.js | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
 | C++ | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
 
 Kotlin 행은 Kotlin 전용 계약만 나타낸다. Java 계약의 각 행에는 Kotlin 적용 여부와 Kotlin
@@ -298,7 +298,7 @@ test ID도 함께 기록해, 상속된 public surface가 coverage에서 빠지�
 - Java: G0 시작 시 `java-g0-contract-ledger.ko.md`를 만든다.
 - Kotlin: G0 시작 시 `kotlin-g0-contract-ledger.ko.md`를 만든다.
 - Node.js: G0 시작 시 `node-g0-contract-ledger.ko.md`를 만든다.
-- C++: G0 시작 시 `cpp-g0-contract-ledger.ko.md`를 만든다.
+- [C++ G0 공개 계약 ledger](./log/framework-public-contract-gap-implementation/cpp-g0-contract-ledger.ko.md)
 
 각 ledger는 overload, nullable, generic 제약과 default parameter를 서로 다른 검증 대상으로
 기록한다. 현재 상태는 §4 진행 보드와 각 언어의 완료 확인표에서만 갱신한다.
@@ -452,7 +452,7 @@ G4 read-only reviewer는 framework source만 검색하지 않고 core header와 
 | Java | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
 | Kotlin | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
 | Node.js | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
-| C++ | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
+| C++ | ledger §6에 후보 4행 등록 | `spot_node_t::create_route_bridge()`, CAPI timer `fire_count` | route relay·timer scheduler 재구현 없음; stream header codec·LZ4 codec은 framework/connector 의도된 mirror | bridge/timer는 bindings 위임 유지, 두 mirror는 책임 분리 유지 | mirror 바이트/동작 동일성 test를 G2에서 고정 | 진행 |
 
 ## 8. 언어별 실행 절차
 
@@ -873,7 +873,7 @@ dotnet test Zlink.Framework.sln --no-build
 - [ ] socket/registry/Spot/location monitoring 등록과 sealed event 구현
 - [ ] route-mesh runtime options와 public export 정렬
 - [ ] 정식 spec 경로 regression test 수정
-- [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [x] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
 - [ ] Micrometer catalog와 connector 소유 reconnect 계기 구현
 - [ ] 자동 flow id, `CompletionStage` 문맥 전파·정리와 `0xF2` marker codec 교체
 - [ ] `ZLinkDrainControl` 결과, `SmartLifecycle` 종료 순서와 typed `Draining` field 구현
@@ -953,38 +953,37 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 - [ ] G6 Kotlin E2E 전체 PASS
 - [ ] G6 Kotlin↔`.NET`/Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
-- [ ] Node.js 작업 시작 승인
 
 ## 12. Node.js 실행 계획
 
 ### 12.1 필수 gap checklist
 
-- [ ] 모든 handler가 목표 `Promise` 반환형만 노출
-- [ ] actor/bound-session one-way `Promise<void>` 제거
-- [ ] yield call과 worker callback completion 제거
-- [ ] `AbortSignal`을 장기 작업에만 제한
-- [ ] optional lifecycle과 동기 factory union 제거
-- [ ] branded `SpotHandle`과 내부 refresh 구현
-- [ ] `getSpot`, `isJoined`, 중복 actor join call 제거
-- [ ] actor join discriminated union 구현
-- [ ] dispatch mode 제거와 message-kind별 unhandled policy 구현
-- [ ] immutable metadata와 forwarding policy 구현
-- [ ] typed session handler/registry 추가, raw stream escape hatch 제거
-- [ ] manual runtime connection accessor와 worker producer 구현
-- [ ] route builder 중복과 bound-session factory public export 제거
-- [ ] 전역/채널별 request timeout 구현
-- [ ] monitoring registration과 discriminated event union 구현
-- [ ] location interface의 `I` prefix와 internal registration export 제거
-- [ ] channelless channel/route/publisher 중복 표면 제거
-- [ ] 정식 spec 경로 regression test 수정
-- [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
-- [ ] contract/supporting artifact manifest 정렬과 배포 package의 `private` 제거
-- [ ] OpenTelemetry metric catalog와 connector 소유 reconnect 계기 구현
-- [ ] 자동 flow id, `AsyncLocalStorage` 전파·정리와 `0xF2` marker codec 교체
-- [ ] `ZLinkDrainControl` 결과, NestJS shutdown 종료 순서와 typed `Draining` field 구현
-- [ ] `session-closing` 제어 프레임과 connector `closeReason` 구현
-- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
-- [ ] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [x] 모든 handler가 목표 `Promise` 반환형만 노출
+- [x] actor/bound-session one-way `Promise<void>` 제거
+- [x] yield call과 worker callback completion 제거
+- [x] `AbortSignal`을 장기 작업에만 제한
+- [x] optional lifecycle과 동기 factory union 제거
+- [x] branded `SpotHandle`과 내부 refresh 구현
+- [x] `getSpot`, `isJoined`, 중복 actor join call 제거
+- [x] actor join discriminated union 구현
+- [x] dispatch mode 제거와 message-kind별 unhandled policy 구현
+- [x] immutable metadata와 forwarding policy 구현
+- [x] typed session handler/registry 추가, raw stream escape hatch 제거
+- [x] manual runtime connection accessor와 worker producer 구현
+- [x] route builder 중복과 bound-session factory public export 제거
+- [x] 전역/채널별 request timeout 구현
+- [x] monitoring registration과 discriminated event union 구현
+- [x] location interface의 `I` prefix와 internal registration export 제거
+- [x] channelless channel/route/publisher 중복 표면 제거
+- [x] 정식 spec 경로 regression test 수정
+- [x] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [x] contract/supporting artifact manifest 정렬과 배포 package의 `private` 제거
+- [x] OpenTelemetry metric catalog와 connector 소유 reconnect 계기 구현
+- [x] 자동 flow id, `AsyncLocalStorage` 전파·정리와 `0xF2` marker codec 교체
+- [x] `ZLinkDrainControl` 결과, NestJS shutdown 종료 순서와 typed `Draining` field 구현
+- [x] `session-closing` 제어 프레임과 connector `closeReason` 구현
+- [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [x] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 12.2 검증 명령
 
@@ -1007,41 +1006,40 @@ npm run verify:release
 
 ### 12.3 Node.js 완료 확인표
 
-- [ ] G0 inventory/실패 테스트
-- [ ] G1 interface/export
-- [ ] G2 runtime/unit test
+- [x] G0 inventory/실패 테스트
+- [x] G1 interface/export
+- [x] G2 runtime/unit test
 - [ ] G3 build/typecheck/lint/test/coverage green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
 - [ ] G5 sample 전체 PASS
 - [ ] G6 E2E와 cross-language 전체 PASS
 - [ ] G6 Node.js↔`.NET`/Java/Kotlin 양방향 matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
-- [ ] C++ 작업 시작 승인
 
 ## 13. C++ 실행 계획
 
 ### 13.1 필수 gap checklist
 
 - [ ] lifecycle/transfer의 `.result()` blocking bridge 제거
-- [ ] public error enum의 공통 계약 밖 값 제거
-- [ ] callback 이름을 `snake_case`로 통일
-- [ ] typed stream handler와 raw runtime 경계 분리
-- [ ] route-mesh runtime options 구현
-- [ ] one-way `result_t<void>`/actor `async()`를 `void submit()`으로 변경
-- [ ] relay/disconnect를 `task_t<void>` 완료 계약으로 구현
-- [ ] location watch와 message-flow runtime control 구현
-- [ ] `spot_handle_t`와 handle resolver 구현
-- [ ] `is_joined()`를 nullable `spot_rid()`로 교체
-- [ ] join 결과를 승인/거절 `std::variant`로 변경
-- [ ] user Spot/Entry Spot context와 worker/destroy 역할 분리
-- [ ] async `find_spot`, `list_spots`, `close_spot` 구현
-- [ ] `endpoint_connections_t` runtime handle 구현
-- [ ] dispatch mode와 typed `packet_name(...)` override 제거
+- [x] public error enum의 공통 계약 밖 값 제거
+- [x] callback 이름을 `snake_case`로 통일
+- [x] typed stream handler와 raw runtime 경계 분리
+- [x] route-mesh runtime options 구현
+- [x] one-way `result_t<void>`/actor `async()`를 `void submit()`으로 변경
+- [x] relay/disconnect를 `task_t<void>` 완료 계약으로 구현
+- [x] location watch와 message-flow runtime control 구현
+- [x] `spot_handle_t`와 handle resolver 구현
+- [x] `is_joined()`를 nullable `spot_rid()`로 교체
+- [x] join 결과를 승인/거절 `std::variant`로 변경
+- [x] user Spot/Entry Spot context와 worker/destroy 역할 분리
+- [x] async `find_spot`, `list_spots`, `close_spot` 구현
+- [x] `endpoint_connections_t` runtime handle 구현
+- [x] dispatch mode와 typed `packet_name(...)` override 제거
 - [ ] monitoring event가 유효 variant만 표현하는지 검증
-- [ ] installed header에서 runtime state/helper 비노출
-- [ ] 정식 spec 경로 regression test를 fail-closed로 수정
+- [x] installed header에서 runtime state/helper 비노출
+- [x] 정식 spec 경로 regression test를 fail-closed로 수정
 - [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
-- [ ] CMake Framework/StreamConnector/FrameworkDependency/HttpClient install component와
+- [x] CMake Framework/StreamConnector/FrameworkDependency/HttpClient install component와
   export set 분리
 - [ ] `metric_event_payload_t` 기반 catalog와 test collector 집계 구현
 - [ ] 자동 flow id, coroutine 문맥 전파·정리와 `0xF2` marker codec 교체
@@ -1085,8 +1083,8 @@ ctest --test-dir <coverage-build-dir> \
 
 ### 13.3 C++ 완료 확인표
 
-- [ ] G0 inventory/실패 테스트
-- [ ] G1 public/install header
+- [x] G0 inventory/실패 테스트
+- [x] G1 public/install header
 - [ ] G2 runtime/unit test
 - [ ] G3 build/ctest/install consumer green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`

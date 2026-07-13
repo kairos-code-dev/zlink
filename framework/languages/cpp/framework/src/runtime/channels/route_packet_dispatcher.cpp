@@ -1,9 +1,10 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/route_packet_dispatcher.hpp"
 
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 
 #include <exception>
@@ -40,11 +41,13 @@ route_packet_dispatcher_t::dispatch (const route_received_packet_t &received) co
     runtime::messaging::envelope_codec_t codec;
     auto header = codec.decode_header (received.parts);
     if (!header) {
-        return result_t<std::optional<route_dispatch_reply_t>>::failure (
-          header.error_kind (),
-          header.error () ? header.error ()->what () : "route envelope header decode failed");
+        return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (header, "route envelope header decode failed");
     }
 
+    auto flow_scope = runtime::flow_context_t::enter (
+      header.value ().flow_id, header.value ().flow_origin,
+      message_flow_tracer_t (_dispatch_options).capture_enabled (),
+      flow_origin_t::inbound);
     trace_flow (message_flow_outcome_t::received,
                 header.value ().kind == runtime::messaging::message_kind_t::request
                   ? dispatch_message_kind_t::request
@@ -90,9 +93,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
     if (_internal_packets != nullptr && _internal_packets->can_handle_send (header.message_name)) {
         auto dispatched = _internal_packets->dispatch_send (received, *_services);
         if (!dispatched) {
-            return result_t<std::optional<route_dispatch_reply_t>>::failure (
-              dispatched.error_kind (),
-              dispatched.error () ? dispatched.error ()->what () : "route internal send failed");
+            return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (dispatched, "route internal send failed");
         }
         trace_flow (message_flow_outcome_t::dispatched, dispatch_message_kind_t::send, received,
                     header);
@@ -120,9 +121,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
             header.message_name, _router_channel_id, header.topic, std::nullopt, std::nullopt,
             received.source_node_rid.to_string (), header.correlation_id,
             body.error () ? std::make_exception_ptr (*body.error ()) : std::exception_ptr{}});
-        return result_t<std::optional<route_dispatch_reply_t>>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "route command body missing");
+        return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (body, "route command body missing");
     }
     framework::route_handler_context_t context{_router_channel_id, received.source_node_rid,
                                                header.message_name, header.content_type};
@@ -139,9 +138,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
             received.source_node_rid.to_string (), header.correlation_id,
             dispatched.error () ? std::make_exception_ptr (*dispatched.error ())
                                 : std::exception_ptr{}});
-        return result_t<std::optional<route_dispatch_reply_t>>::failure (
-          dispatched.error_kind (),
-          dispatched.error () ? dispatched.error ()->what () : "routed send handler failed");
+        return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (dispatched, "routed send handler failed");
     }
     trace_flow (message_flow_outcome_t::dispatched, dispatch_message_kind_t::send, received,
                 header);

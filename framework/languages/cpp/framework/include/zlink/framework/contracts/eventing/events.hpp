@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/locations/diagnostics.hpp>
@@ -125,10 +125,48 @@ class runtime_event_publisher_t
     std::shared_ptr<detail::monitoring_runtime_state_t> _state;
 };
 
+/* Runtime metric catalog fields (runtime-metrics §3, cpp-monitoring §8).
+ * counter/updown updates carry `delta`, observable gauges `current`, and
+ * histogram records `sample`; an OTel bridge maps instruments from these
+ * fields instead of re-hardcoding the catalog per name. */
+enum class metric_instrument_kind_t
+{
+    counter,
+    updown,
+    observable,
+    histogram
+};
+
+enum class metric_temporality_t
+{
+    delta,
+    current,
+    sample
+};
+
+/* Drain lifecycle observation (graceful-drain-handoff §9): no source
+ * registration — any registered handler receives transitions, and the
+ * source name is the fixed value "drain". */
+enum class drain_state_t
+{
+    serving,
+    draining,
+    drained,
+    force_stopping
+};
+
+struct drain_event_t : runtime_event_base_t
+{
+    drain_state_t state = drain_state_t::serving;
+};
+
 struct metric_event_payload_t : runtime_event_base_t
 {
     std::string name;
     double value = 0;
+    std::string unit;
+    metric_instrument_kind_t instrument_kind = metric_instrument_kind_t::counter;
+    metric_temporality_t temporality = metric_temporality_t::delta;
     std::map<std::string, std::string> tags;
 };
 

@@ -1,62 +1,121 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "runtime/locations/location_key_codec.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/location_value_codec.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
+#include "runtime/locations/spot_handle_state.hpp"
 
+#include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <utility>
+#include <memory>
 
 namespace zlink::framework::runtime
 {
 
 class store_location_resolvers_t final : public peer_location_resolver_t,
-                                         public spot_location_resolver_t,
-                                         public actor_location_resolver_t,
+                                         public spot_handle_resolver_t,
+                                         public actor_spot_handle_resolver_t,
+                                         public spot_address_resolver_t,
+                                         public actor_address_resolver_t,
                                          public location_readiness_t
 {
   public:
-    explicit store_location_resolvers_t (location_store_t &store) : _store (&store) {}
+    explicit store_location_resolvers_t (location_store_t &store,
+                                          location_options_t options = {}) :
+        _store (&store), _options (std::move (options))
+    {
+    }
 
     task_t<std::vector<peer_location_t>> list_live_peers (peer_location_filter_t filter) override
     {
         return completed (_store->list_peers (std::move (filter)).result ().value ());
     }
 
-    task_t<std::optional<spot_ref_t>>
-    resolve_spot_ref (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    task_t<std::optional<spot_address_t>>
+    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
     {
         auto row =
           _store->resolve_spot (spot_location_key_t{std::move (mesh_name), spot_rid})
             .result ()
             .value ();
         if (!row) {
-            return completed (std::optional<spot_ref_t>{});
+            return completed (std::optional<spot_address_t>{});
         }
-        return completed (std::optional<spot_ref_t>{spot_ref_t{
+        return completed (std::optional<spot_address_t>{spot_address_t{
           row->mesh_name, row->node_rid, row->spot_rid}});
     }
 
-    task_t<std::optional<spot_ref_t>>
-    resolve_actor_spot_ref (std::string actor_id) override
+    task_t<std::optional<spot_address_t>>
+    resolve_actor_address (std::string actor_id) override
     {
         auto row = _store
                      ->resolve_actor (actor_location_key_t{std::move (actor_id)})
                      .result ()
                      .value ();
         if (!row) {
-            return completed (std::optional<spot_ref_t>{});
+            return completed (std::optional<spot_address_t>{});
         }
         const auto target_spot =
           row->location_kind == zlink::spot_kind::entry || !row->spot_rid
             ? row->node_rid
             : *row->spot_rid;
-        return completed (std::optional<spot_ref_t>{spot_ref_t{
+        return completed (std::optional<spot_address_t>{spot_address_t{
           row->spot_mesh_name, row->node_rid, target_spot}});
+    }
+
+    /* The spot rid is searched across every mesh registered in the store, so
+     * callers do not carry mesh names. The returned opaque handle keeps its
+     * logical lookup key and refreshes its snapshot from the same row. */
+    task_t<std::optional<spot_handle_t>> resolve_spot_handle (spot_rid_t spot_rid) override
+    {
+        auto address = find_spot_row (zlink::routing_id_t::from (std::string (spot_rid.value ())));
+        if (!address) {
+            return completed (std::optional<spot_handle_t>{});
+        }
+        auto *store = _store;
+        const auto key_mesh = address->mesh_name;
+        const auto key_rid = address->spot_rid;
+        const auto router_channel = router_channel_for (key_mesh);
+        auto handle = detail::spot_handle_access_t::make (
+          spot_address_t{router_channel, address->node_rid, address->spot_rid},
+          [store, key_mesh, key_rid, router_channel] () -> std::optional<spot_address_t> {
+              auto row = resolve_spot_row (*store, key_mesh, key_rid);
+              if (!row) {
+                  return std::nullopt;
+              }
+              return spot_address_t{router_channel, row->node_rid, row->spot_rid};
+          });
+        return completed (std::optional<spot_handle_t>{std::move (handle)});
+    }
+
+    task_t<std::optional<spot_handle_t>>
+    resolve_actor_spot_handle (std::string actor_id) override
+    {
+        auto address = resolve_actor_address (actor_id).result ().value ();
+        if (!address) {
+            return completed (std::optional<spot_handle_t>{});
+        }
+        auto *store = _store;
+        const auto router_channel = router_channel_for (address->mesh_name);
+        const auto options = _options;
+        auto handle = detail::spot_handle_access_t::make (
+          spot_address_t{router_channel, address->node_rid, address->spot_rid},
+          [store, actor_id = std::move (actor_id), options] () -> std::optional<spot_address_t> {
+              auto row = resolve_actor_row (*store, actor_id);
+              if (!row) {
+                  return std::nullopt;
+              }
+              return spot_address_t{router_channel_for (options, row->mesh_name), row->node_rid,
+                                    row->spot_rid};
+          });
+        return completed (std::optional<spot_handle_t>{std::move (handle)});
     }
 
     task_t<bool> is_peer_ready (std::string mesh_name,
@@ -90,7 +149,63 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return task_t<T> (result_t<T>::success (std::move (value)));
     }
 
+    static std::optional<spot_address_t> resolve_actor_row (location_store_t &store,
+                                                             const std::string &actor_id)
+    {
+        auto row = store.resolve_actor (actor_location_key_t{actor_id}).result ().value ();
+        if (!row) {
+            return std::nullopt;
+        }
+        const auto target_spot =
+          row->location_kind == zlink::spot_kind::entry || !row->spot_rid
+            ? row->node_rid
+            : *row->spot_rid;
+        return spot_address_t{row->spot_mesh_name, row->node_rid, target_spot};
+    }
+
+    static std::optional<spot_address_t> resolve_spot_row (location_store_t &store,
+                                                           const std::string &mesh_name,
+                                                           const zlink::routing_id_t &spot_rid)
+    {
+        auto row =
+          store.resolve_spot (spot_location_key_t{mesh_name, spot_rid}).result ().value ();
+        if (!row) {
+            return std::nullopt;
+        }
+        return spot_address_t{row->mesh_name, row->node_rid, row->spot_rid};
+    }
+
+    std::optional<spot_address_t> find_spot_row (const zlink::routing_id_t &spot_rid) const
+    {
+        location_page_request_t page;
+        while (true) {
+            auto rows = _store->list_spots (spot_location_filter_t{}, page).result ().value ();
+            for (const auto &row : rows.items) {
+                if (row.spot_rid.to_string () == spot_rid.to_string ()) {
+                    return spot_address_t{row.mesh_name, row.node_rid, row.spot_rid};
+                }
+            }
+            if (!rows.continuation_token || rows.items.empty ()) {
+                return std::nullopt;
+            }
+            page.continuation_token = rows.continuation_token;
+        }
+    }
+
+    static std::string router_channel_for (const location_options_t &options,
+                                            const std::string &mesh_name)
+    {
+        const auto found = options.spot_router_channels.find (mesh_name);
+        return found == options.spot_router_channels.end () ? mesh_name : found->second;
+    }
+
+    std::string router_channel_for (const std::string &mesh_name) const
+    {
+        return router_channel_for (_options, mesh_name);
+    }
+
     location_store_t *_store;
+    location_options_t _options;
 };
 
 class store_location_runtime_query_t final : public location_runtime_query_t

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "Handlers/authenticate_play_session_handler.hpp"
@@ -54,13 +54,13 @@ class play_session_t final : public packet_stream_session_t
     {
         if (_bound_actor_id) {
             if (auto actor = _actors.find (*_bound_actor_id)) {
-                actor->notify_disconnected ().submit ();
+                co_await actor->notify_disconnected ();
             }
             _gateway.unbind_session_stream (*_bound_actor_id);
             _actors.unbind_session (*_bound_actor_id);
             _bound_actor_id.reset ();
         }
-        return task_t<void> (result_t<void>::success ());
+        co_return;
     }
 
     task_t<void> on_error (stream_t &, const stream_error_t &) override
@@ -95,7 +95,7 @@ class play_session_t final : public packet_stream_session_t
             co_return;
         }
         trace_tictactoe_session ("relay-send-start", dispatch.packet_name ());
-        actor.value ().relay (std::string (dispatch.packet_name ()), payload).submit ();
+        co_await actor.value ().relay (std::string (dispatch.packet_name ()), payload);
         trace_tictactoe_session ("relay-send-complete", dispatch.packet_name ());
         co_return;
     }

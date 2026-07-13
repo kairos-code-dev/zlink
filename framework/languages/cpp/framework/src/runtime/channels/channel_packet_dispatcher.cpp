@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 
@@ -28,9 +28,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     runtime::messaging::envelope_codec_t codec;
     auto header = codec.decode_header (parts);
     if (!header) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          header.error_kind (),
-          header.error () ? header.error ()->what () : "channel envelope header decode failed");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (header, "channel envelope header decode failed");
     }
     const auto inbound_kind = [&] {
         switch (header.value ().kind) {
@@ -43,6 +41,9 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
         }
     }();
     message_flow_tracer_t flow (_runtime.dispatch_options_ref ());
+    auto flow_scope = runtime::flow_context_t::enter (
+      header.value ().flow_id, header.value ().flow_origin, flow.capture_enabled (),
+      flow_origin_t::inbound);
     flow.trace (message_flow_outcome_t::received, [&] {
         return message_flow_event_t{message_flow_outcome_t::received,
                                     dispatch_error_surface_t::channel,
@@ -79,9 +80,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
                 writer.create_error_header (std::move (channel_name), header.value (), error),
                 zlink::message_t::from ("")));
         }
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "channel body decode failed");
+        return detail::propagate_failure<runtime::messaging::message_parts_t> (body, "channel body decode failed");
     }
 
     if (header.value ().kind == runtime::messaging::message_kind_t::request) {

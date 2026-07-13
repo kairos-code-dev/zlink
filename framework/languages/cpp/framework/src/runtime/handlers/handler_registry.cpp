@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
@@ -163,9 +163,7 @@ handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
                                        std::string_view) -> task_t<zlink::message_t> {
           const auto result = handler (payload_view_t (detail::encoded_payload_from_raw (message)));
           if (!result) {
-              return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                result.error_kind (),
-                result.error () ? result.error ()->what () : "raw handler failed"));
+              return task_t<zlink::message_t> (detail::propagate_failure<zlink::message_t> (result, "raw handler failed"));
           }
           return task_t<zlink::message_t> (
             result_t<zlink::message_t>::success (zlink::message_t{}));
@@ -259,8 +257,7 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
             result = (*chain) (0).result ();
         }
         catch (const framework_exception_t &error) {
-            result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                          error.is_retriable ());
+            result = detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (...) {
             result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
@@ -277,8 +274,7 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
     try {
         auto executor = handler_invocation_executor ();
         if (!executor) {
-            return result_t<zlink::message_t>::failure (
-              framework_error_kind_t::shutdown, "handler invocation executor is not running");
+            return detail::boundary_failure<zlink::message_t> (detail::boundary_error_t::shutdown, "handler invocation executor is not running");
         }
         executor->submit (
           [completion = std::move (completion), invoke_body = std::move (invoke_body)] () mutable {
@@ -357,8 +353,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
             result = co_await runtime::await_task_result ((*chain) (0));
         }
         catch (const framework_exception_t &error) {
-            result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                          error.is_retriable ());
+            result = detail::result_access_t::failure<zlink::message_t> (error);
         }
         catch (...) {
             result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,

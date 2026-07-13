@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/location_store.hpp"
@@ -71,7 +71,7 @@ class courier_session_t final : public packet_stream_session_t
         }
         if (dispatch.packet_name () == courier_decision_msg_t::packet_name) {
             auto actor = require_bound_actor (payload.parse_json<courier_decision_msg_t> ().courier_id);
-            actor.relay (payload).submit ();
+            co_await actor.relay (payload);
             co_return;
         }
     }

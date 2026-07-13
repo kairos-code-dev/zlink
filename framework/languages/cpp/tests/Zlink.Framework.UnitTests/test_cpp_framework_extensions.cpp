@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework/extensions.hpp>
 
@@ -69,7 +69,7 @@ int main ()
     dead_letter.store (
       [&] (const zlink::framework::channel_reliability_event_t &) { ++dead_letter_count; });
     dead_letter.storage_sink (zlink::framework::channel_reliability_event_t{
-      "game.moves", "id-1", zlink::framework::framework_error_kind_t::timeout, "timeout"});
+      "game.moves", "id-1", zlink::framework::framework_error_kind_t::request_failed, "timeout"});
     if (dead_letter_count != 1) {
         return 5;
     }

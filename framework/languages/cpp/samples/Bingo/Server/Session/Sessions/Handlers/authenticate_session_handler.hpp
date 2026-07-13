@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../../Configuration/sample_names.hpp"
@@ -17,12 +17,15 @@ using framework::message_t;
 class authenticate_session_handler_t
 {
   public:
-    using dependency_types = dependency_list_t<channel_client_t, route_client_t, sample_topology_t>;
+    using dependency_types =
+      dependency_list_t<channel_client_t, route_client_t, sample_topology_t,
+                        spot_handle_resolver_t>;
 
     explicit authenticate_session_handler_t (channel_client_t &client,
                                              route_client_t &routes,
-                                             sample_topology_t &topology) :
-        _client (client), _routes (routes), _topology (topology)
+                                             sample_topology_t &topology,
+                                             spot_handle_resolver_t &spot_handles) :
+        _client (client), _routes (routes), _topology (topology), _spot_handles (spot_handles)
     {
     }
 
@@ -49,13 +52,16 @@ class authenticate_session_handler_t
         auto create_request = ensure_player_actor_req_t{
             authenticated.actor_id, authenticated.display_name, _topology.preferred_play_node_rid ()
         };
-        const auto play_entry_spot = spot_ref_t{
-            sample_names_t::room_spot_mesh,
-            zlink::routing_id_t::from (_topology.preferred_play_node_rid ()),
-            zlink::routing_id_t::from (_topology.preferred_play_node_rid ())
-        };
+        auto play_entry_spot = co_await _spot_handles.resolve_spot_handle (
+          spot_rid_t::from_string (_topology.preferred_play_node_rid ()));
+        if (!play_entry_spot) {
+            co_return result_t<session_actor_t>::failure (
+              framework_error_kind_t::spot_route_not_found,
+              "Play entry spot '" + _topology.preferred_play_node_rid ()
+                + "' has no live location row.");
+        }
         auto ensured = co_await _routes
-            .request_to_node (sample_names_t::room_spot_mesh, play_entry_spot, create_request)
+            .request_to_spot (*play_entry_spot, create_request)
             .async<ensure_player_actor_res_t> ();
         auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
         auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
@@ -74,6 +80,7 @@ class authenticate_session_handler_t
     channel_client_t &_client;
     route_client_t &_routes;
     sample_topology_t &_topology;
+    spot_handle_resolver_t &_spot_handles;
 };
 
 } // namespace zlink::samples::bingo

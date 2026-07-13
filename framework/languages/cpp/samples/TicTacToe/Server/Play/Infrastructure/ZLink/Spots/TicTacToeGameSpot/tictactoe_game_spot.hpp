@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Actors/player_actor.hpp"
@@ -119,7 +119,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         send_to_other_actors (actor.actor_id, state_notify);
     }
 
-    void onLeaveActor (const player_actor_t &actor)
+    void on_leave_actor (const player_actor_t &actor)
     {
         actors.erase (actor.actor_id);
         players.erase (actor.actor_id);
@@ -129,7 +129,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         send_to_other_actors (actor.actor_id, notify);
     }
 
-    void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
     game_notification_publisher_t publisher;
 
@@ -148,19 +148,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
                           << " node=" << actor->node_rid
                           << " generation=" << actor->generation << std::endl;
             }
-            auto sent = actor->context.bound_session ().send (notify).submit ();
-            if (!sent) {
-                if (tictactoe_game_spot_trace_enabled ()) {
-                    std::cerr << "zlink-cpp-tictactoe-session-trace side=spot stage="
-                              << "notify-bound-session-failed actor=" << actor_id
-                              << " error="
-                              << (sent.error () ? sent.error ()->what ()
-                                                : "bound session notify send failed")
-                              << std::endl;
-                }
-                throw std::runtime_error (sent.error () ? sent.error ()->what ()
-                                                        : "bound session notify send failed");
-            }
+            actor->context.bound_session ().send (notify).submit ();
             trace_tictactoe_game_spot ("notify-bound-session-sent", actor_id);
         }
     }

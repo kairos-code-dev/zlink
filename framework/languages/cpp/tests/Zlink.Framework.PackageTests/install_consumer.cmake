@@ -85,7 +85,6 @@ foreach(forbidden_text IN ITEMS
 endforeach()
 foreach(required_target IN ITEMS
     "zlink::framework"
-    "zlink::http_client"
     "zlink::framework_extension_metrics"
     "zlink::framework_extension_tracing"
     "zlink::framework_extension_kafka_bridge"
@@ -101,6 +100,22 @@ foreach(required_target IN ITEMS
     message(FATAL_ERROR "framework package export lacks ${required_target}")
   endif()
 endforeach()
+set(http_client_targets_file
+  "${consumer_install_prefix}/lib/cmake/zlink_http_client_cpp/zlink_http_client_cppTargets.cmake")
+set(http_client_config_file
+  "${consumer_install_prefix}/lib/cmake/zlink_http_client_cpp/zlink_http_client_cppConfig.cmake")
+foreach(path IN ITEMS "${http_client_targets_file}" "${http_client_config_file}")
+  if(NOT EXISTS "${path}")
+    message(FATAL_ERROR "installed http client package file is missing: ${path}")
+  endif()
+endforeach()
+file(READ "${http_client_targets_file}" http_client_targets_text)
+if(NOT http_client_targets_text MATCHES "zlink::http_client")
+  message(FATAL_ERROR "http client package export lacks zlink::http_client")
+endif()
+if(framework_targets_text MATCHES "zlink::http_client")
+  message(FATAL_ERROR "framework package export must not include zlink::http_client")
+endif()
 foreach(required_target IN ITEMS
     "zlink::stream_connector"
     "zlink::stream_connector_codecs"
@@ -116,6 +131,7 @@ cmake_minimum_required(VERSION 3.20)
 project(zlink_framework_cpp_consumer LANGUAGES CXX)
 
 find_package(zlink_framework_cpp CONFIG REQUIRED)
+find_package(zlink_http_client_cpp CONFIG REQUIRED)
 find_package(zlink_stream_connector_cpp CONFIG REQUIRED)
 
 add_executable(consumer main.cpp)

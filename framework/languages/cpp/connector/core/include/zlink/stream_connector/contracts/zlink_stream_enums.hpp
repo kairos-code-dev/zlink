@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <cstdint>
@@ -49,7 +49,17 @@ enum class header_flags_t : std::uint8_t
     has_request_seq = 0x01,
     has_metadata = 0x02,
     payload_compressed = 0x04,
-    has_correlation_id = 0x08
+    has_correlation_id = 0x08,
+    has_flow_id = 0x10
+};
+
+/* Root origin of a message flow (flow-correlation §3.2 wire values). */
+enum class flow_origin_t : std::uint8_t
+{
+    inbound = 1,
+    timer = 2,
+    application = 3,
+    lifecycle = 4
 };
 
 constexpr header_flags_t operator| (header_flags_t lhs, header_flags_t rhs) noexcept
@@ -89,6 +99,20 @@ enum class connection_state_t
     reconnecting,
     disconnected,
     closed
+};
+
+/* Closed set of session close reasons (graceful-drain-handoff §7.1; wire
+ * values match the session-closing control payload and the runtime-metrics
+ * close_reason label). transport failures without a control packet are
+ * synthesized as transport_error; a client-initiated close is client_close. */
+enum class close_reason_t : std::uint8_t
+{
+    client_close = 1,
+    idle_timeout = 2,
+    heartbeat_timeout = 3,
+    server_drain = 4,
+    protocol_error = 5,
+    transport_error = 6
 };
 
 } // namespace zlink::stream_connector

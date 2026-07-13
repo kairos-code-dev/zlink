@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/configuration/detail/framework_options_state.hpp>
@@ -16,6 +16,11 @@
 #include <unordered_set>
 #include <vector>
 
+namespace zlink::framework::detail
+{
+class monitoring_runtime_state_t;
+} // namespace zlink::framework::detail
+
 namespace zlink::framework::runtime
 {
 
@@ -32,9 +37,32 @@ class stream_host_service_t final : public hosted_service_t
     void request_stop () noexcept override;
     void stop () noexcept override;
 
+    /* graceful-drain-handoff §5: a draining node closes brand-new STREAM
+     * connections with session-closing(server_drain); existing sessions
+     * continue until handoff/deadline. */
+    void bind_drain_flag (std::shared_ptr<std::atomic_bool> flag) noexcept
+    {
+        _drain_flag = std::move (flag);
+    }
+
+    void bind_monitoring (
+      std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring) noexcept
+    {
+        _monitoring = std::move (monitoring);
+    }
+
+    /* graceful-drain-handoff §7: sends session-closing(reason) to every
+     * active session (bounded, best effort). The caller decides whether to
+     * close connections afterwards; heartbeat/idle policies own their own
+     * reasons. */
+    void notify_sessions_closing (stream_close_reason_t reason,
+                                  std::string_view diagnostic) noexcept;
+
   private:
     class listener_t;
 
+    std::shared_ptr<std::atomic_bool> _drain_flag;
+    std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
     detail::stream_runtime_t _runtime;
     std::vector<stream_snapshot_t> _streams;
     std::map<std::string, detail::stream_session_factory_t> _session_factories;

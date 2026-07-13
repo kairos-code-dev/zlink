@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include <zlink/http_client.hpp>
 
@@ -551,8 +551,7 @@ request_builder_t::dispatch_request (detail::http_request_t request) const
 {
     if (!_client._runtime) {
         return zlink::framework::task_t<raw_http_response_t> (
-          zlink::framework::result_t<raw_http_response_t>::failure (
-            zlink::framework::framework_error_kind_t::closed, "HTTP client is not initialized"));
+          zlink::framework::detail::boundary_failure<raw_http_response_t> (zlink::framework::detail::boundary_error_t::closed, "HTTP client is not initialized"));
     }
 
     if (_client._runtime->uses_coroutines ()) {

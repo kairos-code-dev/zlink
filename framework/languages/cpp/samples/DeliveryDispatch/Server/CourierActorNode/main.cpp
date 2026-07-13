@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
@@ -147,7 +147,6 @@ class courier_entry_spot_t : public entry_spot_t
         actor.context.bound_session ()
           .send (offer_delivery_notify_t{request.courier_id, request.delivery_id,
                                          request.pickup_address, request.dropoff_address})
-          .packet_name (offer_delivery_notify_t::packet_name)
           .submit ();
         co_return offer_delivery_res_t{request.delivery_id, request.courier_id, true,
                                        "offer pushed to bound courier session"};
@@ -213,7 +212,8 @@ class ensure_courier_actor_handler_t
             .async ();
         co_return ensure_courier_actor_res_t{
           request.courier_id,
-          actor_ref_snapshot_t::from (*joined.actor)};
+          actor_ref_snapshot_t::from (
+            std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined).actor)};
     }
 
   private:

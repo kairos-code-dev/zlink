@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/streams/stream_host_service.hpp"
+
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/runtime_metrics.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
@@ -177,14 +180,104 @@ class stream_host_service_t::listener_t
                 stream_snapshot_t stream,
                 detail::stream_session_factory_t session_factory,
                 service_provider_t &services,
-                std::atomic_bool &stop) :
+                std::atomic_bool &stop,
+                std::shared_ptr<std::atomic_bool> drain_flag,
+                std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring) :
         _runtime (std::move (runtime)),
         _stream (std::move (stream)),
         _session_factory (std::move (session_factory)),
         _services (&services),
         _stop (&stop),
+        _drain_flag (std::move (drain_flag)),
+        _monitoring (std::move (monitoring)),
         _acceptor (_io)
     {
+    }
+
+    /* zlink.stream.connections.* (runtime-metrics §4.1): session accept and
+     * close on the server edge; reconnect attempts belong to the connector. */
+    void register_active_stream (const stream_t &stream)
+    {
+        const std::lock_guard<std::mutex> lock (_active_streams_mutex);
+        _active_streams.push_back (stream);
+    }
+
+    void unregister_active_stream (const stream_t &stream)
+    {
+        const std::lock_guard<std::mutex> lock (_active_streams_mutex);
+        for (auto it = _active_streams.begin (); it != _active_streams.end (); ++it) {
+            if (it->session_id () == stream.session_id ()) {
+                _active_streams.erase (it);
+                break;
+            }
+        }
+    }
+
+    void notify_sessions_closing (stream_close_reason_t reason, std::string_view diagnostic)
+    {
+        std::vector<stream_t> streams;
+        {
+            const std::lock_guard<std::mutex> lock (_active_streams_mutex);
+            streams = _active_streams;
+        }
+        for (auto &stream : streams) {
+            _runtime.send_session_closing (stream, reason, diagnostic);
+        }
+    }
+
+    void record_connection_opened () const
+    {
+        framework::runtime::runtime_metrics_t metrics (_monitoring);
+        if (metrics.enabled ()) {
+            metrics.counter ("zlink.stream.connections.opened", "{connection}", 1);
+            metrics.updown ("zlink.stream.connections.active", "{connection}", 1);
+        }
+    }
+
+    void record_connection_closed (const char *close_reason) const
+    {
+        framework::runtime::runtime_metrics_t metrics (_monitoring);
+        if (metrics.enabled ()) {
+            metrics.counter ("zlink.stream.connections.closed", "{connection}", 1,
+                             {{"close_reason", close_reason}});
+            metrics.updown ("zlink.stream.connections.active", "{connection}", -1);
+        }
+    }
+
+    bool draining () const noexcept
+    {
+        return _drain_flag && _drain_flag->load (std::memory_order_acquire);
+    }
+
+    /* flow-correlation §4.3: session dispatch failures surface as error
+     * events carrying the inbound flow pair, so one grep catches the
+     * healthy and failing lines of the same flow. */
+    void report_packet_dispatch_error (const detail::stream_header_t &header,
+                                       const result_t<void> &dispatched) const
+    {
+        message_dispatch_error_event_t event{
+          dispatch_error_surface_t::stream_session,
+          header.kind () == stream_message_kind_t::request ? dispatch_message_kind_t::request
+                                                           : dispatch_message_kind_t::send,
+          detail::dispatch_reason_from_error (dispatched.error_kind ()),
+          header.kind () == stream_message_kind_t::request
+            ? dispatch_error_action_t::reply_error
+            : dispatch_error_action_t::drop,
+          std::string (header.packet_name ()),
+          std::nullopt,
+          std::nullopt,
+          std::nullopt,
+          std::nullopt,
+          std::nullopt,
+          header.correlation_id () ? std::make_optional (std::string (*header.correlation_id ()))
+                                   : std::nullopt,
+          dispatched.error () != nullptr ? std::make_exception_ptr (*dispatched.error ())
+                                         : std::exception_ptr{}};
+        if (auto flow = header.flow_id ()) {
+            event.flow_id = std::string (*flow);
+            event.flow_origin = header.flow_origin ();
+        }
+        detail::dispatch_error_reporter_t (_runtime.dispatch_options_ref ()).report (event);
     }
 
     void run ()
@@ -561,7 +654,7 @@ class stream_host_service_t::listener_t
                 fd = connection.fd;
             }
             if (fd < 0) {
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              "stream native socket closed");
             }
             const auto received = ::recv (fd, bytes.data () + offset, bytes.size () - offset, 0);
@@ -570,11 +663,11 @@ class stream_host_service_t::listener_t
                 if (received_errno == EINTR) {
                     continue;
                 }
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              std::strerror (received_errno));
             }
             if (received == 0) {
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              "STREAM TCP peer disconnected");
             }
             offset += static_cast<std::size_t> (received);
@@ -666,7 +759,7 @@ class stream_host_service_t::listener_t
                 fd = connection.fd;
             }
             if (fd < 0) {
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              "stream native socket closed");
             }
             const auto sent = ::send (fd, bytes.data () + offset, bytes.size () - offset,
@@ -676,11 +769,11 @@ class stream_host_service_t::listener_t
                 if (sent_errno == EINTR) {
                     continue;
                 }
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              std::strerror (sent_errno));
             }
             if (sent == 0) {
-                throw framework_exception_t (framework_error_kind_t::disconnected,
+                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
                                              "STREAM TCP write made no progress");
             }
             offset += static_cast<std::size_t> (sent);
@@ -793,6 +886,27 @@ class stream_host_service_t::listener_t
               const std::lock_guard<std::mutex> lock (_sockets_mutex);
               _sockets.erase (socket);
           });
+        if (draining ()) {
+            /* graceful-drain-handoff §5: brand-new connections on a draining
+             * node receive session-closing(server_drain) and are closed. */
+            try {
+                const auto payload_bytes = detail::stream_runtime_t::encode_session_closing_payload (
+                  stream_close_reason_t::server_drain, "node is draining");
+                detail::stream_header_t closing (stream_message_kind_t::control,
+                                                 stream_codec_t::raw, stream_header_flags_t::none,
+                                                 std::nullopt, "session-closing", {});
+                const auto closing_payload = zlink::message_t::from (
+                  std::string (payload_bytes.begin (), payload_bytes.end ()));
+                if constexpr (std::is_same_v<TStream, native_tcp_connection_t>) {
+                    write_frame_native (*connection, closing, closing_payload);
+                } else {
+                    write_frame (*connection, closing, closing_payload);
+                }
+            }
+            catch (...) {
+            }
+            return;
+        }
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
@@ -808,11 +922,10 @@ class stream_host_service_t::listener_t
                       return result_t<void>::success ();
                   }
                   catch (const framework_exception_t &error) {
-                      return result_t<void>::failure (error.kind (), error.what (),
-                                                      error.is_retriable ());
+                      return detail::result_access_t::failure<void> (error);
                   }
                   catch (const std::exception &error) {
-                      return result_t<void>::failure (framework_error_kind_t::disconnected,
+                      return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                                       error.what ());
                   }
               });
@@ -824,6 +937,8 @@ class stream_host_service_t::listener_t
                 return;
             }
             connected_session = true;
+            record_connection_opened ();
+            register_active_stream (stream);
             flush_writes (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
                 auto frame = read_frame (*connection);
@@ -834,6 +949,7 @@ class stream_host_service_t::listener_t
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
                     !dispatched) {
+                    report_packet_dispatch_error (frame.header, dispatched);
                     if (frame.header.kind () == stream_message_kind_t::request) {
                         const std::lock_guard<std::mutex> lock (*write_mutex);
                         write_error_frame (*connection, frame.header, dispatched);
@@ -875,6 +991,10 @@ class stream_host_service_t::listener_t
                 _runtime.mark_disconnected (stream);
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
+                unregister_active_stream (stream);
+                record_connection_closed (_stop->load (std::memory_order_acquire)
+                                            ? "server_drain"
+                                            : "client_close");
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }
@@ -902,6 +1022,23 @@ class stream_host_service_t::listener_t
                       ++it;
               }
           });
+        if (draining ()) {
+            /* graceful-drain-handoff §5: brand-new connections on a draining
+             * node receive session-closing(server_drain) and are closed. */
+            try {
+                const auto payload_bytes = detail::stream_runtime_t::encode_session_closing_payload (
+                  stream_close_reason_t::server_drain, "node is draining");
+                detail::stream_header_t closing (stream_message_kind_t::control,
+                                                 stream_codec_t::raw, stream_header_flags_t::none,
+                                                 std::nullopt, "session-closing", {});
+                const auto closing_payload = zlink::message_t::from (
+                  std::string (payload_bytes.begin (), payload_bytes.end ()));
+                write_frame_native (*connection, closing, closing_payload);
+            }
+            catch (...) {
+            }
+            return;
+        }
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
@@ -916,11 +1053,10 @@ class stream_host_service_t::listener_t
                   return result_t<void>::success ();
               }
               catch (const framework_exception_t &error) {
-                  return result_t<void>::failure (error.kind (), error.what (),
-                                                  error.is_retriable ());
+                  return detail::result_access_t::failure<void> (error);
               }
               catch (const std::exception &error) {
-                  return result_t<void>::failure (framework_error_kind_t::disconnected,
+                  return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                                   error.what ());
               }
           });
@@ -931,6 +1067,8 @@ class stream_host_service_t::listener_t
                 return;
             }
             connected_session = true;
+            record_connection_opened ();
+            register_active_stream (stream);
             flush_writes_native (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
                 auto frame = read_frame_native (*connection);
@@ -941,6 +1079,7 @@ class stream_host_service_t::listener_t
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
                     !dispatched) {
+                    report_packet_dispatch_error (frame.header, dispatched);
                     if (frame.header.kind () == stream_message_kind_t::request) {
                         const std::lock_guard<std::mutex> lock (*write_mutex);
                         write_error_frame_native (*connection, frame.header, dispatched);
@@ -958,6 +1097,10 @@ class stream_host_service_t::listener_t
                 _runtime.mark_disconnected (stream);
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
+                unregister_active_stream (stream);
+                record_connection_closed (_stop->load (std::memory_order_acquire)
+                                            ? "server_drain"
+                                            : "client_close");
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }
@@ -1000,6 +1143,10 @@ class stream_host_service_t::listener_t
     detail::stream_session_factory_t _session_factory;
     service_provider_t *_services;
     std::atomic_bool *_stop;
+    std::shared_ptr<std::atomic_bool> _drain_flag;
+    std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
+    std::mutex _active_streams_mutex;
+    std::vector<stream_t> _active_streams;
     asio::io_context _io;
     std::mutex _io_mutex;
     tcp::acceptor _acceptor;
@@ -1042,11 +1189,26 @@ void stream_host_service_t::start (service_provider_t &services)
             continue;
         }
         auto listener =
-          std::make_unique<listener_t> (_runtime, stream, factory->second, services, _stop);
+          std::make_unique<listener_t> (_runtime, stream, factory->second, services, _stop,
+                                        _drain_flag, _monitoring);
         auto *raw = listener.get ();
         _listeners.push_back (std::move (listener));
         _threads.emplace_back ([raw] { raw->run (); });
         raw->wait_started ();
+    }
+}
+
+void stream_host_service_t::notify_sessions_closing (stream_close_reason_t reason,
+                                                     std::string_view diagnostic) noexcept
+{
+    for (const auto &listener : _listeners) {
+        if (listener) {
+            try {
+                listener->notify_sessions_closing (reason, diagnostic);
+            }
+            catch (...) {
+            }
+        }
     }
 }
 

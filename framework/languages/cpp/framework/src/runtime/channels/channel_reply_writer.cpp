@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/channel_reply_writer.hpp"
 
@@ -9,6 +9,27 @@ namespace zlink::framework::detail
 
 namespace
 {
+
+const char *boundary_error_name (detail::boundary_error_t state) noexcept
+{
+    switch (state) {
+        case detail::boundary_error_t::timed_out:
+            return "timeout";
+        case detail::boundary_error_t::shutdown:
+            return "shutdown";
+        case detail::boundary_error_t::disconnected:
+            return "disconnected";
+        case detail::boundary_error_t::closed:
+            return "closed";
+        case detail::boundary_error_t::cancelled:
+            return "cancelled";
+        case detail::boundary_error_t::stale_generation:
+            return "stale_generation";
+        case detail::boundary_error_t::none:
+            break;
+    }
+    return "request_failed";
+}
 
 std::string error_code_name (framework_error_kind_t kind)
 {
@@ -27,20 +48,12 @@ std::string error_code_name (framework_error_kind_t kind)
             return "request_protocol_error";
         case framework_error_kind_t::payload_decode_failed:
             return "payload_decode_failed";
-        case framework_error_kind_t::timeout:
-            return "timeout";
         case framework_error_kind_t::worker_queue_full:
             return "worker_queue_full";
         case framework_error_kind_t::worker_timed_out:
             return "worker_timed_out";
         case framework_error_kind_t::worker_failed:
             return "worker_failed";
-        case framework_error_kind_t::shutdown:
-            return "shutdown";
-        case framework_error_kind_t::disconnected:
-            return "disconnected";
-        case framework_error_kind_t::closed:
-            return "closed";
         default:
             return "request_failed";
     }
@@ -69,7 +82,9 @@ channel_reply_writer_t::create_error_header (std::string channel_name,
 {
     auto header = create_reply_header (runtime::messaging::message_kind_t::error,
                                        std::move (channel_name), request);
-    header.error_code = error_code_name (error.kind ());
+    header.error_code = detail::boundary_state (error) != detail::boundary_error_t::none
+                          ? boundary_error_name (detail::boundary_state (error))
+                          : error_code_name (error.kind ());
     header.error_message = error.what ();
     return header;
 }

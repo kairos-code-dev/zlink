@@ -1,14 +1,14 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
-#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/channels/pending_operation.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/app.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
+#include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>

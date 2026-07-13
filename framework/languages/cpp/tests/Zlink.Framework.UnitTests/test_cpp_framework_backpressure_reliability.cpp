@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
 
@@ -59,7 +59,8 @@ int main ()
     }
     auto timeout_result = runtime.expire_pending (timeout_operation.value ());
     if (timeout_result
-        || timeout_result.error_kind () != zlink::framework::framework_error_kind_t::timeout
+        || (timeout_result.error () != nullptr
+         && zlink::framework::detail::boundary_state (*timeout_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)
         || dead_letter_count != 1 || last_dead_letter_key != "timeout-key") {
         return 7;
     }
@@ -87,7 +88,8 @@ int main ()
     }
     auto after_shutdown = shutdown_runtime.queue_pending_send ("profile", "after-shutdown");
     if (after_shutdown
-        || after_shutdown.error_kind () != zlink::framework::framework_error_kind_t::shutdown) {
+        || (after_shutdown.error () != nullptr
+         && zlink::framework::detail::boundary_state (*after_shutdown.error ()) != zlink::framework::detail::boundary_error_t::shutdown)) {
         return 12;
     }
 
@@ -98,7 +100,8 @@ int main ()
     close_runtime.close ();
     auto after_close = close_runtime.reserve_outbound_request ("profile");
     if (after_close
-        || after_close.error_kind () != zlink::framework::framework_error_kind_t::closed) {
+        || (after_close.error () != nullptr
+         && zlink::framework::detail::boundary_state (*after_close.error ()) != zlink::framework::detail::boundary_error_t::closed)) {
         return 13;
     }
 

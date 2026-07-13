@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../bingo_entry_spot.hpp"
@@ -24,8 +24,9 @@ bingo_entry_spot_t::match_bingo (const player_actor_t &actor,
       matched.room_id, actor.actor.actor_id, display_name};
     auto joined = co_await actor.context.join_spot (spot_rid, join_request)
                     .async<bingo_room_join_res_t> ();
-    co_return match_bingo_res_t{
-      matched.room_id, joined.reply.state, matched.room_owner_node_rid};
+    const auto join_state =
+      std::visit ([] (const auto &value) { return value.reply.state; }, joined);
+    co_return match_bingo_res_t{matched.room_id, join_state, matched.room_owner_node_rid};
 }
 
 } // namespace zlink::samples::bingo

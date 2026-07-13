@@ -103,6 +103,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/backend/native_route_backend.cpp
   framework/src/runtime/host/actor_gateway_spot_bridge.cpp
   framework/src/runtime/configuration/builders/configuration_builder.cpp
+  framework/src/runtime/configuration/endpoint_connections.cpp
   framework/src/runtime/configuration/services.cpp
   framework/src/runtime/codecs/serializer.cpp
   framework/src/runtime/diagnostics/logging.cpp
@@ -114,6 +115,8 @@ add_library(zlink_framework STATIC
   framework/src/runtime/handlers/handler_registry.cpp
   framework/src/runtime/dispatch/projection.cpp
   framework/src/runtime/host/app.cpp
+  framework/src/runtime/locations/spot_handle.cpp
+  framework/src/runtime/diagnostics/flow_context.cpp
   framework/src/runtime/http/http_listener.cpp
   framework/src/runtime/http/http_request_pipeline.cpp
   framework/src/runtime/host/framework_runtime.cpp
@@ -550,7 +553,6 @@ endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(TARGETS
     zlink_framework
-    zlink_http_client
     zlink_framework_extension_metrics
     zlink_framework_extension_tracing
     zlink_framework_extension_kafka_bridge
@@ -565,72 +567,94 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     zlink_framework_codec_protobuf
     zlink_framework_codec_messagepack
     zlink_framework_locations_redis
-    EXPORT zlink_framework_cppTargets)
+    EXPORT zlink_framework_cppTargets
+    COMPONENT Framework)
+  install(TARGETS
+    zlink_http_client
+    EXPORT zlink_http_client_cppTargets
+    COMPONENT HttpClient)
 endif()
 install(TARGETS
   zlink_stream_connector
   zlink_stream_connector_codecs
   zlink_stream_connector_throwing
-  EXPORT zlink_stream_connector_cppTargets)
+  EXPORT zlink_stream_connector_cppTargets
+  COMPONENT StreamConnector)
 if(TARGET zlink_unreal_stream_connector)
   install(TARGETS
     zlink_unreal_stream_connector
-    EXPORT zlink_stream_connector_cppTargets)
+    EXPORT zlink_stream_connector_cppTargets
+    COMPONENT StreamConnector)
 endif()
 if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
   install(TARGETS
     zlink_stream_e2e_client
-    EXPORT zlink_stream_connector_cppTargets)
+    EXPORT zlink_stream_connector_cppTargets
+    COMPONENT StreamConnector)
 endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(DIRECTORY "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/include/"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT FrameworkDependency
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
   install(FILES "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/libzlink_cpp.a"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    COMPONENT FrameworkDependency)
   install(DIRECTORY "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/cmake/zlink_cpp"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake
+    COMPONENT FrameworkDependency)
   install(DIRECTORY framework/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT Framework
     FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY http-client/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT HttpClient
     FILES_MATCHING PATTERN "*.hpp")
 endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(DIRECTORY extensions/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT Framework
     FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY extensions/framework-codec-protobuf/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT Framework
     FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY extensions/framework-codec-messagepack/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT Framework
     FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY extensions/framework-locations-redis/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT Framework
     FILES_MATCHING PATTERN "*.hpp")
 endif()
 install(DIRECTORY connector/core/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  COMPONENT StreamConnector
   FILES_MATCHING PATTERN "*.hpp")
 if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
   install(DIRECTORY connector/e2e-client/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT StreamConnector
     FILES_MATCHING PATTERN "*.hpp")
 endif()
 install(DIRECTORY connector/throwing-adapter/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  COMPONENT StreamConnector
   FILES_MATCHING PATTERN "*.hpp")
 if(TARGET zlink_unreal_stream_connector)
   install(DIRECTORY connector/engines/unreal/Source/ZLinkStreamConnector/Public/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector
+    COMPONENT StreamConnector
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 endif()
 if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}")
   if(WIN32)
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
-      DESTINATION ${CMAKE_INSTALL_BINDIR})
+      DESTINATION ${CMAKE_INSTALL_BINDIR}
+      COMPONENT FrameworkDependency)
   elseif(UNIX AND NOT APPLE)
     get_filename_component(
       ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_DIR
@@ -639,25 +663,37 @@ if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_R
     file(GLOB ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_FILES
       "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_DIR}/libzlink.so*")
     install(FILES ${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME_FILES}
-      DESTINATION ${CMAKE_INSTALL_LIBDIR})
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      COMPONENT FrameworkDependency)
   else()
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
-      DESTINATION ${CMAKE_INSTALL_LIBDIR})
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      COMPONENT FrameworkDependency)
   endif()
 endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(EXPORT zlink_framework_cppTargets
     NAMESPACE zlink::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp
+    COMPONENT Framework)
+  install(EXPORT zlink_http_client_cppTargets
+    NAMESPACE zlink::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_http_client_cpp
+    COMPONENT HttpClient)
 endif()
 install(EXPORT zlink_stream_connector_cppTargets
   NAMESPACE zlink::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp)
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp
+  COMPONENT StreamConnector)
 
 configure_package_config_file(
   "${CMAKE_CURRENT_LIST_DIR}/cmake/zlink_framework_cppConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/zlink_framework_cppConfig.cmake"
   INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+configure_package_config_file(
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/zlink_http_client_cppConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/zlink_http_client_cppConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_http_client_cpp)
 configure_package_config_file(
   "${CMAKE_CURRENT_LIST_DIR}/cmake/zlink_stream_connector_cppConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/zlink_stream_connector_cppConfig.cmake"
@@ -665,11 +701,17 @@ configure_package_config_file(
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/zlink_framework_cppConfig.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp
+    COMPONENT Framework)
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/zlink_http_client_cppConfig.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_http_client_cpp
+    COMPONENT HttpClient)
 endif()
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/zlink_stream_connector_cppConfig.cmake"
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp)
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp
+  COMPONENT StreamConnector)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   enable_testing()
@@ -799,6 +841,18 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_layout_contract PROPERTIES
     LABELS "framework-contract"
     TIMEOUT 30)
+
+  add_executable(test_cpp_framework_target_contract
+    tests/Zlink.Framework.ContractTests/test_cpp_framework_target_contract.cpp)
+  target_compile_definitions(test_cpp_framework_target_contract PRIVATE
+    ZLINK_FRAMEWORK_CPP_SOURCE_DIR="${ZLINK_FRAMEWORK_CPP_DIR}")
+  target_compile_features(test_cpp_framework_target_contract PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_target_contract)
+  add_test(NAME test_cpp_framework_target_contract
+    COMMAND test_cpp_framework_target_contract)
+  set_tests_properties(test_cpp_framework_target_contract PROPERTIES
+    LABELS "framework-contract"
+    TIMEOUT 60)
   set(ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
     -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
     -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR})
@@ -1251,33 +1305,48 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::http_client
     zlink::stream_e2e_client)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_delay
-    e2e/YieldDispatch/Server/Delay/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+  add_executable(zlink_cpp_e2e_automatic_turn_dispatch_delay
+    e2e/AutomaticTurnDispatch/Server/Delay/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_delay PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+  target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_delay PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_play
-    e2e/YieldDispatch/Server/Play/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+  add_executable(zlink_cpp_e2e_automatic_turn_dispatch_play
+    e2e/AutomaticTurnDispatch/Server/Play/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_play PRIVATE
     zlink::framework_locations_redis)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+  target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_play PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_session
-    e2e/YieldDispatch/Server/Session/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+  add_executable(zlink_cpp_e2e_automatic_turn_dispatch_session
+    e2e/AutomaticTurnDispatch/Server/Session/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_session PRIVATE
     zlink::framework_locations_redis)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+  target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_session PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_client
-    e2e/YieldDispatch/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+  add_executable(zlink_cpp_e2e_automatic_turn_dispatch_client
+    e2e/AutomaticTurnDispatch/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_client PRIVATE
     zlink::framework
     zlink::stream_e2e_client)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+  target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_observability_ops_server
+    e2e/ObservabilityOps/Server/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_observability_ops_server PRIVATE
+    zlink::framework_locations_redis)
+  target_include_directories(zlink_cpp_e2e_observability_ops_server PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_observability_ops_trigger
+    e2e/ObservabilityOps/Trigger/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_observability_ops_trigger PRIVATE
+    zlink::framework
+    zlink::stream_e2e_client)
+  target_include_directories(zlink_cpp_e2e_observability_ops_trigger PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_pubsub_publisher

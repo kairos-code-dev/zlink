@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../Infrastructure/scenario_state.hpp"
@@ -45,7 +45,6 @@ inline scenario_route_res_t request_route_with_retry (zlink::framework::route_cl
     std::string last_error = "route request failed";
     while (std::chrono::steady_clock::now () < deadline) {
         auto call = routes.request_to_node (route_channel, target, request)
-                      .packet_name ("ScenarioRouteReq")
                       .timeout (std::chrono::seconds (5))
                       .async<scenario_route_res_t> ();
         const auto &reply = call.result ();
@@ -181,7 +180,6 @@ class http_route_missing_handler_t
         auto call = _routes.request_to_node (route_channel,
                                      zlink::routing_id_t::from (std::string ("missing-rid")),
                                      request)
-                      .packet_name ("ScenarioRouteReq")
                       .timeout (std::chrono::milliseconds (300))
                       .async<scenario_route_res_t> ();
         return {.failed = !call.result ().has_value (),

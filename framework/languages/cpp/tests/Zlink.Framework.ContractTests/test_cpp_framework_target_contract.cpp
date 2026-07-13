@@ -1,0 +1,267 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+/* G0 target-contract gate for the C++ public-contract gap plan.
+ * Each check maps to a ledger row in
+ * framework/doc/plan/log/framework-public-contract-gap-implementation/
+ * cpp-g0-contract-ledger.ko.md and stays red until the gap is closed.
+ * The checks scan installed public headers and e2e wiring textually so the
+ * build keeps compiling while target signatures are still missing. */
+
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#ifndef ZLINK_FRAMEWORK_CPP_SOURCE_DIR
+#error "ZLINK_FRAMEWORK_CPP_SOURCE_DIR must be defined"
+#endif
+
+namespace
+{
+
+std::string read_file (const std::filesystem::path &path)
+{
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    return buffer.str ();
+}
+
+bool tree_contains (const std::filesystem::path &root, const std::string &needle)
+{
+    if (!std::filesystem::exists (root)) {
+        return false;
+    }
+    for (const auto &entry : std::filesystem::recursive_directory_iterator (root)) {
+        if (!entry.is_regular_file ()) {
+            continue;
+        }
+        const auto ext = entry.path ().extension ();
+        if (ext != ".hpp" && ext != ".h" && ext != ".cpp") {
+            continue;
+        }
+        if (read_file (entry.path ()).find (needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct gate_t
+{
+    int failures = 0;
+
+    void require (bool condition, const std::string &ledger_id, const std::string &message)
+    {
+        if (condition) {
+            return;
+        }
+        std::cerr << ledger_id << ": " << message << '\n';
+        ++failures;
+    }
+};
+
+} // namespace
+
+int main ()
+{
+    const std::filesystem::path root = ZLINK_FRAMEWORK_CPP_SOURCE_DIR;
+    const auto include_root = root / "framework/include";
+    const auto e2e_root = root / "e2e";
+    gate_t gate;
+
+    for (const auto &required :
+         {include_root, e2e_root, root / "framework/src", root / "connector/core"}) {
+        if (!std::filesystem::exists (required)) {
+            std::cerr << "target contract scan root is missing: " << required << '\n';
+            return 1;
+        }
+    }
+
+    const auto actor_hpp = read_file (include_root / "zlink/framework/contracts/actors/actor.hpp");
+    const auto spot_hpp = read_file (include_root / "zlink/framework/contracts/spots/spot.hpp");
+    const auto app_hpp =
+      read_file (include_root / "zlink/framework/contracts/configuration/app.hpp");
+    const auto services_hpp =
+      read_file (include_root / "zlink/framework/contracts/configuration/services.hpp");
+    const auto execution_hpp =
+      read_file (include_root / "zlink/framework/contracts/dispatch/execution.hpp");
+    const auto events_hpp =
+      read_file (include_root / "zlink/framework/contracts/eventing/events.hpp");
+    const auto stream_hpp =
+      read_file (include_root / "zlink/framework/contracts/streams/stream.hpp");
+    const auto rows_hpp =
+      read_file (include_root / "zlink/framework/contracts/locations/rows.hpp");
+    const auto error_hpp =
+      read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
+    const auto runner = read_file (e2e_root / "run_e2e_all.sh");
+
+    /* CPP-G0-ASYNC-001 — one-way terminators return void. */
+    gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",
+                  "one-way submit terminators still return result_t<void>");
+    gate.require (actor_hpp.find ("void submit") != std::string::npos, "CPP-G0-ASYNC-001",
+                  "actor one-way send does not expose the target `void submit()` terminator");
+
+    /* CPP-G0-ASYNC-002 — relay/disconnect complete as task_t<void>. */
+    gate.require (actor_hpp.find ("task_t<void> relay") != std::string::npos, "CPP-G0-ASYNC-002",
+                  "session_actor_t::relay does not return task_t<void>");
+    gate.require (actor_hpp.find ("task_t<void> notify_disconnected") != std::string::npos,
+                  "CPP-G0-ASYNC-002", "session_actor_t::notify_disconnected does not return "
+                                     "task_t<void>");
+    gate.require (actor_hpp.find ("task_t<void> disconnect") != std::string::npos,
+                  "CPP-G0-ASYNC-002", "bound_session_t::disconnect does not return task_t<void>");
+
+    /* CPP-G0-ASYNC-003 — no public yield/callback execution-mode surface. */
+    gate.require (!tree_contains (include_root, "yield"), "CPP-G0-ASYNC-003",
+                  "public headers still expose yield-based execution surfaces");
+
+    /* CPP-G0-CANCEL-001 — no framework-specific cancellation token. */
+    gate.require (!tree_contains (include_root, "cancellation_token_t"), "CPP-G0-CANCEL-001",
+                  "cancellation_token_t is still exported from public headers");
+
+    /* CPP-G0-NAME-001 — snake_case lifecycle callbacks only. */
+    for (const std::string forbidden : {"onCreateActor", "onLeaveActor", "onDisconnectActor",
+                                        "destroyActor"}) {
+        gate.require (!tree_contains (include_root, forbidden), "CPP-G0-NAME-001",
+                      "camelCase lifecycle name is still public: " + forbidden);
+        gate.require (!tree_contains (root / "framework/src", forbidden), "CPP-G0-NAME-001",
+                      "camelCase lifecycle name survives in runtime: " + forbidden);
+    }
+    for (const std::string required : {"on_create_actor", "on_leave_actor", "on_disconnect_actor",
+                                       "destroy_actor"}) {
+        gate.require (tree_contains (include_root, required), "CPP-G0-NAME-001",
+                      "snake_case lifecycle name is missing: " + required);
+    }
+
+    /* CPP-G0-ERROR-001 — enumerators outside the fixed contract set are gone. */
+    const auto enum_begin = error_hpp.find ("enum class framework_error_kind_t");
+    const auto enum_end = error_hpp.find ("};", enum_begin);
+    const auto enum_block = enum_begin == std::string::npos
+                              ? std::string ()
+                              : error_hpp.substr (enum_begin, enum_end - enum_begin);
+    for (const std::string forbidden : {"actor_stale_generation", "timeout", "shutdown",
+                                        "disconnected", "closed", "cancelled"}) {
+        gate.require (enum_block.find (forbidden) == std::string::npos, "CPP-G0-ERROR-001",
+                      "framework_error_kind_t still exposes non-contract value: " + forbidden);
+    }
+
+    /* CPP-G0-SPOTHANDLE-001 — opaque handle replaces spot_ref_t. */
+    gate.require (!tree_contains (include_root, "spot_ref_t"), "CPP-G0-SPOTHANDLE-001",
+                  "public spot_ref_t address snapshot is still exported");
+    for (const std::string required : {"spot_handle_t", "spot_handle_resolver_t",
+                                       "actor_spot_handle_resolver_t", "send_to_spot",
+                                       "request_to_spot"}) {
+        gate.require (tree_contains (include_root, required), "CPP-G0-SPOTHANDLE-001",
+                      "spot handle surface is missing: " + required);
+    }
+
+    /* CPP-G0-ACTOR-001 — nullable spot rid is the single membership source. */
+    gate.require (actor_hpp.find ("is_joined") == std::string::npos, "CPP-G0-ACTOR-001",
+                  "actor_context_t::is_joined is still public");
+    gate.require (actor_hpp.find ("std::optional<spot_rid_t> spot_rid") != std::string::npos,
+                  "CPP-G0-ACTOR-001", "actor_context_t::spot_rid() nullable accessor is missing");
+
+    /* CPP-G0-ACTOR-002 — join result is an accepted/rejected variant. */
+    for (const std::string required : {"actor_join_accepted_t", "actor_join_rejected_t"}) {
+        gate.require (actor_hpp.find (required) != std::string::npos, "CPP-G0-ACTOR-002",
+                      "variant join result type is missing: " + required);
+    }
+
+    /* CPP-G0-SPOTMGR-001 — async spot queries. */
+    gate.require (spot_hpp.find ("task_t<std::optional<spot_info_t>> find_spot")
+                    != std::string::npos,
+                  "CPP-G0-SPOTMGR-001", "find_spot is not async");
+    gate.require (spot_hpp.find ("task_t<std::vector<spot_info_t>> list_spots")
+                    != std::string::npos,
+                  "CPP-G0-SPOTMGR-001", "list_spots is not async");
+
+    /* CPP-G0-CONN-001 — capability endpoint runtime handle. */
+    gate.require (tree_contains (include_root, "endpoint_connections_t"), "CPP-G0-CONN-001",
+                  "endpoint_connections_t runtime handle is missing");
+
+    /* CPP-G0-DISPATCH-001 — no dispatch-mode surface, no typed packet-name override. */
+    for (const std::string forbidden : {"dispatch_mode_t", "spot_dispatch_mode",
+                                        "stream_dispatch_mode"}) {
+        gate.require (!tree_contains (include_root, forbidden), "CPP-G0-DISPATCH-001",
+                      "dispatch optimization surface is still public: " + forbidden);
+    }
+    for (const std::string forbidden :
+         {"request_call_t &packet_name", "send_call_t &packet_name",
+          "actor_send_call_t &packet_name", "actor_request_call_t &packet_name"}) {
+        gate.require (!tree_contains (include_root, forbidden), "CPP-G0-DISPATCH-001",
+                      "typed call still exposes packet_name override: " + forbidden);
+    }
+
+    /* CPP-G0-STREAM-001 — typed session handler surface. */
+    gate.require (tree_contains (include_root, "typed_session_packet_handler"),
+                  "CPP-G0-STREAM-001", "typed stream session handler contract is missing");
+
+    /* CPP-G0-ROUTEMESH-001 — spec registration name and runtime options. */
+    gate.require (!tree_contains (include_root, "add_route_mesh_channel"), "CPP-G0-ROUTEMESH-001",
+                  "legacy add_route_mesh_channel registration name is still public");
+    gate.require (tree_contains (include_root, "add_route_mesh"), "CPP-G0-ROUTEMESH-001",
+                  "add_route_mesh registration entry point is missing");
+    gate.require (tree_contains (include_root, "route_mesh_channel_runtime_options_t"),
+                  "CPP-G0-ROUTEMESH-001", "route-mesh runtime options surface is missing");
+
+    /* CPP-G0-FLOW-001 — flow correlation fields and wire marker. */
+    gate.require (execution_hpp.find ("flow_id") != std::string::npos, "CPP-G0-FLOW-001",
+                  "message_flow_event_t lacks flow_id");
+    gate.require (execution_hpp.find ("flow_origin_t") != std::string::npos, "CPP-G0-FLOW-001",
+                  "flow_origin_t enum is missing");
+    gate.require (stream_hpp.find ("has_flow_id") != std::string::npos, "CPP-G0-FLOW-001",
+                  "stream header flag has_flow_id is missing");
+    gate.require (tree_contains (root / "framework/src", "0xF2")
+                    || tree_contains (root / "framework/src", "0xf2"),
+                  "CPP-G0-FLOW-001", "0xF2 envelope format marker is not encoded");
+
+    /* CPP-G0-METRIC-001 — metric payload carries catalog fields. */
+    for (const std::string required : {"metric_instrument_kind_t", "metric_temporality_t",
+                                       "std::string unit;"}) {
+        gate.require (events_hpp.find (required) != std::string::npos, "CPP-G0-METRIC-001",
+                      "metric_event_payload_t catalog field is missing: " + required);
+    }
+
+    /* CPP-G0-DRAIN-001 — graceful drain surface. */
+    for (const std::string required : {"drain_result_t", "await_drained", "is_ready"}) {
+        gate.require (app_hpp.find (required) != std::string::npos, "CPP-G0-DRAIN-001",
+                      "app_t drain surface is missing: " + required);
+    }
+    gate.require (rows_hpp.find ("draining") != std::string::npos, "CPP-G0-DRAIN-001",
+                  "peer location row lacks the typed draining field");
+    gate.require (tree_contains (include_root, "spot_drain_policy_t"), "CPP-G0-DRAIN-001",
+                  "spot_drain_policy_t is missing");
+    gate.require (tree_contains (include_root, "stream_close_reason_t"), "CPP-G0-DRAIN-001",
+                  "stream_close_reason_t is missing");
+    gate.require (tree_contains (root / "connector/core", "close_reason"), "CPP-G0-DRAIN-001",
+                  "connector does not expose a session close reason");
+
+    /* CPP-G0-DI-001 — optional service lookup. */
+    gate.require (services_hpp.find ("std::optional<std::reference_wrapper") != std::string::npos,
+                  "CPP-G0-DI-001", "service_provider_t::get<T>() optional lookup is missing");
+
+    /* CPP-G0-E2E-001 — Config 8 fixture migrated to AutomaticTurnDispatch. */
+    gate.require (!std::filesystem::exists (e2e_root / "YieldDispatch"), "CPP-G0-E2E-001",
+                  "e2e/YieldDispatch fixture directory still exists");
+    gate.require (std::filesystem::exists (e2e_root / "AutomaticTurnDispatch"), "CPP-G0-E2E-001",
+                  "e2e/AutomaticTurnDispatch fixture directory is missing");
+    gate.require (runner.find ("YieldDispatch") == std::string::npos, "CPP-G0-E2E-001",
+                  "run_e2e_all.sh still registers YieldDispatch");
+    gate.require (runner.find ("AutomaticTurnDispatch") != std::string::npos, "CPP-G0-E2E-001",
+                  "run_e2e_all.sh does not register AutomaticTurnDispatch");
+
+    /* CPP-G0-E2E-002 — Config 11 fixture exists. */
+    gate.require (std::filesystem::exists (e2e_root / "ObservabilityOps"), "CPP-G0-E2E-002",
+                  "e2e/ObservabilityOps fixture directory is missing");
+    gate.require (runner.find ("ObservabilityOps") != std::string::npos, "CPP-G0-E2E-002",
+                  "run_e2e_all.sh does not register ObservabilityOps");
+
+    if (gate.failures != 0) {
+        std::cerr << "target contract gate failures: " << gate.failures << '\n';
+        return 1;
+    }
+    std::cout << "target contract gate satisfied\n";
+    return 0;
+}

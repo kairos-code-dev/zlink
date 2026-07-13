@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "Scenarios/mon_a1_socket_events_scenario.hpp"
 #include "Scenarios/mon_a2_location_events_scenario.hpp"

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../samples/Bingo/Server/Configuration/sample_names.hpp"
 #include "../../samples/Bingo/Server/Configuration/sample_topology.hpp"
@@ -693,15 +693,15 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
         const auto readme = read_file (cpp_root / sample.readme_path);
         const auto runner = read_file (cpp_root / sample.runner_path);
 
-        EXPECT_NE (entry.find ("onCreateActor"), std::string::npos)
+        EXPECT_NE (entry.find ("on_create_actor"), std::string::npos)
           << sample.entry_spot_path << " must show actor creation callback";
         EXPECT_NE (entry.find ("on_actor_joined"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot re-entry callback";
-        EXPECT_NE (entry.find ("onLeaveActor"), std::string::npos)
+        EXPECT_NE (entry.find ("on_leave_actor"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot leave callback";
-        EXPECT_NE (entry.find ("onDisconnectActor"), std::string::npos)
+        EXPECT_NE (entry.find ("on_disconnect_actor"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot disconnect callback";
-        EXPECT_NE (entry.find (".destroyActor ("), std::string::npos)
+        EXPECT_NE (entry.find (".destroy_actor ("), std::string::npos)
           << sample.entry_spot_path << " must destroy actors from Entry Spot context";
         EXPECT_NE (entry.find ("destroy_after_entry_spot_join"), std::string::npos)
           << sample.entry_spot_path << " must guard destroy after Entry Spot re-entry";
@@ -709,13 +709,13 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.entry_spot_path << " must mark actor disconnect state";
         EXPECT_NE (user.find (".leave_actor ("), std::string::npos)
           << sample.user_spot_path << " must return actors to Entry Spot with leave_actor";
-        EXPECT_NE (user.find ("onDisconnectActor"), std::string::npos)
+        EXPECT_NE (user.find ("on_disconnect_actor"), std::string::npos)
           << sample.user_spot_path << " must show user Spot disconnect callback";
         EXPECT_NE (user.find ("mark_for_destroy_after_room_leave"), std::string::npos)
           << sample.user_spot_path << " must mark destroy intent before leave_actor";
         EXPECT_NE (user.find ("mark_disconnected"), std::string::npos)
           << sample.user_spot_path << " must mark actor disconnect state";
-        EXPECT_EQ (user.find ("destroyActor"), std::string::npos)
+        EXPECT_EQ (user.find ("destroy_actor"), std::string::npos)
           << sample.user_spot_path << " must not destroy actors from user Spot";
         EXPECT_NE (actor.find ("destroy_after_entry_spot_join"), std::string::npos)
           << sample.actor_path << " must hold destroy-after-entry-join state";
@@ -729,16 +729,16 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.session_path << " must detach actor binding on disconnect";
         EXPECT_EQ (session.find ("leave_actor"), std::string::npos)
           << sample.session_path << " must not leave rooms on disconnect";
-        EXPECT_EQ (session.find ("destroyActor"), std::string::npos)
+        EXPECT_EQ (session.find ("destroy_actor"), std::string::npos)
           << sample.session_path << " must not destroy actors on disconnect";
 
-        EXPECT_NE (readme.find ("`onCreateActor`"), std::string::npos)
+        EXPECT_NE (readme.find ("`on_create_actor`"), std::string::npos)
           << sample.readme_path << " must document actor creation callback";
         EXPECT_NE (readme.find ("`leave_actor`"), std::string::npos)
           << sample.readme_path << " must document room leave responsibility";
-        EXPECT_NE (readme.find ("`destroyActor`"), std::string::npos)
+        EXPECT_NE (readme.find ("`destroy_actor`"), std::string::npos)
           << sample.readme_path << " must document Entry Spot destroy responsibility";
-        EXPECT_NE (readme.find ("`onLeaveActor`를 호출하지 않는다"), std::string::npos)
+        EXPECT_NE (readme.find ("`on_leave_actor`를 호출하지 않는다"), std::string::npos)
           << sample.readme_path << " must document destroy callback isolation";
         EXPECT_NE (readme.find ("actor lookup에서 사라지는지"), std::string::npos)
           << sample.readme_path << " must document post-destroy registry cleanup evidence";
@@ -774,7 +774,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseDiscoveryClientWithAutomaticAct
     EXPECT_NE (api_factory.find (".enable_client ()"), std::string::npos);
     EXPECT_EQ (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
                std::string::npos);
-    EXPECT_EQ (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),

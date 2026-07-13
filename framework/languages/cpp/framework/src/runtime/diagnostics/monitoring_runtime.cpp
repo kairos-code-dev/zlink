@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "monitoring_runtime.hpp"
 
@@ -232,7 +232,8 @@ metrics_builder_t &metrics_builder_t::record_runtime_metric (
 {
     if (runtime_metrics_enabled ()) {
         runtime_event_publisher_t (_state).publish (metric_event_payload_t{
-          runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::move (tags)});
+          runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::string{},
+          metric_instrument_kind_t::counter, metric_temporality_t::delta, std::move (tags)});
     }
     return *this;
 }
@@ -250,6 +251,11 @@ monitoring_runtime_t::monitoring_runtime_t (std::shared_ptr<monitoring_runtime_s
 monitoring_runtime_t monitoring_runtime_t::from (const monitoring_builder_t &builder)
 {
     return monitoring_runtime_t (builder._state);
+}
+
+void monitoring_runtime_t::publish_metric (metric_event_payload_t event) const
+{
+    publish (std::move (event));
 }
 
 void monitoring_runtime_t::publish_socket (socket_event_payload_t event) const

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
@@ -168,56 +168,37 @@ int main ()
     }
 
     auto callback_call = context.run_worker ([] { return 2; });
-    bool callback_failed = false;
-    callback_call.submit ([&] (zlink::framework::result_t<int> result) {
-        callback_failed =
-          !result
-          && result.error_kind () == zlink::framework::framework_error_kind_t::request_failed;
-        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
-    });
-    if (!callback_failed) {
+    const auto unconfigured_result = callback_call.async ().result ();
+    if (unconfigured_result
+        || unconfigured_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_failed) {
         return 8;
     }
-    bool duplicate_submit_failed = false;
-    try {
-        callback_call.submit ([] (zlink::framework::result_t<int>) {
-            return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
-        });
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        duplicate_submit_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
-    }
-    if (!duplicate_submit_failed) {
+    const auto duplicate_result = callback_call.async ().result ();
+    if (duplicate_result
+        || duplicate_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
         return 9;
     }
 
     auto scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto runtime_context = context_with_scheduler (scheduler);
     auto worker_thread = std::thread::id{};
-    auto owner_thread = std::thread::id{};
     auto submit_call = runtime_context.run_worker ([&] {
         worker_thread = std::this_thread::get_id ();
         return 42;
     });
-    submit_call.submit ([&] (zlink::framework::result_t<int> result) {
-        owner_thread = std::this_thread::get_id ();
-        if (!result || result.value () != 42) {
-            return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "worker callback result mismatch"));
-        }
-        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
-    });
+    auto submit_task = submit_call.async ();
     if (scheduler->worker_job_count () != 1 || scheduler->owner_job_count () != 0) {
         return 10;
     }
     scheduler->run_worker_job ();
-    if (owner_thread != std::thread::id{} || scheduler->owner_job_count () != 1) {
+    if (scheduler->owner_job_count () != 1) {
         return 11;
     }
     scheduler->run_owner_job ();
-    if (worker_thread == std::thread::id{} || owner_thread == std::thread::id{}) {
+    const auto submit_result = submit_task.result ();
+    if (worker_thread == std::thread::id{} || !submit_result || submit_result.value () != 42) {
         return 12;
     }
 
@@ -246,26 +227,6 @@ int main ()
         || full_result.error_kind ()
              != zlink::framework::framework_error_kind_t::worker_queue_full) {
         return 15;
-    }
-
-    auto full_callback_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
-    full_callback_scheduler->queue_full = true;
-    auto full_callback_context = context_with_scheduler (full_callback_scheduler);
-    bool full_callback_seen = false;
-    auto full_callback_call = full_callback_context.run_worker ([] { return 4; });
-    full_callback_call.submit ([&] (zlink::framework::result_t<int> result) {
-        full_callback_seen =
-          !result
-          && result.error_kind () == zlink::framework::framework_error_kind_t::worker_queue_full;
-        return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
-    });
-    if (full_callback_seen || full_callback_scheduler->worker_job_count () != 0
-        || full_callback_scheduler->owner_job_count () != 1) {
-        return 16;
-    }
-    full_callback_scheduler->run_owner_job ();
-    if (!full_callback_seen) {
-        return 17;
     }
 
     auto timeout_scheduler = std::make_shared<controlled_worker_scheduler_t> ();

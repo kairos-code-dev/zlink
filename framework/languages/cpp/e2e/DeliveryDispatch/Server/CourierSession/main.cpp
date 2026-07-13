@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/location_store.hpp"
@@ -71,7 +71,7 @@ class courier_session_t final : public packet_stream_session_t
         }
         if (dispatch.packet_name () == courier_decision_msg_t::packet_name) {
             auto actor = require_bound_actor (payload.parse_json<courier_decision_msg_t> ().courier_id);
-            actor.relay (payload).submit ();
+            co_await actor.relay (payload);
             co_return;
         }
     }
@@ -121,7 +121,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
-        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
+        options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node));
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)

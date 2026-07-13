@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/messaging/pending_submit.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/messaging/submit_queue.hpp"
@@ -120,7 +121,7 @@ int main ()
         }
         const auto timed_out = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::timed_out, "profile request");
-        if (timed_out.kind () != zlink::framework::framework_error_kind_t::timeout
+        if (zlink::framework::detail::boundary_state (timed_out) != zlink::framework::detail::boundary_error_t::timed_out
             || timed_out.is_retriable ()) {
             return 18;
         }
@@ -173,7 +174,7 @@ int main ()
           mapper.error_header_exception ("unknown", "", "profile request");
         const auto unknown_with_message =
           mapper.error_header_exception ("unknown", "explicit", "profile request");
-        if (timeout_header.kind () != zlink::framework::framework_error_kind_t::timeout
+        if (zlink::framework::detail::boundary_state (timeout_header) != zlink::framework::detail::boundary_error_t::timed_out
             || std::string (timeout_with_message.what ()) != "explicit timeout"
             || route_header.kind () != zlink::framework::framework_error_kind_t::route_not_connected
             || !route_header.is_retriable ()
@@ -297,5 +298,101 @@ int main ()
         disposed_error = true;
     }
 
-    return disposed_error ? 0 : 10;
+    if (!disposed_error) {
+        return 10;
+    }
+
+    /* flow-correlation: envelope marker + optional flow pair round-trip,
+     * ambient stamping, create-if-absent gate and off-mode propagation. */
+    {
+        namespace msg = zlink::framework::runtime::messaging;
+        namespace rt = zlink::framework::runtime;
+        msg::envelope_codec_t codec;
+        msg::envelope_header_t header;
+        header.kind = msg::message_kind_t::command;
+        header.channel_name = "flows";
+        header.message_name = "flow.msg";
+
+        const auto plain = codec.decode_header (codec.encode_header (header));
+        if (!plain || plain.value ().flow_id || plain.value ().flow_origin) {
+            return 40;
+        }
+        if (codec.encode_header (header).to_string ().find ("\"formatMarker\":242")
+            == std::string::npos) {
+            return 41;
+        }
+
+        const auto created = rt::flow_id_t::create ();
+        if (!rt::flow_id_t::is_valid (created) || created.size () != 36 || created[14] != '7') {
+            return 42;
+        }
+        if (rt::flow_id_t::is_valid ("01890a5d-ac96-474b-bcce-b302099a8057")   // v4
+            || rt::flow_id_t::is_valid ("01890A5D-AC96-774B-BCCE-B302099A8057") // uppercase
+            || rt::flow_id_t::is_valid ("short")) {
+            return 43;
+        }
+
+        {
+            auto scope = rt::flow_context_t::enter (created, zlink::framework::flow_origin_t::inbound,
+                                                    false, zlink::framework::flow_origin_t::inbound);
+            const auto stamped = codec.decode_header (codec.encode_header (header));
+            if (!stamped || stamped.value ().flow_id != created
+                || stamped.value ().flow_origin != zlink::framework::flow_origin_t::inbound) {
+                return 44;
+            }
+        }
+        if (rt::flow_context_t::current ()) {
+            return 45;
+        }
+
+        /* create-if-absent: no inbound id + capture on → new id; inbound id
+         * present → reused even when capture is off (propagation is
+         * unconditional). */
+        {
+            auto scope =
+              rt::flow_context_t::enter (std::nullopt, std::nullopt, true,
+                                         zlink::framework::flow_origin_t::inbound);
+            if (!rt::flow_context_t::current ()
+                || !rt::flow_id_t::is_valid (rt::flow_context_t::current ()->flow_id)) {
+                return 46;
+            }
+        }
+        {
+            auto scope = rt::flow_context_t::enter (created, zlink::framework::flow_origin_t::timer,
+                                                    false, zlink::framework::flow_origin_t::inbound);
+            if (!rt::flow_context_t::current ()
+                || rt::flow_context_t::current ()->flow_id != created
+                || rt::flow_context_t::current ()->origin
+                     != zlink::framework::flow_origin_t::timer) {
+                return 47;
+            }
+        }
+        {
+            auto scope =
+              rt::flow_context_t::enter (std::nullopt, std::nullopt, false,
+                                         zlink::framework::flow_origin_t::inbound);
+            if (rt::flow_context_t::current ()) {
+                return 48;
+            }
+        }
+
+        /* Marker/pair validation is fail-closed. */
+        auto missing_marker = codec.decode_header (
+          zlink::message_t::from ("{\"kind\":3,\"channelName\":\"c\",\"messageName\":\"m\"}"));
+        if (missing_marker
+            || missing_marker.error_kind ()
+                 != zlink::framework::framework_error_kind_t::request_protocol_error) {
+            return 49;
+        }
+        auto lonely_flow = codec.decode_header (zlink::message_t::from (
+          "{\"formatMarker\":242,\"kind\":3,\"channelName\":\"c\",\"messageName\":\"m\",\"flowId\":\""
+          + created + "\"}"));
+        if (lonely_flow
+            || lonely_flow.error_kind ()
+                 != zlink::framework::framework_error_kind_t::request_protocol_error) {
+            return 50;
+        }
+    }
+
+    return 0;
 }

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Server/Configuration/location_store.hpp"
 #include "../Server/Configuration/sample_names.hpp"

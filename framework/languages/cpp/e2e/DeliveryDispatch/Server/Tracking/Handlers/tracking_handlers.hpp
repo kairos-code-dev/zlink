@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
 #include "../../Configuration/evidence_store.hpp"
@@ -97,9 +97,8 @@ class delivery_status_changed_handler_t
               zlink::framework::framework_error_kind_t::actor_route_not_found,
               "customer actor route was not found");
         }
-        co_await _actors.send_to_actor (*actor_ref, updated)
-          .packet_name (delivery_status_updated_msg_t::packet_name)
-          .async ();
+        _actors.send_to_actor (*actor_ref, updated)
+          .submit ();
         delivery_status_notify_t notify{
           request.delivery_id, request.status, request.courier_id, request.occurred_at};
         _fanout.publish (sample_names_t::status_fanout_channel, sample_names_t::status_topic, notify)

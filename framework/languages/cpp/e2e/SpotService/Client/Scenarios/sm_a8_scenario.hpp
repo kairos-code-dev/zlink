@@ -46,6 +46,38 @@ inline state_res_t post_routed_state (zlink::http_client::client_t &api,
     return nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
 }
 
+/* 서버가 idle keep-alive 연결을 닫으면 pooled 연결의 다음 요청이 "end of stream"으로
+ * 끊긴다(worker가 5초 도는 동안 play-a 연결이 놀고 있다). 전송 오류일 때만 새 연결로
+ * 다시 시도한다 — HTTP 상태 오류는 그대로 실패시킨다. */
+template <typename TReply, typename TRequest>
+inline TReply post_json_fresh (const std::string &base_url,
+                               const std::string &path,
+                               const TRequest &request,
+                               const std::string &label,
+                               int attempts = 3)
+{
+    std::string transport_error;
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        auto api = zlink::http_client::client_t::create ()
+                     .base_url (base_url)
+                     .timeout (std::chrono::seconds (30))
+                     .build ();
+        auto raw = api.post (path).body (request).submit_raw ().result ();
+        if (!raw) {
+            transport_error = raw.error () ? raw.error ()->what () : "transport failure";
+            std::this_thread::sleep_for (std::chrono::milliseconds (200));
+            continue;
+        }
+        if (raw.value ().status >= 400) {
+            throw std::runtime_error (label + " HTTP status "
+                                      + std::to_string (raw.value ().status) + ": "
+                                      + raw.value ().body);
+        }
+        return nlohmann::json::parse (raw.value ().body).template get<TReply> ();
+    }
+    throw std::runtime_error (label + " HTTP failed: " + transport_error);
+}
+
 inline int find_evidence_index (const evidence_snapshot_t &snapshot,
                                 const std::string &marker,
                                 const std::string &spot_rid,
@@ -91,9 +123,6 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT is required for SM-A8");
     }
 
-    auto play_a = zlink::http_client::client_t::create ()
-                    .base_url (play_http_endpoint)
-                    .build ();
     auto play_b = zlink::http_client::client_t::create ()
                     .base_url (play_b_http_endpoint)
                     .build ();
@@ -101,8 +130,8 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
     constexpr auto spot_key = "sm-a8-worker";
     const auto spot_rid = user_spot_rid_for_key (spot_key);
     constexpr auto marker = "sm-a8-worker";
-    const auto joined = post_json<join_res_t> (
-      play_a, "/spot/join",
+    const auto joined = post_json_fresh<join_res_t> (
+      play_http_endpoint, "/spot/join",
       join_req_t{.key = spot_key,
                  .actor_id = "sm-a8-actor",
                  .display_name = "SM-A8",
@@ -124,10 +153,6 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
     }
 
     /* The worker must still be running when the same-spot request lands
-     * (async-execution-policy §1: the spot serial line yields at the await),
-     * so the start call stays in flight while the state request goes out —
-     * the .NET SM-A8 reference issues the same two calls concurrently. */
-    /* The worker must still be running when the same-spot request lands
      * (async-execution-policy §1: the spot serial line yields at the await).
      * The HTTP client performs a request synchronously on the calling thread,
      * so the start call gets its own thread and its own client — exactly the
@@ -136,12 +161,8 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
     std::optional<std::string> worker_error;
     std::thread worker_thread ([&] {
         try {
-            auto worker_api = zlink::http_client::client_t::create ()
-                                .base_url (play_http_endpoint)
-                                .timeout (std::chrono::seconds (30))
-                                .build ();
-            worker = post_json<spot_worker_start_res_t> (
-              worker_api, "/spot/worker/start",
+            worker = post_json_fresh<spot_worker_start_res_t> (
+              play_http_endpoint, "/spot/worker/start",
               spot_worker_start_req_t{
                 .spot_rid = spot_rid, .marker = marker, .delay_ms = 5000},
               "SM-A8 worker start");
@@ -191,8 +212,8 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-A8 worker start reply mismatch");
     }
 
-    const auto completed = post_json<spot_worker_complete_res_t> (
-      play_a, "/spot/worker/complete",
+    const auto completed = post_json_fresh<spot_worker_complete_res_t> (
+      play_http_endpoint, "/spot/worker/complete",
       spot_worker_complete_req_t{.spot_rid = spot_rid, .marker = marker},
       "SM-A8 worker complete");
     if (!completed.completed || completed.spot_rid != spot_rid || completed.marker != marker) {

@@ -1080,12 +1080,12 @@ npm run verify:release
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
-- [ ] G3 build/typecheck/lint/test/coverage green — G2와 sample 수정이 끝난 뒤 전체 명령을 다시 실행한다.
-- [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — 구현 agent 검토와 수정 완료, 별도 read-only reviewer 대기
+- [x] G3 build/typecheck/lint/test/coverage green — ABI, CI, Node 20/22 runtime matrix와 release 구성 명령까지 통과
+- [x] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — browser runtime 이중 source와 생성 결과 drift를 제거한 뒤 재검토 완료
 - [x] G5 sample 전체 PASS — 공통 sample 6종 대조, shell과 PowerShell 통합 runner PASS
-- [ ] G6 E2E와 cross-language 전체 PASS — production runtime 수정 뒤 전체 분모를 다시 실행한다.
-- [ ] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS — runtime 수정 뒤 양방향 matrix를 다시 실행한다.
-- [ ] G7 gap/doc/package 최종 리뷰 — 문서와 package 정렬 완료, 별도 read-only 최종 리뷰 대기
+- [x] G6 E2E와 cross-language 전체 PASS — E2E 181개 scenario와 전체 runner, cross-language 구성 통과
+- [x] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS — messaging, flow wire, codec, drain과 location store 양방향 통과
+- [x] G7 gap/doc/package 최종 리뷰 — gap, guide, tarball surface와 browser bundle graph 재검토 완료
 
 ## 13. C++ 실행 계획
 

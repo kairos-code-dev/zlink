@@ -1,8 +1,10 @@
 # Node.js G6 E2E 시나리오 ledger
 
-검증일은 2026-07-13이다. 공통 E2E 문서의 scenario heading 181개를 Node.js fixture와
-`./e2e/run_e2e_all.sh`의 실제 실행 결과에 한 행씩 연결한다. aggregate 실행은 11개 config를
-689초 동안 순서대로 실행했고 `[node-e2e] total PASS`로 끝났다.
+검증일은 2026-07-14이다. 공통 E2E 문서의 scenario heading 181개를 Node.js fixture와
+`./e2e/run_e2e_all.sh`의 실제 실행 결과에 한 행씩 연결한다. 최종 aggregate 실행은 11개 config를
+포함한 모든 family를 1,218초 동안 순서대로 실행했고 `[node-e2e] total PASS (1218s)`로 끝났다.
+이 실행에서 `ObservabilityOps`는 분리 실행된 모든 `log_dir`의 flow 증거를 합산해 OBS-A1~C5를
+검증했고 `observability-ops e2e result=passed`를 기록했다.
 
 | config/scenario ID | runner selector | 구현/fixture | all runner 포함 | 결과 | 로그/marker |
 |---|---|---|---|---|---|

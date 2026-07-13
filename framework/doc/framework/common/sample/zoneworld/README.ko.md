@@ -13,6 +13,45 @@
 > **client는 TypeScript 하나만 구현**해 모든 언어 server에 연결한다(wire가 언어
 > 중립이므로).
 
+## 0. 작업 위치와 진행 권한
+
+구현 계획과 언어별 진행 순서는
+[ZoneWorld 샘플 구현 계획](../../../../plan/zoneworld-sample-implementation-plan.ko.md)이 소유한다.
+이 문서는 시나리오 정본이고, 그 문서는 실행 계획이다.
+
+### 0.1 진행 권한
+
+**이 샘플 작업은 승인된 에이전트만 진행한다.** 승인은 사용자가 ZoneWorld 작업을 명시적으로
+지시할 때 성립한다. 승인받지 않은 에이전트는 이 문서를 읽고 참조할 수 있으나, ZoneWorld의
+구현·수정·삭제를 진행하지 않는다. 승인 없이 착수한 변경은 되돌린다.
+
+다른 작업 중에 이 샘플의 디렉터리나 문서가 눈에 띄더라도, 별도 지시가 없으면 손대지 않는다.
+
+### 0.2 작업 위치
+
+**ZoneWorld는 다른 정본 샘플과 배치가 다르다.** 정본 6종은 언어별 디렉터리
+(`framework/languages/<lang>/samples/`) 안에 그 언어의 client와 server를 함께 둔다. ZoneWorld는
+client 하나를 모든 언어 server가 공유하므로, 공통 client와 언어별 server를 한곳에 모은다.
+
+```text
+framework/languages/shared_sample/zoneworld/
+  client/     TypeScript 브라우저 client — 모든 언어 server가 공유한다(§9·§10)
+  dotnet/     Shared/ · Server/(§3·§6) · Client/(그 언어의 시나리오 client) · run_sample.sh
+  java/
+  kotlin/
+  node/
+  cpp/
+```
+
+**브라우저 client는 하나만 둔다.** 언어별 디렉터리에 복제하지 않는다. §6의 server 디렉터리 구조는
+`<lang>/Server/` 아래를, §9.3의 브라우저 client 구조는 최상위 `client/` 아래를 가리킨다.
+
+**언어별 디렉터리의 `Client/`는 다른 것이다** — 기존 정본 6종과 같은 형태의 **headless 시나리오
+client**이며, 브라우저 없이 stream connector로 붙어 §11의 `ZW-*`를 실행해 그 언어 server의 동작을
+검증한다. 브라우저 client는 5개 언어 server가 이 검증을 통과한 뒤에 만들고, 그때 브라우저가 새로
+검증하는 것은 **화면**(§10)이다. 진행 순서는
+[구현 계획](../../../../plan/zoneworld-sample-implementation-plan.ko.md) §6이 소유한다.
+
 ## 1. 목적
 
 ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**을 한 샘플에 담는다.
@@ -296,7 +335,7 @@ client에는 `Gateway`와 `Ops` 주소만 설정한다. zone 노드 주소는 cl
 | `zoneworld.report` | client-server channel | `ZoneNode`(client) → `Ops`(server). local spot 이벤트 보고 |
 | `world.announce` | fanout topic (`zoneworld.broadcast`) | 공지 발행 |
 | `world.maintenance` | fanout topic (`zoneworld.broadcast`) | 점검 상태 전파(§2.3) |
-| `zoneworld.actors` | client-server channel | `Gateway`(client) → `ZoneNode`(server). player actor ensure — 입장 시 actor를 보장하고 `ActorRefWire`를 받는다(§7.1 `JoinWorldReq`) |
+| `zoneworld.actors` | client-server channel | `Gateway`(client) → `ZoneNode`(server). player actor ensure — 입장 시 actor를 보장하고 `ActorRefWire`를 받는다(§7.1 `JoinWorldReq`). **입장 zone을 호스팅하는 노드만 이 channel을 서빙한다** — 그 노드가 입장 admission(§2.3)의 권위이기 때문이다. 입장 좌표가 항상 `(25,25)`=`zone-nw`이므로 서빙 노드는 `zone-node-1` 하나이고, 따라서 peer 분산이 일어나지 않는다 |
 | `zone.border.<from>.<to>` | spot pub/sub topic (`zoneworld.zones`) | zone spot이 **인접 zone별로 따로** publish |
 
 ### 4.1 경계 동기화 topic
@@ -339,7 +378,8 @@ client에는 `Gateway`와 `Ops` 주소만 설정한다. zone 노드 주소는 cl
 ## 6. 서버 디렉토리 구조
 
 domain logic과 framework adapter를 분리한다. 언어별 문법과 build system은 달라도 아래
-책임 분리를 유지한다.
+책임 분리를 유지한다. 아래 경로는 언어별 server 디렉터리
+(`framework/languages/shared_sample/zoneworld/<lang>/`, §0.2) 아래를 가리킨다.
 
 ```text
 Server/Gateway/
@@ -480,6 +520,8 @@ Server/Ops/
 | `NodeMaintenanceChangedEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`, topic `world.maintenance`) | `NodeId`, `Enabled` | 점검 상태 변경을 전 노드에 전파한다. 각 노드가 캐시를 갱신해 cross-node 이동을 판정한다(§2.3). |
 | `DeliverAnnounceMsg` | fanout subscriber -> **자기 노드의** zone spot (spot bridge `zoneworld.bridge` 경유) | `AnnouncementId`, `Text` | 공지를 받은 노드가 자기가 호스팅하는 `ZoneId`들에만 send한다(§8.2). |
 | `BotTickMsg` | zone spot -> 봇 actor (actor send) | `Tick` | 봇을 구동한다. 봇 actor가 순찰 규칙(§2.7)으로 다음 좌표를 계산해 이동 경로(§2.1)를 탄다. |
+| `EnsurePlayerActorReq` | `Gateway` -> 입장 zone 호스팅 노드 (channel `zoneworld.actors`) | `PlayerId` | player actor를 보장한다. 받는 노드가 자기 점검 상태를 **권위로** 판정한다(§2.3). |
+| `EnsurePlayerActorRes` | 그 `ZoneNode` -> `Gateway` | `PlayerId`, `Actor`, `ZoneId`, `NodeId`, `X`, `Y`, `Error` | `ActorRefWire`와 입장 zone·노드·좌표를 반환한다. 점검 중이면 `Actor`가 비고 `Error`가 채워진다. `Gateway`는 이 `ActorRef`로 session을 bind한다(§7.1 `JoinWorldRes`). |
 | `ApplyNodeMaintenanceReq` | `Ops` -> 특정 `ZoneNode` (**owner 일관 channel** `zoneworld.ops.<NodeId>`) | `NodeId`, `Enabled` | 노드 전체의 점검 모드를 전환한다. |
 | `ApplyNodeMaintenanceRes` | 특정 `ZoneNode` -> `Ops` | `NodeId`, `Enabled`, `Zones` | 전환 결과와 그 노드의 zone 목록을 반환한다. |
 | `GetNodeDiagnosticsReq` | `Ops` -> 특정 `ZoneNode` (**owner 일관 channel**) | `NodeId` | 노드 진단 정보를 요청한다. |
@@ -641,6 +683,9 @@ Redux 같은 별도 상태 관리 라이브러리는 두지 않는다. signal이
 client는 **FSD**로 조직한다. 서버의 헥사고날이 "도메인을 프레임워크에서 분리"하는 규약이라면,
 FSD는 "기능 단위로 자르고 계층 간 의존 방향을 고정"하는 프론트엔드 규약이다. 언어별 서버
 구현이 5개여도 client는 하나이므로, 구조가 흔들리지 않게 규약을 못 박는다.
+
+아래 경로는 공통 client 디렉터리(`framework/languages/shared_sample/zoneworld/client/`, §0.2)
+아래를 가리킨다.
 
 ```text
 client/src/

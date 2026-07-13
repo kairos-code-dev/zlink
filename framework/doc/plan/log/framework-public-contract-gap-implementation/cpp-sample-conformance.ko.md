@@ -23,7 +23,7 @@
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
 | SMP-BINGO-001 | payload codec = Protobuf | `.proto` 없음. `protobuf_codec_extension_t`가 실제로는 JSON을 직렬화(extension이 `from_json`/`parse_json` 사용, media type만 protobuf) | 열림(extension 자체가 JSON 기반 — framework codec extension 트랙과 함께 판정 필요) |
-| SMP-BINGO-002 | Play↔Play spot pub/sub, Session→Play router는 location store 자동 연결 | `connect_peer_pub`/`connect_router`로 수동 endpoint 연결 | 열림 |
+| SMP-BINGO-002 | Play↔Play spot pub/sub, Session→Play router는 location store 자동 연결 | `connect_peer_pub`/`connect_router` 수동 endpoint 배선 제거. 두 연결 모두 location store 자동 연결에 맡긴다 | 닫힘 |
 | SMP-BINGO-003 | `BingoRoomState.Status` = `WaitingForPlayers`/`Running`/`Finished` | wire 값을 정본 대소문자로 교체 | 닫힘 |
 | SMP-BINGO-004 | 미사용 wire 계약 없음 | `BingoStateNotify` 계약·codec 등록·이름 상수 삭제(정본 메시지 목록에 없음) | 닫힘 |
 | SMP-BINGO-005 | self-check 순서(3 클라이언트 선인증) + 보상 알림 `RoomId` 검증 | 세 client 인증을 매칭 이전으로 모음. 보상 알림 `RoomId`는 wait 필터로 이미 강제 중임을 확인 | 닫힘 |
@@ -59,10 +59,10 @@
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
 | SMP-DD-001 | `AssignDeliveryMsg`(one-way send) | `AssignDelivery` + `AssignDeliveryResult`(request/reply, 금지 접미어) | 닫힘 |
-| SMP-DD-002 | 역할 = Dispatch/CourierSession/CourierSpotNode×2/Tracking/CustomerGateway | Dispatch가 Api/Center 2프로세스로 분리, 스펙에 없는 **CourierGateway**(session registry) 추가 | 열림 |
-| SMP-DD-003 | DispatchWorker가 배차 큐·선택 정책·timeout 재시도를 소유 | courier-a/b 하드코딩, offer timeout이 courier actor node의 blocking `condition_variable::wait_for` | 열림 |
-| SMP-DD-004 | `FindCourierActorReq/Res`, `FindCustomerActorReq/Res` | 없음(항상 ensure 경로) | 열림 |
-| SMP-DD-005 | Tracking→CustomerEntrySpot `DeliveryStatusUpdatedMsg`→actor→`DeliveryStatusNotify` | fanout 채널로 우회, entry-spot 구간 없음. `EnsureCustomerActorReq/Res` 핸들러가 Tracking에 있고 아무도 호출 안 함 | 열림 |
+| SMP-DD-002 | 역할 = Dispatch/CourierSession/CourierSpotNode×2/Tracking/CustomerGateway | Dispatch를 HTTP edge + DispatchWorker 한 프로세스로 합치고 CourierGateway를 제거했다. courier session route는 courier actor가 기억한다 | 닫힘 |
+| SMP-DD-003 | DispatchWorker가 배차 큐·선택 정책·timeout 재시도를 소유 | worker가 작업 큐(hosted service)·배송원 선택 정책·offer 요청 timeout을 소유한다. 노드의 결정 랑데부는 여전히 blocking wait이며, 이를 없애려면 외부에서 완료시키는 awaitable(다른 언어의 TaskCompletionSource/CompletableFuture 대응)이 C++ public 표면에 필요하다 — 계약 결정 전까지 draft 후보로 남긴다 | 부분(계약 후보) |
+| SMP-DD-004 | `FindCourierActorReq/Res`, `FindCustomerActorReq/Res` | 두 계약을 추가하고, CourierSession·DispatchWorker·Tracking이 ensure 이전에 find를 먼저 부른다 | 닫힘 |
+| SMP-DD-005 | Tracking→CustomerEntrySpot `DeliveryStatusUpdatedMsg`→actor→`DeliveryStatusNotify` | fanout 채널을 걷어내고 Tracking이 고객 actor에 one-way로 보낸다. push는 actor가 bound session으로 한다. Tracking의 죽은 ensure 핸들러도 삭제 | 닫힘 |
 | SMP-DD-006 | `DeliveryStatusChangedReq` 필드 = `{DeliveryId, Status, CourierId, OccurredAt}` | wire DTO에서 `CustomerId` 제거(Tracking은 쓰지 않았음) | 닫힘 |
 | SMP-DD-007 | self-check의 node 배치 검증(courier-a=node-1, courier-b=node-2) | `bind_courier`가 bind 응답의 actor node rid를 기대 노드와 대조 | 닫힘 |
 
@@ -83,11 +83,11 @@
 
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
-| SMP-GQ-001 | owner spot은 event-sourced aggregate(append/replay/snapshot) | 노드 전역 in-memory `std::map` 현재값, 이벤트 스토어 없음 | 열림 |
+| SMP-GQ-001 | owner spot은 event-sourced aggregate(append/replay/snapshot) | `quest_event_store_t`(append-only)를 두고 projection은 player별 stream을 fold해서 만든다. sync/get/notify가 모두 replay 결과를 쓴다. snapshot은 아직 없다 | 닫힘(snapshot 제외) |
 | SMP-GQ-002 | `GameplayMsg`(one-way send) | `ApplyGameplayEventReq/Res`(request/reply)로 대체, 봉투 필드도 상이 | 열림 |
-| SMP-GQ-003 | notify는 location store session binding으로 현재 노드에 전달 | owner spot이 raw HTTP POST `/internal/notify`로 특정 API 노드에 전달(다른 노드 바인딩이면 push 유실) | 열림 |
-| SMP-GQ-004 | `QuestProgress`에 `Version`, `LastSourceEventId` | `Version` 없음, `lastEventId`로 개명 | 열림 |
-| SMP-GQ-005 | status = `Active`/`Completed`/`RewardGranted` | `Completed` 없음 | 열림 |
+| SMP-GQ-003 | notify는 location store session binding으로 현재 노드에 전달 | 여전히 raw HTTP POST. **막힌 지점**: owner spot이 `resolve_actor_spot_handle(playerId)`로 player의 현재 노드를 찾는 것까지는 되지만, API의 spot mesh 이름이 API마다 다르고(`gamequest.quest.spot.api-a`) mission 쪽에 그 mesh로 나갈 route 채널이 없어 `route channel or SPOT mesh ... is not registered`로 끊긴다. 고치려면 API↔mission 사이에 **공유 session-notify route mesh**(API가 server, mission이 client)와 그 mesh의 `spot_router_channels` 매핑을 topology·러너에 추가해야 한다 | 열림(토폴로지 변경 필요) |
+| SMP-GQ-004 | `QuestProgress`에 `Version`, `LastSourceEventId` | 두 필드를 스펙 이름·의미대로 채운다(fold 버전, 반영한 gameplay event id) | 닫힘 |
+| SMP-GQ-005 | status = `Active`/`Completed`/`RewardGranted` | 세 상태를 모두 두고, fold가 QuestCompleted→QuestRewardGranted 순서로 상태를 옮긴다 | 닫힘 |
 | SMP-GQ-006 | 서버 간 연결은 location store 자동 연결 | 일부 채널이 `enable_client(endpoint)`/`connect_router(endpoint)` 수동 | 열림 |
 | SMP-GQ-007 | self-check: projection 재생성·rehydrate·reconnect·reset 보정·reward 멱등 | 미커버 | 열림 |
 

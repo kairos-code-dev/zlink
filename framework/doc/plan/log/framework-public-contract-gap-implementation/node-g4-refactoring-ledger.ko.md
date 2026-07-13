@@ -1,6 +1,6 @@
 # Node.js G4 DDD/POSD 리팩터링 ledger
 
-검토 기준일은 2026-07-13이다. public contract 구현 뒤 framework, NestJS, Stream Connector의
+검토 기준일은 2026-07-14이다. public contract 구현 뒤 framework, NestJS, Stream Connector의
 production source를 책임 경계, 정보 은닉, 호출자 복잡성, 패스스루와 중복 구현 관점에서 다시
 검토했다.
 
@@ -65,4 +65,44 @@ socket readiness 결정을 호출자에게 노출하지 않으면서 `submit(): 
 `yield(...)` 설명이 남은 문제와 Node↔`.NET` fanout/session-closing/route 역방향 누락을 확인했다.
 문서를 실제 interface에 맞추고 public package만 사용하는 양방향 runner stage를 추가했다.
 
-현재 판정: **독립 read-only reviewer의 최종 판정 대기**
+## browser 전환 뒤 최종 재검토
+
+browser 전환 뒤에는 두 가지 위험 신호를 추가로 확인했다. 첫째, browser E2E 공용 코드의 TypeScript
+source 옆에 과거 생성 JavaScript가 남아 있었고 두 파일의 HTTP method 지원도 달랐다. 생성
+JavaScript를 계속 동기화하는 방법과 TypeScript만 source로 두고 browser bundler가 직접 읽는 방법을
+비교해 후자를 선택했다. 같은 동작 지식이 두 파일에 중복되지 않고, 실제 E2E가 소비하는 경로와
+검토 대상이 일치하기 때문이다.
+
+둘째, Bingo Protobuf 생성기가 마지막 빈 항목과 별도 줄바꿈을 함께 기록해 생성 명령을 실행할 때마다
+추적 파일 끝이 바뀌었다. 생성 결과의 불필요한 빈 줄을 정본으로 받아들이는 방법과 생성기에서 마지막
+빈 항목을 제거하는 방법을 비교해 후자를 선택했다. 생성기는 실행 전후에 동일한 작업 트리를 보장해야
+하며, 출력 형식 결정도 생성기 한 곳이 소유해야 하기 때문이다.
+
+Stream Connector의 browser transport, 명시적 `flowFrom(message)`, package root, codec adapter와
+framework reply routing도 다시 검토했다. browser transport 세부 정보는 connector 내부에 있고,
+flow 문맥은 browser 전역 상태에 저장되지 않으며, codec의 server 등록 책임은 `./framework`에
+분리되어 있다. actor 응답의 fallback route는 이동 중 바뀔 수 있는 actor 상태를 다시 조회하는 대신
+요청 수신 시점의 내부 route snapshot을 유지하며 public interface에는 노출되지 않는다.
+
+Bingo 반복 검증에서는 actor 소유권 갱신과 bound-session 응답 전달이 겹치면 논리적 Session route가
+native binding 교체 중 잠시 제거되는 위험 신호를 확인했다. sample runner의 대기시간을 늘리는 방법과
+binding coordinator가 기존 논리 route를 새 native binding 준비가 끝날 때까지 유지하는 방법을
+비교해 후자를 선택했다. 응답 전달은 native binding 교체 절차를 알 필요가 없고, route 교체의 원자성은
+binding coordinator가 보장해야 하기 때문이다. 교체 중 응답을 전달하는 회귀 테스트와 실제 Chromium
+Bingo 10회 반복 실행으로 응답 누락이 해소됐는지 확인했다.
+
+release 반복 검증에서는 Redis 컨테이너 내부 PING 준비와 Docker의 host port publish 준비를 하나의
+상태로 취급하는 시간 결합을 확인했다. 각 sample runner에서 endpoint 조회 실패를 재시도하는 방법과
+컨테이너 lifecycle helper가 host port가 게시될 때까지 제한 시간 안에서 기다리는 방법을 비교해
+후자를 선택했다. Docker 상태 해석과 준비 완료의 정의를 공용 helper 한 곳에 유지하고 sample은 준비된
+endpoint만 받도록 하기 때문이다. DeliveryDispatch 실제 Chromium 시나리오 10회 반복과 sample
+regression으로 변경 뒤 경계를 확인했다.
+
+같은 반복 검증에서 sample runner가 동적 포트를 확인한 직후 다른 프로세스가 그 포트를 선점하면 역할
+프로세스는 `Address already in use`를 파일에만 남기고, 상위 runner에는 readiness timeout만 보이는
+정보 은닉 오류도 확인했다. 모든 포트를 고정하거나 대기시간을 늘리는 방법과, 역할 실패 로그를 sample
+경계의 stderr로 전달해 상위 runner의 기존 bind 오류 전용 재시도 정책이 판별하게 하는 방법을 비교해
+후자를 선택했다. 고정 포트는 병렬 실행을 깨뜨리고 대기시간은 이미 종료된 역할을 복구하지 못한다.
+GameQuest 보존 실행에서 `spot_node_set_router_bind`의 `errno=98`을 재현해 원인을 확정했다.
+
+최종 판정: **NO DDD/POSD FINDINGS**

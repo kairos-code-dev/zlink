@@ -110,5 +110,7 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 | CPP-SPOT-SUB-ACT-001 | Bingo가 `native spot subscription activation failed for 'bingo.room' ... (errno=95)`로 실패. owner room과 observer room 양쪽에서 관측 | `spot_node_t::update_logical_spot_subscription`이 internal receiver 생성 실패를 **원인과 무관하게 `ENOTSUP`으로 덮어쓴다**(`core/src/runtime/services/spot/node/spot_node_summary.cpp:264-269`). 실제 실패는 `create_spot_sub_with_defaults`의 attachment 생성/`wait_facade_peer` 핸드셰이크가 부하에서 타임아웃한 것(`spot_node_defaults.cpp:72-84`). 즉 "pub/sub 미지원"이 아니라 일시적 타임아웃인데 영구 실패로 보고된다 | core |
 | CPP-AUTOCONNECT-CFG-001 | DeliveryDispatch `courier-session` 프로세스가 `terminate called after throwing an instance of 'zlink::config_error_t' what(): Unknown error 702 (errno=22)`로 abort(SIGABRT). 러너는 cleanup에서 status 134로 실패 처리 | native config 호출이 던진 `config_error_t`가 어느 loop에서도 잡히지 않고 `std::terminate`까지 전파. auto-connect 스캔이 활발한 구간에서만 관측 | core/framework |
 
+| CPP-CORE-SPOTDESTROY-002 | SpotService 종료 단계에서 play 노드가 10초 안에 끝나지 않아 러너가 강제 kill(137) → config FAIL. 시나리오는 전부 통과한 뒤였다 | 백트레이스: 메인 스레드가 `zlink_spot_node_destroy` → `wait_for_closing_sockets` → `ctx_t::wait_for_socket_removal`에서 대기. **정지가 아니라 느린 종료**(유예 60초로 돌리면 강제 kill 없이 exit=0). core의 소켓 제거 완료 대기가 부하에서 10초를 넘긴다 | core(성능) |
+
 두 건은 sample 계약 편차가 아니므로 이 문서의 SMP-* 항목과 분리해 둔다. gate 판정에는
 영향이 있으므로(통합 러너 실패) plan §13.3에 상태를 남긴다.

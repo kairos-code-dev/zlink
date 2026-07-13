@@ -196,7 +196,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_OWNED" == "1" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   elif [[ -n "${REDIS_ENDPOINT:-}" ]]; then
     local redis_host redis_port
     redis_host="${REDIS_ENDPOINT%:*}"

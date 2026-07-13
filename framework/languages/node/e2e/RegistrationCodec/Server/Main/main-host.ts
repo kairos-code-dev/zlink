@@ -6,11 +6,11 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   createMessagePackSerializer,
   ZLINK_MESSAGEPACK_CONTENT_TYPE
-} from '@zlink-systems/framework-codec-msgpack';
+} from '@zlink-systems/framework-codec-msgpack/framework';
 import {
   createProtobufMessageSerializer,
   ZLINK_PROTOBUF_CONTENT_TYPE
-} from '@zlink-systems/framework-codec-protobuf';
+} from '@zlink-systems/framework-codec-protobuf/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import {
   MessagePackEchoMsg,

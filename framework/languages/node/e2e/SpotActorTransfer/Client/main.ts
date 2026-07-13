@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { ZLinkHttpClient, type ZLinkHttpClient as HttpClient } from '@zlink-systems/http-client';
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,
@@ -26,6 +24,12 @@ import {
   type ProbeReq,
   type ProbeRes
 } from '../Shared/messages.js';
+import {
+  BrowserE2eHttpClientFactory,
+  browserE2eArgs,
+  runBrowserE2e,
+  type BrowserE2eHttpClient as HttpClient
+} from '../../browser-client-runtime';
 
 interface ClientOptions {
   nodeAUrl: string;
@@ -35,9 +39,9 @@ interface ClientOptions {
   scenario: string;
 }
 
-const options = parseOptions(process.argv.slice(2));
-const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).build();
-const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
+const options = parseOptions(browserE2eArgs());
+const nodeA = BrowserE2eHttpClientFactory.create(options.nodeAUrl).timeout(40000).build();
+const nodeB = BrowserE2eHttpClientFactory.create(options.nodeBUrl).timeout(40000).build();
 
 const scenarios: Record<string, () => Promise<void>> = {
   'ST-A1': runA1,
@@ -424,11 +428,11 @@ async function runF3(): Promise<void> {
     await connector.send({ scenario: 'ST-F3', marker: 'S2' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();
     await post(nodeA, `/transfer-gates/${actorId}/release`, {});
-    require((await join).accepted, 'ST-F3 join failed.');
     await connector.send({ scenario: 'ST-F3', marker: 'S3' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();
     await connector.send({ scenario: 'ST-F3', marker: 'S4' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();
+    require((await join).accepted, 'ST-F3 join failed.');
     const entries = await waitEvidence(nodeB, ['S1', 'S2', 'S3', 'S4'].map(
       (marker) => `ST-F3|${actorId}|packet_handler|${marker}`
     ));
@@ -765,8 +769,8 @@ function text(entry: ActorEvidence): string {
   return `${entry.scenario}|${entry.actorId}|${entry.kind}|${entry.value}|${entry.nodeRid}|transfer=${entry.transferId ?? '<none>'}`;
 }
 
-function unique(prefix: string): string { return `${prefix}-${randomUUID().replaceAll('-', '')}`; }
-function uniqueShort(prefix: string): string { return `${prefix}-${randomUUID().slice(0, 8)}`; }
+function unique(prefix: string): string { return `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`; }
+function uniqueShort(prefix: string): string { return `${prefix}-${crypto.randomUUID().slice(0, 8)}`; }
 function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function isPending(promise: Promise<unknown>): Promise<boolean> {
   return await Promise.race([promise.then(() => false, () => false), delay(1).then(() => true)]);
@@ -796,9 +800,6 @@ function parseOptions(args: readonly string[]): ClientOptions {
   };
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+void runBrowserE2e('SpotActorTransfer', main);
 
 export {};

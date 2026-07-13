@@ -1,6 +1,7 @@
 import type {
   EnsureSpotRes,
   EnsureSpotReq,
+  ProbeMsg,
   RemoteSpotAwaitReq,
   AutomaticTurnDispatchRes,
   AwaitEvidenceRes,
@@ -25,6 +26,7 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
     .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, 'play-b')
     .timeout(30000)
     .submit<EnsureSpotRes>();
+  await waitForOwnerSpotRoute(client, ownerSpotRid);
 
   const requestId = `ATD-D2-${uniqueId()}`;
   const reply = await client
@@ -64,6 +66,30 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
   ensure(targetEvidence.evidence.every((line) => !line.includes('remote-await-resumed|rid=play-b')),
     'ATD-D2 target node must not own the caller continuation.');
   console.log('scenario ATD-D2 passed');
+}
+
+async function waitForOwnerSpotRoute(client: ZlinkStreamConnector, spotRid: string): Promise<void> {
+  const requestId = `ATD-D2-readiness-${uniqueId()}`;
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await client
+      .send({ requestId, marker: 'owner-route-ready' } satisfies ProbeMsg)
+      .packetName('ProbeMsg')
+      .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid)
+      .submit();
+    const evidence = await client
+      .request({ requestId } satisfies AwaitEvidenceReq)
+      .packetName('AwaitEvidenceReq')
+      .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, 'play-a')
+      .timeout(5000)
+      .submit<AwaitEvidenceRes>();
+    if (evidence.evidence.some((line) =>
+      line.includes(`request=${requestId}`) && line.includes('probe-completed'))) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`ATD-D2 owner SPOT route did not become ready for '${spotRid}'.`);
 }
 
 function uniqueId(): string {

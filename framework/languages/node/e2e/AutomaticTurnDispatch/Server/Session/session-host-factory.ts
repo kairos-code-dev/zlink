@@ -66,6 +66,7 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
             .routingId(options.rid)
             .enableRouter(options.spotRouterEndpoint)
             .addEntrySpot(AwaitSessionEntrySpot);
+          for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
           builder.addStreamNode(AutomaticTurnDispatchNames.streamNode)
             .bind(options.streamEndpoint)
             .registerSession(AwaitSessionFactory);

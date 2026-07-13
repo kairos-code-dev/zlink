@@ -1,5 +1,7 @@
+import { browserE2eFetch } from '../../../browser-client-runtime';
+
 export async function postJson<T>(baseUrl: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await browserE2eFetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body)

@@ -14,6 +14,7 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
+import { browserE2eFetch } from '../../../browser-client-runtime';
 
 export async function runSmG1(options: ClientOptions): Promise<void> {
   await waitForControlRoute(options.sessionBUrl, 'play-b');
@@ -58,7 +59,7 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       .submit<ActorPingRes>();
     ensure(beforeSurvivor.nodeRid === 'play-b', 'SM-G1 play-b actor setup mismatch.');
 
-    const crash = await fetch(`${options.playAUrl}/crash`, { method: 'POST' });
+    const crash = await browserE2eFetch(`${options.playAUrl}/crash`, { method: 'POST' });
     ensure(crash.ok, `SM-G1 crash endpoint returned HTTP ${crash.status}.`);
     await new Promise((resolve) => setTimeout(resolve, 200));
 

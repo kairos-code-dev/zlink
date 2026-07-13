@@ -7,6 +7,13 @@ export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 
 SCENARIO="${1:-all}"
+if [[ "${ZLINK_SPOT_TRANSFER_CHILD_RUN:-0}" != "1" && "$SCENARIO" == "all" ]]; then
+  for child_scenario in all-core ST-F3; do
+    ZLINK_SPOT_TRANSFER_CHILD_RUN=1 "$0" "$child_scenario"
+  done
+  echo "spot-actor-transfer e2e result=passed"
+  exit 0
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
 mkdir -p "$LOG_DIR"
@@ -37,7 +44,7 @@ process_alive() {
 }
 
 wait_tcp() {
-  local name="$1" endpoint="$2" host_port="${2#tcp://}"
+  local name="$1" endpoint="$2" host_port="${2#*://}"
   local host="${host_port%:*}" port="${host_port##*:}"
   for _ in $(seq 1 120); do
     if node -e "const net=require('node:net');const s=net.createConnection({host:process.argv[1],port:Number(process.argv[2])});s.once('connect',()=>{s.end();process.exit(0)});s.once('error',()=>process.exit(1));setTimeout(()=>process.exit(1),500)" "$host" "$port"; then
@@ -78,7 +85,7 @@ cleanup() {
   done
   for pid in "${pids[@]:-}"; do kill -KILL "$pid" >/dev/null 2>&1 || true; done
   wait "${pids[@]:-}" >/dev/null 2>&1 || true
-  if [[ -n "$REDIS_CONTAINER_ID" ]]; then docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true; fi
+  if [[ -n "$REDIS_CONTAINER_ID" ]]; then docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true; fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log; do
@@ -132,7 +139,7 @@ start_node_a() {
 
 run_client() {
   local scenario="$1"
-  node "$CLIENT_MAIN" \
+  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
     --node-a-url "$NODE_A_URL" \
     --node-b-url "$NODE_B_URL" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
@@ -224,11 +231,10 @@ SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
 SESSION_B_ROUTER="tcp://127.0.0.1:$SESSION_B_ROUTER_PORT"
 SESSION_A_PUBSUB="tcp://127.0.0.1:$SESSION_A_PUBSUB_PORT"
 SESSION_B_PUBSUB="tcp://127.0.0.1:$SESSION_B_PUBSUB_PORT"
-SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
-SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
+SESSION_A_STREAM="ws://127.0.0.1:$SESSION_A_STREAM_PORT"
+SESSION_B_STREAM="ws://127.0.0.1:$SESSION_B_STREAM_PORT"
 ACTOR_NODE_MAIN="$ROOT_DIR/Server/ActorNode/dist/Server/ActorNode/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
 start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_PUBSUB"
 wait_health "$NODE_B_URL" actor-b "${pids[-1]}"
@@ -240,8 +246,8 @@ wait_topology
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
 
-if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
+if [[ "$SCENARIO" == "all-core" ]]; then
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F4,ST-F5,ST-F6"
   run_client "ST-C2"
   restart_node_a
   run_client "ST-B2"

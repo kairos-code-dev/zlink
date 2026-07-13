@@ -78,6 +78,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .addEntrySpot(AwaitEntrySpot)
             .actorFactory(AutomaticTurnDispatchNames.actorType, AwaitActorFactory)
             .addSpotFactory(AwaitProbeSpot);
+          for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
           return builder.build();
         }
       })

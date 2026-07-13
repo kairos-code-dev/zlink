@@ -20,10 +20,19 @@ import { runYdE1 } from './Scenarios/atd-e1-timeout-scenario';
 import { runYdE2 } from './Scenarios/atd-e2-cancellation-scenario';
 import { runShutdownRecovery, runShutdownWait } from './Scenarios/shutdown-await-scenario';
 import { parseClientOptions } from './Support/client-options';
+import { browserE2eArgs, runBrowserE2e } from '../../browser-client-runtime';
+import {
+  AutomaticTurnDispatchNames,
+  type AutomaticTurnDispatchRes,
+  type AwaitReq,
+  type EnsureSpotReq,
+  type EnsureSpotRes
+} from '../Shared/messages';
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(process.argv.slice(2));
+  const options = parseClientOptions(browserE2eArgs());
   const scenario = options.scenario.toUpperCase();
+  const full = scenario === 'FULL' || scenario === 'FULL-CORE';
   if (scenario === 'SHUTDOWN-WAIT') {
     await runShutdownWait(options);
     return;
@@ -36,9 +45,12 @@ async function main(): Promise<void> {
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    if (scenario === 'FULL' || scenario === 'ATD-A1') {
+    if (scenario !== 'ATD-D2' && scenario !== 'ATD-D4') {
+      await waitForSpotRoutes(client, scenario);
+    }
+    if (full || scenario === 'ATD-A1') {
       const { spotRid } = await runYdA1(client);
-      if (scenario === 'FULL') {
+      if (full) {
         await runYdA2(client, spotRid);
         await runYdA3(client, spotRid);
         await runYdA4(client, spotRid);
@@ -59,7 +71,6 @@ async function main(): Promise<void> {
           await runYdC3(client, peer, actors);
         });
         await runYdD2(client);
-        await runYdD3(client);
         await runYdD4(client, () => createClient(options.sessionBStreamEndpoint), actors);
         console.log('scenario ATD-D1 passed');
         await runYdE1(client);
@@ -137,6 +148,45 @@ async function main(): Promise<void> {
   console.log('await-dispatch client result=passed');
 }
 
+async function waitForSpotRoutes(client: ReturnType<typeof createClient>, scenario: string): Promise<void> {
+  const targetNodeRids = [scenario === 'ATD-D3' ? 'play-b' : 'play-a'];
+  for (const targetNodeRid of targetNodeRids) {
+    const spotRid = `topology-${targetNodeRid}-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+    const spot = await client
+      .request({ spotRid } satisfies EnsureSpotReq)
+      .packetName('EnsureSpotReq')
+      .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, targetNodeRid)
+      .timeout(30000)
+      .submit<EnsureSpotRes>();
+    if (spot.nodeRid !== targetNodeRid) {
+      throw new Error(`Topology probe expected ${targetNodeRid}, received ${spot.nodeRid}.`);
+    }
+
+    const deadline = Date.now() + 30000;
+    while (true) {
+      try {
+        await client
+          .request({
+            requestId: `topology-${targetNodeRid}`,
+            delayMs: 0,
+            correlationId: 'topology-ready'
+          } satisfies AwaitReq)
+          .packetName('AwaitReq')
+          .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid)
+          .timeout(5000)
+          .submit<AutomaticTurnDispatchRes>();
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/Host unreachable|timed out|not connected|disconnected/i.test(message) || Date.now() >= deadline) {
+          throw new Error(`SPOT route to ${targetNodeRid} did not become ready: ${message}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+}
+
 function createClient(endpoint: string) {
   return zlinkStreamConnectorFactory.create({
     endpoint,
@@ -159,7 +209,4 @@ async function withPeerClient<T>(endpoint: string, run: (client: ReturnType<type
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+void runBrowserE2e('AutomaticTurnDispatch', main);

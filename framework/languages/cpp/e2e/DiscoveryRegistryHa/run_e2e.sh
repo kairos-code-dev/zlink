@@ -86,7 +86,7 @@ PY
 
   cleanup_all() {
     if [[ -n "$REDIS_CONTAINER" ]]; then
-      docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+      docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
     fi
   }
   trap cleanup_all EXIT
@@ -255,7 +255,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_OWNED" == "1" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   elif [[ -n "${REDIS_ENDPOINT:-}" ]] && command -v redis-cli >/dev/null 2>&1; then
     redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
       | xargs -r redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" DEL >/dev/null 2>&1 || true

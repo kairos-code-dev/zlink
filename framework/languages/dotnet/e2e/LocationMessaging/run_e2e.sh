@@ -75,7 +75,7 @@ REDIS_HOST=""
 REDIS_TCP_PORT=""
 cleanup_redis() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   elif [[ -n "$REDIS_HOST" ]] && command -v redis-cli >/dev/null 2>&1; then
     # External instance: delete only this run's keys under its unique prefix.
     redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \

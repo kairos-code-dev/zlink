@@ -156,7 +156,7 @@ if [[ "$SCENARIO" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "
 fi
 
 if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
-  for child_group in default-batch SM-F6 SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
+  for child_group in default-batch sm-d8 SM-F6 SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
     echo "child scenario=$child_group"
     output="$(mktemp)"
     child_passed=0
@@ -266,9 +266,9 @@ PLAY_B_SPOT_PUB="tcp://127.0.0.1:$PLAY_B_SPOT_PUB_PORT"
 GATEWAY_SPOT_PUB="tcp://127.0.0.1:$GATEWAY_SPOT_PUB_PORT"
 PLAY_A_EXTERNAL_CLIENT="tcp://127.0.0.1:$PLAY_A_EXTERNAL_CLIENT_PORT"
 PLAY_B_EXTERNAL_CLIENT="tcp://127.0.0.1:$PLAY_B_EXTERNAL_CLIENT_PORT"
-SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
-SESSION_A_TLS_STREAM="tls://127.0.0.1:$SESSION_A_TLS_STREAM_PORT"
-SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
+SESSION_A_STREAM="ws://127.0.0.1:$SESSION_A_STREAM_PORT"
+SESSION_A_TLS_STREAM="wss://127.0.0.1:$SESSION_A_TLS_STREAM_PORT"
+SESSION_B_STREAM="ws://127.0.0.1:$SESSION_B_STREAM_PORT"
 MULTI_A_SPOT_ROUTER="tcp://127.0.0.1:$MULTI_A_SPOT_ROUTER_PORT"
 MULTI_B_SPOT_ROUTER="tcp://127.0.0.1:$MULTI_B_SPOT_ROUTER_PORT"
 MULTI_A_SPOT_PUB="tcp://127.0.0.1:$MULTI_A_SPOT_PUB_PORT"
@@ -278,7 +278,6 @@ PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 GATEWAY_MAIN="$ROOT_DIR/Server/Gateway/dist/Server/Gateway/main.js"
 MULTI_NODE_MAIN="$ROOT_DIR/Server/MultiNode/dist/Server/MultiNode/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
 TLS_CERT="$LOG_DIR/session-a-tls.crt"
 TLS_KEY="$LOG_DIR/session-a-tls.key"
@@ -499,7 +498,11 @@ wait_topology_routes
 run_client() {
   local scenario="$1"
   echo "client scenario=${scenario}" >>"$LOG_DIR/client.stdout.log"
-  node "$CLIENT_MAIN" \
+  local -a browser_env=()
+  if [[ "$scenario" == "sm-d14" || "$scenario" == "SM-D14" ]]; then
+    browser_env=(env ZLINK_BROWSER_IGNORE_HTTPS_ERRORS=1)
+  fi
+  "${browser_env[@]}" node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
     --play-a-url "$PLAY_A_URL" \
     --play-b-url "$PLAY_B_URL" \
     --gateway-url "$GATEWAY_URL" \
@@ -527,7 +530,6 @@ if [[ "$SCENARIO" == "default-batch" ]]; then
   run_client sm-d4
   run_client sm-d5
   run_client sm-d7
-  run_client sm-d8
   run_client sm-d9-d11-d13
   run_client sm-d10
   run_client sm-d12

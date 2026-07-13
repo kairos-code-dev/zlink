@@ -61,8 +61,13 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       ],
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
+    await postJson(options.sessionAUrl, '/shutdown', {});
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-disconnected|rid=play-a|actor=${actorId}`],
+      timeoutMilliseconds: 30000
+    } satisfies EvidenceWaitReq);
 
-    second = createStreamClient(options.sessionAStreamEndpoint);
+    second = createStreamClient(options.sessionBStreamEndpoint);
     await second.connect();
     await second
       .request({

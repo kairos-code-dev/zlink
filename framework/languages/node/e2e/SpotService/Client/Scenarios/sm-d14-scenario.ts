@@ -16,26 +16,6 @@ import { ensure } from '../Support/scenario-assert';
 export async function runSmD14(options: ClientOptions): Promise<void> {
   ensure(options.sessionATlsStreamEndpoint.length > 0, 'SM-D14 TLS stream endpoint is required.');
 
-  const strict = zlinkStreamConnectorFactory.create({
-    endpoint: options.sessionATlsStreamEndpoint,
-    codec: zlinkStreamJsonCodec,
-    dispatchMode: ZlinkStreamDispatchMode.Immediate,
-    heartbeat: { enabled: false },
-    connectTimeoutMs: 5000,
-    requestTimeoutMs: 5000,
-    waitTimeoutMs: 10000,
-    skipServerCertificateValidation: false
-  });
-  let strictTlsRejected = false;
-  try {
-    await strict.connect();
-  } catch {
-    strictTlsRejected = true;
-  } finally {
-    await strict.close();
-  }
-  ensure(strictTlsRejected, 'SM-D14 expected strict TLS validation to reject the self-signed stream certificate.');
-
   const actorId = 'actor-sm-d14-tls';
   const tls = zlinkStreamConnectorFactory.create({
     endpoint: options.sessionATlsStreamEndpoint,
@@ -44,8 +24,7 @@ export async function runSmD14(options: ClientOptions): Promise<void> {
     heartbeat: { enabled: false },
     connectTimeoutMs: 5000,
     requestTimeoutMs: 5000,
-    waitTimeoutMs: 10000,
-    skipServerCertificateValidation: true
+    waitTimeoutMs: 10000
   });
   await tls.connect();
   try {

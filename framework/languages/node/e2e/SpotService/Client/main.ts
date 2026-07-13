@@ -51,9 +51,10 @@ import { runSmG3 } from './Scenarios/sm-g3-scenario';
 import { runSmG4 } from './Scenarios/sm-g4-scenario';
 import { runSmQ9 } from './Scenarios/sm-q9-scenario';
 import { parseClientOptions } from './Support/client-options';
+import { browserE2eArgs, runBrowserE2e } from '../../browser-client-runtime';
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(process.argv.slice(2));
+  const options = parseClientOptions(browserE2eArgs());
   const scenarios: Record<string, () => Promise<void>> = {
     'SM-A1': () => runSmA1(options),
     'SM-A2': () => runSmA2(options),
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
     'SM-G4': () => runSmG4(options),
     'SM-Q9': () => runSmQ9(options)
   };
-  const defaultScenarioIds = ['SM-A1', 'SM-A2', 'SM-A3', 'SM-A4', 'SM-A5', 'SM-A6', 'SM-A7', 'SM-A8', 'SM-B1', 'SM-B2', 'SM-B3', 'SM-B4', 'SM-B5', 'SM-B6', 'SM-B7', 'SM-B8', 'SM-B9', 'SM-C1', 'SM-C2', 'SM-C3', 'SM-C4', 'SM-C5', 'SM-D1', 'SM-D2', 'SM-D3', 'SM-D4', 'SM-D5', 'SM-D6', 'SM-D7', 'SM-D8', 'SM-D9', 'SM-D10', 'SM-D11', 'SM-D12', 'SM-D13', 'SM-D14', 'SM-D15', 'SM-E1', 'SM-E2', 'SM-E3', 'SM-E4', 'SM-F1', 'SM-F2', 'SM-F3', 'SM-F4', 'SM-F5', 'SM-F6'];
+  const defaultScenarioIds = ['SM-A1', 'SM-A2', 'SM-A3', 'SM-A4', 'SM-A5', 'SM-A6', 'SM-A7', 'SM-A8', 'SM-B1', 'SM-B2', 'SM-B3', 'SM-B4', 'SM-B5', 'SM-B6', 'SM-B7', 'SM-B8', 'SM-B9', 'SM-C1', 'SM-C2', 'SM-C3', 'SM-C4', 'SM-C5', 'SM-D1', 'SM-D2', 'SM-D3', 'SM-D4', 'SM-D5', 'SM-D6', 'SM-D7', 'SM-D9', 'SM-D10', 'SM-D11', 'SM-D12', 'SM-D13', 'SM-D14', 'SM-D15', 'SM-E1', 'SM-E2', 'SM-E3', 'SM-E4', 'SM-F1', 'SM-F2', 'SM-F3', 'SM-F4', 'SM-F5', 'SM-F6'];
   const operationGroups: Record<string, readonly string[]> = {
     'default-batch': defaultScenarioIds,
     'sm-b1-b2-b3-b5': ['SM-B1', 'SM-B2', 'SM-B3', 'SM-B5'],
@@ -156,7 +157,4 @@ async function main(): Promise<void> {
   console.log('spot-service e2e result=passed');
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+void runBrowserE2e('SpotService', main);

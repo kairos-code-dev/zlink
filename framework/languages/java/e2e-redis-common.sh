@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 
-zlink_redis_cleanup_scope() {
-  local scope="$1"
-  if [[ -z "${scope}" ]]; then
-    return 0
-  fi
-  while read -r container_id container_name; do
-    if [[ "${container_name}" == "${scope}"* ]]; then
-      docker rm -fv "${container_id}" >/dev/null 2>&1 || true
-    fi
-  done < <(docker ps -a --format '{{.ID}} {{.Names}}')
-}
-
 zlink_redis_wait_ready() {
   local container_id="$1"
   local timeout_seconds="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"

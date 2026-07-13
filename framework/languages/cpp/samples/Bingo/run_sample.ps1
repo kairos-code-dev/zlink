@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/../redis-common.ps1"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CppRoot = Resolve-Path (Join-Path $ScriptDir "../..")
@@ -69,7 +70,7 @@ function Cleanup([int]$Status) {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer 2>$null | Out-Null
+        & docker rm -fv $RedisContainer 2>$null | Out-Null
     }
     Print-Logs $Status
     return $Status
@@ -205,17 +206,9 @@ try {
     $sessionAPlayRouteEndpoint = if ($env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[19])" }
     $sessionBPlayRouteEndpoint = if ($env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[20])" }
 
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    if ($null -eq $docker) {
-        throw "Docker is required to run the Bingo sample."
-    }
-    $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $redisEndpoint = "127.0.0.1:$redisPort"
+    $redis = Start-ZlinkSampleRedis "zlink-redis-cpp-sample-bingo"
+    $RedisContainer = $redis.ContainerId
+    $redisEndpoint = $redis.Endpoint
     Wait-Endpoint "redis" "tcp://$redisEndpoint"
 
     $topologyArgs = @(

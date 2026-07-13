@@ -5,6 +5,7 @@ export interface SessionOptions {
   readonly playControlEndpoints: readonly string[];
   readonly spotRouteEndpoint: string;
   readonly spotRouterEndpoint: string;
+  readonly spotRouterPeers: readonly { rid: string; endpoint: string }[];
   readonly playSpotRouteEndpoints: readonly string[];
   readonly streamEndpoint: string;
   readonly redisEndpoint: string;
@@ -32,6 +33,7 @@ export function parseSessionOptions(args: readonly string[]): SessionOptions {
     playControlEndpoints: requiredList(values, 'play-control-endpoint'),
     spotRouteEndpoint: required(values, 'spot-route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
+    spotRouterPeers: optionalPeers(values, 'spot-router-peer'),
     playSpotRouteEndpoints: requiredList(values, 'play-spot-route-endpoint'),
     streamEndpoint: required(values, 'stream-endpoint'),
     redisEndpoint: required(values, 'redis-endpoint'),
@@ -39,6 +41,14 @@ export function parseSessionOptions(args: readonly string[]): SessionOptions {
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };
+}
+
+function optionalPeers(values: ReadonlyMap<string, string>, key: string): readonly { rid: string; endpoint: string }[] {
+  return (values.get(key) ?? '').split(',').map((value) => value.trim()).filter(Boolean).map((entry) => {
+    const separator = entry.indexOf('@');
+    if (separator <= 0 || separator === entry.length - 1) throw new Error(`--${key} requires rid@endpoint entries.`);
+    return { rid: entry.slice(0, separator), endpoint: entry.slice(separator + 1) };
+  });
 }
 
 function requiredList(values: ReadonlyMap<string, string>, key: string): readonly string[] {

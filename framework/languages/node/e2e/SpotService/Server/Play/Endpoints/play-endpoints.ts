@@ -434,7 +434,7 @@ export function createPlayEndpoints(
             .submit<StateRes>();
         });
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=replyError|packet=MissingSpotReq') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=failCaller|packet=MissingSpotReq') >= 1,
           10000);
         return {
           spotRid: request.spotRid,

@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/../redis-common.ps1"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CppRoot = Resolve-Path (Join-Path $ScriptDir "../..")
@@ -130,7 +131,7 @@ function Cleanup([int]$Status) {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer 2>$null | Out-Null
+        & docker rm -fv $RedisContainer 2>$null | Out-Null
     }
     if ($Status -ne 0) {
         Print-Logs
@@ -173,15 +174,9 @@ $RedisKeyPrefix = if ($env:TICTACTOE_CPP_REDIS_KEY_PREFIX) { $env:TICTACTOE_CPP_
 
 $Status = 1
 try {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the TicTacToe sample."
-    }
-    $RedisContainer = "zlink-tictactoe-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1:${RedisPort}:6379" redis:7-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $RedisEndpoint = "127.0.0.1:$RedisPort"
+    $redis = Start-ZlinkSampleRedis "zlink-redis-cpp-sample-tictactoe" "redis:7-alpine"
+    $RedisContainer = $redis.ContainerId
+    $RedisEndpoint = $redis.Endpoint
     Wait-Port "redis" $RedisEndpoint
 
     $topologyArgs = @(

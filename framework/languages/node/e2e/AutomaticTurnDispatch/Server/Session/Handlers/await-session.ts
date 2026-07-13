@@ -182,6 +182,16 @@ class AwaitSession implements ZLinkSession {
       return;
     }
 
+    if (dispatch.packetName === 'AwaitReq') {
+      const reply = await this.relayToSpotRequest(
+        dispatch,
+        decodePacket(payload, AwaitReq),
+        signal
+      );
+      this.context.client.reply(reply).submit();
+      return;
+    }
+
     if (dispatch.packetName === 'RemoteSpotAwaitMsg') {
       await this.relayToSpot(dispatch, decodePacket(payload, RemoteSpotAwaitMsg), signal);
       return;
@@ -346,7 +356,7 @@ class AwaitSession implements ZLinkSession {
 
   private async relayToSpotRequest(
     dispatch: ZLinkSessionDispatchContext,
-    request: RemoteSpotAwaitReq,
+    request: RemoteSpotAwaitReq | AwaitReq,
     signal?: AbortSignal
   ): Promise<AutomaticTurnDispatchRes> {
     const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);

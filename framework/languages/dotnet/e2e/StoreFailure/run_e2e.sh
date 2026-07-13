@@ -84,7 +84,7 @@ cleanup() {
   wait "${pids[@]:-}" 2>/dev/null || true
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
     docker unpause "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2

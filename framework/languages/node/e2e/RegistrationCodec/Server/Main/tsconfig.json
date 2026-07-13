@@ -16,8 +16,14 @@
       "@zlink-systems/framework-codec-msgpack": [
         "../../../../packages/framework-codec-msgpack/dist"
       ],
+      "@zlink-systems/framework-codec-msgpack/framework": [
+        "../../../../packages/framework-codec-msgpack/dist/framework.d.ts"
+      ],
       "@zlink-systems/framework-codec-protobuf": [
         "../../../../packages/framework-codec-protobuf/dist"
+      ],
+      "@zlink-systems/framework-codec-protobuf/framework": [
+        "../../../../packages/framework-codec-protobuf/dist/framework.d.ts"
       ],
       "@zlink-systems/zlink": [
         "../../../../node_modules/-systems/zlink/dist/index.d.ts"

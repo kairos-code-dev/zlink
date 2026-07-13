@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
+import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { RegistrationCodecNames } from '../../Shared/messages';
 import { parseCodecRequesterOptions, type CodecRequesterOptions } from './Configuration/codec-requester-options';

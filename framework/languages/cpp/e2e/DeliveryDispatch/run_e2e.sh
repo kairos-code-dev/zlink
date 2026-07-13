@@ -84,7 +84,7 @@ cleanup() {
     fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
-    docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1

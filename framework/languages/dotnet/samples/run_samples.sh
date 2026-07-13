@@ -2,19 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/redis-common.sh"
-
 SAMPLES=(TicTacToe Bingo SupportChat ShoppingMall DeliveryDispatch GameQuest)
-
-for scope in \
-  zlink-tictactoe-dotnet-redis \
-  zlink-bingo-dotnet-redis \
-  zlink-supportchat-dotnet-redis \
-  zlink-shoppingmall-dotnet-redis \
-  zlink-deliverydispatch-dotnet-redis \
-  zlink-gamequest-dotnet-redis; do
-  zlink_redis_cleanup_scope "${scope}"
-done
 
 if (( $# > 0 )); then
   SAMPLES=("$@")

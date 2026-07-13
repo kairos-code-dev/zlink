@@ -9,6 +9,18 @@ source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-full}"
+if [[ "${ZLINK_ATD_CHILD_RUN:-0}" != "1" && ("$SCENARIO" == "full" || "$SCENARIO" == "all") ]]; then
+  for child_scenario in \
+    ATD-A1 ATD-A2 ATD-A3 ATD-A4 \
+    ATD-B1 ATD-B2 ATD-B3 \
+    ATD-C1 ATD-C2 ATD-C3 \
+    ATD-D1 ATD-D2 ATD-D3 ATD-D4 \
+    ATD-E1 ATD-E2 ATD-E3 ATD-E5; do
+    ZLINK_ATD_CHILD_RUN=1 "$0" "$child_scenario"
+  done
+  echo "await-dispatch e2e result=passed"
+  exit 0
+fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=150
@@ -19,12 +31,24 @@ if [[ "$CLIENT_SCENARIO" == "all" ]]; then
 fi
 mkdir -p "$LOG_DIR"
 
-needs_secondary_topology() {
+needs_secondary_play() {
   case "$CLIENT_SCENARIO" in
-    full|ATD-D2|ATD-D3|ATD-D4) return 0 ;;
+    full-core|ATD-D2) return 0 ;;
     *) return 1 ;;
   esac
 }
+
+needs_secondary_session() {
+  case "$CLIENT_SCENARIO" in
+    full-core|ATD-D4) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+PRIMARY_PLAY_RID="play-a"
+if [[ "$CLIENT_SCENARIO" == "ATD-D3" ]]; then
+  PRIMARY_PLAY_RID="play-b"
+fi
 
 used_ports=()
 
@@ -151,7 +175,7 @@ fi
 start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="await-dispatch:node:${RUN_ID}:location"
-wait_tcp redis "tcp://$REDIS_ENDPOINT"
+wait_tcp redis "tcp://$REDIS_ENDPOINT" 600
 
 DELAY_HTTP_PORT="$(allocate_port)"
 DELAY_B_HTTP_PORT="$(allocate_port)"
@@ -200,13 +224,28 @@ PLAY_SPOT_ROUTER="tcp://127.0.0.1:$PLAY_SPOT_ROUTER_PORT"
 PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:$PLAY_B_SPOT_ROUTER_PORT"
 PLAY_SPOT_PUB="tcp://127.0.0.1:$PLAY_SPOT_PUB_PORT"
 PLAY_B_SPOT_PUB="tcp://127.0.0.1:$PLAY_B_SPOT_PUB_PORT"
-SESSION_STREAM="tcp://127.0.0.1:$SESSION_STREAM_PORT"
-SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
+SESSION_STREAM="ws://127.0.0.1:$SESSION_STREAM_PORT"
+SESSION_B_STREAM="ws://127.0.0.1:$SESSION_B_STREAM_PORT"
+
+PLAY_A_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER"
+PLAY_B_SPOT_ROUTER_PEERS=""
+SESSION_A_SPOT_ROUTER_PEERS=""
+SESSION_B_SPOT_ROUTER_PEERS=""
+if needs_secondary_play; then
+  PLAY_A_SPOT_ROUTER_PEERS="play-b@$PLAY_B_SPOT_ROUTER,session-a@$SESSION_SPOT_ROUTER"
+  PLAY_B_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER"
+  SESSION_A_SPOT_ROUTER_PEERS="play-a@$PLAY_SPOT_ROUTER"
+fi
+if needs_secondary_session; then
+  PLAY_A_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER,session-b@$SESSION_B_SPOT_ROUTER"
+  SESSION_A_SPOT_ROUTER_PEERS="session-b@$SESSION_B_SPOT_ROUTER"
+  SESSION_B_SPOT_ROUTER_PEERS=""
+fi
 
 DELAY_MAIN="$ROOT_DIR/Server/Delay/dist/Server/Delay/main.js"
 PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_ENTRY="$ROOT_DIR/Client/main.ts"
 
 start_server delay-a "$DELAY_MAIN" \
   --rid delay-a \
@@ -221,8 +260,10 @@ start_server delay-b "$DELAY_MAIN" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
   --evidence-file "$LOG_DIR/delay-b.evidence.log"
 DELAY_B_PID="${pids[-1]}"
+wait_health "$DELAY_URL" delay-a "$DELAY_A_PID"
+wait_health "$DELAY_B_URL" delay-b "$DELAY_B_PID"
 
-if needs_secondary_topology; then
+if needs_secondary_play; then
   start_server play-b "$PLAY_MAIN" \
     --rid play-b \
     --http-url "$PLAY_B_URL" \
@@ -231,37 +272,41 @@ if needs_secondary_topology; then
     --peer-spot-route-endpoint "$PLAY_SPOT_ROUTE" \
     --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+    --spot-router-peer "$PLAY_B_SPOT_ROUTER_PEERS" \
     --delay-endpoint "$DELAY_B_ENDPOINT" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --evidence-file "$LOG_DIR/play-b.evidence.log" \
     --log-dir "$LOG_DIR"
   PLAY_B_PID="${pids[-1]}"
+  wait_health "$PLAY_B_URL" play-b "$PLAY_B_PID"
 fi
 
 PLAY_A_PEER_ARGS=()
-if needs_secondary_topology; then
+if needs_secondary_play; then
   PLAY_A_PEER_ARGS+=(--peer-spot-route-endpoint "$PLAY_B_SPOT_ROUTE")
 fi
 
 start_server play-a "$PLAY_MAIN" \
-  --rid play-a \
+  --rid "$PRIMARY_PLAY_RID" \
   --http-url "$PLAY_URL" \
   --control-endpoint "$PLAY_CONTROL" \
   --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
   "${PLAY_A_PEER_ARGS[@]}" \
   --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_SPOT_PUB" \
+  --spot-router-peer "$PLAY_A_SPOT_ROUTER_PEERS" \
   --delay-endpoint "$DELAY_ENDPOINT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
   --log-dir "$LOG_DIR"
 PLAY_A_PID="${pids[-1]}"
+wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
 
 PLAY_CONTROL_ENDPOINTS="$PLAY_CONTROL"
 PLAY_SPOT_ROUTE_ENDPOINTS="$PLAY_SPOT_ROUTE"
-if needs_secondary_topology; then
+if needs_secondary_play; then
   PLAY_CONTROL_ENDPOINTS="$PLAY_CONTROL,$PLAY_B_CONTROL"
   PLAY_SPOT_ROUTE_ENDPOINTS="$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE"
 fi
@@ -273,6 +318,7 @@ start_server session-a "$SESSION_MAIN" \
   --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
   --spot-route-endpoint "$SESSION_SPOT_ROUTE" \
   --spot-router-endpoint "$SESSION_SPOT_ROUTER" \
+  --spot-router-peer "$SESSION_A_SPOT_ROUTER_PEERS" \
   --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
   --stream-endpoint "$SESSION_STREAM" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -283,7 +329,7 @@ SESSION_A_PID="${pids[-1]}"
 wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
 
 SESSION_B_PID=""
-if needs_secondary_topology; then
+if needs_secondary_session; then
   start_server session-b "$SESSION_MAIN" \
     --rid session-b \
     --http-url "$SESSION_B_URL" \
@@ -291,6 +337,7 @@ if needs_secondary_topology; then
     --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
     --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
     --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+    --spot-router-peer "$SESSION_B_SPOT_ROUTER_PEERS" \
     --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
     --stream-endpoint "$SESSION_B_STREAM" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -298,33 +345,24 @@ if needs_secondary_topology; then
     --evidence-file "$LOG_DIR/session-b.evidence.log" \
     --log-dir "$LOG_DIR"
   SESSION_B_PID="${pids[-1]}"
-fi
-
-wait_health "$DELAY_URL" delay-a "$DELAY_A_PID"
-wait_health "$DELAY_B_URL" delay-b "$DELAY_B_PID"
-if [[ -n "${PLAY_B_PID:-}" ]]; then
-  wait_health "$PLAY_B_URL" play-b "$PLAY_B_PID"
-fi
-wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
-wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
-if [[ -n "$SESSION_B_PID" ]]; then
   wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
 fi
 
 if [[ "$CLIENT_SCENARIO" != "ATD-E3" ]]; then
-  node "$CLIENT_MAIN" \
+  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
     --session-a-stream-endpoint "$SESSION_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$CLIENT_SCENARIO" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
   cat "$LOG_DIR/client.stdout.log"
+
 fi
 
-if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
+if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
   SHUTDOWN_ID="ATD-E3-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
-  node "$CLIENT_MAIN" \
+  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
     --session-a-stream-endpoint "$SESSION_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario shutdown-wait \
@@ -353,13 +391,14 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
   fi
 
   start_server play-a "$PLAY_MAIN" \
-    --rid play-a \
+    --rid "$PRIMARY_PLAY_RID" \
     --http-url "$PLAY_URL" \
     --control-endpoint "$PLAY_CONTROL" \
     --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
     --peer-spot-route-endpoint "$([[ "$CLIENT_SCENARIO" == "ATD-E3" ]] && echo "" || echo "$PLAY_B_SPOT_ROUTE")" \
     --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_SPOT_PUB" \
+    --spot-router-peer "$PLAY_A_SPOT_ROUTER_PEERS" \
     --delay-endpoint "$DELAY_ENDPOINT" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
@@ -375,6 +414,7 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
     --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
     --spot-route-endpoint "$SESSION_SPOT_ROUTE" \
     --spot-router-endpoint "$SESSION_SPOT_ROUTER" \
+    --spot-router-peer "$SESSION_A_SPOT_ROUTER_PEERS" \
     --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
     --stream-endpoint "$SESSION_STREAM" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -392,6 +432,7 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
       --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
       --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
       --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+      --spot-router-peer "$SESSION_B_SPOT_ROUTER_PEERS" \
       --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
       --stream-endpoint "$SESSION_B_STREAM" \
       --redis-endpoint "$REDIS_ENDPOINT" \
@@ -402,7 +443,7 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
     wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
   fi
 
-  node "$CLIENT_MAIN" \
+  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
     --session-a-stream-endpoint "$SESSION_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario shutdown-recovery \

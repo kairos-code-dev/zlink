@@ -182,7 +182,7 @@ PIDS=()
 cleanup() {
   set +e
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then

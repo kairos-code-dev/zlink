@@ -56,7 +56,7 @@ cleanup() {
     if kill -0 "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi
   done
   for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
-  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   if [[ "$code" -ne 0 ]]; then echo "ObservabilityOps failed. Logs: $LOG_DIR" >&2; fi
 }
 trap cleanup EXIT

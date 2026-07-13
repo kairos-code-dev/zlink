@@ -6,17 +6,11 @@ pick_port() {
 
 allocate_port() {
   local port
+  local registry="${PORT_REGISTRY_FILE:-${LOG_DIR:-/tmp/zlink-e2e-ports-$$}.allocated-ports}"
   while true; do
     port="$(pick_port)"
-    local used=0
-    for existing in "${used_ports[@]:-}"; do
-      if [[ "$existing" == "$port" ]]; then
-        used=1
-        break
-      fi
-    done
-    if [[ "$used" -eq 0 ]]; then
-      used_ports+=("$port")
+    if [[ ! -f "$registry" ]] || ! grep -Fxq "$port" "$registry"; then
+      printf '%s\n' "$port" >>"$registry"
       printf '%s\n' "$port"
       return 0
     fi
@@ -108,7 +102,7 @@ wait_all_pids_ignoring_status() {
 
 remove_redis_container() {
   if [[ -n "${REDIS_CONTAINER_ID:-}" ]]; then
-    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
 }
 

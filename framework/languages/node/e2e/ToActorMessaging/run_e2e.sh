@@ -31,7 +31,7 @@ wait_health() {
 wait_tcp() {
   local name="$1"
   local endpoint="$2"
-  local host_port="${endpoint#tcp://}"
+  local host_port="${endpoint#*://}"
   local host="${host_port%:*}"
   local port="${host_port##*:}"
   for _ in $(seq 1 100); do
@@ -66,7 +66,7 @@ cleanup() {
   done
   wait "${pids[@]:-}" >/dev/null 2>&1 || true
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then
-    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
+    docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
@@ -194,12 +194,11 @@ CALLER_PUBSUB_PORT="$(pick_port)"
 
 ACTOR_URL="http://127.0.0.1:$ACTOR_HTTP_PORT"
 SESSION_URL="http://127.0.0.1:$SESSION_HTTP_PORT"
-SESSION_STREAM_ENDPOINT="tcp://127.0.0.1:$SESSION_STREAM_PORT"
+SESSION_STREAM_ENDPOINT="ws://127.0.0.1:$SESSION_STREAM_PORT"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
 ACTOR_MAIN="$ROOT_DIR/Server/Actor/dist/Server/Actor/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CALLER_MAIN="$ROOT_DIR/Server/Caller/dist/Server/Caller/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
 SERVER_ROLES=(actor session caller)
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
@@ -211,7 +210,7 @@ for role in "${SERVER_ROLES[@]}"; do
 done
 wait_topology
 
-node "$CLIENT_MAIN" \
+node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
   --actor-url "$ACTOR_URL" \
   --caller-url "$CALLER_URL" \
   --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \

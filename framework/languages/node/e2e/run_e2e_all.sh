@@ -2,9 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/redis-container.sh"
-
-REDIS_SCOPE="zlink-redis-node-e2e"
 MAX_ATTEMPTS="${ZLINK_E2E_RETRY_ATTEMPTS:-3}"
 SCENARIO_TIMEOUT_SECONDS="${ZLINK_NODE_E2E_SCENARIO_TIMEOUT_SECONDS:-1800}"
 DEFAULT_CONFIGS=(
@@ -23,16 +20,7 @@ DEFAULT_CONFIGS=(
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 cleanup_done=0
-
-cleanup_e2e_processes() {
-  local config_regex pattern
-  config_regex="$(IFS='|'; echo "${DEFAULT_CONFIGS[*]}")"
-  pattern="${SCRIPT_DIR}/(${config_regex})/"
-
-  pkill -TERM -f "${pattern}" >/dev/null 2>&1 || true
-  sleep 0.5
-  pkill -KILL -f "${pattern}" >/dev/null 2>&1 || true
-}
+active_config_pid=""
 
 cleanup_resources() {
   if [[ "${cleanup_done}" == "1" ]]; then
@@ -40,8 +28,10 @@ cleanup_resources() {
   fi
   cleanup_done=1
 
-  cleanup_e2e_processes
-  zlink_redis_cleanup_scope "${REDIS_SCOPE}"
+  if [[ -n "${active_config_pid}" ]] && kill -0 "${active_config_pid}" >/dev/null 2>&1; then
+    kill -TERM "${active_config_pid}" >/dev/null 2>&1 || true
+    wait "${active_config_pid}" >/dev/null 2>&1 || true
+  fi
 }
 
 on_exit() {
@@ -51,7 +41,7 @@ on_exit() {
 }
 
 on_interrupt() {
-  echo "[node-e2e] interrupted; cleaning up Node.js processes and Redis..." >&2
+  echo "[node-e2e] interrupted; stopping the current Node.js configuration..." >&2
   exit 130
 }
 
@@ -78,8 +68,6 @@ else
   done
 fi
 
-zlink_redis_cleanup_scope "${REDIS_SCOPE}"
-
 run_config_with_retry() {
   local config="$1"
   local scenario="$2"
@@ -92,9 +80,12 @@ run_config_with_retry() {
     set +e
     (
       cd "${SCRIPT_DIR}/${config}" &&
-        nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
-    ) 2>&1 | tee "${output}"
-    status="${PIPESTATUS[0]}"
+        exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
+    ) > >(tee "${output}") 2>&1 &
+    active_config_pid="$!"
+    wait "${active_config_pid}"
+    status="$?"
+    active_config_pid=""
     set -e
     ended_at="$(date +%s)"
 

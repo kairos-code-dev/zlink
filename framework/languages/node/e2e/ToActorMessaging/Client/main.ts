@@ -15,6 +15,7 @@ import {
   ZlinkStreamDispatchMode,
   type ZlinkStreamConnector
 } from '@zlink-systems/stream-connector';
+import { browserE2eArgs, browserE2eFetch, runBrowserE2e } from '../../browser-client-runtime';
 
 interface ClientOptions {
   readonly actorUrl: string;
@@ -24,7 +25,7 @@ interface ClientOptions {
 }
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(process.argv.slice(2));
+  const options = parseClientOptions(browserE2eArgs());
   const scenarios: Record<string, (options: ClientOptions) => Promise<void>> = {
     'TA-A1': runTaA1,
     'TA-A2': runTaA2,
@@ -229,7 +230,7 @@ function requireNoEvidence(evidence: readonly ActorEvidence[], scenario: string)
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await browserE2eFetch(url);
   if (!response.ok) {
     throw new Error(`${url} failed with ${response.status}`);
   }
@@ -237,7 +238,7 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const response = await browserE2eFetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
@@ -261,7 +262,7 @@ function parseClientOptions(args: readonly string[]): ClientOptions {
   return {
     actorUrl: values.get('actor-url') ?? 'http://127.0.0.1:0',
     callerUrl: values.get('caller-url') ?? 'http://127.0.0.1:0',
-    sessionStreamEndpoint: values.get('session-stream-endpoint') ?? 'tcp://127.0.0.1:0',
+    sessionStreamEndpoint: values.get('session-stream-endpoint') ?? 'ws://127.0.0.1:0',
     scenario: values.get('scenario') ?? 'all'
   };
 }
@@ -272,7 +273,4 @@ function requireCondition(condition: boolean, message: string): void {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+void runBrowserE2e('ToActorMessaging', main);

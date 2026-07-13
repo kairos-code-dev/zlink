@@ -2,9 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/redis-common.sh"
-
-REDIS_SCOPE="zlink-redis-cpp-sample"
 MAX_ATTEMPTS="${ZLINK_SAMPLE_RETRY_ATTEMPTS:-3}"
 BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
 
@@ -38,8 +35,6 @@ else
     fi
   done
 fi
-
-zlink_redis_cleanup_scope "$REDIS_SCOPE"
 
 run_sample_with_retry() {
   local runner="$1"

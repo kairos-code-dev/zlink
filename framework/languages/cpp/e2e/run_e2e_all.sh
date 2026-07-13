@@ -2,10 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/redis-common.sh"
 RUNNER_CWD="$(pwd)"
 
-REDIS_SCOPE="zlink-redis-cpp-e2e"
 MAX_ATTEMPTS="${ZLINK_E2E_RETRY_ATTEMPTS:-3}"
 SCENARIO_TIMEOUT_SECONDS="${ZLINK_E2E_SCENARIO_TIMEOUT_SECONDS:-1800}"
 BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
@@ -35,6 +33,7 @@ START_ORDER_VARIANTS=(
 )
 
 cleanup_done=0
+active_config_pid=""
 
 cleanup_resources() {
   if [[ "${cleanup_done}" == "1" ]]; then
@@ -42,7 +41,10 @@ cleanup_resources() {
   fi
   cleanup_done=1
 
-  zlink_redis_cleanup_scope "${REDIS_SCOPE}"
+  if [[ -n "${active_config_pid}" ]] && kill -0 "${active_config_pid}" >/dev/null 2>&1; then
+    kill -TERM "${active_config_pid}" >/dev/null 2>&1 || true
+    wait "${active_config_pid}" >/dev/null 2>&1 || true
+  fi
 }
 
 on_exit() {
@@ -52,7 +54,7 @@ on_exit() {
 }
 
 on_interrupt() {
-  echo "[cpp-e2e] interrupted; cleaning up runner-scoped Redis..." >&2
+  echo "[cpp-e2e] interrupted; stopping the current configuration..." >&2
   exit 130
 }
 
@@ -103,8 +105,6 @@ else
   done
 fi
 
-zlink_redis_cleanup_scope "${REDIS_SCOPE}"
-
 run_config_with_retry() {
   local config="$1"
   local scenario="$2"
@@ -118,9 +118,12 @@ run_config_with_retry() {
     set +e
     (
       cd "${SCRIPT_DIR}/${config}" &&
-        E2E_START_ORDER="${start_order}" timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
-    ) 2>&1 | tee "${output}"
-    status="${PIPESTATUS[0]}"
+        exec env E2E_START_ORDER="${start_order}" timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
+    ) > >(tee "${output}") 2>&1 &
+    active_config_pid="$!"
+    wait "${active_config_pid}"
+    status="$?"
+    active_config_pid=""
     set -e
     ended_at="$(date +%s)"
 

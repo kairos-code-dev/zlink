@@ -89,7 +89,7 @@ cleanup() {
       cleanup_failed=1
     fi
   done
-  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   elif [[ "$cleanup_failed" -ne 0 ]]; then

@@ -11,7 +11,6 @@ const { NestFactory } = require('@nestjs/core');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../packages/framework/dist');
 const nestjs = require('../packages/nestjs/dist');
-const connector = require('../packages/stream-connector/dist');
 const { ZLinkRedisLocationStore } = require('../packages/framework-locations-redis/dist');
 const repoRoot = path.resolve(__dirname, '../../../..');
 const dotnetTestHostProject = path.join(
@@ -24,20 +23,50 @@ const dotnetRedisTestsProject = path.join(
 );
 
 async function main() {
+  console.log(await crossLanguageManifest());
   const results = [];
   await runInTempDir(async (tempDir) => {
     results.push(...await runStage('Node client -> dotnet channel server', () => nodeClientToDotnetChannelServer(tempDir)));
     results.push(await runStage('Node publisher -> dotnet fanout subscriber', () => nodePublisherToDotnetFanoutSubscriber(tempDir)));
+    results.push(await runStage('dotnet publisher -> Node fanout subscriber', () => dotnetPublisherToNodeFanoutSubscriber(tempDir)));
     results.push(await runStage('dotnet client -> Node channel server', () => dotnetClientToNodeChannelServer(tempDir)));
-    results.push(await runStage('Node connector -> dotnet stream server', () => nodeConnectorToDotnetStreamServer(tempDir)));
+    results.push(await runStage('Node route client -> dotnet route server', () => nodeRouteClientToDotnetRouteServer(tempDir)));
+    results.push(await runStage('dotnet route client -> Node route server', () => dotnetRouteClientToNodeRouteServer(tempDir)));
+    results.push(await runStage('Browser TypeScript connector -> dotnet stream server', () => nodeConnectorToDotnetStreamServer(tempDir)));
     results.push(await runStage('dotnet connector -> Node stream server', () => dotnetConnectorToNodeStreamServer(tempDir)));
-    results.push(await runStage('dotnet stream drain -> Node connector', () => nodeConnectorObservesDotnetSessionClosing(tempDir)));
+    results.push(await runStage('dotnet stream drain -> Browser TypeScript connector', () => nodeConnectorObservesDotnetSessionClosing(tempDir)));
+    results.push(await runStage('Node stream drain -> dotnet connector', () => dotnetConnectorObservesNodeSessionClosing(tempDir)));
     results.push(...await runStage('Node/dotnet Redis rows', () => nodeDotnetRedisLocationRows(tempDir)));
   });
 
   for (const result of results) {
     console.log(`ok - ${result}`);
   }
+}
+
+async function crossLanguageManifest() {
+  const nodeFrameworkPackage = JSON.parse(await fs.readFile(
+    path.join(__dirname, '../packages/framework/package.json'), 'utf8'));
+  const nodeBindingPackage = JSON.parse(await fs.readFile(
+    path.join(__dirname, '../node_modules/@zlink-systems/zlink/package.json'), 'utf8'));
+  const dotnetBuildProps = await fs.readFile(
+    path.join(repoRoot, 'framework/languages/dotnet/Directory.Build.props'), 'utf8');
+  const dotnetVersion = dotnetBuildProps.match(/<VersionPrefix>([^<]+)<\/VersionPrefix>/)?.[1] ?? 'source-tree';
+  return [
+    'cross-manifest',
+    `node-framework=${nodeFrameworkPackage.version}`,
+    `node-binding=${nodeBindingPackage.version}`,
+    `dotnet-framework=${dotnetVersion}`,
+    'topology=direct-channel,fanout,route-mesh,stream,redis-store',
+    'payload=TestHostProfileRequest,TestHostPublishedEvent,TestHostRouteRequest,RawPing',
+    'codec=typed-json,stream-json,location-row-golden',
+    'store-key=per-run-zlink:cross:node:<pid>:<timestamp>'
+  ].join(' ');
+}
+
+async function createBrowserConnectorDriver() {
+  const module = await import('../scripts/browser-e2e/connector-driver.mjs');
+  return await module.createBrowserConnectorDriver();
 }
 
 async function nodeDotnetRedisLocationRows(tempDir) {
@@ -273,6 +302,54 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
   }
 }
 
+async function dotnetPublisherToNodeFanoutSubscriber(tempDir) {
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+  const topic = 'profile.changed';
+  const received = [];
+  class TestHostPublishedEventHandler {
+    async handle(event, context) {
+      received.push(`${context.topic}:${event?.Value ?? event?.value}`);
+    }
+  }
+  Injectable()(TestHostPublishedEventHandler);
+  class SubscriberModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => {
+        const builder = nestjs.zlinkFramework();
+        builder.addFanoutChannel('profiles')
+          .enableSubscriber(endpoint)
+          .addPublishHandler('TestHostPublishedEvent', TestHostPublishedEventHandler);
+        return builder.build();
+      }
+    })],
+    providers: [TestHostPublishedEventHandler]
+  })(SubscriberModule);
+  let app;
+  let host;
+  try {
+    app = await NestFactory.createApplicationContext(SubscriberModule, { logger: false, abortOnError: false });
+    host = startDotnetHost(tempDir, 'dotnet-publisher-node-subscriber', [
+      'channel-publisher',
+      '--channel-name', 'profiles',
+      '--publisher-endpoint', endpoint,
+      '--publish-topic', topic,
+      '--publish-value', 'dotnet-publish-to-node'
+    ]);
+    await host.ready;
+    await waitForCondition(
+      () => received.includes(`${topic}:dotnet-publish-to-node`),
+      7000,
+      `Node subscriber events were '${received.join(', ')}'`
+    );
+    return 'dotnet publisher -> Node fanout subscriber';
+  } finally {
+    await host?.stop();
+    await app?.close();
+  }
+}
+
 async function dotnetClientToNodeChannelServer(tempDir) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
@@ -320,42 +397,109 @@ async function dotnetClientToNodeChannelServer(tempDir) {
   }
 }
 
-async function nodeConnectorToDotnetStreamServer(tempDir) {
+async function nodeRouteClientToDotnetRouteServer(tempDir) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
+  const eventFile = path.join(tempDir, 'node-route-dotnet-route.events');
+  class TestHostRouteRequest {
+    constructor(value) { this.value = value; }
+  }
+  class RouteClientModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => {
+        const builder = nestjs.zlinkFramework();
+        builder.addRouteMeshChannel('cross.route').connect(endpoint);
+        return builder.build();
+      }
+    })]
+  })(RouteClientModule);
+  let app;
+  let host;
+  try {
+    host = startDotnetHost(tempDir, 'node-route-dotnet-route', [
+      'route-server', '--channel-name', 'cross.route', '--server-endpoint', endpoint, '--event-file', eventFile
+    ]);
+    await host.ready;
+    app = await NestFactory.createApplicationContext(RouteClientModule, { logger: false, abortOnError: false });
+    const client = app.get(nestjs.ZLINK_ROUTE_CLIENT, { strict: false });
+    const reply = await client.requestToNode('cross.route', 'dotnet-route', new TestHostRouteRequest('node-route-to-dotnet'))
+      .timeout(5000).submit();
+    assert.deepEqual(reply, { value: 'node-route-to-dotnet|dotnet' });
+    await waitForFileText(eventFile, (text) => text.includes('route-server|node-route-to-dotnet|'), 7000);
+    return 'Node route client -> dotnet route server request/reply';
+  } finally {
+    await app?.close();
+    await host?.stop();
+  }
+}
+
+async function dotnetRouteClientToNodeRouteServer(tempDir) {
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+  const eventFile = path.join(tempDir, 'dotnet-route-node-route.events');
+  class TestHostRouteRequestHandler {
+    async handle(payload) {
+      const value = payload?.Value ?? payload?.value;
+      return { Value: `${value}|node` };
+    }
+  }
+  Injectable()(TestHostRouteRequestHandler);
+  class RouteServerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => {
+        const builder = nestjs.zlinkFramework();
+        builder.addRouteMeshChannel('cross.route')
+          .enableRouter(endpoint)
+          .routingId('node-route')
+          .addRequestHandler('TestHostRouteRequest', TestHostRouteRequestHandler);
+        return builder.build();
+      }
+    })],
+    providers: [TestHostRouteRequestHandler]
+  })(RouteServerModule);
+  let app;
+  let host;
+  try {
+    app = await NestFactory.createApplicationContext(RouteServerModule, { logger: false, abortOnError: false });
+    host = startDotnetHost(tempDir, 'dotnet-route-node-route', [
+      'route-client', '--channel-name', 'cross.route', '--server-endpoint', endpoint,
+      '--event-file', eventFile, '--publish-value', 'dotnet-route-to-node'
+    ]);
+    await host.ready;
+    await waitForFileText(eventFile, (text) => text.includes('route-client|dotnet-route-to-node|node'), 7000);
+    return 'dotnet route client -> Node route server request/reply';
+  } finally {
+    await host?.stop();
+    await app?.close();
+  }
+}
+
+async function nodeConnectorToDotnetStreamServer(tempDir) {
+  const port = await reservePort();
+  const endpoint = `ws://127.0.0.1:${port}`;
   const eventFile = path.join(tempDir, 'node-connector-dotnet-stream.events');
   const host = startDotnetHost(tempDir, 'node-connector-dotnet-stream', [
     'stream-raw',
     '--stream-endpoint', endpoint,
     '--event-file', eventFile
   ]);
-  const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint,
-    heartbeat: { enabled: false },
-    reconnect: { enabled: false },
-    requestTimeoutMs: 5000
-  });
+  const instance = await createBrowserConnectorDriver();
 
   try {
     await host.ready;
-    await instance.connect();
-    const pending = instance
-      .request({
-        codec: connector.ZlinkStreamCodec.Json,
-        payload: new TextEncoder().encode('"ping"')
-      })
-      .packetName('RawPing')
-      .compress()
-      .timeout(5000)
-      .submit();
-
-    await instance.dispatch();
-    const reply = await withTimeout(pending, 7000, 'Node stream connector -> dotnet stream server');
+    await instance.connect(endpoint);
+    const reply = await withTimeout(
+      instance.request('RawPing', 'ping', true),
+      7000,
+      'Browser TypeScript connector -> dotnet stream server'
+    );
     assert.equal(reply, 'pong');
 
     await waitForFileText(eventFile, (text) => text.includes('raw|ping'), 5000);
-    await assertFlowLog(`${eventFile}.flow`, 'RawPing', 'Node -> dotnet');
-    return 'Node stream connector -> dotnet stream server flow-wire and JSON codec';
+    await assertFlowLog(`${eventFile}.flow`, 'RawPing', 'Browser TypeScript -> dotnet');
+    return 'Browser TypeScript connector -> dotnet stream server flow-wire and JSON codec';
   } finally {
     await instance.close();
     await host.stop();
@@ -437,35 +581,80 @@ async function dotnetConnectorToNodeStreamServer(tempDir) {
 
 async function nodeConnectorObservesDotnetSessionClosing(tempDir) {
   const port = await reservePort();
-  const endpoint = `tcp://127.0.0.1:${port}`;
+  const endpoint = `ws://127.0.0.1:${port}`;
   const eventFile = path.join(tempDir, 'dotnet-drain-node-connector.events');
   const host = startDotnetHost(tempDir, 'dotnet-drain-node-connector', [
     'stream-raw',
     '--stream-endpoint', endpoint,
     '--event-file', eventFile
   ]);
-  const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint,
-    dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
-    heartbeat: { enabled: false },
-    reconnect: { enabled: false }
-  });
+  const instance = await createBrowserConnectorDriver();
   try {
     await host.ready;
-    await instance.connect();
-    const reply = await instance.request({
-      codec: connector.ZlinkStreamCodec.Json,
-      payload: new TextEncoder().encode('"drain-probe"')
-    }).packetName('RawPing').timeout(5000).submit();
+    await instance.connect(endpoint);
+    const reply = await instance.request('RawPing', 'drain-probe');
     assert.equal(reply, 'pong');
     await waitForFileText(eventFile, (text) => text.includes('connected|'), 5000);
     await host.stop();
-    await waitForCondition(() => instance.closeReason === 'ServerDrain', 7000,
-      `Node connector close reason was '${instance.closeReason ?? '<none>'}'`);
-    return 'dotnet stream server drain -> Node connector session-closing';
+    await instance.waitForCloseReason('ServerDrain', 7000);
+    return 'dotnet stream server drain -> Browser TypeScript connector session-closing';
   } finally {
     await instance.close();
     await host.stop();
+  }
+}
+
+async function dotnetConnectorObservesNodeSessionClosing(tempDir) {
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+  const eventFile = path.join(tempDir, 'node-drain-dotnet-connector.events');
+  class NodeStreamSessionFactory {
+    async create(sessionContext) {
+      return {
+        context: sessionContext,
+        async onDispatch(_dispatch, payload) {
+          assert.equal(payload.decode(), 'node-drain-probe');
+          sessionContext.client.reply('node-drain-pong').compress().submit();
+        }
+      };
+    }
+  }
+  Injectable()(NodeStreamSessionFactory);
+  class StreamServerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => {
+        const builder = nestjs.zlinkFramework();
+        builder.addStreamNode('cross-language-drain-stream')
+          .bind(endpoint)
+          .registerSession(NodeStreamSessionFactory);
+        return builder.build();
+      }
+    })],
+    providers: [NodeStreamSessionFactory]
+  })(StreamServerModule);
+  let app;
+  let host;
+  try {
+    app = await NestFactory.createApplicationContext(StreamServerModule, { logger: false, abortOnError: false });
+    host = startDotnetHost(tempDir, 'node-drain-dotnet-connector', [
+      'stream-client',
+      '--stream-endpoint', endpoint,
+      '--event-file', eventFile,
+      '--publish-value', 'node-drain-probe'
+    ]);
+    await host.ready;
+    await waitForFileText(eventFile, (text) => text.includes('stream-client|') && text.includes('node-drain-pong'), 7000);
+    const drain = app.get(nestjs.ZLINK_DRAIN_CONTROL, { strict: false });
+    const drainResult = await drain.drain(5000);
+    assert.equal(drainResult.kind, 'drained');
+    await app.close();
+    app = undefined;
+    await waitForFileText(eventFile, (text) => text.includes('stream-disconnected|ServerDrain'), 7000);
+    return 'Node stream server drain -> dotnet connector session-closing';
+  } finally {
+    await host?.stop();
+    await app?.close();
   }
 }
 
@@ -643,7 +832,7 @@ async function startRedisContainer() {
   return {
     endpoint,
     async stop() {
-      await runProcess('docker', ['rm', '-f', containerId], { cwd: repoRoot, allowFailure: true });
+      await runProcess('docker', ['rm', '-f', '-v', containerId], { cwd: repoRoot, allowFailure: true });
     }
   };
 }

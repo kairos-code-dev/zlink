@@ -52,7 +52,7 @@ drain의 정확성은 [location runtime](40-location-runtime.ko.md)과의 상호
 ### 3.1 "연결 유지 + 배치 제외"의 분리 — draining 마커
 
 **순진한 구현의 자기모순:** Draining 진입 시 이 노드의 peer row를 **삭제**하면, [location-runtime
-§6.3](40-location-runtime.ko.md)의 자동 연결 diff가 이 peer로의 연결을 **끊는다**. 그러면 §5의
+§6](40-location-runtime.ko.md)의 자동 연결 diff가 이 peer로의 연결을 **끊는다**. 그러면 §5의
 "in-flight reply까지 마무리"와 actor transfer commit·핸드오프 메시징이 전부 깨진다. 즉 peer row
 삭제로는 "신규 배정 제외"와 "기존 연결 유지"를 동시에 만족할 수 없다.
 

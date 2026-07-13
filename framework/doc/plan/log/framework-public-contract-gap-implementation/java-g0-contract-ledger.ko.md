@@ -88,7 +88,7 @@ a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.k
 b39269fb7176468f35ddbef69d73cefe02f46b8e1778809d5af0d9e91fcc42d5 common/10-channel-topology.ko.md
 3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8 common/53-flow-correlation.ko.md
 dbabc2629a4e546f7cd2ba773678f000fb537770abe2565c1a61b1b661cdf5fa common/05-framework-api.ko.md
-1d415bb35d1614e428ca90d8b7ea3bacd8ee78520330c7aa393bfc7316b1f754 common/54-graceful-drain-handoff.ko.md
+d708b3b3eea51001e2e294aff9da0b03463742b172352a8e48a8893a64648ea6 common/54-graceful-drain-handoff.ko.md
 99acba971dbefef3eadd0e43c007af578d82ed012eea5c7736eb676acd231749 common/90-implementation-gap.ko.md
 5abba134f48f8d95d63e8cc409de998ab146cdad39fdf7cba22f6455b19b046d common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
@@ -110,7 +110,7 @@ fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd common/30-strea
 ec90bd78db9467e2d1f0e8a7a78a6b5246927ab5f165f67e65f44a9014813ee2 java/README.ko.md
 9ebc0cc7dda6617507bc635bd6cbbcd67215e15109ca896f9e7efdf4df022a27 java/02-handler-interfaces.ko.md
 1d230aa7234f4ec96d5d49ebb69ec56cacb7692096b9da86df0e68c50d819ce2 java/01-system-structure.ko.md
-470e3abcad0d7c8f07b7610176924de8110a5507fc839c3c846e4b30b39ed306 java/03-stream-connector.ko.md
+2fb381cebcd0990332a37f4d0e872541f85e18492b2930bb9f3a2dc67150e8b3 java/03-stream-connector.ko.md
 ```
 
 ## 7. G0 완료 조건

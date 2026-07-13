@@ -301,6 +301,7 @@ thread에서 `dispatch().submit()`을 호출한다.
 
 ```java
 public enum ZLinkStreamConnectionState {
+    CREATED,
     DISCONNECTED,
     CONNECTING,
     CONNECTED,
@@ -311,9 +312,8 @@ public enum ZLinkStreamConnectionState {
 
 `close().submit()`이 완료된 뒤에는 `CLOSED`이고 **새 `connect()`는 실패한다.**
 
-> ⚠️ **공통 계약과 다르다.** 공통 스펙은 초기 상태 `Created`("생성됐고 아직 연결하지 않음")를
-> 규정하지만 **Java enum에는 `CREATED`가 없다.** "한 번도 연결한 적 없음"과 "끊김"이 같은
-> `DISCONNECTED`가 된다. [구현 차이 §10.6](../../90-implementation-gap.ko.md)이 이 gap을 소유한다.
+**`CREATED`는 첫 연결 시도 전의 초기 상태다.** 연결 시도에 실패한 뒤에는 `DISCONNECTED`로
+전환하므로, "한 번도 연결한 적 없음"과 "끊김"을 구분한다.
 
 ## 11. Error Code
 

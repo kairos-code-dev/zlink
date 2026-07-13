@@ -23,11 +23,13 @@ inline zlink::framework::http_response_t publish_from_query (
         return response;
     }
 
-    auto call = publisher.publish (event_channel, topic->second, event_msg_t{value->second});
+    /* packet_name이 주어지면 handler가 없는 negative wire 변형으로 발행한다. */
     if (packet_name != nullptr) {
-        call;
+        publisher.publish (event_channel, topic->second, missing_event_msg_t{value->second})
+          .submit ();
+    } else {
+        publisher.publish (event_channel, topic->second, event_msg_t{value->second}).submit ();
     }
-    call.submit ();
     evidence.add (std::string ("published|topic=") + topic->second + "|value=" + value->second
                   + "|packet=" + (packet_name == nullptr ? "EventMsg" : packet_name));
 

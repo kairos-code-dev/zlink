@@ -15,8 +15,18 @@ inline constexpr const char *topic_fanout = "fanout";
 inline constexpr const char *topic_alpha = "alpha";
 inline constexpr const char *topic_beta = "beta";
 
+/* spec §3.1: 정식 DTO는 wire 이름을 스스로 선언한다(typeid 폴백 금지). */
 struct event_msg_t
 {
+    static constexpr const char *packet_name = "EventMsg";
+    std::string value;
+};
+
+/* handler가 등록되지 않은 packet 이름으로 발행해 dispatch 오류(handlerMissing)를
+ * 만들어 내는 negative wire 변형. */
+struct missing_event_msg_t
+{
+    static constexpr const char *packet_name = "MissingEventMsg";
     std::string value;
 };
 
@@ -60,6 +70,16 @@ inline void to_json (nlohmann::json &json, const event_msg_t &value)
 }
 
 inline void from_json (const nlohmann::json &json, event_msg_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const missing_event_msg_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, missing_event_msg_t &value)
 {
     json.at ("value").get_to (value.value);
 }

@@ -226,7 +226,7 @@ void test_callback_dispatch_same_direction_reconnect_handover ()
     test_context_socket_close_zero_linger (server_one);
 }
 
-void test_callback_dispatch_cross_direction_reconnect_handover ()
+void test_callback_dispatch_cross_direction_duplicate_converges ()
 {
     const int handover = ZLINK_RID_DUPLICATE_HANDOVER;
     const int zero = 0;
@@ -264,23 +264,19 @@ void test_callback_dispatch_cross_direction_reconnect_handover ()
     set_connect_routing_id (client, "A");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, replacement_endpoint));
 
-    char buffer[255];
-    bool handed_over = false;
-    for (int i = 0; i < 50 && !handed_over; ++i) {
+    // Z sorts after A, so the A -> Z connection is the single direction both
+    // peers select. A duplicate in the opposite direction must not displace it
+    // and start an endless reconnect/handover loop.
+    msleep (SETTLE_TIME);
+    for (int i = 0; i < 10; ++i) {
         send_string_expect_success (client, "A", ZLINK_SNDMORE);
-        send_string_expect_success (client, "recovered", 0);
-        const int rc = zlink_recv (server_two, buffer, sizeof buffer, 0);
-        if (rc == -1) {
-            TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-            continue;
-        }
-        TEST_ASSERT_EQUAL_INT (1, rc);
-        TEST_ASSERT_EQUAL_INT ('Z', buffer[0]);
-        recv_string_expect_success (server_two, "recovered", 0);
-        handed_over = true;
+        send_string_expect_success (client, "stable", 0);
+        recv_string_expect_success (server_one, "Z", 0);
+        recv_string_expect_success (server_one, "stable", 0);
     }
-    TEST_ASSERT_TRUE_MESSAGE (
-      handed_over, "cross-direction reconnect was not handed over to the new pipe");
+
+    char buffer[255];
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (server_two, buffer, sizeof buffer, 0));
 
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server_two);
@@ -295,6 +291,6 @@ int main ()
     RUN_TEST (test_with_handover);
     RUN_TEST (test_without_handover);
     RUN_TEST (test_callback_dispatch_same_direction_reconnect_handover);
-    RUN_TEST (test_callback_dispatch_cross_direction_reconnect_handover);
+    RUN_TEST (test_callback_dispatch_cross_direction_duplicate_converges);
     return UNITY_END ();
 }

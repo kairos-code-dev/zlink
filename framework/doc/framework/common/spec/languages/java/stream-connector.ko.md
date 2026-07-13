@@ -114,6 +114,10 @@ Kotlin wrapper는 `submit()`으로 얻은
 
 ## 4. Options
 
+**기본값은 [공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다.** Java는 이를 flat field를
+갖는 record로 표현한다(heartbeat·reconnect를 nested 객체로 두지 않는다).
+`createDefault(URI endpoint)`로 기본값 인스턴스를 만든다.
+
 ```java
 // transport(TCP/TLS/WS/WSS)는 endpoint URI scheme으로 정해진다. heartbeat/reconnect 설정은
 // 별도 nested 객체가 아니라 flat field다. `createDefault(URI endpoint)`로 기본값 인스턴스를 만든다.
@@ -146,34 +150,16 @@ public record ZLinkStreamConnectorOptions(
 
 ## 5. Transport와 codec
 
-transport(TCP/TLS/WS/WSS)는 별도 enum 옵션이 아니라 endpoint URI scheme
-(`tcp://`/`tls://`/`ws://`/`wss://`)으로 선택된다.
+scheme → transport 매핑과 TLS 검증 규칙은 [공통 스펙 §3](../../stream-connector.ko.md)이 소유한다.
+Java는 **transport를 별도 enum 옵션으로 고르지 않고 endpoint URI scheme으로 추론한다.**
 
 ```java
-public enum ZLinkStreamCodec {
-    RAW,
-    JSON,
-    MESSAGE_PACK,
-    PROTOBUF
-}
-
-public enum ZLinkStreamCompression {
-    NONE,
-    LZ4
-}
+public enum ZLinkStreamTransport { TCP, TLS, WEB_SOCKET, WEB_SOCKET_SECURE }
+public enum ZLinkStreamCodec { RAW, JSON, MESSAGE_PACK, PROTOBUF }
+public enum ZLinkStreamCompression { NONE, LZ4 }
 ```
 
-URI scheme에서 transport를 추론한다.
-
-| URI scheme | transport |
-|------------|-----------|
-| `tcp://` | `TCP` |
-| `tls://` | `TLS` |
-| `ws://` | `WEB_SOCKET` |
-| `wss://` | `WEB_SOCKET_SECURE` |
-
-TLS transport는 기본값에서 서버 인증서 체인과 호스트명을 모두 검증한다. 호스트명 검증은
-`HTTPS` endpoint identification 규칙을 사용한다.
+**호스트명 검증은 `HTTPS` endpoint identification 규칙을 사용한다.**
 
 ## 6. Packet 모델
 
@@ -308,7 +294,10 @@ thread에서 `dispatch().submit()`을 호출한다.
 `AUTO`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
 있는 client sample은 `MANUAL`을 유지한다.
 
-## 10. 상태와 reconnect
+## 10. 연결 상태
+
+상태의 의미와 전이는 [공통 스펙 §6](../../stream-connector.ko.md)이 소유한다. Java는 닫힌 enum으로
+표현한다.
 
 ```java
 public enum ZLinkStreamConnectionState {
@@ -320,21 +309,16 @@ public enum ZLinkStreamConnectionState {
 }
 ```
 
-상태 전이는 아래를 기준으로 한다.
+`close().submit()`이 완료된 뒤에는 `CLOSED`이고 **새 `connect()`는 실패한다.**
 
-```text
-DISCONNECTED -> CONNECTING -> CONNECTED
-CONNECTED -> RECONNECTING -> CONNECTED
-CONNECTED -> DISCONNECTED
-DISCONNECTED -> CONNECTING
-* -> CLOSED
-```
-
-heartbeat timeout이나 transport disconnect가 발생하면 reconnect가 켜져 있을 때
-`RECONNECTING`으로 이동한다. `maxAttempts`를 넘으면 `DISCONNECTED`가 된다.
-`close().submit()`이 완료된 이후에는 `CLOSED`이고, 새 `connect()`는 실패한다.
+> ⚠️ **공통 계약과 다르다.** 공통 스펙은 초기 상태 `Created`("생성됐고 아직 연결하지 않음")를
+> 규정하지만 **Java enum에는 `CREATED`가 없다.** "한 번도 연결한 적 없음"과 "끊김"이 같은
+> `DISCONNECTED`가 된다. [구현 차이 §10.6](../../implementation-gap.ko.md)이 이 gap을 소유한다.
 
 ## 11. Error Code
+
+오류의 의미는 [공통 스펙 §9](../../stream-connector.ko.md)가 소유한다. Java는 닫힌 enum으로
+표현한다.
 
 ```java
 public enum ZLinkStreamErrorCode {
@@ -356,14 +340,10 @@ public enum ZLinkStreamErrorCode {
 }
 ```
 
-callback 실패는 connector runtime을 조용히 중단시키지 않는다. `USER_CALLBACK_FAILED`
-error event로 올리고, connector lifecycle은 명시된 상태 전이 규칙을 따른다.
-
 ## 12. Inbound Observer
 
-`observeInbound(...)`는 수신 frame을 읽기 전용으로 관찰하는 API다. client code는
-connector를 만든 뒤 `connect().submit()`을 호출하기 전에
-observer를 등록한다. 연결이 시작된 뒤 등록하면 invalid state 오류로 실패한다.
+관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../stream-connector.ko.md)이 소유한다.
+Java는 **연결 시작 전에만 등록**하고 `AutoCloseable`로 해제한다.
 
 ```java
 try (AutoCloseable log = connector.observeInbound(observation -> {
@@ -377,15 +357,6 @@ try (AutoCloseable log = connector.observeInbound(observation -> {
     connector.connect().submit(); // 연결 완료는 반환된 CompletionStage로 관찰한다.
 }
 ```
-
-`ZLinkStreamInboundObservation`은 message kind, packet name, codec, request sequence,
-metadata, payload byte length, 압축 여부, 수신 시간, payload preview를 담는다. metadata와
-preview는 복사된 값이므로 observer가 값을 바꿔도 dispatch와 pending request 완료에
-영향을 주지 않는다. payload preview 기본 길이는 0이다. observer queue 크기는 1024개 notification이다.
-
-observer callback은 receive 경로에서 직접 실행하지 않는다. callback 실패는
-`OBSERVER_FAILED`, bounded queue overflow는 `OBSERVER_DROPPED` error event로 보고한다.
-두 오류는 관찰 기능의 진단 신호이며 원래 수신 frame의 처리 결과를 바꾸지 않는다.
 
 ## 13. Kotlin 표면
 

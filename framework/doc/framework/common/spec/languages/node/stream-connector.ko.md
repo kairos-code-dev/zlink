@@ -16,16 +16,12 @@ encode/decode한다.
 
 ## 1. 대상 실행 환경
 
-TypeScript connector는 **두 종류의 런타임**을 담당한다. 이는 부가 기능이 아니라 이 connector의
-존재 이유다([공통 스펙 §2.1](../../stream-connector.ko.md)).
+**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../stream-connector.ko.md)가 소유한다.**
+그 배정에 따라 TypeScript connector가 담당하는 것은 **브라우저 계열**(웹 client, Unity WebGL,
+Cocos Creator web, Godot Web)과 **Node**(서버 E2E·도구·봇)다.
 
-| 런타임 | 용도 |
-|---|---|
-| **브라우저 계열** | 브라우저 웹 client, **Cocos Creator web**, **Unity WebGL**, Godot Web |
-| **Node** | 서버 E2E 테스트, 도구, 봇 |
-
-**웹(브라우저·WASM)으로 빌드하는 모든 엔진이 언어와 무관하게 이 connector를 사용한다.**
-브라우저 샌드박스에서 OS 소켓을 열 수 있는 언어가 없기 때문이다.
+**웹(브라우저·WASM)으로 빌드하는 모든 엔진이 언어와 무관하게 이 connector를 사용한다.** 이 배정이
+TypeScript 표면에 남기는 결과가 **entrypoint 분리**(§2)다.
 
 ## 2. 진입점(entrypoint)
 

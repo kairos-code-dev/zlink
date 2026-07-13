@@ -115,7 +115,7 @@ dd55303b795f84f4c156f4effb2eeb44a70d27987b36d2216c073a4a1f296d75 java/README.ko.
 9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
 9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
 9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-f8e98419402ee8b914715f309500eb36006e8b60b7fbdedf693c60c622688c51 java/stream-connector.ko.md
+a17b3aabba943702cc39292627e9552a54b74825d6d7ef30ef5e7fb6e199b2d5 java/stream-connector.ko.md
 ```
 
 ## 7. G0 완료 조건

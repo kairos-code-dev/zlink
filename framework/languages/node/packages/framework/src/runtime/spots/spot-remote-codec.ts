@@ -1,6 +1,6 @@
 import type { ZLinkBackendActorRef } from '../backend/contracts';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
-import type { ZLinkActor } from '../../contracts';
+import type { RoutingId, ZLinkActor } from '../../contracts';
 import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
@@ -24,6 +24,7 @@ export type ZLinkRoutedActorTransferProvider = (
   actorType: string,
   adapterKey: string | undefined,
   transferState: Message,
+  actorEntryNodeRid: RoutingId | undefined,
   remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
   signal?: AbortSignal
 ) => Promise<ZLinkRemoteActorJoinActor>;
@@ -34,6 +35,7 @@ export interface ZLinkDecodedRemoteActorJoinRequest {
   readonly actorId: string;
   readonly actorType: string;
   readonly actorRef?: ZLinkBackendActorRef;
+  readonly actorEntryNodeRid?: RoutingId;
   readonly remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget;
   readonly actorCreateRequest?: Message;
   readonly request: Message;
@@ -98,6 +100,9 @@ export function decodeRemoteActorJoinPayload(
       payload.actorId,
       payload.actorGeneration
     ),
+    actorEntryNodeRid: typeof payload.actorEntryNodeRid === 'string'
+      ? decodeWireRoutingId(payload.actorEntryNodeRid, payload.actorEntryNodeRidHex)
+      : undefined,
     actorCreateRequest: typeof payload.actorCreateRequest === 'string'
       ? BindingMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
       : undefined,

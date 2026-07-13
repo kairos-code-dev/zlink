@@ -411,6 +411,7 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
     dispatch: options.dispatch,
     filters: options.filters,
     locations: options.locations,
+    metrics: options.metrics,
     monitoring: options.monitoring,
     requestTimeoutMs: options.requestTimeoutMs,
     routeChannels,

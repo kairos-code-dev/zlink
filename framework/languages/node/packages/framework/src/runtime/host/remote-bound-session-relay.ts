@@ -204,13 +204,11 @@ export class ZLinkRemoteBoundSessionRelay {
     requestSeq: bigint,
     response: unknown,
     replyOptions: ZLinkActorResponseOptions,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef,
     signal?: AbortSignal
   ): Promise<void> {
     const state = this.options.actorManager()?.getState(actor.actorId);
-    const actorRef = state?.nativeActorRef as ActorRef | undefined;
-    if (actorRef === undefined) {
-      throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
-    }
     if (this.options.streamBindingRuntime().sendLocalBoundSessionResponse(
       actor.actorId,
       packetName,
@@ -221,7 +219,7 @@ export class ZLinkRemoteBoundSessionRelay {
     )) {
       return;
     }
-    const remoteTarget = state?.remoteBoundSessionTarget;
+    const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionResponse(
         remoteTarget,
@@ -233,6 +231,10 @@ export class ZLinkRemoteBoundSessionRelay {
         signal
       );
       return;
+    }
+    const actorRef = (state?.nativeActorRef as ActorRef | undefined) ?? fallbackActorRef;
+    if (actorRef === undefined) {
+      throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
     }
     await this.options.streamBindingRuntime().sendNativeBoundSessionResponse(
       this.options.primarySpotNode(),
@@ -252,6 +254,7 @@ export class ZLinkRemoteBoundSessionRelay {
     requestSeq: bigint,
     error: unknown,
     metadata: ReadonlyMap<string, string>,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
     signal?: AbortSignal
   ): Promise<void> {
@@ -265,7 +268,7 @@ export class ZLinkRemoteBoundSessionRelay {
       return;
     }
     const state = this.options.actorManager()?.getState(actorId);
-    const remoteTarget = state?.remoteBoundSessionTarget;
+    const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionError(
         remoteTarget,

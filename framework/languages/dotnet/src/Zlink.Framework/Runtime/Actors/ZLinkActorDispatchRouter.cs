@@ -184,9 +184,15 @@ internal sealed class ZLinkActorDispatchRouter(
                 cancellationToken)
             .ConfigureAwait(false);
         if (entryResult.Handled)
-            return entryResult.Reply
-                   ?? throw new InvalidOperationException(
-                       $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
+        {
+            if (entryResult.Reply is { } reply)
+                return reply;
+
+            var replyPathError = new InvalidOperationException(
+                $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
+            ReportReplyPathMissing(actor, header, replyPathError);
+            throw replyPathError;
+        }
 
         var error = new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
@@ -252,5 +258,23 @@ internal sealed class ZLinkActorDispatchRouter(
             level,
             action,
             exception);
+    }
+
+    private void ReportReplyPathMissing(
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Exception exception)
+    {
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotActor,
+            "SpotActor",
+            ZLinkDispatchMessageKind.ActorRequest,
+            "ActorRequest",
+            header.Name,
+            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            actorId: actor.ActorId,
+            actorType: actor.GetType().FullName);
+
+        scope.ReplyPathMissing(_logger, _dispatchErrors, exception);
     }
 }

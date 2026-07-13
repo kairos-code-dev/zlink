@@ -6,12 +6,47 @@ const framework = require('../../packages/framework/dist/internal');
 const {
   ZLinkSpotRoutedActorAdmission
 } = require('../../packages/framework/dist/runtime/spots/spot-routed-actor-admission');
+const {
+  ZLinkSpotActorMembership
+} = require('../../packages/framework/dist/runtime/spots/spot-actor-membership');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const channelProtocol = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const connector = require('../../packages/stream-connector/dist');
 const json = connector;
-const msgpack = require('../../packages/framework-codec-msgpack/dist');
-const protobuf = require('../../packages/framework-codec-protobuf/dist');
+const msgpack = require('../../packages/framework-codec-msgpack/dist/server/framework.cjs');
+const protobuf = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
+const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
+const {
+  ZLinkRoutedSpotPacketDispatch
+} = require('../../packages/framework/dist/runtime/spots/spot-routed-spot-packet-dispatch');
+
+test('local SPOT request failure rejects the caller and reports FailCaller', async () => {
+  const events = [];
+  class DispatchObserver {
+    onMessageFlow(event) {
+      events.push(event);
+    }
+  }
+  const dispatcher = new ZLinkRoutedSpotPacketDispatch({
+    resolveActivation: () => undefined,
+    dispatchErrors: dispatchErrorReporter(
+      DispatchObserver,
+      { reportRuntimeTaskException() {} }
+    )
+  });
+
+  await assert.rejects(
+    () => dispatcher.request('missing-spot', 'MissingReq', {}, { channelName: 'local' }),
+    /not active/
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].surface, framework.ZLinkDispatchErrorSurface.SpotRoute);
+  assert.equal(events[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+  assert.equal(events[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+  assert.equal(events[0].errorAction, framework.ZLinkDispatchErrorAction.FailCaller);
+});
 
 function customTextSerializer(prefix = 'custom:') {
   return {
@@ -40,6 +75,19 @@ function createActorRequestParts(packetName, payload, requestSeq = 1n) {
   ];
 }
 
+function createActorSendParts(packetName, payload) {
+  return [
+    zlink.Message.from(Buffer.from(streamProtocol.encodeStreamHeader({
+      kind: streamProtocol.ZLinkStreamMessageKind.Send,
+      codec: streamProtocol.ZLinkStreamCodec.Json,
+      flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+      name: packetName,
+      metadata: new Map()
+    }))),
+    zlink.Message.from(Buffer.from(JSON.stringify(payload)))
+  ];
+}
+
 function noBindInfo(requestId = 42n, flags = 1) {
   return {
     actor: { nodeRid: zlink.RoutingId.from('node-a'), actorId: 'actor-1', generation: 1n },
@@ -58,6 +106,57 @@ function decodeActorReplyFrame(message) {
   const payload = JSON.parse(frame.subarray(6 + headerSize, 6 + headerSize + payloadSize).toString('utf8'));
   return { header, payload };
 }
+
+test('spot actor leave rejoins the actor original remote Entry Spot', async () => {
+  const events = [];
+  const localNodeRid = zlink.RoutingId.from('play-node-a');
+  const remoteEntryNodeRid = zlink.RoutingId.from('play-node-b');
+  const actor = {
+    actorId: 'player-2',
+    context: {
+      actorRef: {
+        nodeRid: remoteEntryNodeRid,
+        actorId: 'player-2',
+        generation: 1n
+      },
+      joinEntrySpot(nodeRid, request) {
+        events.push(['join-entry', String(nodeRid), request]);
+        return {
+          async submit() {
+            // The remote two-phase source transfer owns the user Spot leave.
+            await activation.spot.onLeaveActor(actor);
+            activation.commitActorDeparture(actor.actorId);
+            events.push(['submitted']);
+            return { status: 'accepted' };
+          }
+        };
+      }
+    }
+  };
+  const activation = {
+    serial: { execute: (operation) => operation() },
+    beginActorTransfer: (actorId) => events.push(['begin', actorId]),
+    spot: { onLeaveActor: async (left) => events.push(['leave', left.actorId]) },
+    commitActorDeparture: (actorId) => events.push(['commit', actorId])
+  };
+  const membership = new ZLinkSpotActorMembership({
+    resolveActivation: () => activation,
+    entryNodeRidProvider: () => localNodeRid,
+    actorTransferRuntime: {
+      clearRoutedActor: (left) => events.push(['clear', left.actorId]),
+      actorEntryNodeRid: () => remoteEntryNodeRid
+    }
+  });
+
+  await membership.leaveActor('bingo-room', actor);
+
+  assert.deepEqual(events.map((entry) => entry.slice(0, 2)), [
+    ['join-entry', 'play-node-b'],
+    ['leave', 'player-2'],
+    ['commit', 'player-2'],
+    ['submitted']
+  ]);
+});
 
 test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order', async () => {
   const events = [];
@@ -88,6 +187,36 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
   assert.equal(await manager.close(created.spotRid), false);
   assert.equal(await manager.find(created.spotRid), null);
   assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
+});
+
+test('ZLinkSpotManager drain applies policy per Spot type and completes from lifecycle removal', async () => {
+  const closed = [];
+  class NaturalSpot {
+    async onClosing() { closed.push('natural'); }
+  }
+  class RecreatedSpot {
+    async onClosing() { closed.push('recreated'); }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [NaturalSpot, RecreatedSpot],
+    spotDrainPolicy: (spotType) => spotType === RecreatedSpot ? 'ReleaseAndRecreate' : 'DrainNatural'
+  });
+  const natural = await manager.create(NaturalSpot);
+  const recreated = await manager.create(RecreatedSpot);
+
+  let completed = false;
+  const draining = manager.drainForShutdown().then(() => { completed = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(await manager.find(recreated.spotRid), null);
+  assert.deepEqual(await manager.find(natural.spotRid), { spotRid: natural.spotRid });
+  assert.equal(completed, false);
+  assert.deepEqual(closed, ['recreated']);
+
+  await manager.close(natural.spotRid);
+  await draining;
+  assert.equal(completed, true);
+  assert.deepEqual(closed, ['recreated', 'natural']);
 });
 
 test('ZLinkSpotManager shares concurrent close and finishes cleanup after onClosing failure', async () => {
@@ -506,6 +635,65 @@ test('ZLinkSpotManager drains SPOT subscription events that arrive during dispat
   ]);
 });
 
+test('SPOT subscription dispatch preserves publisher flow origin', async () => {
+  let dispatchHandler;
+  const subscriptionQueue = [];
+  const flowEvents = [];
+  class DispatchObserver {
+    onMessageFlow(event) {
+      flowEvents.push(event);
+    }
+  }
+  const nativeSpot = {
+    routingId: 'stage-subscription-flow',
+    setDispatchHandler(handler) { dispatchHandler = handler; },
+    setSubscription() {},
+    subscribe(result) {
+      const next = subscriptionQueue.shift();
+      if (next === undefined) return false;
+      result.topic = next.topic;
+      result.routingId = next.routingId;
+      result.parts = next.parts;
+      return true;
+    },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  class StageSpot {}
+  class SubscribeHandler { async handle() {} }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    dispatchErrors: dispatchErrorReporter(
+      DispatchObserver,
+      { reportRuntimeTaskException() {} },
+      framework.ZLinkMessageFlowLogMode.KeyTransitions
+    ),
+    detachedTaskRunner: { runDetached(_name, callback) { void callback(); } },
+    spotSubscriptionHandlers: [{
+      spotType: StageSpot,
+      handlerType: SubscribeHandler,
+      topic: 'stage.updated'
+    }]
+  });
+
+  await manager.getOrCreate(StageSpot, 'stage-subscription-flow');
+  subscriptionQueue.push(flowContext.runWithFlow(
+    { flowId: '019f5b07-77ef-7587-8e19-6095ff11603b', flowOrigin: 'Timer' },
+    () => subscriptionMessage('stage.updated', 'tick')
+  ));
+  dispatchHandler({ event: 1 });
+  await waitFor(() => flowEvents.some((event) =>
+    event.outcome === framework.ZLinkMessageFlowOutcome.Dispatched));
+
+  assert.equal(flowEvents.every((event) => event.flowId === '019f5b07-77ef-7587-8e19-6095ff11603b'), true);
+  assert.equal(flowEvents.every((event) => event.flowOrigin === 'Timer'), true);
+});
+
 test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', async () => {
   const dispatchEvents = [];
   class DispatchObserver {
@@ -647,7 +835,7 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
   }
 });
 
-test('ZLinkSpotManager replies no-bind actor requests without binding remote session', async () => {
+test('ZLinkSpotManager does not bind NO_BIND actor packets as remote sessions', async () => {
   let dispatchHandler;
   const noBindReplies = [];
   const boundSessions = [];
@@ -684,6 +872,7 @@ test('ZLinkSpotManager replies no-bind actor requests without binding remote ses
   class StageSpot {}
   class ProbeRequestHandler {
     async handle(_spot, actor, _context, request) {
+      assert.ok(request.value === 'ping' || request.value === 'backend');
       return { value: `${request.value}:${actor.actorId}` };
     }
   }
@@ -705,15 +894,26 @@ test('ZLinkSpotManager replies no-bind actor requests without binding remote ses
     dispatchHandler({
       event: 5,
       recvActorPart() {
-        if (nextPart >= parts.length) {
-          return null;
-        }
-        const message = parts[nextPart];
-        nextPart += 1;
+        if (nextPart !== 0) return null;
+        const message = parts[nextPart++];
         return {
           info: noBindInfo(),
           message,
-          more: nextPart < parts.length
+          more: true
+        };
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(noBindReplies.length, 0);
+    dispatchHandler({
+      event: 5,
+      recvActorPart() {
+        if (nextPart !== 1) return null;
+        const message = parts[nextPart++];
+        return {
+          info: noBindInfo(),
+          message,
+          more: false
         };
       }
     });
@@ -726,6 +926,23 @@ test('ZLinkSpotManager replies no-bind actor requests without binding remote ses
     const decoded = decodeActorReplyFrame(noBindReplies[0].replyParts[0]);
     assert.equal(decoded.header.kind, streamProtocol.ZLinkStreamMessageKind.Response);
     assert.deepEqual(decoded.payload, { value: 'ping:actor-1' });
+
+    const backendParts = createActorSendParts('ActorAsk', { value: 'backend' });
+    let backendPart = 0;
+    dispatchHandler({
+      event: 5,
+      recvActorPart() {
+        if (backendPart >= backendParts.length) return null;
+        const message = backendParts[backendPart++];
+        return {
+          info: noBindInfo(43n, 1),
+          message,
+          more: backendPart < backendParts.length
+        };
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(boundSessions.length, 0);
   } finally {
     for (const part of parts) {
       part.close();
@@ -1635,6 +1852,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
   });
   class HeartbeatHandler {
     async handle(spot, tick) {
+      events.push(`origin:${flowContext.currentOrCreateFlow().flowOrigin}`);
       events.push(`tick:${tick.deliveryIndex}:${spot.context.spotRid}`);
       firstTick(tick);
     }
@@ -1672,7 +1890,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
   assert.equal(tick.skippedTicks, 0n);
   assert.equal(tick.scheduledAt instanceof Date, true);
   assert.equal(tick.startedAt instanceof Date, true);
-  assert.deepEqual(events, ['spot:start', 'spot:end', 'tick:1:spot-1', 'closing:false']);
+  assert.deepEqual(events, ['spot:start', 'spot:end', 'origin:Timer', 'tick:1:spot-1', 'closing:false']);
 });
 
 test('ZLinkSpotContext close closes current spot after timer callback returns', async () => {
@@ -2020,14 +2238,14 @@ async function waitFor(predicate, timeoutMs = 1000, message) {
   assert.fail(message?.() ?? 'timed out waiting for condition');
 }
 
-function dispatchErrorReporter(observerType, sink) {
+function dispatchErrorReporter(observerType, sink, mode = framework.ZLinkMessageFlowLogMode.ErrorsOnly) {
   return new framework.ZLinkDispatchErrorReporter(
     undefined,
     undefined,
     sink,
     {
-      diagnostics: {},
-      liveMode: { mode: framework.ZLinkMessageFlowLogMode.ErrorsOnly },
+      diagnostics: { sampleRate: 1 },
+      liveMode: { mode },
       messageFlowObserverType: observerType
     }
   );

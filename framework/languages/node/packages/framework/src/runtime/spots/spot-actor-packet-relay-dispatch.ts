@@ -42,16 +42,19 @@ export class ZLinkSpotActorPacketRelayDispatch {
     if (this.options.actorPacketHandler === undefined) {
       return false;
     }
-    const remoteBoundSessionTarget = actorPacketRelay.routerChannelId === undefined || received.routingId === null
+    const remoteBoundSessionTarget =
+      actorPacketRelay.routerChannelId === undefined ||
+      actorPacketRelay.boundSessionTargetNodeRid === undefined ||
+      actorPacketRelay.boundSessionSpotRid === undefined
       ? undefined
       : {
           routerChannelId: actorPacketRelay.routerChannelId,
           targetNodeRid: decodeWireRoutingId(
-            actorPacketRelay.boundSessionTargetNodeRid ?? String(received.routingId),
+            actorPacketRelay.boundSessionTargetNodeRid,
             undefined
           ),
           spotRid: decodeWireRoutingId(
-            actorPacketRelay.boundSessionSpotRid ?? String(received.spotRid ?? received.routingId),
+            actorPacketRelay.boundSessionSpotRid,
             undefined
           )
         };

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   ActorRef,
+  RoutingId,
   ZLinkActor,
   ZLinkMessageSerializer
 } from '../../contracts';
@@ -93,6 +94,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       actorId: actor.actorId,
       actorType,
       actorRef,
+      actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       actorCreateRequest: state.createRequestPayload,
       request,
       targetSpotRid: target.spotRid,
@@ -129,6 +131,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       actorId: actor.actorId,
       actorType,
       actorRef,
+      actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       request,
       targetSpotRid: target.spotRid,
       routerChannelId: target.routerChannelId,

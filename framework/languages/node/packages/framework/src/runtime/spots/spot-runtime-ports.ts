@@ -106,6 +106,8 @@ export interface ZLinkSpotBoundSessionRuntime {
     requestSeq: bigint,
     response: unknown,
     replyOptions: ZLinkActorResponseOptions,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef,
     signal?: AbortSignal
   ): Promise<void>;
   sendActorError(
@@ -114,6 +116,7 @@ export interface ZLinkSpotBoundSessionRuntime {
     requestSeq: bigint,
     error: unknown,
     metadata: ReadonlyMap<string, string>,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     actorRef?: ActorRef,
     signal?: AbortSignal
   ): Promise<void>;

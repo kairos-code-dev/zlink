@@ -15,8 +15,8 @@ const {
 const {
   ZLinkEntryActorRuntimeService
 } = require('../../packages/framework/dist/runtime/host/entry-actor-runtime');
-const msgpack = require('../../packages/framework-codec-msgpack/dist');
-const protobuf = require('../../packages/framework-codec-protobuf/dist');
+const msgpack = require('../../packages/framework-codec-msgpack/dist/server/framework.cjs');
+const protobuf = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
 
 function customTextSerializer(prefix = 'custom:') {
   return {
@@ -783,14 +783,17 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const joinResult = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
   const entryRequest = encodedMessage('entry');
   const entryResult = await actor.context.joinEntrySpot('node-a', entryRequest).timeout(10).submit();
+  const emptyEntryResult = await actor.context.joinEntrySpot('node-b', undefined).timeout(5).submit();
 
   assert.equal(joinResult.status, 'accepted');
   assert.deepEqual(joinResult.actor, actorRef);
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(entryResult.actor, actorRef);
+  assert.deepEqual(emptyEntryResult.actor, actorRef);
   assert.deepEqual(calls, [
     'joinSpot:alice:alice:stage-1:hello:25',
-    'joinEntry:alice:alice:node-a:entry:10'
+    'joinEntry:alice:alice:node-a:entry:10',
+    'joinEntry:alice:alice:node-b::5'
   ]);
   replyMessage.close();
 });
@@ -892,6 +895,7 @@ test('actor directory find/ensure uses id lookup and exposes actor ref snapshots
   assert.deepEqual(found, ensured);
   assert.deepEqual(existing, ensured);
   assert.deepEqual(framework.zlinkActorRefSnapshotToActorRef(snapshot), ensured);
+  assert.equal(framework.zlinkActorRefSnapshotToActorRef({ ...snapshot, generation: '42' }).generation, 42n);
 });
 
 test('actor directory ensure rejects create failures with ActorCreateRejected', async () => {
@@ -1590,7 +1594,7 @@ test('native actor join rollback restores the previous User SPOT location', asyn
   assert.equal(generation, 8n);
 });
 
-test('Entry actor transaction restores prior state when joined callback rejects', async () => {
+test('Entry actor transaction keeps committed entry state when joined callback rejects', async () => {
   const actor = { actorId: 'alice' };
   const previousSpot = { name: 'room' };
   const previousRef = { nodeRid: rid('old-node'), actorId: 'alice', generation: 4n };
@@ -1599,6 +1603,7 @@ test('Entry actor transaction restores prior state when joined callback rejects'
   let nativeActorRef = previousRef;
   let clearedTargets = 0;
   const state = {
+    actor,
     get spotRid() { return spotRid; },
     get spot() { return spot; },
     get nativeActorRef() { return nativeActorRef; },
@@ -1618,10 +1623,10 @@ test('Entry actor transaction restores prior state when joined callback rejects'
     () => runtime.commitActorTransaction(actor, async () => { throw new Error('joined failed'); }),
     /joined failed/
   );
-  assert.equal(spotRid.toHex(), rid('room-node').toHex());
-  assert.equal(spot, previousSpot);
-  assert.equal(nativeActorRef, previousRef);
-  assert.equal(clearedTargets, 0);
+  assert.equal(spotRid, undefined);
+  assert.equal(spot, undefined);
+  assert.equal(nativeActorRef.nodeRid.toHex(), rid('entry-node').toHex());
+  assert.equal(clearedTargets, 1);
 });
 
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
@@ -1923,6 +1928,7 @@ test('Entry actor commit keeps accepted state while stream binding retries post-
   let resolveRefreshed;
   const refreshed = new Promise((resolve) => { resolveRefreshed = resolve; });
   const state = {
+    actor,
     nativeActorRef: { nodeRid: rid('old-node'), actorId: 'alice', generation: 4n },
     clearJoinedSpot() { joinedSpotCleared = true; },
     setNativeActorRef(actorRef) { installedRef = actorRef; }
@@ -2016,6 +2022,45 @@ test('native actor join admission closes caller-owned reply when submit fails', 
   }
 });
 
+test('native actor join commits Entry Spot lifecycle after the native reply', async () => {
+  const events = [];
+  const actor = { actorId: 'alice' };
+  const request = zlink.Message.from('return-home');
+  const admission = new ZLinkSpotNativeActorJoinAdmission({
+    nativeSpot: {
+      replyActorJoin(_request, code) {
+        assert.equal(code, 0);
+        return {
+          submit() { events.push('native-reply'); }
+        };
+      }
+    },
+    serial: {
+      execute(action) { return Promise.resolve().then(action); }
+    },
+    resolveActor: () => actor,
+    getTarget: () => ({
+      async onActorJoin() {
+        events.push('admit');
+        return { accepted: true };
+      }
+    }),
+    defaultAccept: true,
+    async commitAcceptedActor(committed) {
+      assert.equal(committed, actor);
+      events.push('entry-joined');
+    }
+  });
+
+  await admission.admit({
+    info: { targetActor: { actorId: actor.actorId } },
+    message: request
+  });
+
+  assert.deepEqual(events, ['admit', 'native-reply', 'entry-joined']);
+  request.close();
+});
+
 // Drives the native recv -> admit -> reply round-trip the Entry Spot activation
 // registers via setDispatchHandler. This mirrors how core delivers an admission
 // request to the target node (local or remote), so the test exercises the same
@@ -2064,6 +2109,7 @@ function createEntryJoinHarness() {
       });
       dispatchHandler({ event: ENTRY_ACTOR_JOIN_READABLE });
       await done;
+      await new Promise((resolve) => setImmediate(resolve));
     },
     replies
   };
@@ -2127,7 +2173,7 @@ test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch
   rejectRequest.close();
 });
 
-test('native actor join returns failure when joined callback throws', async () => {
+test('native actor join remains accepted when post-commit joined callback throws', async () => {
   class EntrySpot {
     async onActorJoin() { return { accepted: true }; }
     async onJoinedActor() { throw new Error('joined failed'); }
@@ -2148,7 +2194,7 @@ test('native actor join returns failure when joined callback throws', async () =
   harness.enqueue('alice', request);
   await harness.run();
 
-  assert.equal(harness.replies[0].code, 1);
+  assert.equal(harness.replies[0].code, 0);
   request.close();
   await activation.dispose();
 });

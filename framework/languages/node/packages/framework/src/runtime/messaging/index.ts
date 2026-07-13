@@ -19,15 +19,21 @@ export class ZLinkAsyncSubmitter {
   private requestActive = false;
   private readonly timeoutMs: number | undefined;
   private readonly capacity: number;
+  private readonly onCommandFailure: ((error: unknown) => void) | undefined;
   private readyRegistered = false;
   private disposed = false;
 
   constructor(
     private readonly registerSendReady: (handler: () => void) => void,
-    options: { readonly timeoutMs?: number; readonly capacity?: number } = {}
+    options: {
+      readonly timeoutMs?: number;
+      readonly capacity?: number;
+      readonly onCommandFailure?: (error: unknown) => void;
+    } = {}
   ) {
     this.timeoutMs = options.timeoutMs === -1 ? undefined : options.timeoutMs ?? 1000;
     this.capacity = options.capacity ?? 4096;
+    this.onCommandFailure = options.onCommandFailure;
   }
 
   submitCommand(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): Promise<void> {
@@ -42,6 +48,30 @@ export class ZLinkAsyncSubmitter {
       return pending.promise;
     }
     return this.enqueue(pending);
+  }
+
+  submitCommandOneWay(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): void {
+    const pending = this.createPending<void>(
+      () => submit(),
+      true,
+      signal,
+      undefined,
+      onDiscard
+    );
+    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
+      this.finishOneWaySubmission(pending);
+      return;
+    }
+    if (this.disposed) {
+      this.rejectOneWaySubmission(pending, new ZLinkConfigurationException('ZLink async submitter is disposed.'));
+    }
+    if (this.pendingQueueLength() >= this.capacity) {
+      this.rejectOneWaySubmission(pending, new ZLinkConfigurationException('ZLink async submit queue is full.'));
+    }
+    this.ensureReadyHandler();
+    this.queue.push(pending as ZLinkPendingSubmit<unknown>);
+    this.drain();
+    this.finishOneWaySubmission(pending);
   }
 
   submitRequest<TReply>(
@@ -124,6 +154,21 @@ export class ZLinkAsyncSubmitter {
     this.queue.push(pending as ZLinkPendingSubmit<unknown>);
     this.drain();
     return pending.promise;
+  }
+
+  private finishOneWaySubmission(pending: ZLinkPendingSubmit<void>): void {
+    const submissionError = pending.takeSubmissionError();
+    if (submissionError !== undefined) {
+      void pending.promise.catch(() => undefined);
+      throw submissionError;
+    }
+    void pending.promise.catch((error) => this.onCommandFailure?.(error));
+  }
+
+  private rejectOneWaySubmission(pending: ZLinkPendingSubmit<void>, error: unknown): never {
+    pending.reject(error);
+    void pending.promise.catch(() => undefined);
+    throw error;
   }
 
   private ensureReadyHandler(): void {
@@ -216,6 +261,7 @@ class ZLinkPendingSubmit<TReply> {
   private accepted = false;
   private submitting = false;
   private deferredSettlement: { readonly reply?: TReply; readonly error?: unknown } | undefined;
+  private submissionError: unknown;
 
   constructor(
     private readonly submit: ZLinkRequestSubmit<TReply>,
@@ -256,6 +302,7 @@ class ZLinkPendingSubmit<TReply> {
       );
     } catch (error) {
       this.submitting = false;
+      this.submissionError = error;
       this.reject(error);
       return true;
     }
@@ -271,6 +318,12 @@ class ZLinkPendingSubmit<TReply> {
       this.resolve(undefined as TReply);
     }
     return accepted;
+  }
+
+  takeSubmissionError(): unknown {
+    const error = this.submissionError;
+    this.submissionError = undefined;
+    return error;
   }
 
   resolve(reply: TReply): void {

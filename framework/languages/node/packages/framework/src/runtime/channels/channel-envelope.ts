@@ -249,7 +249,9 @@ function isMessage(value: unknown): value is Message {
 }
 
 function encodeJsonBytes(value: unknown): Buffer {
-  return Buffer.from(JSON.stringify(value ?? null));
+  return Buffer.from(JSON.stringify(value ?? null, (_key, item) =>
+    typeof item === 'bigint' ? item.toString() : item
+  ));
 }
 
 function encodeChannelHeader(header: ZLinkChannelEnvelopeHeader): Buffer {

@@ -50,6 +50,8 @@ export function encodeRemoteBoundSessionSendPayload(input: {
   readonly message: unknown;
   readonly boundPacketName?: string;
   readonly metadata: ReadonlyMap<string, string>;
+  readonly flowId?: string;
+  readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
 }): Record<string, unknown> {
   return {
     packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
@@ -103,6 +105,8 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   readonly message: unknown;
   readonly boundPacketName?: string;
   readonly metadata?: Record<string, string>;
+  readonly flowId?: string;
+  readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
 } {
   if (
     typeof payload !== 'object' ||
@@ -120,8 +124,17 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
     actorOwnershipGeneration: optionalString(payload, 'actorOwnershipGeneration'),
     message: (payload as { message?: unknown }).message,
     boundPacketName: optionalString(payload, 'boundPacketName'),
-    metadata: metadataRecordOf((payload as { metadata?: unknown }).metadata)
+    metadata: metadataRecordOf((payload as { metadata?: unknown }).metadata),
+    flowId: optionalString(payload, 'flowId'),
+    flowOrigin: optionalFlowOrigin(payload)
   };
+}
+
+function optionalFlowOrigin(payload: object): import('../../contracts').ZLinkFlowOrigin | undefined {
+  const value = (payload as { flowOrigin?: unknown }).flowOrigin;
+  return value === 'Inbound' || value === 'Timer' || value === 'Application' || value === 'Lifecycle'
+    ? value
+    : undefined;
 }
 
 export function decodeRemoteBoundSessionResponsePayload(payload: unknown): {

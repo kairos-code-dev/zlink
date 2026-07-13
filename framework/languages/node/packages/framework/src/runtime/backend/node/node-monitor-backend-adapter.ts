@@ -23,7 +23,7 @@ export function wrapMonitorSocket(
 function toBackendMonitorEvent(event: MonitorEvent): ZLinkBackendSocketMonitorEvent {
   return {
     nativeEvent: event.event,
-    routingId: event.routingId === null ? undefined : String(event.routingId),
+    routingId: event.routingId ?? undefined,
     localAddr: event.localAddr,
     remoteAddr: event.remoteAddr,
     value: event.value

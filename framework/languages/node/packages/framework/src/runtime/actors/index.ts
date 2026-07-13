@@ -220,6 +220,10 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     return this.states.get(actorId);
   }
 
+  snapshotStates(): readonly ZLinkActorRuntimeState[] {
+    return [...this.states.values()];
+  }
+
   async destroyActor(
     node: ZLinkBackendSpotNode,
     entryNodeRid: RoutingId,

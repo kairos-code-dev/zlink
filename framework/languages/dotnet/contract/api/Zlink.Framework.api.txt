@@ -461,6 +461,7 @@ assembly Zlink.Framework
     property Microsoft.Extensions.Logging.LogLevel SendLogLevel { get; set; } [nullability=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorAction : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorAction Drop = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorAction FailCaller = 2 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorAction ReplyError = 0 [nullability=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorReason : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Dispatch.ZLinkDispatchErrorReason HandlerException = 2 [nullability=read:not-null,write:not-null]

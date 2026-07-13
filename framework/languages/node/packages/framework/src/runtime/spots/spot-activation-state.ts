@@ -9,6 +9,7 @@ import type { ZLinkSpotActorHandlerRegistryRuntime } from '../actors';
 import type { DefaultZLinkSpotHandlerRegistry } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkSpotTimerRegistry } from './spot-timer';
+import type { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
 
 export interface ZLinkSpotActivationOptions {
   readonly spotRid: RoutingId;
@@ -20,6 +21,8 @@ export interface ZLinkSpotActivationOptions {
   readonly handlers: DefaultZLinkSpotHandlerRegistry;
   readonly externalActorCount?: () => number;
   readonly nativeSpot?: ZLinkBackendSpot;
+  readonly closeWhenReady?: () => void;
+  actorDispatch?: ZLinkSpotActorJoinDispatch;
 }
 
 export class ZLinkSpotActivation {
@@ -31,10 +34,14 @@ export class ZLinkSpotActivation {
   readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
   readonly handlers: DefaultZLinkSpotHandlerRegistry;
   readonly nativeSpot?: ZLinkBackendSpot;
+  actorDispatch?: ZLinkSpotActorJoinDispatch;
 
   private readonly joinedActors = new Map<string, ZLinkActor>();
   private readonly departedActorIds = new Set<string>();
   private readonly externalActorCount: () => number;
+  private readonly closeWhenReady?: () => void;
+  private closeRequested = false;
+  private drainCloseRequested = false;
 
   constructor(options: ZLinkSpotActivationOptions) {
     this.spotRid = options.spotRid;
@@ -46,6 +53,8 @@ export class ZLinkSpotActivation {
     this.handlers = options.handlers;
     this.externalActorCount = options.externalActorCount ?? (() => 0);
     this.nativeSpot = options.nativeSpot;
+    this.closeWhenReady = options.closeWhenReady;
+    this.actorDispatch = options.actorDispatch;
   }
 
   resolveJoinedActor(actorId: string): ZLinkActor | undefined {
@@ -88,9 +97,27 @@ export class ZLinkSpotActivation {
   commitActorDeparture(actorId: string): void {
     this.departedActorIds.add(actorId);
     this.joinedActors.delete(actorId);
+    this.notifyCloseReady();
   }
 
   canClose(): boolean {
-    return this.joinedActors.size + this.externalActorCount() === 0;
+    return this.joinedActors.size === 0 && (this.closeRequested || this.externalActorCount() === 0);
   }
+
+  requestClose(): void {
+    this.closeRequested = true;
+  }
+
+  requestDrainClose(): void {
+    this.closeRequested = true;
+    this.drainCloseRequested = true;
+    this.notifyCloseReady();
+  }
+
+  private notifyCloseReady(): void {
+    if (this.drainCloseRequested && this.canClose()) {
+      this.closeWhenReady?.();
+    }
+  }
+
 }

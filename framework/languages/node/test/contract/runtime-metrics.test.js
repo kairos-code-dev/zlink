@@ -53,7 +53,7 @@ test('RMETRIC-016 connector owns reconnect attempt counting', async () => {
   const { provider, records } = collector();
   let attempts = 0;
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:7999',
+    endpoint: 'ws://127.0.0.1:7999',
     meterProvider: provider,
     reconnect: { enabled: true, maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 },
     transportFactory: {

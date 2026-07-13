@@ -13,6 +13,7 @@ import {
   submitRouteReply
 } from './spot-route-replies';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 
 interface ZLinkSpotRoutedBoundSessionDispatchOptions {
   readonly channelCodecs: () => ZLinkChannelEnvelopeCodecRegistry | undefined;
@@ -57,12 +58,18 @@ export class ZLinkSpotRoutedBoundSessionDispatch {
     }
     const boundSessionSend = decodeRemoteBoundSessionSend(received.parts, this.options.channelCodecs());
     if (boundSessionSend !== undefined) {
-      await this.options.routedBoundSessionReceiver?.(
-        boundSessionSend.actorId,
-        boundSessionSend.message,
-        boundSessionSend.packetName,
-        boundSessionSend.metadata,
-        boundSessionSend.actorRef
+      await runWithFlow(
+        createInboundFlow(
+          boundSessionSend.flowId ?? boundSessionSend.envelope?.header.flowId,
+          boundSessionSend.flowOrigin ?? boundSessionSend.envelope?.header.flowOrigin
+        ),
+        () => this.options.routedBoundSessionReceiver?.(
+          boundSessionSend.actorId,
+          boundSessionSend.message,
+          boundSessionSend.packetName,
+          boundSessionSend.metadata,
+          boundSessionSend.actorRef
+        )
       );
       if (isReplyableRequestSeq(received.requestSeq)) {
         submitRoutePayloadReply(received, boundSessionSend.envelope, { ok: true });

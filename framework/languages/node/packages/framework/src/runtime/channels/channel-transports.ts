@@ -6,7 +6,7 @@ import {
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 
 export interface ZLinkChannelClientTransport {
-  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void>;
+  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): void;
   request<TReply>(
     channelName: string,
     packetName: string | undefined,
@@ -14,21 +14,21 @@ export interface ZLinkChannelClientTransport {
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
-  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void;
 }
 
 export interface ZLinkSpotPublisherClientTransport {
-  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void;
 }
 
 export interface ZLinkRouteClientTransport {
-  send(
+  submit(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): void;
   request<TReply>(
     routerChannelId: string,
     targetNodeRid: string,
@@ -40,7 +40,7 @@ export interface ZLinkRouteClientTransport {
 }
 
 interface ZLinkChannelTransportRuntime {
-  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void>;
+  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): void;
   request<TReply>(
     channelName: string,
     packetName: string | undefined,
@@ -48,16 +48,16 @@ interface ZLinkChannelTransportRuntime {
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
-  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void;
   canRouteChannel(routerChannelId: string): boolean;
   canRoutePacketChannel(routerChannelId: string): boolean;
-  routeSend(
+  routeSubmit(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): void;
   routeRequest<TReply>(
     routerChannelId: string,
     targetNodeRid: string,
@@ -112,7 +112,7 @@ interface ZLinkChannelTransportRuntime {
 export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport {
   constructor(private readonly manager: () => ZLinkChannelTransportRuntime | undefined) {}
 
-  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): void {
     return this.requireManager().send(channelName, packetName, message, signal);
   }
 
@@ -126,7 +126,7 @@ export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport
     return this.requireManager().request(channelName, packetName, request, timeoutMs, signal);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void {
     return this.requireManager().publish(channelName, topic, packetName, event, signal);
   }
 
@@ -159,14 +159,14 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       ?? false;
   }
 
-  async send(
+  submit(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void> {
-    return this.requireManager().routeSend(routerChannelId, targetNodeRid, packetName, message, signal);
+  ): void {
+    this.requireManager().routeSubmit(routerChannelId, targetNodeRid, packetName, message, signal);
   }
 
   async request<TReply>(

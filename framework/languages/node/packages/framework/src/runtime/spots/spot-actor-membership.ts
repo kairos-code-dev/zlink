@@ -1,5 +1,4 @@
 import type {
-  ActorRef,
   RoutingId,
   ZLinkActor,
   ZLinkMessageSerializer,
@@ -9,7 +8,6 @@ import type {
 } from '../../contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
-import { routingIdsEqual } from '../routing-id';
 import type { Message } from '../../contracts/Common/Message';
 import {
   Message as BindingMessage
@@ -22,6 +20,7 @@ import { ZLinkSpotActorDispatcher } from '../actors';
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
+import { routingIdsEqual } from '../routing-id';
 import type { ZLinkSpotActivation } from './spot-activation-state';
 import type { ZLinkSpotActorTransferRuntime } from './spot-runtime-ports';
 
@@ -90,12 +89,6 @@ export class ZLinkSpotActorMembership {
   ): Promise<void> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
-    await activation.serial.execute(async () => {
-      activation.beginActorTransfer(actor.actorId);
-      await activation.spot.onLeaveActor(actor);
-      activation.commitActorDeparture(actor.actorId);
-      this.options.actorTransferRuntime?.clearRoutedActor(actor);
-    });
     const localEntryNodeRid =
       this.options.entryNodeRidProvider?.() ??
       this.options.entryNodeRid ??
@@ -105,14 +98,14 @@ export class ZLinkSpotActorMembership {
     if (entryNodeRid === undefined) {
       throw new ZLinkConfigurationException('Spot actor leave requires an Entry Spot node routing id.');
     }
-    const actorRef = (actor.context as unknown as { actorRef?: ActorRef }).actorRef;
-    if (
-      localEntryNodeRid !== undefined &&
-      actorRef?.nodeRid !== undefined &&
-      !routingIdsEqual(actorRef.nodeRid, localEntryNodeRid) &&
-      !routingIdsEqual(entryNodeRid, localEntryNodeRid)
-    ) {
-      return;
+    const remoteEntry = localEntryNodeRid !== undefined && !routingIdsEqual(entryNodeRid, localEntryNodeRid);
+    if (!remoteEntry) {
+      await activation.serial.execute(async () => {
+        activation.beginActorTransfer(actor.actorId);
+        await activation.spot.onLeaveActor(actor);
+        activation.commitActorDeparture(actor.actorId);
+        this.options.actorTransferRuntime?.clearRoutedActor(actor);
+      });
     }
     const request = BindingMessage.from(Buffer.alloc(0));
     try {
@@ -138,6 +131,7 @@ export class ZLinkSpotActorMembership {
       activation.commitActorDeparture(actor.actorId);
     });
   }
+
 
   async prepareActorLeaveForTransfer(
     spotRid: RoutingId,

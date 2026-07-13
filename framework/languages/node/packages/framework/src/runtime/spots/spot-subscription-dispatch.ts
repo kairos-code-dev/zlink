@@ -22,6 +22,7 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
 import { flowIfEnabled } from '../diagnostics';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import { createProviderInstance } from './spot-provider';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
@@ -142,9 +143,12 @@ export class ZLinkSpotSubscriptionDispatch {
       channelName: envelope.header.channelName,
       topic: message.topic,
       sourceRid: subSource,
-      correlationId: subCorr
+      correlationId: subCorr,
+      flowId: envelope.header.flowId,
+      flowOrigin: envelope.header.flowOrigin
     });
-    await this.options.serial.execute(async () => {
+    const inboundFlow = createInboundFlow(envelope.header.flowId, envelope.header.flowOrigin);
+    await this.options.serial.execute(() => runWithFlow(inboundFlow, async () => {
       for (const registration of registrations) {
         const handler = await createProviderInstance(
           registration.handlerType as Type<ZLinkSpotSubscriptionHandler<ZLinkSpot, unknown>>,
@@ -166,7 +170,9 @@ export class ZLinkSpotSubscriptionDispatch {
             channelName: envelope.header.channelName,
             topic: message.topic,
             sourceRid: subSource,
-            correlationId: subCorr
+            correlationId: subCorr,
+            flowId: envelope.header.flowId,
+            flowOrigin: envelope.header.flowOrigin
           });
         } catch (error) {
           this.options.dispatchErrors?.report({
@@ -184,6 +190,6 @@ export class ZLinkSpotSubscriptionDispatch {
           throw error;
         }
       }
-    });
+    }));
   }
 }

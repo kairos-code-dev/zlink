@@ -53,7 +53,13 @@ export class ZLinkChannelRuntimeManager {
     providerResolver?: ZLinkProviderResolver,
     options: ZLinkChannelRuntimeManagerOptions = {}
   ) {
-    this.sockets = new ZLinkChannelSocketRegistry(registration, adapter, context, options.monitoringAdapter);
+    this.sockets = new ZLinkChannelSocketRegistry(
+      registration,
+      adapter,
+      context,
+      options.monitoringAdapter,
+      options.oneWayFailureSink
+    );
     const codecs: ZLinkChannelEnvelopeCodecRegistry = { serializers: registration.messageSerializers };
     const dispatchServices = new ZLinkChannelDispatchServices(
       registration,
@@ -140,8 +146,8 @@ export class ZLinkChannelRuntimeManager {
     return this.lifecycle.start(taskRunner);
   }
 
-  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
-    await this.outbound.send(channelName, packetName, message, signal);
+  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): void {
+    this.outbound.send(channelName, packetName, message, signal);
   }
 
   async request<TReply>(
@@ -154,18 +160,18 @@ export class ZLinkChannelRuntimeManager {
     return this.outbound.request<TReply>(channelName, packetName, request, timeoutMs, signal);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
-    await this.outbound.publish(channelName, topic, packetName, event, signal);
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void {
+    this.outbound.publish(channelName, topic, packetName, event, signal);
   }
 
-  async routeSend(
+  routeSubmit(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void> {
-    await this.outbound.routeSend(routerChannelId, targetNodeRid, packetName, message, signal);
+  ): void {
+    this.outbound.routeSubmit(routerChannelId, targetNodeRid, packetName, message, signal);
   }
 
   async routeRequest<TReply>(
@@ -286,4 +292,5 @@ export interface ZLinkChannelRuntimeManagerOptions {
     ): Promise<TReply>;
   };
   readonly messageFlowModeCell?: ZLinkMessageFlowModeCell;
+  readonly oneWayFailureSink?: (error: unknown) => void;
 }

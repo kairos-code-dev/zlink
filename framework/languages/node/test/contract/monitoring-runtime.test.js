@@ -23,9 +23,13 @@ test('socket monitoring source maps backend raw events into framework typed even
     remoteAddr: 'tcp://remote',
     value: 1
   });
+  const opaqueRoutingId = {
+    toHex() { return '706565722d61'; },
+    toString() { return 'opaque backend object'; }
+  };
   await source.publish({
     nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
-    routingId: 'peer-a',
+    routingId: opaqueRoutingId,
     localAddr: 'tcp://local',
     remoteAddr: 'tcp://remote',
     value: 2
@@ -34,6 +38,8 @@ test('socket monitoring source maps backend raw events into framework typed even
   assert.equal(events.length, 1);
   assert.equal(events[0].sourceName, 'api.server');
   assert.equal(events[0].event, framework.ZLinkSocketEventKind.ConnectionReady);
+  assert.equal(events[0].routingId, '706565722d61');
+  assert.equal(typeof events[0].routingId, 'string');
   assert.equal(events[0].diagnostic.nativeEvent, framework.ZLinkSocketNativeEventType.ConnectionReady);
   assert.equal(events[0].diagnostic.nativeValue, 2);
 });

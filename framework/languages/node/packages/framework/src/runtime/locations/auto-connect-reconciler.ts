@@ -105,7 +105,11 @@ export class ZLinkAutoConnectReconciler {
       .filter((nodeRid): nodeRid is RoutingId => nodeRid !== undefined)
       .map((nodeRid) => encodeRoutingIdHex(nodeRid)));
 
-    const desired = ZLinkAutoConnectPlanner.computeDesired(this.local, rows);
+    const desired = new Map(ZLinkAutoConnectPlanner.computeDesired(this.local, rows));
+    const existingTargets = ZLinkAutoConnectPlanner.computeDesired(this.local, rows, true);
+    for (const [key, target] of existingTargets) {
+      if (this.active.has(key)) desired.set(key, target);
+    }
     const connectedEndpoints: string[] = [];
     const disconnectedEndpoints: string[] = [];
     for (const [key, target] of desired) {

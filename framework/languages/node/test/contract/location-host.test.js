@@ -205,7 +205,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
   );
 });
 
-test('framework runtime host starts spot node auto-connect loops from location peers', async () => {
+test('manual SPOT roles keep location lookup without store-driven peer connections', async () => {
   const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const calls = [];
   const nodeRid = rid('node-a');
@@ -254,8 +254,9 @@ test('framework runtime host starts spot node auto-connect loops from location p
 
   try {
     await runtime.start();
-    assert.ok(calls.includes(`spot:connectPeerRid:${rid('node-b').toHex()}:tcp://remote-spot`));
-    assert.ok(calls.includes('spot:connectPeer:tcp://remote-pub'));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.some((call) => call.includes('tcp://remote-spot')), false);
+    assert.equal(calls.some((call) => call.includes('tcp://remote-pub')), false);
     assert.equal(calls.some((call) => call.includes('tcp://lower-spot')), false);
     assert.equal(calls.some((call) => call.includes('tcp://lower-pub')), false);
     assert.ok(calls.includes('spot:connectPeer:tcp://manual-spot'));
@@ -264,8 +265,8 @@ test('framework runtime host starts spot node auto-connect loops from location p
     await runtime.stop();
   }
 
-  assert.ok(calls.includes('spot:disconnectPeer:tcp://remote-spot'));
-  assert.ok(calls.includes('spot:disconnectPeer:tcp://remote-pub'));
+  assert.equal(calls.some((call) => call.includes('disconnectPeerRid')), false);
+  assert.equal(calls.some((call) => call === 'spot:disconnectPeer:tcp://remote-pub'), false);
   assert.equal(calls.filter((call) => call === 'spot:disconnectPeer:tcp://manual-spot').length, 0);
   assert.equal(calls.filter((call) => call === 'spot:disconnectPeer:tcp://manual-pub').length, 0);
 });
@@ -339,6 +340,7 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
             attachDiscovery() {},
             connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
             connectPeerRid(peerRid, endpoint) { calls.push(`spot:connectPeerRid:${peerRid.toHex()}:${endpoint}`); },
+            disconnectPeerRid(peerRid) { calls.push(`spot:disconnectPeerRid:${peerRid.toHex()}`); },
             disconnectPeer(endpoint) { calls.push(`spot:disconnectPeer:${endpoint}`); },
             createRouteBridge() {
               return fakeSpotRouteBridge();

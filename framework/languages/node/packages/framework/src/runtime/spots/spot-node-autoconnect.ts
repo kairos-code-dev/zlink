@@ -97,60 +97,65 @@ export function spotNodeAutoConnectCapability(
       draining: false,
       value: 0n,
       metadata,
+      capabilities: Object.keys(spotNode.actorFactories ?? {})
+        .map((actorType) => `actor:${actorType}`)
+        .sort(),
       ownerId: '',
       generation: 0n,
       updatedAt: new Date(0)
     },
-    executor: new ZLinkSpotNodeAutoConnectExecutor(node, spotNodeManualEndpoints(spotNode))
+    executor: new ZLinkSpotNodeAutoConnectExecutor(node, {
+      router: hasManualRouterConnections(spotNode),
+      pubSub: (spotNode.pubSub?.manualConnections?.length ?? 0) > 0
+    })
   };
 }
 
-function spotNodeManualEndpoints(spotNode: ZLinkSpotNodeOptions): ReadonlySet<string> {
-  return new Set([
-    ...(spotNode.router?.manualConnections ?? []),
-    ...(spotNode.router?.manualPeerConnections ?? []).map((connection) => connection.endpoint),
-    ...(spotNode.pubSub?.manualConnections ?? [])
-  ]);
+function hasManualRouterConnections(spotNode: ZLinkSpotNodeOptions): boolean {
+  return (spotNode.router?.manualConnections?.length ?? 0) > 0
+    || (spotNode.router?.manualPeerConnections?.length ?? 0) > 0;
 }
 
 class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   constructor(
     private readonly node: ZLinkBackendSpotNode,
-    private readonly manualEndpoints: ReadonlySet<string>
+    private readonly manualRoles: Readonly<{ router: boolean; pubSub: boolean }>
   ) {}
 
   connect(target: ZLinkAutoConnectTarget): boolean {
-    let connected = false;
-    if (!this.manualEndpoints.has(target.endpoint)) {
+    if (target.connectionKind === 'spot-pub') {
+      if (this.manualRoles.pubSub) return false;
+      this.node.connectPeer(target.endpoint);
+      return true;
+    }
+    if (target.connectionKind === 'spot-router') {
+      if (this.manualRoles.router) return false;
       if (target.nodeRid !== undefined) {
         this.node.connectPeerRid(target.nodeRid, target.endpoint);
       } else {
         this.node.connectPeer(target.endpoint);
       }
-      connected = true;
+      return true;
     }
-    const pubEndpoint = spotPubEndpointOf(target);
-    if (pubEndpoint !== undefined && !this.manualEndpoints.has(pubEndpoint)) {
-      this.node.connectPeer(pubEndpoint);
-      connected = true;
-    }
-    return connected;
+    return false;
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {
-    if (!this.manualEndpoints.has(target.endpoint)) {
+    if (target.connectionKind === 'spot-pub') {
+      if (this.manualRoles.pubSub) return;
       this.node.disconnectPeer(target.endpoint);
+      return;
     }
-    const pubEndpoint = spotPubEndpointOf(target);
-    if (pubEndpoint !== undefined && !this.manualEndpoints.has(pubEndpoint)) {
-      this.node.disconnectPeer(pubEndpoint);
+    if (target.connectionKind === 'spot-router') {
+      if (this.manualRoles.router) return;
+      if (target.nodeRid !== undefined) {
+        this.node.disconnectPeerRid(target.nodeRid);
+      } else {
+        this.node.disconnectPeer(target.endpoint);
+      }
     }
   }
-}
 
-function spotPubEndpointOf(target: ZLinkAutoConnectTarget): string | undefined {
-  const endpoint = target.metadata?.[SPOT_PUB_ENDPOINT_METADATA_KEY];
-  return endpoint === undefined || endpoint.length === 0 ? undefined : endpoint;
 }
 
 function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {

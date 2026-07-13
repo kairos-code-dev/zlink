@@ -30,11 +30,11 @@ test('auto-connect planner applies role policy pairwise initiator and dial-only 
 
   const spot = local(framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-a', 'tcp://spot-a');
   const spotDesired = internal.ZLinkAutoConnectPlanner.computeDesired(spot, [
-    peer('owner-b', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-b', 'tcp://spot-b'),
-    peer('owner-0', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-0', 'tcp://spot-0'),
+    { ...peer('owner-b', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-b', 'tcp://spot-b'), metadata: { 'pub-endpoint': 'tcp://pub-b' } },
+    { ...peer('owner-0', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-0', 'tcp://spot-0'), metadata: { 'pub-endpoint': 'tcp://pub-0' } },
     peer('owner-router', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router')
   ]);
-  assert.deepEqual([...spotDesired.values()].map((target) => target.endpoint), ['tcp://spot-b']);
+  assert.deepEqual([...spotDesired.values()].map((target) => target.endpoint), ['tcp://spot-b', 'tcp://pub-b', 'tcp://pub-0']);
 });
 
 test('store peer resolver reads store each time and joins owner liveness', async () => {
@@ -171,6 +171,46 @@ test('auto-connect reconciler does not mark a target active when executor skips 
 
   await reconciler.shutdown();
   assert.deepEqual(calls, ['skip:tcp://manual:owner-remote']);
+  await runtime.stop();
+});
+
+test('auto-connect reconciler retains an existing draining peer without dialing a new draining peer', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, 'owner-local');
+  await runtime.start(rid('node-local'));
+  await store.renewOwnerLease('owner-existing', rid('node-existing'), 30000);
+  const existing = await store.updatePeer(
+    peer('owner-existing', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  const calls = [];
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    runtime,
+    peerResolver: new internal.ZLinkStoreLocationResolvers({
+      stores: stores(store),
+      leaseTracker: new internal.ZLinkOwnerLeaseTracker({ store, options: { pollingIntervalMs: 0 }, monotonicNowMs: () => 0 })
+    }),
+    executor: executor(calls),
+    options: { heartbeatIntervalMs: 1000 },
+    monotonicNowMs: () => 0
+  });
+  await reconciler.tick();
+  await store.updatePeer({
+    ...peer('owner-existing', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
+    draining: true,
+    generation: existing.generation
+  }, framework.ZLinkLocationWriteIntent.Renew);
+  await store.renewOwnerLease('owner-new', rid('node-new'), 30000);
+  await store.updatePeer({
+    ...peer('owner-new', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-new', 'tcp://new'),
+    draining: true
+  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://existing:owner-existing']);
+  assert.deepEqual(reconciler.activeTargets.map((target) => target.endpoint), ['tcp://existing']);
+  await reconciler.shutdown();
   await runtime.stop();
 });
 

@@ -13,6 +13,7 @@ import type {
   ZLinkSpotInfo,
   ZLinkSpotManager,
   ZLinkSpotPublisherClient,
+  ZLinkSpotDrainPolicy,
 } from '../../contracts';
 import type {
   ZLinkSpotActorRequestHandlerRegistration,
@@ -126,6 +127,7 @@ export interface ZLinkSpotManagerOptions {
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly spotDrainPolicy?: (spotType: Type<ZLinkSpot>) => ZLinkSpotDrainPolicy;
 }
 
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
@@ -271,6 +273,22 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
 
   async list(): Promise<readonly ZLinkSpotInfo[]> {
     return this.activations.list();
+  }
+
+  async drainForShutdown(signal?: AbortSignal): Promise<void> {
+    for (const activation of this.activations.activeActivations()) {
+      const policy = this.options.spotDrainPolicy?.(activation.spotType) ?? 'DrainNatural';
+      if (policy !== 'ReleaseAndRecreate') continue;
+      activation.requestDrainClose();
+    }
+    await this.activations.whenEmpty(signal);
+  }
+
+  retainsActorDuringDrain(spotRid: RoutingId | undefined): boolean {
+    if (spotRid === undefined) return false;
+    const activation = this.activations.resolve(spotRid);
+    if (activation === undefined) return false;
+    return (this.options.spotDrainPolicy?.(activation.spotType) ?? 'DrainNatural') === 'DrainNatural';
   }
 
   async close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {

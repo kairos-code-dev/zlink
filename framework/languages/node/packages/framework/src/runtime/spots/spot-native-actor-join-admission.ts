@@ -46,6 +46,7 @@ export class ZLinkSpotNativeActorJoinAdmission {
   async admit(request: ZLinkBackendActorJoinRequest): Promise<void> {
     const actorId = request.info.targetActor.actorId;
     let accepted = false;
+    let acceptedActor: ZLinkActor | undefined;
     let reply: Message | undefined;
     const decoded = this.decodeNativeActorJoinRequest(request.message);
     try {
@@ -67,7 +68,7 @@ export class ZLinkSpotNativeActorJoinAdmission {
           ? undefined
           : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
         if (accepted) {
-          await this.options.commitAcceptedActor?.(actor);
+          acceptedActor = actor;
         }
       }
     } catch (error) {
@@ -90,6 +91,16 @@ export class ZLinkSpotNativeActorJoinAdmission {
       }
       decoded?.request.close();
       decoded?.actorCreateRequest?.close();
+    }
+    if (acceptedActor !== undefined) {
+      try {
+        // The native reply commits the actor's return to the Entry Spot. Run
+        // onJoinedActor only after that commit so lifecycle code may destroy
+        // the actor without nesting destroy inside the active join operation.
+        await this.options.commitAcceptedActor?.(acceptedActor);
+      } catch (error) {
+        this.reportHandlerException(actorId, error);
+      }
     }
   }
 

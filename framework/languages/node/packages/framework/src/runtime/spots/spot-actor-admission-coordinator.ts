@@ -76,6 +76,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
           runtime: this.options.actorTransferRuntime
         },
         commitNativeActor: (actor) => this.commitNativeActorTransaction(activation, actor),
+        commitActorDeparture: (actorId) => activation.commitActorDeparture(actorId),
         commitTransferredActor: (actor, backlog) => this.commitTransferredActorTransaction(activation, actor, backlog)
       },
       packets: {

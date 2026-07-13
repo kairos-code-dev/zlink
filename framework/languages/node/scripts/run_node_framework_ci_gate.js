@@ -6,7 +6,8 @@ const e2eTestFiles = [
   'test/contract/http-client.test.js',
   'test/contract/message-packet-name.test.js',
   'test/contract/stream-connector.test.js',
-  'test/contract/stream-session-runtime.test.js'
+  'test/contract/stream-session-runtime.test.js',
+  'test/browser/stream-connector-chromium.test.js'
 ];
 
 process.env.ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS = [

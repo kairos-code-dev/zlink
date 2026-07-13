@@ -246,27 +246,11 @@ export class ZLinkChannelDispatchPipeline {
     if (action === ZLinkUnhandledDispatchAction.Throw) {
       throw new Error(`No ${fields.messageKind} handler is registered for '${this.options.channelName}:${fields.packetName}'.`);
     }
-    if (action !== ZLinkUnhandledDispatchAction.LogAndDrop) {
-      return;
-    }
-    const level = fields.messageKind === ZLinkDispatchMessageKind.Publish
-      ? this.unhandled.publishLogLevel
-      : this.unhandled.sendLogLevel;
-    const logger = level === 'error' || level === 'fatal'
-      ? console.error
-      : level === 'debug' || level === 'verbose'
-        ? console.debug
-        : level === 'log'
-          ? console.log
-          : console.warn;
-    logger.call(console, `[zlink-unhandled-dispatch] kind=${fields.messageKind} channel=${this.options.channelName} packet=${fields.packetName}`);
   }
 }
 
 const DEFAULT_UNHANDLED_DISPATCH: ZLinkUnhandledDispatchOptions = {
   request: ZLinkUnhandledDispatchAction.ReplyError,
   send: ZLinkUnhandledDispatchAction.LogAndDrop,
-  publish: ZLinkUnhandledDispatchAction.LogAndDrop,
-  sendLogLevel: 'warn',
-  publishLogLevel: 'warn'
+  publish: ZLinkUnhandledDispatchAction.LogAndDrop
 };

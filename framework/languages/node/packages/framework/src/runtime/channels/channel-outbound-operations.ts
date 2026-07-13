@@ -29,12 +29,12 @@ export class ZLinkChannelOutboundOperations {
     private readonly dispatchServices: ZLinkChannelDispatchServices
   ) {}
 
-  async send(
+  send(
     channelName: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): void {
     throwIfAborted(signal);
     const dealer = this.sockets.clientDealer(channelName);
     const correlationId = newChannelCorrelationId();
@@ -48,7 +48,7 @@ export class ZLinkChannelOutboundOperations {
       this.codecs,
       correlationId
     ) as readonly Message[];
-    await this.sockets.requireSubmitter(dealer).submitCommand(
+    this.sockets.requireSubmitter(dealer).submitCommandOneWay(
       () => dealer.send(parts, ZLINK_SEND_DONT_WAIT),
       signal,
       () => closeMessages(parts)
@@ -139,13 +139,13 @@ export class ZLinkChannelOutboundOperations {
     ));
   }
 
-  async publish(
+  publish(
     channelName: string,
     topic: string,
     packetName: string | undefined,
     event: unknown,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): void {
     throwIfAborted(signal);
     const publisher = this.sockets['publisher'](channelName);
     const correlationId = newChannelCorrelationId();
@@ -159,7 +159,7 @@ export class ZLinkChannelOutboundOperations {
       this.codecs,
       correlationId
     ) as readonly Message[];
-    await this.sockets.requireSubmitter(publisher).submitCommand(
+    this.sockets.requireSubmitter(publisher).submitCommandOneWay(
       () => publisher.publish(topic, parts, ZLINK_SEND_DONT_WAIT),
       signal,
       () => closeMessages(parts)
@@ -175,13 +175,13 @@ export class ZLinkChannelOutboundOperations {
     }));
   }
 
-  async routeSend(
+  routeSubmit(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): void {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
     const correlationId = newChannelCorrelationId();
@@ -195,7 +195,7 @@ export class ZLinkChannelOutboundOperations {
       codecsForFrameworkPacket(packetName, this.codecs),
       correlationId
     ) as readonly Message[];
-    await this.sockets.requireSubmitter(router).submitCommand(
+    this.sockets.requireSubmitter(router).submitCommandOneWay(
       () => router.send(targetNodeRid, parts, ZLINK_SEND_DONT_WAIT),
       signal,
       () => closeMessages(parts)

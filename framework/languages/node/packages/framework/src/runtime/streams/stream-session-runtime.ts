@@ -314,7 +314,7 @@ export class ZLinkStreamSessionRuntime {
       this.options.metrics?.change('zlink.stream.connections.active', -1);
       this.options.metrics?.count('zlink.stream.connections.closed', 1, { close_reason: this.closeReason });
     }
-    this.context.cleanupBindings();
+    await this.context.cleanupBindings();
     this.removeSession(this.stream.sessionId, this);
   }
 
@@ -489,8 +489,12 @@ export class ZLinkStreamSessionNodeRuntime {
         return session;
       }
     }
+    const activeSessions = this.activeSessions();
+    if (activeSessions.length !== 1) {
+      return undefined;
+    }
     const session = streamMonitorHasEndpoint(event)
-      ? this.activeSessions().find((session) =>
+      ? activeSessions.find((session) =>
         session.stream.localAddr === event.localAddr
         && session.stream.remoteAddr === event.remoteAddr
       )

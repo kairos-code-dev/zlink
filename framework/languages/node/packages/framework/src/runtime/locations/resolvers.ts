@@ -1,5 +1,6 @@
 import type { RoutingId } from '../../contracts/Common';
 import {
+  ZLinkLocationAutoConnectType,
   ZLinkLocationKind,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
@@ -39,6 +40,7 @@ import {
   ZLinkLiveRowFilter,
   ZLinkOwnerLeaseTracker
 } from './lease-tracker';
+import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkStoreLocationResolverStores {
   readonly peerStore: ZLinkPeerLocationStore;
@@ -65,6 +67,7 @@ export class ZLinkStoreLocationResolvers implements
   ZLinkSpotHandleResolver,
   ZLinkActorSpotHandleResolver {
   private readonly liveRows: ZLinkLiveRowFilter;
+  private nextActorPlacement = 0;
 
   constructor(private readonly options: ZLinkStoreLocationResolversOptions) {
     this.liveRows = new ZLinkLiveRowFilter(options.leaseTracker);
@@ -78,6 +81,30 @@ export class ZLinkStoreLocationResolvers implements
       signal,
       (row) => isKnownZLinkLocationAutoConnectType(row.autoConnectType) && isKnownZLinkLocationRole(row.role)
     );
+  }
+
+  async selectActorPlacement(
+    meshName: string,
+    actorType: string,
+    excludedNodeRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<RoutingId | undefined> {
+    const capability = `actor:${actorType}`;
+    const peers = await this.listLivePeers({
+      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      meshName,
+      role: ZLinkLocationRole.Spot
+    }, signal);
+    const candidates = peers.filter((peer) =>
+      !peer.draining
+      && peer.nodeRid !== undefined
+      && !routingIdsEqual(peer.nodeRid, excludedNodeRid)
+      && peer.capabilities?.includes(capability) === true
+    );
+    if (candidates.length === 0) return undefined;
+    const selected = candidates[this.nextActorPlacement % candidates.length]?.nodeRid;
+    this.nextActorPlacement = (this.nextActorPlacement + 1) % Number.MAX_SAFE_INTEGER;
+    return selected;
   }
 
   async resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined> {
@@ -224,6 +251,23 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         spotRid: row.spotRid,
         spotKind: row.spotKind
       };
+    }
+    for (const meshName of this.meshNames) {
+      const peers = await this.rows.listLivePeers({
+        autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+        meshName,
+        nodeRid: spotRid,
+        role: ZLinkLocationRole.Spot
+      }, signal);
+      const peer = peers.find((candidate) => routingIdsEqual(candidate.nodeRid, spotRid));
+      if (peer?.nodeRid !== undefined) {
+        return {
+          routerChannelId: this.routerChannelIdForMesh(meshName),
+          targetNodeRid: peer.nodeRid,
+          spotRid: peer.nodeRid,
+          spotKind: ZLinkSpotKind.Entry
+        };
+      }
     }
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotRouteNotFound,

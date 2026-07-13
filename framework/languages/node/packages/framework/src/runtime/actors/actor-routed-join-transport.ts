@@ -5,13 +5,6 @@ import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 export interface ZLinkActorRoutedJoinTransport {
   canRouteChannel?(routerChannelId: string): boolean;
   canRoutePacketChannel?(routerChannelId: string): boolean;
-  send(
-    routerChannelId: string,
-    targetNodeRid: string,
-    packetName: string | undefined,
-    message: unknown,
-    signal?: AbortSignal
-  ): Promise<void>;
   request<TReply>(
     routerChannelId: string,
     targetNodeRid: string,

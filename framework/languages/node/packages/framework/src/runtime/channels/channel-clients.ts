@@ -115,7 +115,7 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
   sendToNode(routerChannelId: string, targetNodeRid: string, message: unknown): ZLinkSendCall {
     return new DefaultZLinkSendCall(
       () => this.requireRouteChannel(routerChannelId),
-      (packetName, signal) => this.requireTransport().send(routerChannelId, targetNodeRid, packetName, message, signal)
+      (packetName, signal) => this.submitRouteOneWay(routerChannelId, targetNodeRid, packetName, message, signal)
     );
   }
 
@@ -144,6 +144,17 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
       throw new ZLinkConfigurationException('Route channel runtime is not started.');
     }
     return this.transport;
+  }
+
+  private submitRouteOneWay(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal
+  ): void {
+    const transport = this.requireTransport();
+    transport.submit(routerChannelId, targetNodeRid, packetName, message, signal);
   }
 }
 
@@ -188,17 +199,13 @@ export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient
 class DefaultZLinkSendCall implements ZLinkSendCall {
   constructor(
     private readonly validate: () => void,
-    private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => Promise<void>
+    private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => void
   ) {}
 
   submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
-    try {
-      void this.submitter(undefined, signal).catch(() => undefined);
-    } catch {
-      // One-way send failures are handled by the framework transport path.
-    }
+    this.submitter(undefined, signal);
   }
 }
 
@@ -230,16 +237,12 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
 class DefaultZLinkPublishCall implements ZLinkPublishCall {
   constructor(
     private readonly validate: () => void,
-    private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => Promise<void>
+    private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => void
   ) {}
 
   submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
-    try {
-      void this.submitter(undefined, signal).catch(() => undefined);
-    } catch {
-      // One-way publish failures are handled by the framework transport path.
-    }
+    this.submitter(undefined, signal);
   }
 }

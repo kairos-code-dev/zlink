@@ -173,6 +173,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['events'] })
     .addSpotMesh('game')
+      .enableRouter('tcp://127.0.0.1:0')
       .addSpotFactory(StageSpot)
       .actorFactory('player', ActorFactory)
     .build());
@@ -218,6 +219,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
   builder.configureDispatch().setMessageFlowObserver(DispatchObserver);
   const module = nestjs.ZLinkModule.forRoot(builder
     .addSpotMesh('game')
+      .enableRouter('tcp://127.0.0.1:0')
       .addSpotFactory(StageSpot)
       .actorFactory('player', ActorFactory)
     .build());
@@ -238,7 +240,7 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
     .useInMemoryLocationStores()
     .options({ spotPublisherClients: ['spot-events'] })
     .addRouteMeshChannel('mesh')
-      .connect(undefined)
+      .enableClient()
     .addSpotMesh('actors')
       .enableRouter('tcp://127.0.0.1:0', 'actor-node')
       .enablePubSub('tcp://127.0.0.1:0', 'actor-node')
@@ -272,15 +274,17 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
     () => routeClient.sendToNode('missing', 'node-a', new Ping(true)).submit(),
     framework.ZLinkConfigurationException
   );
-  assert.doesNotThrow(
+  assert.throws(
     () => routeClient.sendToNode('mesh', 'node-a', new Ping(true)).submit(),
+    /runtime is not started/i
   );
   assert.throws(
     () => spotPublisher.publish('missing', 'topic', new Event(true)).submit(),
     framework.ZLinkConfigurationException
   );
-  assert.doesNotThrow(
+  assert.throws(
     () => spotPublisher.publish('spot-events', 'topic', new Event(true)).submit(),
+    /runtime is not started/i
   );
   await assert.rejects(
     () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit()
@@ -415,7 +419,7 @@ test('ZLinkModule.forRoot maps decorated custom NestJS provider objects', async 
   await app.close();
 });
 
-test('ZLinkModule.forRoot ignores undecorated value providers', async () => {
+test('ZLinkModule.forRoot rejects a server whose only provider is an undecorated value', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
   const PROFILE_HANDLER = Symbol('profile-handler');
 
@@ -436,12 +440,10 @@ test('ZLinkModule.forRoot ignores undecorated value providers', async () => {
     }]
   })(HandlerModule);
 
-  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
-  const handlers = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api').requestHandlers;
-
-  assert.equal(handlers.length, 0);
-
-  await app.close();
+  await assert.rejects(
+    () => NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false }),
+    /server must register at least one request or send handler/
+  );
 });
 
 test('ZLinkModule.forRootFactory maps zlinkRequestHandler providers from NestJS DI', async () => {
@@ -791,6 +793,7 @@ test('ZLinkModule.forRoot rejects duplicate grouped publish handlers for one cha
 
 test('ZLinkModule.forRoot with grouped handlers exposes capability providers through NestJS context', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = await reserveTcpEndpoint();
   class ActorFactory {
     async create(actorId, context) {
       return { actorId, context };
@@ -813,6 +816,8 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .options({ spotPublisherClients: ['events'] })
       .addSpotMesh('game')
+        .enableRouter(spotEndpoint)
+        .useDrainPolicy('ReleaseAndRecreate')
         .addSpotFactory(StageSpot)
         .actorFactory('player', ActorFactory)
       .addClientServerChannel('api')
@@ -877,6 +882,7 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotFactories: [StageSpot] })
     .addSpotMesh('game')
+      .enableRouter('tcp://127.0.0.1:0')
       .addSpotFactory(LocalStageSpot)
     .build());
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]);
@@ -890,6 +896,7 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
 });
 
 test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
   class SpotDependency {
     constructor() {
       this.marker = 'spot-di';
@@ -906,6 +913,8 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter(spotEndpoint)
+        .useDrainPolicy('ReleaseAndRecreate')
         .addSpotFactory(StageSpot)
       .build())],
     providers: [SpotDependency, StageSpot]
@@ -922,6 +931,7 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
 });
 
 test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
   class EntryDependency {
     constructor() {
       this.initialized = false;
@@ -942,6 +952,7 @@ test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter(spotEndpoint)
         .addEntrySpot(StageEntrySpot)
       .build())],
     providers: [EntryDependency, StageEntrySpot]
@@ -955,6 +966,7 @@ test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
 });
 
 test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
   class ActorDependency {
     constructor() {
       this.marker = 'actor-di';
@@ -975,6 +987,7 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter(spotEndpoint)
         .actorFactory('player', PlayerActorFactory)
       .build())],
     providers: [ActorDependency, PlayerActorFactory]
@@ -992,6 +1005,8 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
 });
 
 test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from NestJS providers', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
+  const spotPubSubEndpoint = await reserveTcpEndpoint();
   class PlayerActor {}
   class EntrySpot {}
   class RoomSpot {}
@@ -1050,6 +1065,8 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter(spotEndpoint)
+        .enablePubSub(spotPubSubEndpoint)
         .addEntrySpot(EntrySpot)
         .addSpotFactory(RoomSpot)
       .build())],
@@ -1145,6 +1162,7 @@ test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorator
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter('tcp://127.0.0.1:0')
         .addSpotFactory(RoomSpot)
       .build())],
     providers: [FirstHandler, SecondHandler]
@@ -1267,6 +1285,17 @@ test('zlinkFramework preserves actor transfer adapters in the runtime registrati
   assert.equal(registration.actorTransferAdapters.get(PlayerActor), PlayerActorTransferAdapter);
 });
 
+test('zlinkFramework preserves the metrics provider in the runtime registration', async () => {
+  const meterProvider = { getMeter() {} };
+  const registration = await resolveFrameworkRegistration(
+    nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .options({ metrics: { meterProvider } })
+      .build())
+  );
+
+  assert.equal(registration.metrics.meterProvider, meterProvider);
+});
+
 test('zlinkFramework applies core SPOT registration policy before duplicate state is lost', () => {
   class EntrySpot {}
   class Spot {}
@@ -1324,8 +1353,8 @@ test('framework options builder maps dotnet-shaped registration flow into option
       .addSpotFactory(LocalStageSpot)
       .addEntrySpot(StageEntrySpot)
       .configureEntrySpot({ routingId: 'entry-stage' });
-    spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node', 'tcp://127.0.0.1:9406');
-    spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node', 'tcp://127.0.0.1:9408');
+    spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node');
+    spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node');
   });
 
   const registration = framework.createFrameworkRegistration(options);
@@ -1351,9 +1380,9 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-stage' });
   assert.deepEqual(spotNode.spotFactories, [StageSpot, LocalStageSpot]);
   assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9405');
-  assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9406']);
+  assert.deepEqual(spotNode.router.manualConnections, undefined);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9407');
-  assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9408']);
+  assert.deepEqual(spotNode.pubSub.manualConnections, undefined);
   assert.equal(registration.spotPublisherClients.has('game.stage'), true);
 
   assert.throws(
@@ -1539,14 +1568,15 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
-        .enableRouter(undefined, 'node-a')
-        .enablePubSub(undefined, 'node-b')
+        .enableRouter('tcp://127.0.0.1:9218', 'node-a')
+        .enablePubSub('tcp://127.0.0.1:9219', 'node-b')
       .build())),
     /router and pubSub routingId must match/
   );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('game')
+        .enableRouter('tcp://127.0.0.1:9220')
         .connectRouter('node-a', 'tcp://127.0.0.1:9216')
         .connectRouter('node-a', 'tcp://127.0.0.1:9217')
       .build())),
@@ -1585,6 +1615,7 @@ test('ZLinkModule.forRoot exposes SpotHandle resolvers from location stores', as
 });
 
 test('ZLinkModule.forRootFactory exposes capability providers through the real NestJS app context', async () => {
+  const spotEndpoint = await reserveTcpEndpoint();
   class AsyncSpot {
     constructor(context) {
       this.context = context;
@@ -1600,6 +1631,8 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
       return nestjs.zlinkFramework()
         .options({ spotPublisherClients: ['game-events'] })
         .addSpotMesh('game')
+          .enableRouter(spotEndpoint)
+          .useDrainPolicy('ReleaseAndRecreate')
           .addSpotFactory(AsyncSpot)
           .actorFactory('player', ActorFactory)
         .build();
@@ -1622,6 +1655,11 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
 test('ZLinkModule.forRootFactory resolves factory dependencies from imported NestJS modules', async () => {
   const CONFIG = Symbol('config');
   const apiEndpoint = await reserveTcpEndpoint();
+  class ConfigHandler {
+    async handle(request) {
+      return request;
+    }
+  }
   class ConfigModule {}
   Module({
     providers: [{ provide: CONFIG, useValue: { channelName: 'api', bind: apiEndpoint } }],
@@ -1635,6 +1673,7 @@ test('ZLinkModule.forRootFactory resolves factory dependencies from imported Nes
       return nestjs.zlinkFramework()
         .addClientServerChannel(config.channelName)
           .enableServer(config.bind)
+          .addRequestHandler('ConfigReq', ConfigHandler)
         .build();
     }
   });
@@ -2147,7 +2186,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
 	    'spot:setRoutingId:node-a',
 	    'spot:setPublisherRoutingId:node-a',
 	    'spot:setSubscriberRoutingId:node-a',
-	    'entrySpot:setRoutingId:entry-node-a',
+    'entrySpot:setRoutingId:entry-node-a',
     'spot:setRouterBind:tcp://0.0.0.0:9301',
     'spot:connectPeer:tcp://127.0.0.1:9302',
     'spot:setPubBind:tcp://0.0.0.0:9303',

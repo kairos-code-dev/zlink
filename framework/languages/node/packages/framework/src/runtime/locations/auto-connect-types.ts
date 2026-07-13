@@ -23,6 +23,7 @@ export interface ZLinkAutoConnectTarget {
   readonly endpoint: string;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly ownerId?: string;
+  readonly connectionKind?: 'spot-router' | 'spot-pub';
 }
 
 export interface IZLinkAutoConnectExecutor {

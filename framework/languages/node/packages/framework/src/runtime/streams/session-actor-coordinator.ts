@@ -11,6 +11,7 @@ import { routingIdsEqual } from '../routing-id';
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
+import { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 import {
   ZLinkManagedStream
 } from './managed-stream';
@@ -22,6 +23,7 @@ import {
 export interface ZLinkSessionActorCoordinatorOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
+  readonly nativeActorNodeProvider?: () => { readonly routingId: ActorRef['nodeRid'] } | undefined;
 }
 
 export interface ZLinkRemoteBoundSessionBindRelay {
@@ -33,7 +35,8 @@ export class ZLinkSessionActorCoordinator {
     private readonly routes: ZLinkActorSessionBindingRegistry<DefaultZLinkSessionContext, DefaultZLinkSessionActor>,
     private readonly remoteBoundSessions: ZLinkRemoteBoundSessionBindRelay,
     private readonly sessionActorRuntime: ConstructorParameters<typeof DefaultZLinkSessionActor>[0],
-    private readonly options: ZLinkSessionActorCoordinatorOptions = {}
+    private readonly options: ZLinkSessionActorCoordinatorOptions = {},
+    private readonly lifecycle = new ZLinkActorSessionLifecycleCoordinator()
   ) {}
 
   async bind(
@@ -41,10 +44,18 @@ export class ZLinkSessionActorCoordinator {
     actorOrRef: ZLinkActor | ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor> {
-    throwIfAborted(signal);
     const actorRef = isActorRef(actorOrRef)
       ? actorOrRef
       : this.resolveActorRef(actorOrRef);
+    return await this.lifecycle.run(actorRef.actorId, async () => this.replaceBinding(context, actorRef, signal));
+  }
+
+  private async replaceBinding(
+    context: DefaultZLinkSessionContext,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<DefaultZLinkSessionActor> {
+    throwIfAborted(signal);
     if (actorRef.actorId.trim().length === 0) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -58,10 +69,53 @@ export class ZLinkSessionActorCoordinator {
       );
     }
 
-    await this.bindNativeActor(context, actorRef, signal);
+    const previous = this.routes.route(actorRef.actorId);
+    const reuseActor = previous?.context === context ? previous.actor : undefined;
+    const previousRef = previous?.actor.ref;
+    if (previous !== undefined) {
+      await this.unbindNativeActor(previous.context, actorRef.actorId, signal);
+      this.routes.unbind(actorRef.actorId, previous.context, previous.bindingToken);
+    }
+    let replacementBound = false;
+    try {
+      await this.bindNativeActor(context, actorRef, signal);
+      replacementBound = true;
+      this.relayRemoteBoundSessionBind(context, actorRef);
+    } catch (error) {
+      const rollbackErrors: unknown[] = [];
+      if (replacementBound) {
+        await this.unbindNativeActor(context, actorRef.actorId).catch((rollbackError) => {
+          rollbackErrors.push(rollbackError);
+        });
+      }
+      if (previous !== undefined && previousRef !== undefined) {
+        try {
+          await this.bindNativeActor(previous.context, previousRef);
+          try {
+            this.relayRemoteBoundSessionBind(previous.context, previousRef);
+          } catch (relayError) {
+            await this.unbindNativeActor(previous.context, previousRef.actorId).catch((unbindError) => {
+              rollbackErrors.push(unbindError);
+            });
+            throw relayError;
+          }
+          this.routes.bind(previous.context, previous.actor, previous.bindingToken);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...rollbackErrors],
+          `Actor '${actorRef.actorId}' session bind and rollback failed.`
+        );
+      }
+      throw error;
+    }
 
-    const bindingToken = createBindingToken();
-    const sessionActor = new DefaultZLinkSessionActor(this.sessionActorRuntime, actorRef, bindingToken);
+    const bindingToken = reuseActor?.bindingToken ?? createBindingToken();
+    const sessionActor = reuseActor ?? new DefaultZLinkSessionActor(this.sessionActorRuntime, actorRef, bindingToken);
+    sessionActor.updateRef(actorRef);
     this.routes.bind(context, sessionActor, bindingToken);
     return sessionActor;
   }
@@ -71,52 +125,63 @@ export class ZLinkSessionActorCoordinator {
     actorRef: ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor> {
-    throwIfAborted(signal);
-    const existing = this.routes.find(actorRef.actorId);
-    if (existing !== undefined && sameActorRef(existing.ref, actorRef)) {
-      if (context.findBoundActor(actorRef.actorId) === existing) {
-        return existing;
+    return await this.lifecycle.run(actorRef.actorId, async () => {
+      throwIfAborted(signal);
+      const existing = this.routes.find(actorRef.actorId);
+      if (existing !== undefined && sameActorRef(existing.ref, actorRef)) {
+        if (context.findBoundActor(actorRef.actorId) === existing) {
+          return existing;
+        }
+        return await this.replaceBinding(context, actorRef, signal);
       }
-      this.routes.unbindActor(actorRef.actorId);
-      return await this.bind(context, actorRef, signal);
-    }
-    if (existing !== undefined) {
-      try {
-        await this.rebindActor(actorRef, signal);
-      } catch (error) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorLocationStale,
-          `Actor '${actorRef.actorId}' bound session ref is stale and could not be rebound.`,
-          true,
-          error
-        );
+      if (existing !== undefined) {
+        try {
+          return await this.replaceBinding(context, actorRef, signal);
+        } catch (error) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorLocationStale,
+            `Actor '${actorRef.actorId}' bound session ref is stale and could not be rebound.`,
+            true,
+            error
+          );
+        }
       }
-      this.routes.unbindActor(actorRef.actorId);
-    }
-    return await this.bind(context, actorRef, signal);
+      return await this.replaceBinding(context, actorRef, signal);
+    });
   }
 
   async rebindActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
-    throwIfAborted(signal);
-    const route = this.routes.route(actorRef.actorId);
-    if (route === undefined) {
-      return;
-    }
-    if (sameActorRef(route.actor.ref, actorRef)) {
-      return;
-    }
-    await this.bindNativeActor(route.context, actorRef, signal);
-    this.relayRemoteBoundSessionBind(route.context, actorRef);
+    await this.lifecycle.run(actorRef.actorId, async () => {
+      throwIfAborted(signal);
+      const route = this.routes.route(actorRef.actorId);
+      if (route === undefined || sameActorRef(route.actor.ref, actorRef)) return;
+      await this.replaceBinding(route.context, actorRef, signal);
+    });
   }
 
   async refreshActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
-    throwIfAborted(signal);
-    const route = this.routes.route(actorRef.actorId);
-    if (route === undefined) {
-      return;
+    await this.lifecycle.run(actorRef.actorId, async () => {
+      throwIfAborted(signal);
+      const route = this.routes.route(actorRef.actorId);
+      if (route === undefined) return;
+      await this.replaceBinding(route.context, actorRef, signal);
+    });
+  }
+
+  async cleanupContext(context: DefaultZLinkSessionContext, signal?: AbortSignal): Promise<void> {
+    for (const actor of [...context.boundActors]) {
+      await this.lifecycle.run(actor.actorId, async () => {
+        const route = this.routes.route(actor.actorId);
+        if (route === undefined || route.context !== context || route.bindingToken !== actor.bindingToken) {
+          return;
+        }
+        try {
+          await this.unbindNativeActor(context, actor.actorId, signal);
+        } finally {
+          this.routes.unbind(actor.actorId, context, actor.bindingToken);
+        }
+      });
     }
-    await this.bindNativeActor(route.context, actorRef, signal);
-    this.relayRemoteBoundSessionBind(route.context, actorRef);
   }
 
   private resolveActorRef(actor: ZLinkActor): ActorRef {
@@ -148,7 +213,32 @@ export class ZLinkSessionActorCoordinator {
         'Actor session binding requires a stream routing id.'
       );
     }
-    await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
+    try {
+      await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
+    } catch (error) {
+      throw new Error(
+        `Actor '${actorRef.actorId}' native session bind failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
+    }
+  }
+
+  private async unbindNativeActor(
+    context: DefaultZLinkSessionContext,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!(context.stream instanceof ZLinkManagedStream)) {
+      return;
+    }
+    try {
+      await context.stream.unbindActor(actorId, this.options.actorBindTimeoutMs ?? 2000, signal);
+    } catch (error) {
+      throw new Error(
+        `Actor '${actorId}' previous native session unbind failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
+    }
   }
 
   private relayRemoteBoundSessionBind(
@@ -156,6 +246,10 @@ export class ZLinkSessionActorCoordinator {
     actorRef: ActorRef
   ): void {
     if (!(context.stream instanceof ZLinkManagedStream)) {
+      return;
+    }
+    const localNode = this.options.nativeActorNodeProvider?.();
+    if (localNode !== undefined && routingIdsEqual(localNode.routingId, actorRef.nodeRid)) {
       return;
     }
     this.remoteBoundSessions.relayRemoteBoundSessionBind(context.stream, actorRef);

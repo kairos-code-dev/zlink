@@ -9,7 +9,7 @@ interface ZLinkRuntimeSpotPublisherManager {
     packetName: string | undefined,
     event: Message,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): void;
 }
 
 export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherClientTransport {
@@ -21,7 +21,7 @@ export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherCli
     packetName: string | undefined,
     event: Message,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): void {
     const manager = this.manager();
     if (manager === undefined) {
       throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');

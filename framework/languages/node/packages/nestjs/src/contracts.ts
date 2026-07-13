@@ -249,6 +249,7 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
 
 export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableRouter(endpoint: string | undefined): this;
+  enableClient(): this;
   routingId(routingId: string | undefined): this;
   configureSocket(): ZLinkSocketConfig;
   connect(endpoint: string | readonly string[] | undefined): this;

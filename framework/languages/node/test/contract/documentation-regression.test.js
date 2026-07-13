@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const ts = require('typescript');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const docRoot = path.join(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
@@ -17,6 +19,18 @@ const specRoot = path.join(
   'node'
 );
 const samplesRoot = path.join(workspaceRoot, 'samples');
+const commonSpecRoot = path.resolve(specRoot, '..', '..');
+const typescriptSpecRoot = path.join(path.dirname(specRoot), 'typescript');
+const nodeG0Ledger = path.join(
+  workspaceRoot,
+  '..',
+  '..',
+  'doc',
+  'plan',
+  'log',
+  'framework-public-contract-gap-implementation',
+  'node-g0-contract-ledger.ko.md'
+);
 
 const guideFiles = [
   '01-overview.ko.md',
@@ -127,22 +141,163 @@ test('node documentation does not restore the removed embedded Registry contract
   assert.deepEqual(offenders.sort(), []);
 });
 
-test('node implementation reference docs declare regression coverage sections', () => {
+test('node README links the two official framework specifications', () => {
   const required = [
-    path.join(docRoot, 'README.ko.md'),
-    ...allMarkdownFiles(specRoot).filter((file) => path.basename(file) !== 'README.ko.md'),
-    ...allMarkdownFiles(path.join(docRoot, 'internals'))
+    '01-system-structure.ko.md',
+    '02-handler-interfaces.ko.md'
   ];
   const missing = [];
+  const languageReadme = fs.readFileSync(path.join(specRoot, 'README.ko.md'), 'utf8');
+  const nodeReadme = fs.readFileSync(path.join(docRoot, 'README.ko.md'), 'utf8');
 
   for (const file of required) {
-    const content = fs.readFileSync(file, 'utf8');
-    if (!/^## .*회귀 테스트/m.test(content)) {
-      missing.push(path.relative(workspaceRoot, file));
+    if (!fs.existsSync(path.join(specRoot, file))) missing.push(`${file}: missing`);
+    if (!languageReadme.includes(`](${file})`)) missing.push(`${file}: language README link`);
+    if (!nodeReadme.includes(`../common/spec/languages/node/${file}`)) {
+      missing.push(`${file}: Node README link`);
     }
   }
 
   assert.deepEqual(missing.sort(), []);
+});
+
+test('node specifications keep key Spot signatures aligned with public declarations', () => {
+  const systemSpec = fs.readFileSync(path.join(specRoot, '01-system-structure.ko.md'), 'utf8');
+  const interfaceSpec = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
+  const spotContracts = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Spots', 'Contracts.ts'),
+    'utf8'
+  );
+  const spotBuilders = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Spots', 'Builders.ts'),
+    'utf8'
+  );
+
+  const requiredSignatures = [
+    /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /create<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /find\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
+    /list\(signal\?: AbortSignal\): Promise<readonly ZLinkSpotInfo\[\]>/,
+    /close\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
+  ];
+  for (const signature of requiredSignatures) {
+    assert.match(interfaceSpec, signature);
+    assert.match(spotContracts, signature);
+  }
+
+  const routerOverload = /connectRouter\(peerRid: RoutingId, endpoint: string\): this/;
+  const optionalEntryRoutingId = /export interface ZLinkEntrySpotOptions \{\s*routingId\?: RoutingId/;
+  assert.match(interfaceSpec, routerOverload);
+  assert.match(spotBuilders, routerOverload);
+  assert.match(interfaceSpec, optionalEntryRoutingId);
+  assert.match(spotBuilders, optionalEntryRoutingId);
+
+  for (const token of [
+    'ZLINK_BOUND_SESSION_FACTORY',
+    'ZLINK_RUNTIME_EVENT_PUBLISHER',
+    'ZLINK_DRAIN_CONTROL',
+    'ZLINK_CHANNEL_RUNTIME_OPTIONS',
+    'ZLinkDrainHealthIndicator'
+  ]) {
+    const alwaysAvailable = systemSpec.split('**역할이 있을 때만 등록되는 provider:**')[0];
+    assert.equal(alwaysAvailable.includes(`| \`${token}\``), true);
+  }
+
+  const conditionalProviders = systemSpec.split('**역할이 있을 때만 등록되는 provider:**')[1];
+  for (const row of [
+    /\| `ZLINK_ACTOR_CLIENT` \| Spot node와 location store가 모두 등록됨 \|/,
+    /\| `ZLINK_ACTOR_MANAGER` \| actor manager가 활성화됨 \|/,
+    /\| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` \| location store가 하나 이상 등록됨 \|/,
+    /\| `ZLINK_LOCATION_RUNTIME_QUERY` \| location store가 하나 이상 등록됨 \|/
+  ]) {
+    assert.match(conditionalProviders, row);
+  }
+});
+
+test('node one-way submit documentation keeps the void acceptance contract', () => {
+  const calls = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Channels', 'Calls.ts'),
+    'utf8'
+  );
+  const matrix = fs.readFileSync(
+    path.join(docRoot, 'internals', 'regression-test-matrix.ko.md'),
+    'utf8'
+  );
+
+  assert.match(calls, /export interface ZLinkSendCall \{\s*submit\(\): void;/);
+  assert.match(calls, /export interface ZLinkPublishCall \{\s*submit\(\): void;/);
+  assert.match(matrix, /`submit\(\): void`는 local queue가 수락하면 즉시 반환한다/);
+  assert.match(matrix, /local queue가 수락하지 못하면 동기 예외를 던지고/);
+  assert.doesNotMatch(matrix, /Promise.*미해결 유지|ready 이후에 resolve|submitter timeout 정책에 따라 resolve/);
+});
+
+test('node interface catalog declarations exactly match public package declarations', () => {
+  const catalog = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
+  const publicShapes = publicDeclarationShapes([
+    path.join(workspaceRoot, 'packages', 'framework', 'dist', 'index.d.ts'),
+    path.join(workspaceRoot, 'packages', 'nestjs', 'dist', 'index.d.ts')
+  ]);
+  const catalogShapes = new Map();
+
+  for (const declaration of catalogTypeDeclarations(catalog)) {
+    const values = catalogShapes.get(declaration.name.text) ?? [];
+    values.push(declarationShape(declaration));
+    catalogShapes.set(declaration.name.text, values);
+  }
+
+  assert.equal(publicShapes.size, 334);
+  assert.deepEqual([...catalogShapes.keys()].sort(), [...publicShapes.keys()].sort());
+  for (const [name, expected] of publicShapes) {
+    assert.deepEqual(
+      [...new Set(catalogShapes.get(name) ?? [])].sort(),
+      [...new Set(expected)].sort(),
+      `${name}: declaration mismatch`
+    );
+  }
+});
+
+test('typescript stream connector specification matches the browser package declaration', () => {
+  const specification = fs.readFileSync(path.join(typescriptSpecRoot, '03-stream-connector.ko.md'), 'utf8');
+  const connector = catalogTypeDeclarations(specification)
+    .find((declaration) => declaration.name.text === 'ZlinkStreamConnector');
+  const publicShapes = publicDeclarationShapes([
+    path.join(workspaceRoot, 'packages', 'stream-connector', 'dist', 'browser', 'index.d.ts')
+  ]);
+
+  assert.notEqual(connector, undefined);
+  assert.deepEqual(
+    [declarationShape(connector)],
+    [...new Set(publicShapes.get('ZlinkStreamConnector') ?? [])]
+  );
+  assert.match(specification, /waitFor<TPayload = ZlinkStreamEncodedPayload>\(name: string\)/);
+  assert.match(specification, /on<TPayload = ZlinkStreamEncodedPayload>\(/);
+  assert.match(specification, /flowFrom\(flow: ZlinkStreamFlow\): ZlinkStreamSendCall/);
+  assert.match(specification, /flowFrom\(flow: ZlinkStreamFlow\): ZlinkStreamRequestCall/);
+});
+
+test('node G0 ledger pins every common and Node specification hash', () => {
+  const ledger = fs.readFileSync(nodeG0Ledger, 'utf8');
+  const snapshots = new Map(
+    [...ledger.matchAll(/^\| (common|node|typescript) \| `([^`]+)` \| `([a-f0-9]{64})` \|$/gm)]
+      .map((match) => [`${match[1]}:${match[2]}`, match[3]])
+  );
+  const expectedFiles = [
+    ...fs.readdirSync(commonSpecRoot)
+      .filter((file) => file.endsWith('.ko.md'))
+      .sort()
+      .map((file) => [`common:${file}`, path.join(commonSpecRoot, file)]),
+    ...['01-system-structure.ko.md', '02-handler-interfaces.ko.md']
+      .map((file) => [`node:${file}`, path.join(specRoot, file)]),
+    ...['README.ko.md', '03-stream-connector.ko.md']
+      .map((file) => [`typescript:${file}`, path.join(typescriptSpecRoot, file)])
+  ];
+
+  assert.deepEqual([...snapshots.keys()].sort(), expectedFiles.map(([key]) => key).sort());
+  for (const [key, file] of expectedFiles) {
+    const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    assert.equal(actual, snapshots.get(key), `${key} SHA-256 changed`);
+  }
 });
 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
@@ -166,7 +321,6 @@ test('node documentation keeps fanout and route client public surface aligned wi
   assert.deepEqual(offenders.sort(), []);
   const channelSpec = fs.readFileSync(files[0], 'utf8');
   assert.match(channelSpec, /publish\(channelName: string, topic: string, event: unknown\)/);
-  assert.match(channelSpec, /publisher\.publish\(ch, topic, evt\)/);
 });
 
 test('node framework docs do not describe removed nested configuration callbacks', () => {
@@ -244,9 +398,13 @@ test('node actor destroy docs keep Entry Spot ownership and disconnect isolation
   }
 
   const actorSpec = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
-  assert.equal(actorSpec.includes('Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다'), true);
-  assert.equal(actorSpec.includes('user Spot context 에는'), true);
-  assert.equal(actorSpec.includes('destroy 나 user Spot leave 를 자동으로 만들지 않는다'), true);
+  const declarations = catalogTypeDeclarations(actorSpec);
+  const entryContext = declarations.find((declaration) => declaration.name.text === 'ZLinkEntrySpotContext');
+  const userContext = declarations.find((declaration) => declaration.name.text === 'ZLinkSpotContext');
+  assert.notEqual(entryContext, undefined);
+  assert.notEqual(userContext, undefined);
+  assert.match(declarationShape(entryContext), /destroyActor\(actor:TActor,signal\?:AbortSignal\):Promise<void>/);
+  assert.doesNotMatch(declarationShape(userContext), /destroyActor/);
   assert.deepEqual(offenders.sort(), []);
 });
 
@@ -349,6 +507,113 @@ function allDeclarationFiles(root) {
 
 function declarationHasSymbol(declarations, name) {
   return new RegExp(`\\b(?:export\\s+)?(?:declare\\s+)?(?:interface|class|const|type|function)\\s+${name}\\b`).test(declarations);
+}
+
+function publicDeclarationShapes(entries) {
+  const program = ts.createProgram(entries, {
+    target: ts.ScriptTarget.Latest,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    skipLibCheck: true
+  });
+  const checker = program.getTypeChecker();
+  const shapes = new Map();
+
+  for (const entry of entries) {
+    const sourceFile = program.getSourceFile(entry);
+    const moduleSymbol = sourceFile === undefined ? undefined : checker.getSymbolAtLocation(sourceFile);
+    assert.notEqual(moduleSymbol, undefined, `${entry} is not a declaration module`);
+    for (let symbol of checker.getExportsOfModule(moduleSymbol)) {
+      if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+      for (const declaration of symbol.getDeclarations() ?? []) {
+        if (!isCatalogTypeDeclaration(declaration)) continue;
+        const values = shapes.get(symbol.name) ?? [];
+        values.push(declarationShape(declaration));
+        shapes.set(symbol.name, values);
+      }
+    }
+  }
+  return shapes;
+}
+
+function catalogTypeDeclarations(markdown) {
+  const declarations = [];
+  for (const match of markdown.matchAll(/```(?:ts|typescript)\s*\n([\s\S]*?)```/g)) {
+    const sourceFile = ts.createSourceFile(
+      'node-interface-catalog.ts',
+      match[1],
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    for (const statement of sourceFile.statements) {
+      if (ts.isVariableStatement(statement)) {
+        declarations.push(...statement.declarationList.declarations.filter(isCatalogTypeDeclaration));
+      } else if (isCatalogTypeDeclaration(statement)) {
+        declarations.push(statement);
+      }
+    }
+  }
+  return declarations;
+}
+
+function isCatalogTypeDeclaration(node) {
+  return (ts.isInterfaceDeclaration(node)
+    || ts.isTypeAliasDeclaration(node)
+    || ts.isEnumDeclaration(node)
+    || ts.isClassDeclaration(node)
+    || ts.isFunctionDeclaration(node)
+    || ts.isVariableDeclaration(node))
+    && node.name !== undefined;
+}
+
+function declarationShape(declaration) {
+  const typeParameters = declaration.typeParameters
+    ?.map((parameter) => canonicalDeclarationText(parameter.getText()))
+    .join(',') ?? '';
+  const heritage = declaration.heritageClauses
+    ?.map((clause) => canonicalDeclarationText(clause.getText()))
+    .join('') ?? '';
+
+  if (ts.isInterfaceDeclaration(declaration) || ts.isClassDeclaration(declaration)) {
+    const members = declaration.members
+      .map((member) => canonicalDeclarationText(member.getText()))
+      .sort()
+      .join('|');
+    return `${ts.SyntaxKind[declaration.kind]}<${typeParameters}>${heritage}{${members}}`;
+  }
+  if (ts.isEnumDeclaration(declaration)) {
+    const members = declaration.members.map((member) => {
+      const name = canonicalDeclarationText(member.name.getText());
+      if (member.initializer === undefined) return name;
+      const initializer = member.initializer.getText();
+      const numeric = Number(initializer);
+      return `${name}=${Number.isFinite(numeric) ? numeric : canonicalDeclarationText(initializer)}`;
+    });
+    return `enum{${members.join('|')}}`;
+  }
+  if (ts.isFunctionDeclaration(declaration)) {
+    const parameters = declaration.parameters
+      .map((parameter) => canonicalDeclarationText(parameter.getText()))
+      .join(',');
+    return `function<${typeParameters}>(${parameters}):${canonicalDeclarationText(declaration.type?.getText() ?? 'void')}`;
+  }
+  if (ts.isVariableDeclaration(declaration)) {
+    return `variable:${canonicalDeclarationText(declaration.getText())}`;
+  }
+  return `type<${typeParameters}>=${canonicalDeclarationText(declaration.type.getText())}`;
+}
+
+function canonicalDeclarationText(value) {
+  return value
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+    .replace(/\b(?:export|declare)\s+/g, '')
+    .replace(/\s+/g, '')
+    .replace(/,(?=\))/g, '')
+    .replace(/;/g, '')
+    .replace(/'/g, '"')
+    .replace(/^\|/, '')
+    .replace(/\(\|/g, '(');
 }
 
 function markdownLinks(content) {

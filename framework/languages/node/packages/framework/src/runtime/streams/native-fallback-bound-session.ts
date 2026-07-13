@@ -21,16 +21,19 @@ import {
 } from './protocol';
 import type { ZLinkNativeFallbackBoundSessionPort } from './stream-binding-runtime-ports';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
+import { currentOrCreateFlow } from '../diagnostics/flow-context';
 
 export interface ZLinkNativeFallbackBoundSessionOptions {
   readonly runtime: ZLinkNativeFallbackBoundSessionPort;
   readonly routedTransport: ZLinkActorRoutedJoinTransport;
   readonly nodeProvider: () => ZLinkBackendSpotNode;
   readonly actorRefProvider: () => ActorRef | undefined;
+  readonly localActorProvider?: () => boolean;
   readonly remoteBoundSessionTargetProvider: () => ZLinkRemoteBoundSessionTarget | undefined;
   readonly remoteActorPacketTargetProvider: () => ZLinkRemoteActorPacketTarget | undefined;
   readonly requestTimeoutMs?: number;
   readonly actorId: string;
+  readonly onSend?: (actorId: string, packetName: string) => void;
 }
 
 export class ZLinkNativeFallbackBoundSession implements ZLinkBoundSession {
@@ -108,6 +111,10 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     }
     this.executed = true;
     const packetName = resolveFrameworkPacketName(this.message, this.selectedPacketName, 'Bound session');
+    if (this.options.localActorProvider?.() === true && this.sendLocal(packetName)) {
+      this.options.onSend?.(this.options.actorId, packetName);
+      return;
+    }
     const remoteTarget = this.options.remoteBoundSessionTargetProvider();
     if (remoteTarget !== undefined) {
       const actorRef = this.options.actorRefProvider();
@@ -121,7 +128,8 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         actorOwnershipGeneration: ownershipGeneration?.toString(),
         message: this.message,
         boundPacketName: packetName,
-        metadata: this.selectedMetadata
+        metadata: this.selectedMetadata,
+        ...currentOrCreateFlow()
       });
       const target = {
         routerChannelId: remoteTarget.routerChannelId,
@@ -135,6 +143,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         payload,
         { timeoutMs: this.options.requestTimeoutMs, signal }
       )) {
+        this.options.onSend?.(this.options.actorId, packetName);
         return;
       }
       await this.options.routedTransport.sendToSpot(
@@ -142,14 +151,11 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         payload,
         { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
       );
+      this.options.onSend?.(this.options.actorId, packetName);
       return;
     }
-    if (this.options.runtime.sendLocalBoundSession(
-      this.options.actorId,
-      this.message,
-      packetName,
-      this.selectedMetadata
-    )) {
+    if (this.sendLocal(packetName)) {
+      this.options.onSend?.(this.options.actorId, packetName);
       return;
     }
     const actorRef = this.options.actorRefProvider();
@@ -163,6 +169,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         this.selectedMetadata,
         signal
       );
+      this.options.onSend?.(this.options.actorId, packetName);
       return;
     }
     await this.options.runtime.sendBoundSession(
@@ -171,6 +178,16 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       packetName,
       this.selectedMetadata,
       signal
+    );
+    this.options.onSend?.(this.options.actorId, packetName);
+  }
+
+  private sendLocal(packetName: string): boolean {
+    return this.options.runtime.sendLocalBoundSession(
+      this.options.actorId,
+      this.message,
+      packetName,
+      this.selectedMetadata
     );
   }
 }

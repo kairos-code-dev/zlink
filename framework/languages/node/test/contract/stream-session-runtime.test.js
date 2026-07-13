@@ -8,6 +8,102 @@ const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const backend = require('../../packages/framework/dist/runtime/backend');
+const nodeMonitorBackend = require('../../packages/framework/dist/runtime/backend/node/node-monitor-backend-adapter');
+
+test('node monitor adapter preserves the opaque native session routing id', () => {
+  let nativeHandler;
+  let observed;
+  const routingId = zlink.RoutingId.from(2);
+  const monitor = nodeMonitorBackend.wrapMonitorSocket({
+    close() {},
+    recv() { return null; },
+    onEvent(handler) { nativeHandler = handler; }
+  });
+  monitor.onEvent((event) => { observed = event; });
+
+  nativeHandler({
+    event: zlink.MonitorEventType.Disconnected,
+    value: 0,
+    routingId,
+    localAddr: 'tcp://127.0.0.1:9000',
+    remoteAddr: 'tcp://127.0.0.1:50000'
+  });
+
+  assert.equal(observed.routingId, routingId);
+});
+
+test('ConnectionReady before the first packet keeps the native routing id for replies', async () => {
+  const socket = new FakeStreamSocket();
+  const routingId = zlink.RoutingId.from(2);
+  let monitorHandler;
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: {
+      createTextMessage(payload) { return zlink.Message.from(Buffer.from(payload)); },
+      createBinaryMessage(payload) { return zlink.Message.from(Buffer.from(payload)); }
+    }
+  });
+  const replied = new Promise((resolve) => {
+    const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+      socket,
+      bindingRuntime,
+      monitor: { onEvent(handler) { monitorHandler = handler; } },
+      headerDecoder: (header) => connector.ZlinkStreamHeaderCodec.decode(header.data()),
+      sessionFactory(context) {
+        return {
+          context,
+          async onDispatch() {
+            context.client.reply('ready-first').submit();
+            resolve(runtime);
+          }
+        };
+      }
+    });
+    runtime.start();
+    monitorHandler({
+      nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+      routingId,
+      localAddr: 'tcp://local',
+      remoteAddr: 'tcp://remote',
+      value: 0
+    });
+    socket.emitPacket(routingId, fakeHeader({
+      kind: connector.ZlinkStreamMessageKind.Request,
+      requestSeq: 1n,
+      name: 'ReadyFirst'
+    }), fakeMessage('payload'));
+  });
+
+  const runtime = await replied;
+  assert.equal(socket.sent.length, 1);
+  assert.equal(socket.sent[0].routingId, routingId);
+  await runtime.dispose();
+});
+
+test('actor session lifecycle serializes disconnect and replacement bind for the same actor', async () => {
+  const lifecycle = new framework.ZLinkActorSessionLifecycleCoordinator();
+  const events = [];
+  let releaseDisconnect;
+  const disconnectCanFinish = new Promise((resolve) => { releaseDisconnect = resolve; });
+  let disconnectStarted;
+  const disconnectDidStart = new Promise((resolve) => { disconnectStarted = resolve; });
+
+  const disconnect = lifecycle.run('actor-1', async () => {
+    events.push('disconnect:start');
+    disconnectStarted();
+    await disconnectCanFinish;
+    events.push('disconnect:end');
+  });
+  await disconnectDidStart;
+  const bind = lifecycle.run('actor-1', async () => {
+    events.push('bind');
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ['disconnect:start']);
+
+  releaseDisconnect();
+  await Promise.all([disconnect, bind]);
+  assert.deepEqual(events, ['disconnect:start', 'disconnect:end', 'bind']);
+});
 
 test('stream session node runtime dispatches framed packets through one session context', async () => {
   const socket = new FakeStreamSocket();
@@ -148,6 +244,76 @@ test('stream session node runtime ignores unmatched monitor disconnect when mult
     ['connected', 'session-stale-a'],
     ['connected', 'session-stale-b']
   ]);
+  await runtime.dispose();
+});
+
+test('stream session node runtime uses monitor routing id to disconnect exactly one of multiple sessions', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: { onEvent(handler) { monitorHandler = handler; } },
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) { events.push(['connected', ctx.sessionId]); },
+        async onDisconnected(ctx) { events.push(['disconnected', ctx.sessionId]); }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-a', 'tcp://local', 'tcp://remote-a');
+  runtime.markConnected('session-b', 'tcp://local', 'tcp://remote-b');
+  await new Promise((resolve) => setImmediate(resolve));
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: 'tcp://local',
+    remoteAddr: 'tcp://remote-a',
+    routingId: 'session-a'
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, [
+    ['connected', 'session-a'],
+    ['connected', 'session-b'],
+    ['disconnected', 'session-a']
+  ]);
+  assert.equal(runtime.findSession('session-b').isDisconnected, false);
+  await runtime.dispose();
+});
+
+test('stream session node runtime does not guess by endpoint when a disconnect lacks routing id and multiple sessions exist', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: { onEvent(handler) { monitorHandler = handler; } },
+    sessionFactory(context) {
+      return {
+        context,
+        async onDisconnected(ctx) { events.push(['disconnected', ctx.sessionId]); }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('old-session', 'tcp://local', 'tcp://old');
+  runtime.markConnected('fresh-session', 'tcp://local', 'tcp://fresh');
+  await new Promise((resolve) => setImmediate(resolve));
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: 'tcp://local',
+    remoteAddr: 'tcp://fresh',
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, []);
   await runtime.dispose();
 });
 

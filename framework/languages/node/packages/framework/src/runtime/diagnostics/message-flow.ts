@@ -121,7 +121,7 @@ export class ZLinkMessageFlowTracer {
     readonly effectiveMode?: ZLinkMessageFlowLogMode;
     readonly flowId?: string;
     readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
-  }): void {
+  }, defaultLogLevel: 'error' | 'warn' | 'debug' = 'error'): void {
     const root = flowInput.flowId !== undefined && flowInput.flowOrigin !== undefined
       ? { flowId: flowInput.flowId, flowOrigin: flowInput.flowOrigin }
       : currentOrCreateFlow();
@@ -142,7 +142,7 @@ export class ZLinkMessageFlowTracer {
     }
     this.tracedEvents += 1;
     try {
-      this.logDefault(flow);
+      this.logDefault(flow, defaultLogLevel);
     } catch (error) {
       this.errorSink.reportRuntimeTaskException('message-flow', error);
     }
@@ -182,7 +182,7 @@ export class ZLinkMessageFlowTracer {
     return this.sampleCounter % stride === 0;
   }
 
-  private logDefault(flow: ZLinkMessageFlowEvent): void {
+  private logDefault(flow: ZLinkMessageFlowEvent, level: 'error' | 'warn' | 'debug'): void {
     const d = this.ctx.diagnostics;
     const includeSize =
       flow.messageSize !== undefined &&
@@ -192,7 +192,7 @@ export class ZLinkMessageFlowTracer {
     if (d.logFile !== undefined) {
       writeTraceFile(d.logFile, line);
     } else {
-      console.error(line);
+      console[level](line);
     }
   }
 

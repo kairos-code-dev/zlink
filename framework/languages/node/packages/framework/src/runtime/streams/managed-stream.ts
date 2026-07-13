@@ -85,6 +85,11 @@ export class ZLinkManagedStream implements ZLinkStream {
     await this.socket.bindActor(this.backendRoutingId(), toBackendActorRef(actor), timeoutMs, signal);
   }
 
+  async unbindActor(actorId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    await this.socket.unbindActor(this.backendRoutingId(), actorId, timeoutMs, signal);
+  }
+
   sendBoundActor(actorId: string, parts: readonly Message[], flags?: ZLinkBackendSendFlags): boolean {
     return this.socket.sendBoundActor(this.backendRoutingId(), actorId, parts, flags ?? 0);
   }

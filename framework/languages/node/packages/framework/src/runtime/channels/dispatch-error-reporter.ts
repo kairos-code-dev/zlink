@@ -1,5 +1,7 @@
 import type { ZLinkDispatchFailure, ZLinkProviderResolver } from '../../contracts';
 import {
+  ZLinkDispatchErrorReason,
+  ZLinkDispatchMessageKind,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowOutcome
 } from '../../contracts';
@@ -60,7 +62,7 @@ export class ZLinkDispatchErrorReporter {
       errorAction: event.action,
       errorType: errorInfo.errorType,
       errorMessage: errorInfo.errorMessage
-    });
+    }, dispatchFailureLogLevel(event));
   }
 
   get reportedCount(): number {
@@ -70,6 +72,31 @@ export class ZLinkDispatchErrorReporter {
   get observerFailureCount(): number {
     return this.flow.observerFailureCount;
   }
+}
+
+function dispatchFailureLogLevel(
+  event: ZLinkRuntimeDispatchFailure
+): 'error' | 'warn' | 'debug' {
+  if (event.reason === ZLinkDispatchErrorReason.HandlerException) {
+    return 'error';
+  }
+  if (
+    event.messageKind === ZLinkDispatchMessageKind.Publish
+    && (event.reason === ZLinkDispatchErrorReason.HandlerMissing
+      || event.reason === ZLinkDispatchErrorReason.PayloadDecodeFailed
+      || event.reason === ZLinkDispatchErrorReason.InvalidFrame)
+  ) {
+    return 'debug';
+  }
+  if (
+    event.messageKind === ZLinkDispatchMessageKind.Send
+    && (event.reason === ZLinkDispatchErrorReason.HandlerMissing
+      || event.reason === ZLinkDispatchErrorReason.PayloadDecodeFailed
+      || event.reason === ZLinkDispatchErrorReason.InvalidFrame)
+  ) {
+    return 'warn';
+  }
+  return 'error';
 }
 
 function dispatchErrorInfo(event: ZLinkRuntimeDispatchFailure): { readonly errorType?: string; readonly errorMessage?: string } {

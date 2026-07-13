@@ -54,6 +54,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   readonly shutdownSignal: () => AbortSignal | undefined;
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly traceBoundSessionSend?: (actorId: string, packetName: string) => void;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -116,10 +117,12 @@ export class ZLinkActorRuntimeOptionsFactory {
             ? undefined
             : { ...actorRef, ownershipGeneration: state?.locationGeneration } as ActorRef;
         },
+        localActorProvider: () => this.options.actorManager()?.getState(actorId)?.actor !== undefined,
         remoteBoundSessionTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteBoundSessionTarget,
         remoteActorPacketTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteActorPacketTarget,
         requestTimeoutMs: this.options.registration.requestTimeoutMs,
-        actorId
+        actorId,
+        onSend: this.options.traceBoundSessionSend
       }),
       actorCreatedNodeRidProvider: () => this.options.primarySpotNodeOrUndefined()?.routingId,
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {

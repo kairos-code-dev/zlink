@@ -167,7 +167,19 @@ export class ZLinkSpotActivationLifecycle {
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       workerRuntime: this.options.workerRuntime,
       leaveActor: (actor, contextSignal) => this.options.leaveActor(spotRid, actor, contextSignal),
-      close: (contextSignal) => this.options.closeSpot(spotRid, contextSignal)
+      close: async (contextSignal) => {
+        // Native callbacks can cross a promise boundary that does not retain
+        // the serial turn context. Queue the close before calling the manager
+        // so the callback never waits for work behind its own serial turn.
+        if (activation?.serial.isExecuting === true && !activation.serial.isCurrentTurn) {
+          activation.requestClose();
+          const retry = activation.serial.post(() => this.options.closeSpot(spotRid, contextSignal));
+          this.options.detachedTaskRunner?.runDetached(`spot close ${String(spotRid)}`, async () => { await retry; });
+          if (this.options.detachedTaskRunner === undefined) void retry.catch(() => undefined);
+          return true;
+        }
+        return await this.options.closeSpot(spotRid, contextSignal);
+      }
     });
     try {
       spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
@@ -189,9 +201,15 @@ export class ZLinkSpotActivationLifecycle {
         actorHandlers,
         handlers,
         externalActorCount: () => this.options.actorCountProvider?.(spotRid) ?? 0,
-        nativeSpot
+        nativeSpot,
+        closeWhenReady: () => {
+          const close = async () => { await this.options.closeSpot(spotRid); };
+          this.options.detachedTaskRunner?.runDetached(`spot drain close ${String(spotRid)}`, close);
+          if (this.options.detachedTaskRunner === undefined) void close().catch(() => undefined);
+        }
       });
       const nativeDispatch = this.actorAdmission.attachNativeActorJoinDispatch(activation, nativeSpot);
+      activation.actorDispatch = nativeDispatch;
       lifecycleStarted = true;
       return await this.runCreateLifecycle(activation, spotType, request, locationClaim, nativeDispatch, signal);
     } catch (error) {
@@ -360,6 +378,7 @@ export class ZLinkSpotActivationLifecycle {
       await cleanup(() => activation.timers.dispose(), () => { state.timersDisposed = true; });
     }
     if (!state.nativeDisposed) {
+      await cleanup(() => activation.actorDispatch?.dispose(), () => undefined);
       await cleanup(() => activation.nativeSpot?.dispose(), () => { state.nativeDisposed = true; });
     }
     if (!state.locationReleased) {

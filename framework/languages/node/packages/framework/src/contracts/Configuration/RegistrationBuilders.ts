@@ -245,9 +245,7 @@ function defaultDispatchOptions(): ZLinkDispatchOptions {
     unhandled: {
       request: ZLinkUnhandledDispatchAction.ReplyError,
       send: ZLinkUnhandledDispatchAction.LogAndDrop,
-      publish: ZLinkUnhandledDispatchAction.LogAndDrop,
-      sendLogLevel: 'warn',
-      publishLogLevel: 'warn'
+      publish: ZLinkUnhandledDispatchAction.LogAndDrop
     },
     diagnostics: {
       messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,

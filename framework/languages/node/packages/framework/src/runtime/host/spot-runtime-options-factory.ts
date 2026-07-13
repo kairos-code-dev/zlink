@@ -1,4 +1,9 @@
-import type { ZLinkRuntimeEventPublisher } from '../../contracts';
+import type {
+  Type,
+  ZLinkRuntimeEventPublisher,
+  ZLinkSpot,
+  ZLinkSpotDrainPolicy
+} from '../../contracts';
 import type {
   DefaultZLinkActorManager,
   ZLinkActorHandoffCoordinator
@@ -81,6 +86,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
       actorTransferRuntime,
       boundSessionRuntime: this.options.boundSessionRelay.boundSessions,
       actorHandoffRuntime: this.options.actorHandoff,
+      spotDrainPolicy: this.spotDrainPolicyResolver(),
       metrics: this.options.metrics,
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
     };
@@ -88,5 +94,21 @@ export class ZLinkSpotRuntimeOptionsFactory {
 
   private primaryNode(): ZLinkBackendSpotNode | undefined {
     return this.options.spotNodeRuntime()?.primaryNode;
+  }
+
+  private spotDrainPolicyResolver(): (spotType: Type<ZLinkSpot>) => ZLinkSpotDrainPolicy {
+    const policies = new Map<Type<ZLinkSpot>, ZLinkSpotDrainPolicy[]>();
+    for (const node of this.options.registration.spotNodes.values()) {
+      for (const spotType of node.spotFactories ?? []) {
+        const registered = policies.get(spotType) ?? [];
+        registered.push(node.drainPolicy ?? 'DrainNatural');
+        policies.set(spotType, registered);
+      }
+    }
+    return (spotType) => {
+      const registered = policies.get(spotType);
+      if (registered === undefined || registered.includes('DrainNatural')) return 'DrainNatural';
+      return 'ReleaseAndRecreate';
+    };
   }
 }

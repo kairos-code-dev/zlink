@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 
 internal static class TestHostScenarioConfigurator
@@ -22,6 +23,12 @@ internal static class TestHostScenarioConfigurator
                 return;
             case "channel-publisher":
                 ConfigureChannelPublisher(services, options);
+                return;
+            case "route-server":
+                ConfigureRouteServer(services, options);
+                return;
+            case "route-client":
+                ConfigureRouteClient(services, options);
                 return;
             case "spot-node":
                 ConfigureSpotNode(services, options);
@@ -112,6 +119,42 @@ internal static class TestHostScenarioConfigurator
                     options.ChannelName!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));
+    }
+
+    private static void ConfigureRouteServer(IServiceCollection services, TestHostOptions options)
+    {
+        services.AddSingleton(new TestHostEventSink(options.EventFilePath));
+        services.AddZLinkFramework(framework =>
+        {
+            framework.AddRouteMeshChannel(options.ChannelName
+                                          ?? throw new InvalidOperationException(
+                                              "Route server mode requires --channel-name."))
+                .EnableServer(options.ServerEndpoint
+                              ?? throw new InvalidOperationException(
+                                  "Route server mode requires --server-endpoint."))
+                .SetRoutingId(RoutingId.From("dotnet-route"))
+                .AddRequestHandler<TestHostRouteRequestHandler, TestHostRouteRequest, TestHostRouteReply>();
+        });
+    }
+
+    private static void ConfigureRouteClient(IServiceCollection services, TestHostOptions options)
+    {
+        services.AddSingleton(new TestHostEventSink(options.EventFilePath));
+        services.AddZLinkFramework(framework =>
+        {
+            framework.AddRouteMeshChannel(options.ChannelName
+                                          ?? throw new InvalidOperationException(
+                                              "Route client mode requires --channel-name."))
+                .EnableClient(options.ServerEndpoint
+                              ?? throw new InvalidOperationException(
+                                  "Route client mode requires --server-endpoint."));
+        });
+        services.AddHostedService(provider =>
+            new RouteClientStartupRequestHostedService(
+                provider.GetRequiredService<IZLinkRouteClient>(),
+                provider.GetRequiredService<TestHostEventSink>(),
+                options.ChannelName!,
+                options.PublishValue ?? "dotnet-route-to-node"));
     }
 
     private static void ConfigureSpotNode(IServiceCollection services, TestHostOptions options)

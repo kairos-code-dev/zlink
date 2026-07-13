@@ -65,6 +65,7 @@ interface ZLinkSpotActorAdmissionRuntime {
     readonly runtime: ZLinkSpotActorTransferRuntime;
   };
   readonly commitNativeActor?: (actor: ZLinkActor) => Promise<void>;
+  readonly commitActorDeparture?: (actorId: string) => void;
   readonly commitTransferredActor?: (
     actor: ZLinkActor,
     backlog: readonly ZLinkActorHandoffPacket[]
@@ -128,6 +129,7 @@ export class ZLinkSpotActorJoinDispatch {
       serial: options.serial,
       resolveActor: actors.resolveActor,
       getTarget: actors.getTarget,
+      commitActorDeparture: actors.commitActorDeparture,
       waitIdle: waitSpotDispatchIdle
     });
     this.actorPacketDrain = new ZLinkSpotActorPacketDrain({
@@ -181,6 +183,10 @@ export class ZLinkSpotActorJoinDispatch {
   configureSubscriptions(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
     this.subscriptions.configure(registrations);
     this.routedFrames.configurePacketHandlers(registrations);
+  }
+
+  dispose(): void {
+    this.actorPacketDrain.dispose();
   }
 
   attach(): void {

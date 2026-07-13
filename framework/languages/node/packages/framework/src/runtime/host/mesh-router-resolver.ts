@@ -47,6 +47,15 @@ export class MeshRouterResolver {
     return names.length === 1 ? names[0] : undefined;
   }
 
+  actorSpotMeshName(actorType: string): string | undefined {
+    const matches = [...this.registration.spotNodes.entries()]
+      .filter(([, node]) => node.actorFactories instanceof Map
+        ? node.actorFactories.has(actorType)
+        : node.actorFactories !== undefined && Object.hasOwn(node.actorFactories, actorType))
+      .map(([name]) => name);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
   spotLocationMeshNames(): readonly string[] {
     return [...new Set([
       ...this.registration.spotNodes.keys(),

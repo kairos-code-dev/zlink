@@ -22,11 +22,7 @@ if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
 
 const releaseGateLock = acquireNodeTestGateLock(nodeRoot, 'runtime');
 
-run('build', process.execPath, [
-  path.resolve(nodeRoot, 'node_modules/typescript/bin/tsc'),
-  '-b',
-  'tsconfig.build.json'
-]);
+run('build', process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build']);
 run('typecheck', process.execPath, [
   path.resolve(nodeRoot, 'node_modules/typescript/bin/tsc'),
   '-p',

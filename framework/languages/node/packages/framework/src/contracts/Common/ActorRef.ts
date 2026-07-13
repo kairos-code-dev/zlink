@@ -24,6 +24,8 @@ export function zlinkActorRefSnapshotToActorRef(snapshot: ZLinkActorRefSnapshot)
   return {
     nodeRid: snapshot.nodeRid,
     actorId: snapshot.actorId,
-    generation: snapshot.generation
+    // JSON transports carry uint64 values as decimal strings. Normalize the
+    // wire value at the public conversion boundary so callers keep bigint.
+    generation: BigInt(snapshot.generation)
   };
 }

@@ -12,7 +12,7 @@ const specPath = path.join(
   'spec',
   'languages',
   'node',
-  'handler-interfaces.ko.md'
+  '02-handler-interfaces.ko.md'
 );
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 const internalLocationCodecHelpers = new Set([
@@ -32,7 +32,7 @@ test('framework contract declarations cover handler interface catalog exports', 
   const declarations = readTree(declarationsRoot);
   const missing = [];
 
-  for (const name of exportedCatalogNames(spec).filter((name) => !internalLocationCodecHelpers.has(name))) {
+  for (const name of exportedCatalogNames(frameworkCatalog(spec)).filter((name) => !internalLocationCodecHelpers.has(name))) {
     const declarationPattern = new RegExp(`\\b(?:interface|type|enum|function)\\s+${name}\\b`);
     if (!declarationPattern.test(declarations)) {
       missing.push(name);
@@ -47,7 +47,7 @@ test('framework runtime exports decorator factories and enums from the catalog',
   const spec = fs.readFileSync(specPath, 'utf8');
   const missing = [];
 
-  for (const name of runtimeCatalogNames(spec).filter((name) => !internalLocationCodecHelpers.has(name))) {
+  for (const name of runtimeCatalogNames(frameworkCatalog(spec)).filter((name) => !internalLocationCodecHelpers.has(name))) {
     if (!(name in framework)) {
       missing.push(name);
     }
@@ -67,6 +67,17 @@ test('framework public root does not expose direct runtime start hosts', () => {
   const exposed = hiddenNames.filter((name) => name in framework);
 
   assert.deepEqual(exposed, []);
+});
+
+test('monitoring options expose only common-spec socket location and Spot sources', () => {
+  const contracts = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),
+    'utf8'
+  );
+  const spec = fs.readFileSync(specPath, 'utf8');
+
+  assert.doesNotMatch(contracts, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
+  assert.doesNotMatch(spec, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
 });
 
 test('framework configuration surface does not expose codec callback options', () => {
@@ -454,6 +465,10 @@ test('old public contract names from the redesign rename table do not re-enter n
 
 function exportedCatalogNames(spec) {
   return uniqueMatches(spec, /^export\s+(?:interface|type|enum|function)\s+([A-Za-z][A-Za-z0-9_]*)/gm);
+}
+
+function frameworkCatalog(spec) {
+  return spec.split(/^### \d+\.\d+ @zlink-systems\/nestjs:/m)[0];
 }
 
 function runtimeCatalogNames(spec) {

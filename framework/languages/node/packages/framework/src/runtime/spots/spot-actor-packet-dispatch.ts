@@ -16,6 +16,7 @@ import {
   zlinkMessageMetadata
 } from '../../contracts';
 import { flowIfEnabled } from '../diagnostics';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
   ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
@@ -63,6 +64,8 @@ interface ZLinkSpotActorPacketDispatchOptions {
     requestSeq: bigint,
     response: unknown,
     replyOptions: ZLinkActorResponseOptions,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void> | void;
   readonly actorErrorSender?: (
@@ -71,6 +74,7 @@ interface ZLinkSpotActorPacketDispatchOptions {
     requestSeq: bigint,
     error: unknown,
     metadata: ReadonlyMap<string, string>,
+    fallbackBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef
   ) => Promise<void> | void;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -99,50 +103,61 @@ export class ZLinkSpotActorPacketDispatch {
       this.reportInvalidFrame(actorId, ZLinkDispatchMessageKind.ActorSend, error);
       throw error;
     }
-    const messageKind = header.kind === ZLinkStreamMessageKind.Request
-      ? ZLinkDispatchMessageKind.ActorRequest
-      : ZLinkDispatchMessageKind.ActorSend;
-    const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
-      ? ZLinkDispatchErrorAction.ReplyError
-      : ZLinkDispatchErrorAction.Drop;
-    this.trace(ZLinkMessageFlowOutcome.Received, actorId, header, messageKind);
-    if (
-      this.options.actorLeft?.(actorId) === true &&
-      header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET
-    ) {
-      return undefined;
-    }
-    if (remoteBoundSessionTarget !== undefined) {
-      this.options.onRemoteBoundSessionTarget?.(actorId, remoteBoundSessionTarget);
-    }
-    const routed = await this.options.routeBeforeLocal?.(
-      actorId,
-      parts,
-      returnResponse,
-      remoteBoundSessionTarget
-    );
-    if (routed?.handled === true) {
-      return routed.response;
-    }
-    const actor = this.options.resolveActor(actorId);
-    if (actor === undefined) {
-      return this.handleMissingActor(actorId, header, messageKind, action, returnResponse, fallbackActorRef);
-    }
-    if (header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
-      await this.options.onDisconnectActor(actor);
-      return undefined;
-    }
-    const payload = this.decodePayload(actorId, parts[1], header, messageKind, action);
-    return this.dispatchDecodedActorPacket(
-      actor,
-      actorId,
-      payload,
-      header,
-      messageKind,
-      action,
-      returnResponse,
-      fallbackActorRef
-    );
+    return await runWithFlow(createInboundFlow(header.flowId, header.flowOrigin), async () => {
+      const messageKind = header.kind === ZLinkStreamMessageKind.Request
+        ? ZLinkDispatchMessageKind.ActorRequest
+        : ZLinkDispatchMessageKind.ActorSend;
+      const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
+        ? ZLinkDispatchErrorAction.ReplyError
+        : ZLinkDispatchErrorAction.Drop;
+      this.trace(ZLinkMessageFlowOutcome.Received, actorId, header, messageKind);
+      if (
+        this.options.actorLeft?.(actorId) === true &&
+        header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET
+      ) {
+        return undefined;
+      }
+      if (remoteBoundSessionTarget !== undefined) {
+        this.options.onRemoteBoundSessionTarget?.(actorId, remoteBoundSessionTarget);
+      }
+      const routed = await this.options.routeBeforeLocal?.(
+        actorId,
+        parts,
+        returnResponse,
+        remoteBoundSessionTarget
+      );
+      if (routed?.handled === true) {
+        return routed.response;
+      }
+      const actor = this.options.resolveActor(actorId);
+      if (actor === undefined) {
+        return this.handleMissingActor(
+          actorId,
+          header,
+          messageKind,
+          action,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        );
+      }
+      if (header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+        await this.options.onDisconnectActor(actor);
+        return undefined;
+      }
+      const payload = this.decodePayload(actorId, parts[1], header, messageKind, action);
+      return this.dispatchDecodedActorPacket(
+        actor,
+        actorId,
+        payload,
+        header,
+        messageKind,
+        action,
+        returnResponse,
+        remoteBoundSessionTarget,
+        fallbackActorRef
+      );
+    });
   }
 
   private async handleMissingActor(
@@ -151,6 +166,7 @@ export class ZLinkSpotActorPacketDispatch {
     messageKind: ZLinkDispatchMessageKind,
     action: ZLinkDispatchErrorAction,
     returnResponse: boolean,
+    fallbackBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined,
     fallbackActorRef: ActorRef | undefined
   ): Promise<undefined> {
     this.options.dispatchErrors?.report({
@@ -177,6 +193,7 @@ export class ZLinkSpotActorPacketDispatch {
         header.requestSeq,
         missingActorError,
         header.metadata,
+        fallbackBoundSessionTarget,
         fallbackActorRef
       );
       return undefined;
@@ -217,6 +234,7 @@ export class ZLinkSpotActorPacketDispatch {
     messageKind: ZLinkDispatchMessageKind,
     action: ZLinkDispatchErrorAction,
     returnResponse: boolean,
+    fallbackBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined,
     fallbackActorRef: ActorRef | undefined
   ): Promise<unknown> {
     const dispatcher = new ZLinkSpotActorDispatcher({
@@ -264,6 +282,8 @@ export class ZLinkSpotActorPacketDispatch {
           requestSeq,
           response,
           replyOptions,
+          fallbackBoundSessionTarget,
+          fallbackActorRef,
           undefined
         );
       });
@@ -295,6 +315,7 @@ export class ZLinkSpotActorPacketDispatch {
           header.requestSeq,
           error,
           header.metadata,
+          fallbackBoundSessionTarget,
           fallbackActorRef
         );
         return undefined;

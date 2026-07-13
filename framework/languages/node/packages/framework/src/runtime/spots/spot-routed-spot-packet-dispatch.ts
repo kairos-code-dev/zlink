@@ -105,7 +105,7 @@ export class ZLinkRoutedSpotPacketDispatch {
         surface: ZLinkDispatchErrorSurface.SpotRoute,
         messageKind: returnResponse ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
         reason: ZLinkDispatchErrorReason.HandlerException,
-        action: returnResponse ? ZLinkDispatchErrorAction.ReplyError : ZLinkDispatchErrorAction.Drop,
+        action: returnResponse ? ZLinkDispatchErrorAction.FailCaller : ZLinkDispatchErrorAction.Drop,
         packetName,
         channelName: context.channelName,
         spotRid: String(spotRid),
@@ -126,7 +126,7 @@ export class ZLinkRoutedSpotPacketDispatch {
       surface: ZLinkDispatchErrorSurface.SpotRoute,
       messageKind: returnResponse ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
       reason: ZLinkDispatchErrorReason.HandlerMissing,
-      action: returnResponse ? ZLinkDispatchErrorAction.ReplyError : ZLinkDispatchErrorAction.Drop,
+      action: returnResponse ? ZLinkDispatchErrorAction.FailCaller : ZLinkDispatchErrorAction.Drop,
       packetName,
       channelName: context.channelName,
       spotRid: String(spotRid)

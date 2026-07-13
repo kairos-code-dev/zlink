@@ -4,6 +4,7 @@ import type {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
+import { currentOrCreateFlow } from '../diagnostics/flow-context';
 import {
   createStreamReplyHeader,
   encodeStreamFrame,
@@ -21,7 +22,11 @@ import {
 const DEFAULT_MAX_DECOMPRESSED_STREAM_PAYLOAD_SIZE = 64 * 1024;
 
 export interface ZLinkStreamFramePayloadCodec {
-  encode(payload: unknown): {
+  encode(payload: unknown, context?: {
+    readonly messageType?: Function;
+    readonly packetName?: string;
+    readonly direction: 'Request' | 'Response' | 'Error' | 'Send';
+  } | Function): {
     readonly codec: ZLinkStreamCodec;
     readonly payload: Uint8Array;
   };
@@ -66,9 +71,12 @@ export class ZLinkStreamFrameMessageFactory {
     payload: unknown,
     correlationId?: string
   ): Message {
+    const flow = currentOrCreateFlow();
     return this.createJsonFrameMessageWithHeader(
       payload,
       compressed,
+      packetName,
+      streamDirection(kind),
       (codec, flags) => ({
         kind,
         codec,
@@ -76,7 +84,8 @@ export class ZLinkStreamFrameMessageFactory {
         requestSeq,
         name: packetName,
         metadata,
-        correlationId
+        correlationId,
+        ...flow
       })
     );
   }
@@ -91,6 +100,8 @@ export class ZLinkStreamFrameMessageFactory {
     return this.createJsonFrameMessageWithHeader(
       payload,
       compressed,
+      requestHeader.name,
+      streamDirection(kind),
       (codec, flags) => createStreamReplyHeader(requestHeader, kind, codec, flags, metadata)
     );
   }
@@ -98,9 +109,11 @@ export class ZLinkStreamFrameMessageFactory {
   private createJsonFrameMessageWithHeader(
     payload: unknown,
     compressed: boolean,
+    packetName: string,
+    direction: 'Request' | 'Response' | 'Error' | 'Send',
     createHeader: (codec: ZLinkStreamCodec, flags: ZLinkStreamHeaderFlags) => ZLinkStreamFrameHeader
   ): Message {
-    const encoded = this.encodePayload(payload);
+    const encoded = this.encodePayload(payload, packetName, direction);
     let body = encoded.payload;
     if (compressed) {
       body = compressStreamPayload(body, this.compressionCodec);
@@ -110,10 +123,16 @@ export class ZLinkStreamFrameMessageFactory {
     return this.createBinaryMessage(frame);
   }
 
-  private encodePayload(payload: unknown): { codec: ZLinkStreamCodec; payload: Uint8Array } {
+  private encodePayload(
+    payload: unknown,
+    packetName: string,
+    direction: 'Request' | 'Response' | 'Error' | 'Send'
+  ): { codec: ZLinkStreamCodec; payload: Uint8Array } {
     const codec = this.options.streamPayloadCodec;
     if (codec !== undefined) {
-      return codec.encode(payload);
+      if (direction !== 'Error') {
+        return codec.encode(payload, { packetName, direction });
+      }
     }
     return {
       codec: ZLinkStreamCodec.Json,
@@ -123,6 +142,15 @@ export class ZLinkStreamFrameMessageFactory {
 
   private requireMessageFactory(): ZLinkStreamFrameMessageFactorySource {
     return this.options.messageFactory ?? defaultStreamMessageFactory;
+  }
+}
+
+function streamDirection(kind: ZLinkStreamMessageKind): 'Request' | 'Response' | 'Error' | 'Send' {
+  switch (kind) {
+    case ZLinkStreamMessageKind.Request: return 'Request';
+    case ZLinkStreamMessageKind.Response: return 'Response';
+    case ZLinkStreamMessageKind.Error: return 'Error';
+    default: return 'Send';
   }
 }
 

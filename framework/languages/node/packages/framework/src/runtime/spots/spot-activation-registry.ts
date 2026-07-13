@@ -12,6 +12,7 @@ import {
 } from '../../contracts';
 import type { ZLinkSpotActivation } from './spot-activation-state';
 import { ZLinkConfigurationException } from '../configuration';
+import { createAbortError } from '../abort';
 export { ZLinkSpotActivation } from './spot-activation-state';
 
 interface PendingSpotActivation {
@@ -36,6 +37,7 @@ export class ZLinkSpotActivationRegistry {
   private readonly pending = new Map<string, PendingSpotActivation>();
   private readonly closing = new Map<string, ZLinkSpotCloseOperation>();
   private readonly failedClose = new Set<string>();
+  private readonly emptyWaiters = new Set<() => void>();
 
   constructor(private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {}
 
@@ -67,6 +69,27 @@ export class ZLinkSpotActivationRegistry {
       .map((activation) => String(activation.spotRid))
       .sort((left, right) => left.localeCompare(right))
       .map((spotRid) => ({ spotRid }));
+  }
+
+  activeActivations(): readonly ZLinkSpotActivation[] {
+    return [...this.activations.values()];
+  }
+
+  whenEmpty(signal?: AbortSignal): Promise<void> {
+    if (this.isEmpty()) return Promise.resolve();
+    if (signal?.aborted === true) return Promise.reject(createAbortError());
+    return new Promise<void>((resolve, reject) => {
+      const complete = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
+        this.emptyWaiters.delete(complete);
+        reject(createAbortError());
+      };
+      this.emptyWaiters.add(complete);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
   }
 
   register(activation: ZLinkSpotActivation): void {
@@ -112,6 +135,7 @@ export class ZLinkSpotActivationRegistry {
           } else {
             this.failedClose.add(key);
           }
+          this.resolveEmptyWaiters();
         }
       });
     Object.assign(operation, { activation, ready, started: true });
@@ -164,6 +188,7 @@ export class ZLinkSpotActivationRegistry {
       const tracked = ready.finally(() => {
         if (this.pending.get(key) === pending) {
           this.pending.delete(key);
+          this.resolveEmptyWaiters();
         }
       });
       return { owner: true, ready: tracked };
@@ -180,6 +205,16 @@ export class ZLinkSpotActivationRegistry {
         ? { spotRid, state: ZLinkSpotCreateState.Existing }
         : { spotRid, state: result.state, reply: result.reply })
     };
+  }
+
+  private isEmpty(): boolean {
+    return this.activations.size === 0 && this.pending.size === 0 && this.closing.size === 0;
+  }
+
+  private resolveEmptyWaiters(): void {
+    if (!this.isEmpty()) return;
+    for (const resolve of this.emptyWaiters) resolve();
+    this.emptyWaiters.clear();
   }
 }
 

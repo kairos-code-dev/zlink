@@ -59,6 +59,8 @@ interface ZLinkSpotActorPacketDrainOptions {
 const ZLINK_SPOT_ACTOR_RECV_INFO_NO_BIND = 1;
 
 export class ZLinkSpotActorPacketDrain {
+  private readonly continuations = new Map<string, { readonly owner: string; readonly parts: Message[] }>();
+
   constructor(private readonly options: ZLinkSpotActorPacketDrainOptions) {}
 
   async drain(info: {
@@ -71,12 +73,36 @@ export class ZLinkSpotActorPacketDrain {
     let sourceSessionRid: RoutingId | undefined;
     let requestId: bigint | undefined;
     let flags: number | undefined;
+    let packetKey: string | undefined;
     try {
       for (;;) {
         const part = info.recvActorPart(ZLINK_RECV_DONT_WAIT);
         if (part === null) {
+          if (parts.length > 0 && packetKey !== undefined) {
+            this.continuations.set(packetKey, {
+              owner: continuationOwner(parts[0]),
+              parts: parts.splice(0)
+            });
+            return;
+          }
           await this.options.waitIdle();
           return;
+        }
+        const currentPacketKey = actorPacketKey(part);
+        if (packetKey === undefined) {
+          packetKey = currentPacketKey;
+          const pending = this.continuations.get(currentPacketKey);
+          if (pending !== undefined) {
+            if (isStreamHeaderMessage(part.message)) {
+              closeMessages(pending.parts);
+              this.continuations.delete(currentPacketKey);
+              throw new Error(`Actor packet continuation '${pending.owner}' was replaced before completion.`);
+            }
+            this.continuations.delete(currentPacketKey);
+            parts.push(...pending.parts);
+          }
+        } else if (packetKey !== currentPacketKey) {
+          throw new Error('Native actor packet parts changed identity before the final part.');
         }
         actorId ??= part.info.actor.actorId;
         actorRef ??= part.info.actor;
@@ -90,11 +116,15 @@ export class ZLinkSpotActorPacketDrain {
         }
       }
       const noBindInfo = this.createNoBindReplyInfo(actorRef, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
-      if (noBindInfo === undefined && sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
-        this.options.bindRemoteActorSession?.(actorRef, sourceNodeRid, sourceSessionRid);
-      }
       if (this.consumeRemoteBoundSessionBind(actorRef, sourceNodeRid, sourceSessionRid, parts)) {
         return;
+      }
+      if (
+        ((flags ?? 0) & ZLINK_SPOT_ACTOR_RECV_INFO_NO_BIND) === 0 &&
+        sourceNodeRid !== undefined &&
+        sourceSessionRid !== undefined
+      ) {
+        this.options.bindRemoteActorSession?.(actorRef, sourceNodeRid, sourceSessionRid);
       }
       if (this.options.actorPacketHandler === undefined) {
         return;
@@ -115,6 +145,11 @@ export class ZLinkSpotActorPacketDrain {
         part.close();
       }
     }
+  }
+
+  dispose(): void {
+    for (const continuation of this.continuations.values()) closeMessages(continuation.parts);
+    this.continuations.clear();
   }
 
   private createNoBindReplyInfo(
@@ -226,6 +261,41 @@ export class ZLinkSpotActorPacketDrain {
     }
     return true;
   }
+}
+
+function actorPacketKey(part: ZLinkActorDispatchPart): string {
+  const info = part.info;
+  return [
+    String(info.actor.nodeRid),
+    info.actor.actorId,
+    info.actor.generation.toString(),
+    info.sourceNodeRid === undefined ? '' : String(info.sourceNodeRid),
+    info.sourceSessionRid === undefined ? '' : String(info.sourceSessionRid),
+    info.requestId?.toString() ?? '',
+    String(info.flags)
+  ].join('\u0000');
+}
+
+function continuationOwner(header: Message): string {
+  try {
+    const decoded = decodeStreamHeader(messageToBytes(header));
+    return `${decoded.name}:${decoded.requestSeq?.toString() ?? decoded.flowId ?? 'send'}`;
+  } catch {
+    return 'invalid-header';
+  }
+}
+
+function isStreamHeaderMessage(message: Message): boolean {
+  try {
+    decodeStreamHeader(messageToBytes(message));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function closeMessages(messages: readonly Message[]): void {
+  for (const message of messages) message.close();
 }
 
 function frameworkErrorPayload(error: unknown): {

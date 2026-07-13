@@ -48,6 +48,7 @@ import type {
   ZLinkBackendSocketMonitor,
   ZLinkBackendSocketMonitorEvent
 } from '../backend';
+import { normalizeOpaqueRoutingId } from '../routing-id';
 
 const ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3;
 
@@ -326,7 +327,7 @@ function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent):
     sourceName,
     timestamp: new Date(),
     event: mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType, raw.value),
-    routingId: raw.routingId as unknown as string | undefined,
+    routingId: raw.routingId === undefined ? undefined : normalizeOpaqueRoutingId(raw.routingId),
     localAddr: raw.localAddr,
     remoteAddr: raw.remoteAddr,
     diagnostic: {

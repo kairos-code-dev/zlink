@@ -52,6 +52,7 @@ import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { routingIdsEqual } from '../routing-id';
 import type {
   ZLinkEntryActorRuntime,
+  ZLinkSpotActorTransferRuntime,
   ZLinkSpotActorHandoffRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
@@ -71,6 +72,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly entryActorRuntime?: ZLinkEntryActorRuntime;
+  readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
@@ -273,6 +275,7 @@ export class ZLinkSpotNodeRuntimeManager {
       workerRuntime: this.workerRuntime,
       messageSerializers: this.options.registration.messageSerializers,
       entryActorRuntime: this.options.entryActorRuntime,
+      actorTransferRuntime: this.options.actorTransferRuntime,
       boundSessionRuntime: this.options.boundSessionRuntime,
       actorHandoffRuntime: this.options.actorHandoffRuntime,
       detachedTaskRunner: this.options.detachedTaskRunner,
@@ -308,7 +311,10 @@ export class ZLinkSpotNodeRuntimeManager {
         resolveActor: (actorId) => this.options.entryActorRuntime?.resolveActor(actorId),
         getTarget: () => ({}),
         defaultAccept: true,
-        transfer: { kind: 'disabled' }
+        transfer: this.options.actorTransferRuntime === undefined ? { kind: 'disabled' } : {
+          kind: 'enabled',
+          runtime: this.options.actorTransferRuntime
+        }
       },
       boundSessionRuntime: this.options.boundSessionRuntime,
       messageSerializers: this.options.messageSerializers,

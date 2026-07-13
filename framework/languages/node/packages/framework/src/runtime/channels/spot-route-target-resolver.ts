@@ -65,6 +65,10 @@ export class ZLinkSpotRouteTargetResolver {
   hasBoundRouteRouter(routerChannelId: string): boolean {
     return this.registration.routeChannelOptions.get(routerChannelId)?.bind !== undefined;
   }
+
+  hasNamedSpotNode(routerChannelId: string): boolean {
+    return this.registration.spotNodes.has(routerChannelId);
+  }
 }
 
 function routingIdsMatchSpotRoute(left: RoutingId | undefined, right: RoutingId | undefined): boolean {

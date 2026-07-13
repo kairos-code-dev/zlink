@@ -141,7 +141,7 @@ export class ZLinkActorPacketRelay {
 
   async receiveRemoteActorPacketRelay(
     payload: unknown,
-    routeContext: ZLinkRouteSendContext
+    _routeContext: ZLinkRouteSendContext
   ): Promise<{
     readonly ok: boolean;
     readonly error?: unknown;
@@ -151,12 +151,14 @@ export class ZLinkActorPacketRelay {
   }> {
     const relay = decodeRemoteActorPacketRelayPayload(payload);
     const remoteBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined =
-      relay.routerChannelId === undefined
+      relay.routerChannelId === undefined ||
+      relay.boundSessionTargetNodeRid === undefined ||
+      relay.boundSessionSpotRid === undefined
         ? undefined
         : {
             routerChannelId: relay.routerChannelId,
-            targetNodeRid: normalizeRoutingId(relay.boundSessionTargetNodeRid ?? routeContext.sourceNodeRid),
-            spotRid: normalizeRoutingId(relay.boundSessionSpotRid ?? routeContext.sourceNodeRid)
+            targetNodeRid: normalizeRoutingId(relay.boundSessionTargetNodeRid),
+            spotRid: normalizeRoutingId(relay.boundSessionSpotRid)
           };
     const header = BindingMessage.from(Buffer.from(relay.header, 'base64'));
     const body = BindingMessage.from(Buffer.from(relay.payload, 'base64'));
@@ -366,7 +368,7 @@ export class ZLinkActorPacketRelay {
       header: encodeStreamHeader(header),
       payload: Buffer.alloc(0)
     });
-    await this.options.routeTransport.sendToSpot(
+    await this.options.routeTransport.requestToSpot(
       {
         routerChannelId: remoteTarget.routerChannelId,
         targetNodeRid: remoteTarget.targetNodeRid,
@@ -376,6 +378,7 @@ export class ZLinkActorPacketRelay {
       payload,
       {
         packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+        timeoutMs: this.options.requestTimeoutMs,
         signal
       }
     );

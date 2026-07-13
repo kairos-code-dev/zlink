@@ -22,7 +22,6 @@ import type {
 
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
-  registry?: ZLinkPollingMonitoringRegistration[];
   spot?: ZLinkPollingMonitoringRegistration[];
   locationRuntime?: ZLinkPollingMonitoringRegistration[];
   locationPeer?: ZLinkLocationMonitoringRegistration[];

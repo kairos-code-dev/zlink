@@ -119,7 +119,7 @@ export interface ZLinkBackendSpotDispatchInfo {
 
 export interface ZLinkBackendSocketMonitorEvent {
   readonly nativeEvent: MonitorEventType;
-  readonly routingId?: RoutingId;
+  readonly routingId?: unknown;
   readonly localAddr: string;
   readonly remoteAddr: string;
   readonly value: number;
@@ -296,6 +296,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   setPubBind(endpoint: string): void;
   connectPeer(endpoint: string): void;
   connectPeerRid(targetNodeRid: RoutingId, endpoint: string): void;
+  disconnectPeerRid(targetNodeRid: RoutingId): void;
   disconnectPeer(endpoint: string): void;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };

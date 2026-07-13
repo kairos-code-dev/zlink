@@ -205,6 +205,7 @@ export class ZLinkSpotRoutedActorAdmission {
         decoded.actorType,
         decoded.transferAdapterKey,
         decoded.transferState,
+        decoded.actorEntryNodeRid,
         decoded.remoteBoundSessionTarget
       );
       const handoffResults = await this.options.commitTransferredActor?.(actor, decoded.handoffBacklog) ?? [];

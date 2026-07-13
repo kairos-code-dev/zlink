@@ -44,6 +44,7 @@ export class ZLinkActorRuntimeState {
   private spotValue: ZLinkSpot | undefined;
   private spotRidValue: RoutingId | undefined;
   private nativeActorRefValue: ZLinkBackendActorRef | undefined;
+  private entryNodeRidValue: RoutingId | undefined;
   private remoteBoundSessionTargetValue: ZLinkRemoteBoundSessionTarget | undefined;
   private remoteActorPacketTargetValue: ZLinkRemoteActorPacketTarget | undefined;
   private createRequestPayloadValue: Buffer | undefined;
@@ -72,6 +73,10 @@ export class ZLinkActorRuntimeState {
 
   get nativeActorRef(): ZLinkBackendActorRef | undefined {
     return this.nativeActorRefValue;
+  }
+
+  get entryNodeRid(): RoutingId | undefined {
+    return this.entryNodeRidValue;
   }
 
   get remoteBoundSessionTarget(): ZLinkRemoteBoundSessionTarget | undefined {
@@ -230,11 +235,17 @@ export class ZLinkActorRuntimeState {
 
   ensureNativeActorRef(node: ZLinkBackendSpotNode, request?: Message): ZLinkBackendActorRef {
     this.nativeActorRefValue ??= node.actorLookup(this.actorId) ?? node.createActor(this.actorId, request);
+    this.entryNodeRidValue ??= toFrameworkRoutingId(this.nativeActorRefValue.nodeRid);
     return this.nativeActorRefValue;
   }
 
   setNativeActorRef(actorRef: ZLinkBackendActorRef): void {
     this.nativeActorRefValue = actorRef;
+    this.entryNodeRidValue ??= toFrameworkRoutingId(actorRef.nodeRid);
+  }
+
+  setEntryNodeRid(entryNodeRid: RoutingId): void {
+    this.entryNodeRidValue = entryNodeRid;
   }
 
   setRemoteBoundSessionTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
@@ -268,6 +279,7 @@ export class ZLinkActorRuntimeState {
     this.spotValue = undefined;
     this.spotRidValue = undefined;
     this.nativeActorRefValue = undefined;
+    this.entryNodeRidValue = undefined;
     this.remoteBoundSessionTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;

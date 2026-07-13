@@ -16,6 +16,7 @@ export interface ZLinkChannelRuntimeOptionsFactoryOptions {
   readonly messageFlowModeCell: ZLinkMessageFlowModeCell;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
+  readonly oneWayFailureSink: (error: unknown) => void;
 }
 
 export class ZLinkChannelRuntimeOptionsFactory {
@@ -25,6 +26,7 @@ export class ZLinkChannelRuntimeOptionsFactory {
     return {
       monitoringAdapter: this.options.monitoringAdapter,
       messageFlowModeCell: this.options.messageFlowModeCell,
+      oneWayFailureSink: this.options.oneWayFailureSink,
       internalRouteSendHandlers: this.internalRouteSendHandlers(),
       internalRouteRequestHandlers: this.internalRouteRequestHandlers(),
       localSpotRouteDispatcher: {

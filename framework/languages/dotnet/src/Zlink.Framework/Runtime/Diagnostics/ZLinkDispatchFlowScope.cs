@@ -167,6 +167,28 @@ internal readonly struct ZLinkDispatchFlowScope(
             exception);
     }
 
+    public void ReplyPathMissing(
+        ILogger logger,
+        ZLinkDispatchErrorReporter dispatchErrors,
+        Exception exception)
+    {
+        ZLinkMessageFlowLogger.Rejected(
+            logger,
+            LogLevel.Error,
+            CreateEvent(ZLinkMessageFlowOutcome.Error, forLog: true),
+            "reply-path-missing",
+            surfaceName,
+            kindName,
+            exception,
+            actorType,
+            writeLog: false);
+        Report(
+            dispatchErrors,
+            ZLinkDispatchErrorReason.ReplyPathMissing,
+            ZLinkDispatchErrorAction.FailCaller,
+            exception);
+    }
+
     public void Trace(
         ZLinkDispatchErrorReporter dispatchErrors,
         ZLinkMessageFlowOutcome outcome)
@@ -246,6 +268,7 @@ internal readonly struct ZLinkDispatchFlowScope(
         {
             ZLinkDispatchErrorAction.Drop => "drop",
             ZLinkDispatchErrorAction.ReplyError => "reply-error",
+            ZLinkDispatchErrorAction.FailCaller => "fail-caller",
             _ => action.ToString()
         };
     }

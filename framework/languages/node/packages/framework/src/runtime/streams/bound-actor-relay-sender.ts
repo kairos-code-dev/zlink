@@ -13,6 +13,7 @@ import {
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
+import { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 import {
   ZLinkManagedStream
 } from './managed-stream';
@@ -25,6 +26,7 @@ import {
 } from './stream-frame-factory';
 
 export interface ZLinkBoundActorRelaySenderOptions {
+  readonly actorBindTimeoutMs?: number;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly relay?: (actor: ZLinkSessionActor, header: ZLinkStreamFrameHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
@@ -34,10 +36,19 @@ export class ZLinkBoundActorRelaySender {
   constructor(
     private readonly routes: ZLinkActorSessionBindingRegistry<DefaultZLinkSessionContext, DefaultZLinkSessionActor>,
     private readonly frameMessages: ZLinkStreamFrameMessageFactory,
-    private readonly options: ZLinkBoundActorRelaySenderOptions = {}
+    private readonly options: ZLinkBoundActorRelaySenderOptions = {},
+    private readonly lifecycle = new ZLinkActorSessionLifecycleCoordinator()
   ) {}
 
   async relay(
+    actor: DefaultZLinkSessionActor,
+    payload: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.lifecycle.run(actor.actorId, () => this.relayInsideLifecycle(actor, payload, signal));
+  }
+
+  private async relayInsideLifecycle(
     actor: DefaultZLinkSessionActor,
     payload: ZLinkMessage,
     signal?: AbortSignal
@@ -75,7 +86,24 @@ export class ZLinkBoundActorRelaySender {
   }
 
   async notifyDisconnected(actor: DefaultZLinkSessionActor, signal?: AbortSignal): Promise<void> {
-    this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
-    await this.options.notifyDisconnected?.(actor, signal);
+    await this.lifecycle.run(actor.actorId, async () => {
+      this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
+      const route = this.routes.requireRoute(actor.actorId);
+      try {
+        await this.options.notifyDisconnected?.(actor, signal);
+        if (
+          route.bindingToken === actor.bindingToken
+          && route.context.stream instanceof ZLinkManagedStream
+        ) {
+          await route.context.stream.unbindActor(
+            actor.actorId,
+            this.options.actorBindTimeoutMs ?? 2000,
+            signal
+          );
+        }
+      } finally {
+        this.routes.unbind(actor.actorId, route.context, actor.bindingToken);
+      }
+    });
   }
 }

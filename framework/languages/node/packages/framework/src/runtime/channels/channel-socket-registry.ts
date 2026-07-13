@@ -33,7 +33,8 @@ export class ZLinkChannelSocketRegistry {
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly adapter: ZLinkChannelBackendAdapter,
     private readonly context: ZLinkBackendContext,
-    private readonly monitoringAdapter?: ZLinkMonitoringBackendAdapter
+    private readonly monitoringAdapter?: ZLinkMonitoringBackendAdapter,
+    private readonly oneWayFailureSink?: (error: unknown) => void
   ) {}
 
   async dispose(): Promise<void> {
@@ -231,10 +232,12 @@ export class ZLinkChannelSocketRegistry {
   }
 
   private trackSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): void {
-    const submitter = new ZLinkAsyncSubmitter(
-      (handler) => socket.onSendReady(handler),
-      'sendTimeoutMs' in socket && socket.sendTimeoutMs !== -1 ? { timeoutMs: socket.sendTimeoutMs } : {}
-    );
+    const submitter = new ZLinkAsyncSubmitter((handler) => socket.onSendReady(handler), {
+      ...('sendTimeoutMs' in socket && socket.sendTimeoutMs !== -1
+        ? { timeoutMs: socket.sendTimeoutMs }
+        : {}),
+      onCommandFailure: this.oneWayFailureSink
+    });
     this.submitters.set(socket, submitter);
     this.ownedSubmitters.add(submitter);
   }

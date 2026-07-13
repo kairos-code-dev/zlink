@@ -79,7 +79,8 @@ public sealed class EventingContracts
         AssertEnumValues<ZLinkDispatchErrorReason>(
             ("HandlerMissing", 0), ("PayloadDecodeFailed", 1), ("HandlerException", 2),
             ("InvalidFrame", 3), ("ReplyPathMissing", 4), ("UnexpectedReply", 5));
-        AssertEnumValues<ZLinkDispatchErrorAction>(("ReplyError", 0), ("Drop", 1));
+        AssertEnumValues<ZLinkDispatchErrorAction>(
+            ("ReplyError", 0), ("Drop", 1), ("FailCaller", 2));
         AssertEnumValues<ZLinkDrainState>(
             ("Serving", 0), ("Draining", 1), ("Drained", 2), ("ForceStopping", 3));
 

@@ -64,6 +64,7 @@ import {
 } from '../actors/actor-handoff';
 import type {
   ZLinkEntryActorRuntime,
+  ZLinkSpotActorTransferRuntime,
   ZLinkSpotActorHandoffRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
@@ -90,6 +91,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly entryActorRuntime?: ZLinkEntryActorRuntime;
+  readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
@@ -105,6 +107,7 @@ export class ZLinkEntrySpotActivation {
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
   private initialized = false;
   private disposed = false;
+  private actorDispatch?: ZLinkSpotActorJoinDispatch;
 
   entrySpot: ZLinkEntrySpot;
   readonly context: ZLinkEntrySpotContext;
@@ -211,6 +214,7 @@ export class ZLinkEntrySpotActivation {
     if (this.initialized) {
       await cleanup(() => this.serial.execute(() => this.entrySpot.onClosing?.()));
     }
+    await cleanup(() => this.actorDispatch?.dispose());
     await cleanup(() => this.timers.dispose());
     await cleanup(() => this.options.nativeSpot.dispose());
     if (errors.length === 1) throw errors[0];
@@ -240,7 +244,10 @@ export class ZLinkEntrySpotActivation {
         resolveActor: (actorId) => this.options.entryActorRuntime?.resolveActor(actorId),
         getTarget: () => this.entrySpot,
         defaultAccept: true,
-        transfer: { kind: 'disabled' },
+        transfer: this.options.actorTransferRuntime === undefined ? { kind: 'disabled' } : {
+          kind: 'enabled',
+          runtime: this.options.actorTransferRuntime
+        },
         commitNativeActor: (actor) => this.commitEntryActorTransaction(actor),
         commitTransferredActor: async (actor, backlog) => {
           await this.commitEntryActorTransaction(actor);
@@ -270,6 +277,7 @@ export class ZLinkEntrySpotActivation {
     });
     dispatch.configureSubscriptions(this.handlers.snapshot());
     dispatch.attach();
+    this.actorDispatch = dispatch;
   }
 
   private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {

@@ -239,6 +239,16 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     if (spotNodeName.trim().length === 0 || spotNodeName.trim() !== spotNodeName) {
       throw new ZLinkConfigurationException('SpotNode name must not be empty or padded.');
     }
+    if (spotNode.router === undefined && spotNode.pubSub === undefined) {
+      throw new ZLinkConfigurationException(
+        `SpotNode '${spotNodeName}' must enable router or pubSub capability.`
+      );
+    }
+    if (toActorFactoryCount(spotNode.actorFactories) > 0 && spotNode.router === undefined) {
+      throw new ZLinkConfigurationException(
+        `SpotNode '${spotNodeName}' must enable router capability when actor factories are registered.`
+      );
+    }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
     validateEntrySpot(spotNodeName, spotNode);
@@ -280,11 +290,9 @@ function validateSpotNodeCapability(
   if (capability === undefined) {
     return;
   }
-  if (capability.bind !== undefined) {
-    requireEndpoint(capabilityName, capability.bind);
-  }
   validateManualConnections(capabilityName, capability.manualConnections);
   validateRouterPeerConnections(capabilityName, 'manualPeerConnections' in capability ? capability.manualPeerConnections : undefined);
+  requireEndpoint(capabilityName, capability.bind);
   if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
     throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
   }

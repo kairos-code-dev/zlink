@@ -170,5 +170,6 @@ public enum ZLinkDispatchErrorReason
 public enum ZLinkDispatchErrorAction
 {
     ReplyError = 0,
-    Drop = 1
+    Drop = 1,
+    FailCaller = 2
 }

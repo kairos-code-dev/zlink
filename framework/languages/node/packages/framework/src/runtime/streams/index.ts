@@ -34,6 +34,7 @@ import {
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
+import { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 import {
   decompressStreamPayload,
   resolveStreamCompressionCodec,
@@ -70,6 +71,7 @@ import {
   type ZLinkStreamSessionRuntimeOptions as ZLinkStreamSessionRuntimeCoreOptions
 } from './stream-session-runtime';
 export { ZLinkPendingSessionRequest } from './session-requests';
+export { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
 export { zlinkStreamLz4CompressionCodec } from './stream-frame-factory';
 export { ZLinkManagedStream } from './managed-stream';
 export {
@@ -235,8 +237,9 @@ export class ZLinkStreamBindingRuntime {
     this.compressionCodec = resolveStreamCompressionCodec(options.streamCompression);
     this.frameMessages = new ZLinkStreamFrameMessageFactory(options);
     this.boundSessions = new ZLinkBoundSessionService(this.routes, this.frameMessages, options);
-    this.sessionActors = new ZLinkSessionActorCoordinator(this.routes, this.boundSessions, this, options);
-    this.boundActorRelay = new ZLinkBoundActorRelaySender(this.routes, this.frameMessages, options);
+    const actorSessionLifecycle = new ZLinkActorSessionLifecycleCoordinator();
+    this.sessionActors = new ZLinkSessionActorCoordinator(this.routes, this.boundSessions, this, options, actorSessionLifecycle);
+    this.boundActorRelay = new ZLinkBoundActorRelaySender(this.routes, this.frameMessages, options, actorSessionLifecycle);
   }
 
   createSessionContext(stream: ZLinkManagedStream, close?: (signal?: AbortSignal) => Promise<void>): DefaultZLinkSessionContext {
@@ -303,8 +306,8 @@ export class ZLinkStreamBindingRuntime {
     this.routes.unbindActor(actorId);
   }
 
-  cleanup(context: DefaultZLinkSessionContext): void {
-    this.routes.cleanup(context);
+  async cleanup(context: DefaultZLinkSessionContext): Promise<void> {
+    await this.sessionActors.cleanupContext(context);
   }
 
   async sendBoundSession(

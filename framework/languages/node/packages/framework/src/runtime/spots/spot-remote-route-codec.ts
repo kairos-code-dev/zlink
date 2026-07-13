@@ -28,6 +28,8 @@ export interface ZLinkRemoteBoundSessionSend {
   readonly metadata: ReadonlyMap<string, string>;
   readonly actorRef?: ActorRef;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
+  readonly flowId?: string;
+  readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
 }
 
 export interface ZLinkRemoteBoundSessionResponse {
@@ -101,7 +103,9 @@ export function decodeRemoteBoundSessionSend(
         actorGeneration: send.actorGeneration,
         actorOwnershipGeneration: send.actorOwnershipGeneration
       }),
-      envelope: decoded.envelope
+      envelope: decoded.envelope,
+      flowId: send.flowId,
+      flowOrigin: send.flowOrigin
     };
   } catch {
     return undefined;

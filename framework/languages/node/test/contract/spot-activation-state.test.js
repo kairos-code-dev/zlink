@@ -70,3 +70,16 @@ test('spot activation includes external actors in its close decision', () => {
   externalActors = 0;
   assert.equal(activation.canClose(), true);
 });
+
+test('explicit close ignores a stale native count only after every tracked actor departs', () => {
+  const activation = createActivation(() => 1);
+  const actor = { actorId: 'alice' };
+  activation.commitActorJoin(actor);
+
+  activation.requestClose();
+  assert.equal(activation.canClose(), false);
+
+  activation.commitActorDeparture(actor.actorId);
+  assert.equal(activation.resolveJoinedActor(actor.actorId), undefined);
+  assert.equal(activation.canClose(), true);
+});

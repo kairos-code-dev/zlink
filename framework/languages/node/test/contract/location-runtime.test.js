@@ -93,6 +93,20 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
   assert.equal(events[2][1].actorId, 'missing');
 });
 
+test('location resolver owns actor placement and rotates eligible peers without RID sorting', async () => {
+  const resolver = resolversFor(new internal.ZLinkInMemoryLocationStore());
+  resolver.listLivePeers = async () => [
+    { nodeRid: 'node-z', draining: false, capabilities: ['actor:Player'] },
+    { nodeRid: 'node-a', draining: false, capabilities: ['actor:Player'] },
+    { nodeRid: 'node-draining', draining: true, capabilities: ['actor:Player'] },
+    { nodeRid: 'node-other', draining: false, capabilities: ['actor:Other'] }
+  ];
+
+  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-source'), 'node-z');
+  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-source'), 'node-a');
+  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-z'), 'node-a');
+});
+
 test('location readiness returns false when ready state is missing or query fails', async () => {
   const ready = new internal.DefaultZLinkLocationReadiness({
     async listTopology(filter) {
@@ -364,6 +378,45 @@ test('location spot route resolver bridges internal routed transport', async () 
     () => resolver.resolve(rid('spot-1')),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.SpotRouteNotFound
   );
+});
+
+test('location spot route resolver resolves Entry Spots from live Spot peer rows', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, { ownerId: 'owner-a' });
+  await runtime.start(rid('node-a'));
+  await runtime.writePeer({
+    autoConnectType: framework.ZLinkLocationAutoConnectType.SpotMesh,
+    meshName: 'play',
+    nodeRid: rid('node-b'),
+    role: framework.ZLinkLocationRole.Spot,
+    endpoint: 'tcp://127.0.0.1:5002',
+    weight: 100,
+    value: 7n,
+    ownerId: 'owner-a',
+    generation: 0n,
+    updatedAt: new Date(0)
+  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  await runtime.writePeer({
+    autoConnectType: framework.ZLinkLocationAutoConnectType.SpotMesh,
+    meshName: 'play',
+    nodeRid: rid('node-a'),
+    role: framework.ZLinkLocationRole.Spot,
+    endpoint: 'tcp://127.0.0.1:5001',
+    weight: 100,
+    value: 7n,
+    ownerId: 'owner-a',
+    generation: 0n,
+    updatedAt: new Date(0)
+  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  const resolver = new internal.ZLinkLocationSpotRouteResolver(resolversFor(store), ['play']);
+
+  const address = await resolver.resolve(rid('node-a'));
+  assert.equal(address.routerChannelId, 'play');
+  assert.equal(address.targetNodeRid.toHex(), rid('node-a').toHex());
+  assert.equal(address.spotRid.toHex(), rid('node-a').toHex());
+  assert.equal(address.spotKind, framework.ZLinkSpotKind.Entry);
+
+  await runtime.stop();
 });
 
 async function lifecycleNode(store, ownerId, nodeRid, entryMeshName = '') {

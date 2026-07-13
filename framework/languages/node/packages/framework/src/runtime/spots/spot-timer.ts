@@ -56,8 +56,8 @@ export class ZLinkSpotTimerRegistry {
       normalizeTimerOptions(options),
       async (tick) => {
         this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
-        await runWithFlow(createInboundFlow(undefined, 'Timer'), () =>
-          serial.execute(() => handler.handle(spot, tick)));
+        const timerFlow = createInboundFlow(undefined, 'Timer');
+        await serial.execute(() => runWithFlow(timerFlow, () => handler.handle(spot, tick)));
       },
       reportFailure,
       () => !serial.isExecuting

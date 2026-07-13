@@ -52,6 +52,9 @@ export function wrapSpotNode(nativeInstance: ZLinkBindingSpotNode): ZLinkBackend
     connectPeerRid(targetNodeRid: unknown, endpoint: string): void {
       nativeInstance.connectPeerRid(toNativeRoutingId(targetNodeRid) as never, endpoint);
     },
+    disconnectPeerRid(targetNodeRid: unknown): void {
+      nativeInstance.disconnectPeerRid(toNativeRoutingId(targetNodeRid) as never);
+    },
     createSpot(): ZLinkBackendSpot {
       return wrapSpot(nativeInstance.createSpot());
     },

@@ -94,8 +94,6 @@ export interface ZLinkUnhandledDispatchOptions {
   request: ZLinkUnhandledDispatchAction;
   send: ZLinkUnhandledDispatchAction;
   publish: ZLinkUnhandledDispatchAction;
-  sendLogLevel: LogLevel;
-  publishLogLevel: LogLevel;
 }
 
 export interface ZLinkDiagnosticsOptions {
@@ -115,8 +113,6 @@ export enum ZLinkUnhandledDispatchAction {
   Drop = 'drop',
   Throw = 'throw'
 }
-
-export type LogLevel = 'log' | 'error' | 'warn' | 'debug' | 'verbose' | 'fatal';
 
 export enum ZLinkMessageFlowLogMode {
   Off = 'off',
@@ -165,5 +161,6 @@ export enum ZLinkDispatchErrorReason {
 
 export enum ZLinkDispatchErrorAction {
   ReplyError = 'replyError',
+  FailCaller = 'failCaller',
   Drop = 'drop'
 }

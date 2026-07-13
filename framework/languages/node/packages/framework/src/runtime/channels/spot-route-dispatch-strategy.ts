@@ -112,6 +112,10 @@ export class ZLinkSpotRouteDispatchStrategy {
       undefined,
       codecsForFrameworkPacket(packetName, this.options.codecs)
     ) as readonly Message[];
+    if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)
+      && await this.spotNodeTransport.send(spotRouteTarget, parts, signal)) {
+      return;
+    }
     if (this.bridgeTransport.has(spotRouteTarget.routerChannelId)) {
       await this.bridgeTransport.send(spotRouteTarget, parts, signal);
       return;
@@ -147,6 +151,16 @@ export class ZLinkSpotRouteDispatchStrategy {
     }
     const codecs = codecsForFrameworkPacket(packetName, this.options.codecs);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, spotRouteTarget.routerChannelId, packetName, request, timeoutMs, undefined, codecs) as readonly Message[];
+    if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)) {
+      const namedSpotNodeRequest = this.spotNodeTransport.request<TReply>(
+        spotRouteTarget,
+        parts,
+        codecs,
+        timeoutMs,
+        signal
+      );
+      if (namedSpotNodeRequest !== undefined) return namedSpotNodeRequest;
+    }
     if (this.bridgeTransport.has(spotRouteTarget.routerChannelId)) {
       return this.bridgeTransport.request<TReply>(spotRouteTarget, parts, codecs, timeoutMs, signal);
     }
@@ -225,6 +239,15 @@ export class ZLinkSpotRouteDispatchStrategy {
     signal?: AbortSignal
   ): Promise<readonly Message[]> {
     throwIfAborted(signal);
+    if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)) {
+      const namedSpotNodeRequest = this.spotNodeTransport.requestRaw(
+        spotRouteTarget,
+        request,
+        timeoutMs,
+        signal
+      );
+      if (namedSpotNodeRequest !== undefined) return namedSpotNodeRequest;
+    }
     if (this.bridgeTransport.has(spotRouteTarget.routerChannelId)) {
       return this.bridgeTransport.requestRaw(spotRouteTarget, request, timeoutMs, signal);
     }

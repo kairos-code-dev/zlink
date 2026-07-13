@@ -17,7 +17,7 @@ function dispatchOptions(observerType) {
     options.configureDispatch().setMessageFlowObserver(observerType);
   }).dispatch;
 }
-const frameworkProtobuf = require('../../packages/framework-codec-protobuf/dist');
+const frameworkProtobuf = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
 const nestjs = require('../../packages/nestjs/dist');
 const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 
@@ -70,6 +70,53 @@ test('ZLinkChannelClient rejects calls to channels without client capability', a
     () => client.sendToChannel('missing', { ok: true }).submit(),
     framework.ZLinkConfigurationException
   );
+});
+
+test('one-way clients throw synchronously when their registered runtime is not started', () => {
+  const registration = framework.createFrameworkRegistration({
+    channels: {
+      api: { client: { manualConnections: ['inproc://api'] } },
+      events: { publisher: { bind: 'inproc://events' } }
+    },
+    routeChannels: [{ routerChannelId: 'route', manualConnections: ['inproc://route'] }]
+  });
+
+  assert.throws(
+    () => new framework.DefaultZLinkChannelClient(registration).sendToChannel('api', typedPacket('Ping')).submit(),
+    /runtime is not started/i
+  );
+  assert.throws(
+    () => new framework.DefaultZLinkFanoutClient(registration).publish('events', 'topic', typedPacket('Event')).submit(),
+    /runtime is not started/i
+  );
+  assert.throws(
+    () => new framework.DefaultZLinkRouteClient(registration).sendToNode('route', 'target', typedPacket('Ping')).submit(),
+    /runtime is not started/i
+  );
+});
+
+test('ZLinkRouteClient one-way calls use the required synchronous transport submit contract', () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    routeChannels: [{ routerChannelId: 'route', manualConnections: ['inproc://route'] }]
+  });
+  const client = new framework.DefaultZLinkRouteClient(registration, {
+    submit(routerChannelId, targetNodeRid, packetName, message) {
+      calls.push({ routerChannelId, targetNodeRid, packetName, message });
+    },
+    async request() { return undefined; }
+  });
+  const packet = typedPacket('Ping', { value: 1 });
+
+  const result = client.sendToNode('route', 'target', packet).submit();
+
+  assert.equal(result, undefined);
+  assert.deepEqual(calls, [{
+    routerChannelId: 'route',
+    targetNodeRid: 'target',
+    packetName: undefined,
+    message: packet
+  }]);
 });
 
 test('ZLinkChannelClient fluent request call passes packet and timeout to transport', async () => {
@@ -169,7 +216,7 @@ test('ZLinkRouteClient applies route channel request timeout before registration
     ]
   });
   const client = new framework.DefaultZLinkRouteClient(registration, {
-    async send() {},
+    submit() {},
     async request(routerChannelId, targetNodeRid, packetName, request, timeoutMs) {
       calls.push({ routerChannelId, targetNodeRid, packetName, request, timeoutMs });
       return { ok: true };
@@ -323,9 +370,9 @@ test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creati
     }
   );
 
-  await assertAborted(() => transport.send('api', 'Greeting', 'hello', controller.signal));
+  assertAbortedSync(() => transport.send('api', 'Greeting', 'hello', controller.signal));
   await assertAborted(() => transport.request('api', 'Ping', 'ping', 250, controller.signal));
-  await assertAborted(() => transport.publish('events', 'topic', 'Event', 'event', controller.signal));
+  assertAbortedSync(() => transport.publish('events', 'topic', 'Event', 'event', controller.signal));
   assert.deepEqual(calls, []);
 });
 
@@ -1178,6 +1225,64 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
     timeoutMs: 700,
     submitted: true
   });
+  await manager.dispose();
+});
+
+test('route raw SPOT request prefers the named Spot mesh when route and Spot mesh names match', async () => {
+  let spotRequests = 0;
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'delivery-couriers',
+        bind: 'inproc://courier-route',
+        routingId: 'courier-node-1'
+      }],
+      spotNodes: {
+        'delivery-couriers': {
+          router: { bind: 'inproc://courier-spot', routingId: 'courier-node-1' }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router: fakeRouteRouter() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['delivery-couriers', {
+    routingId: 'courier-node-1',
+    createRouteBridge() {
+      return {
+        ...fakeSpotRouteBridge(),
+        request() {
+          throw new Error('same-name actor/session traffic must not use the external route bridge');
+        }
+      };
+    },
+    entrySpot() {
+      return {
+        requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+          spotRequests += 1;
+          callback(0, [zlink.Message.from(Buffer.from('spot-reply'))]);
+          return true;
+        }
+      };
+    }
+  }]]));
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run() { return Promise.resolve(); }
+  });
+
+  const request = zlink.Message.from(Buffer.from('spot-request'));
+  const reply = await manager.routeRequestRawToSpot({
+    routerChannelId: 'delivery-couriers',
+    targetNodeRid: 'courier-session',
+    spotRid: 'courier-session',
+    spotKind: framework.ZLinkSpotKind.Entry
+  }, request, 700);
+
+  assert.equal(spotRequests, 1);
+  assert.equal(reply[0].data().toString(), 'spot-reply');
+  reply[0].close();
+  request.close();
   await manager.dispose();
 });
 
@@ -3294,6 +3399,42 @@ test('ZLinkAsyncSubmitter discards queued ownership exactly once when aborted be
   assert.equal(discarded, 1);
 });
 
+test('ZLinkAsyncSubmitter one-way submission rejects a full local queue synchronously', () => {
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined, { capacity: 1 });
+  submitter.submitCommandOneWay(() => false);
+
+  assert.throws(
+    () => submitter.submitCommandOneWay(() => false),
+    /queue is full/i
+  );
+  submitter.dispose();
+});
+
+test('ZLinkAsyncSubmitter one-way submission preserves immediate transport errors', () => {
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined);
+
+  assert.throws(
+    () => submitter.submitCommandOneWay(() => { throw new Error('immediate transport failure'); }),
+    /immediate transport failure/
+  );
+  submitter.dispose();
+});
+
+test('ZLinkAsyncSubmitter reports one-way failures that happen after queue acceptance', async () => {
+  const controller = new AbortController();
+  const failures = [];
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined, {
+    onCommandFailure: (error) => failures.push(error)
+  });
+  submitter.submitCommandOneWay(() => false, controller.signal);
+
+  controller.abort();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(failures.length, 1);
+  assert.match(failures[0].message, /aborted/i);
+  submitter.dispose();
+});
+
 test('ZLinkAsyncSubmitter does not discard an accepted synchronous rejection', async () => {
   let discarded = 0;
   const submitter = new framework.ZLinkAsyncSubmitter(() => undefined);
@@ -3449,6 +3590,56 @@ test('DERR-009 ZLinkChannelRequestDispatcher writes dispatch errors to file log'
     assert.match(text, /correlationId=corr-decode/);
   } finally {
     fs.rmSync(logDir, { recursive: true, force: true });
+  }
+});
+
+test('channel dispatch failures use contract log levels without duplicate one-way logs', () => {
+  const calls = { error: [], warn: [], debug: [] };
+  const originals = {
+    error: console.error,
+    warn: console.warn,
+    debug: console.debug
+  };
+  console.error = (...args) => calls.error.push(args.join(' '));
+  console.warn = (...args) => calls.warn.push(args.join(' '));
+  console.debug = (...args) => calls.debug.push(args.join(' '));
+
+  try {
+    const reporter = noDispatchErrorReporter();
+    reporter.report({
+      surface: framework.ZLinkDispatchErrorSurface.Channel,
+      messageKind: framework.ZLinkDispatchMessageKind.Send,
+      reason: framework.ZLinkDispatchErrorReason.HandlerMissing,
+      action: framework.ZLinkDispatchErrorAction.Drop,
+      packetName: 'MissingSend'
+    });
+    reporter.report({
+      surface: framework.ZLinkDispatchErrorSurface.Channel,
+      messageKind: framework.ZLinkDispatchMessageKind.Publish,
+      reason: framework.ZLinkDispatchErrorReason.PayloadDecodeFailed,
+      action: framework.ZLinkDispatchErrorAction.Drop,
+      packetName: 'BrokenPublish'
+    });
+    reporter.report({
+      surface: framework.ZLinkDispatchErrorSurface.Channel,
+      messageKind: framework.ZLinkDispatchMessageKind.Publish,
+      reason: framework.ZLinkDispatchErrorReason.HandlerException,
+      action: framework.ZLinkDispatchErrorAction.Drop,
+      packetName: 'ThrowingPublish',
+      error: new Error('application failure')
+    });
+
+    assert.equal(calls.warn.length, 1);
+    assert.match(calls.warn[0], /packet=MissingSend/);
+    assert.equal(calls.debug.length, 1);
+    assert.match(calls.debug[0], /packet=BrokenPublish/);
+    assert.equal(calls.error.length, 1);
+    assert.match(calls.error[0], /packet=ThrowingPublish/);
+    assert.match(calls.error[0], /errorReason=handlerException/);
+  } finally {
+    console.error = originals.error;
+    console.warn = originals.warn;
+    console.debug = originals.debug;
   }
 });
 

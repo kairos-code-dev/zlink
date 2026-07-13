@@ -21,6 +21,8 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
+  readonly actorEntryNodeRid?: unknown;
+  readonly actorEntryNodeRidHex?: unknown;
   readonly actorCreateRequest?: unknown;
   readonly phase?: unknown;
   readonly transferId?: unknown;
@@ -45,6 +47,8 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly actorNodeRid: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
+  readonly actorEntryNodeRid?: string;
+  readonly actorEntryNodeRidHex?: string;
   readonly actorCreateRequest?: string;
   readonly phase?: ZLinkRemoteActorJoinPhase;
   readonly transferId?: string;
@@ -70,6 +74,8 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
+  readonly actorEntryNodeRid?: string;
+  readonly actorEntryNodeRidHex?: string;
   readonly actorCreateRequest?: string;
   readonly phase?: ZLinkRemoteActorJoinPhase;
   readonly transferId?: string;
@@ -91,6 +97,7 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly actorId?: string;
   readonly actorType: string;
   readonly actorRef?: ZLinkBackendActorRef;
+  readonly actorEntryNodeRid?: RoutingId;
   readonly actorCreateRequest?: Buffer;
   readonly request?: Message;
   readonly targetSpotRid?: RoutingId;
@@ -128,6 +135,8 @@ export function buildRemoteActorJoinRequestPayload(
     actorNodeRid: actorRef === undefined ? undefined : String(actorRef.nodeRid),
     actorNodeRidHex: actorRef === undefined ? undefined : encodeRoutingIdHex(actorRef.nodeRid),
     actorGeneration: actorRef === undefined ? undefined : actorRef.generation.toString(),
+    actorEntryNodeRid: options.actorEntryNodeRid === undefined ? undefined : String(options.actorEntryNodeRid),
+    actorEntryNodeRidHex: options.actorEntryNodeRid === undefined ? undefined : encodeRoutingIdHex(options.actorEntryNodeRid),
     actorCreateRequest: options.actorCreateRequest?.toString('base64'),
     phase: options.phase,
     transferId: options.transferId,

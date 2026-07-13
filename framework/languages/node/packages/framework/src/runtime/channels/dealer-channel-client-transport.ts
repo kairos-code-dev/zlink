@@ -22,7 +22,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     private readonly publisher?: PubSocket
   ) {}
 
-  async send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): Promise<void> {
+  send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): void {
     throwIfAborted(signal);
     appendParts(
       this.dealer.send(),
@@ -49,7 +49,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     return decodeChannelReply<TReply>(reply);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void> {
+  publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): void {
     throwIfAborted(signal);
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');

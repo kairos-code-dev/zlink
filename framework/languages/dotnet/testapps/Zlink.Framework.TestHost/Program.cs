@@ -2,7 +2,9 @@ using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 
 internal sealed class Program
@@ -170,6 +172,42 @@ internal sealed record TestHostProfileReply(string Value);
 
 internal sealed record TestHostProfileSend(string Value);
 
+internal sealed record TestHostRouteRequest(string Value);
+
+internal sealed record TestHostRouteReply(string Value);
+
+internal sealed class TestHostRouteRequestHandler(TestHostEventSink sink)
+    : IZLinkRouteRequestHandler<TestHostRouteRequest, TestHostRouteReply>
+{
+    public ValueTask<TestHostRouteReply> HandleAsync(
+        TestHostRouteRequest request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        sink.Append($"route-server|{request.Value}|{context.SourceNodeRid}");
+        return ValueTask.FromResult(new TestHostRouteReply($"{request.Value}|dotnet"));
+    }
+}
+
+internal sealed class RouteClientStartupRequestHostedService(
+    IZLinkRouteClient client,
+    TestHostEventSink sink,
+    string channelName,
+    string value) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var reply = await client
+            .RequestToNode(channelName, RoutingId.From("node-route"), new TestHostRouteRequest(value))
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<TestHostRouteReply>(cancellationToken);
+        sink.Append($"route-client|{reply.Value}");
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
 internal sealed class TestHostProfileRequestHandler
     : IZLinkRequestHandler<TestHostProfileRequest, TestHostProfileReply>
 {
@@ -252,19 +290,25 @@ internal sealed class StreamClientStartupRequestHostedService(
         _connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(endpoint),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
             RequestTimeout = TimeSpan.FromSeconds(5)
         });
+        _connector.Disconnected += (disconnected, _) =>
+        {
+            sink.Append($"stream-disconnected|{disconnected.CloseReason}");
+            return ValueTask.CompletedTask;
+        };
         await _connector.Connect.Async(cancellationToken);
         var pending = _connector
             .Request(new ZlinkStreamEncodedPayload(
                 ZlinkStreamCodec.Json,
                 Encoding.UTF8.GetBytes($"\"{value}\"")))
+            .PacketName("RawPing")
             .Compress()
             .Timeout(TimeSpan.FromSeconds(5))
             .Async(cancellationToken);
-        await _connector.Dispatch.Async(cancellationToken);
         var reply = await pending;
         sink.Append($"stream-client|{Encoding.UTF8.GetString(reply.Payload.Span)}");
     }

@@ -47,21 +47,20 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
       actorId: actor.actorId,
       generation: state.nativeActorRef?.generation ?? 0n
     } as ZLinkBackendActorRef;
-    const previousSpotRid = state.spotRid;
-    const previousSpot = state.spot;
-    const previousActorRef = state.nativeActorRef;
     state.clearJoinedSpot();
     state.setNativeActorRef(actorRef);
+    let callbackError: unknown;
     try {
       await onJoined();
     } catch (error) {
-      if (previousSpotRid === undefined) state.clearJoinedSpot();
-      else state.setJoinedSpot(previousSpotRid, previousSpot);
-      if (previousActorRef !== undefined) state.setNativeActorRef(previousActorRef);
-      throw error;
+      callbackError = error;
     }
-    this.options.boundSessionRelay.clearRemoteActorPacketTarget(actor.actorId);
-    this.binder.bindEventually(actorRef as ActorRef);
+    const committedState = this.options.actorManager()?.getState(actor.actorId);
+    if (committedState?.actor === actor) {
+      this.options.boundSessionRelay.clearRemoteActorPacketTarget(actor.actorId);
+      this.binder.bindEventually(actorRef as ActorRef);
+    }
+    if (callbackError !== undefined) throw callbackError;
   }
 
   async destroyActor(

@@ -88,9 +88,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
         unhandled: {
           request: ZLinkUnhandledDispatchAction.ReplyError,
           send: ZLinkUnhandledDispatchAction.LogAndDrop,
-          publish: ZLinkUnhandledDispatchAction.LogAndDrop,
-          sendLogLevel: 'warn',
-          publishLogLevel: 'warn'
+          publish: ZLinkUnhandledDispatchAction.LogAndDrop
         },
         diagnostics: {
           messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
@@ -335,6 +333,12 @@ class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestOptionsBuilder implemen
 
   enableRouter(endpoint: string | undefined): this {
     this.routeOptions.bind = endpoint;
+    return this;
+  }
+
+  enableClient(): this {
+    markRouteClientEnabled(this.routeOptions);
+    this.routeOptions.manualConnections = [];
     return this;
   }
 

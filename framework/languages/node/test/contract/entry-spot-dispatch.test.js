@@ -46,6 +46,7 @@ function boundSessionRuntime(overrides = {}) {
 test('Entry Spot native actor request dispatches to registered handler and replies through actor response sender', async () => {
   const calls = [];
   let dispatchHandler;
+  let dispatchError;
   let response;
 
   class PlayerActor {
@@ -92,6 +93,13 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     nativeNode: { routingId: 'node-a' },
     nodeRid: 'node-a',
     spotNodeName: 'entry-node',
+    detachedTaskRunner: {
+      runDetached(_taskName, callback) {
+        void callback().catch((error) => {
+          dispatchError = error;
+        });
+      }
+    },
     entryActorRuntime: entryActorRuntime((actorId) => actorId === actor.actorId ? actor : undefined),
     boundSessionRuntime: boundSessionRuntime({
       async sendActorResponse(targetActor, packetName, requestSeq, payload, replyOptions) {
@@ -121,9 +129,14 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     metadata: new Map()
   })));
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
+  const actorRef = {
+    nodeRid: zlink.RoutingId.from('node-a'),
+    actorId: actor.actorId,
+    generation: 1n
+  };
   const parts = [
-    { info: { actor }, message: header, more: true },
-    { info: { actor }, message: payload, more: false }
+    { info: { actor: actorRef }, message: header, more: true },
+    { info: { actor: actorRef }, message: payload, more: false }
   ];
 
   assert.equal(typeof dispatchHandler, 'function');
@@ -134,7 +147,8 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     }
   });
 
-  await waitFor(() => calls.includes('response'), 'Entry Spot actor response');
+  await waitFor(() => calls.includes('response') || dispatchError !== undefined, 'Entry Spot actor response');
+  if (dispatchError !== undefined) throw dispatchError;
   assert.deepEqual(calls, ['handler', 'response']);
   assert.deepEqual(response, {
     actorId: 'player-1',
@@ -146,8 +160,9 @@ test('Entry Spot native actor request dispatches to registered handler and repli
   });
 });
 
-test('Entry Spot routed actor packet records source node as remote bound session target', async () => {
+test('Entry Spot routed actor packet records only an explicit remote bound session target', async () => {
   let capturedTarget;
+  let capturedTargetCount = 0;
   const replies = [];
   let dispatchHandler;
 
@@ -192,6 +207,7 @@ test('Entry Spot routed actor packet records source node as remote bound session
     entryActorRuntime: entryActorRuntime((actorId) => actorId === actor.actorId ? actor : undefined),
     boundSessionRuntime: boundSessionRuntime({
       rememberRemoteBoundSessionTarget(_actorId, target) {
+        capturedTargetCount++;
         capturedTarget = target;
       },
       actorPacketTargetForState(actorId) {
@@ -265,9 +281,156 @@ test('Entry Spot routed actor packet records source node as remote bound session
     spotRidHex: zlink.RoutingId.from('room-1').toHex(),
     spotKind: framework.ZLinkSpotKind.User
   });
+
+  const backendRelay = zlink.Message.from(Buffer.from(JSON.stringify({
+    packetName: '__zlink.actor.packet.relay',
+    actorId: 'player-1',
+    routerChannelId: 'bingo.room.route',
+    header: Buffer.from(header.data()).toString('base64'),
+    payload: Buffer.from(payload.data()).toString('base64')
+  })));
+  dispatchHandler({
+    event: 2,
+    routed: {
+      parts: [backendRelay],
+      routingId: 'backend-node',
+      spotRid: 'backend-spot',
+      requestSeq: 2n,
+      reply() {
+        return {
+          message(message) {
+            replies.push(message);
+            return this;
+          },
+          submit() {}
+        };
+      },
+      close() {}
+    }
+  });
+  await waitFor(() => replies.length === 2, 'backend actor packet reply');
+  assert.equal(capturedTargetCount, 1);
+  backendRelay.close();
   header.close();
   payload.close();
   relay.close();
+});
+
+test('Entry Spot materializes a remotely returning actor with its original Entry node', async () => {
+  let dispatchHandler;
+  const replies = [];
+  const events = [];
+  const originalEntryNodeRid = zlink.RoutingId.from('play-node-b');
+  const actor = { actorId: 'player-2' };
+
+  class EntrySpot {
+    async onJoinedActor(joinedActor) {
+      events.push(`joined:${joinedActor.actorId}`);
+    }
+  }
+
+  const activation = new spots.ZLinkEntrySpotActivation({
+    entrySpotType: EntrySpot,
+    nativeSpot: {
+      routingId: 'play-node-b-entry',
+      setDispatchHandler(handler) {
+        dispatchHandler = handler;
+      },
+      recvRoute() {
+        return false;
+      },
+      async dispose() {}
+    },
+    nativeNode: { routingId: originalEntryNodeRid, bindRemoteActorSession() {} },
+    nodeRid: originalEntryNodeRid,
+    spotNodeName: 'play-b',
+    entryActorRuntime: {
+      resolveActor() { return undefined; },
+      async commitActorTransaction(_actor, onJoined) {
+        events.push('commit');
+        try {
+          await onJoined();
+        } catch (error) {
+          events.push(`commit-error:${error.message}`);
+          throw error;
+        }
+      },
+      async destroyActor() {},
+      async routePacket() { return { handled: false }; }
+    },
+    actorTransferRuntime: {
+      async materializeRoutedActor(actorId, actorType, adapterKey, state, actorEntryNodeRid) {
+        events.push(
+          `materialize:${actorId}:${actorType}:${adapterKey}:${state.data().toString()}:${String(actorEntryNodeRid)}`
+        );
+        assert.equal(String(actorEntryNodeRid), String(originalEntryNodeRid));
+        return {
+          actor,
+          actorRef: { nodeRid: originalEntryNodeRid, actorId, generation: 2n }
+        };
+      }
+    }
+  });
+
+  await activation.create();
+  await activation.configure();
+  await activation.initialize();
+
+  const common = {
+    packetName: '__zlink.actor.join_spot.request',
+    actorId: 'player-2',
+    actorType: 'PlayerActor',
+    actorNodeRid: 'play-node-a',
+    actorGeneration: '1',
+    actorEntryNodeRid: String(originalEntryNodeRid),
+    actorEntryNodeRidHex: originalEntryNodeRid.toHex(),
+    request: Buffer.from(JSON.stringify({ returnHome: true })).toString('base64'),
+    transferId: 'return-player-2'
+  };
+  const route = (payload) => {
+    const part = zlink.Message.from(Buffer.from(JSON.stringify(payload)));
+    dispatchHandler({
+      event: 2,
+      routed: {
+        parts: [part],
+        routingId: 'play-node-a',
+        spotRid: 'play-node-b-entry',
+        requestSeq: 1n,
+        reply() {
+          return {
+            message(message) {
+              replies.push(JSON.parse(Buffer.from(message).toString('utf8')));
+              return this;
+            },
+            submit() {}
+          };
+        },
+        close() {
+          part.close();
+        }
+      }
+    });
+  };
+
+  route({ ...common, phase: 'admission' });
+  await waitFor(() => replies.length === 1, 'Entry Spot remote admission reply');
+  assert.equal(replies[0].accepted, true);
+
+  route({
+    ...common,
+    phase: 'commit',
+    transferAdapterKey: 'PlayerActor',
+    transferState: Buffer.from('player-state').toString('base64')
+  });
+  await waitFor(() => replies.length === 2, 'Entry Spot remote commit reply');
+  assert.equal(replies[1].accepted, true, JSON.stringify({ reply: replies[1], events }));
+  assert.deepEqual(events, [
+    'materialize:player-2:PlayerActor:PlayerActor:player-state:play-node-b',
+    'commit',
+    'joined:player-2'
+  ]);
+
+  await activation.dispose();
 });
 
 test('Entry Spot routed bound session command decodes registered channel serializer', async () => {

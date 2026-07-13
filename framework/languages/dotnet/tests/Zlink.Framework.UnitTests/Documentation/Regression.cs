@@ -62,23 +62,12 @@ public sealed class RegressionTests
 
         Assert.Equal(DotNetContractDocuments.Order(StringComparer.Ordinal), actualDocuments);
 
-        foreach (var document in DotNetContractDocuments)
-        {
-            var path = ResolveDoc(document);
-            var text = File.ReadAllText(path);
-            var references = ExtractRegressionTestReferences(text).ToArray();
-
-            Assert.Contains("회귀 테스트", text, StringComparison.Ordinal);
-            Assert.Contains("| 테스트 케이스 | 확인 기준 |", text, StringComparison.Ordinal);
-            Assert.NotEmpty(references);
-            Assert.DoesNotContain(
-                references,
-                static reference => reference.StartsWith("planned:", StringComparison.Ordinal));
-            Assert.Empty(references
-                .GroupBy(static reference => reference, StringComparer.Ordinal)
-                .Where(static group => group.Count() > 1)
-                .Select(static group => group.Key));
-        }
+        var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
+        var references = ExtractRegressionTestReferences(matrix).ToArray();
+        Assert.NotEmpty(references);
+        Assert.DoesNotContain(
+            references,
+            static reference => reference.StartsWith("planned:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -242,14 +231,11 @@ public sealed class RegressionTests
         var activeE2EScenarios = GetActiveE2EScenarios();
         var unresolved = new List<string>();
 
-        foreach (var document in DotNetContractDocuments)
-        {
-            var path = ResolveDoc(document);
-            var text = File.ReadAllText(path);
-            var references = ExtractRegressionTestReferences(text).ToArray();
-            Assert.NotEmpty(references);
+        var document = "regression-test-matrix.ko.md";
+        var references = ExtractRegressionTestReferences(File.ReadAllText(ResolveDoc(document))).ToArray();
+        Assert.NotEmpty(references);
 
-            foreach (var reference in references)
+        foreach (var reference in references)
                 if (reference.StartsWith("E2E:", StringComparison.Ordinal))
                 {
                     if (!activeE2EScenarios.Contains(reference[4..]))
@@ -269,7 +255,6 @@ public sealed class RegressionTests
                 }
                 else if (!activeTests.Contains(reference))
                     unresolved.Add($"{document}: {reference}");
-        }
 
         Assert.True(
             unresolved.Count == 0,
@@ -388,7 +373,6 @@ public sealed class RegressionTests
             "01-system-structure.ko.md"));
         var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
         var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "02-handler-interfaces.ko.md"));
-        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
 
         Assert.Contains("`IZLinkEndpointConnections`", handlers, StringComparison.Ordinal);
         Assert.Contains("`IZLinkSpotMeshBuilder`", handlers, StringComparison.Ordinal);
@@ -398,14 +382,10 @@ public sealed class RegressionTests
             "Entry Spot timer callback은 Entry Spot 전체 실행 줄",
             handlers,
             StringComparison.Ordinal);
-        Assert.Contains("RouteMesh 단일 경로", channel, StringComparison.Ordinal);
-        Assert.Contains("route mesh `ROUTER`만 사용", spot, StringComparison.Ordinal);
-        Assert.Contains("actor factory", spot, StringComparison.Ordinal);
-        Assert.Contains("framework runtime", actor, StringComparison.Ordinal);
-        Assert.Contains(
-            "RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations",
-            location,
-            StringComparison.Ordinal);
+        Assert.Contains("`ZLinkConfigurationException`", channel, StringComparison.Ordinal);
+        Assert.Contains("ASP.NET Core", spot, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkActorClient", actor, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkLocationStore", handlers, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Dispatch;
@@ -690,6 +691,38 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal("MissingReq", observed.PacketName);
         Assert.Equal("api", observed.ChannelName);
         Assert.Equal("corr-1", observed.CorrelationId);
+        await runner.StopAsync();
+    }
+
+    [Fact]
+    public async Task ReplyPathMissing_ReportsFailCallerMessageFlowError()
+    {
+        var observer = new CapturingMessageFlowObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.SetMessageFlowObserver(observer);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
+        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotActor,
+            "SpotActor",
+            ZLinkDispatchMessageKind.ActorRequest,
+            "ActorRequest",
+            "MissingReply",
+            actorId: "actor-1");
+
+        scope.ReplyPathMissing(
+            NullLogger.Instance,
+            reporter,
+            new InvalidOperationException("The handler returned no reply."));
+
+        var observed = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ZLinkMessageFlowOutcome.Error, observed.Outcome);
+        Assert.Equal(ZLinkDispatchErrorReason.ReplyPathMissing, observed.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.FailCaller, observed.ErrorAction);
+        Assert.Equal("MissingReply", observed.PacketName);
+        Assert.Equal("actor-1", observed.ActorId);
         await runner.StopAsync();
     }
 

@@ -240,6 +240,7 @@ export class ZLinkActorTransferRuntime {
     actorType: string,
     adapterKey: string | undefined,
     transferState: Message,
+    actorEntryNodeRid: RoutingId | undefined,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     signal?: AbortSignal
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ZLinkBackendActorRef }> {
@@ -255,6 +256,7 @@ export class ZLinkActorTransferRuntime {
     if (state === undefined) {
       throw new Error(`Actor '${actorId}' transfer state was not created.`);
     }
+    if (actorEntryNodeRid !== undefined) state.setEntryNodeRid(actorEntryNodeRid);
     state.setRemoteBoundSessionTarget(remoteBoundSessionTarget);
     return {
       actor: materialized.actor,
@@ -389,7 +391,7 @@ export class ZLinkActorTransferRuntime {
   }
 
   actorEntryNodeRid(actor: ZLinkActor): RoutingId | undefined {
-    return this.options.actorManager()?.getState(actor.actorId)?.nativeActorRef?.nodeRid as RoutingId | undefined;
+    return this.options.actorManager()?.getState(actor.actorId)?.entryNodeRid;
   }
 
   private requireActorManager(message: string): ZLinkActorTransferRuntimeActorManager {

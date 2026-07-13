@@ -17,6 +17,7 @@ interface ZLinkSpotActorLifecycleDrainOptions {
   readonly serial: ZLinkSpotSerialExecutor;
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
   readonly getTarget: () => ZLinkSpotActorLifecycleTarget;
+  readonly commitActorDeparture?: (actorId: string) => void;
   readonly waitIdle: () => Promise<void>;
 }
 
@@ -48,17 +49,22 @@ export class ZLinkSpotActorLifecycleDrain {
         ? event.info.previousActor
         : event.info.currentActor;
       const actorId = actorRef?.actorId;
-      const actor = actorId === undefined ? undefined : this.options.resolveActor(actorId);
-      if (actor === undefined) {
+      if (actorId === undefined || this.options.resolveActor(actorId) === undefined) {
         continue;
       }
       await this.options.serial.execute(() => {
+        const actor = this.options.resolveActor(actorId);
+        if (actor === undefined) {
+          return undefined;
+        }
         const target = this.options.getTarget();
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
           return target.onJoinedActor?.(actor);
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
-          return target.onLeaveActor?.(actor);
+          return Promise.resolve(target.onLeaveActor?.(actor)).then(() => {
+            this.options.commitActorDeparture?.(actorId);
+          });
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
           return target.onDisconnectActor?.(actor);

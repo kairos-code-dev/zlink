@@ -39,7 +39,7 @@ export interface ZLinkSessionContextStream extends ZLinkStream {
 }
 
 interface ZLinkSessionContextRuntime {
-  cleanup(context: DefaultZLinkSessionContext): void;
+  cleanup(context: DefaultZLinkSessionContext): Promise<void>;
   createTextMessage(payload: string): Message;
   createBinaryMessage(payload: Uint8Array): Message;
   createJsonFrameMessage(
@@ -122,12 +122,12 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   }
 
   async close(signal?: AbortSignal): Promise<void> {
-    this.runtime.cleanup(this);
+    await this.runtime.cleanup(this);
     await this.closeSession(signal);
   }
 
-  cleanupBindings(): void {
-    this.runtime.cleanup(this);
+  async cleanupBindings(): Promise<void> {
+    await this.runtime.cleanup(this);
   }
 
   createTextMessage(payload: string): Message {
@@ -290,13 +290,26 @@ class DefaultZLinkSessionActors implements ZLinkSessionActors {
 
 export class DefaultZLinkSessionActor implements ZLinkSessionActor {
   readonly actorId: string;
+  private currentRef: ActorRef;
 
   constructor(
     private readonly runtime: ZLinkSessionContextRuntime,
-    readonly ref: ActorRef,
+    ref: ActorRef,
     readonly bindingToken: string
   ) {
     this.actorId = ref.actorId;
+    this.currentRef = ref;
+  }
+
+  get ref(): ActorRef {
+    return this.currentRef;
+  }
+
+  updateRef(ref: ActorRef): void {
+    if (ref.actorId !== this.actorId) {
+      throw new Error(`Cannot change session actor id from '${this.actorId}' to '${ref.actorId}'.`);
+    }
+    this.currentRef = ref;
   }
 
   relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {

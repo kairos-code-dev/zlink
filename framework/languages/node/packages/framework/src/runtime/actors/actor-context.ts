@@ -167,7 +167,9 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
   }
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    const requestMessage = encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const requestMessage = this.request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
     try {
       const result = await this.coordinator.joinEntrySpot(
         this.actor,

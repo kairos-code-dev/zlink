@@ -48,12 +48,25 @@
 
 ### 3.1 event 종류
 
-| source | event |
+**의미만 고정한다. 정확한 타입·variant 이름은 언어별 스펙이 소유한다.**
+
+| source | 관측해야 하는 변화 |
 |---|---|
-| **location runtime** | `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` |
-| **spot** | `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` |
+| **location runtime** | 상태 변경 · topology 변경 · 서비스 요약 변경 · store 실패 · store 복구 |
+| **spot** | 상태 변경 · peer 집합 변경 · subject 집합 변경 · timer handler 실패 · 처리되지 않은 예외로 timer 중단 |
+
+**timer handler 실패는 두 갈래를 구분한다** — timer가 **계속 도는** 실패와, **timer가 중단된**
+실패다.
 
 **제거된 자동 발견 runtime event payload를 다시 두지 않는다.**
+
+### 3.2 handler 실패 격리
+
+application의 runtime event handler는 여러 개 등록할 수 있다.
+
+- **한 handler가 예외를 던져도 다음 handler를 계속 실행한다.** monitoring loop를 깨지 않는다.
+- **예외는 runtime error sink로 보고한다.**
+- **취소만 전파한다.** 취소 신호로 인한 중단은 그대로 위로 올린다.
 
 ## 4. Polling
 

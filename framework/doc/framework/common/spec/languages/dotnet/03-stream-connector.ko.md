@@ -170,10 +170,8 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 `WaitFor(...)`가 사용할 unread 수신 기록은 `MaxReceivedMessages`로 제한한다. **이 제한은 response와
 heartbeat 같은 control frame의 처리를 막지 않는다.**
 
-> ⚠️ **공통 계약과 다르다.** [공통 스펙 §10.1](../../32-stream-connector.ko.md)은 **새로 도착한 message를
-> 버리고 `ReceivedMessageDropped`를 보고**하도록 규정한다. 현재 `.NET`은 **가장 오래된 unread 기록을
-> 조용히 제거하며** 그 오류 코드 자체가 없다.
-> [구현 차이 §10.5](../../90-implementation-gap.ko.md)가 이 gap을 소유한다.
+**큐가 가득 차면 새로 도착한 message를 거부하고 `ReceivedMessageDropped`를 보고한다**
+([공통 스펙 §10.1](../../32-stream-connector.ko.md)).
 
 ## 9. Inbound observer
 

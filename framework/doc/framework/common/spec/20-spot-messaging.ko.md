@@ -162,8 +162,9 @@ SPOT의 packet handler 호출은 room의 **핫패스**가 될 수 있다. 일반
 
 | 경로 | 결과 | `action` |
 |---|---|---|
-| **SPOT route request** | **error reply를 반환한다.** Error 로그 + metric | `ReplyError` |
-| **actor request** | **error reply를 반환한다.** Error 로그 + metric | `ReplyError` |
+| **SPOT route request** — reply 상관관계를 복원할 수 있다 | **error reply를 반환한다** | `ReplyError` |
+| **actor request** — reply 상관관계를 복원할 수 있다 | **error reply를 반환한다** | `ReplyError` |
+| **request** — **reply 상관관계를 복원할 수 없다** | **drop한다** | `Drop` |
 | **reply frame이 없는 경로**(같은 process의 local actor call 등) | **caller를 framework 오류로 완료한다.** Error 로그 + metric | `FailCaller` |
 | **SPOT route send** | **drop.** Warning 로그 + metric | `Drop` |
 | **actor send** | **drop.** Warning 로그 + metric | `Drop` |
@@ -171,6 +172,8 @@ SPOT의 packet handler 호출은 room의 **핫패스**가 될 수 있다. 일반
 
 **모든 경로가 전역 message flow observer event를 남긴다.** event의 공통 스키마와 `action` 값은
 [framework API §2.4.3](05-framework-api.ko.md)이 소유한다.
+
+**handler 예외는 one-way 경로에서도 Error로 기록한다**([channel 메시징 §3.1](11-channel-messaging.ko.md)).
 
 **observer 실패가 dispatch loop나 shutdown을 깨뜨리지 않는다.**
 
@@ -228,6 +231,8 @@ channel handler·HTTP handler·background service는 **actor 생성이나 entry 
 | **fanout/dealer mesh를 routed SPOT egress로 지정** | **설정 오류** |
 | location store 없이 local-only spot factory 등록 | 허용 |
 | local spot factory 없이 외부 publish 역할만 등록 | 허용 — spot publisher client를 사용한다 |
+| **SpotNode가 router·pub/sub 중 아무것도 켜지 않음** | **설정 오류** — 최소 하나는 켜야 한다 |
+| **router 없이 actor factory를 등록** | **설정 오류** — actor는 router 경로를 요구한다 |
 | **spot mesh channel 이름이 비어 있음** | **설정 오류** |
 | **router·pub/sub 역할을 켰는데 bind endpoint가 비어 있음** | **설정 오류** |
 | **등록하지 않은 route channel을 route bridge로 지정** | **설정 오류** |

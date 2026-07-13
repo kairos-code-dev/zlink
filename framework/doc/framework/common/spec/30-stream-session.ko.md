@@ -115,6 +115,7 @@ client 쪽 transport 선택은 endpoint scheme이 결정한다([Stream Connector
 | 조건 | 결과 |
 |---|---|
 | **stream node 이름이 비어 있음** | 설정 오류 |
+| **같은 stream node 이름을 두 번 등록** | 설정 오류 — node 이름은 runtime 식별자다 |
 | **bind endpoint가 없음** | 설정 오류 |
 | **같은 session 타입을 중복 등록** | 설정 오류 |
 | **한 node에 session을 둘 이상 등록** | 설정 오류 |

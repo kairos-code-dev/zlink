@@ -2107,6 +2107,9 @@ client 에게 새 request 를 보내는 API 는 제공하지 않는다. client r
 
 `IZLinkBoundSession` 자체는 연결된 client stream 을 향한 proxy 이므로
 `Zlink.Framework.Contracts.Streams` 에 둔다. Spot actor handler 는 actor 의
+
+Spot actor handler 인터페이스와 `ZLinkSpotActorSendContext`·`ZLinkSpotActorRequestContext`는
+`Zlink.Framework.Contracts.Spots`에 둔다.
 `Context.BoundSession` 으로 이 proxy 에 접근하고, stream packet metadata 는
 `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 로 받는다.
 
@@ -2911,6 +2914,16 @@ timer 가 어떤 실행 문맥에서 callback 을 호출하는지가 핵심이�
   instance 안에서는 이전 callback이 끝나기 전에 다음 callback을 겹쳐 실행하지
   않으며, route packet, subscription과 다른 Entry Spot callback과도 직렬 순서를 지킨다.
 
+## 7.1 서비스 레이어 AOP
+
+**AOP는 handler 메서드 자체가 아니라, handler가 주입받는 서비스 계층에서 동작한다.**
+
+handler가 `IUserService`를 주입받고 그 서비스가 decorator·proxy·interceptor로 감싸져 있으면 그
+AOP가 그대로 적용된다. **어떤 AOP 라이브러리를 쓸지는 그 라이브러리의 규칙을 따른다.**
+
+**framework는 handler 메서드에 AOP를 걸지 않는다.** handler 자체에 걸어야 하는 관심사는
+handler filter(§8)를 사용한다.
+
 ## 8. Handler Filter
 
 이 절은 ZLink handler 호출 전후의 공통 처리를 담당하는 filter 표면을
@@ -3366,7 +3379,7 @@ observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
 `Replied`/`Sent`/`ReplyReceived`)는 `KeyTransitions` 이상에서 발화한다. `SampleRate<1`은 성공
 전이만 thinning하고 `Dropped`·에러는 항상 통과한다.
 
-### 9.2 설정 (builder 전용)
+#### 10.4.1 설정 (builder 전용)
 
 진단 필드는 read-only이며 `ConfigureDispatch()` fluent 체인으로만 설정한다.
 
@@ -3389,7 +3402,7 @@ builder.Services.AddZLinkFramework(options =>
 - `Off`이고 explicit observer도 없을 때는 log event를 생성하지 않는다(호출부 가드 + lazy).
   explicit observer를 등록한 경우에는 로그 모드와 별개로 observer에 전달할 event를 발행한다.
 
-### 9.3 런타임 토글
+#### 10.4.2 런타임 토글
 
 `IZLinkMessageFlowControl`을 DI에서 받아 재시작 없이 모드를 바꾼다. 공유 live cell을 모든
 surface가 읽으므로 즉시 반영된다. `MessageFlow(...)`는 seed(기본값)다.
@@ -3399,13 +3412,13 @@ var control = app.Services.GetRequiredService<IZLinkMessageFlowControl>();
 control.SetMessageFlowMode(ZLinkMessageFlowLogMode.KeyTransitions);  // off→on, 즉시 반영
 ```
 
-### 9.4 관측 백엔드 경계
+#### 10.4.3 관측 백엔드 경계
 
 framework 가 제공하는 것은 `CorrelationId` + 구조화 필드 + observer 훅까지다. OpenTelemetry /
 span / 외부 콜렉터(Loki/ELK 등) 어댑터는 앱이 `IZLinkMessageFlowObserver` 콜백에서 받아 끼운다.
 framework 는 OTel에 의존하지 않는다(공통 스펙 §6 경계 원칙).
 
-### 9.5 샘플
+#### 10.4.4 샘플
 
 Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 `TraceLogFile(SampleFlowLog.Path(role))` + `TraceLabel(role)`로 분리 파일 로깅을 시연한다
@@ -3422,7 +3435,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 > 노출하지 않는다 — 계기 갱신 지점·라벨은 framework 내부에 있고, 앱이 배우는 것은 meter 이름
 > 하나뿐이다.
 
-### 10.1 표면
+#### 10.5.1 표면
 
 | 공통 개념 | `.NET` |
 |-----------|--------|
@@ -3444,7 +3457,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
   최소 비용의 비활성 경로로 끝난다. 고정 instrument는 startup에 한 번 만들 수 있다(공통 §7.2).
 - 대시보드·exporter는 앱 몫. framework는 내장 scrape 서버를 제공하지 않는다(공통 §6).
 
-### 10.2 왜 새 인터페이스가 없나
+#### 10.5.2 왜 새 인터페이스가 없나
 
 `.NET`의 `Meter`/`MeterListener`가 이미 벤더 중립 계기 파사드다. framework가 별도 `IZLinkMetrics*`
 표면을 두면 그 위에 pass-through 층이 생겨 깊이가 없다(얕은 모듈). 그래서 공개 표면을 **안정된 meter
@@ -3456,7 +3469,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 §9(메시지 흐름 추적)의 확장이며 **새 설정 표면을 만들지 않는다**. 기존 message-flow mode가 `Off`가
 아니면 framework가 전역 유일 id를 자동 생성하고 기존 event에 필드를 더한다.
 
-### 11.1 표면
+#### 10.6.1 표면
 
 | 공통 개념 | `.NET` |
 |-----------|--------|
@@ -3486,7 +3499,7 @@ options.ConfigureDispatch()
 > 앱은 아무 코드도 쓰지 않는다. draining 마커·owner lease 유지·`Takeover` 순서 같은 분산 정합은
 > 공통 스펙 §3이 소유하며 앱 표면에 노출하지 않는다.
 
-### 12.1 표면
+#### 10.7.1 표면
 
 ```csharp
 public static class ZLinkMeters { public const string Framework = "zlink.framework"; }
@@ -3559,7 +3572,7 @@ await drain.AwaitDrainedAsync(ct);
   은 배포 자동화가 세밀 제어할 때만 쓰는 탈출구다.
 - `IsReady`는 술어 프로퍼티다(`Draining`이면 false). readiness probe가 이 값을 그대로 읽는다.
 
-### 5.8 Session/actor dispatch 오류 표현 (`.NET` exception)
+### 10.8 Session/actor dispatch 오류 표현 (`.NET` exception)
 
 이 절은 framework 가 던지는 오류가 `.NET` 표면에서 어떤 모양으로 보이는지를
 정리한다.

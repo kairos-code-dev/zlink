@@ -44,11 +44,25 @@
 
 **reply path가 있으면 error reply를 반환하고, 없으면 drop한다.**
 
-| 경로 | handler 없음 · decode 실패 · handler 예외 · invalid frame |
+| 경로 | 결과 | `action` |
+|---|---|---|
+| **request** — reply 상관관계를 복원할 수 있다 | **error reply를 반환한다** | `ReplyError` |
+| **request** — **reply 상관관계를 복원할 수 없다** | **drop한다** | `Drop` |
+| **send** | **drop** | `Drop` |
+| **publish** | **drop** | `Drop` |
+
+**request라고 해서 항상 error reply가 나가는 것이 아니다.** frame이 손상돼 **누구에게 보낼지
+복원할 수 없으면 응답할 대상이 없다.** request sequence가 있고 reply 상관관계를 복원할 수 있을
+때만 error reply를 보낸다.
+
+### 3.1 로그 수준
+
+**drop 여부와 오류 분류는 별개다.** 같은 drop이라도 원인에 따라 로그 수준이 다르다.
+
+| 원인 | 로그 수준 |
 |---|---|
-| **request** | **error reply를 반환한다.** Error 로그 + metric + 전역 message flow observer event |
-| **send** | **drop.** Warning 로그 + metric + observer event |
-| **publish** | **drop.** Debug 로그 또는 metric + observer event |
+| **handler 예외**(application 코드가 던졌다) | **Error** — one-way라도 낮추지 않는다 |
+| handler 없음 · payload decode 실패 · invalid frame | send는 Warning, publish는 Debug 또는 metric |
 
 - **observer event의 공통 스키마는 [framework API §2.4.3](05-framework-api.ko.md)이 소유한다.**
 - **observer가 없더라도 기본 로그와 metric은 생략하지 않는다.**
@@ -93,8 +107,11 @@ request는 정상 처리한다** — 완전 차단은 분산 시스템에서 불
   거부한다**([§5](54-graceful-drain-handoff.ko.md)).
 - 이미 실행 중인 handler에는 **취소 신호를 전달하고** graceful shutdown 시간 안에 끝날 기회를
   준다. **in-flight reply까지 마무리한 뒤 unbind한다.**
-- **runtime이 정리될 때 아직 전송되지 않은 pending submit은 예외로 완료된다.** 호출자는 **정상
-  완료로 간주하면 안 된다.**
+- **one-way `submit`은 완료 객체를 반환하지 않는다.** 따라서 반환 뒤에 발생한 실패(종료 중 전송
+  실패 등)를 **호출자에게 예외로 알릴 표면이 없다.** 이 늦은 실패는 **runtime error sink로
+  보고한다**(§3의 observer·metric 경로). **호출자는 `submit` 반환을 "전송 성공"으로 간주하면 안
+  된다** — local 수락까지만 확인한 것이다.
+- **완료값을 반환하는 request 계열만** 호출자에게 실패를 전달한다.
 
 ## 6. Codec
 

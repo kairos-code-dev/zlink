@@ -142,9 +142,15 @@ socket이 아니라 channel client다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 
-- `profile` channel은 `EnableServer()`와 `EnableSubscriber()`를 같이 가질 수 있다.
-- `inventory` channel은 `EnableClient()`만 가질 수 있다.
-- `audit` channel은 `EnablePublisher()`만 가질 수 있다.
+- `profile` channel(client/server)은 `EnableServer()`와 `EnableClient()`를 가질 수 있다.
+- `inventory` channel(client/server)은 `EnableClient()`만 가질 수 있다.
+- `audit` channel(fanout)은 `EnablePublisher()`만 가질 수 있다.
+
+**channel 종류는 배타적이다.** client/server channel에 publisher·subscriber 역할을 켤 수 없고,
+fanout channel에 server·client 역할을 켤 수 없다. **한 이름의 channel이 두 종류를 겸할 수
+없으므로**, 같은 서비스가 요청도 받고 event도 구독해야 하면 **서로 다른 channel 이름**으로
+분리한다. 같은 이름을 두 번 등록하는 것도 설정 오류다
+([channel 메시징 §4](11-channel-messaging.ko.md)).
 
 outward API는 공용 client 하나로 보이더라도 내부 runtime은 channel마다
 역할별 역할을 가질 수 있다. 현재 스펙은 이 channel별 역할 구조를

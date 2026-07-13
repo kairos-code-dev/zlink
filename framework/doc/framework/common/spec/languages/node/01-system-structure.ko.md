@@ -85,6 +85,39 @@
 | actor factory | `providers` + SpotNode `actorFactory(...)` | ActorManager가 actor를 생성할 때 |
 | stream session(또는 factory) | `providers` + `streams` 설정 | stream 연결을 session으로 활성화할 때 |
 
+### 4.1 Provider token
+
+**주입에 쓰는 token 심볼은 framework가 export한다.**
+
+**항상 등록되는 provider:**
+
+| token | 표면 |
+|---|---|
+| `ZLINK_CHANNEL_CLIENT` | channel client |
+| `ZLINK_ROUTE_CLIENT` | route client |
+| `ZLINK_FANOUT_CLIENT` | fanout client |
+| `ZLINK_MESSAGE_METADATA_POLICY` | metadata 정책 |
+| `ZLINK_FRAMEWORK_RUNTIME` · `ZLINK_FRAMEWORK_REGISTRATION` | runtime과 등록 |
+
+**역할이 있을 때만 등록되는 provider:**
+
+| token | 필요한 역할 |
+|---|---|
+| `ZLINK_SPOT_MANAGER` · `ZLINK_SPOT_OUTBOUND` | spot mesh 등록 |
+| `ZLINK_SPOT_PUBLISHER_CLIENT` | spot publisher 역할 |
+| `ZLINK_ACTOR_MANAGER` · `ZLINK_ACTOR_CLIENT` | actor factory 등록 |
+| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | spot handle resolver 등록 |
+| `ZLINK_BOUND_SESSION_FACTORY` | session actor dispatch |
+| `ZLINK_LOCATION_RUNTIME_QUERY` | location runtime 등록 |
+| `ZLINK_RUNTIME_EVENT_PUBLISHER` | monitoring 등록 |
+| `ZLINK_DRAIN_CONTROL` | drain 등록 |
+
+**등록되지 않은 token을 주입하면 NestJS의 미해결 의존성 오류로 실패한다.**
+
+> **`forRoot`와 `forRootFactory`의 실패 모양이 다르다.** 정적 `forRoot`에서 역할이 없으면
+> **provider 자체가 등록되지 않는다.** `forRootFactory`처럼 동적으로 구성하는 경로에서는 역할이
+> 없을 때 **provider 값이 `null`이 될 수 있다.** 주입 지점에서 두 경우를 구분해 다뤄야 한다.
+
 **decorator의 책임 분리:**
 
 - **channel handler**는 decorator로 group 이름을 붙이고, **channel이 그 group을 선택한다.**

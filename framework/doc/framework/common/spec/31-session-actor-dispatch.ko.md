@@ -676,6 +676,53 @@ internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framew
 계약은 application handler가 framework codec registry와 typed message만 보고, 내부
 server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
+## 12.1 내부 routed wire 계약
+
+**server 사이를 잇는 내부 route transport는 [message-model](03-message-model.ko.md)의 multipart
+계약을 그대로 따른다.** public API는 typed object 중심이지만, wire는 part로 나뉜다.
+
+**Session 서버 → Play 서버 actor** (actor dispatch request / send):
+
+| part | 내용 |
+|---|---|
+| `parts[0]` | **routed framework header.** packet name은 internal actor dispatch packet 이름 |
+| `parts[1]` | **actor dispatch metadata.** actor route와, local actor를 새로 만들어야 하는 경우를 위한 **actor id와 actor type만** 둔다 |
+| `parts[2]` | **encoded stream header bytes.** stream packet kind, codec, request sequence, packet name, metadata snapshot을 **모두 이 part에** 둔다 |
+| `parts[3]` | **application payload bytes.** codec이 만든 payload를 그대로 둔다 |
+
+**Play 서버 actor → Session 서버의 client stream** (bound session send / request):
+
+| part | 내용 |
+|---|---|
+| `parts[0]` | **routed framework header.** packet name은 internal bound session packet 이름 |
+| `parts[1]` | **bound session metadata.** actor id, **binding token**, client packet name, reply 필요 여부, metadata snapshot |
+| `parts[2]` | **application payload bytes** |
+
+**reply도 같은 원칙이다.** routed reply header는 `parts[0]`, reply payload는 별도 part에 둔다.
+**payload가 없으면 빈 payload part를 그대로 남긴다.**
+
+### 12.1.1 금지하는 형태
+
+**다음은 이 계약이 아니다.**
+
+- **단일 DTO 안에 stream header와 payload bytes를 같이 넣고, 그 DTO 전체를 다시 직렬화**하는 방식
+- **단일 DTO 안에 proxy metadata와 payload bytes를 함께 묶는** 방식
+- **`parts[0]` 한 part만 보내고 그 안에서 header와 payload를 모두 decode**하는 방식
+
+**이유는 성능만이 아니다.**
+
+- **route와 dispatch는 header와 metadata만 읽고도 target과 handler를 결정할 수 있어야 한다.**
+- **application payload는 handler가 정해진 뒤에 등록된 codec이 decode해야 한다.**
+
+그래야 큰 payload·binary payload·압축 payload·attachment가 들어와도 **framework 내부 route
+경로가 payload 재인코딩 비용을 떠안지 않는다.**
+
+### 12.1.2 STREAM은 예외다
+
+**client와 Session 서버 사이의 STREAM transport는 stream packet 하나 안에 header와 payload
+frame을 그대로 담는다**([Stream Connector §4](32-stream-connector.ko.md)). 위 multipart 계약은
+**framework 서버끼리 주고받는 routed transport 구간에만** 적용한다.
+
 ## 13. 자동 연결 정책
 
 session actor dispatch sample의 기본 연결 방식은 location store 기반 자동 연결이어야

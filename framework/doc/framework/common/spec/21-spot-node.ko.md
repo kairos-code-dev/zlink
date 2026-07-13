@@ -70,7 +70,18 @@ actor가 잘못된 Entry Spot rid를 갖는다.
 | 같은 spot rid가 **initializing** | **첫 생성 요청의 생성 callback 완료를 기다린다** |
 | 기존 entry의 **spot 타입이 다름** | 같은 logical spot을 다른 framework 타입으로 해석하려는 시도이므로 **타입 불일치 오류로 실패한다** |
 
-### 3.2 생성 결과와 실패
+### 3.2 생성 lifecycle의 호출 순서
+
+**순서가 계약이다.** wrapper가 이 순서에 의존한다([stage-wrapper §3](25-stage-wrapper-on-spot.ko.md)).
+
+1. **handler 구성**을 마친다.
+2. **생성 callback**을 호출한다.
+3. **생성 callback이 수락한 경우에만** 초기화 callback을 호출한다. **거절하면 초기화를 건너뛴다.**
+4. **종료 callback은 spot 하나당 한 번만** 실행한다. 종료를 여러 번 요청해도 중복 호출하지 않는다.
+
+**세 callback은 모두 그 spot의 실행 문맥에서 직렬로 실행된다.**
+
+### 3.3 생성 결과와 실패
 
 생성 결과는 **spot rid, 상태, 선택적 reply payload**를 담는다. 이후 메시징은 현재 channel
 publish 또는 attach된 channel client의 send/request로 푼다.

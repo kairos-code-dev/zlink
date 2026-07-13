@@ -1019,7 +1019,22 @@ serializer 선택과 기본 codec 의미는 [message model](../../03-message-mod
 
 codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
 
-```ts
+```
+
+**serializer 선택 규칙** — `canSerialize(value, context)`는 **선택적**이며, 같은 runtime에
+serializer가 여러 개일 때 어떤 payload를 맡을지 알려준다.
+
+| 구성 | 동작 |
+|---|---|
+| serializer가 **하나만** 등록됨 | 그 serializer를 **기본값으로** 사용한다. predicate를 보지 않는다 |
+| serializer가 **여럿**이다 | **`canSerialize`가 `true`를 반환한 serializer만** 그 payload를 맡는다 |
+| 모두 predicate를 제공했고 **아무도 맡지 않음** | **JSON으로 보낸다** |
+| **둘 이상이 같은 payload를 맡겠다고 함** | **전송 실패** |
+| predicate가 없는 serializer 때문에 **선택을 확정할 수 없음** | **전송 실패** |
+
+**전송 실패는 런타임 오류다.** custom codec을 여러 개 등록할 때 이 규칙을 지키지 않으면 여기서
+걸린다.
+ts
 export interface ZLinkCodecRegistryBuilder {
   use(extension: ZLinkCodecExtension): this;
 }

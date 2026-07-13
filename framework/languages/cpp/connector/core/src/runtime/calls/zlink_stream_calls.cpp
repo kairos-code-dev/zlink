@@ -735,13 +735,33 @@ void route_inbound_packet (std::shared_ptr<connector_state_t> state, packet_t pa
     }
 }
 
-result_t<void> send_due_pong (connector_state_t &state);
+void enqueue_async_write (std::shared_ptr<connector_state_t> state,
+                          std::vector<std::uint8_t> frame,
+                          std::function<void (result_t<void>)> callback);
 
-/* transport mutex를 잡고 due pong을 전송한다(수신 콜백 문맥에서 호출). */
-result_t<void> send_due_pong_locked (const std::shared_ptr<connector_state_t> &state)
+/* 수신 콜백(io 스레드) 문맥에서 due pong을 write pump에 싣는다. 이 문맥에서는 동기 write를
+ * 쓰면 안 된다. in-flight async_write와 같은 소켓에서 바이트가 섞이고, 상대가 읽지 않으면
+ * io 스레드 자체가 blocking write에 갇힌다. */
+void queue_due_pong (const std::shared_ptr<connector_state_t> &state)
 {
-    std::lock_guard<std::mutex> lock (state->transport_mutex);
-    return send_due_pong (*state);
+    std::vector<std::uint8_t> frame;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (!state->heartbeat_pong_due || !is_transport_connected (*state)) {
+            return;
+        }
+        packet_t pong;
+        pong.name = "$zlink.heartbeat.pong";
+        pong.codec = codec_t::raw;
+        pong.payload = zlink::message_t::from (std::string{});
+        auto encoded = encode_packet_frame (*state, message_kind_t::control, pong, std::nullopt);
+        if (!encoded) {
+            return;
+        }
+        state->heartbeat_pong_due = false;
+        frame = std::move (encoded.value ());
+    }
+    enqueue_async_write (state, std::move (frame), {});
 }
 
 void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
@@ -827,7 +847,7 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
      * 부를 때까지 미룰 수 없다. 동기 request가 응답을 기다리는 동안에는 dispatch()가 돌지
      * 않으므로, pong을 그 경로에만 두면 응답이 heartbeat timeout보다 오래 걸리는 정상 요청에서도
      * 서버가 세션을 heartbeat timeout으로 끊는다. 수신 프레임을 처리한 직후 바로 답한다. */
-    (void) send_due_pong_locked (state);
+    queue_due_pong (state);
 
     for (auto &packet : pushed_packets) {
         route_inbound_packet (state, std::move (packet));
@@ -1259,6 +1279,11 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
         auto frame = std::move (received.value ());
         trace_request ("read-dispatch", frame.request_seq, frame.packet.name,
                        std::string ("kind=") + message_kind_name (frame.kind));
+        /* graceful-drain-handoff §7.2: 응답을 기다리는 동안 도착한 server liveness ping에 바로
+         * 답한다. pong을 dispatch() 경로에만 두면 응답이 heartbeat 창보다 오래 걸리는 정상
+         * 요청에서 서버가 세션을 heartbeat timeout으로 끊는다. 이 루프는 transport mutex를 쥔
+         * 동기 전송 문맥이므로 동기 write가 맞다. */
+        (void) send_due_pong (*state);
         if ((frame.kind == message_kind_t::response || frame.kind == message_kind_t::error)
             && frame.request_seq == seq && frame.packet.name != request_packet_name) {
             state->pending_requests.erase (seq);

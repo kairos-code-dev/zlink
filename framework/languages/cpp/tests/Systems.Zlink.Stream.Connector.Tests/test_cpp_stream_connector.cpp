@@ -917,10 +917,13 @@ int main ()
           std::string ("tcp://127.0.0.1:")
           + std::to_string (async_connect_acceptor.local_endpoint ().port ());
         callback_latch_t async_connect_server_latch;
+        /* accept한 소켓은 이 블록이 끝날 때까지 살아 있어야 한다. accept 스레드의 지역 변수로
+         * 두면 스레드가 끝나는 즉시 연결이 닫히고, 클라이언트가 EOF로 disconnected가 되어
+         * is_connected() 검사와 경합한다. */
+        boost::asio::ip::tcp::socket async_connect_accepted (async_connect_io);
         joining_thread_t async_connect_server_thread ([&] {
-            boost::asio::ip::tcp::socket accepted (async_connect_io);
             boost::system::error_code error;
-            async_connect_acceptor.accept (accepted, error);
+            async_connect_acceptor.accept (async_connect_accepted, error);
             async_connect_server_latch.signal ();
         });
         lifecycle_options.endpoint = async_connect_endpoint;
@@ -942,7 +945,9 @@ int main ()
             async_connect_server_thread.join ();
             return 99;
         }
-        if (!async_connect_latch.wait_for (std::chrono::milliseconds (100)) || !async_connect_seen
+        /* 비차단 여부는 위의 submit 경과 시간이 단언한다. 여기서는 완료 콜백이 실제로 오는지만
+         * 본다. 완료 대기에 짧은 시한을 걸면 부하가 걸린 머신에서 그대로 flake가 된다. */
+        if (!async_connect_latch.wait_for (std::chrono::seconds (5)) || !async_connect_seen
             || !async_connect_connector.is_connected ()) {
             async_connect_connector.close ();
             boost::system::error_code ignored;
@@ -1428,9 +1433,11 @@ int main ()
 
     connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
 
+    /* 이 케이스가 확인하는 것은 reply 성공과 pending map 정리이지 응답 지연이 아니다. 짧은
+     * timeout은 부하가 걸린 머신에서 그대로 flake가 된다. */
     auto request = connector.request (login_request_t{})
                      .packet_name ("login.request")
-                     .timeout (std::chrono::milliseconds (5))
+                     .timeout (std::chrono::seconds (5))
                      .submit<login_reply_t> ();
     if (!request || runtime.pending_request_count () != 0) {
         return 6;
@@ -2694,6 +2701,9 @@ int main ()
     zlink::stream_connector::connector_options_t pong_during_request_options;
     pong_during_request_options.endpoint = pong_during_request_endpoint;
     pong_during_request_options.heartbeat.interval = std::chrono::milliseconds (0);
+    /* manual dispatch: application이 dispatch()를 부를 때까지 pump가 돌지 않는다. 동기 request가
+     * 응답을 기다리는 동안 pong을 dispatch() 경로에만 두면 이 모드에서 답이 나가지 않는다. */
+    pong_during_request_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
     auto pong_during_request_connector =
       zlink::stream_connector::connector_factory_t::create (pong_during_request_options);
     if (!pong_during_request_connector.connect ()) {

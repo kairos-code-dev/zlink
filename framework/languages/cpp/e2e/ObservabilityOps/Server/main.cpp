@@ -346,7 +346,6 @@ class obs_session_t final : public fw::packet_stream_session_t
                        .timeout (std::chrono::milliseconds (5000))
                        .async<obs::obs_action_res_t> ();
         stream.reply_packet (zlink::message_t::from_json (reply))
-          .packet_name (obs::obs_action_res_t::packet_name)
           .submit ();
         co_return;
     }

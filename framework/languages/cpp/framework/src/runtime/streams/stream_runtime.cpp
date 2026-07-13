@@ -116,6 +116,15 @@ class stream_write_call_state_t
             }
             flags = flags | stream_header_flags_t::payload_compressed;
         }
+        /* stream connector §5.2: Response/Error는 request의 packet name을 그대로 되돌린다.
+         * reply에 이름을 덮어쓰면 connector가 pending request와 대조하지 못하고 응답을 버린다. */
+        if (!_packet_name.empty () && _packet_name != _header->packet_name ()
+            && (_header->kind () == stream_message_kind_t::response
+                || _header->kind () == stream_message_kind_t::error)) {
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "STREAM reply must carry the request packet name");
+        }
         const auto packet_name =
           _packet_name.empty () ? std::string (_header->packet_name ()) : _packet_name;
         const auto header =
@@ -534,9 +543,12 @@ stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
           result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                    "STREAM reply requires request sequence"));
     }
+    /* stream connector §5.2: Response의 packet name은 원래 request의 packet name과 같아야 한다.
+     * connector는 이 이름으로 pending request를 대조하므로 다른 이름을 실으면 응답을 거절한다. */
     stream_header_t reply_header (stream_message_kind_t::response, request_header->codec (),
                                   stream_header_flags_t::has_request_seq,
-                                  request_header->request_seq (), "reply", {});
+                                  request_header->request_seq (),
+                                  std::string (request_header->packet_name ()), {});
     if (auto correlation = request_header->correlation_id ()) {
         reply_header.with_correlation_id (std::string (*correlation));
     }

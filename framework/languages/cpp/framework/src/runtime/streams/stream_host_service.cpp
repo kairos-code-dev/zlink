@@ -5,6 +5,8 @@
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/write.hpp>
@@ -156,6 +158,68 @@ const char *stream_kind_name (stream_message_kind_t kind)
         return "control";
     }
     return "unknown";
+}
+
+/* stream connector §5.3: Error payload는 항상 `{"code":"...","message":"..."}` JSON object다.
+ * code는 framework error kind의 이름을 그대로 쓴다. */
+const char *stream_error_code (framework_error_kind_t kind)
+{
+    switch (kind) {
+    case framework_error_kind_t::actor_route_not_found:
+        return "actor_route_not_found";
+    case framework_error_kind_t::actor_create_failed:
+        return "actor_create_failed";
+    case framework_error_kind_t::actor_already_exists:
+        return "actor_already_exists";
+    case framework_error_kind_t::actor_type_mismatch:
+        return "actor_type_mismatch";
+    case framework_error_kind_t::spot_create_failed:
+        return "spot_create_failed";
+    case framework_error_kind_t::spot_route_not_found:
+        return "spot_route_not_found";
+    case framework_error_kind_t::spot_type_mismatch:
+        return "spot_type_mismatch";
+    case framework_error_kind_t::actor_session_not_bound:
+        return "actor_session_not_bound";
+    case framework_error_kind_t::handler_not_found:
+        return "handler_not_found";
+    case framework_error_kind_t::route_handler_not_found:
+        return "route_handler_not_found";
+    case framework_error_kind_t::actor_dispatch_handler_not_found:
+        return "actor_dispatch_handler_not_found";
+    case framework_error_kind_t::payload_decode_failed:
+        return "payload_decode_failed";
+    case framework_error_kind_t::route_not_connected:
+        return "route_not_connected";
+    case framework_error_kind_t::request_target_not_found:
+        return "request_target_not_found";
+    case framework_error_kind_t::request_rejected:
+        return "request_rejected";
+    case framework_error_kind_t::request_protocol_error:
+        return "request_protocol_error";
+    case framework_error_kind_t::request_failed:
+        return "request_failed";
+    case framework_error_kind_t::worker_queue_full:
+        return "worker_queue_full";
+    case framework_error_kind_t::worker_timed_out:
+        return "worker_timed_out";
+    case framework_error_kind_t::worker_failed:
+        return "worker_failed";
+    case framework_error_kind_t::actor_location_stale:
+        return "actor_location_stale";
+    case framework_error_kind_t::actor_create_rejected:
+        return "actor_create_rejected";
+    }
+    return "request_failed";
+}
+
+zlink::message_t stream_error_payload (const result_t<void> &error)
+{
+    const auto *failure = error.error ();
+    nlohmann::json payload;
+    payload["code"] = failure ? stream_error_code (failure->kind ()) : "request_failed";
+    payload["message"] = failure ? failure->what () : "STREAM request failed";
+    return zlink::message_t::from (payload.dump ());
 }
 
 void trace_stream_host (std::string_view stage,
@@ -1118,7 +1182,6 @@ class stream_host_service_t::listener_t
         if (!request_header.request_seq ()) {
             return;
         }
-        auto message = error.error () ? error.error ()->what () : "STREAM request failed";
         stream_header_t error_header (stream_message_kind_t::error, stream_codec_t::json,
                                       stream_header_flags_t::has_request_seq,
                                       request_header.request_seq (),
@@ -1128,8 +1191,7 @@ class stream_host_service_t::listener_t
         if (auto correlation = request_header.correlation_id ()) {
             error_header.with_correlation_id (std::string (*correlation));
         }
-        write_frame (socket, error_header,
-                     zlink::message_t::from (std::string ("{\"error\":\"") + message + "\"}"));
+        write_frame (socket, error_header, stream_error_payload (error));
     }
 
     void write_error_frame_native (native_tcp_connection_t &connection,
@@ -1139,7 +1201,6 @@ class stream_host_service_t::listener_t
         if (!request_header.request_seq ()) {
             return;
         }
-        auto message = error.error () ? error.error ()->what () : "STREAM request failed";
         stream_header_t error_header (stream_message_kind_t::error, stream_codec_t::json,
                                       stream_header_flags_t::has_request_seq,
                                       request_header.request_seq (),
@@ -1147,9 +1208,7 @@ class stream_host_service_t::listener_t
         if (auto correlation = request_header.correlation_id ()) {
             error_header.with_correlation_id (std::string (*correlation));
         }
-        write_frame_native (connection, error_header,
-                            zlink::message_t::from (std::string ("{\"error\":\"") + message
-                                                    + "\"}"));
+        write_frame_native (connection, error_header, stream_error_payload (error));
     }
 
     template <typename TStream>

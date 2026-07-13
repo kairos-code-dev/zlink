@@ -420,9 +420,10 @@ int main ()
         || runtime.written_headers (stream).size () != 1) {
         return 11;
     }
+    /* stream connector §5.2: Response는 request의 packet name을 그대로 되돌린다. */
     if (runtime.written_headers (stream)[0].kind () != stream_message_kind_t::response
         || runtime.written_headers (stream)[0].request_seq () != 77
-        || runtime.written_headers (stream)[0].packet_name () != "reply") {
+        || runtime.written_headers (stream)[0].packet_name () != "move") {
         return 15;
     }
 

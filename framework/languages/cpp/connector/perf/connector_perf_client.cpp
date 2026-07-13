@@ -262,9 +262,11 @@ std::thread start_loopback_server (zlink::context_t &context,
                 std::string outbound;
                 while (auto frame = try_read_server_frame (buffer)) {
                     if (frame->header.kind == zlink::stream_connector::message_kind_t::request) {
+                        /* stream connector §5.2: Response의 packet name은 request와 같아야 한다. */
                         outbound += make_server_frame (
                                       zlink::stream_connector::message_kind_t::response,
-                                      frame->header.request_seq.value_or (0), "reply", "ok")
+                                      frame->header.request_seq.value_or (0), frame->header.name,
+                                      "ok")
                                       .to_string ();
                         outbound += make_server_frame (
                                       zlink::stream_connector::message_kind_t::send, 0,

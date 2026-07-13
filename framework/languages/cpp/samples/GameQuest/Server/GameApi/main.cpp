@@ -212,7 +212,6 @@ class gamequest_session_t final : public packet_stream_session_t
             stream
               .reply_packet (zlink::message_t::from_json (
                 join_session_res_t{synced.updated_quests}))
-              .packet_name (join_session_res_t::packet_name)
               .submit ();
             co_return;
         }
@@ -223,7 +222,6 @@ class gamequest_session_t final : public packet_stream_session_t
             stream
               .reply_packet (
                 zlink::message_t::from_json (get_quest_progress_res_t{synced.updated_quests}))
-              .packet_name (get_quest_progress_res_t::packet_name)
               .submit ();
             co_return;
         }
@@ -232,7 +230,6 @@ class gamequest_session_t final : public packet_stream_session_t
             auto synced = co_await sync_projection (request.player_id);
             _store.merge_projection (request.player_id, synced.updated_quests);
             stream.reply_packet (zlink::message_t::from_json (synced))
-              .packet_name (sync_quest_progress_res_t::packet_name)
               .submit ();
             co_return;
         }
@@ -242,7 +239,6 @@ class gamequest_session_t final : public packet_stream_session_t
                                           "MonsterKilled", request.monster_id, 1);
             auto applied = co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (kill_monster_res_t{event.event_id}))
-              .packet_name (kill_monster_res_t::packet_name)
               .submit ();
             (void) applied;
             co_return;
@@ -253,7 +249,6 @@ class gamequest_session_t final : public packet_stream_session_t
                                           "ItemCollected", request.item_id, request.count);
             auto applied = co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (collect_item_res_t{event.event_id}))
-              .packet_name (collect_item_res_t::packet_name)
               .submit ();
             (void) applied;
             co_return;
@@ -265,7 +260,6 @@ class gamequest_session_t final : public packet_stream_session_t
             auto applied = co_await apply_event (event);
             stream
               .reply_packet (zlink::message_t::from_json (complete_mission_res_t{event.event_id}))
-              .packet_name (complete_mission_res_t::packet_name)
               .submit ();
             (void) applied;
             co_return;
@@ -276,7 +270,6 @@ class gamequest_session_t final : public packet_stream_session_t
                                           request.area_id, 1);
             auto applied = co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (enter_area_res_t{event.event_id}))
-              .packet_name (enter_area_res_t::packet_name)
               .submit ();
             (void) applied;
             co_return;
@@ -287,7 +280,6 @@ class gamequest_session_t final : public packet_stream_session_t
                                           "FeatureUnlocked", request.feature_id, 1);
             auto applied = co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (unlock_feature_res_t{event.event_id}))
-              .packet_name (unlock_feature_res_t::packet_name)
               .submit ();
             (void) applied;
             co_return;

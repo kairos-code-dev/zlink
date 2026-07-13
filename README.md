@@ -5,7 +5,7 @@
 > A modern messaging library built on [libzmq](https://github.com/zeromq/libzmq) v4.3.5 — focused on the essential patterns, with Boost.Asio-powered I/O and a developer-friendly API.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](./LICENSE)
+[![License: MPL-2.0 / FSL-1.1 / Apache-2.0](https://img.shields.io/badge/License-multiple-blue.svg)](./doc/license/README.md)
 
 [Website](https://zlink.systems/) · [User Guide](./doc/guide/01-overview.md) · [Spec](./doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](./doc/internals/architecture.md) · [Build](./doc/building/build-guide.md)
 
@@ -252,9 +252,36 @@ Throughput comparison with libzmq on 64-byte messages over TCP:
 
 ## License
 
-[Mozilla Public License 2.0](./LICENSE)
+This repository uses three licenses, split by layer:
+
+| Layer | License |
+|-------|---------|
+| `core/`, `bindings/` — the messaging engine and per-language native bindings | [Mozilla Public License 2.0](./LICENSE) |
+| `framework/` — the higher-level framework (SPOT/actor, channel messaging, STREAM, drain) | [Functional Source License 1.1, ALv2 Future License](./framework/LICENSE) |
+| `framework`'s `http-client` package in each language — a thin wrapper over that platform's commonly used HTTP client library (.NET's `System.Net.Http`, Java/Kotlin's `java.net.http`, Node's `undici`, C++'s Boost.Beast) | Apache License 2.0 |
+
+Each `http-client` package wraps a permissively-licensed HTTP client library
+rather than any zlink-original transport, so it carries Apache-2.0 instead of
+FSL. The .NET and Node packages declare `Apache-2.0` directly in their own
+package manifest; the Java and Kotlin packages receive it from the shared
+Gradle publish configuration; the C++ package ships the license text
+alongside its sources (CMake has no standard SPDX manifest field).
+
+`core`/`bindings` stay MPL-2.0 because `core` began from
+[libzmq](https://github.com/zeromq/libzmq) v4.3.5, itself MPL-2.0. `framework`
+is licensed under FSL-1.1-ALv2: free for internal use, non-commercial
+education/research, and professional services, plus anything else that
+isn't a Competing Use — offering the Software as a substitute for the
+Software itself, for another product or service we offer, or for anything
+with substantially similar functionality (full definition in
+[framework/LICENSE](./framework/LICENSE)). Building and shipping your own
+product with it, including embedding it, falls under that last "isn't a
+Competing Use" clause rather than the license's explicit list.
+Each `framework` release automatically converts to Apache License 2.0 two
+years after its publication date.
 
 For third-party component notices and binary redistribution information,
-see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). For the full policy
+rationale, see [doc/license/README.md](./doc/license/README.md).
 
-Built on [libzmq](https://github.com/zeromq/libzmq) — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.
+Built on [libzmq](https://github.com/zeromq/libzmq) — Copyright (c) 2007-2024 Contributors as noted in the [AUTHORS](./core/AUTHORS) file.

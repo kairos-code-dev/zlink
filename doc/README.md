@@ -12,6 +12,7 @@ English | [한국어](README.ko.md)
 | `guide/` | Application developers (library users) | **Intent, purpose, usage** — why the API exists, when to use which pattern, practical examples. No internal implementation details |
 | `internals/` | Core library maintainers | **Internal architecture** — socket wiring, data flow, thread model, protocol encoding. Diagram-heavy for understanding before reading code |
 | `building/` | Build/release engineers | Build, test, packaging instructions |
+| `license/` | Anyone evaluating adoption, legal reviewers | **License policy** — why this repo uses three licenses (MPL-2.0 / FSL-1.1-ALv2 / Apache-2.0), what each permits, where the canonical texts live |
 
 **Key rule**: guide does not explain internals. If a guide topic needs
 internal context, link to the internals document instead.
@@ -26,6 +27,7 @@ internal context, link to the internals document instead.
 | **Binding Users** | [guide/bindings/README.ko.md](../bindings/doc/guide/README.ko.md) (Korean) | C++/Java/.NET/Node.js/Python bindings |
 | **Library Developers** | [internals/architecture.md](../core/doc/internals/architecture.md) | Internal architecture and implementation details |
 | **Build/Release Engineers** | [building/build-guide.md](building/build-guide.md) | Building, testing, and packaging |
+| **Adopters / Legal Reviewers** | [license/README.md](license/README.md) | License policy across `core`/`bindings`/`framework`/`http-client` |
 
 ---
 
@@ -104,3 +106,9 @@ language-specific rules.
 | [release-accounts.md](building/release-accounts.md) | Official distribution accounts/secrets |
 | [../core/tests/README.md](../core/tests/README.md) | Test strategy, layout, and lane execution |
 | [platforms.md](building/platforms.md) | Supported platforms and compilers |
+
+## License Policy (license/)
+
+| Document | Description |
+|----------|-------------|
+| [README.md](license/README.md) | Why this repository uses three licenses (MPL-2.0 / FSL-1.1-ALv2 / Apache-2.0), what each tier permits, and where the canonical texts live |

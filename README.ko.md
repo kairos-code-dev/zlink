@@ -5,7 +5,7 @@
 > [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](./LICENSE)
+[![License: MPL-2.0 / FSL-1.1 / Apache-2.0](https://img.shields.io/badge/License-multiple-blue.svg)](./doc/license/README.ko.md)
 
 [공식 사이트](https://zlink.systems/) · [사용자 가이드](./doc/guide/01-overview.ko.md) · [스펙](./doc/spec/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](./doc/internals/architecture.ko.md) · [빌드](./doc/building/build-guide.ko.md)
 
@@ -251,9 +251,35 @@ libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 
 ## 라이선스
 
-[Mozilla Public License 2.0](./LICENSE)
+이 저장소는 계층에 따라 세 라이선스를 씁니다.
+
+| 계층 | 라이선스 |
+|------|----------|
+| `core/`, `bindings/` — 메시징 엔진과 언어별 네이티브 바인딩 | [Mozilla Public License 2.0](./LICENSE) |
+| `framework/` — 상위 프레임워크(SPOT/actor, channel messaging, STREAM, drain) | [Functional Source License 1.1, ALv2 Future License](./framework/LICENSE) |
+| `framework`의 언어별 `http-client` 패키지 — 각 플랫폼에서 흔히 쓰는 HTTP 클라이언트 라이브러리(.NET `System.Net.Http`, Java/Kotlin `java.net.http`, Node `undici`, C++ Boost.Beast)를 감싼 래퍼 | Apache License 2.0 |
+
+`http-client` 패키지는 zlink가 자체 구현한 전송 계층이 아니라 허용적
+라이선스의 HTTP 클라이언트 라이브러리를 감싼 것이라 FSL 대신 Apache-2.0을
+씁니다. .NET·Node 패키지는 각자 매니페스트에 `Apache-2.0`을 직접 표기하고,
+Java·Kotlin 패키지는 공유 Gradle 배포 설정에서 이 값을 받으며, C++ 패키지는
+소스와 함께 라이선스 전문을 담아 배포합니다(CMake에는 표준 SPDX 매니페스트
+필드가 없습니다).
+
+`core`/`bindings`가 MPL-2.0인 이유는 `core`가 [libzmq](https://github.com/zeromq/libzmq)
+v4.3.5(이미 MPL-2.0)에서 출발했기 때문입니다. `framework`는 FSL-1.1-ALv2로,
+내부 사용·비상업 교육/연구·라이선스 사용자를 위한 전문 서비스에 쓸 수 있고,
+그 외에도 Competing Use(경쟁 목적 사용)만 아니면 됩니다. Competing Use는
+소프트웨어 자체를 대체하거나, 우리가 이 소프트웨어로 제공 중인 다른
+제품·서비스를 대체하거나, 실질적으로 동일한 기능을 제공하는 상용 제품·서비스로
+제공하는 것을 말합니다(전체 정의는 [framework/LICENSE](./framework/LICENSE) 참고).
+자기 제품을 만들어 배포하는 것(임베드 포함)은 라이선스의 명시적 허용 목록이
+아니라 이 "Competing Use가 아니다"라는 조항으로 커버됩니다.
+`framework`의 각 릴리스는 발행일로부터 2년 뒤 자동으로 Apache License 2.0으로
+전환됩니다.
 
 서드파티 구성요소 및 바이너리 재배포 관련 고지는
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)를 참고하세요.
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)를, 정책 전반의 근거는
+[doc/license/README.ko.md](./doc/license/README.ko.md)를 참고하세요.
 
-[libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.
+[libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the [AUTHORS](./core/AUTHORS) file.

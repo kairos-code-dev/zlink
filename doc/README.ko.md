@@ -14,6 +14,7 @@
 | **바인딩 사용자** | [guide/bindings/README.ko.md](../bindings/doc/guide/README.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | **라이브러리 개발자** | [internals/architecture.ko.md](../core/doc/internals/architecture.ko.md) | 내부 아키텍처 및 구현 상세 |
 | **빌드/배포 담당자** | [building/build-guide.ko.md](building/build-guide.ko.md) | 빌드, 테스트, 패키징 |
+| **채택 검토자 / 법무 담당자** | [license/README.ko.md](license/README.ko.md) | `core`/`bindings`/`framework`/`http-client` 전반의 라이선스 정책 |
 
 ---
 
@@ -90,3 +91,9 @@
 | [packaging.ko.md](building/packaging.ko.md) | 릴리즈 및 패키징 |
 | [release-accounts.ko.md](building/release-accounts.ko.md) | 공식 배포 계정/시크릿 |
 | [platforms.ko.md](building/platforms.ko.md) | 지원 플랫폼 및 컴파일러 |
+
+## 라이선스 정책 (license/)
+
+| 문서 | 설명 |
+|------|------|
+| [README.ko.md](license/README.ko.md) | 이 저장소가 세 라이선스(MPL-2.0 / FSL-1.1-ALv2 / Apache-2.0)를 쓰는 이유, 각 계층이 허용하는 것, 정본 텍스트 위치 |

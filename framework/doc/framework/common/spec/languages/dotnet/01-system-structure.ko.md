@@ -199,8 +199,9 @@ dispatch key = **inbound channel 이름 + message kind + packet name**.
 spot publisher client가 각자 endpoint 집합을 갖는다.
 
 - **같은 역할 안에서 store 자동 연결과 manual을 섞지 않는다.**
-- **`router` manual 연결도 endpoint 집합만 등록한다.** `Connect(...)`가 remote router id를 받지
-  않는다.
+- **`router` manual 연결은 두 형태다.** `ConnectRouter(endpoint)`는 endpoint만 등록한다.
+  **location store가 없어 target `ROUTER`의 routing id를 해석할 곳이 없으면**
+  `ConnectRouter(RoutingId peerRid, endpoint)`로 peer id를 함께 등록한다.
 - **channel client manual 연결도 endpoint 집합만 등록한다.** 하부 `DEALER`가 이미 connect된 peer
   집합을 대상으로 보내기 때문이다.
 - **`pub/sub` manual 연결에서 등록하는 주소는 다른 `SpotNode`의 mesh publish bind 주소다.** local

@@ -122,6 +122,18 @@ flush, heartbeat publish).
 - **wrapper는 native timer handle을 노출하지 않는다.** wrapper가 timer를 감싸더라도 tick
   metadata·overrun 정책·handler 예외 관측을 숨기지 말고 wrapper option으로 다시 사상한다.
 
+### 4.1 Timer 등록 검증
+
+다음은 **host 시작 또는 등록 시점에 설정 오류로 실패한다.**
+
+| 조건 | 결과 |
+|---|---|
+| **timer 이름이 비어 있다** | 설정 오류 |
+| **period가 0 이하** | 설정 오류 |
+| **catch-up 상한이 0 이하**(제한된 catch-up 정책을 쓸 때) | 설정 오류 |
+| **지원하지 않는 overrun 정책** | 설정 오류 |
+
+
 ## 5. 생성 시 초기값 전달
 
 stage는 생성 시점에 초기 payload가 필요하다(어느 node에 만들지, stage type, stage id, create

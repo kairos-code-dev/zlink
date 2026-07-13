@@ -225,6 +225,12 @@ channel handler·HTTP handler·background service는 **actor 생성이나 entry 
 | **fanout/dealer mesh를 routed SPOT egress로 지정** | **설정 오류** |
 | location store 없이 local-only spot factory 등록 | 허용 |
 | local spot factory 없이 외부 publish 역할만 등록 | 허용 — spot publisher client를 사용한다 |
+| **spot mesh channel 이름이 비어 있음** | **설정 오류** |
+| **router·pub/sub 역할을 켰는데 bind endpoint가 비어 있음** | **설정 오류** |
+| **등록하지 않은 route channel을 route bridge로 지정** | **설정 오류** |
+| **handler group 이름이 비어 있음** | **설정 오류** |
+| **subscribe topic이 비어 있음** | **설정 오류** |
+| **timer 등록 검증**([stage-wrapper §4.1](25-stage-wrapper-on-spot.ko.md)) | **설정 오류** |
 
 **모든 설정 오류는 host 시작 전에 실패한다.**
 

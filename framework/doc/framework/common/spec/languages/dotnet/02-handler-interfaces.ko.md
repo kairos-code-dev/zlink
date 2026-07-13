@@ -2782,9 +2782,9 @@ socket을 추가하지 않는다.
 예를 들어 `router`, channel client, publish 쪽은 모두 각 역할이
 사용할 endpoint 집합을 따로 관리한다.
 
-이 문서에서는 수동 endpoint 를 지정할 때 remote router id 를 별도 파라미터로
-받지 않는다. 따라서 endpoint 인자도 한군데에 모아 두지 않고, 역할별 메서드에
-분리한다.
+endpoint 인자는 한군데에 모아 두지 않고 **역할별 메서드로 분리한다.** SPOT `router`의 수동
+연결만 두 형태를 갖는다 — endpoint만 주는 형태와, **peer routing id를 이미 아는 경우** peer id와
+endpoint를 함께 주는 형태다(아래 `ConnectRouter` 참조).
 
 소켓 옵션은 `ConfigureRouterSocket()`, `ConfigureRouterRouting()`,
 `ConfigurePubSubPublisher()`, `ConfigurePubSubSubscriber()`가 역할별 설정 객체를

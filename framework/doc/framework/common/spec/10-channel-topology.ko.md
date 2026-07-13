@@ -218,8 +218,10 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 
 `SPOT`도 같은 원칙으로 역할별 manual 연결을 나눠서 봐야 한다.
 
-- `router` manual 연결도 endpoint 집합만 관리한다. 이 문서에서는 `connect()`
-  호출 시 remote router id를 별도 파라미터로 받지 않는다.
+- `router` manual 연결은 **두 형태**를 갖는다. 보통은 endpoint 집합만 관리한다. 다만 **location
+  store가 없는 구성**에서는 routed SPOT 메시지를 보낼 target `ROUTER`의 routing id를 해석할
+  곳이 없으므로, **peer routing id를 endpoint와 함께 등록하는 형태**도 제공한다
+  ([SPOT 메시징 §6](20-spot-messaging.ko.md)).
 - route bridge channel socket manual 연결은 endpoint 집합만 관리한다.
 - `pub/sub` manual 연결에서 등록하는 주소는 peer `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.

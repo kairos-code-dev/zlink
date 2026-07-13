@@ -74,6 +74,8 @@ source 이름은 topology와 역할을 읽을 수 있게 잡는다
 | **spot source가 등록된 SpotNode 이름을 가리키지 않음** | **설정 오류** |
 | **location source를 쓰는데 location runtime이 등록되지 않음** | **설정 오류** |
 | **polling interval이 0 이하** | **설정 오류** |
+| **monitoring을 두 번 구성** | **설정 오류** — monitoring 등록은 프로세스당 하나다 |
+| **source 이름이 비어 있음** | **설정 오류** |
 
 **모든 설정 오류는 host 시작 전에 실패한다.**
 

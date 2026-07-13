@@ -103,11 +103,23 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 | **bind endpoint** | **반드시 있어야 한다** |
 | **session 타입 등록** | **한 stream node에는 session을 하나만 둔다** |
 
-**startup validation** — 다음은 host 시작 **전에** 설정 오류로 실패한다.
+### 7.1 TLS
 
-- bind endpoint가 없다.
-- 같은 session 타입을 중복 등록한다.
-- 한 node에 session을 둘 이상 등록한다.
+stream node는 **TLS를 켤 수 있다.** 켜면 **인증서 경로와 키 경로를 함께 지정해야 한다.**
+client 쪽 transport 선택은 endpoint scheme이 결정한다([Stream Connector §3](32-stream-connector.ko.md)).
+
+### 7.2 Startup validation
+
+다음은 host 시작 **전에** 설정 오류로 실패한다.
+
+| 조건 | 결과 |
+|---|---|
+| **stream node 이름이 비어 있음** | 설정 오류 |
+| **bind endpoint가 없음** | 설정 오류 |
+| **같은 session 타입을 중복 등록** | 설정 오류 |
+| **한 node에 session을 둘 이상 등록** | 설정 오류 |
+| **TLS를 켰는데 인증서 경로가 비어 있음** | 설정 오류 |
+| **TLS를 켰는데 키 경로가 비어 있음** | 설정 오류 |
 
 등록 시점에 **이 node가 header 기반 packet 경로라는 사실이 분명히 드러나야 한다.**
 

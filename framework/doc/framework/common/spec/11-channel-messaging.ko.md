@@ -68,6 +68,9 @@
 | **channel 종류와 맞지 않는 handler group 매핑** | **설정 오류** |
 | **매핑한 handler group에 handler가 없음** | **설정 오류** |
 | **같은 channel에서 같은 `kind + packet name` handler 중복** | **설정 오류** |
+| **framework를 두 번 구성** | **설정 오류** — 등록 루트는 프로세스당 하나다 |
+| **handler group 이름이 비어 있음** | **설정 오류** |
+| **metadata key가 비어 있음** | **설정 오류** |
 | 서로 다른 channel에서 같은 packet name 사용 | **허용** — handler namespace는 channel별로 분리된다 |
 
 **모든 설정 오류는 host 시작 전에 실패한다.**

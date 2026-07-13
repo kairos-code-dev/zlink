@@ -2640,6 +2640,78 @@ int main ()
     }
     heartbeat_connector.close ();
 
+    /* graceful-drain-handoff §7.2: 동기 request가 응답을 기다리는 동안에도 server ping에
+     * pong으로 답해야 한다. pong을 dispatch() 경로에만 두면, 응답이 heartbeat timeout보다
+     * 오래 걸리는 정상 요청에서 서버가 세션을 끊는다(E2E ATD-C3B). */
+    zlink::stream_socket_t pong_during_request_server (context);
+    pong_during_request_server.options ().notify (false);
+    pong_during_request_server.bind ("tcp://127.0.0.1:0");
+    const auto pong_during_request_endpoint =
+      pong_during_request_server.options ().last_endpoint ();
+    std::atomic_bool pong_during_request_seen{false};
+    joining_thread_t pong_during_request_thread (
+      [&pong_during_request_server, &pong_during_request_seen] {
+          zlink::received_t inbound;
+          if (pong_during_request_server.recv (inbound) != 0) {
+              return;
+          }
+          std::string buffer =
+            inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+          auto request = try_read_server_frame (buffer);
+          if (!request || !request->header.request_seq) {
+              inbound.close ();
+              return;
+          }
+          /* 요청을 받아 두고 응답을 미룬 채 ping을 보낸다. */
+          auto ping = make_server_frame (zlink::stream_connector::message_kind_t::control, 0,
+                                         "$zlink.heartbeat.ping", "");
+          inbound.send ().message (ping).submit ();
+
+          /* 클라이언트가 dispatch()를 부르지 않는 동안 pong이 오는지 본다. */
+          const auto deadline =
+            std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+          std::string pong_buffer;
+          while (std::chrono::steady_clock::now () < deadline && !pong_during_request_seen) {
+              zlink::received_t pong_inbound;
+              if (pong_during_request_server.recv (pong_inbound) != 0) {
+                  break;
+              }
+              pong_buffer += pong_inbound.parts ().empty ()
+                               ? std::string{}
+                               : pong_inbound.parts ()[0].to_string ();
+              if (auto frame = try_read_server_frame (pong_buffer)) {
+                  pong_during_request_seen =
+                    frame->header.kind == zlink::stream_connector::message_kind_t::control
+                    && frame->header.name == "$zlink.heartbeat.pong";
+              }
+          }
+
+          auto reply = make_server_frame (zlink::stream_connector::message_kind_t::response,
+                                          *request->header.request_seq, request->header.name, "{}");
+          inbound.send ().message (reply).submit ();
+          inbound.close ();
+      });
+    zlink::stream_connector::connector_options_t pong_during_request_options;
+    pong_during_request_options.endpoint = pong_during_request_endpoint;
+    pong_during_request_options.heartbeat.interval = std::chrono::milliseconds (0);
+    auto pong_during_request_connector =
+      zlink::stream_connector::connector_factory_t::create (pong_during_request_options);
+    if (!pong_during_request_connector.connect ()) {
+        return 190;
+    }
+    auto pong_during_request_reply = pong_during_request_connector.request (login_request_t{})
+                                       .packet_name ("slow.request")
+                                       .timeout (std::chrono::milliseconds (5000))
+                                       .submit<login_reply_t> ();
+    pong_during_request_thread.join ();
+    pong_during_request_connector.close ();
+    if (!pong_during_request_seen) {
+        return 191;
+    }
+    if (!pong_during_request_reply) {
+        return 192;
+    }
+
     zlink::stream_socket_t heartbeat_timeout_server (context);
     heartbeat_timeout_server.options ().notify (false);
     heartbeat_timeout_server.bind ("tcp://127.0.0.1:0");

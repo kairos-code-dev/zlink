@@ -735,6 +735,15 @@ void route_inbound_packet (std::shared_ptr<connector_state_t> state, packet_t pa
     }
 }
 
+result_t<void> send_due_pong (connector_state_t &state);
+
+/* transport mutex를 잡고 due pong을 전송한다(수신 콜백 문맥에서 호출). */
+result_t<void> send_due_pong_locked (const std::shared_ptr<connector_state_t> &state)
+{
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    return send_due_pong (*state);
+}
+
 void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                              std::optional<error_t> transport_error)
 {
@@ -813,6 +822,12 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                                      + " transport_error=" + (transport_error ? "true" : "false"));
         }
     }
+
+    /* graceful-drain-handoff §7.2: server liveness ping의 pong을 application이 dispatch()를
+     * 부를 때까지 미룰 수 없다. 동기 request가 응답을 기다리는 동안에는 dispatch()가 돌지
+     * 않으므로, pong을 그 경로에만 두면 응답이 heartbeat timeout보다 오래 걸리는 정상 요청에서도
+     * 서버가 세션을 heartbeat timeout으로 끊는다. 수신 프레임을 처리한 직후 바로 답한다. */
+    (void) send_due_pong_locked (state);
 
     for (auto &packet : pushed_packets) {
         route_inbound_packet (state, std::move (packet));

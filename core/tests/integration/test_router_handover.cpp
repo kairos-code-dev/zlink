@@ -107,13 +107,15 @@ void set_connect_routing_id (void *router_, const char *routing_id_)
       router_, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, routing_id_, strlen (routing_id_)));
 }
 
-void send_request_to_activate_callback_dispatch (void *client_, void *server_)
+void send_request_to_activate_callback_dispatch (void *client_,
+                                                 void *server_,
+                                                 const char *peer_rid_)
 {
     reply_completed.store (false);
     zlink_routing_id_t peer_rid;
     memset (&peer_rid, 0, sizeof peer_rid);
-    peer_rid.size = 1;
-    peer_rid.data[0] = 'S';
+    peer_rid.size = static_cast<uint8_t> (strlen (peer_rid_));
+    memcpy (peer_rid.data, peer_rid_, peer_rid.size);
 
     zlink_msg_t request;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&request, 4));
@@ -160,7 +162,7 @@ void test_callback_dispatch_same_direction_reconnect_handover ()
 {
     const int handover = ZLINK_RID_DUPLICATE_HANDOVER;
     const int zero = 0;
-    const int recovery_timeout = 5000;
+    const int probe_timeout = 100;
     char endpoint_one[MAX_SOCKET_STRING];
     char endpoint_two[MAX_SOCKET_STRING];
 
@@ -175,8 +177,8 @@ void test_callback_dispatch_same_direction_reconnect_handover ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (server_two, ZLINK_OPT_LINGER, &zero, sizeof zero));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &recovery_timeout,
-                        sizeof recovery_timeout));
+      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &probe_timeout,
+                        sizeof probe_timeout));
     bind_loopback_ipv4 (server_two, endpoint_two, sizeof endpoint_two);
 
     void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -189,18 +191,96 @@ void test_callback_dispatch_same_direction_reconnect_handover ()
     msleep (SETTLE_TIME);
 
     // This installs callback dispatch and records traffic on the original pipe.
-    send_request_to_activate_callback_dispatch (client, server_one);
+    send_request_to_activate_callback_dispatch (client, server_one, "S");
 
     // A freshly established same-direction pipe with the same routing ID must
     // replace the prior pipe even though the prior pipe has traffic history.
     set_connect_routing_id (client, "S");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_two));
+
+    //  The second pipe attaches asynchronously, so a probe sent before the
+    //  handover completes is still routed to server_one. Keep probing until
+    //  server_two receives one; the replacement decision is under test, not
+    //  the attach timing. With the pre-fix admission condition every probe
+    //  keeps landing on the old pipe and the loop exhausts its 5 second bound.
+    char buffer[255];
+    bool handed_over = false;
+    for (int i = 0; i < 50 && !handed_over; ++i) {
+        send_string_expect_success (client, "S", ZLINK_SNDMORE);
+        send_string_expect_success (client, "recovered", 0);
+        const int rc = zlink_recv (server_two, buffer, sizeof buffer, 0);
+        if (rc == -1) {
+            TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT (1, rc);
+        TEST_ASSERT_EQUAL_INT ('C', buffer[0]);
+        recv_string_expect_success (server_two, "recovered", 0);
+        handed_over = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      handed_over, "same-direction reconnect was not handed over to the new pipe");
+
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server_two);
+    test_context_socket_close_zero_linger (server_one);
+}
+
+void test_callback_dispatch_cross_direction_reconnect_handover ()
+{
+    const int handover = ZLINK_RID_DUPLICATE_HANDOVER;
+    const int zero = 0;
+    const int probe_timeout = 100;
+    char client_endpoint[MAX_SOCKET_STRING];
+    char replacement_endpoint[MAX_SOCKET_STRING];
+
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "Z", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_RID_DUPLICATE_POLICY, &handover, sizeof handover));
+    bind_loopback_ipv4 (client, client_endpoint, sizeof client_endpoint);
+
+    void *server_one = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_one, "A", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    set_connect_routing_id (server_one, "Z");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (server_one, client_endpoint));
     msleep (SETTLE_TIME);
 
-    send_string_expect_success (client, "S", ZLINK_SNDMORE);
-    send_string_expect_success (client, "recovered", 0);
-    recv_string_expect_success (server_two, "C", 0);
-    recv_string_expect_success (server_two, "recovered", 0);
+    send_request_to_activate_callback_dispatch (client, server_one, "A");
+
+    void *server_two = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_two, "A", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_two, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &probe_timeout,
+                        sizeof probe_timeout));
+    bind_loopback_ipv4 (server_two, replacement_endpoint, sizeof replacement_endpoint);
+
+    set_connect_routing_id (client, "A");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, replacement_endpoint));
+
+    char buffer[255];
+    bool handed_over = false;
+    for (int i = 0; i < 50 && !handed_over; ++i) {
+        send_string_expect_success (client, "A", ZLINK_SNDMORE);
+        send_string_expect_success (client, "recovered", 0);
+        const int rc = zlink_recv (server_two, buffer, sizeof buffer, 0);
+        if (rc == -1) {
+            TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT (1, rc);
+        TEST_ASSERT_EQUAL_INT ('Z', buffer[0]);
+        recv_string_expect_success (server_two, "recovered", 0);
+        handed_over = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      handed_over, "cross-direction reconnect was not handed over to the new pipe");
 
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server_two);
@@ -215,5 +295,6 @@ int main ()
     RUN_TEST (test_with_handover);
     RUN_TEST (test_without_handover);
     RUN_TEST (test_callback_dispatch_same_direction_reconnect_handover);
+    RUN_TEST (test_callback_dispatch_cross_direction_reconnect_handover);
     return UNITY_END ();
 }

@@ -60,8 +60,10 @@ framework 공개 계약은 두 층으로 나눈다.
 - Java는 Java의 type system과 `CompletionStage` 계약을 사용한다.
 - Kotlin은 Java runtime을 공유하더라도 Kotlin 전용 표면에서는 `suspend`, `Flow`,
   coroutine 취소 규칙을 우선한다.
-- Node.js는 `Promise`, 필요한 장기 작업의 `AbortSignal`과 TypeScript의 optional 표현을
-  사용한다.
+- Node.js framework와 TypeScript browser connector는 `Promise`, 필요한 장기 작업의
+  `AbortSignal`과 TypeScript의 optional 표현을 사용한다.
+- TypeScript browser connector의 정확한 public interface는 `languages/typescript/`가 소유한다.
+  Node.js framework 계약에는 browser client connector signature를 함께 기록하지 않는다.
 - C++는 C++의 ownership, value type과 coroutine 규칙을 사용한다.
 
 언어 관례 때문에 시그니처가 달라도 기능, 완료 조건, timeout과 오류의 관찰 결과가

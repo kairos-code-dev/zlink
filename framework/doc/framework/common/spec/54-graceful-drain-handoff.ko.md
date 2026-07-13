@@ -296,7 +296,7 @@ close reason을 저장한 뒤 disconnect event를 내보낸다.
 표면은 `closeReason`(닫힌 enum, [runtime-metrics §4.1](51-runtime-metrics.ko.md)의 `close_reason`과 정합)을
 노출한다. 언어별 projection은 각 connector 문서가 소유한다(예:
 [Java `ZLinkStreamCloseReason`](languages/java/03-stream-connector.ko.md),
-[Node `closeReason` union](languages/node/03-stream-connector.ko.md)); .NET/C++/Kotlin connector도 같은
+[TypeScript `closeReason` union](languages/typescript/03-stream-connector.ko.md)); .NET/C++/Kotlin connector도 같은
 닫힌 enum을 언어 케이싱으로 노출한다. 서버가 대체 endpoint를 지정하는 기능은 이 계약에 포함하지
 않는다.
 

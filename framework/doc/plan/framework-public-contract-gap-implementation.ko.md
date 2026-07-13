@@ -714,7 +714,7 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 | `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `.NET` 구현 로그 |
 | Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` |
 | Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` |
-| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 재검토 중 | protobuf 생성 타입, flow 연속성, 실제 metric, drain, self-join, client별 marker gap 수정과 재검증 필요 |
+| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | protobuf 생성 타입, flow 연속성, 실제 metric, drain, self-join과 client별 marker를 shell·PowerShell runner에서 검증 |
 | C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 
 Bingo는 기존 게임 smoke 성공만으로 완료하지 않는다. G5에서 각 언어 샘플이 별도 flow id 설정 없이
@@ -1023,6 +1023,12 @@ core 9.0.2 적용 뒤 Kotlin `AutomaticTurnDispatch ATD-E3`는
 - [x] `getSpot`, `isJoined`, 중복 actor join call 제거
 - [x] actor join discriminated union 구현
 - [x] dispatch mode 제거와 message-kind별 unhandled policy 구현
+- [x] channel dispatch 실패 로그 수준을 공통 정책으로 고정하고 one-way 중복 로그 제거
+- [x] reply frame이 없는 local Spot request에 `FailCaller` observer 결과 구현
+- [x] actor 소유권 갱신과 같은 actor의 session relay를 직렬화해 binding 중간 상태 노출 제거
+- [x] handler 없는 server/subscriber와 불완전한 SpotNode 구성을 socket 생성 전 startup에서 거부
+- [x] SPOT 수동 peer와 location store를 함께 사용할 때 peer 자동 연결만 끄는 역할별 계약 설계
+  (TicTacToe의 수동 peer와 원격 actor 위치 조회를 모두 유지해야 하며 sample wrapper로 우회하지 않음)
 - [x] immutable metadata와 forwarding policy 구현
 - [x] typed session handler/registry 추가, raw stream escape hatch 제거
 - [x] manual runtime connection accessor와 worker producer 구현
@@ -1041,12 +1047,12 @@ core 9.0.2 적용 뒤 Kotlin `AutomaticTurnDispatch ATD-E3`는
 - [x] native stream disconnect routing id를 Node monitor와 다중 session 정리에 전달
 - [x] Stream Connector reply name, Error JSON object와 metadata 1024바이트 계약 구현
 - [x] Stream Connector browser entrypoint와 네이티브 WebSocket transport 구현
-- [ ] browser handler의 async continuation flow 보존과 관련 없는 callback 격리
-  (`MFLOW-EXT-014`; 브라우저 표준 async-context 수단 또는 별도 public 계약 결정 필요)
+- [x] browser handler의 관련 async 작업은 `flowFrom(message)`로 flow를 명시적으로 전달하고
+  관련 없는 callback은 새 application flow를 사용하도록 격리
 - [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
-- [ ] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
-  (G5 ledger의 protobuf·flow·metric·drain·self-join·client marker 재검토 중)
-- [ ] 공통 sample spec 6종과 Node.js sample 6종의 역할·메시지·상태·codec·self-check
+- [x] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+  (protobuf·flow·metric·drain·self-join·client marker를 shell과 PowerShell runner에서 검증)
+- [x] 공통 sample spec 6종과 Node.js sample 6종의 역할·메시지·상태·codec·self-check
   항목별 대조, 불일치 수정과 개별·통합 runner 재검증
   ([Node.js G5 공통 샘플 대조 기록](./log/framework-public-contract-gap-implementation/node-g5-sample-ledger.ko.md))
 
@@ -1073,10 +1079,10 @@ npm run verify:release
 
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
-- [ ] G2 runtime/unit test — Node runtime은 검증했으나 browser handler의 `MFLOW-EXT-014`가 남아 있다.
+- [x] G2 runtime/unit test
 - [ ] G3 build/typecheck/lint/test/coverage green — G2와 sample 수정이 끝난 뒤 전체 명령을 다시 실행한다.
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — 구현 agent 검토와 수정 완료, 별도 read-only reviewer 대기
-- [ ] G5 sample 전체 PASS — 공통 sample 스펙과 다시 대조하여 발견한 불일치를 수정하고 반복 재검토 중
+- [x] G5 sample 전체 PASS — 공통 sample 6종 대조, shell과 PowerShell 통합 runner PASS
 - [ ] G6 E2E와 cross-language 전체 PASS — production runtime 수정 뒤 전체 분모를 다시 실행한다.
 - [ ] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS — runtime 수정 뒤 양방향 matrix를 다시 실행한다.
 - [ ] G7 gap/doc/package 최종 리뷰 — 문서와 package 정렬 완료, 별도 read-only 최종 리뷰 대기

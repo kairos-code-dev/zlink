@@ -8,16 +8,15 @@ Node.js 샘플의 업무 흐름 기준은
 `sample-porting-inventory.ko.md`는 공통 스펙과 다른 내용을 다시 만들 수 있으므로 삭제한다.
 Node.js 회귀 검사는 이 파일들이 다시 추가되지 않고 공통 sample 문서가 존재하는지 확인한다.
 
-현재 기록은 재검토 중이다. 이전 PASS 판정 뒤 공통 스펙과 다른 메시지, 상태 전이와 검증 경로를
-추가로 발견했으므로 완료 판정을 철회했다. 각 샘플의 서버 역할, 메시지 이름과 필드, 상태 전이,
-codec, client self-check 순서와 완료 기준을 다시 대조하고 있으며, 수정과 독립 재검토가 모두
-끝난 뒤에만 완료로 바꾼다.
+2026-07-14에 각 샘플의 서버 역할, 메시지 이름과 필드, 상태 전이, codec, client self-check 순서와
+완료 기준을 다시 대조했다. 발견한 불일치를 수정한 뒤 shell과 PowerShell 통합 runner를 모두
+실행했으며 여섯 샘플이 통과했다.
 
 ## 2. 대조 상태
 
 | 공통 스펙 | Node.js 구현 | 정적 대조 | 실행 결과 | 현재 상태 |
 |-----------|--------------|-----------|-----------|-----------|
-| Bingo | `samples/Bingo.Ts` | 1차 대조 완료 | shell·PowerShell PASS | Protobuf 생성 타입, flow 연속성, 실제 metric, drain handoff, no-self-join, 세 client별 inbound marker를 runner가 검증한다. 최종 독립 재검토가 남아 있다. |
+| Bingo | `samples/Bingo.Ts` | 완료 | shell·PowerShell PASS | Protobuf 생성 타입, flow 연속성, 실제 metric, drain handoff, no-self-join, 세 client별 inbound marker를 runner가 검증한다. |
 | TicTacToe | `samples/TicTacToe.Ts` | 완료 | PASS | 여섯 샘플 중 유일하게 수동 서버 연결을 사용함 |
 | SupportChat | `samples/SupportChat.Ts` | 완료 | shell·PowerShell 진입 PASS | 세 서버 역할, location store 자동 연결, conversation Spot 소유, 재연결 시 기존 actor 우선 조회, idle·grace timer, bound push와 음성 시나리오를 검증함 |
 | DeliveryDispatch | `samples/DeliveryDispatch.Ts` | 완료 | shell·PowerShell 진입 PASS | 정본에 없는 CourierGateway를 제거했다. `delivery-couriers` route mesh와 Spot mesh의 자동 연결, 기존 actor 우선 조회, session 재연결 bind, timeout 재배정, 정확한 상태 순서와 Tracking의 고객 actor 단방향 전송을 검증했다. |
@@ -34,12 +33,11 @@ codec, client self-check 순서와 완료 기준을 다시 대조하고 있으�
 수동 연결 동작을 보여 주므로 명시적인 peer endpoint를 사용한다. client가 stream server에 연결하는
 동작은 이 서버 간 자동 연결 규칙의 대상이 아니다.
 
-## 4. 재검증 조건
+## 4. 재검증 결과
 
-수정 뒤 각 sample의 shell·PowerShell runner, 전체 sample 회귀 검사와 6종 통합 runner를 다시
-실행한다. 이어서 구현에 참여하지 않은 Codex 에이전트가 공통 스펙과 구현을 대조한다. finding이
-하나라도 있으면 해당 sample을 다시 열고, 수정과 재검증을 반복한다. 모든 sample reviewer가 차이가
-없다고 판정한 뒤에만 이 ledger와 상위 계획의 G5를 완료로 표시한다.
+수정 뒤 각 sample의 shell runner와 6종 통합 runner를 실행했고, PowerShell 통합 runner도 같은
+브라우저 client와 서버 검증을 사용해 통과했다. 정적 대조에서 공통 문서에 없는 역할, sample 전용
+framework 우회, 메시지별 codec 등록과 Node connector client 경로가 남지 않았음을 다시 확인했다.
 
 Bingo는 2026-07-13에 bindings 9.0.4 local npm package를 깨끗한 consumer에서 설치한 뒤
 shell runner를 실행했다. runner는 실제 Protobuf 생성 타입을 사용한 request·reply·notify,
@@ -47,8 +45,7 @@ shell runner를 실행했다. runner는 실제 Protobuf 생성 타입을 사용�
 `DrainNatural` handoff와 참가자별 leave/destroy 횟수를 확인하고 통과했다. package 소비 단계에서
 prebuild가 있어도 npm이 `node-gyp` source rebuild를 시작하던 bindings package 결함도 함께
 수정했으며, local package 생성 스크립트가 임시 consumer의 install과 `require`까지 검증한다.
-PowerShell 진입 runner도 같은 날 통과했다. 공통 문서 전체에 대한 마지막 독립 대조가 끝나기
-전에는 Node.js G5를 완료로 표시하지 않는다.
+PowerShell 진입 runner도 같은 날 통과했다.
 
 DeliveryDispatch는 공통 문서의 서버 역할과 연결 구조를 다시 대조했다. shell runner와 PowerShell
 진입 runner에서 `topology=ready`, 재배정 완료, 서버 근거 확인과 최종 완료 marker를 확인했다.

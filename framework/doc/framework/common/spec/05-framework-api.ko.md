@@ -77,19 +77,19 @@
   사내 binary format 같은 codec은 framework core를 바꾸지 않고 extension package로 추가한다.
   serializer는 업무 객체와 byte payload 사이의 변환만 담당하고, packet name 결정과 codec
   선택 정책은 framework 내부에 남는다.
-- framework, stream connector, HTTP client는 같은 codec extension을 공유한다. 대상별 builder는
-  다를 수 있지만 등록 모양은 `use(extension)`으로 맞춘다. codec을 바꿔도 handler method,
-  request method, reply type, payload DTO는 바꾸지 않는다.
+- framework와 HTTP client는 같은 codec extension을 공유한다. TypeScript browser stream connector는
+  browser-safe payload codec을 connector의 `codec` option으로 주입한다. codec을 바꿔도 handler
+  method, request method, reply type, payload DTO는 바꾸지 않는다.
 
   | 대상 | codec 설정 방향 |
   |------|----------------|
   | framework | runtime 구성 단계에서 codec extension을 등록한다. JSON은 기본값이고, Protobuf/MessagePack/custom codec은 extension으로 추가한다. |
-  | stream connector | connector 전용 codec package를 두지 않는다. framework codec extension이 제공하는 connector adapter를 등록한다. |
+  | TypeScript stream connector | codec package root가 제공하는 browser-safe payload codec을 connector 생성 시 `codec` option으로 주입한다. |
   | HTTP client | typed request/response body를 같은 codec extension으로 encode/decode한다. raw body API는 extension을 거치지 않는다. |
 
-- Protobuf와 MessagePack extension package는 framework가 작성된 언어에만 만든다. 각 package는
-  개별 배포가 가능해야 하며, 같은 codec extension이 framework, stream connector, HTTP client에
-  필요한 adapter를 함께 제공한다.
+- Protobuf와 MessagePack extension package는 framework가 작성된 언어에만 만든다. Node package
+  root는 browser-safe payload codec을, `./framework` subpath는 server serializer 등록 adapter를
+  제공한다. package root의 module graph는 Node framework runtime을 참조하지 않는다.
 
   | 언어 | Protobuf extension 작성 위치 | MessagePack extension 작성 위치 |
   |------|------------------------------|---------------------------------|

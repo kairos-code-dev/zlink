@@ -100,7 +100,7 @@ connector를 사용한다.
 |------|------|--------|
 | C++ | Unreal, Godot(GDExtension), Axmol, 일반 C++, 서버 e2e/perf | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) |
 | `.NET` | Unity(네이티브), Godot C#, 데스크톱·서버 | [INDEX](stream-connector/dotnet/guide/INDEX.ko.md) |
-| Node / TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web), Node | [INDEX](stream-connector/node/guide/INDEX.ko.md) |
+| TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web·Godot Web) | [INDEX](stream-connector/typescript/guide/INDEX.ko.md) |
 
 | 영역 | 문서 |
 |------|------|
@@ -108,7 +108,7 @@ connector를 사용한다.
 | C++ core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
 | C++ e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
 | `.NET` 가이드 | [01 개요](stream-connector/dotnet/guide/01-overview.ko.md) · [02 Unity](stream-connector/dotnet/guide/02-unity.ko.md) · [03 Godot C#](stream-connector/dotnet/guide/03-godot-csharp.ko.md) |
-| Node 가이드 | [01 개요](stream-connector/node/guide/01-overview.ko.md) · [02 Node](stream-connector/node/guide/02-node.ko.md) |
+| TypeScript 가이드 | [01 개요](stream-connector/typescript/guide/01-overview.ko.md) · [02 브라우저](stream-connector/typescript/guide/02-browser.ko.md) |
 
 계약의 정본은 [Stream Connector 공통 스펙](framework/common/spec/32-stream-connector.ko.md)이며,
 언어별 public 표면은 `framework/common/spec/languages/<lang>/stream-connector.ko.md`가 소유한다.
@@ -117,7 +117,8 @@ connector를 사용한다.
 갈라질 것이 없어, connector 사용법이
 [Java framework 가이드 07 — STREAM](framework/java/guide/07-stream.ko.md)에 thin client로 포함된다.
 
-> TypeScript browser entrypoint는 WebSocket transport를 제공한다. 비동기 flow 문맥의 남은 차이는
+> TypeScript package root는 browser-only WebSocket transport와 명시적 flow 전달을 제공한다.
+> 실제 browser와 package 검증 상태는
 > [implementation gap §4.10](framework/common/spec/90-implementation-gap.ko.md)에서 확인한다.
 
 ---

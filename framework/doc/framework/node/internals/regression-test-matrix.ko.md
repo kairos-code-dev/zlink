@@ -304,7 +304,7 @@ backend gate 와 별도로 유지한다.
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | `npm run verify:release` | `integration-multi-process` | ABI 선언, P0 회귀, sample smoke, Node runtime matrix, cross-language smoke 를 순서대로 실행한다 |
-| `npm run verify:samples` | `integration-multi-process` | TicTacToe.Ts, Bingo.Ts 가 모두 self-check 통과 |
+| `npm run verify:samples` | `integration-multi-process` | 유지하는 TypeScript sample 6종이 모두 self-check 통과 |
 | `npm run verify:runtime-matrix` | `integration-multi-process` | 현재 runner 가 Node 20 과 Node 22 에서 build, typecheck, 전체 contract test 를 모두 통과시킨다 |
 | `npm run verify:abi-matrix` | `unit` | `framework-node` CI workflow, release 문서, package script 가 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64` 와 Node 20/22 gate 를 같은 목록으로 유지한다 |
 | `npm run verify:cross-language` | `integration-multi-process` | Node 와 dotnet TestHost 가 channel/stream 필수 경로 여섯 가지를 같은 프로토콜 의미로 통과시킨다 |
@@ -315,7 +315,7 @@ backend gate 와 별도로 유지한다.
 | Node client -> dotnet channel server one-way send | `integration-multi-process` | dotnet send handler가 같은 packet 의미로 처리한다 |
 | Node publisher -> dotnet fanout subscriber publish | `integration-multi-process` | dotnet publish handler가 같은 topic/payload 의미로 처리한다 |
 | dotnet client -> Node channel server | `integration-multi-process` | Node handler가 dotnet client 요청에 같은 payload 의미로 reply한다 |
-| Node stream connector -> dotnet stream server | `integration-multi-process` | header session request/reply와 notification dispatch가 동작한다 |
+| Browser TypeScript connector -> dotnet stream server | `integration-multi-process` | Chromium에서 header session request/reply와 notification dispatch가 동작한다 |
 | dotnet connector -> Node stream server | `integration-multi-process` | dotnet connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
 
 ## 8.2 Spot 비동기 직렬 실행 regression
@@ -350,7 +350,6 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 
 - `framework/common/spec/languages/node/README.ko.md`
 - `framework/common/spec/languages/node/02-handler-interfaces.ko.md`
-- `framework/common/spec/languages/node/03-stream-connector.ko.md`
 - `framework/node/README.ko.md`
 - `framework/node/internals/regression-test-matrix.ko.md`
 - `framework/node/internals/runtime-lifecycle.ko.md`

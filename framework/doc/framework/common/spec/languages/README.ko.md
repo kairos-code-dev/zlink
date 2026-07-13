@@ -11,7 +11,8 @@
 | `.NET` | [dotnet](dotnet/README.ko.md) |
 | Java | [java](java/README.ko.md) |
 | Kotlin | [kotlin](kotlin/README.ko.md) |
-| Node.js / TypeScript | [node](node/README.ko.md) |
+| Node.js framework | [node](node/README.ko.md) |
+| TypeScript browser connector | [typescript](typescript/README.ko.md) |
 | C++ | [cpp](cpp/README.ko.md) |
 
 언어별 스펙은 서로의 시그니처를 복사하는 문서가 아니다. 같은 공통 동작을 해당

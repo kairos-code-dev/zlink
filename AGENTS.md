@@ -136,7 +136,7 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
 `framework/doc/framework/common/spec/`의 framework public contract는 모든 언어가
 도달해야 하는 목표 계약을 먼저 정식 spec에 고정한다. 각 언어의 정확한 public
 interface도 `framework/doc/framework/common/spec/languages/<lang>/`에 먼저 기록한다.
-현재 구현과 다른 부분은 `implementation-gap.ko.md`와 언어별 interface의 구현 차이
+현재 구현과 다른 부분은 `90-implementation-gap.ko.md`와 언어별 interface의 구현 차이
 표에 기록하고, 이후 구현과 contract test를 spec에 맞춘다. 구현이 없다는 이유로
 공통 기능을 현재 언어들의 최소 공통분모로 축소하지 않는다.
 

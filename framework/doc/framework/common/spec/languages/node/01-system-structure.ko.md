@@ -52,14 +52,15 @@
 | package | 배포 채널 | 소비자 |
 |---|---|---|
 | `@zlink-systems/framework` · `@zlink-systems/nestjs` | npm | 서버 애플리케이션 |
-| `@zlink-systems/framework-codec-*` | npm | codec이 필요한 서버·client |
+| `@zlink-systems/framework-codec-*` | npm | codec이 필요한 서버·브라우저 client |
 | `@zlink-systems/framework-locations-redis` | npm | 다중 프로세스 배포 |
-| `@zlink-systems/stream-connector` | npm | Node(E2E·도구·봇) **+ 브라우저 계열** |
+| `@zlink-systems/stream-connector` | npm | 브라우저 계열 client |
 | `@zlink-systems/stream-wire` | npm | connector와 서버가 공유 |
 
-**connector는 entrypoint를 분리해 배포한다** — 기본 entrypoint는 Node, `/browser` entrypoint는
-브라우저 계열(웹 client, Unity WebGL, Cocos web, Godot Web). **브라우저 번들에 Node 소켓 모듈이
-섞이면 안 된다**([stream-connector §2](03-stream-connector.ko.md)).
+**TypeScript connector는 package root 하나를 ESM으로 배포한다.** 이 진입점은 브라우저 계열
+client에서 플랫폼 `WebSocket`을 사용한다. Node.js에서 실행하는 connector와 별도 browser
+subpath는 제공하지 않는다. 정확한 계약은
+[TypeScript Stream Connector](../typescript/03-stream-connector.ko.md)가 소유한다.
 
 ## 3. 모듈 부트스트랩
 

@@ -46,7 +46,6 @@ API만 설명한다.
 |------|------|
 | [system-structure](../common/spec/languages/node/01-system-structure.ko.md) | 패키지 구조, NestJS 등록, lifecycle과 startup validation |
 | [handler-interfaces](../common/spec/languages/node/02-handler-interfaces.ko.md) | 모든 interface·decorator·context·options 카탈로그 |
-| [stream-connector](../common/spec/languages/node/03-stream-connector.ko.md) | client connector — entrypoint 분리, transport, 표면 |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
 그 의미가 Node/NestJS에서 어떤 모양인지만 고정한다.

@@ -147,12 +147,24 @@ MFLOW-008). 따라서 **dispatch error 이벤트에도 `flow_id` 필드를 추�
 
 ### 4.4 비동기 실행 문맥과 정리
 
-현재 flow는 framework가 callback을 호출하고 framework가 생성·await하는 continuation의 비동기 실행
-문맥에 저장한다. callback 완료 시 이전 문맥을 복원하여 다음 관련 없는 callback으로 id가 누출되지
-않게 한다. application이 임의 executor나 detached task를 직접 만들면 framework가 그 문맥 전파를
-보장하지 않으며, 그 작업의 첫 outbound는 `origin=application`인 새 flow를 시작한다. v1은 public
-context capture/wrap API를 추가하지 않는다. application 전역 변수나 thread id로 현재 flow를 추정하지
-않는다.
+framework host는 callback을 호출하고 framework가 생성·await하는 continuation의 비동기 실행 문맥에
+현재 flow를 저장한다. callback 완료 시 이전 문맥을 복원하여 다음 관련 없는 callback으로 id가
+누출되지 않게 한다. application이 임의 executor나 detached task를 직접 만들면 framework가 그 문맥
+전파를 보장하지 않으며, 그 작업의 첫 outbound는 `origin=application`인 새 flow를 시작한다.
+
+브라우저 TypeScript projection에는 비동기 작업별 문맥을 격리하는 표준 기능이 없다. 이 환경에서는
+connector instance에 현재 flow를 저장하지 않는다. inbound message가 시작한 관련 outbound는 call
+builder의 `flowFrom(message)`에 message가 가진 `flowId`와 root `flowOrigin`을 한 쌍으로 넘긴다.
+`flowFrom(...)`을 호출하지 않은 send/request는 관련 없는 작업으로 보고 `origin=application`인 새
+UUIDv7 flow를 만든다. handler가 `await`한 뒤에도 message 값은 그대로이므로 명시적 전달 결과는
+유지되고, 동시에 실행되는 timer나 event callback에는 암묵적 상태가 노출되지 않는다.
+
+이 결정 전에는 두 설계를 비교했다. connector instance가 Promise 완료까지 현재 flow를 보관하는
+방식은 호출 표면이 짧지만 같은 instance의 관련 없는 callback에 값을 노출한다. 명시적 전달 방식은
+관련 outbound call에 한 번의 표시가 필요하지만 비동기 격리를 플랫폼 기능에 의존하지 않고
+보장한다. 전역 Promise, timer 또는 event callback을 수정하는 방식은 사용하지 않는다. 다른 언어의
+framework host에는 public context capture/wrap API를 추가하지 않으며, application 전역 변수나 thread
+id로 현재 flow를 추정하지 않는다.
 
 ## 5. 샘플링 상호작용
 
@@ -241,7 +253,7 @@ struct message_flow_event_t {
 | MFLOW-EXT-011 | timer/application/lifecycle 발원이 각각 올바른 origin으로 새 flow를 시작 |
 | MFLOW-EXT-012 | `sample_rate<1`에서 flow 단위 일관 샘플링(한 flow 전부 남거나 전부 빠짐), dropped/에러는 항상 통과 |
 | MFLOW-EXT-013 | 트레이싱 off 노드를 경유해도 `flow_id` **전파**는 유지(생성/기록만 게이트) |
-| MFLOW-EXT-014 | async continuation은 flow를 보존하고 callback 종료 뒤 관련 없는 callback으로 id가 누출되지 않음 |
+| MFLOW-EXT-014 | framework host의 async continuation은 flow를 보존하고 callback 종료 뒤 관련 없는 callback으로 id가 누출되지 않음. 브라우저 TypeScript는 `flowFrom(message)`로 표시한 outbound만 inbound flow를 보존하고 표시하지 않은 동시 callback은 새 application flow를 사용 |
 | MFLOW-EXT-015 | client connector outbound는 별도 설정 없이 id를 생성하고 reply와 server 로그가 같은 id로 조인됨 |
 
 ## 12. 언어별 투영

@@ -116,7 +116,14 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 경합 시 건너뛰게 해도 증상은 그대로였다(요청 timeout 여전히 미발동) — 대기 루프가 그
 mutex에 막힌 것은 아니다. 따라서 detached thread는 `request()` 진입 이전/직후(예: 클라이언트
 `_mutex`, `sync_connections()`, endpoint provider) 어딘가에서 막혀 있을 가능성이 높다.
-다음 담당자는 그 스레드의 백트레이스를 직접 뜨는 것(gdb `thread apply all bt`)으로 시작할 것 | framework(열림) |
+**채널 trace(`ZLINK_CPP_CHANNEL_TRACE=1`)로 얻은 결정적 단서**: C3B의 delay 요청이 제출된
+(`client request candidates=1`) 직후부터 play-a의 **route-channel 디스패치가 멈춘다**. 클라이언트가
+보낸 evidence-wait 요청(`route-channel recv ... requestSeq=23` → `dispatch-submit`)이 그대로 걸려 있고,
+기다리던 delay 응답(`client request reply parts=2`)과 그 evidence-wait의 `dispatch-complete`가
+**둘 다 프로세스 종료 시퀀스(`host-stop-*`, `loop-join-workers-begin`) 중에야** 처리된다. 즉 개별
+요청의 문제가 아니라, timer 핸들러가 await하는 동안 **route-channel 디스패치의 공유 자원(worker/executor)이
+막힌다**. 다음 담당자는 route-channel worker 풀과 handler invocation executor의 점유를 이 구간에서
+확인할 것(같은 시점에 actor 요청은 stream 경로로 들어와 정상 처리되므로 route 경로 전용 자원이 유력) | framework(열림) |
 
 ATD-C3B 재현 조건(추가 확인): C1/C2/C3는 **같은 timer spot**(`timer_spot_rid`)을 공유하고
 runner의 `all` 모드에서 C1 → C2 → C3 순으로 한 프로세스 안에서 돈다. `run_e2e.sh ATD-C3`로

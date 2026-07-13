@@ -22,7 +22,7 @@ snapshot을 함께 갱신해야 한다.
 | common | `02-interaction-model.ko.md` | `5abba134f48f8d95d63e8cc409de998ab146cdad39fdf7cba22f6455b19b046d` |
 | common | `03-message-model.ko.md` | `c8477f874dbf0ff6aa8110708b9a5e7a1dc0b99ae387c79cbe06e1df8c0c9d2e` |
 | common | `04-async-execution-policy.ko.md` | `7993d0aa2f5f1a286a19e55a05eb71bdbb14f44926967aa1f58cb7d22378de0c` |
-| common | `05-framework-api.ko.md` | `4e2e7767a0a0ff2324108270f53b0ae51f8f9792991c8db4885ab5f4bdbe8636` |
+| common | `05-framework-api.ko.md` | `92064d6c7f424ff34ad3e14ddefeeee586b8e172db82924e4955ed0b05e8a834` |
 | common | `10-channel-topology.ko.md` | `b39269fb7176468f35ddbef69d73cefe02f46b8e1778809d5af0d9e91fcc42d5` |
 | common | `11-channel-messaging.ko.md` | `7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d` |
 | common | `20-spot-messaging.ko.md` | `34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4` |
@@ -41,9 +41,9 @@ snapshot을 함께 갱신해야 한다.
 | common | `52-message-flow-tracing.ko.md` | `68b153f892d88b9f0ddab3d7f2fa266606f7b4d3527746172662166ff011144a` |
 | common | `53-flow-correlation.ko.md` | `3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8` |
 | common | `54-graceful-drain-handoff.ko.md` | `1d415bb35d1614e428ca90d8b7ea3bacd8ee78520330c7aa393bfc7316b1f754` |
-| common | `90-implementation-gap.ko.md` | `f8420c27e1ccb1c534e48980ef5b5fabc5628eb377d592db4746b5ae28ae4e83` |
+| common | `90-implementation-gap.ko.md` | `b4e4a1d84a72152d4d3042b9335c849833de721ac4a5794de54b00c4f5fcec17` |
 | common | `README.ko.md` | `a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e` |
-| node | `01-system-structure.ko.md` | `f511367df706d8524b87b341d73de4ab8e2addf3d0f8b3e238c8b0338973f568` |
+| node | `01-system-structure.ko.md` | `5805a37bb89c8b1b9dcb104dc841d30e26126ff44f52620e94ac2f7760c03a60` |
 | node | `02-handler-interfaces.ko.md` | `bd4c9dc272271b265a7447a2bdd951b964268554855d02a4b1c4c3571785b639` |
 | node | `03-stream-connector.ko.md` | `108146aff90ea2d6fe1adc055e25b20ed55a31deb26782aa02a2abd978d0a0cf` |
 

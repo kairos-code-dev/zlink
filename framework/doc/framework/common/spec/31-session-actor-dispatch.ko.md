@@ -697,16 +697,21 @@ gateway가 각 delivery를 다음 구성으로 만든다.
 | part | 내용 |
 |---|---|
 | `parts[0]` | **routed control.** spot routed 계층이 붙이는 라우팅 head |
-| `parts[1]` | **actor gateway control.** kind, session rid, **actor id**, **generation**, part flag |
+| `parts[1]` | **actor gateway control.** kind, session rid, **actor id**, **generation**, multipart 종료 flag |
 | `parts[2]` | **payload part** |
+
+**gateway control에는 packet name이 없다.** routed control과 gateway control은 **target을
+결정할 뿐 application handler를 결정하지 않는다.** handler는 **payload part의 stream header를
+decode한 뒤 그 packet name으로** 고른다.
 
 ### 12.1.1 Session 서버 → Play 서버 actor
 
 **stream header와 stream payload를 하나의 메시지에 4개 part로 묶지 않는다.** framework는 두 part를
-넘기고, **gateway가 각 part를 별도 delivery로 보낸다.** 각 delivery는 위 3-part 구성을 갖고,
-**`part flag`가 그 delivery가 header part인지 payload part인지 구분한다.**
+넘기고, **gateway가 각 part를 별도 delivery로 보낸다.** 각 delivery는 위 3-part 구성을 갖는다.
 
-**받는 쪽은 part flag로 두 delivery를 다시 하나의 stream frame으로 복원한다.**
+**gateway control의 flag는 header/payload 종류를 나타내는 값이 아니라 multipart 종료 표시다** —
+첫 delivery에 `MORE`, 마지막에 `FINAL`이 붙는다. **받는 쪽은 순서로 판단한다.** 첫 part를 stream
+header로 decode하고, 그 `MORE` 값으로 **body가 뒤따르는지** 판단한 뒤 다음 part를 body로 받는다.
 
 ### 12.1.2 Play 서버 actor → Session 서버의 client stream
 

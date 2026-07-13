@@ -274,8 +274,8 @@ event 는 원본 native frame 이나 message ownership 을 노출하지 않는 �
 | 필드 | 의미 |
 |------|------|
 | `surface` | `Channel`, `RouteMeshChannel`, `SpotRoute`, `SpotSubscription`, `SpotActor`, `StreamSession` |
-| `messageKind` | `Request`, `Send`, `Publish`, `ActorRequest`, `ActorSend` |
-| `reason` | `HandlerMissing`, `PayloadDecodeFailed`, `HandlerException`, `InvalidFrame`, `ReplyPathMissing` |
+| `messageKind` | `Request`, `Send`, `Publish`, `ActorRequest`, `ActorSend`, **`Response`**, **`Error`** — reply 흐름의 실패도 기록한다 |
+| `reason` | `HandlerMissing`, `PayloadDecodeFailed`, `HandlerException`, `InvalidFrame`, `ReplyPathMissing`, **`UnexpectedReply`** |
 | `action` | `ReplyError`, `FailCaller`, `Drop` — [§dispatch 실패 정책](11-channel-messaging.ko.md) 참조 |
 | `packetName` | packet/message 이름. 알 수 없으면 언어별 null/optional 값 |
 | `channelName` | channel 또는 route mesh channel 이름 |
@@ -284,7 +284,7 @@ event 는 원본 native frame 이나 message ownership 을 노출하지 않는 �
 | `actorId` | actor id |
 | `sourceRid` | routing source id |
 | `correlationId` | request correlation id 또는 sequence |
-| `exception` | decode 실패나 handler 예외. handler 없음에는 값이 없을 수 있다 |
+| 오류 정보 | decode 실패나 handler 예외. **예외 객체를 그대로 노출할 의무는 없다** — 언어에 따라 오류 타입과 메시지 문자열로 투영할 수 있다. handler 없음에는 값이 없을 수 있다 |
 
 observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남아야 한다. observer callback 실패는
 별도 error sink 나 내부 로그로만 기록하고 dispatch loop, error reply 전송, shutdown 을 깨지 않는다.
@@ -304,6 +304,11 @@ observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남�
 
 **AOP와 구분한다.** AOP는 handler가 주입받는 **서비스 계층**에 적용하고, filter는 **dispatch
 파이프라인 자체**에 적용한다.
+
+**적용 범위:** filter는 **channel dispatch 경로**(request·send·publish)에 적용한다. **SPOT
+handler, STREAM session handler, route-mesh handler는 filter 파이프라인을 거치지 않는다** — 이
+경로들은 spot 실행 문맥과 session 실행 문맥이 소유하는 별도 dispatch다. **filter를 이 경로까지
+넓히려면 공개 계약을 먼저 확장해야 한다.**
 
 ### 2.5 public contract와 runtime 구현의 분리 기준
 

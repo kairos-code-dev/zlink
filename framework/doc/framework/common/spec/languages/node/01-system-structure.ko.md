@@ -110,9 +110,10 @@
 |---|---|
 | `ZLINK_SPOT_MANAGER` · `ZLINK_SPOT_OUTBOUND` | spot mesh 등록 |
 | `ZLINK_SPOT_PUBLISHER_CLIENT` | spot publisher 역할 |
-| `ZLINK_ACTOR_MANAGER` · `ZLINK_ACTOR_CLIENT` | actor factory 등록 |
-| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | spot handle resolver 등록 |
-| `ZLINK_LOCATION_RUNTIME_QUERY` | location runtime 등록 |
+| `ZLINK_ACTOR_CLIENT` | Spot node와 location store가 모두 등록됨 |
+| `ZLINK_ACTOR_MANAGER` | actor manager가 활성화됨 |
+| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | location store가 하나 이상 등록됨 |
+| `ZLINK_LOCATION_RUNTIME_QUERY` | location store가 하나 이상 등록됨 |
 
 **등록되지 않은 token을 주입하면 NestJS의 미해결 의존성 오류로 실패한다.**
 

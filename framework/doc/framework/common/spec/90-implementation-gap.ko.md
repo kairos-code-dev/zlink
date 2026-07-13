@@ -437,8 +437,21 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 Debug로 구분하도록 규정한다.
 
 `.NET` dispatch 파이프라인은 **`LogLevel.Error`를 넘기고도 `writeLog: false`로 실제 기록을
-억제한다.** 최종적으로 message flow tracer가 **모든 dispatch 오류를 `Information`으로** 기록하므로
-**계약이 요구하는 수준 구분이 사라진다.** application 코드가 던진 예외가 정보성 로그로 묻힌다.
+억제한다.** 이후 message flow tracer가 기록을 맡는데, tracer는 **shared logger로 쓸 때 오류를
+`Information`으로 평준화한다.**
+
+**정확한 조건:** logging이 활성이고(기본 `ErrorsOnly` 이상) **별도 로그 파일을 지정하지 않은**
+구성에서 **오류 수준 구분이 사라진다.** 로그 파일을 지정하면 그쪽으로 출력하고 shared logger에는
+남기지 않는다. 기본 구성에서는 **application 코드가 던진 예외가 정보성 로그로 묻힌다.**
+
+## 10.9 handler filter의 적용 범위
+
+**정보(설계 결정).** [framework API §2.6](05-framework-api.ko.md)이 규정하듯 filter는 **channel
+dispatch 경로에만** 적용한다. `.NET`에서 SPOT handler·STREAM session handler·route-mesh handler는
+filter 파이프라인을 거치지 않고 handler invocation engine을 직접 호출한다.
+
+**이는 구현 결함이 아니라 현재 계약의 범위다.** SPOT과 session은 각자의 실행 문맥이 소유하는 별도
+dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 계약을 먼저 확장해야 한다.**
 
 ## 11. 완료 조건
 

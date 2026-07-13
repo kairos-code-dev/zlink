@@ -1,6 +1,6 @@
 {
   "name": "@zlink-systems/zlink",
-  "version": "8.6.4",
+  "version": "9.0.4",
   "description": "zlink Node.js bindings \u2014 high-performance async messaging library",
   "license": "MPL-2.0",
   "author": "Zlink Systems",
@@ -26,11 +26,14 @@
     "prebuilds/**/*",
     "native/src/**/*",
     "scripts/verify_prebuilds.js",
+    "scripts/install.js",
     "binding.gyp",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "gypfile": true,
   "scripts": {
+    "install": "node scripts/install.js",
     "clean": "rm -rf dist dist-tools",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
     "verify:prebuilds": "node scripts/verify_prebuilds.js",

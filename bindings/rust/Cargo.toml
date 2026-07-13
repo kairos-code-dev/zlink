@@ -1,6 +1,6 @@
 [package]
 name = "zlink"
-version = "8.6.3"
+version = "9.0.4"
 edition = "2024"
 rust-version = "1.85"
 description = "Rust bindings for the zlink messaging library"

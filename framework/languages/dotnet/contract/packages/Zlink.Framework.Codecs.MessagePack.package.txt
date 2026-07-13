@@ -1,4 +1,5 @@
 package Zlink.Framework.Codecs.MessagePack
+entry LICENSE
 entry Zlink.Framework.Codecs.MessagePack.nuspec
 entry [Content_Types].xml
 entry _rels/.rels
@@ -9,6 +10,9 @@ content-sha256 lib/net8.0/Zlink.Framework.Codecs.MessagePack.xml=089f919c2cef553
 metadata authors=Zlink.Framework.Codecs.MessagePack
 metadata description=MessagePack codec extension for the ZLink .NET framework.
 metadata id=Zlink.Framework.Codecs.MessagePack
+metadata license=LICENSE type=file
+metadata licenseUrl=https://aka.ms/deprecateLicenseUrl
+metadata projectUrl=https://github.com/kairos-code-dev/zlink
 metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
 dependency-group targetFramework=net8.0

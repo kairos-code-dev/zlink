@@ -1,4 +1,5 @@
 package Zlink.Framework.AspNetCore
+entry LICENSE
 entry Zlink.Framework.AspNetCore.nuspec
 entry [Content_Types].xml
 entry _rels/.rels
@@ -9,6 +10,9 @@ content-sha256 lib/net8.0/Zlink.Framework.AspNetCore.xml=3f5beb4ece9b34852d1986e
 metadata authors=Zlink.Framework.AspNetCore
 metadata description=ASP.NET Core integration layer for ZLink framework.
 metadata id=Zlink.Framework.AspNetCore
+metadata license=LICENSE type=file
+metadata licenseUrl=https://aka.ms/deprecateLicenseUrl
+metadata projectUrl=https://github.com/kairos-code-dev/zlink
 metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
 dependency-group targetFramework=net8.0
@@ -17,5 +21,5 @@ dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extension
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Diagnostics.HealthChecks version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Hosting.Abstractions version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=8.6.6
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=9.0.2
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}

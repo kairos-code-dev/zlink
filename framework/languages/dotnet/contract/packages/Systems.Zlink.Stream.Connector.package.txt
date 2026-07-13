@@ -1,4 +1,5 @@
 package Systems.Zlink.Stream.Connector
+entry LICENSE
 entry Systems.Zlink.Stream.Connector.nuspec
 entry [Content_Types].xml
 entry _rels/.rels
@@ -9,6 +10,9 @@ content-sha256 lib/net8.0/Systems.Zlink.Stream.Connector.xml=8b8c8b25e9c63358709
 metadata authors=Systems.Zlink.Stream.Connector
 metadata description=ZLink STREAM client connector for .NET.
 metadata id=Systems.Zlink.Stream.Connector
+metadata license=LICENSE type=file
+metadata licenseUrl=https://aka.ms/deprecateLicenseUrl
+metadata projectUrl=https://github.com/kairos-code-dev/zlink
 metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
 dependency-group targetFramework=net8.0

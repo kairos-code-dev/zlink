@@ -54,7 +54,19 @@ esac
       exit 2
       ;;
   esac
-  npm pack --pack-destination "$out_dir" "$@"
+  package_file="$(npm pack --pack-destination "$out_dir" "$@" | tail -n 1)"
+
+  consumer_dir="$(mktemp -d)"
+  trap 'rm -rf "$consumer_dir"' EXIT
+  (
+    cd "$consumer_dir"
+    npm init -y >/dev/null
+    npm install "$out_dir/$package_file" >/dev/null
+    node -e "require('@zlink-systems/zlink')"
+  )
+  rm -rf "$consumer_dir"
+  trap - EXIT
+  echo "$package_file"
 )
 
 echo "-- Node local npm tarball output: $out_dir"

@@ -42,6 +42,17 @@ publishing {
             groupId = project.group
             artifactId = 'zlink-ext-netty'
             version = project.version
+            pom {
+                name = 'zlink-ext-netty'
+                description = project.description
+                url = 'https://github.com/kairos-code-dev/zlink'
+                licenses {
+                    license {
+                        name = 'MPL-2.0'
+                        url = 'https://github.com/kairos-code-dev/zlink/blob/main/LICENSE'
+                    }
+                }
+            }
         }
     }
     repositories {

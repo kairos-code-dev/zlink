@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'systems.zlink'
-version = '9.0.0'
+version = '9.0.4'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
@@ -157,6 +157,17 @@ publishing {
             groupId = project.group
             artifactId = 'zlink'
             version = project.version
+            pom {
+                name = 'zlink'
+                description = project.description
+                url = 'https://github.com/kairos-code-dev/zlink'
+                licenses {
+                    license {
+                        name = 'MPL-2.0'
+                        url = 'https://github.com/kairos-code-dev/zlink/blob/main/LICENSE'
+                    }
+                }
+            }
         }
     }
     repositories {

@@ -60,21 +60,24 @@ function isWindowsSystemDll(name) {
 function validateLinux(dir, arch) {
   const addon = path.join(dir, 'zlink.node');
   const dynamic = readElfDynamic(addon);
-  if (!dynamic.includes('Shared library: [libzlink.so.8]')) {
-    fail(`${addon} must depend on libzlink.so.8`);
+  const expectedSoname = `libzlink.so.${packageMajor}`;
+  if (!dynamic.includes(`Shared library: [${expectedSoname}]`)) {
+    fail(`${addon} must depend on ${expectedSoname}`);
   }
-  if (dynamic.includes('Shared library: [libzlink.so.6]') || dynamic.includes('Shared library: [libzlink.so.5]')) {
+  const linkedSonames = [...dynamic.matchAll(/Shared library: \[(libzlink\.so\.\d+)\]/g)]
+    .map((match) => match[1]);
+  if (linkedSonames.some((soname) => soname !== expectedSoname)) {
     fail(`${addon} still depends on a stale libzlink SONAME`);
   }
   if (!dynamic.includes('Library runpath: [$ORIGIN]')) {
     fail(`${addon} must use $ORIGIN runpath`);
   }
-  const linuxCoreLib = `libzlink.so.${packageMajor}`;
+  const linuxCoreLib = expectedSoname;
   if (!fs.existsSync(path.join(dir, linuxCoreLib))) {
     fail(`${dir} is missing ${linuxCoreLib}`);
   }
   for (const stale of fs.readdirSync(dir)) {
-    if (/^libzlink\.so\.\d+\.\d+\.\d+$/.test(stale) && stale !== linuxCoreLib) {
+    if (/^libzlink\.so\.\d+\.\d+\.\d+$/.test(stale) && stale !== `libzlink.so.${packageVersion}`) {
       fail(`${dir} contains stale ${stale}`);
     }
   }

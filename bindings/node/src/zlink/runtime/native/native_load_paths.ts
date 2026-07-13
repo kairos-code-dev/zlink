@@ -5,7 +5,7 @@ import * as path from 'node:path';
 
 import type { NativeBinding } from './binding';
 
-const LINUX_SONAME = 'libzlink.so.8';
+const LINUX_SONAME = 'libzlink.so.9';
 
 export interface NativeLoadFailure {
   target: string;

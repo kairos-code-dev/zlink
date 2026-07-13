@@ -18,9 +18,11 @@ struct quest_ids_t
     static constexpr const char *visit_ruins = "visit-ruins";
 };
 
+/* 공통 sample spec §11.4: 진행 중(Active) → 조건 충족(Completed) → 보상 지급(RewardGranted). */
 struct quest_status_t
 {
     static constexpr const char *active = "Active";
+    static constexpr const char *completed = "Completed";
     static constexpr const char *reward_granted = "RewardGranted";
 };
 
@@ -102,6 +104,27 @@ struct join_session_req_t
     std::string player_id;
 };
 
+/* 공통 sample spec §11.3: quest domain event stream(append-only SoR). projection은 이 stream을
+ * fold해 만든다. */
+struct stored_quest_event_t
+{
+    static constexpr const char *progressed = "QuestProgressed";
+    static constexpr const char *completed = "QuestCompleted";
+    static constexpr const char *reward_granted = "QuestRewardGranted";
+    static constexpr const char *reconciled = "QuestReconciled";
+
+    std::string event_id;
+    std::string player_id;
+    std::string quest_id;
+    std::string type;
+    std::string source_event_id;
+    int delta = 0;
+    int current_count = 0;
+    int required_count = 0;
+    long long version = 0;
+    long long created_at_unix_ms = 0;
+};
+
 struct quest_progress_t
 {
     std::string player_id;
@@ -109,7 +132,9 @@ struct quest_progress_t
     std::string status;
     int current_count = 0;
     int required_count = 0;
-    std::string last_event_id;
+    /* 이 진행을 만든 마지막 gameplay event(idempotency 판정용)와 event stream fold의 버전. */
+    std::string last_source_event_id;
+    long long version = 0;
     long long updated_at_unix_ms = 0;
 };
 
@@ -335,11 +360,38 @@ inline void from_json (const nlohmann::json &json, join_session_req_t &value)
 {
     json.at ("playerId").get_to (value.player_id);
 }
+inline void to_json (nlohmann::json &json, const stored_quest_event_t &value)
+{
+    json = {{"eventId", value.event_id},
+            {"playerId", value.player_id},
+            {"questId", value.quest_id},
+            {"type", value.type},
+            {"sourceEventId", value.source_event_id},
+            {"delta", value.delta},
+            {"currentCount", value.current_count},
+            {"requiredCount", value.required_count},
+            {"version", value.version},
+            {"createdAtUnixMs", value.created_at_unix_ms}};
+}
+inline void from_json (const nlohmann::json &json, stored_quest_event_t &value)
+{
+    json.at ("eventId").get_to (value.event_id);
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("questId").get_to (value.quest_id);
+    json.at ("type").get_to (value.type);
+    value.source_event_id = json.value ("sourceEventId", std::string{});
+    value.delta = json.value ("delta", 0);
+    value.current_count = json.value ("currentCount", 0);
+    value.required_count = json.value ("requiredCount", 0);
+    value.version = json.value ("version", 0LL);
+    value.created_at_unix_ms = json.value ("createdAtUnixMs", 0LL);
+}
 inline void to_json (nlohmann::json &json, const quest_progress_t &value)
 {
     json = {{"playerId", value.player_id}, {"questId", value.quest_id},
             {"status", value.status}, {"currentCount", value.current_count},
-            {"requiredCount", value.required_count}, {"lastEventId", value.last_event_id},
+            {"requiredCount", value.required_count},
+            {"lastSourceEventId", value.last_source_event_id}, {"version", value.version},
             {"updatedAtUnixMs", value.updated_at_unix_ms}};
 }
 inline void from_json (const nlohmann::json &json, quest_progress_t &value)
@@ -349,7 +401,8 @@ inline void from_json (const nlohmann::json &json, quest_progress_t &value)
     json.at ("status").get_to (value.status);
     json.at ("currentCount").get_to (value.current_count);
     json.at ("requiredCount").get_to (value.required_count);
-    json.at ("lastEventId").get_to (value.last_event_id);
+    value.last_source_event_id = json.value ("lastSourceEventId", std::string{});
+    value.version = json.value ("version", 0LL);
     json.at ("updatedAtUnixMs").get_to (value.updated_at_unix_ms);
 }
 inline void to_json (nlohmann::json &json, const join_session_res_t &value)

@@ -196,7 +196,7 @@ class gamequest_client_scenario_t
             std::cerr << "gamequest initial join quest"
                       << " questId=" << quest.quest_id
                       << " creatorPlayer=" << quest.player_id
-                      << " lastEventId=" << quest.last_event_id
+                      << " lastEventId=" << quest.last_source_event_id
                       << " updatedAtUnixMs=" << quest.updated_at_unix_ms
                       << " status=" << quest.status
                       << " count=" << quest.current_count << "/"

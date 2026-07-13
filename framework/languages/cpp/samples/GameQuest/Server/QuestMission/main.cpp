@@ -16,7 +16,9 @@
 #include <ctime>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 #include <map>
+#include <optional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -79,101 +81,177 @@ bool post_notify (const std::string &base_url, const notify_quest_progress_req_t
     return decoded.get<notify_quest_progress_res_t> ().delivered;
 }
 
-class quest_store_t
+/* 공통 sample spec §10: quest event stream이 진실의 원천(append-only)이고, projection은 그
+ * stream을 fold해서 만든다. 같은 gameplay event가 다시 와도(재시도) event를 또 append하지
+ * 않는다 — source event id로 판정한다. */
+class quest_event_store_t
 {
   public:
-    apply_gameplay_event_res_t apply (const gameplay_event_envelope_t &event)
+    struct evaluation_t
+    {
+        std::vector<quest_progress_t> projection;
+        std::string completed_quest_id;
+        bool reward_granted = false;
+    };
+
+    evaluation_t apply (const gameplay_event_envelope_t &event)
     {
         const std::lock_guard lock (_mutex);
-        const auto event_key = event.player_id + ":" + event.idempotency_key;
-        if (_seen_events.contains (event_key)) {
-            return {true, projection_unlocked (event.player_id), ""};
+        auto &stream = _streams[event.player_id];
+        const auto already_applied =
+          std::any_of (stream.begin (), stream.end (), [&] (const stored_quest_event_t &stored) {
+              return !stored.source_event_id.empty ()
+                     && stored.source_event_id == event.event_id;
+          });
+        if (already_applied) {
+            /* reward 멱등: 이미 반영한 gameplay event는 stream을 늘리지 않고 현재 projection만
+             * 돌려준다. */
+            return {replay_unlocked (event.player_id), {}, false};
         }
-        _seen_events[event_key] = event.event_id;
 
-        std::string completed;
-        if (event.event_type == "MonsterKilled" && event.value == "wolf") {
-            completed = advance (event.player_id, quest_ids_t::first_hunt, event.count, 3,
-                                 event.event_id);
+        const auto rule = quest_rule_for (event);
+        if (!rule) {
+            return {replay_unlocked (event.player_id), {}, false};
         }
-        else if (event.event_type == "FeatureUnlocked" && event.value == "auction") {
-            completed = advance (event.player_id, quest_ids_t::open_auction, 1, 1,
-                                 event.event_id);
+
+        auto projection = replay_unlocked (event.player_id);
+        const auto current = find_progress (projection, rule->quest_id);
+        const auto previous_count = current ? current->current_count : 0;
+        const auto previous_status =
+          current ? current->status : std::string (quest_status_t::active);
+        if (previous_status == quest_status_t::reward_granted) {
+            return {projection, {}, false};
         }
-        else if (event.event_type == "ItemCollected" && event.value == "healing-herb") {
-            completed = advance (event.player_id, quest_ids_t::herb_gathering, event.count, 5,
-                                 event.event_id);
-        }
-        else if (event.event_type == "MissionCompleted" && event.value == "tutorial") {
-            completed = advance (event.player_id, quest_ids_t::clear_tutorial, 1, 1,
-                                 event.event_id);
-        }
-        else if (event.event_type == "AreaEntered" && event.value == "ruins") {
-            completed = advance (event.player_id, quest_ids_t::visit_ruins, 1, 1,
-                                 event.event_id);
+
+        const auto delta = rule->delta;
+        const auto next_count = std::min (previous_count + delta, rule->required_count);
+        append_unlocked (stream, stored_quest_event_t::progressed, event, *rule, delta, next_count);
+
+        std::string completed_quest_id;
+        bool reward_granted = false;
+        if (next_count >= rule->required_count && previous_status == quest_status_t::active) {
+            append_unlocked (stream, stored_quest_event_t::completed, event, *rule, 0, next_count);
+            append_unlocked (stream, stored_quest_event_t::reward_granted, event, *rule, 0,
+                             next_count);
+            completed_quest_id = rule->quest_id;
+            reward_granted = true;
         }
 
         std::cerr << "gamequest mission processed player=" << event.player_id
                   << " type=" << event.event_type << " value=" << event.value
-                  << " completed=" << completed << "\n";
-        return {true, projection_unlocked (event.player_id), completed};
+                  << " completed=" << completed_quest_id << "\n";
+        return {replay_unlocked (event.player_id), completed_quest_id, reward_granted};
     }
 
-    std::vector<quest_progress_t> projection (const std::string &player_id) const
+    /* projection은 언제든 event stream만으로 다시 만들 수 있다. */
+    std::vector<quest_progress_t> replay (const std::string &player_id) const
     {
         const std::lock_guard lock (_mutex);
-        return projection_unlocked (player_id);
+        return replay_unlocked (player_id);
     }
 
   private:
-    std::string advance (const std::string &player_id,
-                         const std::string &quest_id,
-                         int delta,
-                         int required,
-                         const std::string &event_id)
+    struct quest_rule_t
     {
-        auto &progress = _progress[player_id + ":" + quest_id];
-        if (progress.player_id.empty ()) {
-            progress.player_id = player_id;
-            progress.quest_id = quest_id;
-            progress.required_count = required;
-            progress.status = quest_status_t::active;
+        std::string quest_id;
+        int delta = 0;
+        int required_count = 0;
+    };
+
+    static std::optional<quest_rule_t> quest_rule_for (const gameplay_event_envelope_t &event)
+    {
+        if (event.event_type == "MonsterKilled" && event.value == "wolf") {
+            return quest_rule_t{quest_ids_t::first_hunt, event.count, 3};
         }
-        progress.current_count += delta;
-        if (progress.current_count > required) {
-            progress.current_count = required;
+        if (event.event_type == "FeatureUnlocked" && event.value == "auction") {
+            return quest_rule_t{quest_ids_t::open_auction, 1, 1};
         }
-        progress.last_event_id = event_id;
-        progress.updated_at_unix_ms = static_cast<long long> (std::time (nullptr)) * 1000LL;
-        const auto newly_completed = progress.status != quest_status_t::reward_granted
-                                     && progress.current_count >= progress.required_count;
-        if (newly_completed) {
-            progress.status = quest_status_t::reward_granted;
-            return quest_id;
+        if (event.event_type == "ItemCollected" && event.value == "healing-herb") {
+            return quest_rule_t{quest_ids_t::herb_gathering, event.count, 5};
         }
-        return {};
+        if (event.event_type == "MissionCompleted" && event.value == "tutorial") {
+            return quest_rule_t{quest_ids_t::clear_tutorial, 1, 1};
+        }
+        if (event.event_type == "AreaEntered" && event.value == "ruins") {
+            return quest_rule_t{quest_ids_t::visit_ruins, 1, 1};
+        }
+        return std::nullopt;
     }
 
-    std::vector<quest_progress_t> projection_unlocked (const std::string &player_id) const
+    static const quest_progress_t *find_progress (const std::vector<quest_progress_t> &projection,
+                                                  const std::string &quest_id)
     {
-        std::vector<quest_progress_t> result;
-        for (const auto &[_, progress] : _progress) {
-            if (progress.player_id == player_id) {
-                result.push_back (progress);
-            }
+        const auto found =
+          std::find_if (projection.begin (), projection.end (),
+                        [&] (const quest_progress_t &item) { return item.quest_id == quest_id; });
+        return found == projection.end () ? nullptr : &*found;
+    }
+
+    void append_unlocked (std::vector<stored_quest_event_t> &stream,
+                          const char *type,
+                          const gameplay_event_envelope_t &source,
+                          const quest_rule_t &rule,
+                          int delta,
+                          int current_count)
+    {
+        stored_quest_event_t stored;
+        stored.event_id = source.event_id + ":" + type;
+        stored.player_id = source.player_id;
+        stored.quest_id = rule.quest_id;
+        stored.type = type;
+        stored.source_event_id = source.event_id;
+        stored.delta = delta;
+        stored.current_count = current_count;
+        stored.required_count = rule.required_count;
+        stored.version = static_cast<long long> (stream.size ()) + 1;
+        stored.created_at_unix_ms = static_cast<long long> (std::time (nullptr)) * 1000LL;
+        stream.push_back (std::move (stored));
+    }
+
+    std::vector<quest_progress_t> replay_unlocked (const std::string &player_id) const
+    {
+        std::vector<quest_progress_t> projection;
+        const auto stream = _streams.find (player_id);
+        if (stream == _streams.end ()) {
+            return projection;
         }
-        return result;
+        for (const auto &stored : stream->second) {
+            auto found =
+              std::find_if (projection.begin (), projection.end (),
+                            [&] (const quest_progress_t &item) {
+                                return item.quest_id == stored.quest_id;
+                            });
+            if (found == projection.end ()) {
+                quest_progress_t progress;
+                progress.player_id = stored.player_id;
+                progress.quest_id = stored.quest_id;
+                progress.status = quest_status_t::active;
+                projection.push_back (progress);
+                found = std::prev (projection.end ());
+            }
+            if (stored.type == stored_quest_event_t::progressed) {
+                found->current_count = stored.current_count;
+                found->required_count = stored.required_count;
+            } else if (stored.type == stored_quest_event_t::completed) {
+                found->status = quest_status_t::completed;
+            } else if (stored.type == stored_quest_event_t::reward_granted) {
+                found->status = quest_status_t::reward_granted;
+            }
+            found->last_source_event_id = stored.source_event_id;
+            found->version = stored.version;
+            found->updated_at_unix_ms = stored.created_at_unix_ms;
+        }
+        return projection;
     }
 
     mutable std::mutex _mutex;
-    std::map<std::string, std::string> _seen_events;
-    std::map<std::string, quest_progress_t> _progress;
+    std::map<std::string, std::vector<stored_quest_event_t>> _streams;
 };
 
 class player_quest_spot_t : public spot_t
 {
   public:
-    player_quest_spot_t (quest_store_t &store, sample_topology_t topology) :
+    player_quest_spot_t (quest_event_store_t &store, sample_topology_t topology) :
         _store (store), _topology (std::move (topology))
     {
     }
@@ -214,21 +292,21 @@ class player_quest_spot_t : public spot_t
         std::cerr << "gamequest mission notified source=" << request.event.source_api
                   << " player=" << request.event.player_id
                   << " delivered=" << (delivered ? "true" : "false") << "\n";
-        return result;
+        return apply_gameplay_event_res_t{true, result.projection, result.completed_quest_id};
     }
 
     sync_quest_progress_res_t sync (const sync_quest_progress_req_t &request)
     {
-        return {_store.projection (request.player_id)};
+        return {_store.replay (request.player_id)};
     }
 
     get_quest_progress_res_t get (const get_quest_progress_req_t &request)
     {
-        return {_store.projection (request.player_id)};
+        return {_store.replay (request.player_id)};
     }
 
   private:
-    quest_store_t &_store;
+    quest_event_store_t &_store;
     sample_topology_t _topology;
     std::string _player_id;
 };
@@ -264,7 +342,7 @@ int main (int argc, char **argv)
     using namespace zlink::samples::gamequest;
 
     const sample_topology_t topology;
-    auto quest_store = std::make_unique<quest_store_t> ();
+    auto quest_store = std::make_unique<quest_event_store_t> ();
     auto *quest_store_ptr = quest_store.get ();
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
@@ -272,7 +350,7 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (gamequest_flow_log_path (topology.mission_name))
           .trace_label (topology.mission_name);
-        options.services ().add_singleton<quest_store_t> (std::move (quest_store));
+        options.services ().add_singleton<quest_event_store_t> (std::move (quest_store));
         options.services ().add_singleton<sample_topology_t> (
           std::make_unique<sample_topology_t> (topology));
         add_gamequest_json_codecs (options.codecs ());

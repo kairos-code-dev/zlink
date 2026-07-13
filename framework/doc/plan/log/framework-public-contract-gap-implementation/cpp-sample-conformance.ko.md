@@ -70,13 +70,13 @@
 
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
-| SMP-SM-001 | event store 레코드(`StoredOrderEvent`)와 typed 도메인 event | event가 `{type, createdAtUnixMs}` 문자열 수준, 도메인 event 타입 없음 | 열림 |
-| SMP-SM-002 | aggregate는 event stream fold로 rehydrate | projection을 진실의 원천으로 사용 | 열림 |
-| SMP-SM-003 | projection은 stream만으로 재생성 가능 | rebuild가 살아남은 read model과 하드코딩 값에 의존 | 열림 |
-| SMP-SM-004 | inventory/payment 모듈 port(`ReserveInventoryCommand` 등) | 모듈 없음 — 금액 범위·문자열 비교로 성공/실패 흉내 | 열림 |
-| SMP-SM-005 | CommerceApi는 event store/projection을 직접 쓰지 않는다 | API가 event stream 절단·read model 삭제를 직접 수행 | 열림 |
-| SMP-SM-006 | `StartOrderRes`는 신규 주문에 `Created` 즉시 반환(Continue는 owner가 비동기 진행) | API가 Continue를 inline await 후 `Confirmed` 반환, 클라이언트도 `Confirmed` 기대 | 열림 |
-| SMP-SM-007 | 서버 간 연결은 location store 자동 연결 | `enable_client(endpoint)`/`connect_router(endpoint)` 수동 배선 | 열림 |
+| SMP-SM-001 | event store 레코드(`StoredOrderEvent`)와 typed 도메인 event | `stored_order_event_t`(EventId/SourceCommandId/EventType/Payload/Version)로 기록하고 이벤트별 payload를 담는다 | 닫힘 |
+| SMP-SM-002 | aggregate는 event stream fold로 rehydrate | `fold()`가 스트림을 접어 aggregate를 만들고, 다음 단계 판정도 그 결과가 한다. 기록은 기대 Version 검사를 통과해야 한다 | 닫힘 |
+| SMP-SM-003 | projection은 stream만으로 재생성 가능 | rebuild가 스트림 재생만으로 조회 모델을 복원한다(read model·하드코딩 의존 제거) | 닫힘 |
+| SMP-SM-004 | inventory/payment 모듈 port(`ReserveInventoryCommand` 등) | 재고·결제 모듈을 CommerceStateStore 시드 위에 구현했다. 결정적 ReservationId/PaymentId로 멱등이며, 재개는 최초 결과를 그대로 돌려받는다 | 닫힘 |
+| SMP-SM-005 | CommerceApi는 event store/projection을 직접 쓰지 않는다 | 중간 상태는 owner 루프가 읽는 stop hook이 만든다. API가 스트림을 자르지 않는다 | 닫힘 |
+| SMP-SM-006 | `StartOrderRes`는 신규 주문에 `Created` 즉시 반환(Continue는 owner가 비동기 진행) | 시작은 루프를 Created까지만 돌리고 응답하며, 재개는 기다리지 않고 one-way로 예약한다. 클라이언트는 폴링으로 종료를 확인한다 | 닫힘 |
+| SMP-SM-007 | 서버 간 연결은 location store 자동 연결 | 수동 endpoint 배선 제거, route mesh·spot router 모두 자동 연결 | 닫힘 |
 | SMP-SM-008 | handler catch→log→rethrow 금지 | 매크로로 전 handler에 적용 | 닫힘 |
 
 ## 7. GameQuest

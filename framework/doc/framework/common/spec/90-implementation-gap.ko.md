@@ -102,7 +102,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | gap | 언어 | 내용 |
 |---|---|---|
 | [§4.10](#410-stream-connector-browser-only-package와-검증) | **TypeScript** | **해소.** browser-only package, 명시적 flow, 실제 Chromium과 package consumer gate가 모두 통과했다. |
-| [§4.13](#413-startup-validation-누락) | **Node** | channel과 SPOT의 일부 잘못된 구성을 startup에서 거부하지 않는다 |
+| [§4.13](#413-startup-validation-누락-해소) | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
 

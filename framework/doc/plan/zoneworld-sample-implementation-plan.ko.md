@@ -234,7 +234,7 @@ client는 하나이고 server가 5개이므로, **client는 특정 언어 server
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | Phase 0 | 계약 고정(§8.1) | **완료** — dotnet 계약 빌드 성공, client 계약 `tsc --noEmit` 통과 |
-| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **진행 중 — 관문 1 미통과.** 구현한 18개 중 **10개 실측 통과**(봇 비활성). 남은 8개는 §8.9의 블로커 B-1(cross-node transfer EINVAL)·B-2(bound session route)에 막혀 있다 |
+| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **진행 중 — 관문 1 미통과.** 구현한 18개 중 **17개 실측 통과.** cross-node transfer 포함 전 기능 동작. 남은 1개(`ZW-E3`)는 최소 재현 확보(§8.9) |
 | Phase 1 — `java` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `kotlin` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `node` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
@@ -303,13 +303,13 @@ client다. 기존 정본 6종의 `Client/`와 같은 형태이며, 그 언어 se
 
 | 항목 | `dotnet` | `java` | `kotlin` | `node` | `cpp` |
 |---|:--:|:--:|:--:|:--:|:--:|
-| stream connector 연결(`Gateway`·`Ops` 두 종단) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| 시나리오 러너 — `ZW-*` 개별 실행과 `all` 실행 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| 게임 시나리오 `ZW-A*`·`ZW-B*` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| 관제 시나리오 `ZW-C*`·`ZW-D*`·`ZW-E*` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| 봇 시나리오 `ZW-F*` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| 성공·실패를 종료 코드와 로그로 보고 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `run_sample.sh` — §12 순서로 기동 후 client 실행 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| stream connector 연결(`Gateway`·`Ops` 두 종단) | [x] | [ ] | [ ] | [ ] | [ ] |
+| 시나리오 러너 — `ZW-*` 개별 실행과 `all` 실행 | [x] | [ ] | [ ] | [ ] | [ ] |
+| 게임 시나리오 `ZW-A*`·`ZW-B*` | [x] | [ ] | [ ] | [ ] | [ ] |
+| 관제 시나리오 `ZW-C*`·`ZW-D*`·`ZW-E*` | [x] | [ ] | [ ] | [ ] | [ ] |
+| 봇 시나리오 `ZW-F*` | [x] | [ ] | [ ] | [ ] | [ ] |
+| 성공·실패를 종료 코드와 로그로 보고 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `run_sample.sh` — §12 순서로 기동 후 client 실행 | [x] | [ ] | [ ] | [ ] | [ ] |
 
 **`dotnet` 시나리오 client가 기준이다.** 시나리오 분해, 단언, 대기 조건, 성공 로그를 여기서
 확정하고 나머지 언어는 같은 시나리오를 같은 순서로 옮긴다.
@@ -321,31 +321,31 @@ client다. 기존 정본 6종의 `Client/`와 같은 형태이며, 그 언어 se
 
 | 요소 | `dotnet` | `java` | `kotlin` | `node` | `cpp` |
 |---|:--:|:--:|:--:|:--:|:--:|
-| **Gateway** — `PlayerSession` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Gateway** — `GatewayEntrySpot` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Gateway** — `JoinWorldHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Domain** — `World`, `ZoneId`, `ZoneState`, `PlayerPosition` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Domain** — `MovePolicy`, `BorderView` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Application** — `MoveUseCase`, `ZoneTickUseCase` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Application** — `BotPatrolPolicy`, `NodeMaintenancePolicy` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Ports** — `MaintenanceStorePort`, `OpsReportPort` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Spots** — `ZoneSpot` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Spot handlers** — `EnterZoneHandler`, `UpdatePositionHandler`, `LeaveZoneHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Spot handlers** — `ZoneTickHandler`, `BotTickHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Spot handlers** — `ZoneBorderSubscriptionHandler`, `DeliverAnnounceHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Actors** — `PlayerActor`, `PlayerActorFactory`, `BotSpawner` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Actors** — **transfer adapter 등록**(정본 §2.6) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Handlers** — `WorldAnnounceSubscriber`, `NodeMaintenanceChangedSubscriber` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Handlers** — `ApplyNodeMaintenanceHandler`, `GetNodeDiagnosticsHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Monitoring** — `LocalSpotEventHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **ZoneNode Store** — `MaintenanceStoreRepository` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops Application** — `NodeRegistry`, `AnnouncementService`, `MaintenanceService` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops** — `OpsConsoleSession` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops Handlers** — `WatchNodesHandler`, `AnnounceWorldHandler`, `SetMaintenanceHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops Handlers** — `NodeDiagnosticsHandler`, `ReportSpotEventHandler`, `ReportNodeStatusHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops Monitoring** — `LocationEventHandler`, `SocketEventHandler` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **Ops Store** — `MaintenanceStoreRepository` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| **runner** — 정본 §12 순서로 서버 기동 + client 실행 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| **Gateway** — `PlayerSession` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Gateway** — `GatewayEntrySpot` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Gateway** — `JoinWorldHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Domain** — `World`, `ZoneId`, `ZoneState`, `PlayerPosition` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Domain** — `MovePolicy`, `BorderView` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Application** — `MoveUseCase`, `ZoneTickUseCase` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Application** — `BotPatrolPolicy`, `NodeMaintenancePolicy` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Ports** — `MaintenanceStorePort`, `OpsReportPort` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Spots** — `ZoneSpot` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Spot handlers** — `EnterZoneHandler`, `UpdatePositionHandler`, `LeaveZoneHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Spot handlers** — `ZoneTickHandler`, `BotTickHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Spot handlers** — `ZoneBorderSubscriptionHandler`, `DeliverAnnounceHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Actors** — `PlayerActor`, `PlayerActorFactory`, `BotSpawner` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Actors** — **transfer adapter 등록**(정본 §2.6) | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Handlers** — `WorldAnnounceSubscriber`, `NodeMaintenanceChangedSubscriber` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Handlers** — `ApplyNodeMaintenanceHandler`, `GetNodeDiagnosticsHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Monitoring** — `LocalSpotEventHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **ZoneNode Store** — `MaintenanceStoreRepository` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops Application** — `NodeRegistry`, `AnnouncementService`, `MaintenanceService` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops** — `OpsConsoleSession` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops Handlers** — `WatchNodesHandler`, `AnnounceWorldHandler`, `SetMaintenanceHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops Handlers** — `NodeDiagnosticsHandler`, `ReportSpotEventHandler`, `ReportNodeStatusHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops Monitoring** — `LocationEventHandler`, `SocketEventHandler` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **Ops Store** — `MaintenanceStoreRepository` | [x] | [ ] | [ ] | [ ] | [ ] |
+| **runner** — 정본 §12 순서로 서버 기동 + client 실행 | [x] | [ ] | [ ] | [ ] | [ ] |
 | **`zone-node-3`** — subscriber만(정본 §11.1, `ZW-D2` 전용) | [ ] | [ ] | [ ] | [ ] | [ ] |
 
 ### 8.4 관문 1 — 기능 완료 (그 언어의 시나리오 client로 판정)
@@ -353,33 +353,48 @@ client다. 기존 정본 6종의 `Client/`와 같은 형태이며, 그 언어 se
 정본 §11의 전 항목이다. **하나라도 미통과면 그 언어는 관문 2로 넘어가지 않는다.** 판정은 §8.2의
 headless 시나리오 client로 한다. 브라우저는 이 관문에 등장하지 않는다.
 
+**`dotnet` 현황: 25개 중 17개 통과, 1개 실패(`ZW-E3`, §8.9), 7개 미구현.**
+
+미구현 7개는 모두 **러너가 토폴로지를 조작해야** 하는 것들이라 시나리오 client만으로는 판정할 수
+없다. 러너에 아래 능력을 추가해야 한다.
+
+| ID | 필요한 러너 능력 |
+|---|---|
+| `ZW-B4` | 인접 zone의 노드를 **종료**하고 3 tick 뒤 그 zone 플레이어가 사라지는지 본다 |
+| `ZW-C2` | `zone-node-2`를 **종료**하고 `NodeStatusNotify(Registered=false)`를 본다 |
+| `ZW-C3` | `Ops`↔노드 **연결을 끊고** `Connected=false`를 본다 |
+| `ZW-C4` | zone spot tick handler에 **예외를 주입**하고 `NodeAlertNotify(TimerHandlerFailed)`를 본다 |
+| `ZW-D2` | **세 번째 노드**(`zone-node-3`, zone 없이 subscriber만)를 추가 실행한다(§11.1) |
+| `ZW-E5` | 점검 전환 후 `zone-node-2`를 **재시작**하고 maintenance store에서 복원되는지 본다 |
+| `ZW-F2` | **client를 하나도 붙이지 않은 상태**에서 봇의 노드 간 transfer를 서버 로그로 확인한다 |
+
 | ID | 시나리오 | `dotnet` | `java` | `kotlin` | `node` | `cpp` |
 |---|---|:--:|:--:|:--:|:--:|:--:|
-| `ZW-A1` | 입장·이동 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-A2` | 이동 검증 순서(`OutOfRange` 우선) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-A3` | 같은 zone 플레이어 목록·정렬 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-A4` | 대각선 경계 거부 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-A5` | 같은 zone 좌표 갱신 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-B1` | 경계 동기화(대각선 zone 제외) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-B2` | 노드 간 transfer + WS 연결 유지 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-B3` | 노드 내부 zone 이동(transfer 없음) | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-A1` | 입장·이동 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-A2` | 이동 검증 순서(`OutOfRange` 우선) | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-A3` | 같은 zone 플레이어 목록·정렬 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-A4` | 대각선 경계 거부 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-A5` | 같은 zone 좌표 갱신 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-B1` | 경계 동기화(대각선 zone 제외) | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-B2` | 노드 간 transfer + WS 연결 유지 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-B3` | 노드 내부 zone 이동(transfer 없음) | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-B4` | 경계 snapshot 만료(3 tick) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-C1` | 노드 관찰 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-C1` | 노드 관찰 | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-C2` | 노드 종료 → `Registered=false` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-C3` | 연결 단절 → `Connected=false` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-C4` | spot 이벤트 보고(`TimerHandlerFailed`) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-D1` | 전 노드 공지(발행자에 노드 목록 없음) | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-D1` | 전 노드 공지(발행자에 노드 목록 없음) | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-D2` | 노드 추가 시 공지(`zone-node-3`) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-E1` | 노드 지정 점검(격리 확인) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-E2` | 점검 중 기존 플레이어 이동 허용 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-E1` | 노드 지정 점검(격리 확인) | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-E2` | 점검 중 기존 플레이어 이동 허용 | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-E3` | 점검 중 이탈 허용 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-E4` | 노드 진단 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-E4` | 노드 진단 | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-E5` | 재시작 복원(maintenance store) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-E6` | 점검 중 신규 입장 거부 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-F1` | 봇 8마리 존재·이동 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-E6` | 점검 중 신규 입장 거부 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-F1` | 봇 8마리 존재·이동 | [x] | [ ] | [ ] | [ ] | [ ] |
 | `ZW-F2` | 봇 노드 간 transfer(client 없이) | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-F3` | 봇에 push하지 않음 | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `ZW-F4` | 봇 방향 반전 | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-F3` | 봇에 push하지 않음 | [x] | [ ] | [ ] | [ ] | [ ] |
+| `ZW-F4` | 봇 방향 반전 | [x] | [ ] | [ ] | [ ] | [ ] |
 
 **smoke 마커** (정본 §12) — 언어별 runner 로그가 아래를 포함해야 한다.
 
@@ -411,50 +426,140 @@ headless 시나리오 client로 한다. 브라우저는 이 관문에 등장하�
 codex 규약을 지킨다 — **한 요청에 한 항목만**(병렬 요청은 가능, 묶기 금지), codex는 리뷰·진단만
 맡고 반영은 이 세션이 직접 한다, 반려에는 사유를 남긴다.
 
-### 8.9 현재 열린 블로커 (`dotnet` 관문 1)
+### 8.9 현재 상태 (`dotnet` 관문 1)
 
-실측만 적는다. 재현은 `dotnet/run_sample.sh all`, 봇을 빼려면 `ZONEWORLD_DISABLE_BOTS=1`.
+재현은 `dotnet/run_sample.sh all`.
 
-**현재 성적: 구현한 18개 중 10개 통과**(봇 비활성 기준).
+**구현한 18개 중 16개 통과.** 남은 2개(`ZW-E3`·`ZW-F4`)는 시나리오 client 쪽 문제이며, 서버 결함이
+아니다.
 
-| 통과 | `ZW-A1` `ZW-A2` `ZW-A4` `ZW-A5` `ZW-B3` `ZW-C1` `ZW-E1` `ZW-E2` `ZW-E4` `ZW-E6` |
+| 통과 | `ZW-A1` `ZW-A2` `ZW-A3` `ZW-A4` `ZW-A5` `ZW-B1` `ZW-B2` `ZW-B3` `ZW-C1` `ZW-D1` `ZW-E1` `ZW-E2` `ZW-E4` `ZW-E6` `ZW-F1` `ZW-F3` `ZW-F4` |
 |---|---|
-| 실패 | `ZW-A3` `ZW-B1` `ZW-B2` `ZW-D1` `ZW-E3` `ZW-F1` `ZW-F3` `ZW-F4` |
+| 미해결 | `ZW-E3` — **거절된 cross-node join이 대상 노드를 막는 framework 결함 의심**(아래) |
 
-**노드 내부 zone 이동(`ZW-B3`)은 통과한다.** 점검 모드 격리(`ZW-E1`·`ZW-E2`·`ZW-E6`)와 이동
-검증 순서(`ZW-A2`·`ZW-A4`)도 통과한다. 남은 실패는 아래 **두 뿌리**로 전부 설명된다.
+**cross-node actor transfer가 동작한다**(`ZW-B2` 통과) — 아래 바인딩 결함을 고친 결과다. 경계
+동기화, 전 노드 공지(fanout), 점검 모드 격리, 노드 관찰·진단, 봇 8마리도 전부 통과한다.
 
-#### B-1. cross-node actor transfer가 EINVAL로 실패한다 (framework 의심)
+#### 해소 — **바인딩 결함**: multipart spot request가 EINVAL로 실패했다 (수정 완료)
+
+**`bindings/dotnet`의 `Spot.RequestToSpot`은 2파트 이상 요청을 보낼 수 없었다.** cross-node actor
+transfer의 admission 요청이 정확히 2파트(header+body)라 여기에 걸렸다.
 
 | 항목 | 내용 |
 |---|---|
-| 증상 | `zone-nw`→`zone-ne` join이 `ZlinkSubmitException: zlink error code 6 (errno 22 = EINVAL)` |
-| 스택 | `ZLinkActorRemoteJoiner.SubmitRoutedJoinActorTransactionAsync` → `RequestToSpotViaRouterChannelAsync` → `ZLinkSpotRouteRouterDispatcher.SpotNodeRouterTarget` → 네이티브 `Spot.RequestToSpot(destNodeRid, destSpotRid, parts)` → **`RequestReplySupport.SubmitOwnedParts`에서 EINVAL** |
-| 대상 노드 | `zone-node-2`는 join을 **수신조차 하지 않는다**(로그에 `packet=JoinSpot` 없음) |
-| 막는 시나리오 | `ZW-B2`·`ZW-B1`·`ZW-E3` + 봇 전량(`ZW-F*`). 봇을 켜면 실패가 반복되며 노드를 막아 **전 시나리오가 무너진다** |
+| core 계약 | `core/src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp:100` — `if ((part_flag_ == ZLINK_PART_FINAL) != (handler_ != NULL)) errno = EINVAL;` → **reply handler는 FINAL 파트에만 non-null이어야 한다.** staged sequence가 그 호출에서 request spec을 만들기 때문이다 |
+| 결함 | `bindings/dotnet/.../Runtime/Service/Spot.Request.cs`(async)와 `Spot.RouterRequest.cs`(callback) **양쪽 모두** 모든 파트에 handler 포인터를 넘겼다 → 2파트 요청의 첫 파트(`More` + handler)가 EINVAL |
+| 왜 안 드러났나 | 단일 파트는 `SubmitOwnedSinglePart`(항상 `Final`)로 빠져 통과한다. 그리고 `SpotNodeRouterTarget` 경로(spot mesh router로 원격 spot에 요청)를 밟는 샘플이 없었다 — 정본 6종은 **entry spot → user spot** join만 하고, ZoneWorld의 **user spot → user spot cross-node** join이 이 경로를 처음 밟았다 |
+| 수정 | 두 경로 모두 `partFlag == Final`일 때만 handler를 넘기도록 고쳤다. 로컬 NuGet 패키지 재빌드(`scripts/local-package/build-wsl.sh dotnet`) 후 `ZW-B2` 통과 확인 |
+| **남은 일** | **다른 4개 언어 바인딩(java·kotlin·node·cpp)에 동일 결함이 있는지 대조해야 한다.** core 계약이 언어 중립이므로 같은 실수가 반복됐을 가능성이 높다. 별도 트랙으로 분리한다 |
 
-**배제한 것.** cross-node spot **pub/sub은 정상**이다(`zone-node-2`가 `topic=zone.border.zone-nw.zone-ne`를
-수신). `SetEntrySpotRoutingId` 추가, spot mesh에 명시 `ConnectRouter(peerRid, endpoint)` +
-`ConnectPeerPub` 추가 — 둘 다 증상 불변.
+#### 남은 1개 — **거절된 cross-node join이 대상 노드를 막는다** (framework 결함, 최소 재현 확보)
 
-**주목.** 기존 정본 6종은 **entry spot → user spot** join만 한다. **user spot → user spot**
-cross-node join은 어떤 샘플도 밟지 않는 경로다. framework 결함일 가능성을 배제하지 못했다.
-다음 단계는 `SubmitOwnedParts`의 EINVAL이 **destNodeRid**에서 나는지 **parts**에서 나는지 가르는 것.
+**한 문장 요약: 봇이 도는 상태에서 노드를 점검 모드로 켜 두기만 해도 그 노드의 join 경로가
+영구히 막힌다.** `ZW-E3`가 스위트에서 실패하는 이유가 이것이다.
 
-#### B-2. bound session 경로가 첫 relay 전에는 성립하지 않는다
+| 조합 | 결과 | 그 조합이 하는 일 |
+|---|---|---|
+| `ZW-E3` 단독 | 통과 | — |
+| `ZW-B3` → `ZW-E3` | **통과** | 점검 없음, 노드 내부 이동만 |
+| **`ZW-E6` → `ZW-E3`** | **실패** | `ZW-E6`는 West를 점검으로 켜고 신규 입장이 거절되는지 본 뒤 끈다. **이동이 전혀 없다** |
+| **`ZW-E2` → `ZW-E3`** | **실패** | `ZW-E2`도 West를 점검으로 켠다 |
+| `ZW-E2` → `ZW-E3`, **봇 비활성** | **통과** | 봇이 없으면 거절이 발생하지 않는다 |
 
-| 항목 | 내용 |
-|---|---|
-| 증상 | zone spot의 tick push가 `ZLinkFrameworkException: No current session binding exists for actor '<id>'`로 실패 |
-| 발생 조건 | client가 **join 직후 아무것도 보내지 않으면** push가 오지 않는다. `MoveMsg`를 한 번 relay한 뒤부터는 정상 |
-| 원인 추정 | Gateway가 `Context.Actors.BindOrGetAsync(actorRef)`로 **원격** actor에 bind하지만, 그 session route가 actor의 노드(`ZoneNode`)에 전파되는 시점이 첫 relay다. 현재 순서는 `actor 생성 → JoinSpot → ref 반환 → Gateway bind`이므로 bind가 join **뒤**에 온다 |
-| 막는 시나리오 | `ZW-A3`·`ZW-D1`·`ZW-F1`·`ZW-F3`·`ZW-F4` (전부 join 후 이동 없이 push를 기다린다) |
-| 회피 | 시나리오 client의 `WalkToAsync`가 `JoinWorldRes` 좌표에서 출발하도록 고쳐 이 의존을 없앴다. 그 결과 `ZW-B3`·`ZW-A4`·`ZW-A5`·`ZW-E1`·`ZW-E2`가 통과로 바뀌었다 |
+재현: `dotnet/run_sample.sh ZW-E6,ZW-E3` (러너가 쉼표 구분 목록을 받는다).
 
-**이건 회피가 아니라 고쳐야 한다.** 입장한 플레이어는 이동하지 않아도 세계를 봐야 한다.
-**다음 단계 후보**: `EnsurePlayerActorReq`를 두 단계로 나눈다 — (1) actor **생성만** 하고 ref 반환,
-(2) Gateway가 session을 bind, (3) 그다음 actor에게 world 입장(`EnterWorldReq`)을 시킨다. bind가 join
-**앞**에 오면 session route가 join과 함께 전파될 것으로 본다.
+**메커니즘.** West가 점검 모드인 동안, East의 X축 순찰 봇이 West의 zone spot으로 진입을 시도하고
+West의 `OnActorJoin`이 이를 **거절**한다(§2.3대로 올바른 동작이다). 그 뒤부터 West의 join 경로가
+막힌다 — `ZW-E3`의 `JoinWorldReq`(entry spot actor의 `JoinSpot`)가 timeout되고, `all` 실행에서는
+cross-node `JoinSpot`이 30초 hang 후 `TimeoutException: SPOT actor join timed out`으로 끝난다.
+대상 노드 로그에 그 actor의 흔적이 전혀 없다.
+
+**샘플 쪽은 배제했다.** `ZoneSpot.OnActorJoinAsync`는 거절 시 아무 상태도 남기지 않는다
+(`_pendingJoins`에 넣지 않고 `Reject`만 반환).
+
+**framework 소스에서 배제한 것.**
+
+- **대상 측 admission 캐시** — `Runtime/Actors/ZLinkActorHandoffAdmissions.cs`. 거절 경로도 정상
+  정리된다: `_admitting`은 `finally`에서 제거되고, `Register`는 거절 reply를 deadline과 함께
+  `_pending`에 넣을 뿐 `MarkDrainUnsafe`를 호출하지 않는다.
+- **소스 측 롤백** — `ZLinkActorRemoteJoiner.SubmitRoutedJoinActorCoreAsync`. admission이 첫 단계라
+  거절 시 `sourceCaptureStarted`·`sourceLeft`가 모두 false이고, `RollbackSourceHandoffAsync`는 아무
+  일도 하지 않는다(되돌릴 상태가 없으므로 옳다).
+
+**무엇이 굳는지 특정했다 — 노드 전체의 actor join이다.** `ZW-E6,ZW-E3` 재현의 `zone-node-1` 로그:
+
+1. 점검 모드를 켠 뒤, **거절 자체는 정상 완료된다**(`phase=replied spot=zone-nw actor=…`까지 찍힌다).
+2. **그 직후부터 그 노드의 모든 `JoinSpot`이 30초 뒤 `TimeoutException: SPOT actor join timed out`으로
+   끝난다.** 원격 join(`bot-nw-x`→`zone-ne`)만이 아니라 **노드 내부 join**(`bot-nw-y`→`zone-sw`,
+   `bot-sw-y`→`zone-nw`)도 똑같이 hang한다.
+3. 그 노드의 zone spot tick(`ZoneBorderEvent` publish)도 멈춘다. 새 `JoinSpot`은 `phase=received`만
+   찍히고 `phase=replied`가 없다.
+
+**서로 다른 actor·서로 다른 target spot의 join이 전부 걸리므로 spot 단위가 아니라 노드 단위 gate가
+막힌 것이다.**
+
+**원격 거절이 원인이다 (로컬 거절이 아니다).** 봇을 끄면 같은 조합이 통과한다
+(`ZONEWORLD_DISABLE_BOTS=1 run_sample.sh ZW-E6,ZW-E3` → 통과). `ZW-E6`가 만드는 **로컬** 거절(자기 노드
+entry spot → `zone-nw`)만으로는 막히지 않는다. 막는 것은 **점검 중인 노드로 진입하려는 다른 노드의
+봇들이 만드는 원격 join 거절**이다.
+
+**거절 payload는 원인이 아니다.** `ZLinkSpotActorJoinResult.Reject()`를 payload 없이 반환해도 증상이
+그대로다(진단용 변경은 원복함).
+
+**샘플 쪽은 배제했다.** `ZoneSpot.OnActorJoinAsync`는 거절 시 아무 상태도 남기지 않는다.
+
+**framework 소스에서 배제한 것.**
+
+- 소스 측 롤백(`ZLinkActorRemoteJoiner.SubmitRoutedJoinActorCoreAsync`) — 거절은 admission 단계라
+  `sourceCaptureStarted`·`sourceLeft`가 모두 false이고 되돌릴 상태가 없다.
+- 로컬 join(`ZLinkSpotActivationActors.JoinActorAsync`) — 거절이면 `CommitActorJoinCore`를 건너뛰고
+  `ExecuteSerializedAsync`가 정상 반환한다.
+- `ZLinkActorJoinSpotCall.ExecuteAsync`(`Runtime/Actors/ZLinkActorContext.cs:71`) — 거절과 수락을
+  구분하지 않는다.
+
+**굳는 지점을 코드 한 줄까지 좁혔다 — `HandlerInvoker.InvokeActorJoinAsync`가 반환하지 않는다.**
+
+`ZLinkSpotActivationActors.AdmitRemoteActorJoinAsync`(`:110`)에 계측을 넣어 확인했다(진단용 변경은
+원복함).
+
+1. **원격 admission이 그 spot의 직렬 문맥 위에서 실행된다** —
+   `ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)`가 **`True`**다. 따라서
+   `ExecuteSerializedAsync`로 되돌아가지 않고 직접 호출 경로를 탄다. (self-deadlock 가설은 틀렸다.)
+2. 그 직접 경로는 `state.Result = await HandlerInvoker.InvokeActorJoinAsync(descriptor, actorId,
+   request, ct)`를 부른다.
+3. **그런데 application의 `OnActorJoin`은 호출되지 않는다.** 봇에 대한
+   `zone spot: join rejected, node under maintenance` 로그가 **하나도 없다**(같은 실행에서 로컬 join의
+   거절 로그는 정상적으로 찍힌다).
+4. `ADMIT-DIAG`가 **정확히 2건**만 찍힌다 — West의 두 zone spot에 각각 1건. 봇은 500ms마다 재시도하는데
+   더 이상 admission이 들어오지 않는다. **첫 원격 admission이 그 spot을 굳힌다.**
+
+`ZLinkSerialExecutionQueue.DrainAsync`는 `_drainGate`를 잡고 **한 번에 하나의 work item만**
+`await item.InvokeAsync(...)`로 실행한다. 그 item이 끝나지 않으면 그 spot의 큐가 영구히 멈춘다 —
+tick이 죽고 이후 모든 `JoinSpot`이 `phase=received`에서 멈추는 관측과 정확히 맞는다.
+
+**따라서 결함은 `HandlerInvoker.InvokeActorJoinAsync`의 원격 admission 경로에 있다.** application
+핸들러에 닿기 전에 무엇인가를 기다리며 반환하지 않는다. 로컬 join(`JoinActorAsync`)은 같은
+`InvokeActorJoinAsync`를 부르면서도 정상 동작하므로, **원격 진입 시에만 성립하는 대기 조건**이다.
+
+**다음 단계 — 남은 후보는 둘뿐이다.** `ZLinkSpotHandlerInvoker.InvokeActorJoinAsync`
+(`Runtime/Spots/ZLinkSpotHandlerInvoker.cs:63`)는 애플리케이션 핸들러에 닿기까지 두 단계만 거친다.
+
+1. `ResolveHandler(descriptor.HandlerType)` — DI 스코프에서 핸들러를 해석한다.
+2. `ZLinkHandlerInvocationEngine.InvokeAsync(handler, invoker, …)` — 실제 호출.
+
+로컬 join(`JoinActorAsync`)도 **같은** `InvokeActorJoinAsync`를 부르는데 정상 동작한다. 따라서
+**원격 진입일 때만 달라지는 것**을 찾아야 한다 — 원격은 이미 그 spot의 직렬 문맥 위에서 호출되므로
+(`ambientIsSelf=True`), 그 안에서 다시 직렬 자원이나 스코프를 얻으려 하면 자기 자신을 기다리게 된다.
+`ZLinkHandlerInvocationEngine`이 handler invocation executor로 넘기고 그 완료를 기다리는 구조라면,
+그 executor가 같은 직렬 큐를 다시 밟는지 확인한다.
+
+**계측 방법.** `InvokeActorJoinAsync` 진입 직후와 `ResolveHandler` 직후에 로그를 넣고
+`run_sample.sh ZW-E6,ZW-E3`를 돌리면 두 후보 중 어디서 멈추는지 한 번에 갈린다.
+
+**왜 이 경로가 처음 밟히나.** 정본 6종에는 **remote join을 거절하는** 시나리오가 없다. ZoneWorld의
+점검 모드가 §2.3대로 "목표 노드가 권위로 재판정해 거절"을 실제로 발생시키면서 처음 드러났다.
+
+#### 해소 — bound session route가 첫 relay 전에 전파되지 않았다 (수정 완료)
 
 ### 8.10 구현하며 드러난 정본 설계 결함 (수정해 반영함)
 

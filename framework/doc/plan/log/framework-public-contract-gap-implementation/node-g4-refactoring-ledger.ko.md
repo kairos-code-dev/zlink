@@ -95,8 +95,10 @@ release 반복 검증에서는 Redis 컨테이너 내부 PING 준비와 Docker�
 상태로 취급하는 시간 결합을 확인했다. 각 sample runner에서 endpoint 조회 실패를 재시도하는 방법과
 컨테이너 lifecycle helper가 host port가 게시될 때까지 제한 시간 안에서 기다리는 방법을 비교해
 후자를 선택했다. Docker 상태 해석과 준비 완료의 정의를 공용 helper 한 곳에 유지하고 sample은 준비된
-endpoint만 받도록 하기 때문이다. DeliveryDispatch 실제 Chromium 시나리오 10회 반복과 sample
-regression으로 변경 뒤 경계를 확인했다.
+endpoint만 받도록 하기 때문이다. release 재검증에서 port 번호가 게시된 뒤 host 연결이 아직
+열리지 않은 경우도 확인해, 같은 helper가 실제 loopback TCP 연결까지 확인한 뒤 endpoint를 반환하도록
+준비 완료 정의를 보완했다. DeliveryDispatch 실제 Chromium 시나리오 10회 반복과 sample regression으로
+변경 뒤 경계를 확인했다.
 
 같은 반복 검증에서 sample runner가 동적 포트를 확인한 직후 다른 프로세스가 그 포트를 선점하면 역할
 프로세스는 `Address already in use`를 파일에만 남기고, 상위 runner에는 readiness timeout만 보이는
@@ -104,5 +106,19 @@ regression으로 변경 뒤 경계를 확인했다.
 경계의 stderr로 전달해 상위 runner의 기존 bind 오류 전용 재시도 정책이 판별하게 하는 방법을 비교해
 후자를 선택했다. 고정 포트는 병렬 실행을 깨뜨리고 대기시간은 이미 종료된 역할을 복구하지 못한다.
 GameQuest 보존 실행에서 `spot_node_set_router_bind`의 `errno=98`을 재현해 원인을 확정했다.
+
+bind 전용 재시도를 적용한 뒤에도 외부 작업과 포트 선택 범위가 겹치면 연속 경합할 수 있었다. 모든
+endpoint를 TCP 동적 포트로 유지하는 방법과, browser가 접근하는 HTTP/WebSocket만 TCP에 두고 같은
+호스트의 Spot·route 연결은 실행 디렉터리별 IPC endpoint를 사용하는 방법을 비교해 후자를 선택했다.
+이 방법은 public sample의 역할 구성을 바꾸지 않으면서 runner 내부 transport의 포트 선점 경쟁을
+제거한다. IPC 전환 뒤 보존 실행에서 `errno=98`이 다시 발생하지 않는지 확인했다.
+
+이후 상태 callback을 추가하지 않은 반복 실행에서 GameQuest 완료 알림이 간헐적으로 누락됐고,
+browser 오류 event의 `Frame length does not match prefix`와 서버의 연속 알림 전송 기록을 함께
+보존해 별도 원인을 확인했다. core WebSocket 송신을 STREAM frame마다 나누는 방법과 connector의
+wire protocol 경계에서 길이 prefix로 한 transport chunk의 모든 frame을 분리하는 방법을 비교해
+후자를 선택했다. WebSocket 송신 경계를 업무 frame 경계로 가정하지 않으며, self-delimiting wire
+형식의 해석 책임을 protocol 안에 유지할 수 있기 때문이다. 응답·진행 알림·완료 알림을 하나의
+WebSocket message에 넣는 결정적 contract test와 실제 Chromium GameQuest 20회 연속 실행을 통과했다.
 
 최종 판정: **NO DDD/POSD FINDINGS**

@@ -48,9 +48,12 @@ http_client_runtime_t::execute_with_deadline (http_request_t request,
             return timeout_before_exchange ();
         }
 
-        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+        //  A sub-millisecond remainder is not a budget to open another exchange on. Clamping it up
+        //  to 1ms let the retry sleep wake a hair before the deadline and start one more attempt.
+        const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
         if (remaining <= std::chrono::milliseconds::zero ()) {
-            remaining = std::chrono::milliseconds (1);
+            return timeout_before_exchange ();
         }
 
         auto attempt_request = request;

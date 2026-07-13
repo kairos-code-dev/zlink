@@ -1026,9 +1026,16 @@ TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
 
 TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
 {
+    /* /flaky-slow는 첫 요청을 응답 없이 끊고 그다음부터 250ms를 잔다. 첫 시도는 즉시 실패하고,
+     * 재시도는 느린 응답에 걸려 최초 deadline을 넘겨 끝난다. 그러면 남은 예산이 없으므로 세
+     * 번째 시도는 없어야 한다(retry(2)는 최대 3회 시도를 허용한다). 예산이 시도마다 갱신되면
+     * 세 번째 시도가 열려 connection이 하나 더 생긴다 — 시도 횟수가 판별자다.
+     *
+     * timeout은 재시도 지연(full jitter 0~50ms)보다 커야 한다. 예산이 지연보다 작으면 두 번째
+     * 시도가 시작되는지 자체가 지터에 좌우되어 결과가 흔들린다. */
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .timeout (10ms)
+                    .timeout (150ms)
                     .retry (2)
                     .coroutines ()
                     .build ();
@@ -1041,8 +1048,8 @@ TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
     ASSERT_NE (result.error (), nullptr);
     EXPECT_EQ (zlink::framework::detail::boundary_state (*result.error ()),
                zlink::framework::detail::boundary_error_t::timed_out);
-    EXPECT_EQ (server.connections (), 1);
-    EXPECT_LT (elapsed, 50ms);
+    EXPECT_EQ (server.connections (), 2);
+    EXPECT_LT (elapsed, 450ms);
 }
 
 TEST (ZLinkHttpClient, ScheduledRequestOwnsTemporaryBuilderStateUntilCompletion)

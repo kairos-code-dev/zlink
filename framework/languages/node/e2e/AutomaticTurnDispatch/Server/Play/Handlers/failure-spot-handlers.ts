@@ -1,0 +1,80 @@
+import { Injectable } from '@nestjs/common';
+import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotPacketHandler } from '@zlink-systems/framework';
+import { DelayReq, type DelayRes, type AwaitCancelMsg, type AwaitTimeoutMsg } from '../../../Shared/messages';
+import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
+import { EvidenceStore } from '../Support/evidence-store';
+import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
+
+@Injectable()
+@ZLinkPacket('AwaitTimeoutMsg')
+export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitTimeoutMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: AwaitTimeoutMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(
+      `timeout-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      + `|request=${request.requestId}|handler=spot`
+    );
+    try {
+      const call = spot.context.outbound
+        .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
+          new DelayReq(request.requestId, request.delayMs, 'timeout'))
+        .timeout(request.timeoutMs);
+      this.evidence.add(
+        `timeout-await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|handler=spot`
+      );
+      await call.submit<DelayRes>();
+      this.evidence.add(
+        `timeout-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|handler=spot`
+      );
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'Error';
+      this.evidence.add(
+        `timeout-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|error=${errorName}|handler=spot`
+      );
+    }
+  }
+}
+
+@Injectable()
+@ZLinkPacket('AwaitCancelMsg')
+export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitCancelMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: AwaitCancelMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(
+      `cancel-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      + `|request=${request.requestId}|handler=spot`
+    );
+    const controller = new AbortController();
+    const cancelTimer = setTimeout(() => controller.abort(), request.cancelAfterMs);
+    try {
+      const call = spot.context.outbound
+        .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
+          new DelayReq(request.requestId, request.delayMs, 'cancel'))
+        .timeout(5000);
+      this.evidence.add(
+        `cancel-await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|handler=spot`
+      );
+      await call.submit<DelayRes>(controller.signal);
+      this.evidence.add(
+        `cancel-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|handler=spot`
+      );
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'Error';
+      this.evidence.add(
+        `cancel-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        + `|request=${request.requestId}|error=${errorName}|handler=spot`
+      );
+    } finally {
+      clearTimeout(cancelTimer);
+    }
+  }
+}

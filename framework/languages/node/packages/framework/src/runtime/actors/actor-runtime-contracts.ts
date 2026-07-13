@@ -3,7 +3,6 @@ import type {
   Type,
   ZLinkActor,
   ZLinkActorFactory,
-  ZLinkActorJoinResult,
   ZLinkBoundSession,
   ZLinkMessage,
   ZLinkMessageSerializer,
@@ -14,6 +13,12 @@ import type { ZLinkBackendSpotNode } from '../backend/contracts';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
+
+export interface ZLinkActorJoinRuntimeResult<TReply> {
+  readonly accepted: boolean;
+  readonly actor?: import('../../contracts').ActorRef;
+  readonly reply?: TReply;
+}
 
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
@@ -34,6 +39,7 @@ export interface ZLinkActorManagerOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
   readonly shutdownSignal?: AbortSignal;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
@@ -46,7 +52,7 @@ export interface ZLinkActorJoinCoordinator {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>>;
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>>;
   joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
@@ -54,5 +60,5 @@ export interface ZLinkActorJoinCoordinator {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>>;
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>>;
 }

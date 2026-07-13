@@ -18,7 +18,7 @@ class GameQuestPlayerActor implements ZLinkActor {
 }
 
 class GameQuestPlayerActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): GameQuestPlayerActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<GameQuestPlayerActor> {
     return new GameQuestPlayerActor(actorId, context);
   }
 }

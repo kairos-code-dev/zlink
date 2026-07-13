@@ -23,7 +23,6 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoApiReq, MatchBi
         request.actorNodeRid,
         withPlayerIdentity(allocateBingoRoomReq(request.mode), request.actorId, request.displayName)
       )
-      .packetName(PacketNames.allocateBingoRoom)
       .submit<AllocateBingoRoomRes>();
     return matchBingoApiRes(allocated.roomId, allocated.roomOwnerNodeRid);
   }

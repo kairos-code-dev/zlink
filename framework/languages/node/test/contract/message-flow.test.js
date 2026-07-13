@@ -29,10 +29,23 @@ function silentSink() {
   return { reportRuntimeTaskException() {} };
 }
 
-function makeTracer(diagnostics, providerResolver) {
-  const dispatch = { diagnostics, providerResolver };
+function diagnostics(messageFlow, overrides = {}) {
+  return {
+    messageFlow,
+    sampleRate: 1,
+    includeMessageSizes: false,
+    includeNativeDiagnostics: false,
+    ...overrides
+  };
+}
+
+function makeTracer(diagnosticsOptions, providerResolver, messageFlowObserverType) {
+  const dispatch = { diagnostics: diagnosticsOptions, providerResolver };
   const cell = createMessageFlowModeCell(dispatch);
-  const ctx = createDiagnosticsContext(dispatch, providerResolver, cell);
+  const ctx = {
+    ...createDiagnosticsContext(dispatch, providerResolver, cell),
+    messageFlowObserverType
+  };
   return { tracer: new ZLinkMessageFlowTracer(ctx, silentSink()), cell };
 }
 
@@ -48,7 +61,7 @@ function receivedEvent() {
 }
 
 test('MFLOW-001 off mode is zero-cost: enabled() false and trace() is a no-op', () => {
-  const { tracer } = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.Off });
+  const { tracer } = makeTracer(diagnostics(ZLinkMessageFlowLogMode.Off));
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Dropped), false);
   tracer.trace(receivedEvent());
@@ -56,11 +69,11 @@ test('MFLOW-001 off mode is zero-cost: enabled() false and trace() is a no-op', 
 });
 
 test('MFLOW-002 mode ladder gates phases by severity', () => {
-  const errorsOnly = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.ErrorsOnly }).tracer;
+  const errorsOnly = makeTracer(diagnostics(ZLinkMessageFlowLogMode.ErrorsOnly)).tracer;
   assert.equal(errorsOnly.enabled(ZLinkMessageFlowOutcome.Dropped), true);
   assert.equal(errorsOnly.enabled(ZLinkMessageFlowOutcome.Received), false);
 
-  const keyTransitions = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions }).tracer;
+  const keyTransitions = makeTracer(diagnostics(ZLinkMessageFlowLogMode.KeyTransitions)).tracer;
   assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Received), true);
   assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Replied), true);
   assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Dropped), true);
@@ -69,11 +82,10 @@ test('MFLOW-002 mode ladder gates phases by severity', () => {
 test('MFLOW-003/005 structured key=value line with label= is written to the separated log file', () => {
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-mflow-'));
   const logFile = path.join(logDir, 'flow.log');
-  const { tracer } = makeTracer({
-    messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions,
+  const { tracer } = makeTracer(diagnostics(ZLinkMessageFlowLogMode.KeyTransitions, {
     logFile,
     label: 'api'
-  });
+  }));
   tracer.trace(receivedEvent());
   assert.equal(tracer.tracedCount, 1);
   const line = fs.readFileSync(logFile, 'utf8').trim();
@@ -92,18 +104,14 @@ test('MFLOW-004 observer offload delivers the event asynchronously', async () =>
       events.push(event);
     }
   }
-  const { tracer } = makeTracer({
-    messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions,
+  const { tracer } = makeTracer(diagnostics(ZLinkMessageFlowLogMode.KeyTransitions, {
     logFile: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-mflow-obs-')), 'flow.log')
-  });
-  // The observer type lives on the diagnostics context; rebuild with it wired.
-  const dispatch = {
-    diagnostics: { messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions },
-    messageFlowObserverType: FlowObserver
-  };
-  const cell = createMessageFlowModeCell(dispatch);
-  const ctx = createDiagnosticsContext(dispatch, undefined, cell);
-  const observed = new ZLinkMessageFlowTracer(ctx, silentSink());
+  }));
+  const observed = makeTracer(
+    diagnostics(ZLinkMessageFlowLogMode.KeyTransitions),
+    undefined,
+    FlowObserver
+  ).tracer;
   assert.equal(events.length, 0, 'observer must not fire synchronously');
   observed.trace(receivedEvent());
   assert.equal(events.length, 0, 'observer is offloaded, not synchronous');
@@ -121,12 +129,12 @@ test('MFLOW-004b success-path observer failures use message-flow-observer task',
       throw new Error('success observer failed');
     }
   }
-  const dispatch = {
-    diagnostics: { messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions },
+  const dispatch = { diagnostics: diagnostics(ZLinkMessageFlowLogMode.KeyTransitions) };
+  const cell = createMessageFlowModeCell(dispatch);
+  const ctx = {
+    ...createDiagnosticsContext(dispatch, undefined, cell),
     messageFlowObserverType: ThrowingObserver
   };
-  const cell = createMessageFlowModeCell(dispatch);
-  const ctx = createDiagnosticsContext(dispatch, undefined, cell);
   const tracer = new ZLinkMessageFlowTracer(ctx, {
     reportRuntimeTaskException(taskName, error) {
       failures.push({ taskName, error });
@@ -143,7 +151,7 @@ test('MFLOW-004b success-path observer failures use message-flow-observer task',
 });
 
 test('MFLOW-009 live-mode cell toggles every reader without rebuilding the tracer', () => {
-  const { tracer, cell } = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.Off });
+  const { tracer, cell } = makeTracer(diagnostics(ZLinkMessageFlowLogMode.Off));
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
   cell.mode = ZLinkMessageFlowLogMode.Verbose;
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), true);
@@ -264,6 +272,29 @@ test('MFLOW-011 control packets reject a correlation id', () => {
   }));
 });
 
+test('MFLOW-EXT-005/006 stream flow fields use mandatory marker and reject old or unknown formats', () => {
+  const flowId = '018f2b63-9d4a-7abc-8def-0123456789ab';
+  const encoded = connector.ZlinkStreamHeaderCodec.encode({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'FlowEvent',
+    metadata: connector.ZlinkStreamMetadataMap.empty,
+    flowId,
+    flowOrigin: 'Application'
+  });
+  assert.equal(encoded[0], 0xf2);
+  assert.notEqual(encoded[3] & connector.ZlinkStreamHeaderFlags.HasFlowId, 0);
+  const decoded = streamProtocol.decodeStreamHeader(encoded);
+  assert.equal(decoded.flowId, flowId);
+  assert.equal(decoded.flowOrigin, 'Application');
+
+  assert.throws(() => connector.ZlinkStreamHeaderCodec.decode(encoded.subarray(1)), /format marker/i);
+  const unknownFlag = Uint8Array.from(encoded);
+  unknownFlag[3] |= 0x20;
+  assert.throws(() => connector.ZlinkStreamHeaderCodec.decode(unknownFlag), /unknown mandatory|unknown stream header flag/i);
+});
+
 function duplicateMetadataHeaderBytes() {
   const name = Buffer.from('DupMeta');
   const key = Buffer.from('trace');
@@ -272,8 +303,9 @@ function duplicateMetadataHeaderBytes() {
   const metadataLength = 1
     + 1 + key.length + 2 + first.length
     + 1 + key.length + 2 + second.length;
-  const header = Buffer.alloc(3 + 8 + 1 + name.length + 2 + metadataLength);
+  const header = Buffer.alloc(4 + 8 + 1 + name.length + 2 + metadataLength);
   let offset = 0;
+  header[offset++] = 0xf2;
   header[offset++] = connector.ZlinkStreamMessageKind.Request;
   header[offset++] = connector.ZlinkStreamCodec.Json;
   header[offset++] = connector.ZlinkStreamHeaderFlags.HasRequestSeq

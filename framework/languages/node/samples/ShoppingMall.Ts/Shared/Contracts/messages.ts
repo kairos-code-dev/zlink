@@ -1,9 +1,37 @@
-interface StartOrderReq {
-  cartId: string;
-  shippingAddressId: string;
-  paymentMethodId: string;
-  idempotencyKey: string;
+import { ZLinkPacket } from '@zlink-systems/framework';
+
+const PacketNames = {
+  startOrderReq: 'shoppingmall.start_order.req',
+  continueOrderWorkflowReq: 'shoppingmall.continue_order_workflow.req',
+  prepareInventoryReservedReq: 'shoppingmall.prepare_inventory_reserved.req',
+  rebuildOrderProjectionReq: 'shoppingmall.rebuild_order_projection.req'
+} as const;
+
+@ZLinkPacket(PacketNames.startOrderReq)
+class StartOrderReq {
+  constructor(
+    readonly cartId: string,
+    readonly shippingAddressId: string,
+    readonly paymentMethodId: string,
+    readonly idempotencyKey: string
+  ) {}
 }
+
+@ZLinkPacket(PacketNames.prepareInventoryReservedReq)
+class PrepareInventoryReservedReq {
+  constructor(
+    readonly cartId: string,
+    readonly shippingAddressId: string,
+    readonly paymentMethodId: string,
+    readonly idempotencyKey: string
+  ) {}
+}
+
+@ZLinkPacket(PacketNames.continueOrderWorkflowReq)
+class ContinueOrderWorkflowReq { constructor(readonly orderId: string) {} }
+
+@ZLinkPacket(PacketNames.rebuildOrderProjectionReq)
+class RebuildOrderProjectionReq { constructor(readonly orderId: string) {} }
 
 interface StartOrderRes {
   orderId: string;
@@ -57,14 +85,14 @@ const OrderStatuses = {
   Failed: 'Failed'
 } as const;
 
-const PacketNames = {
-  startOrderReq: 'shoppingmall.start_order.req',
-  continueOrderWorkflowReq: 'shoppingmall.continue_order_workflow.req',
-  prepareInventoryReservedReq: 'shoppingmall.prepare_inventory_reserved.req',
-  rebuildOrderProjectionReq: 'shoppingmall.rebuild_order_projection.req'
-} as const;
-
-export { OrderStatuses, PacketNames };
+export {
+  OrderStatuses,
+  PacketNames,
+  StartOrderReq,
+  PrepareInventoryReservedReq,
+  ContinueOrderWorkflowReq,
+  RebuildOrderProjectionReq
+};
 export type {
   ContinueOrderWorkflowRes,
   GetOrderStateRes,
@@ -72,6 +100,5 @@ export type {
   RebuildOrderProjectionRes,
   ServerAssertionReq,
   ServerAssertionRes,
-  StartOrderReq,
   StartOrderRes
 };

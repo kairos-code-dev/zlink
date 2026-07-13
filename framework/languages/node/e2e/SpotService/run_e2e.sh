@@ -491,8 +491,6 @@ fi
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_named_server "$role"
-done
-for role in "${SERVER_ROLES[@]}"; do
   wait_named_server "$role"
 done
 

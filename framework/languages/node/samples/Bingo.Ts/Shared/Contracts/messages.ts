@@ -215,41 +215,67 @@ export interface PlayerIdentity {
   displayName: string;
 }
 
-export interface PlayerJoinedNotify {
-  roomId: string;
-  actorId: string;
-  displayName: string;
-  seat: number;
-  isHost: boolean;
-  state: unknown;
+export class PlayerJoinedNotify {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly displayName: string,
+    readonly seat: number,
+    readonly isHost: boolean,
+    readonly state: unknown
+  ) {}
 }
 
-export interface StateEnvelope {
-  state: unknown;
+export class BingoGameStartedNotify {
+  constructor(readonly state: unknown) {}
 }
+
+export class BingoStateNotify {
+  constructor(readonly state: unknown) {}
+}
+
+export class BingoGameEndedNotify {
+  constructor(readonly state: unknown) {}
+}
+
+export type StateEnvelope = BingoGameStartedNotify | BingoStateNotify | BingoGameEndedNotify;
 
 export interface RoomJoinError {
   error: string;
 }
 
-export interface NumberDrawnNotify {
-  roomId: string;
-  drawSeq: number;
-  number: number;
-  state: unknown;
+export class BingoNumberDrawnNotify {
+  constructor(
+    readonly roomId: string,
+    readonly drawSeq: number,
+    readonly number: number,
+    readonly state: unknown
+  ) {}
 }
 
-export interface BingoRewardAcquiredMsg {
-  roomId: string;
-  actorId: string;
-  drawSeq: number;
-  itemId: string;
-  itemName: string;
-  rarity: string;
+export type NumberDrawnNotify = BingoNumberDrawnNotify;
+
+export class BingoRewardAcquiredMsg {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly drawSeq: number,
+    readonly itemId: string,
+    readonly itemName: string,
+    readonly rarity: string
+  ) {}
 }
 
-export interface BingoRewardAnnouncedNotify extends BingoRewardAcquiredMsg {
-  receivingSpotNodeRid: string;
+export class BingoRewardAnnouncedNotify implements BingoRewardAcquiredMsg {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly drawSeq: number,
+    readonly itemId: string,
+    readonly itemName: string,
+    readonly rarity: string,
+    readonly receivingSpotNodeRid: string
+  ) {}
 }
 
 function actorDisplayName(actorId: string): string {
@@ -402,40 +428,41 @@ function playerJoinedNotify(
   isHost: boolean,
   state: unknown
 ): PlayerJoinedNotify {
-  return {
-    roomId,
-    actorId: actor.actorId,
-    displayName: actor.displayName,
-    seat,
-    isHost,
-    state
-  };
-}
-
-function stateEnvelope(state: unknown): StateEnvelope {
-  return { state };
+  return new PlayerJoinedNotify(roomId, actor.actorId, actor.displayName, seat, isHost, state);
 }
 
 function roomJoinError(error: string): RoomJoinError {
   return { error };
 }
 
-function numberDrawnNotify(roomId: string, drawSeq: number, number: number, state: unknown): NumberDrawnNotify {
-  return { roomId, drawSeq, number, state };
+function numberDrawnNotify(roomId: string, drawSeq: number, number: number, state: unknown): BingoNumberDrawnNotify {
+  return new BingoNumberDrawnNotify(roomId, drawSeq, number, state);
 }
 
 function bingoRewardAcquiredEvent(value: BingoRewardAcquiredMsg): BingoRewardAcquiredMsg {
-  return { ...value };
+  return new BingoRewardAcquiredMsg(
+    value.roomId,
+    value.actorId,
+    value.drawSeq,
+    value.itemId,
+    value.itemName,
+    value.rarity
+  );
 }
 
 function bingoRewardAnnouncedNotify(
   event: BingoRewardAcquiredMsg,
   receivingSpotNodeRid: string
 ): BingoRewardAnnouncedNotify {
-  return {
-    ...event,
+  return new BingoRewardAnnouncedNotify(
+    event.roomId,
+    event.actorId,
+    event.drawSeq,
+    event.itemId,
+    event.itemName,
+    event.rarity,
     receivingSpotNodeRid
-  };
+  );
 }
 
 export {
@@ -468,7 +495,6 @@ export {
   playerJoinedNotify,
   rejectedCommandRes,
   roomJoinError,
-  stateEnvelope,
   stopObservingBingoEventsReq,
   stopObservingBingoEventsRes,
   submitBingoCardReq,

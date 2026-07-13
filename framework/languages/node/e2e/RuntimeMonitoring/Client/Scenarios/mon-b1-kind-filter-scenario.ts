@@ -10,18 +10,18 @@ export async function runMonB1(options: ClientOptions): Promise<void> {
 
   const evidence = await postJson<string[]>(options.serviceBUrl, '/evidence/wait', {
     containsAll: ['monitor-socket|'],
-    containsAnyGroups: [['kind=ConnectionReady']],
+    containsAnyGroups: [['kind=connectionReady']],
     timeoutMilliseconds: 15000
   } satisfies EvidenceWaitReq);
 
   ensure(
-    evidence.some((line) => line.includes('monitor-socket|') && line.includes('kind=ConnectionReady')),
+    evidence.some((line) => line.includes('monitor-socket|') && line.includes('kind=connectionReady')),
     'MON-B1 filtered socket evidence missing.'
   );
   ensure(
     evidence
       .filter((line) => line.includes('monitor-socket|'))
-      .every((line) => line.includes('kind=ConnectionReady')),
+      .every((line) => line.includes('kind=connectionReady')),
     'MON-B1 returned a socket event outside the configured kind filter.'
   );
 

@@ -1,16 +1,15 @@
-import type { ZLinkActorClient, ZLinkActorManager, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotRefResolver } from '@zlink-systems/framework';
+import type { ZLinkActorClient, ZLinkActorManager, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotHandleResolver } from '@zlink-systems/framework';
 import type {
   CreateSpotReq,
   CreateSpotRes,
   EvidenceWaitReq,
   MultiNodeCreateSpotReq,
   MultiNodeStateRouteReq,
-  SpotOnlyJoinReq,
   SpotOnlyJoinRes,
   SpotOnlyMeshReq,
   SpotOnlyMeshRes
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import { SpotOnlyJoinReq, SpotServiceNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 import { createLocalMultiNodeSpot, MultiNodeScenarioActor, requestStateViaSpotOutbound, SpotOnlyUserSpot } from '../Spots/multi-node-spots';
@@ -19,7 +18,7 @@ export function createMultiNodeEndpoints(
   evidence: EvidenceStore,
   spots: ZLinkSpotManager,
   outbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotRefResolver,
+  spotRefs: ZLinkSpotHandleResolver,
   actors: ZLinkActorManager,
   actorClient: ZLinkActorClient,
   stop: () => void
@@ -81,11 +80,15 @@ export function createMultiNodeEndpoints(
       method: 'POST',
       path: '/actor/spot-only-join',
       handle: async (body) => {
-        const request = body as SpotOnlyJoinReq;
+        const bodyRequest = body as SpotOnlyJoinReq;
+        const request = new SpotOnlyJoinReq(
+          bodyRequest.targetSpotRid,
+          bodyRequest.actorId,
+          bodyRequest.marker
+        );
         const actor = await actors.getOrCreate(request.actorId, SpotServiceNames.actorType, { displayName: `spot-only-${request.actorId}` });
         const result = await actorClient
           .requestToActor(actor, request)
-          .packetName('SpotOnlyJoinReq')
           .timeout(10000)
           .submit<SpotOnlyJoinRes>();
         await evidence.waitUntil((entries) =>

@@ -43,6 +43,7 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
     for (const peer of peers) {
       if (peer.autoConnectType !== local.autoConnectType
         || peer.meshName !== local.meshName
+        || peer.draining
         || !this.isRoleAllowed(peer.autoConnectType, peer.role)
         || peer.endpoint.length === 0
         || isAutoConnectSelf(local, peer)
@@ -80,6 +81,9 @@ export function formatAutoConnectDecision(local: ZLinkAutoConnectLocal, peer: ZL
   }
   if (peer.endpoint.length === 0) {
     return 'skip:empty-endpoint';
+  }
+  if (peer.draining) {
+    return 'skip:draining';
   }
   if (isAutoConnectSelf(local, peer)) {
     return 'skip:self';

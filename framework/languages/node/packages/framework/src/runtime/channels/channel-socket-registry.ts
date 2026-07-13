@@ -17,6 +17,7 @@ import type {
 } from '../backend/contracts';
 import { ZLinkAsyncSubmitter } from '../messaging';
 import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
+import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
 
 export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
@@ -90,6 +91,7 @@ export class ZLinkChannelSocketRegistry {
         dealer.connect(endpoint);
       }
     }
+    attachEndpointConnections(client, dealer);
     this.clientDealers.set(channelName, dealer);
     return dealer;
   }
@@ -168,6 +170,7 @@ export class ZLinkChannelSocketRegistry {
         subscriber.connect(endpoint);
       }
     }
+    attachEndpointConnections(channel.subscriber, subscriber);
     this.subscribers.set(channelName, subscriber);
     return subscriber;
   }
@@ -207,6 +210,7 @@ export class ZLinkChannelSocketRegistry {
         router.connect(endpoint);
       }
     }
+    attachEndpointConnections(routeChannel, router);
     if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
       router.bind(routeChannel.bind);
     }

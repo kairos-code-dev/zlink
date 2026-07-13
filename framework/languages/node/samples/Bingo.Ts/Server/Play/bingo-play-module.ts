@@ -20,6 +20,7 @@ import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queu
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
+import { bingoMeterProvider } from '../runtime-support';
 function createBingoPlayModule(config: {
 	  playEndpoint: string;
 	  playRouteEndpoint: string;
@@ -38,6 +39,7 @@ function createBingoPlayModule(config: {
       ZLinkModule.forRootFactory({
         useFactory: () => {
           const builder = zlinkFramework();
+          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-play.log`)
@@ -61,6 +63,7 @@ function createBingoPlayModule(config: {
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
             .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
+            .useDrainPolicy('DrainNatural')
           .build();
         }
       })

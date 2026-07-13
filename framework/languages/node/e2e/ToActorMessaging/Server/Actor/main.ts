@@ -26,7 +26,7 @@ import {
   PacketNames,
   type ActorAsk,
   type ActorNotify,
-  type ActorPushNotify,
+  ActorPushNotify,
   type ActorPushReq,
   type ActorRefSnapshot,
   type ActorReply
@@ -48,7 +48,7 @@ class TestActor implements ZLinkActor {
 }
 
 class TestActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): TestActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<TestActor> {
     return new TestActor(actorId, context);
   }
 }
@@ -64,6 +64,10 @@ class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
     evidence.append({ scenario: 'join', actorId, kind: 'join', value: 'joined' });
     return { accepted: true };
   }
+
+  async onJoinedActor(_actor: TestActor): Promise<void> {}
+
+  async onLeaveActor(_actor: TestActor): Promise<void> {}
 }
 
 @zlinkEntrySpotActorSendHandler({
@@ -100,12 +104,7 @@ class AskHandler {
 class PushHandler {
   async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkSpotActorRequestContext, request: ActorPushReq): Promise<ActorReply> {
     await actor.context.boundSession
-      .send({
-        scenario: request.scenario,
-        actorId: actor.actorId,
-        value: request.value
-      } satisfies ActorPushNotify)
-      .packetName(PacketNames.actorPush)
+      .send(new ActorPushNotify(request.scenario, actor.actorId, request.value))
       .submit();
     evidence.append({ scenario: request.scenario, actorId: actor.actorId, kind: 'push', value: request.value });
     return { scenario: request.scenario, actorId: actor.actorId, value: `pushed:${request.value}` };

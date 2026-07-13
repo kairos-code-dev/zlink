@@ -23,7 +23,9 @@ export class ZlinkStreamHeaderCodec {
         requestSeq: header.requestSeq,
         name: header.name,
         metadata: header.metadata.values,
-        correlationId: header.correlationId
+        correlationId: header.correlationId,
+        flowId: header.flowId,
+        flowOrigin: encodeFlowOrigin(header.flowOrigin)
       });
     } catch (cause) {
       throw connectorError(ZlinkStreamErrorCode.ValidationFailed, streamWireErrorMessage(cause), cause);
@@ -44,7 +46,9 @@ export class ZlinkStreamHeaderCodec {
         requestSeq: wire.requestSeq,
         name: wire.name,
         metadata,
-        correlationId: wire.correlationId
+        correlationId: wire.correlationId,
+        flowId: wire.flowId,
+        flowOrigin: decodeFlowOrigin(wire.flowOrigin)
       };
     } catch (cause) {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, streamWireErrorMessage(cause), cause);
@@ -67,7 +71,9 @@ export function buildHeader(
   metadata: ZlinkStreamMetadata,
   compress: boolean,
   requestSeq: bigint | undefined,
-  correlationId?: string
+  correlationId?: string,
+  flowId?: string,
+  flowOrigin?: import('../../Contracts').ZlinkFlowOrigin
 ): ZlinkStreamHeader {
   let flags = ZlinkStreamHeaderFlags.None;
   if (requestSeq !== undefined) {
@@ -82,7 +88,8 @@ export function buildHeader(
   if (correlationId !== undefined && correlationId.length > 0) {
     flags |= ZlinkStreamHeaderFlags.HasCorrelationId;
   }
-  return { kind, codec, flags, requestSeq, name, metadata, correlationId };
+  if (flowId !== undefined) flags |= ZlinkStreamHeaderFlags.HasFlowId;
+  return { kind, codec, flags, requestSeq, name, metadata, correlationId, flowId, flowOrigin };
 }
 
 function validateHeaderSemantics(header: ZlinkStreamHeader): void {
@@ -101,7 +108,9 @@ function validateHeaderSemantics(header: ZlinkStreamHeader): void {
   if (header.kind === ZlinkStreamMessageKind.Control) {
     const hasCorrelation = (header.correlationId !== undefined && header.correlationId.length > 0)
       || (header.flags & ZlinkStreamHeaderFlags.HasCorrelationId) !== 0;
-    if (header.flags !== ZlinkStreamHeaderFlags.None || hasRequestSeq || hasMetadata || hasCorrelation || header.codec !== ZlinkStreamCodec.Raw) {
+    const hasFlow = header.flowId !== undefined || header.flowOrigin !== undefined
+      || (header.flags & ZlinkStreamHeaderFlags.HasFlowId) !== 0;
+    if (header.flags !== ZlinkStreamHeaderFlags.None || hasRequestSeq || hasMetadata || hasCorrelation || hasFlow || header.codec !== ZlinkStreamCodec.Raw) {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Control packet must use raw codec and must not contain flags.');
     }
   }
@@ -117,8 +126,17 @@ function validateEnum(kind: ZlinkStreamMessageKind, codec: ZlinkStreamCodec, fla
   const known = ZlinkStreamHeaderFlags.HasRequestSeq
     | ZlinkStreamHeaderFlags.HasMetadata
     | ZlinkStreamHeaderFlags.PayloadCompressed
-    | ZlinkStreamHeaderFlags.HasCorrelationId;
+    | ZlinkStreamHeaderFlags.HasCorrelationId
+    | ZlinkStreamHeaderFlags.HasFlowId;
   if ((flags & ~known) !== 0) {
     throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown stream header flag.');
   }
+}
+
+function encodeFlowOrigin(origin: import('../../Contracts').ZlinkFlowOrigin | undefined): number | undefined {
+  return origin === undefined ? undefined : ({ Inbound: 1, Timer: 2, Application: 3, Lifecycle: 4 } as const)[origin];
+}
+
+function decodeFlowOrigin(origin: number | undefined): import('../../Contracts').ZlinkFlowOrigin | undefined {
+  return origin === undefined ? undefined : ({ 1: 'Inbound', 2: 'Timer', 3: 'Application', 4: 'Lifecycle' } as const)[origin];
 }

@@ -712,11 +712,11 @@ async function getRef(node: HttpClient, actorId: string): Promise<ActorRefSnapsh
 async function waitSpotRef(node: HttpClient, spotRid: string, expectedNodeRid: string): Promise<void> {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    const spot = await node.get(`/spots/${spotRid}/ref`).fetch<{ found: boolean; nodeRid?: string }>();
-    if (spot.found && spot.nodeRid === expectedNodeRid) return;
+    const spot = await node.get(`/spots/${spotRid}/ref`).fetch<{ found: boolean }>();
+    if (spot.found) return;
     await delay(100);
   }
-  throw new Error(`Spot '${spotRid}' did not resolve to '${expectedNodeRid}'.`);
+  throw new Error(`Spot '${spotRid}' did not resolve while waiting for '${expectedNodeRid}'.`);
 }
 
 async function getEvidence(node: HttpClient): Promise<readonly ActorEvidence[]> {

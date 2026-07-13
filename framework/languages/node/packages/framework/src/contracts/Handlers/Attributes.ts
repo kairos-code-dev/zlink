@@ -75,5 +75,8 @@ function appendMetadata(target: object, metadata: ZLinkDecoratorMetadata): void 
 }
 
 export function readZLinkDecoratorMetadata(target: object): readonly ZLinkDecoratorMetadata[] {
-  return ((target as Record<symbol, unknown>)[ZLINK_DECORATOR_METADATA] as readonly ZLinkDecoratorMetadata[] | undefined) ?? [];
+  if (!Object.prototype.hasOwnProperty.call(target, ZLINK_DECORATOR_METADATA)) {
+    return [];
+  }
+  return (target as Record<symbol, unknown>)[ZLINK_DECORATOR_METADATA] as readonly ZLinkDecoratorMetadata[];
 }

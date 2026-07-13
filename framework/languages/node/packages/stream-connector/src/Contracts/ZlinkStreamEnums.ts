@@ -35,8 +35,18 @@ export enum ZlinkStreamHeaderFlags {
   HasRequestSeq = 0x01,
   HasMetadata = 0x02,
   PayloadCompressed = 0x04,
-  HasCorrelationId = 0x08
+  HasCorrelationId = 0x08,
+  HasFlowId = 0x10
 }
+
+export type ZlinkFlowOrigin = 'Inbound' | 'Timer' | 'Application' | 'Lifecycle';
+export type ZlinkStreamCloseReason =
+  | 'ClientClose'
+  | 'IdleTimeout'
+  | 'HeartbeatTimeout'
+  | 'ServerDrain'
+  | 'ProtocolError'
+  | 'TransportError';
 
 export enum ZlinkStreamErrorCode {
   Disconnected = 'disconnected',

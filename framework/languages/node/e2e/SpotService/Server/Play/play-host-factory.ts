@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotRefResolver } from '@zlink-systems/framework';
-import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_REF_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotHandleResolver } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { parsePlayOptions } from './Configuration/play-options';
 import { createPlayEndpoints } from './Endpoints/play-endpoints';
@@ -14,6 +14,7 @@ import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from './Handlers/spot-to-spot-handlers';
 import { StageProbeHandler, StageTimerHandler, StageTimerStartHandler } from './Handlers/stage-handlers';
 import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from './Handlers/state-req-handler';
+import { SpotAdminHandler } from './Handlers/spot-admin-handler';
 import { BasicTimerHandler, IdleCloseTimerHandler, OverrunTimerHandler } from './Handlers/timer-handlers';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import {
@@ -128,6 +129,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       EntryActorLeaveHandler,
       EntryActorDestroyHandler,
       StateReqHandler,
+      SpotAdminHandler,
       StateCommandHandler,
       StageProbeHandler,
       StageTimerStartHandler,
@@ -151,7 +153,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   const app = await NestFactory.createApplicationContext(PlayModule, { logger: false, abortOnError: false });
   const spotManager = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const spotOutbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
-  const spotRefs = app.get(ZLINK_SPOT_REF_RESOLVER, { strict: false }) as ZLinkSpotRefResolver;
+  const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
   const routeClient = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, createPlayEndpoints(evidence, spotManager, spotOutbound, spotRefs, routeClient, () => { stopping = true; }));
   while (!stopping) {

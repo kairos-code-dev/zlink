@@ -2,6 +2,27 @@ type ShutdownOptions = {
   keepAlive?: boolean;
 };
 
+const bingoMetricValues = new Map<string, number>();
+
+const bingoMeterProvider = {
+  getMeter(name: string) {
+    void name;
+    const instrument = (metricName: string) => ({
+      add(value: number): void {
+        bingoMetricValues.set(metricName, (bingoMetricValues.get(metricName) ?? 0) + value);
+      },
+      record(value: number): void {
+        bingoMetricValues.set(metricName, value);
+      }
+    });
+    return {
+      createCounter: instrument,
+      createUpDownCounter: instrument,
+      createHistogram: instrument
+    };
+  }
+};
+
 function waitForShutdown(options: ShutdownOptions = {}): Promise<void> {
   return new Promise((resolve) => {
     const keepAlive = options.keepAlive === true
@@ -30,4 +51,4 @@ async function closeNestRuntime(container: { close(): Promise<void> }): Promise<
   }
 }
 
-export { closeNestRuntime, waitForShutdown };
+export { bingoMeterProvider, bingoMetricValues, closeNestRuntime, waitForShutdown };

@@ -10,8 +10,12 @@ export const PacketNames = {
   missingProfileMsg: 'MissingProfileMsg'
 } as const;
 
-export interface ProfileReq {
-  readonly value: string;
+export class ProfileReq {
+  constructor(readonly value: string) {}
+}
+
+export class MissingProfileReq {
+  constructor(readonly value: string) {}
 }
 
 export interface ProfileRes {
@@ -19,8 +23,12 @@ export interface ProfileRes {
   readonly providerRid: string;
 }
 
-export interface ProfileMsg {
-  readonly commandId: string;
+export class ProfileMsg {
+  constructor(readonly commandId: string) {}
+}
+
+export class MissingProfileMsg {
+  constructor(readonly commandId: string) {}
 }
 
 export interface EvidenceWaitReq {
@@ -28,9 +36,11 @@ export interface EvidenceWaitReq {
   readonly timeoutMilliseconds?: number;
 }
 
-export interface PayloadReq {
-  readonly marker: string;
-  readonly payload: string;
+export class PayloadReq {
+  constructor(
+    readonly marker: string,
+    readonly payload: string
+  ) {}
 }
 
 export interface PayloadRes {
@@ -39,8 +49,8 @@ export interface PayloadRes {
   readonly sha256: string;
 }
 
-export interface WorkflowReq {
-  readonly value: string;
+export class WorkflowReq {
+  constructor(readonly value: string) {}
 }
 
 export interface WorkflowRes {
@@ -48,8 +58,8 @@ export interface WorkflowRes {
   readonly providerRid: string;
 }
 
-export interface ScenarioRouteReq {
-  readonly value: string;
+export class ScenarioRouteReq {
+  constructor(readonly value: string) {}
 }
 
 export interface ScenarioRouteRes {

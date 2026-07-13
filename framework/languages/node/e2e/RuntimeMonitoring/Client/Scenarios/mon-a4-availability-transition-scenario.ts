@@ -23,7 +23,7 @@ export async function runMonA4(options: ClientOptions): Promise<void> {
     triggerEvidence.some((line) =>
       line.includes('monitor-socket|')
       && line.includes(`source=${RuntimeMonitoringNames.channelClientSource}`)
-      && line.includes('kind=PeerAdmissionChanged')),
+      && line.includes('kind=peerAdmissionChanged')),
     'MON-A4 trigger socket drain transition evidence missing.'
   );
 
@@ -59,7 +59,7 @@ async function waitForWeight(serviceUrl: string, expected: number): Promise<void
 async function waitForTriggerDrainEvidence(triggerUrl: string): Promise<string[]> {
   return await postJson<string[]>(triggerUrl, '/evidence/wait', {
     containsAll: ['monitor-socket|', `source=${RuntimeMonitoringNames.channelClientSource}`],
-    containsAnyGroups: [['kind=PeerAdmissionChanged']],
+    containsAnyGroups: [['kind=peerAdmissionChanged']],
     timeoutMilliseconds: 10000
   } satisfies EvidenceWaitReq);
 }

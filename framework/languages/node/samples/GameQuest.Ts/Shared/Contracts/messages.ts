@@ -1,24 +1,34 @@
-type PacketNamed = { packetName(): string };
-
-type KillMonsterReq = PacketNamed & { playerId: string; monsterId: string; areaId: string; idempotencyKey: string };
+class KillMonsterReq {
+  constructor(readonly playerId: string, readonly monsterId: string, readonly areaId: string, readonly idempotencyKey: string) {}
+}
 type KillMonsterRes = { eventId: string };
-type CollectItemReq = PacketNamed & { playerId: string; itemId: string; count: number; idempotencyKey: string };
+class CollectItemReq {
+  constructor(readonly playerId: string, readonly itemId: string, readonly count: number, readonly idempotencyKey: string) {}
+}
 type CollectItemRes = { eventId: string };
-type CompleteMissionReq = PacketNamed & { playerId: string; missionId: string; idempotencyKey: string };
+class CompleteMissionReq {
+  constructor(readonly playerId: string, readonly missionId: string, readonly idempotencyKey: string) {}
+}
 type CompleteMissionRes = { eventId: string };
-type EnterAreaReq = PacketNamed & { playerId: string; areaId: string; idempotencyKey: string };
+class EnterAreaReq {
+  constructor(readonly playerId: string, readonly areaId: string, readonly idempotencyKey: string) {}
+}
 type EnterAreaRes = { eventId: string };
-type UnlockFeatureReq = PacketNamed & { playerId: string; featureId: string; idempotencyKey: string };
+class UnlockFeatureReq {
+  constructor(readonly playerId: string, readonly featureId: string, readonly idempotencyKey: string) {}
+}
 type UnlockFeatureRes = { eventId: string };
-type JoinSessionReq = PacketNamed & { playerId: string };
+class JoinSessionReq { constructor(readonly playerId: string) {} }
 type JoinSessionRes = { activeQuests: QuestProgress[] };
-type GetQuestProgressReq = PacketNamed & { playerId: string };
+class GetQuestProgressReq { constructor(readonly playerId: string) {} }
 type GetQuestProgressRes = { activeQuests: QuestProgress[] };
-type SyncQuestProgressReq = PacketNamed & { playerId: string };
+class SyncQuestProgressReq { constructor(readonly playerId: string) {} }
 type SyncQuestProgressRes = { updatedQuests: QuestProgress[] };
-type DeleteQuestProjectionReq = PacketNamed & { playerId: string; questId: string };
+class DeleteQuestProjectionReq { constructor(readonly playerId: string, readonly questId: string) {} }
 type DeleteQuestProjectionRes = { deleted: boolean };
-type RebuildQuestProjectionReq = PacketNamed & { playerId: string; questId: string; count: number };
+class RebuildQuestProjectionReq {
+  constructor(readonly playerId: string, readonly questId: string, readonly count: number) {}
+}
 type GetGameplaySnapshotReq = { playerId: string };
 type GetGameplaySnapshotRes = {
   playerId: string;
@@ -31,8 +41,13 @@ type GetGameplaySnapshotRes = {
 };
 type KillCountSnapshot = { monsterId: string; areaId?: string; count: number };
 type ItemCountSnapshot = { itemId: string; count: number };
-type QuestProgressNotify = { playerId: string; targetConnectionId?: string; progress: QuestProgress };
-type QuestCompletedNotify = { playerId: string; targetConnectionId?: string; progress: QuestProgress; rewardGranted: boolean };
+class QuestProgressNotify {
+  constructor(readonly playerId: string, readonly progress: QuestProgress, readonly targetConnectionId?: string) {}
+}
+class QuestCompletedNotify {
+  readonly rewardGranted = true;
+  constructor(readonly playerId: string, readonly progress: QuestProgress, readonly targetConnectionId?: string) {}
+}
 type QuestProgress = {
   playerId: string;
   questId: string;
@@ -52,7 +67,7 @@ type GameplayEventEnvelope = {
   sourceApi: string;
   createdAtUnixMs: number;
 };
-type ApplyGameplayEventReq = PacketNamed & { event: GameplayEventEnvelope };
+class ApplyGameplayEventReq { constructor(readonly event: GameplayEventEnvelope) {} }
 type ApplyGameplayEventRes = { applied: boolean; projection: QuestProgress[]; completedQuestId?: string };
 type QuestProgressedEvent = {
   eventId: string;
@@ -138,50 +153,63 @@ const PacketNames = {
 } as const;
 
 function killMonsterReq(playerId: string, monsterId: string, areaId: string, idempotencyKey: string): KillMonsterReq {
-  return { playerId, monsterId, areaId, idempotencyKey, packetName: () => PacketNames.killMonsterReq };
+  return new KillMonsterReq(playerId, monsterId, areaId, idempotencyKey);
 }
 
 function collectItemReq(playerId: string, itemId: string, count: number, idempotencyKey: string): CollectItemReq {
-  return { playerId, itemId, count, idempotencyKey, packetName: () => PacketNames.collectItemReq };
+  return new CollectItemReq(playerId, itemId, count, idempotencyKey);
 }
 
 function completeMissionReq(playerId: string, missionId: string, idempotencyKey: string): CompleteMissionReq {
-  return { playerId, missionId, idempotencyKey, packetName: () => PacketNames.completeMissionReq };
+  return new CompleteMissionReq(playerId, missionId, idempotencyKey);
 }
 
 function enterAreaReq(playerId: string, areaId: string, idempotencyKey: string): EnterAreaReq {
-  return { playerId, areaId, idempotencyKey, packetName: () => PacketNames.enterAreaReq };
+  return new EnterAreaReq(playerId, areaId, idempotencyKey);
 }
 
 function unlockFeatureReq(playerId: string, featureId: string, idempotencyKey: string): UnlockFeatureReq {
-  return { playerId, featureId, idempotencyKey, packetName: () => PacketNames.unlockFeatureReq };
+  return new UnlockFeatureReq(playerId, featureId, idempotencyKey);
 }
 
 function joinSessionReq(playerId: string): JoinSessionReq {
-  return { playerId, packetName: () => PacketNames.joinSessionReq };
+  return new JoinSessionReq(playerId);
 }
 
 function getQuestProgressReq(playerId: string): GetQuestProgressReq {
-  return { playerId, packetName: () => PacketNames.getQuestProgressReq };
+  return new GetQuestProgressReq(playerId);
 }
 
 function syncQuestProgressReq(playerId: string): SyncQuestProgressReq {
-  return { playerId, packetName: () => PacketNames.syncQuestProgressReq };
+  return new SyncQuestProgressReq(playerId);
 }
 
 function deleteQuestProjectionReq(playerId: string, questId: string): DeleteQuestProjectionReq {
-  return { playerId, questId, packetName: () => PacketNames.deleteQuestProjectionReq };
+  return new DeleteQuestProjectionReq(playerId, questId);
 }
 
 function rebuildQuestProjectionReq(playerId: string, questId: string, count = 0): RebuildQuestProjectionReq {
-  return { playerId, questId, count, packetName: () => PacketNames.rebuildQuestProjectionReq };
+  return new RebuildQuestProjectionReq(playerId, questId, count);
 }
 
 function applyGameplayEventReq(event: GameplayEventEnvelope): ApplyGameplayEventReq {
-  return { event, packetName: () => PacketNames.applyGameplayEventReq };
+  return new ApplyGameplayEventReq(event);
 }
 
 export {
+  QuestProgressNotify,
+  QuestCompletedNotify,
+  KillMonsterReq,
+  CollectItemReq,
+  CompleteMissionReq,
+  EnterAreaReq,
+  UnlockFeatureReq,
+  JoinSessionReq,
+  GetQuestProgressReq,
+  SyncQuestProgressReq,
+  DeleteQuestProjectionReq,
+  RebuildQuestProjectionReq,
+  ApplyGameplayEventReq,
   PacketNames,
   QuestIds,
   QuestStatuses,
@@ -199,34 +227,21 @@ export {
 };
 
 export type {
-  KillMonsterReq,
   KillMonsterRes,
-  CollectItemReq,
   CollectItemRes,
-  CompleteMissionReq,
   CompleteMissionRes,
-  EnterAreaReq,
   EnterAreaRes,
-  UnlockFeatureReq,
   UnlockFeatureRes,
-  JoinSessionReq,
   JoinSessionRes,
-  GetQuestProgressReq,
   GetQuestProgressRes,
-  SyncQuestProgressReq,
   SyncQuestProgressRes,
-  DeleteQuestProjectionReq,
   DeleteQuestProjectionRes,
-  RebuildQuestProjectionReq,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,
   KillCountSnapshot,
   ItemCountSnapshot,
-  QuestProgressNotify,
-  QuestCompletedNotify,
   QuestProgress,
   GameplayEventEnvelope,
-  ApplyGameplayEventReq,
   ApplyGameplayEventRes,
   QuestProgressedEvent,
   QuestCompletedEvent,

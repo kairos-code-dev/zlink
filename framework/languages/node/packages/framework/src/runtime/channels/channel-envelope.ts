@@ -4,11 +4,15 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkEncodedPayload,
-  type ZLinkMessageSerializer
+  type ZLinkMessageSerializer,
+  type ZLinkFlowOrigin
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import { selectSerializer } from '../messaging/payload-codec';
+import { currentOrCreateFlow } from '../diagnostics/flow-context';
+
+export const ZLINK_CHANNEL_FORMAT_MARKER = 0xf2;
 
 export const JSON_CONTENT_TYPE = 'application/json';
 export const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -22,6 +26,7 @@ export const enum ZLinkChannelMessageKind {
 }
 
 export interface ZLinkChannelEnvelopeHeader {
+  readonly formatMarker: number;
   readonly kind: ZLinkChannelMessageKind;
   readonly channelName: string;
   readonly messageName: string;
@@ -32,6 +37,8 @@ export interface ZLinkChannelEnvelopeHeader {
   readonly errorCode: string | null;
   readonly errorMessage: string | null;
   readonly source?: string | null;
+  readonly flowId: string;
+  readonly flowOrigin: ZLinkFlowOrigin;
 }
 
 export interface ZLinkChannelEnvelope {
@@ -59,7 +66,9 @@ export function encodeChannelEnvelopeParts(
   correlationId?: string
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
+  const flow = currentOrCreateFlow();
   const header: ZLinkChannelEnvelopeHeader = {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
     channelName,
     messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
@@ -68,9 +77,10 @@ export function encodeChannelEnvelopeParts(
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
     topic: topic ?? null,
     errorCode: null,
-    errorMessage: null
+    errorMessage: null,
+    ...flow
   };
-  return [encodeJsonBytes(header), encoded.message];
+  return [encodeChannelHeader(header), encoded.message];
 }
 
 export function encodeChannelPublishEnvelopeParts(
@@ -81,7 +91,9 @@ export function encodeChannelPublishEnvelopeParts(
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
+  const flow = currentOrCreateFlow();
   const header: ZLinkChannelEnvelopeHeader = {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
     messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
@@ -90,9 +102,10 @@ export function encodeChannelPublishEnvelopeParts(
     deadline: null,
     topic,
     errorCode: null,
-    errorMessage: null
+    errorMessage: null,
+    ...flow
   };
-  return [encodeJsonBytes(header), encoded.message];
+  return [encodeChannelHeader(header), encoded.message];
 }
 
 export function encodeChannelReplyParts(
@@ -102,6 +115,7 @@ export function encodeChannelReplyParts(
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs, { packetName: request.messageName });
   const header: ZLinkChannelEnvelopeHeader = {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Response,
     channelName: request.channelName,
     messageName: request.messageName,
@@ -110,13 +124,16 @@ export function encodeChannelReplyParts(
     deadline: null,
     topic: null,
     errorCode: null,
-    errorMessage: null
+    errorMessage: null,
+    flowId: request.flowId,
+    flowOrigin: request.flowOrigin
   };
-  return [encodeJsonBytes(header), encoded.message];
+  return [encodeChannelHeader(header), encoded.message];
 }
 
 export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader, message: string): readonly MessageLike[] {
   const header: ZLinkChannelEnvelopeHeader = {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Error,
     channelName: request.channelName,
     messageName: request.messageName,
@@ -125,9 +142,11 @@ export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader
     deadline: null,
     topic: null,
     errorCode: 'ZLinkRouteHandlerError',
-    errorMessage: message
+    errorMessage: message,
+    flowId: request.flowId,
+    flowOrigin: request.flowOrigin
   };
-  return [encodeJsonBytes(header), encodeJsonBytes(null)];
+  return [encodeChannelHeader(header), encodeJsonBytes(null)];
 }
 
 export function decodeChannelReply<TReply>(
@@ -233,6 +252,22 @@ function encodeJsonBytes(value: unknown): Buffer {
   return Buffer.from(JSON.stringify(value ?? null));
 }
 
+function encodeChannelHeader(header: ZLinkChannelEnvelopeHeader): Buffer {
+  return encodeJsonBytes({
+    ...header,
+    flowOrigin: encodeFlowOrigin(header.flowOrigin)
+  });
+}
+
+function encodeFlowOrigin(origin: ZLinkFlowOrigin): number {
+  switch (origin) {
+    case 'Inbound': return 1;
+    case 'Timer': return 2;
+    case 'Application': return 3;
+    case 'Lifecycle': return 4;
+  }
+}
+
 function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHeader {
   if (parts.length === 0) {
     throw new ZLinkConfigurationException('Channel envelope header part is missing.');
@@ -269,12 +304,16 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     throw new ZLinkConfigurationException('Channel envelope header must be a JSON object.');
   }
   const header = value as Record<string, unknown>;
+  if (header.formatMarker !== ZLINK_CHANNEL_FORMAT_MARKER) {
+    throw new ZLinkConfigurationException('Channel envelope format marker is invalid.');
+  }
   const kind = requireChannelMessageKind(header.kind);
   const contentType = requireString(header.contentType, 'contentType');
   if (contentType.trim().length === 0) {
     throw new ZLinkConfigurationException('Channel envelope contentType must not be empty.');
   }
   return {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
     channelName: requireString(header.channelName, 'channelName'),
     messageName: requireString(header.messageName, 'messageName'),
@@ -284,8 +323,28 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     topic: requireNullableString(header.topic, 'topic'),
     errorCode: requireNullableString(header.errorCode, 'errorCode'),
     errorMessage: requireNullableString(header.errorMessage, 'errorMessage'),
-    source: header.source === undefined ? undefined : requireNullableString(header.source, 'source')
+    source: header.source === undefined ? undefined : requireNullableString(header.source, 'source'),
+    flowId: requireFlowId(header.flowId),
+    flowOrigin: requireFlowOrigin(header.flowOrigin)
   };
+}
+
+function requireFlowId(value: unknown): string {
+  const flowId = requireString(value, 'flowId');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(flowId)) {
+    throw new ZLinkConfigurationException('Channel envelope flowId must be a lowercase UUIDv7.');
+  }
+  return flowId;
+}
+
+function requireFlowOrigin(value: unknown): ZLinkFlowOrigin {
+  switch (value) {
+    case 1: return 'Inbound';
+    case 2: return 'Timer';
+    case 3: return 'Application';
+    case 4: return 'Lifecycle';
+  }
+  throw new ZLinkConfigurationException('Channel envelope flowOrigin is invalid.');
 }
 
 function requireChannelMessageKind(value: unknown): ZLinkChannelMessageKind {

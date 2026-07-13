@@ -17,6 +17,8 @@ import type {
   ZLinkBackendSendFlags,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
+import { Message as NativeMessage } from '@zlink-systems/zlink';
+import { encodeSessionClosingFrame } from './protocol';
 
 export class ZLinkManagedStream implements ZLinkStream {
   private currentLocalAddr: string | undefined;
@@ -64,6 +66,17 @@ export class ZLinkManagedStream implements ZLinkStream {
 
   async close(signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
+    this.socket.disconnectPeer(this.backendRoutingId());
+  }
+
+  async closeForDrain(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    const closing = NativeMessage.from(encodeSessionClosingFrame('server drain'));
+    try {
+      this.socket.send(this.backendRoutingId(), closing, 0);
+    } finally {
+      closing.close();
+    }
     this.socket.disconnectPeer(this.backendRoutingId());
   }
 

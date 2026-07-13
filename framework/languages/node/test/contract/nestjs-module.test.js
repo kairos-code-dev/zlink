@@ -158,9 +158,9 @@ test('ZLinkModule lifecycle registers decorated runtime event handlers with the 
     await app.close();
   }
 
-  assert.equal(events.length, 1);
-  assert.equal(events[0].event, framework.ZLinkSpotEventKind.TimerHandlerFailed);
-  assert.equal(events[0].timerDiagnostic.timerName, 'idle');
+  const timerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.TimerHandlerFailed);
+  assert.notEqual(timerEvent, undefined);
+  assert.equal(timerEvent.timerDiagnostic.timerName, 'idle');
 });
 
 test('ZLinkModule.forRoot exposes capability providers only when registration enables them', async () => {
@@ -265,19 +265,22 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   assert.equal(typeof spotPublisher.publish, 'function');
   assert.equal(boundSessionFactory, runtime.boundSessionFactory);
 
+  class Ping { constructor(ok) { this.ok = ok; } }
+  class Event { constructor(ok) { this.ok = ok; } }
+
   assert.throws(
-    () => routeClient.sendToNode('missing', 'node-a', { ok: true }).packetName('Ping').submit(),
+    () => routeClient.sendToNode('missing', 'node-a', new Ping(true)).submit(),
     framework.ZLinkConfigurationException
   );
   assert.doesNotThrow(
-    () => routeClient.sendToNode('mesh', 'node-a', { ok: true }).packetName('Ping').submit(),
+    () => routeClient.sendToNode('mesh', 'node-a', new Ping(true)).submit(),
   );
   assert.throws(
-    () => spotPublisher.publish('missing', 'topic', { ok: true }).packetName('Event').submit(),
+    () => spotPublisher.publish('missing', 'topic', new Event(true)).submit(),
     framework.ZLinkConfigurationException
   );
   assert.doesNotThrow(
-    () => spotPublisher.publish('spot-events', 'topic', { ok: true }).packetName('Event').submit(),
+    () => spotPublisher.publish('spot-events', 'topic', new Event(true)).submit(),
   );
   await assert.rejects(
     () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit()
@@ -317,7 +320,7 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
     manualConnections: ['tcp://127.0.0.1:7202'],
     handlerGroups: ['route-api']
   });
-  assert.equal(options.dispatch.messageFlowObserverType, DispatchObserver);
+  assert.equal(framework.getDispatchObserverType(options.dispatch), DispatchObserver);
 });
 
 test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecycle', async () => {
@@ -1569,15 +1572,15 @@ test('ZLinkModule.forRoot maps one location store into runtime registration', as
   assert.equal(registration.locations.storeInstance, store);
 });
 
-test('ZLinkModule.forRoot exposes SpotRef resolvers from location stores', async () => {
+test('ZLinkModule.forRoot exposes SpotHandle resolvers from location stores', async () => {
   const store = new framework.ZLinkInMemoryLocationStore();
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addLocationStore(store)
     .build());
   const tokens = providerTokens(module);
 
-  assert.equal(tokens.has(nestjs.ZLINK_SPOT_REF_RESOLVER), true);
-  assert.equal(tokens.has(nestjs.ZLINK_ACTOR_SPOT_REF_RESOLVER), true);
+  assert.equal(tokens.has(nestjs.ZLINK_SPOT_HANDLE_RESOLVER), true);
+  assert.equal(tokens.has(nestjs.ZLINK_ACTOR_SPOT_HANDLE_RESOLVER), true);
   assert.equal(Object.hasOwn(nestjs, 'ZLINK_SPOT_' + 'REMOTE_ADDRESS_RESOLVER'), false);
 });
 

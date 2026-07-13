@@ -16,13 +16,11 @@ export interface ZLinkPublishContext extends ZLinkHandlerContext {
 }
 
 export interface ZLinkRouteSendContext extends ZLinkHandlerContext {
+  readonly routerChannelId: string;
   readonly sourceNodeRid: RoutingId;
-  readonly sourcePeerRid: RoutingId;
 }
 
-export interface ZLinkRouteRequestContext extends ZLinkRouteSendContext {
-  readonly requestSeq: bigint;
-}
+export interface ZLinkRouteRequestContext extends ZLinkRouteSendContext {}
 
 export interface ZLinkSpotActorSendContext extends ZLinkHandlerContext {
   readonly metadata: ZLinkMessageMetadata;

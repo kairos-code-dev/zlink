@@ -1,5 +1,6 @@
 import type { RoutingId, Type } from '../Common';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
+import type { ZLinkSpotDrainPolicy } from '../Eventing';
 
 export interface ZLinkSpotNodeBuilder {
   routingId(routingId: RoutingId): this;
@@ -12,6 +13,7 @@ export interface ZLinkSpotNodeBuilder {
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   actorFactory(actorType: string, factoryType: Type): this;
+  useDrainPolicy(policy: ZLinkSpotDrainPolicy): this;
 }
 
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}

@@ -5,7 +5,7 @@ class CustomerActor implements ZLinkActor {
 }
 
 class CustomerActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): CustomerActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<CustomerActor> {
     return new CustomerActor(actorId, context);
   }
 }

@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { ZLinkPacket } from '@zlink-systems/framework';
 import type { SlowSpotRes, SlowSpotReq, StateMsg, StateRes, StateReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
+@ZLinkPacket('StateReq')
 export class StateReqHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -26,6 +28,7 @@ export class StateReqHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot
 }
 
 @Injectable()
+@ZLinkPacket('StateMsg')
 export class StateCommandHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, StateMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -42,6 +45,7 @@ export class StateCommandHandler implements ZLinkSpotPacketHandler<ScenarioUserS
 }
 
 @Injectable()
+@ZLinkPacket('SlowSpotReq')
 export class SlowSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, SlowSpotReq, SlowSpotRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 

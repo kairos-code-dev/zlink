@@ -15,6 +15,9 @@ import type { ZlinkStreamInboundObservers } from './ZlinkStreamInboundObservers'
 import type { ZlinkStreamPendingRequests } from './ZlinkStreamPendingRequests';
 import type { ZlinkStreamReceivedMessages } from './ZlinkStreamReceivedMessages';
 import { connectorError, toStreamError, utf8Decode } from './ZlinkStreamSupport';
+import { createInboundFlow } from './ZlinkFlowContext';
+import { decodeSessionClosing, ZLINK_SESSION_CLOSING } from './Protocol/ZlinkSessionClosing';
+import type { ZlinkStreamCloseReason } from '../Contracts';
 
 export interface ZlinkStreamReceiveResult {
   readonly available: boolean;
@@ -28,7 +31,8 @@ export class ZlinkStreamReceiveDispatcher {
     private readonly inboundObservers: ZlinkStreamInboundObservers,
     private readonly receivedMessages: ZlinkStreamReceivedMessages,
     private readonly frameSender: ZlinkStreamFrameSender,
-    private readonly events: ZlinkStreamConnectorEvents
+    private readonly events: ZlinkStreamConnectorEvents,
+    private readonly serverClosing?: (reason: ZlinkStreamCloseReason) => Promise<void>
   ) {}
 
   async readAndDispatch(
@@ -113,10 +117,13 @@ export class ZlinkStreamReceiveDispatcher {
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Send) {
+      const flow = createInboundFlow(header.flowId, header.flowOrigin);
       this.receivedMessages.enqueue({
         name: header.name,
         metadata: header.metadata,
-        payload: { codec: header.codec, payload: this.protocol.decodePayload(header, payload) }
+        payload: { codec: header.codec, payload: this.protocol.decodePayload(header, payload) },
+        flowId: flow.flowId,
+        flowOrigin: flow.flowOrigin
       }, signal);
     }
   }
@@ -127,6 +134,11 @@ export class ZlinkStreamReceiveDispatcher {
     payload: Uint8Array,
     signal?: AbortSignal
   ): Promise<void> {
+    if (header.name === ZLINK_SESSION_CLOSING) {
+      const closing = decodeSessionClosing(payload);
+      await this.serverClosing?.(closing.closeReason);
+      return;
+    }
     if (payload.length !== 0) {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Control packet payload must be empty.');
     }

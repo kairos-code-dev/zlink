@@ -168,6 +168,11 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton<TestHostRawStreamRecorder>();
         services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.EventFilePath))
+                framework.ConfigureDispatch()
+                    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                    .TraceLogFile(options.EventFilePath + ".flow")
+                    .TraceLabel("dotnet-test-host");
             {
                 var stream = framework.AddStreamNode("stream.raw");
                 stream.Bind(options.StreamEndpoint

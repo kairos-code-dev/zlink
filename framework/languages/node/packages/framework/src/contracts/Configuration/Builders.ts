@@ -1,6 +1,7 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkActorTransferAdapter, ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
+import type { ZLinkEndpointConnections } from './Connections';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
 import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
@@ -31,7 +32,6 @@ export interface ZLinkFrameworkOptions {
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  addRouteChannel(name: string): ZLinkRouteChannelBuilder;
   addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
 }
@@ -54,6 +54,7 @@ export interface ZLinkClientServerChannelBuilder {
   configureClientSocket(): ZLinkSocketConfig;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  clientConnections(): ZLinkEndpointConnections;
   setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
@@ -61,17 +62,17 @@ export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
+  subscriberConnections(): ZLinkEndpointConnections;
 }
 
-export interface ZLinkRouteChannelBuilder {
+export interface ZLinkRouteMeshChannelBuilder {
   enableServer(endpoint: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  clientConnections(): ZLinkEndpointConnections;
   configureSocket(): ZLinkSocketConfig;
   setDefaultRequestTimeout(timeoutMs: number): this;
 }
-
-export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}
 
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;

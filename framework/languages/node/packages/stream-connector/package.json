@@ -1,7 +1,7 @@
 {
   "name": "@zlink-systems/stream-connector",
   "version": "0.1.0-SNAPSHOT",
-  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

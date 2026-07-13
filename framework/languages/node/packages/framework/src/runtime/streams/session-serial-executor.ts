@@ -18,6 +18,21 @@ export class ZLinkStreamSessionSerialExecutor {
     return true;
   }
 
+  run(work: () => Promise<void>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.enqueue(async () => {
+        try {
+          await work();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      })) {
+        reject(new Error('Session execution queue is closed.'));
+      }
+    });
+  }
+
   async dispose(): Promise<void> {
     this.closed = true;
     await this.tail;

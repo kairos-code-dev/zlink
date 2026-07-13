@@ -1,8 +1,8 @@
 import net from 'node:net';
 import fs from 'node:fs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../../Shared/messages';
-import { PacketNames, RuntimeMonitoringNames } from '../../../Shared/messages';
+import { ProfileReq, type EvidenceWaitReq, type ProfileRes } from '../../../Shared/messages';
+import { RuntimeMonitoringNames } from '../../../Shared/messages';
 import type { TriggerOptions } from '../Configuration/trigger-options';
 import type { HttpRoute } from '../Support/http-server';
 import type { EvidenceStore } from '../../Service/Infrastructure/evidence-store';
@@ -35,17 +35,17 @@ export function createTriggerEndpoints(
             entries.some((entry) => entry.includes(expected)))), timeout);
       }
     },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileReq) },
-    { method: 'POST', path: '/profile/request/disconnect', handle: (body) => requestWithTransientHost(body as ProfileReq) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, toProfileReq(body)) },
+    { method: 'POST', path: '/profile/request/disconnect', handle: (body) => requestWithTransientHost(toProfileReq(body)) },
     {
       method: 'POST',
       path: '/profile/request/service-b',
-      handle: (body) => requestWithTransientHost(body as ProfileReq, options.serviceBChannelEndpoint)
+      handle: (body) => requestWithTransientHost(toProfileReq(body), options.serviceBChannelEndpoint)
     },
     {
       method: 'POST',
       path: '/profile/request/throw',
-      handle: (body) => requestWithTransientHost(body as ProfileReq, options.throwChannelEndpoint)
+      handle: (body) => requestWithTransientHost(toProfileReq(body), options.throwChannelEndpoint)
     },
     { method: 'POST', path: '/socket/handshake-failure', handle: async () => {
       await sendInvalidHandshake(options.serviceChannelEndpoint);
@@ -65,10 +65,14 @@ export function createTriggerEndpoints(
   ];
 }
 
+function toProfileReq(body: unknown): ProfileReq {
+  const request = body as ProfileReq;
+  return new ProfileReq(request.value, request.marker);
+}
+
 export async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return await channel
     .requestToChannel(RuntimeMonitoringNames.channel, request)
-    .packetName(PacketNames.profileReq)
     .timeout(10000)
     .submit<ProfileRes>();
 }

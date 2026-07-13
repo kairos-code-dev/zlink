@@ -17,19 +17,25 @@ export interface ZLinkStreamWireHeader {
   readonly name: string;
   readonly metadata: ReadonlyMap<string, string>;
   readonly correlationId?: string;
+  readonly flowId?: string;
+  readonly flowOrigin?: number;
 }
 
 export interface ZLinkStreamWireHeaderFlags {
   readonly hasRequestSeq: number;
   readonly hasMetadata: number;
   readonly hasCorrelationId: number;
+  readonly hasFlowId: number;
 }
 
 const defaultHeaderFlags: ZLinkStreamWireHeaderFlags = {
   hasRequestSeq: 0x01,
   hasMetadata: 0x02,
-  hasCorrelationId: 0x08
+  hasCorrelationId: 0x08,
+  hasFlowId: 0x10
 };
+
+export const ZLINK_STREAM_FORMAT_MARKER = 0xf2;
 
 export function encodeStreamWireFrame(header: Uint8Array, payload: Uint8Array): Uint8Array {
   if (header.length > 0xffff) {
@@ -91,17 +97,28 @@ export function encodeStreamWireHeader(
     throw new Error('Stream correlation id is too large.');
   }
   const hasCorrelation = correlationBytes !== undefined;
+  const hasFlow = header.flowId !== undefined || header.flowOrigin !== undefined;
+  if (hasFlow && (header.flowId === undefined || header.flowOrigin === undefined)) {
+    throw new Error('Stream flow id and origin must be provided together.');
+  }
+  if (header.flowId !== undefined) validateFlowId(header.flowId);
+  if (header.flowOrigin !== undefined && ![1, 2, 3, 4].includes(header.flowOrigin)) {
+    throw new Error('Stream flow origin is invalid.');
+  }
   let headerFlags = header.flags;
   headerFlags = hasRequestSeq ? headerFlags | flags.hasRequestSeq : headerFlags & ~flags.hasRequestSeq;
   headerFlags = hasMetadata ? headerFlags | flags.hasMetadata : headerFlags & ~flags.hasMetadata;
   headerFlags = hasCorrelation ? headerFlags | flags.hasCorrelationId : headerFlags & ~flags.hasCorrelationId;
+  headerFlags = hasFlow ? headerFlags | flags.hasFlowId : headerFlags & ~flags.hasFlowId;
 
   const metadataBytes = hasMetadata ? encodeStreamWireMetadata(header.metadata) : new Uint8Array();
-  const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length
+  const size = 4 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length
     + (hasMetadata ? 2 + metadataBytes.length : 0)
-    + (hasCorrelation ? 1 + correlationBytes.length : 0);
+    + (hasCorrelation ? 1 + correlationBytes.length : 0)
+    + (hasFlow ? 37 : 0);
   const buffer = new Uint8Array(size);
   let offset = 0;
+  buffer[offset++] = ZLINK_STREAM_FORMAT_MARKER;
   buffer[offset++] = header.kind;
   buffer[offset++] = header.codec;
   buffer[offset++] = headerFlags;
@@ -126,6 +143,11 @@ export function encodeStreamWireHeader(
     buffer.set(correlationBytes, offset);
     offset += correlationBytes.length;
   }
+  if (hasFlow) {
+    buffer.set(asciiEncode(header.flowId!), offset);
+    offset += 36;
+    buffer[offset++] = header.flowOrigin!;
+  }
   return buffer;
 }
 
@@ -134,8 +156,11 @@ export function decodeStreamWireHeader(
   flags = defaultHeaderFlags
 ): ZLinkStreamWireHeader {
   let offset = 0;
-  if (header.length < 4) {
+  if (header.length < 5) {
     throw new Error('Stream header is incomplete.');
+  }
+  if (header[offset++] !== ZLINK_STREAM_FORMAT_MARKER) {
+    throw new Error('Stream header format marker is invalid.');
   }
   const kind = header[offset++];
   const codec = header[offset++];
@@ -143,6 +168,10 @@ export function decodeStreamWireHeader(
   const hasRequestSeq = (headerFlags & flags.hasRequestSeq) !== 0;
   const hasMetadata = (headerFlags & flags.hasMetadata) !== 0;
   const hasCorrelation = (headerFlags & flags.hasCorrelationId) !== 0;
+  const hasFlow = (headerFlags & flags.hasFlowId) !== 0;
+  if ((headerFlags & ~0x1f) !== 0) {
+    throw new Error('Unknown mandatory stream header flag.');
+  }
   let requestSeq: bigint | undefined;
   if (hasRequestSeq) {
     if (header.length - offset < 8) {
@@ -179,6 +208,20 @@ export function decodeStreamWireHeader(
     correlationId = utf8Decode(header.subarray(offset, offset + correlationLength));
     offset += correlationLength;
   }
+  let flowId: string | undefined;
+  let flowOrigin: number | undefined;
+  if (hasFlow) {
+    if (header.length - offset < 37) {
+      throw new Error('Stream flow fields are incomplete.');
+    }
+    flowId = asciiDecode(header.subarray(offset, offset + 36));
+    validateFlowId(flowId);
+    offset += 36;
+    flowOrigin = header[offset++];
+    if (![1, 2, 3, 4].includes(flowOrigin)) {
+      throw new Error('Stream flow origin is invalid.');
+    }
+  }
   if (offset !== header.length) {
     throw new Error('Stream header has trailing bytes.');
   }
@@ -189,8 +232,25 @@ export function decodeStreamWireHeader(
     requestSeq,
     name,
     metadata: decodedMetadata.metadata,
-    correlationId
+    correlationId,
+    flowId,
+    flowOrigin
   };
+}
+
+function validateFlowId(flowId: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(flowId)) {
+    throw new Error('Stream flow id must be a lowercase UUIDv7.');
+  }
+}
+
+function asciiEncode(value: string): Uint8Array {
+  return Uint8Array.from(value, (character) => character.charCodeAt(0));
+}
+
+function asciiDecode(value: Uint8Array): string {
+  if (value.some((byte) => byte > 0x7f)) throw new Error('Stream flow id must be ASCII.');
+  return String.fromCharCode(...value);
 }
 
 export function encodeStreamWireMetadata(metadata: ReadonlyMap<string, string>): Uint8Array {

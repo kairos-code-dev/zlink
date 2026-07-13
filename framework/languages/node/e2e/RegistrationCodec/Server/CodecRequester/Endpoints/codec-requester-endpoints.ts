@@ -1,5 +1,5 @@
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import { PacketNames, RegistrationCodecNames, type EchoRes } from '../../../Shared/messages';
+import { EchoJsonReq, RegistrationCodecNames, type EchoRes } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createCodecRequesterEndpoints(channel: ZLinkChannelClient): readonly HttpRoute[] {
@@ -11,8 +11,7 @@ export function createCodecRequesterEndpoints(channel: ZLinkChannelClient): read
         let rejected = false;
         let failureType: string | undefined;
         try {
-          await channel.requestToChannel(RegistrationCodecNames.channel, { value: 'rc-b5-protobuf' })
-            .packetName(PacketNames.echoJsonReq)
+          await channel.requestToChannel(RegistrationCodecNames.channel, new EchoJsonReq('rc-b5-protobuf'))
             .submit<EchoRes>();
         } catch (error) {
           rejected = true;

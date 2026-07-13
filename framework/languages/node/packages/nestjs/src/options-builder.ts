@@ -18,6 +18,10 @@ import type {
   ZLinkSpotNodeOptions,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamNodeOptions
+} from '@zlink-systems/framework/nest-integration';
+import {
+  ZLinkMessageFlowLogMode,
+  ZLinkUnhandledDispatchAction
 } from '@zlink-systems/framework';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
@@ -80,7 +84,21 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
   configureDispatch(): ZLinkDispatchOptionsBuilder {
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
-      dispatch: this.state.additionalOptions.dispatch ?? {}
+      dispatch: this.state.additionalOptions.dispatch ?? {
+        unhandled: {
+          request: ZLinkUnhandledDispatchAction.ReplyError,
+          send: ZLinkUnhandledDispatchAction.LogAndDrop,
+          publish: ZLinkUnhandledDispatchAction.LogAndDrop,
+          sendLogLevel: 'warn',
+          publishLogLevel: 'warn'
+        },
+        diagnostics: {
+          messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
+          sampleRate: 1,
+          includeMessageSizes: false,
+          includeNativeDiagnostics: false
+        }
+      }
     };
     return framework.createIntegrationDispatchOptionsBuilder(
       this.state.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
@@ -466,6 +484,11 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements
     const actorFactories = { ...(this.spotOptions.actorFactories as Record<string, Type> | undefined) };
     framework.registerActorFactory({ actorFactories }, actorType, factoryType);
     this.spotOptions.actorFactories = actorFactories;
+    return this;
+  }
+
+  useDrainPolicy(policy: import('@zlink-systems/framework').ZLinkSpotDrainPolicy): this {
+    this.spotOptions.drainPolicy = policy;
     return this;
   }
 }

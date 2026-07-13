@@ -34,12 +34,12 @@ class ToActorSession implements ZLinkSession {
         nodeRid: request.actor.nodeRid,
         generation: BigInt(request.actor.generation)
       }, signal);
-      await this.context.client.reply({
+      this.context.client.reply({
         actorId: request.actor.actorId,
         nodeRid: request.actor.nodeRid,
         generation: request.actor.generation,
         boundCount: this.context.actors.bound.length
-      } satisfies BindActorRes).submit(signal);
+      } satisfies BindActorRes).submit();
       return;
     }
 
@@ -59,7 +59,7 @@ class ToActorSession implements ZLinkSession {
 
 @Injectable()
 class ToActorSessionFactory implements ZLinkSessionFactory<ToActorSession> {
-  create(context: ZLinkSessionContext): ToActorSession {
+  async create(context: ZLinkSessionContext): Promise<ToActorSession> {
     return new ToActorSession(context);
   }
 }

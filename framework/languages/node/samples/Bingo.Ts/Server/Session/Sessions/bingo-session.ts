@@ -37,7 +37,7 @@ class BingoSession implements ZLinkSession {
       this.displayName = authContext.displayName;
       this.actor = this.context.actors.find(response.actorId) ?? null;
       console.log(`session-auth reply actor=${response.actorId}`);
-      this.context.client.reply(response).submit(signal);
+      this.context.client.reply(response).submit();
       console.log(`session-authenticated actor=${response.actorId}`);
       return;
     }
@@ -57,7 +57,7 @@ class BingoSession implements ZLinkSession {
 class BingoSessionFactory implements ZLinkSessionFactory<BingoSession> {
   constructor(@Inject(SessionAuthenticator) private readonly authenticator: SessionAuthenticator) {}
 
-  create(context: ZLinkSessionContext): BingoSession {
+  async create(context: ZLinkSessionContext): Promise<BingoSession> {
     return new BingoSession(this.authenticator, context);
   }
 }

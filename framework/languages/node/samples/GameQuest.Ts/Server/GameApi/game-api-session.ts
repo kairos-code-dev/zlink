@@ -5,6 +5,8 @@ import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
 import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import {
   PacketNames,
+  QuestCompletedNotify,
+  QuestProgressNotify,
   QuestStatuses,
   syncQuestProgressReq
 } from '../../Shared/Contracts/messages';
@@ -15,9 +17,7 @@ import type {
   GetQuestProgressReq,
   JoinSessionReq,
   KillMonsterReq,
-  QuestCompletedNotify,
   QuestProgress,
-  QuestProgressNotify,
   SyncQuestProgressReq,
   SyncQuestProgressRes,
   UnlockFeatureReq
@@ -112,26 +112,16 @@ class GameQuestSession implements ZLinkSession {
       return;
     }
     const latest = projection[projection.length - 1];
-    this.context.client.send({
-      playerId,
-      targetConnectionId: this.context.sessionId,
-      progress: latest
-    } satisfies QuestProgressNotify).packetName(PacketNames.questProgressNotify).submit();
+    this.context.client.send(new QuestProgressNotify(playerId, latest, this.context.sessionId)).submit();
     if (completedQuestId !== undefined || latest.status === QuestStatuses.RewardGranted) {
       const completed = projection.find((progress) => progress.questId === completedQuestId) ?? latest;
-      this.context.client.send({
-        playerId,
-        targetConnectionId: this.context.sessionId,
-        progress: completed,
-        rewardGranted: true
-      } satisfies QuestCompletedNotify).packetName(PacketNames.questCompletedNotify).submit();
+      this.context.client.send(new QuestCompletedNotify(playerId, completed, this.context.sessionId)).submit();
     }
   }
 
   private async syncProjection(playerId: string): Promise<SyncQuestProgressRes> {
     return await this.routes
       .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), syncQuestProgressReq(playerId))
-      .packetName(PacketNames.syncQuestProgressReq)
       .timeout(SampleNames.requestTimeout)
       .submit<SyncQuestProgressRes>();
   }
@@ -145,7 +135,7 @@ class GameQuestSessionFactory implements ZLinkSessionFactory<GameQuestSession> {
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager
   ) {}
 
-  create(context: ZLinkSessionContext): GameQuestSession {
+  async create(context: ZLinkSessionContext): Promise<GameQuestSession> {
     return new GameQuestSession(context, this.store, this.actions, this.routes, this.actorManager);
   }
 }

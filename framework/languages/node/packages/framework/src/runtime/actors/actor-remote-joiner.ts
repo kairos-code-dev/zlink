@@ -2,7 +2,6 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkActorJoinResult,
   ZLinkMessageSerializer
 } from '../../contracts';
 import {
@@ -19,7 +18,7 @@ import type {
   ZLinkSpotRouteResolver,
   ZLinkSpotRouteTarget
 } from '../spots/spot-routing-internal';
-import type { ZLinkActorJoinCoordinator } from './actor-runtime-contracts';
+import type { ZLinkActorJoinCoordinator, ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
 import type { ZLinkActorSourceTransfer } from './actor-source-transfer';
 import { ZLinkActorRuntimeState } from './actor-runtime-state';
@@ -81,7 +80,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     throwIfAborted(signal);
     const node = this.node();
     const actorRef = state.ensureNativeActorRef(node);
@@ -115,7 +114,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     throwIfAborted(signal);
     const node = this.node();
     const actorRef = state.ensureNativeActorRef(node);

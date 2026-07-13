@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
   BingoRewardItems,
-  PacketNames,
+  BingoGameEndedNotify,
+  BingoGameStartedNotify,
   bingoRewardAcquiredEvent,
   bingoRewardAnnouncedNotify,
   numberDrawnNotify,
   playerJoinedNotify,
-  stateEnvelope,
   submitBingoCardRes
 } from '../../../../../../Shared/Contracts/messages';
 import { BingoRoomGame } from '../../../../Domain/Bingo/bingo-room-game';
@@ -181,14 +181,12 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     const state = this.snapshot();
     await this.pushPlayers(
       this.playerActors(),
-      PacketNames.numberDrawnNotify,
       numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state)
     );
     if (drawn.finished) {
       await this.pushPlayers(
         this.playerActors(),
-        PacketNames.gameEndedNotify,
-        stateEnvelope(state)
+        new BingoGameEndedNotify(state)
       );
       await this.publishReward(state);
       await this.leaveFinishedActors();
@@ -210,7 +208,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     console.error(`bingo reward announcing spot=${this.context.spotRid} observers=${this.observerActors.size}`);
     await Promise.all([...this.observerActors.values()].map((observer) =>
       observer.push(
-        PacketNames.rewardAnnouncedNotify,
         bingoRewardAnnouncedNotify(event, String(this.context.nodeRid))
       )
     ));
@@ -249,8 +246,8 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     return this.game.players.map((player) => player.actor as PlayerActorType);
   }
 
-  private async pushPlayers(players: PlayerActorType[], packetName: string, payload: unknown): Promise<void> {
-    await Promise.all(players.map((player) => player.push(packetName, payload)));
+  private async pushPlayers(players: PlayerActorType[], payload: unknown): Promise<void> {
+    for (const player of players) player.push(payload);
   }
 
   private async notifyPlayerJoined(
@@ -261,7 +258,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   ): Promise<void> {
     await this.pushPlayers(
       this.playerActors().filter((entry) => entry.actorId !== actor.actorId),
-      PacketNames.playerJoinedNotify,
       playerJoinedNotify(this.roomId, actor, seat, isHost, state)
     );
   }
@@ -269,8 +265,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   private async notifyGameStarted(): Promise<void> {
     await this.pushPlayers(
       this.playerActors(),
-      PacketNames.gameStartedNotify,
-      stateEnvelope(this.snapshot())
+      new BingoGameStartedNotify(this.snapshot())
     );
   }
 
@@ -310,7 +305,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
           rarity: BingoRewardItems.legendaryRarity
         })
       )
-      .packetName(PacketNames.bingoRewardAcquiredEvent)
       .submit();
   }
 

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager, type ZLinkSpotManager, type ZLinkSpotOutbound, type ZLinkSpotRefResolver } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager, type ZLinkSpotManager, type ZLinkSpotOutbound, type ZLinkSpotHandleResolver } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_REF_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { parseMultiNodeOptions } from './Configuration/multi-node-options';
 import { createMultiNodeEndpoints } from './Endpoints/multi-node-endpoints';
@@ -112,7 +112,7 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
   const app = await NestFactory.createApplicationContext(MultiNodeModule, { logger: false, abortOnError: false });
   const spots = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const outbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
-  const spotRefs = app.get(ZLINK_SPOT_REF_RESOLVER, { strict: false }) as ZLinkSpotRefResolver;
+  const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
   const actors = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
   const actorClient = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
   SpotOnlyUserSpot.configureDependencies(evidence, spotRefs);

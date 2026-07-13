@@ -13,6 +13,7 @@ type ZLinkTransferredActorRollbackOptions = Pick<
   | 'nativeActorNode'
   | 'nativeActorNodeProvider'
   | 'shutdownSignal'
+  | 'metrics'
 >;
 
 export class ZLinkTransferredActorRollbackCoordinator {
@@ -89,5 +90,6 @@ export class ZLinkTransferredActorRollbackCoordinator {
     this.options.actorDestroyedCleanup?.(actor.actorId);
     state.clearAfterDestroy();
     this.states.delete(actor.actorId);
+    this.options.metrics?.change('zlink.actor.count', -1);
   }
 }

@@ -1,6 +1,5 @@
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { EvidenceWaitReq, WorkflowRes, WorkflowReq } from '../../../Shared/messages';
-import { PacketNames } from '../../../Shared/messages';
+import { WorkflowReq, type EvidenceWaitReq, type WorkflowRes } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -12,7 +11,7 @@ export function createWorkflowEndpoints(
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'workflow', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
-    { method: 'POST', path: '/workflow/request', handle: (body) => requestWorkflow(channel, body as WorkflowReq) },
+    { method: 'POST', path: '/workflow/request', handle: (body) => requestWorkflow(channel, new WorkflowReq((body as WorkflowReq).value)) },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     {
       method: 'POST',
@@ -33,7 +32,6 @@ async function requestWorkflow(
 ): Promise<WorkflowRes> {
   return channel
     .requestToChannel('workflow', request)
-    .packetName(PacketNames.workflowReq)
     .timeout(5000)
     .submit<WorkflowRes>();
 }

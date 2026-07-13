@@ -18,7 +18,6 @@ import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import { type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import {
   decodeFrameworkPayloadMessage,
   encodeFrameworkPayloadMessage
@@ -109,7 +108,6 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
 
 class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs: number | undefined;
-  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -119,7 +117,6 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     private readonly request: unknown,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {
-    this.yieldTurn = captureZLinkSpotSerialTurn();
   }
 
   timeout(timeoutMs: number): this {
@@ -140,28 +137,19 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
         this.timeoutMs,
         signal
       );
-      return {
-        ...result,
-        reply: decodeJoinReply<TReply>(result.reply, this.messageSerializers)
-      };
+      const reply = decodeJoinReply<TReply>(result.reply, this.messageSerializers) as TReply;
+      return result.accepted
+        ? { status: 'accepted', actor: result.actor!, reply }
+        : { status: 'rejected', reply };
     } finally {
       requestMessage.close();
     }
   }
 
-  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    if (this.yieldTurn === undefined) {
-      return Promise.reject(new ZLinkConfigurationException(
-        'yield requires a framework Spot handler turn captured when the call object was created.'
-      ));
-    }
-    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
-  }
 }
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
   private timeoutMs: number | undefined;
-  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -171,7 +159,6 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     private readonly request: unknown,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {
-    this.yieldTurn = captureZLinkSpotSerialTurn();
   }
 
   timeout(timeoutMs: number): this {
@@ -190,23 +177,15 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
         this.timeoutMs,
         signal
       );
-      return {
-        ...result,
-        reply: decodeJoinReply<TReply>(result.reply, this.messageSerializers)
-      };
+      const reply = decodeJoinReply<TReply>(result.reply, this.messageSerializers) as TReply;
+      return result.accepted
+        ? { status: 'accepted', actor: result.actor!, reply }
+        : { status: 'rejected', reply };
     } finally {
       requestMessage.close();
     }
   }
 
-  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    if (this.yieldTurn === undefined) {
-      return Promise.reject(new ZLinkConfigurationException(
-        'yield requires a framework Spot handler turn captured when the call object was created.'
-      ));
-    }
-    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
-  }
 }
 
 class UnboundZLinkSession implements ZLinkBoundSession {

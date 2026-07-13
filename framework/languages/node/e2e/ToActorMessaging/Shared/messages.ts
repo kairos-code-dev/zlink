@@ -1,3 +1,5 @@
+import { ZLinkPacket } from '@zlink-systems/framework';
+
 export const PacketNames = {
   actorNotify: 'ActorNotify',
   actorAsk: 'ActorAsk',
@@ -5,16 +7,20 @@ export const PacketNames = {
   bindActor: 'BindActor'
 } as const;
 
-export interface ActorNotify {
-  readonly scenario: string;
-  readonly actorId: string;
-  readonly value: string;
+export class ActorNotify {
+  constructor(
+    readonly scenario: string,
+    readonly actorId: string,
+    readonly value: string
+  ) {}
 }
 
-export interface ActorAsk {
-  readonly scenario: string;
-  readonly actorId: string;
-  readonly value: string;
+export class ActorAsk {
+  constructor(
+    readonly scenario: string,
+    readonly actorId: string,
+    readonly value: string
+  ) {}
 }
 
 export interface ActorReply {
@@ -23,16 +29,21 @@ export interface ActorReply {
   readonly value: string;
 }
 
-export interface ActorPushReq {
-  readonly scenario: string;
-  readonly actorId: string;
-  readonly value: string;
+export class ActorPushReq {
+  constructor(
+    readonly scenario: string,
+    readonly actorId: string,
+    readonly value: string
+  ) {}
 }
 
-export interface ActorPushNotify {
-  readonly scenario: string;
-  readonly actorId: string;
-  readonly value: string;
+@ZLinkPacket(PacketNames.actorPush)
+export class ActorPushNotify {
+  constructor(
+    readonly scenario: string,
+    readonly actorId: string,
+    readonly value: string
+  ) {}
 }
 
 export interface ActorEvidence {
@@ -79,13 +90,13 @@ export interface ActorCallResponse {
 }
 
 export function actorNotify(scenario: string, actorId: string, value: string): ActorNotify {
-  return { scenario, actorId, value };
+  return new ActorNotify(scenario, actorId, value);
 }
 
 export function actorAsk(scenario: string, actorId: string, value: string): ActorAsk {
-  return { scenario, actorId, value };
+  return new ActorAsk(scenario, actorId, value);
 }
 
 export function actorPush(scenario: string, actorId: string, value: string): ActorPushReq {
-  return { scenario, actorId, value };
+  return new ActorPushReq(scenario, actorId, value);
 }

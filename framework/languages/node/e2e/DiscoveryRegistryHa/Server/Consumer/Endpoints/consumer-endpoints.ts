@@ -4,8 +4,8 @@ import {
   type ZLinkLocationRuntimeQuery,
   type ZLinkChannelClient
 } from '@zlink-systems/framework';
-import type { ProfileRes, ProfileReq } from '../../../Shared/messages';
-import { ChannelNames, PacketNames } from '../../../Shared/messages';
+import { ProfileReq, type ProfileRes } from '../../../Shared/messages';
+import { ChannelNames } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createConsumerEndpoints(
@@ -15,8 +15,8 @@ export function createConsumerEndpoints(
 ): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'consumer' }) },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileReq) },
-    { method: 'POST', path: '/profile/request-once', handle: (body) => requestProfileOnce(channel, body as ProfileReq) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, toProfileReq(body)) },
+    { method: 'POST', path: '/profile/request-once', handle: (body) => requestProfileOnce(channel, toProfileReq(body)) },
     { method: 'GET', path: '/location/status', handle: () => locationQuery.getStatus() },
     {
       method: 'GET',
@@ -38,10 +38,14 @@ export function createConsumerEndpoints(
   ];
 }
 
+function toProfileReq(body: unknown): ProfileReq {
+  const request = body as ProfileReq;
+  return new ProfileReq(request.value, request.marker);
+}
+
 async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return await channel
     .requestToChannel(ChannelNames.profile, request)
-    .packetName(PacketNames.profileReq)
     .timeout(5000)
     .submit<ProfileRes>();
 }
@@ -49,7 +53,6 @@ async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq):
 async function requestProfileOnce(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return await channel
     .requestToChannel(ChannelNames.profile, request)
-    .packetName(PacketNames.profileReq)
     .timeout(1000)
     .submit<ProfileRes>();
 }

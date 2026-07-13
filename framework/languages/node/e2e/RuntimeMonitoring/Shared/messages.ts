@@ -11,9 +11,11 @@ export const PacketNames = {
   profileReq: 'ProfileReq'
 } as const;
 
-export interface ProfileReq {
-  readonly value: string;
-  readonly marker: string;
+export class ProfileReq {
+  constructor(
+    readonly value: string,
+    readonly marker: string
+  ) {}
 }
 
 export interface ProfileRes {

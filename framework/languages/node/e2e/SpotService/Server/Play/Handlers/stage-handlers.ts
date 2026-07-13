@@ -6,6 +6,7 @@ import type {
   ZLinkSpotTimerHandler,
   ZLinkTimerTick
 } from '@zlink-systems/framework';
+import { ZLinkPacket } from '@zlink-systems/framework';
 import type { StageProbeReq, StageTimerStartMsg, StateRes } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
@@ -32,6 +33,7 @@ class ScenarioStage {
 }
 
 @Injectable()
+@ZLinkPacket('StageProbeReq')
 export class StageProbeHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -46,6 +48,7 @@ export class StageProbeHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
 }
 
 @Injectable()
+@ZLinkPacket('StageTimerStartMsg')
 export class StageTimerStartHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartMsg> {
   async handle(
     spot: ScenarioUserSpot,

@@ -7,9 +7,13 @@ import type {
   ZLinkLocationActorEvent,
   ZLinkLocationMonitoringRegistration,
   ZLinkLocationPeerEvent,
+  ZLinkPeerLocation,
   ZLinkLocationRouteEvent,
   ZLinkLocationRuntimeEvent,
   ZLinkLocationRuntimeEventKind,
+  ZLinkLocationRuntimeStatus,
+  ZLinkLocationTopologyEntry,
+  ZLinkLocationServiceSummary,
   ZLinkLocationSpotEvent,
   ZLinkPollingMonitoringRegistration,
   ZLinkRouteLocation,
@@ -24,7 +28,10 @@ import type {
   ZLinkSpotLocation,
   ZLinkSpotLocationKey,
   ZLinkSpotEvent,
-  ZLinkSpotEventKind
+  ZLinkSpotEventKind,
+  ZLinkSpotNodeStatus,
+  ZLinkSpotNodePeerEntry,
+  ZLinkSpotNodeSubjectEntry
 } from '../../contracts';
 import {
   ZLinkLocationActorEventKind as ActorLocationEventKind,
@@ -123,8 +130,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
         await this.publisher.publish({
           sourceName: this.registration.sourceName,
           timestamp: new Date(),
-          event: LocationRuntimeEventKind.StoreFailure,
-          status: { storeHealthy: false, watchEnabled: false, pollingIntervalMs: this.registration.intervalMs, lastError: errorMessage(error), ownerLeaseHealthy: false }
+          event: LocationRuntimeEventKind.StoreUnavailable
         } satisfies ZLinkLocationRuntimeEvent);
       }
       return;
@@ -182,7 +188,7 @@ export class ZLinkLocationMonitoringEventEmitter {
     }
   }
 
-  peerRowUpdated(key: ZLinkLocationKey, peer: ZLinkLocationPeerEvent['peer']): void {
+  peerRowUpdated(key: ZLinkLocationKey, peer: ZLinkPeerLocation): void {
     this.publishPeer(PeerLocationEventKind.RowUpdated, { key, peer });
   }
 
@@ -230,36 +236,36 @@ export class ZLinkLocationMonitoringEventEmitter {
     this.publishRoute(RouteLocationEventKind.ResolveMiss, { key });
   }
 
-  private publishPeer(event: ZLinkLocationPeerEvent['event'], payload: Omit<ZLinkLocationPeerEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+  private publishPeer(event: ZLinkLocationPeerEvent['event'], payload: Record<string, unknown>): void {
     const registration = this.registration.peer;
     if (registration === undefined) {
       return;
     }
-    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload } as ZLinkLocationPeerEvent);
   }
 
-  private publishSpotLocation(event: ZLinkLocationSpotEvent['event'], payload: Omit<ZLinkLocationSpotEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+  private publishSpotLocation(event: ZLinkLocationSpotEvent['event'], payload: Record<string, unknown>): void {
     const registration = this.registration.spot;
     if (registration === undefined) {
       return;
     }
-    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload } as ZLinkLocationSpotEvent);
   }
 
-  private publishActor(event: ZLinkLocationActorEvent['event'], payload: Omit<ZLinkLocationActorEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+  private publishActor(event: ZLinkLocationActorEvent['event'], payload: Record<string, unknown>): void {
     const registration = this.registration.actor;
     if (registration === undefined) {
       return;
     }
-    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload } as ZLinkLocationActorEvent);
   }
 
-  private publishRoute(event: ZLinkLocationRouteEvent['event'], payload: Omit<ZLinkLocationRouteEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+  private publishRoute(event: ZLinkLocationRouteEvent['event'], payload: Record<string, unknown>): void {
     const registration = this.registration.route;
     if (registration === undefined) {
       return;
     }
-    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload } as ZLinkLocationRouteEvent);
   }
 
   private publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): void {
@@ -367,14 +373,12 @@ async function publishSpotIfChanged<T>(
   if (current === previous) {
     return previous;
   }
-  const runtimeEvent: ZLinkSpotEvent = {
-    sourceName,
-    timestamp: new Date(),
-    event,
-    ...(event === SpotEventKind.StatusChanged ? { status: snapshot as ZLinkSpotEvent['status'] } : {}),
-    ...(event === SpotEventKind.PeersChanged ? { peers: snapshot as ZLinkSpotEvent['peers'] } : {}),
-    ...(event === SpotEventKind.SubjectsChanged ? { subjects: snapshot as ZLinkSpotEvent['subjects'] } : {})
-  };
+  const base = { sourceName, timestamp: new Date() };
+  const runtimeEvent: ZLinkSpotEvent = event === SpotEventKind.StatusChanged
+    ? { ...base, event, status: snapshot as ZLinkSpotNodeStatus }
+    : event === SpotEventKind.PeersChanged
+      ? { ...base, event, peers: snapshot as readonly ZLinkSpotNodePeerEntry[] }
+      : { ...base, event: SpotEventKind.SubjectsChanged, subjects: snapshot as readonly ZLinkSpotNodeSubjectEntry[] };
   await publisher.publish(runtimeEvent);
   return current;
 }
@@ -390,16 +394,12 @@ async function publishLocationRuntimeIfChanged<T>(
   if (current === previous) {
     return previous;
   }
-  const runtimeEvent: ZLinkLocationRuntimeEvent = {
-    sourceName,
-    timestamp: new Date(),
-    event,
-    ...(event === LocationRuntimeEventKind.StatusChanged ? { status: snapshot as ZLinkLocationRuntimeEvent['status'] } : {}),
-    ...(event === LocationRuntimeEventKind.TopologyChanged ? { topology: snapshot as ZLinkLocationRuntimeEvent['topology'] } : {}),
-    ...(event === LocationRuntimeEventKind.ServiceSummaryChanged
-      ? { serviceSummary: snapshot as ZLinkLocationRuntimeEvent['serviceSummary'] }
-      : {})
-  };
+  const base = { sourceName, timestamp: new Date() };
+  const runtimeEvent: ZLinkLocationRuntimeEvent = event === LocationRuntimeEventKind.StatusChanged
+    ? { ...base, event, status: snapshot as ZLinkLocationRuntimeStatus }
+    : event === LocationRuntimeEventKind.TopologyChanged
+      ? { ...base, event, topology: snapshot as readonly ZLinkLocationTopologyEntry[] }
+      : { ...base, event: LocationRuntimeEventKind.ServiceSummaryChanged, serviceSummary: snapshot as readonly ZLinkLocationServiceSummary[] };
   await publisher.publish(runtimeEvent);
   return current;
 }
@@ -420,7 +420,6 @@ function validatePollingInterval(sourceKind: string, intervalMs: number): void {
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 export * from './message-flow';
+export * from './flow-context';
+export * from './runtime-metrics';

@@ -4,12 +4,12 @@ import type {
   ZLinkMessage,
   ZLinkActor,
   ZLinkBoundSession,
-  ZLinkBoundSessionFactory,
-  ZLinkBoundSessionSendCall,
   ZLinkSessionActor,
   ZLinkSessionActors,
   ZLinkSessionClient,
   ZLinkSessionContext,
+  ZLinkSessionHandlerRegistry,
+  ZLinkSessionPacketHandler,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
   ZLinkStream
@@ -84,9 +84,14 @@ interface ZLinkBoundSessionRuntime {
   disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void>;
 }
 
+export interface ZLinkBoundSessionFactory {
+  create(actorId: string): ZLinkBoundSession;
+}
+
 export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
+  readonly handlers: ZLinkSessionHandlerRegistry = new DefaultZLinkSessionHandlerRegistry(this);
   private readonly localActors = new ZLinkSessionLocalActorBindings<DefaultZLinkSessionActor>();
   private readonly requests = new ZLinkSessionRequestTracker();
   private currentDispatchHeader: ZLinkStreamFrameHeader | undefined;
@@ -222,6 +227,30 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   }
 }
 
+class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry {
+  private readonly handlersByPacket = new Map<string, ZLinkSessionPacketHandler<ZLinkSessionContext>>();
+
+  constructor(private readonly context: ZLinkSessionContext) {}
+
+  addHandler<THandler>(handlerType: new (...args: never[]) => THandler): this {
+    const handler = new handlerType() as THandler & Partial<ZLinkSessionPacketHandler<ZLinkSessionContext>>;
+    if (typeof handler.handle !== 'function') {
+      throw new TypeError(`Session handler '${handlerType.name}' must implement handle(...).`);
+    }
+    this.handlersByPacket.set(handlerType.name, handler as ZLinkSessionPacketHandler<ZLinkSessionContext>);
+    return this;
+  }
+
+  async tryHandle(dispatch: import('../../contracts').ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean> {
+    const handler = this.handlersByPacket.get(dispatch.packetName);
+    if (handler === undefined) {
+      return false;
+    }
+    await handler.handle(this.context, dispatch, payload);
+    return true;
+  }
+}
+
 class DefaultZLinkSessionClient implements ZLinkSessionClient {
   constructor(private readonly context: DefaultZLinkSessionContext) {}
 
@@ -285,7 +314,7 @@ export class DefaultZLinkBoundSession implements ZLinkBoundSession {
     private readonly actorId: string
   ) {}
 
-  send(message: unknown): ZLinkBoundSessionSendCall {
+  send(message: unknown): DefaultZLinkBoundSessionSendCall {
     return new DefaultZLinkBoundSessionSendCall(this.runtime, this.actorId, message);
   }
 
@@ -297,7 +326,7 @@ export class DefaultZLinkBoundSession implements ZLinkBoundSession {
 export class DefaultZLinkBoundSessionFactory implements ZLinkBoundSessionFactory {
   constructor(private readonly runtime: ZLinkBoundSessionRuntime) {}
 
-  create(actorId: string): ZLinkBoundSession {
+  create(actorId: string): DefaultZLinkBoundSession {
     return new DefaultZLinkBoundSession(this.runtime, actorId);
   }
 }

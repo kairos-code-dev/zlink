@@ -317,6 +317,9 @@ test('Entry Spot routed bound session command decodes registered channel seriali
   await activation.initialize();
 
   const header = zlink.Message.from(Buffer.from(JSON.stringify({
+    formatMarker: 0xf2,
+    flowId: '018f2b63-9d4a-7abc-8def-0123456789ab',
+    flowOrigin: 1,
     kind: 3,
     channelName: 'bingo.room.route',
     messageName: '__zlink.actor.bound_session.send',
@@ -384,7 +387,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
     spotRid: 'bingo-room-1',
-    spotKind: 2
+    spotKind: 'user'
   });
 });
 

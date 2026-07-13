@@ -12,7 +12,8 @@ import type {
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
+  ZLinkFrameworkException,
+  ZLinkMessageMetadataEmpty
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException } from '../configuration';
@@ -172,22 +173,25 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<ZLinkSpotActorJoinResponse> {
     return this.execute(async () => {
       const payload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
-      const result = await this.options.spot.onActorJoin?.(actor.actorId, payload) ?? { accepted: false };
+      const onActorJoin = (this.options.spot as Partial<ZLinkSpot>).onActorJoin;
+      const result = onActorJoin === undefined
+        ? { accepted: false }
+        : await onActorJoin.call(this.options.spot, actor.actorId, payload);
       if (!result.accepted) {
         return result;
       }
       await commit();
-      await this.options.spot.onJoinedActor?.(actor);
+      await this.options.spot.onJoinedActor(actor);
       return result;
     });
   }
 
   notifyJoinActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onJoinedActor?.(actor));
+    return this.execute(() => this.options.spot.onJoinedActor(actor));
   }
 
   notifyLeaveActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onLeaveActor?.(actor));
+    return this.execute(() => this.options.spot.onLeaveActor(actor));
   }
 
   notifyDisconnectActor(actor: ZLinkActor): Promise<void> {
@@ -237,7 +241,7 @@ export class ZLinkSpotActorDispatcher {
     return {
       ...context,
       packetName,
-      metadata: context.metadata ?? {}
+      metadata: context.metadata ?? ZLinkMessageMetadataEmpty
     } as ZLinkSpotActorSendContext;
   }
 

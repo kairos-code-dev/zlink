@@ -5,6 +5,8 @@ export {
   hasSpotNode,
   hasSpotPublisherClient
 } from './contracts/Configuration/Registration';
+export type * from './contracts/Configuration/RegistrationTypes';
+export type * from './contracts';
 export {
   registerActorFactory,
   registerActorTransferAdapter,
@@ -17,7 +19,6 @@ import type {
   ZLinkLocationRuntimeQuery,
   ZLinkActorClient,
   ZLinkActorManager,
-  ZLinkBoundSessionFactory,
   ZLinkChannelClient,
   ZLinkCodecRegistryBuilder,
   ZLinkCodecRegistrar,
@@ -30,10 +31,11 @@ import type {
   ZLinkSpotManager,
   ZLinkSpotOutbound,
   ZLinkSpotPublisherClient,
-  ZLinkSpotRefResolver,
+  ZLinkSpotHandleResolver,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec
 } from './contracts';
+import type { ZLinkBoundSessionFactory } from './runtime/streams/session-context';
 import type { ZLinkFrameworkRegistration } from './contracts/Configuration/Registration';
 import type {
   ZLinkCodecSerializerRegistration,
@@ -64,9 +66,12 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
-  createLocationRefResolver(): ZLinkSpotRefResolver | undefined;
+  createLocationHandleResolver(): ZLinkSpotHandleResolver | undefined;
   start(): Promise<void>;
   stop(): Promise<void>;
+  drain(deadlineMs?: number, signal?: AbortSignal): Promise<import('./contracts').ZLinkDrainResult>;
+  awaitDrained(signal?: AbortSignal): Promise<import('./contracts').ZLinkDrainResult>;
+  isReady(): boolean;
   onApplicationBootstrap?(): Promise<void> | void;
   onApplicationShutdown?(): Promise<void> | void;
 }

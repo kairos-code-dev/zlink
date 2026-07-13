@@ -55,7 +55,7 @@ function Wait-Topology {
 
 function Start-Redis {
   $name = "shoppingmall-node-redis-ps1-$([System.Guid]::NewGuid().ToString("N"))"
-  $containerId = (& docker run -d --rm --name $name -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
+  $containerId = (& docker run -d --rm --tmpfs /data --name $name -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
   if (-not $containerId) {
     throw "Failed to start Redis container"
   }

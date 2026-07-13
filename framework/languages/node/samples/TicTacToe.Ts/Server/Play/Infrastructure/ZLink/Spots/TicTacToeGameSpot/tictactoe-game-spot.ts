@@ -1,10 +1,10 @@
 import { PlayActorLeaveGameHandler } from './Handlers/play-actor-leave-game-handler';
 import { PlayActorPlaceMarkHandler } from './Handlers/play-actor-place-mark-handler';
+import { PlayActor } from '../../Actors/play-actor';
 import { TicTacToeGameTimerHandler } from './Handlers/tictactoe-game-timer-handler';
 import { TicTacToeMatch } from '../../../../Domain/TicTacToe/tictactoe-match';
 import {
   GameStatus,
-  PacketNames,
   gameStateNotify,
   joinGameRes,
   placeMarkRes,
@@ -41,8 +41,8 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   private gameTick?: ZLinkTimer;
 
   async configure(): Promise<void> {
-    this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler);
-    this.context.handlers.actorSend(PacketNames.leaveGameMsg, PlayActorLeaveGameHandler);
+    this.context.handlers.addActorPacket(PlayActorPlaceMarkHandler, PlayActor);
+    this.context.handlers.addActorPacket(PlayActorLeaveGameHandler, PlayActor);
     this.gameTick = await this.context.addTimer(
       'game-tick',
       GameTickPeriodMs,
@@ -95,7 +95,6 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
             continue;
           }
           player.actor.push(
-            PacketNames.playerJoinedNotify,
             playerJoinedNotify(
               this.roomId,
               actor.actorId,
@@ -105,7 +104,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
               state
             )
           );
-          player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+          player.actor.push(gameStateNotify(state));
         }
       }
     }
@@ -129,7 +128,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       if (joined.actorId === actor.actorId) {
         continue;
       }
-      joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+      joined.actor.push(gameStateNotify(state));
     }
     await this.publishWinMilestone(actor, before, state);
     return placeMarkRes(state);
@@ -140,10 +139,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     const change = match.tick();
     if (change.changed) {
       for (const player of match.players.values()) {
-        player.actor.push(
-          PacketNames.gameStateNotify,
-          gameStateNotify(change.state)
-        );
+        player.actor.push(gameStateNotify(change.state));
       }
     }
   }
@@ -180,7 +176,6 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
         SampleNames.playerMilestoneTopic,
         playerWinMilestoneEvent(after.roomId, actor.actorId, actor.displayName, wins)
       )
-      .packetName(PacketNames.playerWinMilestoneEvent)
       .submit();
   }
 

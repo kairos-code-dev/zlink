@@ -187,9 +187,12 @@ export class ZLinkSubscriberReceiveLoop {
 
   async stop(): Promise<void> {
     this.stopped = true;
-    this.poller.dispose();
-    await this.running;
-    await Promise.allSettled([...this.inFlight]);
+    try {
+      await this.running;
+      await Promise.allSettled([...this.inFlight]);
+    } finally {
+      this.poller.dispose();
+    }
   }
 
   private async dispatchAndClose(topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>): Promise<void> {

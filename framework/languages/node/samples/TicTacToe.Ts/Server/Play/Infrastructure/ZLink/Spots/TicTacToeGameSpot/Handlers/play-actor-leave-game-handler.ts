@@ -4,6 +4,7 @@ import type {
   ZLinkSpotActorSendContext,
   ZLinkSpotActorSendHandler
 } from '@zlink-systems/framework';
+import { ZLinkSpotActorSend } from '@zlink-systems/framework';
 import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
 import type {
   LeaveGameMsg,
@@ -15,6 +16,7 @@ type PlayLeaveActor = TicTacToeActor & ZLinkActor;
 @Injectable()
 class PlayActorLeaveGameHandler
   implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayLeaveActor, LeaveGameMsg> {
+  @ZLinkSpotActorSend('LeaveGameMsg')
   async handle(
     spot: TicTacToeGameSpot,
     actor: PlayLeaveActor,

@@ -11,7 +11,7 @@ export async function runMonA1(options: ClientOptions): Promise<void> {
 
   const evidence = await postJson<string[]>(options.serviceUrl, '/evidence/wait', {
     containsAll: ['monitor-socket|', `source=${RuntimeMonitoringNames.channelServerSource}`],
-    containsAnyGroups: [['kind=Connected', 'kind=ConnectionReady'], ['kind=Disconnected', 'kind=Closed']],
+    containsAnyGroups: [['kind=connected', 'kind=connectionReady'], ['kind=disconnected', 'kind=closed']],
     timeoutMilliseconds: 10000
   } satisfies EvidenceWaitReq);
 
@@ -19,13 +19,13 @@ export async function runMonA1(options: ClientOptions): Promise<void> {
     evidence.some((line) =>
       line.includes('monitor-socket|')
       && line.includes(`source=${RuntimeMonitoringNames.channelServerSource}`)
-      && (line.includes('kind=Connected') || line.includes('kind=ConnectionReady'))),
+      && (line.includes('kind=connected') || line.includes('kind=connectionReady'))),
     'MON-A1 socket connection evidence missing.'
   );
   ensure(
     evidence.some((line) =>
       line.includes('monitor-socket|')
-      && (line.includes('kind=Disconnected') || line.includes('kind=Closed'))),
+      && (line.includes('kind=disconnected') || line.includes('kind=closed'))),
     'MON-A1 socket disconnect evidence missing.'
   );
 

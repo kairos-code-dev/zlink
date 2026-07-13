@@ -10,6 +10,7 @@ import {
 } from '../../Contracts';
 import { ZlinkStreamHeaderFlags } from '../../Contracts/ZlinkStreamEnums';
 import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
+import type { ZlinkFlowOrigin } from '../../Contracts';
 import {
   compressPayload,
   decompressIfNeeded
@@ -30,23 +31,25 @@ export class ZlinkStreamFrameProtocol {
     metadata: ZlinkStreamMetadata,
     compress: boolean,
     requestSeq: bigint | undefined,
-    correlationId?: string
+    correlationId?: string,
+    flowId?: string,
+    flowOrigin?: ZlinkFlowOrigin
   ): Uint8Array {
     const payloadBytes = compress
       ? compressPayload(payload.payload, this.options.compression, this.options.compressionCodec)
       : payload.payload;
-    const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq, correlationId);
+    const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq, correlationId, flowId, flowOrigin);
     return this.encodeFrame(header, payloadBytes);
   }
 
-  encodeControl(name: string): Uint8Array {
+  encodeControl(name: string, payload = new Uint8Array()): Uint8Array {
     return this.encodeFrame({
       kind: ZlinkStreamMessageKind.Control,
       codec: ZlinkStreamCodec.Raw,
       flags: ZlinkStreamHeaderFlags.None,
       name,
       metadata: ZlinkStreamMetadataMap.empty
-    }, new Uint8Array());
+    }, payload);
   }
 
   decode(frameBytes: Uint8Array): { readonly header: ZlinkStreamHeader; readonly payload: Uint8Array } {

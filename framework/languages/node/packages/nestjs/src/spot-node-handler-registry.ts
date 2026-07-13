@@ -11,7 +11,7 @@ import type {
   ZLinkSpotPacketHandlerRegistration,
   ZLinkSpotSubscriptionHandlerRegistration,
   ZLinkSpotTimerHandlerRegistration
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 import type { Mutable } from './contracts';
 import { framework } from './framework-loader';
 

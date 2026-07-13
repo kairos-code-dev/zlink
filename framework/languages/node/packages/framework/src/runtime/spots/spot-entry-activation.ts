@@ -5,12 +5,7 @@ import type {
   ZLinkActor,
   ZLinkChannelClient,
   ZLinkEntrySpot,
-  ZLinkEntrySpotActorRequestHandlerRegistration,
-  ZLinkEntrySpotActorSendHandlerRegistration,
   ZLinkEntrySpotContext,
-  ZLinkEntrySpotPacketHandlerRegistration,
-  ZLinkEntrySpotSubscriptionHandlerRegistration,
-  ZLinkEntrySpotTimerHandlerRegistration,
   ZLinkFanoutClient,
   ZLinkMessage,
   ZLinkMessageSerializer,
@@ -19,6 +14,13 @@ import type {
   ZLinkSpot,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import type {
+  ZLinkEntrySpotActorRequestHandlerRegistration,
+  ZLinkEntrySpotActorSendHandlerRegistration,
+  ZLinkEntrySpotPacketHandlerRegistration,
+  ZLinkEntrySpotSubscriptionHandlerRegistration,
+  ZLinkEntrySpotTimerHandlerRegistration
+} from '../../contracts/Configuration/RegistrationTypes';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
@@ -217,12 +219,12 @@ export class ZLinkEntrySpotActivation {
 
   notifyCreateActor(actor: ZLinkActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, createRequest, signal));
+    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, createRequest));
   }
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onJoinedActor?.(actor, signal));
+    return this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
   }
 
   /**
@@ -271,7 +273,7 @@ export class ZLinkEntrySpotActivation {
   }
 
   private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {
-    const notifyJoined = () => this.serial.execute(() => this.entrySpot.onJoinedActor?.(actor));
+    const notifyJoined = () => this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
     const runtime = this.options.entryActorRuntime;
     if (runtime === undefined) {
       await notifyJoined();
@@ -282,12 +284,12 @@ export class ZLinkEntrySpotActivation {
 
   notifyLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onLeaveActor?.(actor, signal));
+    return this.serial.execute(() => this.entrySpot.onLeaveActor(actor));
   }
 
   notifyDisconnectActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onDisconnectActor?.(actor, signal));
+    return this.serial.execute(() => this.entrySpot.onDisconnectActor?.(actor));
   }
 
   async dispatchActorPacket(

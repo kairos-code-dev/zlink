@@ -104,7 +104,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/main.ts',
       'Client/Configuration/sample-config.ts',
       'Client/Configuration/sample-names.ts',
-      'Server/Api/Handlers/authenticate-user-handler.ts',
       'Server/Api/Handlers/open-conversation-handler.ts',
       'Server/Api/supportchat-api-module.ts',
       'Server/Api/main.ts',
@@ -118,23 +117,12 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Support/Infrastructure/ZLink/Handlers/allocate-conversation-handler.ts',
       'Server/Support/Infrastructure/ZLink/Handlers/assign-agent-handler.ts',
       'Server/Support/Infrastructure/ZLink/Handlers/ensure-support-user-actor-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/open-conversation-channel-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/set-agent-available-channel-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/join-conversation-channel-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/send-chat-message-channel-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/set-typing-channel-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/close-conversation-channel-handler.ts',
       'Server/Support/Infrastructure/ZLink/Handlers/supportchat-notifications-handler.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/conversation-event-mapper.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/support-notification-publisher.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-create-request.ts',
       'Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support-entry-spot.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.ts',
-      'Server/Support/Infrastructure/ZLink/Spots/EntrySpot/Handlers/open-conversation-actor-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Spots/EntrySpot/Handlers/set-agent-available-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/send-chat-message-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/set-typing-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/close-conversation-handler.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-idle-timer-handler.ts',
       'Server/Support/notification-delivery-log.ts',
       'Server/Support/supportchat-support-module.ts',
@@ -552,6 +540,7 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
     'ShoppingMall.Ts',
     'Server/CommerceApi/Infrastructure/ZLink/zlink-order-workflow-router.ts'
   );
+  const messageContracts = readSample('ShoppingMall.Ts', 'Shared/Contracts/messages.ts');
   const workflowService = readSample(
     'ShoppingMall.Ts',
     'Server/OrderWorkflow/Application/OrderWorkflow/order-workflow-service.ts'
@@ -593,8 +582,11 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(commerceApiServer, /\/orders\/start/);
   assert.match(commerceApiServer, /StartOrderUseCase/);
   assert.match(startOrderUseCase, /reserveIdempotency/);
-  assert.match(startOrderUseCase, /PacketNames\.startOrderReq/);
-  assert.match(workflowRouter, /requestWorkflow<TResponse>/);
+  assert.doesNotMatch(startOrderUseCase, /PacketNames|\.packetName\(/);
+  assert.match(workflowRouter, /private request<TResponse>/);
+  assert.match(workflowRouter, /new StartOrderReq\(/);
+  assert.doesNotMatch(workflowRouter, /\.packetName\(/);
+  assert.match(messageContracts, /@ZLinkPacket\(PacketNames\.startOrderReq\)/);
   assert.match(workflowRouter, /workflowRouteRid\(payload: string\)/);
   assert.match(workflowModule, /zlinkFramework\(\)/);
   assert.match(workflowModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(role\)\)/);
@@ -939,9 +931,9 @@ test('Bingo TypeScript sample publishes drawn number before finished notify', ()
     'BingoRoomSpot',
     'bingo-room-spot.ts'
   ), 'utf8');
-  const drawIndex = roomSpot.indexOf('PacketNames.numberDrawnNotify');
+  const drawIndex = roomSpot.indexOf('numberDrawnNotify(');
   const finishedBranchIndex = roomSpot.indexOf('if (drawn.finished)');
-  const endedIndex = roomSpot.indexOf('PacketNames.gameEndedNotify');
+  const endedIndex = roomSpot.indexOf('new BingoGameEndedNotify(');
 
   assert.equal(drawIndex > 0, true);
   assert.equal(finishedBranchIndex > drawIndex, true);
@@ -1423,9 +1415,9 @@ test('TicTacToe uses manual handler registration and other samples keep automati
     [playModule, 'PlayActorJoinGameHandler'],
     [playModule, 'PlayActorPlaceMarkHandler'],
     [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'EntrySpot', 'play-entry-spot.ts'), 'utf8'),
-      'this.context.handlers.actorRequest(PacketNames.joinGameReq, PlayActorJoinGameHandler)'],
+      'this.context.handlers.addActorPacket(PlayActorJoinGameHandler, PlayActor)'],
     [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'TicTacToeGameSpot', 'tictactoe-game-spot.ts'), 'utf8'),
-      'this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler)'],
+      'this.context.handlers.addActorPacket(PlayActorPlaceMarkHandler, PlayActor)'],
     [ticTacToeTimerHandler, 'class TicTacToeGameTimerHandler'],
     [bingoTimerHandler, 'class BingoRoomTimerHandler'],
     [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
@@ -1911,7 +1903,7 @@ test('node cross-language smoke covers channel send publish and stream connector
   const required = [
     'requestToChannel',
     'sendToChannel',
-    'publishToChannel',
+    ".publish('profiles'",
     'nodePublisherToDotnetFanoutSubscriber',
     'nodeConnectorToDotnetStreamServer',
     'dotnetConnectorToNodeStreamServer'
@@ -2038,6 +2030,7 @@ function importSpecifiers(content) {
   for (const pattern of [
     /require\(['"]([^'"]+)['"]\)/g,
     /from ['"]([^'"]+)['"]/g,
+    /import ['"]([^'"]+)['"]/g,
     /import\(['"]([^'"]+)['"]\)/g
   ]) {
     for (const match of content.matchAll(pattern)) {

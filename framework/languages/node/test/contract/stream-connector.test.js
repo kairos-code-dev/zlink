@@ -37,8 +37,8 @@ test('stream header and frame codec follow dotnet binary layout', () => {
   };
 
   const encodedHeader = connector.ZlinkStreamHeaderCodec.encode(header);
-  assert.deepEqual([...encodedHeader.slice(0, 3)], [2, 1, 3]);
-  assert.equal(encodedHeader[11], 4);
+  assert.deepEqual([...encodedHeader.slice(0, 4)], [0xf2, 2, 1, 3]);
+  assert.equal(encodedHeader[12], 4);
 
   const decodedHeader = connector.ZlinkStreamHeaderCodec.decode(encodedHeader);
   assert.equal(decodedHeader.kind, connector.ZlinkStreamMessageKind.Request);
@@ -1337,6 +1337,43 @@ test('stream connector secure WebSocket transport sends request and dispatches b
     await instance.close();
     await closeServer(server);
   }
+});
+
+test('DRAIN-018 session-closing exposes ServerDrain before disconnected callback', async () => {
+  const payload = Uint8Array.from([1, 4, 0, 0]);
+  const header = connector.ZlinkStreamHeaderCodec.encode({
+    kind: connector.ZlinkStreamMessageKind.Control,
+    codec: connector.ZlinkStreamCodec.Raw,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'session-closing',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  const frame = connector.ZlinkStreamFrameCodec.encode(header, payload);
+  let delivered = false;
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:7998',
+    reconnect: { enabled: false },
+    heartbeat: { enabled: false },
+    transportFactory: {
+      async connect() {
+        return {
+          async write() {},
+          async read() {
+            if (delivered) return undefined;
+            delivered = true;
+            return frame;
+          },
+          async close() {}
+        };
+      }
+    }
+  });
+  let observed;
+  instance.onDisconnected(() => { observed = instance.closeReason; });
+  await instance.connect();
+  await instance.dispatch();
+  assert.equal(instance.closeReason, 'ServerDrain');
+  assert.equal(observed, 'ServerDrain');
 });
 
 test('stream connector dispatch replies to heartbeat ping control frames with pong', async () => {

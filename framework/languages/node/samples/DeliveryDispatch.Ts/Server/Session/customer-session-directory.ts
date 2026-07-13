@@ -1,6 +1,5 @@
-import { PacketNames } from '../../Shared/Contracts/messages';
 import type { ZLinkSessionContext } from '@zlink-systems/framework';
-import type { DeliveryStatusNotify } from '../../Shared/Contracts/messages';
+import { DeliveryStatusNotify } from '../../Shared/Contracts/messages';
 
 class CustomerSessionDirectory {
   private readonly sessions = new Map<string, ZLinkSessionContext>();
@@ -35,7 +34,12 @@ class CustomerSessionDirectory {
     for (const sessionId of sessionIds) {
       const session = this.sessions.get(sessionId);
       if (session !== undefined) {
-        await session.client.send(status).packetName(PacketNames.deliveryStatusNotify).submit();
+        session.client.send(new DeliveryStatusNotify(
+          status.deliveryId,
+          status.status,
+          status.occurredAt,
+          status.courierId
+        )).submit();
       }
     }
   }

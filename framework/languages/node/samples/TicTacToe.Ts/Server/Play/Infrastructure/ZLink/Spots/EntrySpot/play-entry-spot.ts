@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
-import { PacketNames, observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
+import { PlayActor } from '../../Actors/play-actor';
+import { observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
 import { SampleNames } from '../../../../../Configuration/sample-settings';
 import type {
@@ -34,7 +35,7 @@ class MilestoneObserverRegistry {
   async notify(event: PlayerWinMilestoneMsg, receivingSpotNodeRid: string): Promise<void> {
     const payload = winMilestoneNotify(event, receivingSpotNodeRid);
     for (const actor of [...this.observers.values()]) {
-      actor.push(PacketNames.winMilestoneNotify, payload);
+      actor.push(payload);
     }
   }
 }
@@ -48,9 +49,11 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
   ) {}
 
   configure(): void {
-    this.context.handlers.actorRequest(PacketNames.joinGameReq, PlayActorJoinGameHandler);
+    this.context.handlers.addActorPacket(PlayActorJoinGameHandler, PlayActor);
     this.context.handlers.addSubscribe(PlayerWinMilestoneEventHandler, SampleNames.playerMilestoneTopic);
   }
+
+  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
 
   async join(actor: PlayEntrySpotActor, player: PlayerInfo, roomId: string): Promise<JoinGameRes> {
     const request: TicTacToeGameJoinReq = {
@@ -63,8 +66,8 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
       }
     };
     const joined = await actor.context.joinSpot(roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
-    const reply = joined.reply ?? {};
-    if (!joined.accepted) {
+    const reply = joined.reply;
+    if (joined.status === 'rejected') {
       throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
     }
     return reply as JoinGameRes;

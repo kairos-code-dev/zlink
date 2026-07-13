@@ -9,6 +9,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import {
   ZLinkMessageFlowTracer,
+  ZLinkRuntimeMetrics,
   createDiagnosticsContext,
   createMessageFlowModeCell,
   flowIfEnabled,
@@ -34,12 +35,19 @@ export class ZLinkChannelDispatchServices {
   private diagnosticsContextValue?: ZLinkDiagnosticsContext;
   private handlerFiltersValue?: readonly ZLinkHandlerFilter[];
   private outboundFlowValue?: ZLinkMessageFlowTracer;
+  private readonly metricsValue: ZLinkRuntimeMetrics;
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly providerResolver?: ZLinkProviderResolver,
     private readonly configuredMessageFlowModeCell?: ZLinkMessageFlowModeCell
-  ) {}
+  ) {
+    this.metricsValue = new ZLinkRuntimeMetrics(registration.metrics?.meterProvider);
+  }
+
+  metrics(): ZLinkRuntimeMetrics {
+    return this.metricsValue;
+  }
 
   dispatchErrorReporter(errorSink: ZLinkRuntimeErrorSink): ZLinkDispatchErrorReporter {
     const existing = this.dispatchErrorReporters.get(errorSink);

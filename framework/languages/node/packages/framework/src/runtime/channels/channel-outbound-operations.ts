@@ -89,7 +89,7 @@ export class ZLinkChannelOutboundOperations {
       packetName,
       correlationId
     }));
-    return this.sockets.requireSubmitter(dealer).submitRequest(
+    return this.measureRequest(channelName, () => this.sockets.requireSubmitter(dealer).submitRequest(
       (resolve, reject) => {
         try {
           const submitted = dealer.request(
@@ -136,7 +136,7 @@ export class ZLinkChannelOutboundOperations {
       signal,
       timeoutMs,
       () => closeMessages(parts)
-    );
+    ));
   }
 
   async publish(
@@ -164,6 +164,7 @@ export class ZLinkChannelOutboundOperations {
       signal,
       () => closeMessages(parts)
     );
+    this.dispatchServices.metrics().count('zlink.fanout.published', 1, { topic });
     this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
       surface: ZLinkDispatchErrorSurface.Channel,
       messageKind: ZLinkDispatchMessageKind.Publish,
@@ -238,7 +239,7 @@ export class ZLinkChannelOutboundOperations {
       correlationId,
       sourceRid: targetNodeRid
     }));
-    return this.sockets.requireSubmitter(router).submitRequest(
+    return this.measureRequest(routerChannelId, () => this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => {
         let submitted: boolean;
         try {
@@ -295,6 +296,24 @@ export class ZLinkChannelOutboundOperations {
       signal,
       timeoutMs,
       () => closeMessages(parts)
-    );
+    ));
+  }
+
+  private async measureRequest<T>(channel: string, operation: () => Promise<T>): Promise<T> {
+    const metrics = this.dispatchServices.metrics();
+    if (!metrics.enabled()) return operation();
+    const started = process.hrtime.bigint();
+    metrics.change('zlink.channel.request.inflight', 1, { channel });
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Error && /timed out/i.test(error.message)) {
+        metrics.count('zlink.channel.request.timeouts', 1, { channel });
+      }
+      throw error;
+    } finally {
+      metrics.change('zlink.channel.request.inflight', -1, { channel });
+      metrics.duration('zlink.channel.request.duration', Number(process.hrtime.bigint() - started) / 1e9, { channel });
+    }
   }
 }

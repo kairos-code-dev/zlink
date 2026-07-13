@@ -140,13 +140,15 @@ export class LeaveGameMsg {
   constructor(readonly roomId: string) {}
 }
 
-export interface PlayerJoinedNotify {
-  roomId: string;
-  actorId: string;
-  displayName: string;
-  level: number;
-  mark: string;
-  state: unknown;
+export class PlayerJoinedNotify {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly displayName: string,
+    readonly level: number,
+    readonly mark: string,
+    readonly state: unknown
+  ) {}
 }
 
 export enum GameStatus {
@@ -174,23 +176,27 @@ export interface GameState {
   lastMoveCell: number | null;
 }
 
-export interface GameStateNotify {
-  state: GameState;
+export class GameStateNotify {
+  constructor(readonly state: GameState) {}
 }
 
-export interface WinMilestoneNotify {
-  roomId: string;
-  actorId: string;
-  displayName: string;
-  wins: number;
-  receivingSpotNodeRid: string;
+export class WinMilestoneNotify {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly displayName: string,
+    readonly wins: number,
+    readonly receivingSpotNodeRid: string
+  ) {}
 }
 
-export interface PlayerWinMilestoneMsg {
-  roomId: string;
-  actorId: string;
-  displayName: string;
-  wins: number;
+export class PlayerWinMilestoneMsg {
+  constructor(
+    readonly roomId: string,
+    readonly actorId: string,
+    readonly displayName: string,
+    readonly wins: number
+  ) {}
 }
 
 export interface TicTacToeActor {
@@ -204,15 +210,13 @@ export interface TicTacToeActor {
   markDisconnected(): void;
   markForDestroyAfterRoomLeave(): void;
   destroyAfterEntrySpotJoin: boolean;
-  push(packetName: string, payload: unknown): void;
+  push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): void;
 }
 
 export interface TicTacToeActorClient {
   send(message: unknown): {
-    packetName(packetName: string): {
-      metadata(key: string, value: string): {
-        submit(signal?: AbortSignal): void;
-      };
+    metadata(key: string, value: string): {
+      submit(): void;
     };
   };
 }
@@ -308,11 +312,11 @@ function playerJoinedNotify(
   mark: string,
   state: unknown
 ): PlayerJoinedNotify {
-  return { roomId, actorId, displayName, level, mark, state };
+  return new PlayerJoinedNotify(roomId, actorId, displayName, level, mark, state);
 }
 
 function gameStateNotify(state: GameState): GameStateNotify {
-  return { state };
+  return new GameStateNotify(state);
 }
 
 function playerWinMilestoneEvent(
@@ -321,14 +325,20 @@ function playerWinMilestoneEvent(
   displayName: string,
   wins: number
 ): PlayerWinMilestoneMsg {
-  return { roomId, actorId, displayName, wins };
+  return new PlayerWinMilestoneMsg(roomId, actorId, displayName, wins);
 }
 
 function winMilestoneNotify(
   event: PlayerWinMilestoneMsg,
   receivingSpotNodeRid: string
 ): WinMilestoneNotify {
-  return { ...event, receivingSpotNodeRid };
+  return new WinMilestoneNotify(
+    event.roomId,
+    event.actorId,
+    event.displayName,
+    event.wins,
+    receivingSpotNodeRid
+  );
 }
 
 export {

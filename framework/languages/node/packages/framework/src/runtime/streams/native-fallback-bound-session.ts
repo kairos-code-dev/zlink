@@ -20,6 +20,7 @@ import {
   type ZLinkStreamFrameHeader
 } from './protocol';
 import type { ZLinkNativeFallbackBoundSessionPort } from './stream-binding-runtime-ports';
+import { resolveFrameworkPacketName } from '../messaging/packet-name';
 
 export interface ZLinkNativeFallbackBoundSessionOptions {
   readonly runtime: ZLinkNativeFallbackBoundSessionPort;
@@ -106,6 +107,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       throw new Error('Bound session send already submitted.');
     }
     this.executed = true;
+    const packetName = resolveFrameworkPacketName(this.message, this.selectedPacketName, 'Bound session');
     const remoteTarget = this.options.remoteBoundSessionTargetProvider();
     if (remoteTarget !== undefined) {
       const actorRef = this.options.actorRefProvider();
@@ -118,7 +120,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         actorGeneration: actorRef?.generation.toString(),
         actorOwnershipGeneration: ownershipGeneration?.toString(),
         message: this.message,
-        boundPacketName: this.selectedPacketName,
+        boundPacketName: packetName,
         metadata: this.selectedMetadata
       });
       const target = {
@@ -145,7 +147,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     if (this.options.runtime.sendLocalBoundSession(
       this.options.actorId,
       this.message,
-      this.selectedPacketName,
+      packetName,
       this.selectedMetadata
     )) {
       return;
@@ -157,7 +159,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         this.options.nodeProvider(),
         actorRef,
         this.message,
-        this.selectedPacketName,
+        packetName,
         this.selectedMetadata,
         signal
       );
@@ -166,7 +168,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     await this.options.runtime.sendBoundSession(
       this.options.actorId,
       this.message,
-      this.selectedPacketName,
+      packetName,
       this.selectedMetadata,
       signal
     );

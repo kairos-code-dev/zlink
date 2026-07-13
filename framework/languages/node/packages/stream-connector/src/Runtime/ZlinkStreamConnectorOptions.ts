@@ -61,7 +61,8 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     compressionCodec: resolveCompressionCodec(options),
     nameResolver: options.nameResolver ?? { resolve: (type) => type.name },
     transportFactory: options.transportFactory ?? new NodeStreamTransportFactory(),
-    codec: options.codec
+    codec: options.codec,
+    meterProvider: options.meterProvider
   };
 }
 

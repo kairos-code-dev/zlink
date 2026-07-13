@@ -6,6 +6,7 @@ import type {
 } from '../Contracts';
 import type { ZlinkStreamFrameProtocol } from './Protocol/ZlinkStreamFrameProtocol';
 import { throwIfAborted } from './ZlinkStreamSupport';
+import { currentOrCreateFlow } from './ZlinkFlowContext';
 
 export class ZlinkStreamFrameSender {
   private readonly pendingWrites = new Set<Promise<void>>();
@@ -24,9 +25,10 @@ export class ZlinkStreamFrameSender {
     correlationId?: string
   ): Promise<void> {
     throwIfAborted(signal);
+    const flow = currentOrCreateFlow();
     await this.write(
       connection,
-      this.protocol.encode(kind, name, payload, metadata, compress, requestSeq, correlationId),
+      this.protocol.encode(kind, name, payload, metadata, compress, requestSeq, correlationId, flow.flowId, flow.flowOrigin),
       signal
     );
   }

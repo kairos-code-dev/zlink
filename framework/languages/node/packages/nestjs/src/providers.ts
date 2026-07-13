@@ -7,11 +7,11 @@ import type {
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
   ZLinkRuntimeEventPublisher
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,
-  ZLINK_ACTOR_SPOT_REF_RESOLVER,
+  ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
   ZLINK_BOUND_SESSION_FACTORY,
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
@@ -22,16 +22,18 @@ import {
   ZLINK_MESSAGE_METADATA_POLICY,
   ZLINK_ROUTE_CLIENT,
   ZLINK_RUNTIME_EVENT_PUBLISHER,
+  ZLINK_DRAIN_CONTROL,
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND,
   ZLINK_SPOT_PUBLISHER_CLIENT,
-  ZLINK_SPOT_REF_RESOLVER
+  ZLINK_SPOT_HANDLE_RESOLVER
 } from './tokens';
 import {
   claimRuntimeEventHandler,
   isNestRuntimeEventHandler
 } from './handler-metadata';
 import { framework, type FrameworkRuntimeHost } from './framework-loader';
+import { ZLinkDrainHealthIndicator } from './drain-health-indicator';
 
 type RuntimeHostWithNestLifecycle = FrameworkRuntimeHost & OnModuleInit & OnModuleDestroy;
 
@@ -64,6 +66,10 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   {
     token: ZLINK_RUNTIME_EVENT_PUBLISHER,
     create: (_registration, runtime) => runtime.eventPublisher
+  },
+  {
+    token: ZLINK_DRAIN_CONTROL,
+    create: (_registration, runtime) => runtime
   }
 ];
 
@@ -72,6 +78,7 @@ export function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegi
     ...ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS.map((spec) =>
       createAlwaysAvailableClientProvider(spec, registration)
     ),
+    ZLinkDrainHealthIndicator,
     { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
   ];
 }
@@ -102,7 +109,9 @@ export function alwaysAvailableClientTokens(): InjectionToken[] {
     ZLINK_FANOUT_CLIENT,
     ZLINK_BOUND_SESSION_FACTORY,
     ZLINK_RUNTIME_EVENT_PUBLISHER,
-    ZLINK_MESSAGE_METADATA_POLICY
+    ZLINK_DRAIN_CONTROL,
+    ZLINK_MESSAGE_METADATA_POLICY,
+    ZLinkDrainHealthIndicator
   ];
 }
 
@@ -179,25 +188,25 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     }
   },
   {
-    token: ZLINK_SPOT_REF_RESOLVER,
+    token: ZLINK_SPOT_HANDLE_RESOLVER,
     requiresRuntime: true,
     isEnabled: (registration) => hasLocationStores(registration),
     create: (_registration, runtime) => {
-      const resolver = requireRuntime(runtime).createLocationRefResolver();
+      const resolver = requireRuntime(runtime).createLocationHandleResolver();
       if (resolver === undefined) {
-        throw new framework.ZLinkConfigurationException('SpotRef resolver requires location stores.');
+        throw new framework.ZLinkConfigurationException('SpotHandle resolver requires location stores.');
       }
       return resolver;
     }
   },
   {
-    token: ZLINK_ACTOR_SPOT_REF_RESOLVER,
+    token: ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
     requiresRuntime: true,
     isEnabled: (registration) => hasLocationStores(registration),
     create: (_registration, runtime) => {
-      const resolver = requireRuntime(runtime).createLocationRefResolver();
+      const resolver = requireRuntime(runtime).createLocationHandleResolver();
       if (resolver === undefined) {
-        throw new framework.ZLinkConfigurationException('Actor SpotRef resolver requires location stores.');
+        throw new framework.ZLinkConfigurationException('Actor SpotHandle resolver requires location stores.');
       }
       return resolver;
     }
@@ -285,8 +294,8 @@ export function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_CLIENT,
     ZLINK_ACTOR_MANAGER,
-    ZLINK_SPOT_REF_RESOLVER,
-    ZLINK_ACTOR_SPOT_REF_RESOLVER,
+    ZLINK_SPOT_HANDLE_RESOLVER,
+    ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
     ZLINK_LOCATION_RUNTIME_QUERY
   ];
 }
@@ -310,10 +319,11 @@ export function createRuntimeHost(
     await runtime.start();
   };
   runtime.onModuleDestroy = async () => {
-    await runtime.stop();
+    // Application shutdown owns the ordered drain; stop remains idempotent for
+    // explicit test/module teardown where Nest does not run shutdown hooks.
   };
   runtime.onApplicationBootstrap = async () => {};
-  runtime.onApplicationShutdown = async () => {};
+  runtime.onApplicationShutdown = async () => { await runtime.drain(); };
   return runtime;
 }
 

@@ -3,7 +3,8 @@ import type {
   ZlinkStreamConnectionState,
   ZlinkStreamErrorCode,
   ZlinkStreamHeaderFlags,
-  ZlinkStreamMessageKind
+  ZlinkStreamMessageKind,
+  ZlinkFlowOrigin
 } from './ZlinkStreamEnums';
 import type { ZlinkStreamMetadata } from './ZlinkStreamMetadata';
 
@@ -17,6 +18,8 @@ export interface ZlinkStreamMessage<TPayload = unknown> {
   readonly name: string;
   readonly metadata: ZlinkStreamMetadata;
   readonly payload: TPayload;
+  readonly flowId: string;
+  readonly flowOrigin: ZlinkFlowOrigin;
 }
 
 export interface ZlinkStreamHeader {
@@ -27,6 +30,8 @@ export interface ZlinkStreamHeader {
   readonly name: string;
   readonly metadata: ZlinkStreamMetadata;
   readonly correlationId?: string;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZlinkFlowOrigin;
 }
 
 export interface ZlinkStreamError {

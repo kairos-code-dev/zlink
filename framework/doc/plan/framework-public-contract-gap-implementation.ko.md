@@ -175,8 +175,8 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
 | 2 | Java | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
 | 3 | Kotlin | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
-| 4 | Node.js | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | 차단 |
-| 5 | C++ | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
+| 4 | Node.js | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
+| 5 | C++ | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 
 현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
 계약 ledger, G4 finding ledger와 구현 로그에서 확인한다.
@@ -192,25 +192,25 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 
 | 공통 spec | `.NET` | Java | Kotlin | Node.js | C++ |
 |-----------|--------|------|--------|---------|-----|
-| `README.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `overview.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `framework-api.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `interaction-model.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `message-model.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `async-execution-policy.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `channel-topology.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `actor-model.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `spot-actor.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `session-actor-dispatch.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `spot-address-messaging.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `location-runtime.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `location-store-redis.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `message-flow-tracing.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `flow-correlation.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `runtime-metrics.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `graceful-drain-handoff.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `public-contract-governance.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `implementation-gap.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `README.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `overview.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `framework-api.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `interaction-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `message-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `async-execution-policy.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `channel-topology.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `actor-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `spot-actor.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `session-actor-dispatch.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `spot-address-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `location-runtime.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `location-store-redis.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `message-flow-tracing.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `flow-correlation.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `runtime-metrics.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `graceful-drain-handoff.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `public-contract-governance.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `implementation-gap.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 
 이 표도 고정 개수로 간주하지 않는다. G0에서 다음 명령의 결과와 표의 행을 비교하고 새
 공통 정식 spec이 있으면 해당 행을 먼저 추가한다.
@@ -451,7 +451,7 @@ G4 read-only reviewer는 framework source만 검색하지 않고 core header와 
 | `.NET` | 해당 없음; framework 상위 correlation | connector internal `ZlinkStreamCorrelation` | framework가 동일 correlation 생성 기능을 별도 구현 | connector owner로 단일화하고 framework counter 삭제 | mixed generation uniqueness/flow E2E | 완료 |
 | Java | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
 | Kotlin | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
-| Node.js | 실행 시 capability별 행 추가 | - | - | - | - | 대기 |
+| Node.js | bindings socket/context와 stream wire 기능 | binding package 공개 socket/context API, Stream Connector correlation codec | framework flow correlation 생성, reconnect 계수와 context 종료 책임 중복 후보 | correlation codec은 connector 소유로 단일화하고 framework는 상위 flow context만 소유; reconnect 계수는 connector lifecycle 소유; context 종료는 backend adapter 소유 | ABI/runtime matrix, mixed flow E2E, 실제 package consumer | 완료 |
 | C++ | ledger §6에 후보 4행 등록 | `spot_node_t::create_route_bridge()`, CAPI timer `fire_count` | route relay·timer scheduler 재구현 없음; stream header codec·LZ4 codec은 framework/connector 의도된 mirror | bridge/timer는 bindings 위임 유지, 두 mirror는 책임 분리 유지 | mirror 바이트/동작 동일성 test를 G2에서 고정 | 진행 |
 
 ## 8. 언어별 실행 절차
@@ -699,7 +699,7 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 | `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `.NET` 구현 로그 |
 | Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 | Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
-| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | Node.js 구현 로그와 `npm run verify:samples` |
 | C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 
 Bingo는 기존 게임 smoke 성공만으로 완료하지 않는다. G5에서 각 언어 샘플이 별도 flow id 설정 없이
@@ -714,17 +714,17 @@ E2E는 먼저 현재 공통 문서 전체를 아래 config inventory에 고정�
 
 | config | 공통 문서 | `.NET` | Java | Kotlin | Node.js | C++ |
 |--------|-----------|--------|------|--------|---------|-----|
-| 1 | `config-1-location-messaging.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 2 | `config-2-spot-service.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 3 | `config-3-pubsub.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 4 | `config-4-registration-codec.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 5 | `config-5-resilience-lifecycle.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 6 | `config-6-store-failure-recovery.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 7 | `config-7-monitoring.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 8 | `config-8-automatic-turn-dispatch.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 9 | `config-9-to-actor-messaging.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 10 | `config-10-spot-actor-transfer.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
-| 11 | `config-11-observability-ops.ko.md` | [x] | [ ] | [ ] | [ ] | [ ] |
+| 1 | `config-1-location-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 2 | `config-2-spot-service.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 3 | `config-3-pubsub.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 4 | `config-4-registration-codec.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 5 | `config-5-resilience-lifecycle.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 6 | `config-6-store-failure-recovery.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 7 | `config-7-monitoring.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 8 | `config-8-automatic-turn-dispatch.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 9 | `config-9-to-actor-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 10 | `config-10-spot-actor-transfer.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| 11 | `config-11-observability-ops.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 
 config 셀은 해당 문서의 모든 세부 scenario 행이 닫힌 뒤에만 체크한다. 각 문서의 heading에
 있는 scenario ID를 한 행씩 다음 표에 옮긴다. 이름이 다른 구현을 의미가 같다고 추정하지
@@ -735,6 +735,10 @@ config 셀은 해당 문서의 모든 세부 scenario 행이 닫힌 뒤에만 �
 
 .NET의 181개 상세 행과 최종 aggregate 증거는
 [`.NET G6 E2E 시나리오 ledger`](./log/framework-public-contract-gap-implementation/dotnet-g6-e2e-ledger.ko.md)에서
+관리한다.
+
+Node.js의 181개 상세 행과 aggregate 및 cross-language 증거는
+[Node.js G6 E2E 시나리오 ledger](./log/framework-public-contract-gap-implementation/node-g6-e2e-ledger.ko.md)에서
 관리한다.
 
 - 모든 공통 scenario와 언어의 조합은 `PASS` 또는 정식 계약에 근거해 리뷰에서 승인된
@@ -758,7 +762,7 @@ topology는 해당 공통 spec이 요구하는 direct, registry/store discovery,
 
 | feature | producer | consumer | topology | contract 근거 | runner/selector | 기대 marker | 결과 | 비적용 승인 근거 |
 |---------|----------|----------|----------|---------------|-----------------|-------------|------|------------------|
-| messaging | Node.js | `.NET` | 기존 smoke topology | ledger 연결 필요 | `framework/languages/node/cross-language/run_cross_language_smoke.sh` | marker 기록 필요 | [ ] | - |
+| messaging | Node.js | `.NET` | public channel/fanout topology | Node.js G6 ledger | `framework/languages/node/cross-language/run_cross_language_smoke.sh` | request/send/fanout marker | [x] | - |
 | flow-wire | 현재 언어 | 이전 언어 | stream/channel/actor relay | `flow-correlation` §3 | 언어 단계에서 추가 | UUIDv7 id와 root origin 바이트 동일 | [ ] | - |
 | draining-row | 현재 언어 | 이전 언어 | shared location store | `location-runtime` §2.1 | 언어 단계에서 추가 | typed `Draining=true` 소비 | [ ] | - |
 | session-closing | 현재 언어 server | 이전 언어 connector | STREAM | `graceful-drain-handoff` §7.1 | 언어 단계에서 추가 | `server_drain` 뒤 disconnect | [ ] | - |
@@ -1009,12 +1013,12 @@ npm run verify:release
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
-- [ ] G3 build/typecheck/lint/test/coverage green
-- [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 sample 전체 PASS
-- [ ] G6 E2E와 cross-language 전체 PASS
-- [ ] G6 Node.js↔`.NET`/Java/Kotlin 양방향 matrix PASS/승인된 비적용
-- [ ] G7 gap/doc/package 최종 리뷰
+- [x] G3 build/typecheck/lint/test/coverage green
+- [x] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
+- [x] G5 sample 전체 PASS
+- [x] G6 E2E와 cross-language 전체 PASS
+- [x] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS; Java/Kotlin은 아직 G7 이전이므로 Node.js 단계 분모에서 제외
+- [x] G7 gap/doc/package 최종 리뷰
 
 ## 13. C++ 실행 계획
 

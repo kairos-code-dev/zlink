@@ -10,6 +10,7 @@ import type {
   ZLinkRemoteBoundSessionPort,
   ZLinkStreamActorLookupPort
 } from '../streams/stream-binding-runtime-ports';
+import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 import { ZLinkRemoteBoundSessionRelay } from './remote-bound-session-relay';
 import { ZLinkActorPacketRelay } from './actor-packet-relay';
@@ -27,13 +28,7 @@ export interface ZLinkBoundSessionRelayOptions {
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly errorSink: () => { reportRuntimeTaskException(taskName: string, error: unknown): void };
-  readonly boundSessionFactory: (actorId: string) => {
-    send(message: unknown): {
-      packetName(packetName: string): unknown;
-      metadata(key: string, value: string): unknown;
-      submit(signal?: AbortSignal): Promise<void>;
-    };
-  };
+  readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
 }
 
 export class ZLinkBoundSessionRelay {

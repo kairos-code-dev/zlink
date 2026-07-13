@@ -33,7 +33,7 @@ import type {
   ZLinkStreamNodeOptions,
   ZLinkStreamCompressionBuilder,
   ZLinkTimerOptions
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 
 export type MutableCodecRegistryOptions = {
   serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];
@@ -274,4 +274,5 @@ export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   actorFactory(actorType: string, factoryType: Type): this;
+  useDrainPolicy(policy: import('@zlink-systems/framework').ZLinkSpotDrainPolicy): this;
 }

@@ -75,7 +75,8 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.inboundObservers,
       this.receivedMessages,
       this.frameSender,
-      this.events
+      this.events,
+      (reason) => this.lifecycle.serverClosing(reason)
     );
     this.lifecycle = new ZlinkStreamConnectorLifecycle(
       this.options,
@@ -88,6 +89,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
 
   get isConnected(): boolean {
     return this.lifecycle.isConnected;
+  }
+
+  get closeReason() {
+    return this.lifecycle.closeReason;
   }
 
   get state(): ZlinkStreamConnectionState {
@@ -149,7 +154,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     const encodedHandler = (message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>, signal?: AbortSignal) => handler({
       name: message.name,
       metadata: message.metadata,
-      payload: this.decodePayload<TPayload>(message.payload, messageType)
+      payload: this.decodePayload<TPayload>(message.payload, messageType),
+      flowId: message.flowId,
+      flowOrigin: message.flowOrigin
     }, signal);
     return this.receivedMessages.on(name, encodedHandler);
   }
@@ -200,7 +207,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
           const decoded = {
             name: message.name,
             metadata: message.metadata,
-            payload: this.decodeWaitPayload<TPayload>(message.payload)
+            payload: this.decodeWaitPayload<TPayload>(message.payload),
+            flowId: message.flowId,
+            flowOrigin: message.flowOrigin
           };
           if (predicate(decoded)) {
             finish(undefined, decoded);

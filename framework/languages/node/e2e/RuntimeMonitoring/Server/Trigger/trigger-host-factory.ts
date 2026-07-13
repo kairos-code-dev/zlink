@@ -102,9 +102,9 @@ async function waitForTransientChannelReady(evidence: EvidenceStore): Promise<vo
   const entries = await evidence.waitUntil((snapshot) =>
     snapshot.some((line) =>
       line.includes('monitor-socket|')
-      && line.includes('kind=ConnectionReady')
+      && line.includes('kind=connectionReady')
     ), 10000);
-  if (!entries.some((line) => line.includes('kind=ConnectionReady'))) {
+  if (!entries.some((line) => line.includes('kind=connectionReady'))) {
     throw new Error('Timed out waiting for transient trigger channel readiness.');
   }
 }

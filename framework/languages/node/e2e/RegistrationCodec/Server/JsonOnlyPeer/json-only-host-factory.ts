@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { PacketNames, RegistrationCodecNames } from '../../Shared/messages';
+import { EchoJsonReq, PacketNames, RegistrationCodecNames } from '../../Shared/messages';
 import { parseJsonOnlyOptions, type JsonOnlyOptions } from './Configuration/json-only-options';
 import { createOperationalEndpoints } from './Endpoints/operational-endpoints';
 import { JsonOnlyEchoRequestHandler } from './Handlers/json-only-handlers';
@@ -25,8 +25,7 @@ export async function startJsonOnlyPeer(args: readonly string[]): Promise<void> 
       method: 'POST',
       path: '/codec/json-recovery',
       handle: async () => {
-        const reply = await channel.requestToChannel(RegistrationCodecNames.channel, { value: 'rc-b5-json' })
-          .packetName(PacketNames.echoJsonReq)
+        const reply = await channel.requestToChannel(RegistrationCodecNames.channel, new EchoJsonReq('rc-b5-json'))
           .submit();
         evidence.add('codec-mismatch-json-recovery|status=ok');
         return reply;

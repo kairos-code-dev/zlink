@@ -19,7 +19,7 @@ import type {
 type AuthenticatedPlayer = PlayerInfo & {
   readonly ref: ActorRef;
   roomId?: string;
-  push(packetName: string, payload: unknown): void;
+  push(payload: unknown): void;
 };
 
 type PlayEntrySpotLike = {
@@ -103,11 +103,10 @@ class PlaySession implements ZLinkSession {
     this.actor = {
       ...authenticated.player,
       ref: actorRef,
-      push(packetName: string, payload: unknown): void {
+      push(payload: unknown): void {
         pushSeq += 1;
         void sessionClient
           .send(payload)
-          .packetName(packetName)
           .metadata('seq', String(pushSeq))
           .submit();
       }

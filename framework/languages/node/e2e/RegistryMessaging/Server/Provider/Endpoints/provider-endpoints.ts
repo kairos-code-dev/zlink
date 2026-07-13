@@ -1,14 +1,13 @@
 import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
-import type {
-  EvidenceWaitReq,
+import {
   ProfileMsg,
-  ProfileRes,
   ProfileReq,
-  RouteMissingRes,
   ScenarioRouteReq,
-  ScenarioRouteRes
+  type EvidenceWaitReq,
+  type ProfileRes,
+  type RouteMissingRes,
+  type ScenarioRouteRes
 } from '../../../Shared/messages';
-import { PacketNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -24,25 +23,25 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfile(channel, 'profile', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile', new ProfileReq((body as ProfileReq).value))
     },
     {
       method: 'POST',
       path: '/profile/manual',
-      handle: (body) => requestProfile(channel, 'profile.manual', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile.manual', new ProfileReq((body as ProfileReq).value))
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfile(channel, 'profile', body as ProfileMsg);
+        await sendProfile(channel, 'profile', new ProfileMsg((body as ProfileMsg).commandId));
         return { status: 'sent' };
       }
     },
     {
       method: 'POST',
       path: '/profile/route/request',
-      handle: (body) => requestRoute(route, 'api-b', body as ScenarioRouteReq)
+      handle: (body) => requestRoute(route, 'api-b', new ScenarioRouteReq((body as ScenarioRouteReq).value))
     },
     {
       method: 'POST',
@@ -51,8 +50,7 @@ export function createProviderEndpoints(
         let failed = false;
         try {
           await route
-            .requestToNode('profile.route', 'missing-rid', body as ScenarioRouteReq)
-            .packetName(PacketNames.scenarioRouteReq)
+            .requestToNode('profile.route', 'missing-rid', new ScenarioRouteReq((body as ScenarioRouteReq).value))
             .timeout(300)
             .submit<ScenarioRouteRes>();
         } catch {
@@ -82,7 +80,6 @@ async function requestProfile(
 ): Promise<ProfileRes> {
   return channel
     .requestToChannel(channelName, request)
-    .packetName(PacketNames.profileReq)
     .timeout(5000)
     .submit<ProfileRes>();
 }
@@ -94,7 +91,6 @@ async function sendProfile(
 ): Promise<void> {
   await channel
     .sendToChannel(channelName, command)
-    .packetName(PacketNames.profileMsg)
     .submit();
 }
 
@@ -105,7 +101,6 @@ async function requestRoute(
 ): Promise<ScenarioRouteRes> {
   return route
     .requestToNode('profile.route', targetRid, request)
-    .packetName(PacketNames.scenarioRouteReq)
     .timeout(5000)
     .submit<ScenarioRouteRes>();
 }

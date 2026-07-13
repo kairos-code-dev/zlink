@@ -1,5 +1,5 @@
-import type { ControlPingRes, ControlPingReq, EvidenceWaitReq } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import type { ControlPingRes, EvidenceWaitReq } from '../../../Shared/messages';
+import { ControlPingReq, SpotServiceNames, spotServicePacket } from '../../../Shared/messages';
 import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
@@ -9,8 +9,8 @@ export function createSessionEndpoints(evidence: EvidenceStore, route: ZLinkRout
     method: 'POST',
     path: `/channel/control-pingMsg/${targetRid}`,
     handle: async (body) => await route
-      .requestToNode(SpotServiceNames.controlChannel, targetRid, body as ControlPingReq)
-      .packetName('ControlPingReq')
+      .requestToNode(SpotServiceNames.controlChannel, targetRid,
+        spotServicePacket(ControlPingReq, body as ControlPingReq))
       .timeout(5000)
       .submit<ControlPingRes>()
   });

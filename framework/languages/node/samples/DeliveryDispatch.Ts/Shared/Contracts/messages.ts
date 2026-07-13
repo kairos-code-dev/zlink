@@ -13,30 +13,20 @@ type CreateDeliveryRes = {
   deliveryId: string;
 };
 
-type EnsureCustomerActorReq = {
-  customerId: string;
-  packetName(): string;
-};
+class EnsureCustomerActorReq { constructor(readonly customerId: string) {} }
 
 type EnsureCustomerActorRes = {
   customerId: string;
   actor: DeliveryDispatchActorRef;
 };
 
-type SubscribeDeliveryReq = {
-  deliveryId: string;
-  packetName(): string;
-};
+class SubscribeDeliveryReq { constructor(readonly deliveryId: string) {} }
 
 type SubscribeDeliveryRes = {
   deliveryId: string;
 };
 
-type BindCourierReq = {
-  courierId: string;
-  sessionRoute: string;
-  packetName(): string;
-};
+class BindCourierReq { constructor(readonly courierId: string, readonly sessionRoute: string) {} }
 
 type BindCourierRes = {
   courierId: string;
@@ -44,10 +34,7 @@ type BindCourierRes = {
   sessionRoute: string;
 };
 
-type BindCourierSessionReq = {
-  courierId: string;
-  packetName(): string;
-};
+class BindCourierSessionReq { constructor(readonly courierId: string) {} }
 
 type BindCourierSessionRes = {
   courierId: string;
@@ -55,10 +42,7 @@ type BindCourierSessionRes = {
   sessionRoute: string;
 };
 
-type EnsureCourierActorReq = {
-  courierId: string;
-  packetName(): string;
-};
+class EnsureCourierActorReq { constructor(readonly courierId: string) {} }
 
 type EnsureCourierActorRes = {
   courierId: string;
@@ -71,24 +55,21 @@ type DeliveryDispatchActorRef = {
   generation: number;
 };
 
-type SubscribeCustomerToDeliveryReq = {
-  customerId: string;
-  deliveryId: string;
-  packetName(): string;
-};
+class SubscribeCustomerToDeliveryReq { constructor(readonly customerId: string, readonly deliveryId: string) {} }
 
 type SubscribeCustomerToDeliveryRes = {
   customerId: string;
   deliveryId: string;
 };
 
-type AssignDeliveryReq = {
-  deliveryId: string;
-  customerId: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  packetName(): string;
-};
+class AssignDeliveryReq {
+  constructor(
+    readonly deliveryId: string,
+    readonly customerId: string,
+    readonly pickupAddress: string,
+    readonly dropoffAddress: string
+  ) {}
+}
 
 type AssignDeliveryRes = {
   deliveryId: string;
@@ -96,13 +77,14 @@ type AssignDeliveryRes = {
   accepted: boolean;
 };
 
-type OfferDeliveryReq = {
-  courierId: string;
-  deliveryId: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  packetName(): string;
-};
+class OfferDeliveryReq {
+  constructor(
+    readonly courierId: string,
+    readonly deliveryId: string,
+    readonly pickupAddress: string,
+    readonly dropoffAddress: string
+  ) {}
+}
 
 type OfferDeliveryRes = {
   deliveryId: string;
@@ -132,34 +114,39 @@ type ReassignDelivery = {
   reason: string;
 };
 
-type DeliveryStatusReq = {
-  deliveryId: string;
-  customerId: string;
-  status: Exclude<DeliveryStatus, 'Created'>;
-  courierId?: string;
-  occurredAt: string;
-  packetName(): string;
-};
+class DeliveryStatusReq {
+  constructor(
+    readonly deliveryId: string,
+    readonly customerId: string,
+    readonly status: Exclude<DeliveryStatus, 'Created'>,
+    readonly occurredAt: string,
+    readonly courierId?: string
+  ) {}
+}
 
 type DeliveryStatusRes = {
   deliveryId: string;
   status: DeliveryStatus;
 };
 
-type DeliveryStatusNotify = {
-  deliveryId: string;
-  status: DeliveryStatus;
-  courierId?: string;
-  occurredAt: string;
-};
+class DeliveryStatusNotify {
+  constructor(
+    readonly deliveryId: string,
+    readonly status: DeliveryStatus,
+    readonly occurredAt: string,
+    readonly courierId?: string
+  ) {}
+}
 
-type DeliveryStatusUpdatedMsg = {
-  deliveryId: string;
-  customerId: string;
-  status: Exclude<DeliveryStatus, 'Created'>;
-  courierId?: string;
-  occurredAt: string;
-};
+class DeliveryStatusUpdatedMsg {
+  constructor(
+    readonly deliveryId: string,
+    readonly customerId: string,
+    readonly status: Exclude<DeliveryStatus, 'Created'>,
+    readonly occurredAt: string,
+    readonly courierId?: string
+  ) {}
+}
 
 type DeliverySpotCreateReq = {
   deliveryId: string;
@@ -225,15 +212,15 @@ function assignDelivery(
   pickupAddress: string,
   dropoffAddress: string
 ): AssignDeliveryReq {
-  return { deliveryId, customerId, pickupAddress, dropoffAddress, packetName: () => PacketNames.assignDelivery };
+  return new AssignDeliveryReq(deliveryId, customerId, pickupAddress, dropoffAddress);
 }
 
 function bindCourier(courierId: string, sessionRoute: string): BindCourierReq {
-  return { courierId, sessionRoute, packetName: () => PacketNames.bindCourier };
+  return new BindCourierReq(courierId, sessionRoute);
 }
 
 function bindCourierSession(courierId: string): BindCourierSessionReq {
-  return { courierId, packetName: () => PacketNames.bindCourierSession };
+  return new BindCourierSessionReq(courierId);
 }
 
 function actorRefForMessage(actor: ActorRef): DeliveryDispatchActorRef {
@@ -258,37 +245,41 @@ function deliveryStatusChanged(
   status: DeliveryStatusReq['status'],
   courierId?: string
 ): DeliveryStatusReq {
-  return {
-    deliveryId,
-    customerId,
-    status,
-    courierId,
-    occurredAt: new Date().toISOString(),
-    packetName: () => PacketNames.deliveryStatusChanged
-  };
+  return new DeliveryStatusReq(deliveryId, customerId, status, new Date().toISOString(), courierId);
 }
 
 function ensureCourierActor(courierId: string): EnsureCourierActorReq {
-  return { courierId, packetName: () => PacketNames.ensureCourierActor };
+  return new EnsureCourierActorReq(courierId);
 }
 
 function ensureCustomerActor(customerId: string): EnsureCustomerActorReq {
-  return { customerId, packetName: () => PacketNames.ensureCustomerActor };
+  return new EnsureCustomerActorReq(customerId);
 }
 
 function offerDelivery(courierId: string, deliveryId: string, pickupAddress: string, dropoffAddress: string): OfferDeliveryReq {
-  return { courierId, deliveryId, pickupAddress, dropoffAddress, packetName: () => PacketNames.offerDelivery };
+  return new OfferDeliveryReq(courierId, deliveryId, pickupAddress, dropoffAddress);
 }
 
 function subscribeCustomerToDelivery(customerId: string, deliveryId: string): SubscribeCustomerToDeliveryReq {
-  return { customerId, deliveryId, packetName: () => PacketNames.subscribeCustomerToDelivery };
+  return new SubscribeCustomerToDeliveryReq(customerId, deliveryId);
 }
 
 function subscribeDelivery(deliveryId: string): SubscribeDeliveryReq {
-  return { deliveryId, packetName: () => PacketNames.subscribeDelivery };
+  return new SubscribeDeliveryReq(deliveryId);
 }
 
 export {
+  DeliveryStatusNotify,
+  DeliveryStatusUpdatedMsg,
+  EnsureCustomerActorReq,
+  SubscribeDeliveryReq,
+  BindCourierReq,
+  BindCourierSessionReq,
+  EnsureCourierActorReq,
+  SubscribeCustomerToDeliveryReq,
+  AssignDeliveryReq,
+  OfferDeliveryReq,
+  DeliveryStatusReq,
   PacketNames,
   actorRefForMessage,
   actorRefFromMessage,
@@ -304,11 +295,8 @@ export {
 };
 
 export type {
-  AssignDeliveryReq,
   AssignDeliveryRes,
-  BindCourierReq,
   BindCourierRes,
-  BindCourierSessionReq,
   BindCourierSessionRes,
   CourierDecisionMsg,
   CreateDeliveryReq,
@@ -322,19 +310,11 @@ export type {
   DeliverySpotJoinRes,
   DeliveryStatus,
   DeliveryStatusRes,
-  DeliveryStatusReq,
-  DeliveryStatusNotify,
-  DeliveryStatusUpdatedMsg,
-  EnsureCourierActorReq,
   EnsureCourierActorRes,
-  EnsureCustomerActorReq,
-  OfferDeliveryReq,
   OfferDeliveryNotify,
   OfferDeliveryRes,
   ReassignDelivery,
   ServerAssertionReq,
   ServerAssertionRes,
-  SubscribeCustomerToDeliveryReq,
-  SubscribeDeliveryReq,
   SubscribeDeliveryRes
 };

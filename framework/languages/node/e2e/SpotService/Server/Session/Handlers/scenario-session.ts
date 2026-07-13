@@ -7,7 +7,12 @@ import type {
   MultiBindReq,
   UserSpotAuthReq
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import {
+  CreateSpotReq,
+  EnsureActorReq,
+  SpotServiceNames,
+  spotServicePacket
+} from '../../../Shared/messages';
 import type {
   ZLinkActorManager,
   ZLinkMessage,
@@ -47,12 +52,12 @@ class ScenarioSession implements ZLinkSession {
         const ensured = request.nodeRid === this.evidence.rid
           ? await this.ensureLocalActor(request, signal)
           : await this.route
-            .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, {
+            .requestToNode(SpotServiceNames.controlChannel, request.nodeRid,
+              spotServicePacket(EnsureActorReq, {
               actorId: request.actorId,
               displayName: request.displayName,
               nodeRid: request.nodeRid
-            })
-            .packetName('EnsureActorReq')
+              }))
             .timeout(5000)
             .submit<EnsureActorRes>(signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=ensured`);
@@ -62,11 +67,11 @@ class ScenarioSession implements ZLinkSession {
           generation: BigInt(ensured.generation)
         }, signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=bound`);
-        await this.context.client.reply({
+        this.context.client.reply({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid,
           generation: ensured.generation
-        } satisfies AuthRes).submit(signal);
+        } satisfies AuthRes).submit();
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=replied`);
       } catch (error) {
         this.evidence.add(
@@ -90,11 +95,11 @@ class ScenarioSession implements ZLinkSession {
         nodeRid: ensured.nodeRid,
         generation: BigInt(ensured.generation)
       }, signal);
-      await this.context.client.reply({
+      this.context.client.reply({
         actorId: ensured.actorId,
         nodeRid: ensured.nodeRid,
         generation: ensured.generation
-      } satisfies AuthRes).submit(signal);
+      } satisfies AuthRes).submit();
       return;
     }
 
@@ -112,9 +117,9 @@ class ScenarioSession implements ZLinkSession {
           generation: BigInt(ensured.generation)
         }, signal);
       }
-      await this.context.client.reply({
+      this.context.client.reply({
         boundCount: this.context.actors.bound.length
-      } satisfies MultiBindRes).submit(signal);
+      } satisfies MultiBindRes).submit();
       return;
     }
 
@@ -146,20 +151,20 @@ class ScenarioSession implements ZLinkSession {
 
   private async ensureRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<void> {
     await this.route
-      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, { spotRid: request.spotRid })
-      .packetName('CreateSpotReq')
+      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid,
+        spotServicePacket(CreateSpotReq, { spotRid: request.spotRid }))
       .timeout(5000)
       .submit(signal);
   }
 
   private async ensureRemoteActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
     return await this.route
-      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, {
+      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid,
+        spotServicePacket(EnsureActorReq, {
         actorId: request.actorId,
         displayName: request.displayName,
         nodeRid: request.nodeRid
-      })
-      .packetName('EnsureActorReq')
+        }))
       .timeout(5000)
       .submit<EnsureActorRes>(signal);
   }
@@ -183,7 +188,7 @@ export class ScenarioSessionFactory implements ZLinkSessionFactory<ScenarioSessi
     private readonly evidence: EvidenceStore
   ) {}
 
-  create(context: ZLinkSessionContext): ScenarioSession {
+  async create(context: ZLinkSessionContext): Promise<ScenarioSession> {
     return new ScenarioSession(this.route, this.actors, this.evidence, context);
   }
 }

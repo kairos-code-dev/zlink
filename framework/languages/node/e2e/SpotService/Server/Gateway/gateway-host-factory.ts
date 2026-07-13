@@ -5,7 +5,7 @@ import type { ZLinkSpotPublisherClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_SPOT_PUBLISHER_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { SpotPublishReq } from '../../Shared/messages';
-import { SpotServiceNames } from '../../Shared/messages';
+import { SpotMsg, SpotServiceNames, spotServicePacket } from '../../Shared/messages';
 import { EvidenceStore } from '../Play/Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer, type HttpRoute } from '../Play/Support/http-server';
 
@@ -75,8 +75,8 @@ function createGatewayEndpoints(
       handle: async (body) => {
         const request = body as SpotPublishReq;
         await publisher
-          .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic, { marker: request.marker })
-          .packetName('SpotMsg')
+          .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic,
+            spotServicePacket(SpotMsg, { marker: request.marker }))
           .submit();
         evidence.add(`spot-publish|rid=${options.rid}|spot=${request.spotRid}|marker=${request.marker}`);
         return {

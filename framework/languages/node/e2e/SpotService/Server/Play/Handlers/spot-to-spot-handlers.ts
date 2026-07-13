@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { ZLinkPacket } from '@zlink-systems/framework';
 import type {
   SlowSpotRes,
   SpotToSpotNegativeRes,
@@ -10,11 +11,21 @@ import type {
   SpotToSpotTimeoutReq,
   StateRes
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import {
+  MissingSpotMsg,
+  MissingSpotReq,
+  SlowSpotReq,
+  SpotMsg,
+  SpotServiceNames,
+  StateMsg,
+  StateReq,
+  spotServicePacket
+} from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
+@ZLinkPacket('SpotToSpotReq')
 export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -25,16 +36,15 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
   ): Promise<SpotToSpotRes> {
     void context;
     const reply = await spot.context.outbound
-      .requestToSpot(request.targetSpot, { operation: 'add', delta: 3 })
-      .packetName('StateReq')
+      .requestToSpot(request.targetSpot, spotServicePacket(StateReq, { operation: 'add', delta: 3 }))
       .submit<StateRes>();
     await spot.context.outbound
-      .sendToSpot(request.targetSpot, { marker: `sm-c3-send-${request.marker}` })
-      .packetName('StateMsg')
+      .sendToSpot(request.targetSpot,
+        spotServicePacket(StateMsg, { marker: `sm-c3-send-${request.marker}` }))
       .submit();
     await spot.context.outbound
-      .publish(SpotServiceNames.spotEventTopic, { marker: `sm-c3-publish-${request.marker}` })
-      .packetName('SpotMsg')
+      .publish(SpotServiceNames.spotEventTopic,
+        spotServicePacket(SpotMsg, { marker: `sm-c3-publish-${request.marker}` }))
       .submit();
     this.evidence.add(
       `spot-to-spot|rid=${this.evidence.rid}|source=${spot.context.spotRid}`
@@ -49,6 +59,7 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
 }
 
 @Injectable()
+@ZLinkPacket('SpotToSpotTimeoutReq')
 export class SpotToSpotTimeoutHandler
   implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes> {
   constructor(private readonly evidence: EvidenceStore) {}
@@ -62,8 +73,8 @@ export class SpotToSpotTimeoutHandler
     let failed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpot, { marker: request.marker, delayMs: 1500 })
-        .packetName('SlowSpotReq')
+        .requestToSpot(request.targetSpot,
+          spotServicePacket(SlowSpotReq, { marker: request.marker, delayMs: 1500 }))
         .timeout(100)
         .submit<SlowSpotRes>();
     } catch {
@@ -82,6 +93,7 @@ export class SpotToSpotTimeoutHandler
 }
 
 @Injectable()
+@ZLinkPacket('SpotToSpotNegativeReq')
 export class SpotToSpotNegativeHandler
   implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes> {
   constructor(private readonly evidence: EvidenceStore) {}
@@ -95,16 +107,16 @@ export class SpotToSpotNegativeHandler
     let requestFailed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpot, { operation: 'noop', delta: 0 })
-        .packetName('MissingSpotReq')
+        .requestToSpot(request.targetSpot,
+          spotServicePacket(MissingSpotReq, { operation: 'noop', delta: 0 }))
         .timeout(2000)
         .submit<StateRes>();
     } catch {
       requestFailed = true;
     }
     await spot.context.outbound
-      .sendToSpot(request.targetSpot, { marker: `missing-${request.marker}` })
-      .packetName('MissingSpotMsg')
+      .sendToSpot(request.targetSpot,
+        spotServicePacket(MissingSpotMsg, { marker: `missing-${request.marker}` }))
       .submit();
     this.evidence.add(
       `spot-to-spot-negative|rid=${this.evidence.rid}|source=${spot.context.spotRid}`

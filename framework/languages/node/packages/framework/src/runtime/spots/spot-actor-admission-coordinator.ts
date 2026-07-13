@@ -154,7 +154,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       );
       transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
       rollbackMembership = activation.commitActorJoin(actor);
-      await activation.serial.execute(() => activation.spot.onJoinedActor?.(actor));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
       await transfer?.publishRoutedActorOwnership(actor);
     } catch (error) {
       rollbackMembership?.();
@@ -176,7 +176,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
     try {
       transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
       activation.commitActorJoin(actor);
-      await activation.serial.execute(() => activation.spot.onJoinedActor?.(actor));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
       const results = backlog.length === 0
         ? []
         : await this.replayActorBacklog(activation, actor, backlog);

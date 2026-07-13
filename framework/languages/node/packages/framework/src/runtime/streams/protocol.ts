@@ -1,4 +1,5 @@
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkFlowOrigin } from '../../contracts';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import {
   decodeStreamWireFrame,
@@ -7,7 +8,8 @@ import {
   encodeStreamWireHeader,
   lz4PickleUncompressed,
   lz4UnpicklePayload,
-  tryDecodeStreamWireFrame
+  tryDecodeStreamWireFrame,
+  utf8Encode
 } from '@zlink-systems/stream-wire';
 
 export { utf8Decode, utf8Encode } from '@zlink-systems/stream-wire';
@@ -34,7 +36,8 @@ export enum ZLinkStreamHeaderFlags {
   HasRequestSeq = 0x01,
   HasMetadata = 0x02,
   PayloadCompressed = 0x04,
-  HasCorrelationId = 0x08
+  HasCorrelationId = 0x08,
+  HasFlowId = 0x10
 }
 
 export interface ZLinkStreamFrameHeader {
@@ -45,6 +48,8 @@ export interface ZLinkStreamFrameHeader {
   readonly name: string;
   readonly metadata: ReadonlyMap<string, string>;
   readonly correlationId?: string;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZLinkFlowOrigin;
 }
 
 export type ZLinkStreamReplyMessageKind =
@@ -74,6 +79,24 @@ export function encodeStreamFrame(header: ZLinkStreamFrameHeader, payload: Uint8
   return encodeStreamWireFrame(encodeStreamHeader(header), payload);
 }
 
+export function encodeSessionClosingFrame(diagnostic = ''): Uint8Array {
+  const diagnosticBytes = utf8Encode(diagnostic);
+  if (diagnosticBytes.length > 512) throw new Error('Session-closing diagnostic is too large.');
+  const payload = new Uint8Array(4 + diagnosticBytes.length);
+  payload[0] = 1;
+  payload[1] = 4;
+  payload[2] = diagnosticBytes.length >>> 8;
+  payload[3] = diagnosticBytes.length & 0xff;
+  payload.set(diagnosticBytes, 4);
+  return encodeStreamFrame({
+    kind: ZLinkStreamMessageKind.Control,
+    codec: ZLinkStreamCodec.Raw,
+    flags: ZLinkStreamHeaderFlags.None,
+    name: 'session-closing',
+    metadata: new Map()
+  }, payload);
+}
+
 export function decodeStreamFrame(frame: Uint8Array): ZLinkStreamFrame {
   return decodeStreamWireFrame(frame);
 }
@@ -86,10 +109,11 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
   const hasRequestSeq = header.requestSeq !== undefined;
   const hasMetadata = header.metadata.size > 0;
   const hasCorrelation = header.correlationId !== undefined && header.correlationId.length > 0;
-  if (header.kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata)) {
-    throw new Error('Control packet must not contain a request sequence, metadata, or correlation id.');
+  const hasFlow = header.flowId !== undefined || header.flowOrigin !== undefined;
+  if (header.kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata || hasFlow)) {
+    throw new Error('Control packet must not contain a request sequence, metadata, correlation id, or flow id.');
   }
-  return encodeStreamWireHeader(header);
+  return encodeStreamWireHeader({ ...header, flowOrigin: encodeFlowOrigin(header.flowOrigin) });
 }
 
 export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
@@ -99,8 +123,9 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   const hasRequestSeq = (flags & ZLinkStreamHeaderFlags.HasRequestSeq) !== 0;
   const hasMetadata = (flags & ZLinkStreamHeaderFlags.HasMetadata) !== 0;
   const hasCorrelation = (flags & ZLinkStreamHeaderFlags.HasCorrelationId) !== 0;
-  if (kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata)) {
-    throw new Error('Control packet must not contain a request sequence, metadata, or correlation id.');
+  const hasFlow = (flags & ZLinkStreamHeaderFlags.HasFlowId) !== 0;
+  if (kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata || hasFlow)) {
+    throw new Error('Control packet must not contain a request sequence, metadata, correlation id, or flow id.');
   }
   return {
     kind,
@@ -109,7 +134,9 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
     requestSeq: decoded.requestSeq,
     name: decoded.name,
     metadata: decoded.metadata,
-    correlationId: decoded.correlationId
+    correlationId: decoded.correlationId,
+    flowId: decoded.flowId,
+    flowOrigin: decodeFlowOrigin(decoded.flowOrigin)
   };
 }
 
@@ -125,6 +152,8 @@ export function tryGetStreamFrameHeader(header: unknown): ZLinkStreamFrameHeader
     name?: unknown;
     metadata?: { values?: ReadonlyMap<string, string> };
     correlationId?: unknown;
+    flowId?: unknown;
+    flowOrigin?: unknown;
   };
   if (
     typeof value.kind !== 'number'
@@ -141,7 +170,9 @@ export function tryGetStreamFrameHeader(header: unknown): ZLinkStreamFrameHeader
     requestSeq: typeof value.requestSeq === 'bigint' ? value.requestSeq : undefined,
     name: value.name,
     metadata: value.metadata?.values ?? new Map(),
-    correlationId: typeof value.correlationId === 'string' ? value.correlationId : undefined
+    correlationId: typeof value.correlationId === 'string' ? value.correlationId : undefined,
+    flowId: typeof value.flowId === 'string' ? value.flowId : undefined,
+    flowOrigin: isFlowOrigin(value.flowOrigin) ? value.flowOrigin : undefined
   };
 }
 
@@ -170,8 +201,22 @@ export function createStreamReplyHeader(
     requestSeq: requestHeader.requestSeq,
     name: requestHeader.name,
     metadata,
-    correlationId: requestHeader.correlationId
+    correlationId: requestHeader.correlationId,
+    flowId: requestHeader.flowId,
+    flowOrigin: requestHeader.flowOrigin
   };
+}
+
+function encodeFlowOrigin(origin: ZLinkFlowOrigin | undefined): number | undefined {
+  return origin === undefined ? undefined : ({ Inbound: 1, Timer: 2, Application: 3, Lifecycle: 4 } as const)[origin];
+}
+
+function decodeFlowOrigin(origin: number | undefined): ZLinkFlowOrigin | undefined {
+  return origin === undefined ? undefined : ({ 1: 'Inbound', 2: 'Timer', 3: 'Application', 4: 'Lifecycle' } as const)[origin];
+}
+
+function isFlowOrigin(origin: unknown): origin is ZLinkFlowOrigin {
+  return origin === 'Inbound' || origin === 'Timer' || origin === 'Application' || origin === 'Lifecycle';
 }
 
 export function messageToBytes(message: Message): Uint8Array {

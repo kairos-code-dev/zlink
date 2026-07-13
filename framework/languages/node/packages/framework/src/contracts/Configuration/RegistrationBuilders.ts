@@ -8,7 +8,6 @@ import type {
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkHandlerFilter,
-  ZLinkRouteChannelBuilder,
   ZLinkRouteMeshChannelBuilder,
   ZLinkSpot,
   ZLinkActorTransferAdapter,
@@ -25,9 +24,12 @@ import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type {
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
-  ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver
 } from '../Dispatch';
+import { ZLinkMessageFlowLogMode, ZLinkUnhandledDispatchAction } from '../Dispatch';
+import { setDispatchObserverType } from './DispatchObserverRegistration';
+import { endpointConnections } from './RuntimeEndpointConnections';
+import type { ZLinkEndpointConnections } from './Connections';
 import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import { ZLinkConfigurationException } from './ConfigurationException';
 import {
@@ -93,7 +95,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   configureDispatch(): ZLinkDispatchOptionsBuilder {
-    this.options.dispatch ??= {};
+    this.options.dispatch ??= defaultDispatchOptions();
     return new DefaultDispatchOptionsBuilder(this.options.dispatch);
   }
 
@@ -158,12 +160,6 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultFanoutChannelBuilder(this.channel(name));
   }
 
-  addRouteChannel(name: string): ZLinkRouteChannelBuilder {
-    const routeChannel: MutableRouteChannelOptions = { routerChannelId: name };
-    this.options.routeChannels.push(routeChannel);
-    return new DefaultRouteChannelOptionsBuilder(routeChannel);
-  }
-
   addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
     const channel = this.channel(name);
     channel.routeMesh ??= {};
@@ -214,34 +210,52 @@ export class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilde
   constructor(private readonly dispatch: ZLinkDispatchOptions) {}
 
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
-    this.dispatch.messageFlowObserverType = observerType;
+    setDispatchObserverType(this.dispatch, observerType);
     return this;
   }
 
   messageFlow(mode: ZLinkMessageFlowLogMode): this {
-    (this.dispatch.diagnostics ??= {}).messageFlowLogMode = mode;
+    this.dispatch.diagnostics.messageFlow = mode;
     return this;
   }
 
   traceSampleRate(rate: number): this {
-    (this.dispatch.diagnostics ??= {}).sampleRate = rate;
+    this.dispatch.diagnostics.sampleRate = rate;
     return this;
   }
 
   includeMessageSizes(include: boolean): this {
-    (this.dispatch.diagnostics ??= {}).includeMessageSizes = include;
+    this.dispatch.diagnostics.includeMessageSizes = include;
     return this;
   }
 
   traceLogFile(path: string): this {
-    (this.dispatch.diagnostics ??= {}).logFile = path;
+    this.dispatch.diagnostics.logFile = path;
     return this;
   }
 
   traceLabel(id: string): this {
-    (this.dispatch.diagnostics ??= {}).label = id;
+    this.dispatch.diagnostics.label = id;
     return this;
   }
+}
+
+function defaultDispatchOptions(): ZLinkDispatchOptions {
+  return {
+    unhandled: {
+      request: ZLinkUnhandledDispatchAction.ReplyError,
+      send: ZLinkUnhandledDispatchAction.LogAndDrop,
+      publish: ZLinkUnhandledDispatchAction.LogAndDrop,
+      sendLogLevel: 'warn',
+      publishLogLevel: 'warn'
+    },
+    diagnostics: {
+      messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
+      sampleRate: 1,
+      includeMessageSizes: false,
+      includeNativeDiagnostics: false
+    }
+  };
 }
 
 class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
@@ -278,6 +292,12 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
     return this;
   }
 
+  clientConnections(): ZLinkEndpointConnections {
+    this.channel.client ??= { manualConnections: [] };
+    this.channel.client.manualConnections ??= [];
+    return endpointConnections(this.channel.client, this.channel.client.manualConnections);
+  }
+
   setDefaultRequestTimeout(timeoutMs: number): this {
     this.channel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
     return this;
@@ -301,11 +321,17 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
     }
     return this;
   }
+
+  subscriberConnections(): ZLinkEndpointConnections {
+    this.channel.subscriber ??= { manualConnections: [] };
+    this.channel.subscriber.manualConnections ??= [];
+    return endpointConnections(this.channel.subscriber, this.channel.subscriber.manualConnections);
+  }
 }
 
 class DefaultRouteChannelOptionsBuilder<
   TOptions extends MutableRouteMeshChannelOptions
-> implements ZLinkRouteChannelBuilder {
+> implements ZLinkRouteMeshChannelBuilder {
   constructor(private readonly routeChannel: TOptions) {}
 
   enableServer(endpoint: string): this {
@@ -320,6 +346,11 @@ class DefaultRouteChannelOptionsBuilder<
       this.routeChannel.manualConnections.push(endpoint);
     }
     return this;
+  }
+
+  clientConnections(): ZLinkEndpointConnections {
+    this.routeChannel.manualConnections ??= [];
+    return endpointConnections(this.routeChannel, this.routeChannel.manualConnections);
   }
 
   configureSocket(): ZLinkSocketConfig {
@@ -465,6 +496,11 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     registerActorFactory(this.spotNode, actorType, factoryType);
     return this;
   }
+
+  useDrainPolicy(policy: import('../Eventing').ZLinkSpotDrainPolicy): this {
+    this.spotNode.drainPolicy = policy;
+    return this;
+  }
 }
 
 function endpointList(endpoint: string | readonly string[]): string[] {
@@ -556,6 +592,7 @@ export interface MutableStreamCompressionOptions {
 }
 
 interface MutableSpotNodeOptions {
+  drainPolicy?: import('../Eventing').ZLinkSpotDrainPolicy;
   routingId?: string;
   router?: MutableSpotRouterCapabilityOptions;
   pubSub?: MutableSpotPubSubCapabilityOptions;

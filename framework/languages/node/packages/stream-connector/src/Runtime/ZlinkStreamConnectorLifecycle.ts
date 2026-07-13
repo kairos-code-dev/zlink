@@ -9,6 +9,7 @@ import {
   ZlinkStreamErrorCode,
   ZlinkStreamException
 } from '../Contracts';
+import type { ZlinkStreamCloseReason } from '../Contracts';
 import { ZLINK_STREAM_HEARTBEAT_PING } from './Protocol/ZlinkStreamFrameProtocol';
 import type { ZlinkStreamConnectorEvents } from './ZlinkStreamConnectorEvents';
 import type { ZlinkStreamFrameSender } from './ZlinkStreamFrameSender';
@@ -17,17 +18,19 @@ import type { ZlinkStreamReceiveDispatcher } from './ZlinkStreamReceiveDispatche
 import { connectorError, delay, throwIfAborted, toStreamError } from './ZlinkStreamSupport';
 
 export class ZlinkStreamConnectorLifecycle {
+  private readonly reconnectCounter;
+  private receiveLoopAbort: AbortController | undefined;
   private currentConnection: ZlinkStreamConnection | undefined;
   private connectionGeneration = 0;
   private currentState = ZlinkStreamConnectionState.Created;
   private heartbeatTimer: NodeJS.Timeout | undefined;
-  private receiveLoopAbort: AbortController | undefined;
   private lastInboundAt = 0;
   private closeTask: Promise<void> | undefined;
   private connectTask: Promise<void> | undefined;
   private disconnectTask: Promise<void> | undefined;
   private closeRequested = false;
   private disconnectedPublished = false;
+  private closeReasonValue?: ZlinkStreamCloseReason;
   private lateConnectCleanupError: unknown;
 
   constructor(
@@ -36,7 +39,11 @@ export class ZlinkStreamConnectorLifecycle {
     private readonly frameSender: ZlinkStreamFrameSender,
     private readonly receiveDispatcher: ZlinkStreamReceiveDispatcher,
     private readonly events: ZlinkStreamConnectorEvents
-  ) {}
+  ) {
+    this.reconnectCounter = options.meterProvider
+      ?.getMeter('zlink.framework')
+      .createCounter('zlink.stream.reconnects', { unit: '{event}' });
+  }
 
   get isConnected(): boolean {
     return this.currentState === ZlinkStreamConnectionState.Connected;
@@ -44,6 +51,10 @@ export class ZlinkStreamConnectorLifecycle {
 
   get state(): ZlinkStreamConnectionState {
     return this.currentState;
+  }
+
+  get closeReason(): ZlinkStreamCloseReason | undefined {
+    return this.closeReasonValue;
   }
 
   async connect(signal?: AbortSignal): Promise<void> {
@@ -95,6 +106,7 @@ export class ZlinkStreamConnectorLifecycle {
   }
 
   async close(signal?: AbortSignal): Promise<void> {
+    this.closeReasonValue = 'ClientClose';
     this.closeRequested = true;
     if (this.closeTask !== undefined) {
       return await this.closeTask;
@@ -104,6 +116,15 @@ export class ZlinkStreamConnectorLifecycle {
     }
     this.closeTask = this.closeOnce(signal).finally(() => { this.closeTask = undefined; });
     return await this.closeTask;
+  }
+
+  async serverClosing(reason: ZlinkStreamCloseReason): Promise<void> {
+    this.closeReasonValue = reason;
+    const error = { code: ZlinkStreamErrorCode.Disconnected, message: `Server closed the session: ${reason}.` };
+    await this.disconnectForTransportFailure(error, this.currentConnection, this.connectionGeneration);
+    if (this.options.reconnect.enabled && !this.closeRequested) {
+      queueMicrotask(() => { void this.connect().catch(() => undefined); });
+    }
   }
 
   private async closeOnce(signal?: AbortSignal): Promise<void> {
@@ -179,6 +200,9 @@ export class ZlinkStreamConnectorLifecycle {
 
     while (attempt < maxAttempts) {
       attempt += 1;
+      if (attempt > 1) {
+        this.reconnectCounter?.add(1, { transport: this.options.transport });
+      }
       try {
         return await this.options.transportFactory.connect(this.options, signal);
       } catch (cause) {
@@ -246,9 +270,7 @@ export class ZlinkStreamConnectorLifecycle {
         }
       }
     } catch (cause) {
-      if (signal.aborted) {
-        return;
-      }
+      if (signal.aborted) return;
       const error = toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Receive loop failed.');
       await this.disconnectForTransportFailure(error, connection, generation);
     }
@@ -269,6 +291,7 @@ export class ZlinkStreamConnectorLifecycle {
       return;
     }
     if (Date.now() - this.lastInboundAt > this.options.heartbeat.timeoutMs) {
+      this.closeReasonValue = 'HeartbeatTimeout';
       const error = { code: ZlinkStreamErrorCode.Disconnected, message: 'Heartbeat timed out.' };
       await this.disconnectForTransportFailure(error, this.currentConnection, this.connectionGeneration);
       return;
@@ -288,6 +311,7 @@ export class ZlinkStreamConnectorLifecycle {
     origin: ZlinkStreamConnection | undefined,
     generation: number
   ): Promise<void> {
+    this.closeReasonValue ??= 'TransportError';
     if (this.closeRequested || this.currentState === ZlinkStreamConnectionState.Closed) {
       return;
     }

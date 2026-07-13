@@ -179,7 +179,7 @@ test('entry spot actor packets use actor mailboxes without entry-wide serial dis
   assert.equal(events.indexOf('actor-a:second:start') > events.indexOf('actor-a:block:end'), true);
 });
 
-test('entry spot actor handler yield fails immediately instead of timing out', async () => {
+test('entry spot actor handler submit surfaces outbound failure immediately', async () => {
   let observed;
   const channelClient = {
     requestToChannel() {
@@ -197,7 +197,7 @@ test('entry spot actor handler yield fails immediately instead of timing out', a
   class YieldPacketHandler {
     async handle(spot) {
       try {
-        await spot.context.outbound.requestToChannel('delay', { value: 'ping' }).yield();
+        await spot.context.outbound.requestToChannel('delay', { value: 'ping' }).submit();
       } catch (error) {
         observed = error;
         return;
@@ -216,8 +216,8 @@ test('entry spot actor handler yield fails immediately instead of timing out', a
   await fixture.router.submit('actor-yield', (snapshot) =>
     fixture.dispatcher.dispatchSend(snapshot.actor, 'yield', 'run'));
 
-  assert.equal(observed instanceof framework.ZLinkConfigurationException, true);
-  assert.match(observed.message, /yield requires a framework Spot handler turn/);
+  assert.equal(observed instanceof Error, true);
+  assert.match(observed.message, /yield must fail before starting/);
 });
 
 test('joined user spot actors keep per-actor mailbox dispatch off the entry line', async () => {
@@ -326,7 +326,7 @@ test('gated request await inside an entry turn completes without overlapping the
   });
   await Promise.all([gated, next]);
 
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'handler:reply:ping', 'next']);
+  assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
 });
 
 test('yield request await inside an entry turn releases the serial line until reply resumes it', async () => {
@@ -354,7 +354,7 @@ test('yield request await inside an entry turn releases the serial line until re
 
   const yielded = serial.execute(async () => {
     events.push('handler:start');
-    const reply = await outbound.requestToChannel('api', 'ping').yield();
+    const reply = await outbound.requestToChannel('api', 'ping').submit();
     events.push(`handler:${reply}`);
   });
   const next = serial.execute(() => {
@@ -368,7 +368,7 @@ test('yield request await inside an entry turn releases the serial line until re
   assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
 });
 
-test('runWorker onCompleted callback re-enters the owning spot serial executor', async () => {
+test('runWorker promise continuation re-enters the owning spot serial executor', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -386,23 +386,22 @@ test('runWorker onCompleted callback re-enters the owning spot serial executor',
 
   const busy = serial.execute(async () => {
     events.push('busy:start');
-    context.runWorker(() => {
+    void context.runWorker(() => {
       events.push('work');
       return 21 * 2;
-    }).onCompleted((result) => {
+    }).submit().then((result) => {
       events.push(`completed:${result}:executing=${serial.isExecuting}`);
       completed();
     });
     await busyGate;
     events.push('busy:end');
   });
-  // The work runs off the serial line, but the completion callback must not
-  // run inline before the busy entry turn finishes.
+  // The promise continuation resumes through the captured Spot turn.
   await delay(15);
-  assert.deepEqual(events, ['busy:start', 'work']);
+  assert.deepEqual(events, ['busy:start', 'work', 'completed:42:executing=true']);
   releaseBusy();
   await Promise.all([busy, completion]);
-  assert.deepEqual(events, ['busy:start', 'work', 'busy:end', 'completed:42:executing=true']);
+  assert.deepEqual(events, ['busy:start', 'work', 'completed:42:executing=true', 'busy:end']);
 });
 
 test('runWorker submit supports the gated awaitable path inside a handler turn', async () => {
@@ -425,10 +424,10 @@ test('runWorker submit supports the gated awaitable path inside a handler turn',
   });
   await Promise.all([gated, next]);
 
-  assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
+  assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
 });
 
-test('runWorker yield releases the current Spot turn until worker completion resumes it', async () => {
+test('runWorker submit releases the current Spot turn until worker completion resumes it', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -444,7 +443,7 @@ test('runWorker yield releases the current Spot turn until worker completion res
     const result = await context.runWorker(async () => {
       await workGate;
       return 'done';
-    }).yield();
+    }).submit();
     events.push(`handler:${result}`);
   });
   const next = serial.execute(() => {
@@ -458,17 +457,12 @@ test('runWorker yield releases the current Spot turn until worker completion res
   assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
 });
 
-test('runWorker yield requires a Spot turn captured when the call is created', async () => {
+test('runWorker submit also works when the call is created outside a Spot turn', async () => {
   const worker = new framework.ZLinkSpotWorkerRuntime();
   const serial = new framework.ZLinkSpotSerialExecutor();
   const call = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
 
-  await assert.rejects(
-    () => call.yield(),
-    (error) =>
-      error instanceof framework.ZLinkConfigurationException
-      && /captured when the call object was created/.test(error.message)
-  );
+  assert.equal(await call.submit(), 'done');
 });
 
 test('runWorker queue full fails fast with WorkerQueueFull and does not block the dispatcher', async () => {
@@ -498,13 +492,11 @@ test('runWorker queue full fails fast with WorkerQueueFull and does not block th
   const dispatched = await serial.execute(() => 'dispatcher-alive');
   assert.equal(dispatched, 'dispatcher-alive');
 
-  // Queue-full through the callback terminator delivers onError on the
-  // serial executor instead of throwing into the submitter.
   const errors = [];
   const overflowCallback = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'overflow');
-  overflowCallback.onCompleted(
+  void overflowCallback.submit().then(
     () => errors.push('completed'),
-    (error) => errors.push(`error:${error.kind}:executing=${serial.isExecuting}`)
+    (error) => serial.execute(() => errors.push(`error:${error.kind}:executing=${serial.isExecuting}`))
   );
   await delay(10);
   assert.deepEqual(errors, ['error:workerQueueFull:executing=true']);
@@ -537,7 +529,7 @@ test('runWorker timeout fails the caller and drops the late completion without u
     await delay(40);
     return 'late';
   }).timeoutMs(10);
-  callbackCall.onCompleted(
+  void callbackCall.submit().then(
     (result) => events.push(`completed:${result}`),
     (error) => events.push(`error:${error.kind}`)
   );
@@ -562,35 +554,20 @@ test('runWorker work failure surfaces as WorkerFailed wrapping the cause', async
   );
 });
 
-test('runWorker call accepts only one terminator', async () => {
+test('runWorker call accepts only one submit', async () => {
   const worker = new framework.ZLinkSpotWorkerRuntime({ maxThreads: 1, maxQueueLength: 16 });
   const serial = new framework.ZLinkSpotSerialExecutor();
 
   const submitFirst = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
   const submitted = submitFirst.submit();
   assert.throws(
-    () => submitFirst.onCompleted(() => {}),
+    () => submitFirst.submit(),
     (error) =>
       error instanceof framework.ZLinkConfigurationException
-      && /only one terminator/.test(error.message)
+      && /only once/.test(error.message)
   );
   assert.equal(await submitted, 'done');
 
-  const callbackFirst = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'callback');
-  let completed;
-  const callbackCompleted = new Promise((resolve) => {
-    completed = resolve;
-  });
-  callbackFirst.onCompleted((result) => {
-    completed(result);
-  });
-  assert.throws(
-    () => callbackFirst.submit(),
-    (error) =>
-      error instanceof framework.ZLinkConfigurationException
-      && /only one terminator/.test(error.message)
-  );
-  assert.equal(await callbackCompleted, 'callback');
 });
 
 test('detached runWorker completion observes entry spot state mutated after submission', async () => {
@@ -611,10 +588,10 @@ test('detached runWorker completion observes entry spot state mutated after subm
   });
   await serial.execute(() => {
     const submittedEpoch = entrySpot.admissionEpoch;
-    context.runWorker(async () => {
+    void context.runWorker(async () => {
       await delay(10);
       return 'profile-loaded';
-    }).onCompleted((result) => {
+    }).submit().then((result) => {
       // Detached path: state may have moved between submit and completion;
       // the callback observes the current state and re-validates.
       events.push(`completed:${result}:submitted=${submittedEpoch}:current=${entrySpot.admissionEpoch}`);

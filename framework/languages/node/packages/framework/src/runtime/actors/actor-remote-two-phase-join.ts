@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type {
   ActorRef,
   ZLinkActor,
-  ZLinkActorJoinResult,
   ZLinkMessageSerializer
 } from '../../contracts';
+import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import {
   ZLinkEncodedPayload,
   ZLinkFrameworkErrorKind,
@@ -70,7 +70,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const actorType = state.actorType;
     if (actorType === undefined) {
       throw new ZLinkFrameworkException(
@@ -174,7 +174,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const result = await this.joinSpot(node, actor, state, actorRef, target, request, timeoutMs, signal);
     if (result.accepted) {
       state.clearJoinedSpot();
@@ -191,7 +191,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     reply: ZLinkRemoteActorJoinReply,
     target: ZLinkSpotRouteTarget,
     replyMessage: Message | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const resultActor = actorRefFromReply(reply);
     if (reply.accepted) {
       state.endMove();

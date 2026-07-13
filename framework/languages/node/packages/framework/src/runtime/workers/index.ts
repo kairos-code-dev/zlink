@@ -154,9 +154,8 @@ export interface ZLinkSpotSerialLike {
 /**
  * `runWorker(...)` builder bound to one owning Spot serial executor.
  *
- * `submit()` completion settles in the owning Spot serial order (gated path);
- * `onCompleted(...)` callbacks always re-enter the owning Spot serial
- * executor (detached path).
+ * `submit()` automatically suspends a captured Spot turn and resumes its
+ * continuation through the owning serial queue.
  */
 export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   private selectedTimeoutMs: number | undefined;
@@ -179,44 +178,15 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   submit(signal?: AbortSignal): Promise<T> {
     this.claimTerminator();
     const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
-    return deliverOnSerial(this.serial, pending);
-  }
-
-  yield(signal?: AbortSignal): Promise<T> {
-    this.claimTerminator();
-    if (this.yieldTurn === undefined) {
-      return Promise.reject(new ZLinkConfigurationException(
-        'yield requires a framework Spot handler turn captured when the call object was created.'
-      ));
-    }
-    const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
-    return this.yieldTurn.yieldPromise(pending);
-  }
-
-  onCompleted(
-    callback: (result: T, signal?: AbortSignal) => void | Promise<void>,
-    onError?: (error: unknown, signal?: AbortSignal) => void | Promise<void>,
-    signal?: AbortSignal
-  ): void {
-    this.claimTerminator();
-    const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
-    void pending
-      .then(
-        (result) => Promise.resolve().then(() => this.serial.post(() => callback(result, signal))),
-        (error) => onError === undefined
-          ? undefined
-          : Promise.resolve().then(() => this.serial.post(() => onError(error, signal)))
-      )
-      .catch(() => {
-        // Callback failures must not create an unhandled rejection path; the
-        // owning runtime observes handler failures through its error sink.
-      });
+    return this.yieldTurn === undefined
+      ? deliverOnSerial(this.serial, pending)
+      : this.yieldTurn.yieldPromise(pending);
   }
 
   private claimTerminator(): void {
     if (this.terminatorSelected) {
       throw new ZLinkConfigurationException(
-        'A runWorker call can use only one terminator: submit(), yield(), or onCompleted(...).'
+        'A runWorker call can submit only once.'
       );
     }
     this.terminatorSelected = true;

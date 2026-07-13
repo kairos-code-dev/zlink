@@ -81,11 +81,7 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
     private readonly transport?: ZLinkChannelClientTransport
   ) {}
 
-  publish(topic: string, event: unknown): ZLinkPublishCall {
-    return this.publishInternal(this.defaultPublisherChannel(), topic, event);
-  }
-
-  publishToChannel(channelName: string, topic: string, event: unknown): ZLinkPublishCall {
+  publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall {
     return this.publishInternal(channelName, topic, event);
   }
 
@@ -100,16 +96,6 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
     if (!this.registration.fanoutPublishers.has(channelName)) {
       throw new ZLinkConfigurationException(`Channel '${channelName}' does not have a publisher capability.`);
     }
-  }
-
-  private defaultPublisherChannel(): string {
-    if (this.registration.fanoutPublishers.size === 1) {
-      return [...this.registration.fanoutPublishers][0];
-    }
-    if (this.registration.fanoutPublishers.size === 0) {
-      return '';
-    }
-    throw new ZLinkConfigurationException('Publish channel must be specified when more than one publisher channel is registered.');
   }
 
   private requireTransport(): ZLinkChannelClientTransport {
@@ -200,23 +186,16 @@ export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient
 }
 
 class DefaultZLinkSendCall implements ZLinkSendCall {
-  private packet?: string;
-
   constructor(
     private readonly validate: () => void,
     private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => Promise<void>
   ) {}
 
-  packetName(packetName: string): this {
-    this.packet = packetName;
-    return this;
-  }
-
   submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
     try {
-      void this.submitter(this.packet, signal).catch(() => undefined);
+      void this.submitter(undefined, signal).catch(() => undefined);
     } catch {
       // One-way send failures are handled by the framework transport path.
     }
@@ -224,7 +203,6 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
 }
 
 class DefaultZLinkRequestCall implements ZLinkRequestCall {
-  private packet?: string;
   private timeoutMs?: number;
 
   constructor(
@@ -237,11 +215,6 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
     private readonly defaultRequestTimeoutMs?: number
   ) {}
 
-  packetName(packetName: string): this {
-    this.packet = packetName;
-    return this;
-  }
-
   timeout(timeoutMs: number): this {
     this.timeoutMs = timeoutMs;
     return this;
@@ -250,28 +223,21 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
   async submit<TReply>(signal?: AbortSignal): Promise<TReply> {
     throwIfAborted(signal);
     this.validate();
-    return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
+    return this.submitter<TReply>(undefined, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
   }
 }
 
 class DefaultZLinkPublishCall implements ZLinkPublishCall {
-  private packet?: string;
-
   constructor(
     private readonly validate: () => void,
     private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => Promise<void>
   ) {}
 
-  packetName(packetName: string): this {
-    this.packet = packetName;
-    return this;
-  }
-
   submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
     try {
-      void this.submitter(this.packet, signal).catch(() => undefined);
+      void this.submitter(undefined, signal).catch(() => undefined);
     } catch {
       // One-way publish failures are handled by the framework transport path.
     }

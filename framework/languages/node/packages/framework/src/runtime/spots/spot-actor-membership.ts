@@ -92,7 +92,7 @@ export class ZLinkSpotActorMembership {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
       activation.beginActorTransfer(actor.actorId);
-      await activation.spot.onLeaveActor?.(actor, signal);
+      await activation.spot.onLeaveActor(actor);
       activation.commitActorDeparture(actor.actorId);
       this.options.actorTransferRuntime?.clearRoutedActor(actor);
     });
@@ -119,7 +119,7 @@ export class ZLinkSpotActorMembership {
       await actor.context.joinEntrySpot(
         entryNodeRid,
         ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data()))
-      ).yield(signal);
+      ).submit(signal);
     } finally {
       request.close();
     }
@@ -134,7 +134,7 @@ export class ZLinkSpotActorMembership {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
       activation.beginActorTransfer(actor.actorId);
-      await activation.spot.onLeaveActor?.(actor, signal);
+      await activation.spot.onLeaveActor(actor);
       activation.commitActorDeparture(actor.actorId);
     });
   }
@@ -146,7 +146,7 @@ export class ZLinkSpotActorMembership {
   ): Promise<void> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
-    await activation.serial.execute(() => activation.spot.onLeaveActor?.(actor, signal));
+    await activation.serial.execute(() => activation.spot.onLeaveActor(actor));
   }
 
   async commitActorLeaveAfterTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
@@ -163,7 +163,7 @@ export class ZLinkSpotActorMembership {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
       activation.cancelActorTransfer(actor.actorId);
-      await activation.spot.onJoinedActor?.(actor, signal);
+      await activation.spot.onJoinedActor(actor);
     });
   }
 
@@ -195,7 +195,7 @@ export class ZLinkSpotActorMembership {
     if (joinedActor === undefined) {
       return false;
     }
-    await activation.serial.execute(() => activation.spot.onDisconnectActor?.(joinedActor, signal));
+    await activation.serial.execute(() => activation.spot.onDisconnectActor?.(joinedActor));
     return true;
   }
 

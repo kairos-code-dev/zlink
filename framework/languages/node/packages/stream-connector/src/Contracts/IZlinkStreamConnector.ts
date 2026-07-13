@@ -12,11 +12,12 @@ import type {
   ZlinkStreamInboundObservation,
   ZlinkStreamMessage
 } from './ZlinkStreamModels';
-import type { ZlinkStreamConnectionState } from './ZlinkStreamEnums';
+import type { ZlinkStreamCloseReason, ZlinkStreamConnectionState } from './ZlinkStreamEnums';
 
 export interface ZlinkStreamConnector {
   readonly isConnected: boolean;
   readonly state: ZlinkStreamConnectionState;
+  readonly closeReason?: ZlinkStreamCloseReason;
   readonly options: RequiredZlinkStreamConnectorOptions;
   readonly pendingDispatchCount: number;
   onErrorReceived(handler: (error: ZlinkStreamError, signal?: AbortSignal) => Promise<void> | void): Disposable;

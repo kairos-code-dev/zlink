@@ -14,6 +14,8 @@ import type {
   Type
 } from '../../contracts';
 import type { ZLinkDispatchErrorSink } from '../channels';
+import { currentOrCreateFlow } from './flow-context';
+import { getDispatchObserverType } from '../../contracts/Configuration/DispatchObserverRegistration';
 
 /** Shared, runtime-mutable message-flow mode cell (the C++ live_mode). */
 export interface ZLinkMessageFlowModeCell {
@@ -32,6 +34,13 @@ export interface ZLinkDiagnosticsContext {
   readonly providerResolver?: ZLinkProviderResolver;
 }
 
+export const DEFAULT_ZLINK_DIAGNOSTICS: ZLinkDiagnosticsOptions = {
+  messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
+  sampleRate: 1,
+  includeMessageSizes: false,
+  includeNativeDiagnostics: false
+};
+
 export function effectiveMessageFlow(ctx: ZLinkDiagnosticsContext): ZLinkMessageFlowLogMode {
   return ctx.liveMode.mode;
 }
@@ -40,7 +49,7 @@ export function effectiveMessageFlow(ctx: ZLinkDiagnosticsContext): ZLinkMessage
 export function createMessageFlowModeCell(
   dispatch: { diagnostics?: ZLinkDiagnosticsOptions } | undefined
 ): ZLinkMessageFlowModeCell {
-  return { mode: dispatch?.diagnostics?.messageFlowLogMode ?? ZLinkMessageFlowLogMode.ErrorsOnly };
+  return { mode: dispatch?.diagnostics?.messageFlow ?? ZLinkMessageFlowLogMode.ErrorsOnly };
 }
 
 /** Assemble the diagnostics context the reporter + tracer share. */
@@ -48,16 +57,15 @@ export function createDiagnosticsContext(
   dispatch:
     | {
         diagnostics?: ZLinkDiagnosticsOptions;
-        messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
       }
     | undefined,
   providerResolver: ZLinkProviderResolver | undefined,
   liveMode: ZLinkMessageFlowModeCell
 ): ZLinkDiagnosticsContext {
   return {
-    diagnostics: dispatch?.diagnostics ?? {},
+    diagnostics: dispatch?.diagnostics ?? DEFAULT_ZLINK_DIAGNOSTICS,
     liveMode,
-    messageFlowObserverType: dispatch?.messageFlowObserverType,
+    messageFlowObserverType: getDispatchObserverType(dispatch as import('../../contracts').ZLinkDispatchOptions | undefined),
     providerResolver
   };
 }
@@ -109,7 +117,19 @@ export class ZLinkMessageFlowTracer {
     return MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[requiredMode(outcome)];
   }
 
-  trace(flow: ZLinkMessageFlowEvent): void {
+  trace(flowInput: Omit<ZLinkMessageFlowEvent, 'effectiveMode' | 'flowId' | 'flowOrigin'> & {
+    readonly effectiveMode?: ZLinkMessageFlowLogMode;
+    readonly flowId?: string;
+    readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
+  }): void {
+    const root = flowInput.flowId !== undefined && flowInput.flowOrigin !== undefined
+      ? { flowId: flowInput.flowId, flowOrigin: flowInput.flowOrigin }
+      : currentOrCreateFlow();
+    const flow: ZLinkMessageFlowEvent = {
+      ...flowInput,
+      ...root,
+      effectiveMode: flowInput.effectiveMode ?? effectiveMessageFlow(this.ctx)
+    };
     if (!this.enabled(flow.outcome)) {
       return;
     }
@@ -150,7 +170,7 @@ export class ZLinkMessageFlowTracer {
   }
 
   private sample(): boolean {
-    const rate = this.ctx.diagnostics.sampleRate ?? 1.0;
+    const rate = this.ctx.diagnostics.sampleRate;
     if (rate >= 1.0) {
       return true;
     }
@@ -206,6 +226,8 @@ export function flowLine(flow: ZLinkMessageFlowEvent, label: string | undefined,
     field('channel', flow.channelName),
     field('topic', flow.topic),
     field('corr', flow.correlationId),
+    field('flow', flow.flowId),
+    field('origin', flow.flowOrigin),
     field('src', flow.sourceRid),
     field('spot', flow.spotRid),
     field('actor', flow.actorId),

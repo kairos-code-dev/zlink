@@ -38,6 +38,7 @@ export interface ZLinkActorClientOptions {
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly defaultRequestTimeoutMs?: number;
   readonly staleActorRefReporter?: (actorId: string) => void;
+  readonly sendErrorReporter?: (error: unknown) => void;
 }
 
 export class DefaultZLinkActorClient implements ZLinkActorClient {
@@ -45,8 +46,9 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
 
   sendToActor(actor: ActorRef, message: unknown): ZLinkActorSendCall {
     return new DefaultZLinkActorSendCall(
-      (packetName, signal) => this.send(actor, packetName, message, signal),
-      message
+      (packetName, metadata) => this.send(actor, packetName, message, metadata),
+      message,
+      this.options.sendErrorReporter ?? (() => undefined)
     );
   }
 
@@ -62,10 +64,9 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     actor: ActorRef,
     explicitPacketName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    metadata: ReadonlyMap<string, string>
   ): Promise<void> {
-    throwIfAborted(signal);
-    const parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message);
+    const parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message, metadata);
     try {
       await this.submitActorSend(actor as ZLinkBackendActorRef, parts);
     } catch (error) {
@@ -87,7 +88,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request);
+    const parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request, new Map());
     try {
       return await this.submitActorRequest<TReply>(actor as ZLinkBackendActorRef, parts, timeoutMs, signal);
     } catch (error) {
@@ -105,7 +106,8 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     kind: ZLinkStreamMessageKind,
     requestSeq: bigint | undefined,
     explicitPacketName: string | undefined,
-    message: unknown
+    message: unknown,
+    metadata: ReadonlyMap<string, string>
   ): readonly Message[] {
     const packetName = resolveFrameworkPacketName(message, explicitPacketName, 'Actor');
     const header = encodeStreamHeader({
@@ -114,7 +116,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       flags: requestSeq === undefined ? ZLinkStreamHeaderFlags.None : ZLinkStreamHeaderFlags.HasRequestSeq,
       requestSeq,
       name: packetName,
-      metadata: new Map()
+      metadata
     });
     return [
       BindingMessage.from(Buffer.from(header)) as Message,
@@ -190,11 +192,13 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
 
 class DefaultZLinkActorSendCall implements ZLinkActorSendCall {
   private packet?: string;
+  private readonly selectedMetadata = new Map<string, string>();
   private executed = false;
 
   constructor(
-    private readonly submitter: (packetName: string | undefined, signal?: AbortSignal) => Promise<void>,
-    private readonly message: unknown
+    private readonly submitter: (packetName: string | undefined, metadata: ReadonlyMap<string, string>) => Promise<void>,
+    private readonly message: unknown,
+    private readonly reportError: (error: unknown) => void
   ) {}
 
   packetName(packetName: string): this {
@@ -202,11 +206,18 @@ class DefaultZLinkActorSendCall implements ZLinkActorSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<void> {
+  metadata(key: string, value: string): this {
+    this.selectedMetadata.set(key, value);
+    return this;
+  }
+
+  submit(): void {
     ensureSingleSubmit(this.executed);
     this.executed = true;
-    throwIfAborted(signal);
-    return this.submitter(this.packet ?? resolveFrameworkPacketName(this.message, undefined, 'Actor'), signal);
+    void this.submitter(
+      this.packet ?? resolveFrameworkPacketName(this.message, undefined, 'Actor'),
+      this.selectedMetadata
+    ).catch(this.reportError);
   }
 }
 
@@ -227,6 +238,10 @@ class DefaultZLinkActorRequestCall implements ZLinkActorRequestCall {
 
   packetName(packetName: string): this {
     this.packet = packetName;
+    return this;
+  }
+
+  metadata(_key: string, _value: string): this {
     return this;
   }
 

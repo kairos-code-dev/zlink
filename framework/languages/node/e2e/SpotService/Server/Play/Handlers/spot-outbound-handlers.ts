@@ -1,16 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotSubscriptionHandler } from '@zlink-systems/framework';
+import { ZLinkPacket } from '@zlink-systems/framework';
 import type {
   ChannelEchoRes,
-  SpotMsg,
   SpotOutboundNegativeMsg,
   SpotOutboundMsg
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import {
+  ChannelEchoReq,
+  ChannelNotify,
+  MissingChannelNotify,
+  MissingChannelReq,
+  SpotMsg,
+  SpotServiceNames,
+  spotServicePacket
+} from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
+@ZLinkPacket('SpotOutboundMsg')
 export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -21,17 +30,17 @@ export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserS
   ): Promise<void> {
     void context;
     const echo = await spot.context.outbound
-      .requestToChannel(SpotServiceNames.externalClientChannel, { value: request.marker })
-      .packetName('ChannelEchoReq')
+      .requestToChannel(SpotServiceNames.externalClientChannel,
+        spotServicePacket(ChannelEchoReq, { value: request.marker }))
       .submit<ChannelEchoRes>();
     const notifyMarker = `notify-${request.marker}`;
     await spot.context.outbound
-      .sendToChannel(SpotServiceNames.externalClientChannel, { marker: notifyMarker })
-      .packetName('ChannelNotify')
+      .sendToChannel(SpotServiceNames.externalClientChannel,
+        spotServicePacket(ChannelNotify, { marker: notifyMarker }))
       .submit();
     await spot.context.outbound
-      .publish(SpotServiceNames.spotEventTopic, { marker: 'sm-c2-publish' })
-      .packetName('SpotMsg')
+      .publish(SpotServiceNames.spotEventTopic,
+        spotServicePacket(SpotMsg, { marker: 'sm-c2-publish' }))
       .submit();
     this.evidence.add(
       `spot-outbound|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
@@ -41,6 +50,7 @@ export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserS
 }
 
 @Injectable()
+@ZLinkPacket('SpotOutboundNegativeMsg')
 export class SpotOutboundNegativeHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundNegativeMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -53,16 +63,16 @@ export class SpotOutboundNegativeHandler implements ZLinkSpotPacketHandler<Scena
     let requestFailed = false;
     try {
       await spot.context.outbound
-        .requestToChannel(SpotServiceNames.externalClientChannel, { value: request.marker })
-        .packetName('MissingChannelReq')
+        .requestToChannel(SpotServiceNames.externalClientChannel,
+          spotServicePacket(MissingChannelReq, { value: request.marker }))
         .timeout(2000)
         .submit<ChannelEchoRes>();
     } catch {
       requestFailed = true;
     }
     await spot.context.outbound
-      .sendToChannel(SpotServiceNames.externalClientChannel, { marker: `missing-${request.marker}` })
-      .packetName('MissingChannelNotify')
+      .sendToChannel(SpotServiceNames.externalClientChannel,
+        spotServicePacket(MissingChannelNotify, { marker: `missing-${request.marker}` }))
       .submit();
     this.evidence.add(
       `spot-outbound-negative|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|requestFailed=${requestFailed ? 'True' : 'False'}`

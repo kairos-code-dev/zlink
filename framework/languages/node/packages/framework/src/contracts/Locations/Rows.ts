@@ -9,6 +9,7 @@ export interface ZLinkPeerLocation {
   readonly role: ZLinkLocationRole;
   readonly endpoint: string;
   readonly weight: number;
+  readonly draining: boolean;
   readonly value: bigint;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly capabilities?: readonly string[];

@@ -3,13 +3,12 @@ import type {
   ZLinkActorContext
 } from '@zlink-systems/framework';
 import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
+import type { GameStateNotify, PlayerJoinedNotify, WinMilestoneNotify } from '../../../../../Shared/Contracts/messages';
 
 type PlayClient = {
   send(message: unknown): {
-    packetName(packetName: string): {
-      metadata(key: string, value: string): {
-        submit(signal?: AbortSignal): void;
-      };
+    metadata(key: string, value: string): {
+      submit(): void;
     };
   };
 };
@@ -64,11 +63,10 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.destroyAfterEntrySpotJoin = true;
   }
 
-  push(packetName: string, payload: unknown): void {
+  push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): void {
     this.nextSeq += 1;
     void this.context.boundSession
       .send(payload)
-      .packetName(packetName)
       .metadata('seq', String(this.nextSeq))
       .submit();
   }

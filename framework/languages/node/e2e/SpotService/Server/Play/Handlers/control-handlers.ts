@@ -8,10 +8,9 @@ import type {
   CreateSpotReq,
   EnsureActorRes,
   EnsureActorReq,
-  ActorPingRes,
-  ActorPushReq
+  ActorPingRes
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import { ActorPushReq, SpotServiceNames } from '../../../Shared/messages';
 import type {
   ZLinkActorClient,
   ZLinkActorManager,
@@ -80,8 +79,7 @@ export class CrossRoleActorPushHandler
         actorId: request.actorId,
         nodeRid: request.nodeRid,
         generation: BigInt(request.generation)
-      }, { value: request.value } satisfies ActorPushReq)
-      .packetName('ActorPushReq')
+      }, new ActorPushReq(request.value))
       .timeout(5000)
       .submit<ActorPingRes>();
     this.evidence.add(

@@ -194,7 +194,7 @@ try {
         throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
     }
     $redisContainer = "bingo-node-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+    & docker run -d --rm --tmpfs /data --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start Redis Docker container."
     }

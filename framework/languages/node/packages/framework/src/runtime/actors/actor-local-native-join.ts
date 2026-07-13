@@ -1,8 +1,8 @@
 import type {
   RoutingId,
   ZLinkActor,
-  ZLinkActorJoinResult
 } from '../../contracts';
+import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
@@ -43,7 +43,7 @@ export class ZLinkLocalNativeActorJoin {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const { result, parts } = await new Promise<{
       result: ZLinkBackendActorJoinResult;
       parts: readonly Message[];
@@ -108,7 +108,7 @@ export class ZLinkLocalNativeActorJoin {
     nodeRid: RoutingId,
     request: Message,
     timeoutMs: number | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const { result, parts } = await new Promise<{
       result: ZLinkBackendActorJoinEntrySpotResult;
       parts: readonly Message[];

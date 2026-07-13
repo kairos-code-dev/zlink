@@ -20,7 +20,6 @@ export function resolveFrameworkPacketName(
   surface: string
 ): string {
   const packetName = normalizePacketName(explicitPacketName)
-    ?? tryPayloadPacketName(payload)
     ?? tryDecoratorPacketName(payload)
     ?? tryConstructorPacketName(payload);
   if (packetName === undefined) {
@@ -29,17 +28,6 @@ export function resolveFrameworkPacketName(
     );
   }
   return packetName;
-}
-
-function tryPayloadPacketName(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || !('packetName' in payload)) {
-    return undefined;
-  }
-  const packetName = (payload as { packetName?: () => unknown }).packetName;
-  if (typeof packetName !== 'function') {
-    return undefined;
-  }
-  return normalizePacketName(packetName.call(payload));
 }
 
 function tryDecoratorPacketName(payload: unknown): string | undefined {

@@ -8,9 +8,9 @@ export interface ZLinkLocationWatchFilter {
 }
 
 export enum ZLinkLocationChangeType {
-  Upserted = 1,
-  Removed = 2,
-  Expired = 3
+  Upserted = 'upserted',
+  Removed = 'removed',
+  Expired = 'expired'
 }
 
 export interface ZLinkLocationChanged {

@@ -4,7 +4,7 @@ import type {
   ZLinkChannelOptions,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRouteChannelOptions,
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
   type ZLinkModuleOptions,

@@ -19,6 +19,7 @@ export interface ZLinkLocationRuntimeOwnerOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   readonly fallbackNodeRid: RoutingId;
+  readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkLocationRuntimeStopSnapshot {
@@ -67,7 +68,8 @@ export class ZLinkLocationRuntimeOwner {
       stores,
       options: this.options.registration.locations.options,
       events: this.ensureEvents(),
-      leaseTracker: this.leaseTracker(stores)
+      leaseTracker: this.leaseTracker(stores),
+      metrics: this.options.metrics
     });
     this.runtime = runtime;
     this.lifecycle = new ZLinkLocationLifecycle(runtime, stores.actorStore, primarySpotMeshName ?? '');

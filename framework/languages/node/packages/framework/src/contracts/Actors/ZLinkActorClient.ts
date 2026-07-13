@@ -6,12 +6,12 @@ export interface ZLinkActorClient {
 }
 
 export interface ZLinkActorSendCall {
-  packetName(packetName: string): this;
-  submit(signal?: AbortSignal): Promise<void>;
+  metadata(key: string, value: string): this;
+  submit(): void;
 }
 
 export interface ZLinkActorRequestCall {
-  packetName(packetName: string): this;
+  metadata(key: string, value: string): this;
   timeout(timeoutMs: number): this;
   submit<TReply>(signal?: AbortSignal): Promise<TReply>;
 }

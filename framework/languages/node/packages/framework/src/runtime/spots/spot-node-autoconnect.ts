@@ -94,6 +94,7 @@ export function spotNodeAutoConnectCapability(
       role: local.role,
       endpoint,
       weight: 100,
+      draining: false,
       value: 0n,
       metadata,
       ownerId: '',

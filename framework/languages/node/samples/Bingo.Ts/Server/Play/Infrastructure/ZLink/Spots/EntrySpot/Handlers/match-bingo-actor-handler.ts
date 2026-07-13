@@ -42,7 +42,6 @@ class MatchBingoActorHandler
           SampleNames.apiChannel,
           matchBingoApiReq(actorId, displayName, request.mode, String(entrySpot.context.nodeRid))
         )
-        .packetName(PacketNames.matchBingoApiReq)
         .timeout(SampleTimings.requestTimeout)
         .submit<MatchBingoApiRes>();
 
@@ -51,7 +50,7 @@ class MatchBingoActorHandler
       .joinSpot(roomId, bingoRoomJoinReq(roomId, actorId, displayName))
       .timeout(SampleTimings.requestTimeout)
       .submit<BingoRoomJoinRes>();
-    if (!joined.accepted || joined.reply === undefined) {
+    if (joined.status === 'rejected') {
       throw new Error(`Room ${roomId} rejected actor '${actorId}'.`);
     }
 

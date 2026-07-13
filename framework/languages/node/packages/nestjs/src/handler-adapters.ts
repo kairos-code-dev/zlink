@@ -8,7 +8,7 @@ import type {
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkSendContext
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 import { framework } from './framework-loader';
 import type { ZLinkNestManualHandlerOptions } from './contracts';
 import type { ZLinkNestHandlerMetadata } from './handler-metadata';

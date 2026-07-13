@@ -1,10 +1,11 @@
-import type { ZLinkMessage } from '../Common';
+import type { Type, ZLinkMessage } from '../Common';
 import type { ZLinkSessionDispatchContext } from './IZLinkSession';
 
-export interface ZLinkSessionPacketHandler<TSessionContext> {
-  handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
+export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMessage> {
+  handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, message: TMessage): Promise<void>;
 }
 
-export interface ZLinkSessionPacketDispatcher<TSessionContext> {
-  dispatch(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
+export interface ZLinkSessionHandlerRegistry {
+  addHandler<THandler>(handlerType: Type<THandler>): this;
+  tryHandle(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean>;
 }

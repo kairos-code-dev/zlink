@@ -1,14 +1,14 @@
 import type { RoutingId, ZLinkMessage } from '../Common';
 import type { ZLinkSessionActors } from './IZLinkSessionActor';
-import type { ZLinkStream } from './IZLinkStream';
 import type { ZLinkStreamError } from './ZLinkStreamError';
+import type { ZLinkSessionHandlerRegistry } from './IZLinkSessionPacketHandler';
 
 export interface ZLinkSession {
   readonly context: ZLinkSessionContext;
   onConnected?(context: ZLinkSessionContext): Promise<void>;
   onDisconnected?(context: ZLinkSessionContext): Promise<void>;
   onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
-  onDispatch?(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
+  onDispatch?(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
 }
 
 export interface ZLinkSessionDispatchContext {
@@ -18,7 +18,7 @@ export interface ZLinkSessionDispatchContext {
 }
 
 export interface ZLinkSessionFactory<TSession extends ZLinkSession = ZLinkSession> {
-  create(context: ZLinkSessionContext): TSession | Promise<TSession>;
+  create(context: ZLinkSessionContext): Promise<TSession>;
 }
 
 export interface ZLinkSessionContext {
@@ -26,9 +26,9 @@ export interface ZLinkSessionContext {
   readonly routingId?: RoutingId;
   readonly localAddr?: string;
   readonly remoteAddr?: string;
-  readonly stream: ZLinkStream;
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
+  readonly handlers: ZLinkSessionHandlerRegistry;
   close(signal?: AbortSignal): Promise<void>;
 }
 
@@ -39,13 +39,12 @@ export interface ZLinkSessionClient {
 
 export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): this;
-  packetName(packetName: string): this;
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): void;
+  submit(): void;
 }
 
 export interface ZLinkSessionReplyCall {
   metadata(key: string, value: string): this;
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): void;
+  submit(): void;
 }

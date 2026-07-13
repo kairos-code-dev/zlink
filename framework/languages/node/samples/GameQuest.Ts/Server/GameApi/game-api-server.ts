@@ -4,7 +4,6 @@ import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sa
 import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
 import {
   deleteQuestProjectionReq,
-  PacketNames,
   rebuildQuestProjectionReq
 } from '../../Shared/Contracts/messages';
 import type { INestApplicationContext } from '@nestjs/common';
@@ -52,7 +51,6 @@ function startGameApiServer(
         const questId = decodeURIComponent(deleteMatch[2]);
         const deleted = await routes
           .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), deleteQuestProjectionReq(playerId, questId))
-          .packetName(PacketNames.deleteQuestProjectionReq)
           .timeout(SampleNames.requestTimeout)
           .submit<DeleteQuestProjectionRes>();
         store.deleteProjection(playerId, questId);
@@ -65,7 +63,6 @@ function startGameApiServer(
         const questId = decodeURIComponent(rebuildMatch[2]);
         const rebuilt = await routes
           .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), rebuildQuestProjectionReq(playerId, questId, 0))
-          .packetName(PacketNames.rebuildQuestProjectionReq)
           .timeout(SampleNames.requestTimeout)
           .submit<QuestProgress>();
         store.mergeProjection(playerId, [rebuilt]);

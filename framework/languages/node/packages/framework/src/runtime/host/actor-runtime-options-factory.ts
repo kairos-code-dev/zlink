@@ -53,6 +53,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly actorTransferRuntime: ZLinkActorTransferRuntime;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   readonly shutdownSignal: () => AbortSignal | undefined;
+  readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -71,6 +72,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'boundSessionFactory'
     | 'actorTransferRegistry'
     | 'shutdownSignal'
+    | 'metrics'
   > {
     const actorTransferRegistry = this.options.actorTransferRegistry;
     return {
@@ -100,6 +102,7 @@ export class ZLinkActorRuntimeOptionsFactory {
       messageSerializers: this.options.registration.messageSerializers,
       actorTransferRegistry,
       shutdownSignal: this.options.shutdownSignal(),
+      metrics: this.options.metrics,
       nativeActorNodeProvider: this.options.primarySpotNodeOrUndefined,
       locationLifecycle: this.options.locationLifecycle(),
       boundSessionFactory: (actorId) => new ZLinkNativeFallbackBoundSession({
@@ -139,7 +142,8 @@ export class ZLinkActorRuntimeOptionsFactory {
       locationResolver: this.options.createActorLocationResolver,
       messageSerializers: this.options.registration.messageSerializers,
       defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs,
-      staleActorRefReporter: (actorId) => this.options.actorHandoff.recordStaleFailure(actorId)
+      staleActorRefReporter: (actorId) => this.options.actorHandoff.recordStaleFailure(actorId),
+      sendErrorReporter: this.options.reportPostCommitError
     };
   }
 

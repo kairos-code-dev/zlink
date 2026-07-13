@@ -2538,8 +2538,8 @@ optional `AbortSignal`을 사용할 수 있다.
 
 다음 이름은 application이 직접 사용하는 기능이므로 package root의 정식 public
 contract에 포함한다. 이 이름 목록 자체는 시그니처 정의를 대신하지 않으며, 정식 member는
-§3~§11과 §16.1의 TypeScript 선언으로 고정한다. 아직 선언이 없는 이름은 §16.2에서
-문서 gap으로 분류한다.
+§3~§11과 §16.1의 TypeScript 선언으로 고정한다. §16.2는 이 선언과 현재 package export를
+비교한 최종 구현 상태를 기록한다.
 
 ```text
 ZLinkActorClient
@@ -3134,88 +3134,25 @@ export interface ZLinkSerializerRegistryLike {
 
 ### 16.2 목표 interface와 현재 구현
 
-| 기능 | 목표 Node.js 계약 | 현재 구현 | 상태와 구현 참고 |
-|------|--------------------|-----------|------------------|
-| channel/Spot handler | request handler `handle(): Promise<TReply>`와 one-way handler `handle(): Promise<void>` | `RegistrationTypes.ts`의 request/send/publish/route handler 다섯 `handle`이 동기 결과 union을 허용 | gap. 다섯 member에서 동기 결과 union을 제거하고 Promise 반환으로 고정한다. |
-| one-way call | `ZLinkSendCall.submit()`, `ZLinkPublishCall.submit()`, `ZLinkActorSendCall.submit()`, `ZLinkBoundSessionSendCall.submit()`은 모두 `void` | actor send와 bound-session send의 `submit()`이 `Promise<void>`를 반환 | gap. 두 member의 반환 타입과 signal 인자를 제거한다. |
-| request/join/worker 완료 | `Promise<T>` terminator 하나, 실행 줄 관리는 framework 내부 | yield call과 worker callback completion이 public | gap. yield/callback 선택지를 제거한다. |
-| Spot lifecycle | `ZLinkSpotActorLifecycle`과 `ZLinkActorTransferAdapter` callback은 Promise를 반환하고 signal 인자를 받지 않음 | lifecycle/transfer callback declaration에 `signal?: AbortSignal` 인자가 존재 | gap. lifecycle/transfer callback에서 signal 인자를 제거한다. |
-| Entry Spot lifecycle | actor lifecycle을 상속하고 required `context`와 `onCreateActor(actor, createRequest)`를 포함 | 상속과 `onCreateActor`는 있으나 context와 모든 callback이 optional이고 callback이 signal 인자를 받음 | gap. context를 required로 바꾸고 목표 callback 형태로 맞춘다. 기본 구현 제공 여부는 runtime에서 결정한다. |
-| actor factory | `ZLinkActorFactory.create(...): Promise<ZLinkActor>` | `ZLinkActorFactory.create(...)`가 `ZLinkActor | Promise<ZLinkActor>`를 허용 | gap. 동기 반환 union을 제거한다. |
-| actor context | nullable `spotRid`, `boundSession`, 두 join call. `spotRid` 존재 여부가 join 상태의 단일 기준 | 현재 `actorRef`, `getSpot`, 별도 `isJoined`와 optional join request가 노출됨 | gap. 내부 식별 snapshot, Spot getter와 중복 boolean을 제거하고 join request를 명시적으로 받는다. |
-| actor join result | `status`로 구분하는 승인/거절 union. 승인 결과만 필수 `actor`를 가지며 reply는 두 결과에 항상 존재 | 현재 boolean, optional actor와 optional reply를 독립 필드로 노출함 | gap. 모순 상태를 만들 수 없는 union으로 바꾼다. |
-| manual connection | builder capability accessor가 반환하는 runtime `ZLinkEndpointConnections` | startup endpoint 설정과 설정 편집 의미만 있음 | gap. manual 역할의 실행 중 endpoint 제어로 연결한다. |
-| worker | Spot/Entry context의 `runWorker(...)`가 `ZLinkWorkerCall`을 반환 | call 타입만 있고 생성 member가 없음 | gap. 두 context에 producing member를 추가한다. |
-| route builder | `addRouteMesh`와 `ZLinkRouteMeshChannelBuilder` 하나 | route channel/mesh 이름과 빈 파생 interface가 중복됨 | gap. 하나의 route mesh 표면으로 합친다. |
-| default request timeout | 전역 30초와 channel별 override | public 설정 없음 | gap. framework와 request channel builder 설정을 추가한다. |
-| bound session 획득 | actor context의 `boundSession`만 public | 별도 `ZLinkBoundSessionFactory`를 전역 DI로 공개 | gap. factory를 runtime 내부로 이동한다. |
-| monitoring event 상태 | kind별 discriminated union과 registry/socket/Spot/location source | registry source가 없고 nullable payload interface를 노출 | gap. source 등록과 tagged union을 추가한다. |
-| abortable 장기 작업 | request 대기, connect/close/disconnect, resolver/query에 optional `AbortSignal` | request, actor directory, location query와 disconnect에 signal이 구현됨 | 일치. lifecycle callback에 추가된 signal은 위 Spot lifecycle gap에서 제거한다. |
-| Spot kind | `Invalid`, `Entry`, `User` string enum | 현재 같은 세 의미를 numeric enum으로 노출 | gap. wire 값과 분리된 Node string enum으로 고정한다. |
-| dispatch options | `unhandled`, `diagnostics`; 최적화 전략은 내부 | 현재 `mode?`와 observer type까지 option에 노출 | gap. mode를 제거하고 observer 등록은 builder method로 이동한다. |
-| unhandled dispatch | request/send/publish별 action과 send/publish log level, action은 `ReplyError`, `LogAndDrop`, `Drop`, `Throw` | 현재 단일 `action?`, enum은 `Ignore`, `Warn`, `Throw` | gap. 메시지 종류별 정책과 목표 enum으로 교체한다. |
-| message metadata | readonly `values`, `find(key)`와 policy `canForward(key)` | 현재 flat source fields와 policy의 `forward: boolean` | gap. immutable map snapshot과 key별 forwarding 정책으로 교체한다. |
-| dispatch diagnostic enum | `ZLinkMessageFlowOutcome`, `ZLinkDispatchErrorSurface`, `ZLinkDispatchMessageKind`, `ZLinkDispatchErrorReason`, `ZLinkDispatchErrorAction` | package root에 같은 이름과 string 값으로 export됨 | 일치 |
-| framework error | `ZLinkFrameworkErrorKind`와 `ZLinkFrameworkException(kind, message, isRetriable?, cause?)` | package root에 같은 kind 집합, constructor와 `isRetriable`이 export됨 | 일치 |
-| encoded payload | serializer 경계의 immutable-copy `ZLinkEncodedPayload` | package root에 `from`, byte/string 조회, `copy`, `close`가 구현됨 | 일치 |
-| message-flow event | local/peer rid, socket role와 effective mode를 readonly 멤버로 포함 | 현재 `ZLinkMessageFlowEvent` declaration에 `peerRid`, `socketRole`, `effectiveMode`가 없음 | gap. 세 readonly 멤버를 추가한다. |
-| stream write/reply | `ZLinkStream.write(ZLinkMessage, flags?): boolean`; reply builder는 session client 소유 | 현재 stream write는 같은 boolean 형태이며 stream reply는 없음 | 일치. 문서에 있던 stream `reply()` builder는 제거했다. |
-| session context | `client`, `actors`, `handlers`를 제공하고 raw stream은 숨김 | 현재 `stream`, `client`, `actors`는 있고 `handlers`가 없음 | gap. typed handler registry를 추가하고 raw stream escape hatch를 제거한다. |
-| session actor collection | `bind(actor/ref)`, `bindOrGet(ref)`, `find`, `bound` | 현재 모두 구현됨 | 일치 |
-| typed session handler/registry | typed payload handler와 `addHandler`/`tryHandle` registry | 현재 raw `ZLinkMessage` handler와 `dispatch(): Promise<void>` dispatcher만 제공 | gap. serializer registry를 연결하고 처리 여부를 반환하는 registry로 교체한다. |
-| stream decorator | typed `ZLinkStreamPacket()`과 raw `ZLinkStreamRaw()` | 둘 다 export됨 | 일치 |
-| route handler context | `routerChannelId`, `sourceNodeRid` | 현재 `sourceNodeRid`, `sourcePeerRid`이고 request에는 `requestSeq`도 노출 | gap. transport 내부 peer/sequence를 제거하고 논리 channel id를 추가한다. |
-| route client | `sendToNode`, `requestToNode`, `SpotHandle` 기반 `sendToSpot`, `requestToSpot` | 현재 node 대상 두 member와 `SpotRef` 기반 표면 | gap. handle 기반 두 member로 정렬한다. |
-| publisher client | Spot publisher와 fanout 모두 `publish(channelName, topic, event)` | Spot publisher는 일치. fanout은 channelless `publish(topic,event)`와 `publishToChannel(...)`을 노출 | gap. fanout을 단일 목표 member로 맞춘다. |
-| channel client | `sendToChannel`, `requestToChannel`만 노출 | 이 둘 외에 channelless `send`, `request`도 노출 | gap. target channel이 숨겨진 두 member를 제거한다. |
-| Spot registries | fluent `this`를 반환하고 actor packet/packet/subscription 등록 member를 제공 | 현재 fluent 반환은 일치하지만 alias member(`packet`, `subscribe`, `actorSend`, `actorRequest`, `addSpotHandler`)가 추가되고 목표 `addActorPacket`이 없음 | gap. 목표 member로 정리하고 registration alias는 내부로 이동한다. |
-| Spot manager | create/get/find/list/close | 현재 여기에 `executeOnSpot`이 추가로 노출 | gap. 실행 객체 직접 접근을 public contract에서 제거한다. |
-| route-mesh runtime options | client-server와 route-mesh 역할 모두 조회 | 둘 다 제공 | 일치 |
-| `ZLinkClientServerChannelOptions` | client-server channel 등록 값을 읽는 readonly option interface | builder와 runtime option은 있으나 이 snapshot symbol은 없음 | gap. `ZLinkRouteMeshChannelOptions`와 같은 구성 조회 사용성을 추가한다. |
-| package export | contract와 사용자 extension만 root export | registration record, normalizer, internal state가 root에 노출 | gap. 내부 configuration 구현을 export에서 제거한다. |
-| location interface 이름 | `ZLinkLocationStore`, 역할별 store/query/resolver/readiness처럼 `I` prefix 없음 | 현재 12개 location interface가 `IZLink...` 이름으로 export됨 | gap. member는 유지하고 TypeScript naming에 맞게 `I` prefix를 제거한다. 대상은 store 8개, resolver 2개, readiness, runtime query다. |
-| location runtime query | §16.1의 7개 query member | 현재 `IZLinkLocationRuntimeQuery`에 같은 7개 member가 구현됨 | 이름만 gap. `ZLinkLocationRuntimeQuery`로 rename한다. |
-| location result enum | `ZLinkLocationChangeType`, `ZLinkLocationWriteStatus` string enum | 현재 같은 의미의 numeric enum이 package root에 export됨 | gap. Node enum 규칙에 맞춰 string 값으로 고정하고 저장소 내부 numeric 값 변환은 runtime에 둔다. |
-| codec registrar | content type과 serializer/stream codec을 직접 받는 fluent member와 conditional serializer overload | 현재 `addSerializer(contentType, serializer)`와 `addStreamCodec(contentType, codec)`만 있고 conditional overload가 없음 | gap. overload를 추가하고 두 member가 `this`를 반환하도록 유지한다. |
-| typed packet name | registration descriptor가 한 번 결정 | call builder와 payload instance가 이름을 override | gap. typed call override를 제거하고 raw extension만 명시 이름을 받는다. |
-| error kind | 공통 오류 kind 집합 | 공통 집합 사용 | 일치 |
-| interface catalog | §3~§11 및 §16.1의 TypeScript declaration만 정식 시그니처로 판정 | §16의 text inventory에는 아직 별도 declaration이 없는 option/value 이름이 있음 | 문서 gap. 이름 목록만으로 완전성을 주장하지 않으며, 시그니처가 없는 이름은 후속 문서 보완 전까지 고정 계약으로 판정하지 않는다. |
+2026-07-13 구현과 package export를 다시 비교했다. 아래 표에서 추적하던 차이는 모두
+해소됐으며, Node.js에 남은 public contract 구현 차이는 없다.
 
-현재 `ZLinkSessionPacketDispatcher`도 Streams barrel을 거쳐 package root에 export된다.
-전체 현재 시그니처는 다음과 같다.
+| 영역 | 해소된 항목 | 현재 구현과 검증 | 상태 |
+|------|-------------|------------------|------|
+| handler와 완료 형태 | handler/factory/lifecycle의 Promise 반환, one-way `void`, worker terminator, 장기 작업만 `AbortSignal` 사용 | declaration contract test와 Node 20/22 runtime matrix가 시그니처와 종료 동작을 검증 | 일치 |
+| actor와 Spot | membership 단일 상태, join 결과 union, `SpotHandle`, lifecycle, manager, runtime connection과 worker producer | actor/Spot contract 및 integration test가 생성·join·이동·종료를 검증 | 일치 |
+| channel과 route | 단일 route builder, 전역/채널 timeout, channel 이름을 받는 client/publisher, 논리 route context | channel/route contract test와 E2E Config 1~4, 8이 public 경로를 검증 | 일치 |
+| dispatch와 metadata | message-kind별 unhandled policy, immutable metadata, forwarding policy, 진단 enum과 event field | dispatch/flow contract test와 Config 8·11이 검증 | 일치 |
+| stream과 session | typed handler registry, raw session dispatcher root export 제거, session actor collection, session-closing | stream/session contract test와 Config 11 및 cross-language smoke가 검증 | 일치 |
+| location | `I` prefix 없는 interface, string enum, 7개 runtime query member, resolver/readiness | location contract test, Redis store test와 Node↔.NET store smoke가 검증 | 일치 |
+| codec과 packet 이름 | fluent registrar와 conditional serializer, registration이 결정하는 typed packet 이름 | codec contract test, RegistrationCodec E2E와 package consumer가 검증 | 일치 |
+| monitoring과 drain | tagged runtime event, registry/socket/Spot/location source, OpenTelemetry catalog, typed drain 결과 | monitoring/drain contract test와 Config 7·11이 검증 | 일치 |
+| package export | contract와 사용자 extension만 root export하고 registration 구현은 `nest-integration` subpath로 제한 | source export test와 새 npm project가 실제 `.tgz` 7개를 설치하는 packaged contract 검증이 통과 | 일치 |
 
-```ts
-export interface ZLinkSessionPacketDispatcher<TSessionContext> {
-  dispatch(
-    context: TSessionContext,
-    dispatch: ZLinkSessionDispatchContext,
-    payload: ZLinkMessage,
-  ): Promise<void>;
-}
-```
-
-이 dispatcher는 raw payload를 전달하고 처리 여부를 반환하지 않아 이 문서의 typed
-`ZLinkSessionPacketHandler<TSessionContext, TMessage>`와 `ZLinkSessionHandlerRegistry.tryHandle(...)`
-계약을 제공하지 못한다. 구현을 목표 계약에 맞출 때 dispatcher root export를 제거하며,
-호환 alias로 남기지 않는다.
-
-현재 구현에서 이름 변경이 필요한 location interface는 다음과 같다. 왼쪽은 현재 export,
-오른쪽은 이 문서가 고정한 목표 이름이다. member는 §16.1의 선언을 유지한다.
-
-| 현재 export | 목표 contract |
-|------------|---------------|
-| `IZLinkLocationStore` | `ZLinkLocationStore` |
-| `IZLinkPeerLocationStore` | `ZLinkPeerLocationStore` |
-| `IZLinkSpotLocationStore` | `ZLinkSpotLocationStore` |
-| `IZLinkActorLocationStore` | `ZLinkActorLocationStore` |
-| `IZLinkRouteLocationStore` | `ZLinkRouteLocationStore` |
-| `IZLinkOwnerLeaseStore` | `ZLinkOwnerLeaseStore` |
-| `IZLinkLocationWatchStore` | `ZLinkLocationWatchStore` |
-| `IZLinkLocationChangeStampStore` | `ZLinkLocationChangeStampStore` |
-| `IZLinkPeerLocationResolver` | `ZLinkPeerLocationResolver` |
-| `IZLinkActorSpotHandleResolver` | `ZLinkActorSpotHandleResolver` |
-| `IZLinkLocationReadiness` | `ZLinkLocationReadiness` |
-| `IZLinkLocationRuntimeQuery` | `ZLinkLocationRuntimeQuery` |
+이전에 공개됐던 `IZLink...` location 이름, `ZLinkSessionPacketDispatcher`, channelless
+channel call, `publishToChannel`, registration record와 normalize/validate helper는 package root에
+호환 alias로 남기지 않는다. 현재 정식 이름과 전체 member는 §3~§11 및 §16.1의 declaration을
+따른다.
 
 ### 16.3 public export 판정
 
@@ -3226,7 +3163,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
 `ZLinkStreamCompressionBuilder`와 `ZLinkCodecRegistryBuilder` interface만 사용한다.
 
 다음 이름은 interface 사용성을 제공하는 계약이 아니라 framework 등록 구현이므로
-public root에서 제거해야 한다.
+public root에서 제거했으며, `nest-integration` subpath 밖으로 다시 내보내지 않는다.
 
 ```text
 createFrameworkRegistration

@@ -7,30 +7,30 @@ export async function runMonA3(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.serviceUrl, '/evidence/wait', {
     containsAll: ['monitor-spot|source=monitor.spot'],
     containsAnyGroups: [
-      ['kind=StatusChanged'],
-      ['kind=PeersChanged'],
-      ['kind=SubjectsChanged'],
-      ['kind=TimerHandlerFailed'],
+      ['kind=statusChanged'],
+      ['kind=peersChanged'],
+      ['kind=subjectsChanged'],
+      ['kind=timerHandlerFailed'],
       ['timer=failing']
     ],
     timeoutMilliseconds: 15000
   } satisfies EvidenceWaitReq);
 
   ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=StatusChanged')),
+    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=statusChanged')),
     'MON-A3 spot status evidence missing.'
   );
   ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=PeersChanged')),
+    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=peersChanged')),
     'MON-A3 spot peer evidence missing.'
   );
   ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=SubjectsChanged')),
+    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=subjectsChanged')),
     'MON-A3 spot subject evidence missing.'
   );
   ensure(
     evidence.some((line) =>
-      line.includes('monitor-spot|source=monitor.spot|kind=TimerHandlerFailed')
+      line.includes('monitor-spot|source=monitor.spot|kind=timerHandlerFailed')
       && line.includes('timer=failing')),
     'MON-A3 spot timer failure evidence missing.'
   );

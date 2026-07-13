@@ -9,16 +9,12 @@ export const PacketNames = {
   missingEventMsg: 'MissingEventMsg'
 } as const;
 
-export interface EventMsg {
-  readonly runId: string;
-  readonly sequence: number;
-  readonly value: string;
+export class EventMsg {
+  constructor(readonly runId: string, readonly sequence: number, readonly value: string) {}
 }
 
-export interface MissingEventMsg {
-  readonly runId: string;
-  readonly sequence: number;
-  readonly value: string;
+export class MissingEventMsg {
+  constructor(readonly runId: string, readonly sequence: number, readonly value: string) {}
 }
 
 export interface EvidenceWaitReq {

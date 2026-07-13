@@ -5,7 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException, ZLinkMessageFlowLogMode, type ActorRef, type ZLinkActorClient } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { actorAsk, actorNotify, actorPush, PacketNames, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
+import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { parseServerOptions } from '../Support/options';
 
@@ -53,7 +53,6 @@ async function main(): Promise<void> {
         try {
           await actors
             .sendToActor(requireActorRef(request), actorNotify(request.scenario, request.actorId, request.value))
-            .packetName(PacketNames.actorNotify)
             .submit();
           return { scenario: request.scenario, actorId: request.actorId, result: 'sent' } satisfies ActorCallResponse;
         } catch (error) {
@@ -69,7 +68,6 @@ async function main(): Promise<void> {
         try {
           const reply = await actors
             .requestToActor(requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
-            .packetName(PacketNames.actorAsk)
             .timeout(5000)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
@@ -86,7 +84,6 @@ async function main(): Promise<void> {
         try {
           const reply = await actors
             .requestToActor(requireActorRef(request), actorPush(request.scenario, request.actorId, request.value))
-            .packetName(PacketNames.actorPush)
             .timeout(5000)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;

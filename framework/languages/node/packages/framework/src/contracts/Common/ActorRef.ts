@@ -1,17 +1,9 @@
 import type { RoutingId } from './CoreTypes';
-import type { ZLinkSpotKind } from '../Spots/SpotKind';
 
 export interface ActorRef {
   readonly nodeRid: RoutingId;
   readonly actorId: string;
   readonly generation: bigint;
-}
-
-export interface SpotRef {
-  readonly meshName: string;
-  readonly nodeRid: RoutingId;
-  readonly spotRid: RoutingId;
-  readonly spotKind?: ZLinkSpotKind;
 }
 
 export interface ZLinkActorRefSnapshot {

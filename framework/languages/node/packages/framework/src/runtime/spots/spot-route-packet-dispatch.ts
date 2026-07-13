@@ -37,6 +37,7 @@ import {
   isReplyableRequestSeq,
   submitRouteReply
 } from './spot-route-replies';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 
 interface ZLinkSpotRoutePacketDispatchOptions {
   readonly packetHandlers: ReadonlyMap<string, readonly ZLinkSpotHandlerRegistration[]>;
@@ -102,7 +103,9 @@ export class ZLinkSpotRoutePacketDispatch {
         channelName: envelope.header.channelName,
         spotRid: this.options.nativeSpotRid,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
-        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString()
+        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin
       });
       if (replyable) {
         submitRouteReply(appendRouteReplyParts(
@@ -126,6 +129,8 @@ export class ZLinkSpotRoutePacketDispatch {
         spotRid: this.options.nativeSpotRid,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
         correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin,
         error
       });
       if (replyable) {
@@ -143,16 +148,17 @@ export class ZLinkSpotRoutePacketDispatch {
     };
     try {
       let response: unknown;
-      await this.options.serial.execute(async () => {
-        const spot = this.options.getTarget();
-        for (const registration of registrations) {
-          const handler = await createProviderInstance(
-            registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
-            this.options.providerResolver
-          );
-          response = await handler.handle(spot, payload, context);
-        }
-      });
+      await runWithFlow(createInboundFlow(envelope.header.flowId, envelope.header.flowOrigin), () =>
+        this.options.serial.execute(async () => {
+          const spot = this.options.getTarget();
+          for (const registration of registrations) {
+            const handler = await createProviderInstance(
+              registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
+              this.options.providerResolver
+            );
+            response = await handler.handle(spot, payload, context);
+          }
+        }));
       if (replyable) {
         submitRouteReply(appendRouteReplyParts(
           received.reply(),
@@ -171,6 +177,8 @@ export class ZLinkSpotRoutePacketDispatch {
         spotRid: this.options.nativeSpotRid,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
         correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin,
         error
       });
       if (replyable) {

@@ -12,7 +12,8 @@ import {
   ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageFlowOutcome
+  ZLinkMessageFlowOutcome,
+  zlinkMessageMetadata
 } from '../../contracts';
 import { flowIfEnabled } from '../diagnostics';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
@@ -228,7 +229,7 @@ export class ZLinkSpotActorPacketDispatch {
     try {
       if (header.kind === ZLinkStreamMessageKind.Send) {
         await dispatcher.dispatchSend(actor, header.name, payload, {
-          metadata: Object.fromEntries(header.metadata)
+          metadata: zlinkMessageMetadata(header.metadata)
         });
         this.trace(ZLinkMessageFlowOutcome.Dispatched, actorId, header, ZLinkDispatchMessageKind.ActorSend);
         return undefined;
@@ -248,13 +249,13 @@ export class ZLinkSpotActorPacketDispatch {
       const requestSeq = header.requestSeq;
       if (returnResponse || this.options.actorResponseSender === undefined) {
         const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
-          metadata: Object.fromEntries(header.metadata)
+          metadata: zlinkMessageMetadata(header.metadata)
         });
         this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
         return response;
       }
       await dispatcher.dispatchRequestThen(actor, header.name, payload, {
-        metadata: Object.fromEntries(header.metadata)
+        metadata: zlinkMessageMetadata(header.metadata)
       }, async (response, replyOptions) => {
         this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
         await this.options.actorResponseSender?.(

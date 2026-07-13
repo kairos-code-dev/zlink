@@ -8,6 +8,7 @@ export {
   ZlinkStreamErrorCode,
   ZlinkStreamConnectionState
 } from './ZlinkStreamEnums';
+export type { ZlinkFlowOrigin, ZlinkStreamCloseReason } from './ZlinkStreamEnums';
 export * from './ZlinkStreamConnectorOptions';
 export * from './ZlinkStreamInterfaces';
 export * from './ZlinkStreamMetadata';

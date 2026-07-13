@@ -184,8 +184,8 @@ class TicTacToeClientScenario {
         `wins=${milestone.payload.wins} receivingSpotNodeRid=${milestone.payload.receivingSpotNodeRid}`
       );
 
-      void client1.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit(signal);
-      void client2.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit(signal);
+      client1.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit();
+      client2.send(new LeaveGameMsg(game.roomId)).packetName(PacketNames.leaveGameMsg).submit();
     } finally {
       await Promise.allSettled([client1.close(), client2.close(), observer.close()]);
     }

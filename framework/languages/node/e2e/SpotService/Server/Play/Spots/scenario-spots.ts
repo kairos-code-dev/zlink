@@ -6,20 +6,22 @@ import type {
   ZLinkSpotActorRequestHandler,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
+import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type {
   ActorPingRes,
   ActorPingReq,
-  ActorPushNotify,
   ActorPushReq,
   LeaveReq,
   LeaveRes
 } from '../../../Shared/messages';
+import { ActorPushNotify } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from '../Handlers/spot-outbound-handlers';
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from '../Handlers/spot-to-spot-handlers';
 import { StageProbeHandler, StageTimerStartHandler } from '../Handlers/stage-handlers';
 import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from '../Handlers/state-req-handler';
+import { SpotAdminHandler } from '../Handlers/spot-admin-handler';
 import { ScenarioActor } from './scenario-actors';
 
 export class ScenarioUserSpot implements ZLinkSpot {
@@ -32,20 +34,21 @@ export class ScenarioUserSpot implements ZLinkSpot {
   }
 
   configure(): void {
-    this.context.handlers.packet('StateReq', StateReqHandler);
-    this.context.handlers.packet('StateMsg', StateCommandHandler);
-    this.context.handlers.packet('StageProbeReq', StageProbeHandler);
-    this.context.handlers.packet('StageTimerStartMsg', StageTimerStartHandler);
-    this.context.handlers.packet('SlowSpotReq', SlowSpotHandler);
-    this.context.handlers.packet('SpotOutboundMsg', SpotOutboundHandler);
-    this.context.handlers.packet('SpotOutboundNegativeMsg', SpotOutboundNegativeHandler);
-    this.context.handlers.packet('SpotToSpotReq', SpotToSpotHandler);
-    this.context.handlers.packet('SpotToSpotTimeoutReq', SpotToSpotTimeoutHandler);
-    this.context.handlers.packet('SpotToSpotNegativeReq', SpotToSpotNegativeHandler);
-    this.context.handlers.actorRequest('UserActorPingReq', UserActorPingHandler, ScenarioActor);
-    this.context.handlers.actorRequest('UserActorPushReq', UserActorPushHandler, ScenarioActor);
-    this.context.handlers.actorRequest('LeaveReq', UserActorLeaveHandler, ScenarioActor);
-    this.context.handlers.subscribe(SpotServiceNames.spotEventTopic, SpotMsgHandler);
+    this.context.handlers.addPacket(StateReqHandler);
+    this.context.handlers.addPacket(StateCommandHandler);
+    this.context.handlers.addPacket(StageProbeHandler);
+    this.context.handlers.addPacket(StageTimerStartHandler);
+    this.context.handlers.addPacket(SlowSpotHandler);
+    this.context.handlers.addPacket(SpotOutboundHandler);
+    this.context.handlers.addPacket(SpotOutboundNegativeHandler);
+    this.context.handlers.addPacket(SpotToSpotHandler);
+    this.context.handlers.addPacket(SpotToSpotTimeoutHandler);
+    this.context.handlers.addPacket(SpotToSpotNegativeHandler);
+    this.context.handlers.addPacket(SpotAdminHandler);
+    this.context.handlers.addActorPacket(UserActorPingHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(UserActorPushHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(UserActorLeaveHandler, ScenarioActor);
+    this.context.handlers.addSubscribe(SpotMsgHandler, SpotServiceNames.spotEventTopic);
   }
 
   async onInitialize(): Promise<void> {
@@ -106,6 +109,7 @@ export class ScenarioUserSpot implements ZLinkSpot {
 
 export class UserActorPingHandler
   implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingRes> {
+  @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
     spot: ScenarioUserSpot,
     actor: ScenarioActor,
@@ -131,6 +135,7 @@ export class UserActorPingHandler
 
 export class UserActorPushHandler
   implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+  @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
     spot: ScenarioUserSpot,
     actor: ScenarioActor,
@@ -139,13 +144,8 @@ export class UserActorPushHandler
   ): Promise<ActorPingRes> {
     void context;
     actor.seen += 1;
-    await actor.context.boundSession
-      .send({
-        actorId: actor.actorId,
-        value: request.value,
-        seen: actor.seen
-      } satisfies ActorPushNotify)
-      .packetName('ActorPushNotify')
+    actor.context.boundSession
+      .send(new ActorPushNotify(actor.actorId, request.value, actor.seen))
       .submit();
     return {
       actorId: actor.actorId,
@@ -159,6 +159,7 @@ export class UserActorPushHandler
 
 export class UserActorLeaveHandler
   implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, LeaveReq, LeaveRes> {
+  @ZLinkSpotActorRequest('LeaveReq')
   async handle(
     spot: ScenarioUserSpot,
     actor: ScenarioActor,
@@ -178,4 +179,7 @@ export class UserActorLeaveHandler
 
 export class ScenarioAlternateSpot implements ZLinkSpot {
   readonly context!: ZLinkSpotContext;
+  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
+  async onJoinedActor(): Promise<void> {}
+  async onLeaveActor(): Promise<void> {}
 }

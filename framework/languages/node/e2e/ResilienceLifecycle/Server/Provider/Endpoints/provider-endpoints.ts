@@ -1,12 +1,11 @@
 import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
-import type {
-  EvidenceWaitReq,
+import {
   ProfileMsg,
-  ProfileRes,
   ProfileReq,
-  WeightWaitReq,
+  type EvidenceWaitReq,
+  type ProfileRes,
+  type WeightWaitReq,
 } from '../../../Shared/messages';
-import { PacketNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { FaultState } from '../Infrastructure/fault-state';
 import type { HttpRoute } from '../Support/http-server';
@@ -24,13 +23,13 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfile(channel, 'profile', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile', new ProfileReq((body as ProfileReq).value, (body as ProfileReq).marker))
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfile(channel, 'profile', body as ProfileMsg);
+        await sendProfile(channel, 'profile', new ProfileMsg((body as ProfileMsg).commandId));
         return { status: 'sent' };
       }
     },
@@ -152,7 +151,6 @@ async function requestProfile(
 ): Promise<ProfileRes> {
   return await channel
     .requestToChannel(channelName, request)
-    .packetName(PacketNames.profileReq)
     .timeout(5000)
     .submit<ProfileRes>();
 }
@@ -164,6 +162,5 @@ async function sendProfile(
 ): Promise<void> {
   await channel
     .sendToChannel(channelName, command)
-    .packetName(PacketNames.profileMsg)
     .submit();
 }

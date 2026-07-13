@@ -7,9 +7,9 @@ export enum ZLinkLocationWriteIntent {
 }
 
 export enum ZLinkLocationWriteStatus {
-  Stored = 1,
-  IgnoredStale = 2,
-  RejectedConflict = 3
+  Stored = 'stored',
+  IgnoredStale = 'ignoredStale',
+  RejectedConflict = 'rejectedConflict'
 }
 
 export interface ZLinkLocationWriteResult {

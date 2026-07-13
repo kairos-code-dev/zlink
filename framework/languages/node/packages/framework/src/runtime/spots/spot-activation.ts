@@ -9,19 +9,22 @@ import type {
   ZLinkProviderResolver,
   ZLinkRuntimeEventPublisher,
   ZLinkSpot,
-  ZLinkSpotActorRequestHandlerRegistration,
-  ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotCreateResult,
   ZLinkSpotCreateResponse,
-  ZLinkSpotPacketHandlerRegistration,
   ZLinkSpotPublisherClient,
+} from '../../contracts';
+import type {
+  ZLinkSpotActorRequestHandlerRegistration,
+  ZLinkSpotActorSendHandlerRegistration,
+  ZLinkSpotPacketHandlerRegistration,
   ZLinkSpotSubscriptionHandlerRegistration,
   ZLinkSpotTimerHandlerRegistration
-} from '../../contracts';
+} from '../../contracts/Configuration/RegistrationTypes';
 import {
   ZLinkSpotCreateState
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import type {
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
@@ -89,6 +92,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly leaveActor: (spotRid: RoutingId, actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly closeSpot: (spotRid: RoutingId, signal?: AbortSignal) => Promise<boolean>;
   readonly registerActivation: (activation: ZLinkSpotActivation) => void;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 interface UserSpotLocationClaim {
@@ -122,7 +126,7 @@ export class ZLinkSpotActivationLifecycle {
     request: Message,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
-    const serial = new ZLinkSpotSerialExecutor();
+    const serial = new ZLinkSpotSerialExecutor(this.options.metrics, 'user');
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
     applySpotHandlerRegistrations(handlers, spotType, {
@@ -131,7 +135,7 @@ export class ZLinkSpotActivationLifecycle {
       packetHandlers: this.options.spotPacketHandlers,
       subscriptionHandlers: this.options.spotSubscriptionHandlers
     });
-    const timers = new ZLinkSpotTimerRegistry();
+    const timers = new ZLinkSpotTimerRegistry(this.options.metrics);
     let nativeSpot: ZLinkBackendSpot | undefined;
     const outbound = new DefaultZLinkSpotOutbound(
       serial,
@@ -277,13 +281,12 @@ export class ZLinkSpotActivationLifecycle {
       let createResponse: ZLinkSpotCreateResponse | undefined;
       await activation.serial.execute(async () => {
         createResponse = await activation.spot.onCreate?.(
-          wrapFrameworkPayloadMessage(request, this.options.messageSerializers),
-          signal
+          wrapFrameworkPayloadMessage(request, this.options.messageSerializers)
         );
         if (createResponse?.accepted === false) {
           return;
         }
-        await activation.spot.onInitialize?.(signal);
+        await activation.spot.onInitialize?.();
       });
       if (createResponse?.accepted === false) {
         await this.cleanupActivation(activation, locationClaim.meshName, false, signal);
@@ -315,6 +318,7 @@ export class ZLinkSpotActivationLifecycle {
     notifyClosing: boolean,
     signal?: AbortSignal
   ): Promise<void> {
+    throwIfAborted(signal);
     const state = this.cleanupStates.get(activation) ?? {
       closingAttempted: false,
       timersDisposed: false,
@@ -323,7 +327,7 @@ export class ZLinkSpotActivationLifecycle {
     };
     this.cleanupStates.set(activation, state);
     if (state.inFlight !== undefined) return await state.inFlight;
-    state.inFlight = this.runCleanup(activation, locationMeshName, notifyClosing, signal, state)
+    state.inFlight = this.runCleanup(activation, locationMeshName, notifyClosing, state)
       .finally(() => { state.inFlight = undefined; });
     return await state.inFlight;
   }
@@ -332,7 +336,6 @@ export class ZLinkSpotActivationLifecycle {
     activation: ZLinkSpotActivation,
     locationMeshName: string,
     notifyClosing: boolean,
-    signal: AbortSignal | undefined,
     state: {
       closingAttempted: boolean;
       timersDisposed: boolean;
@@ -351,7 +354,7 @@ export class ZLinkSpotActivationLifecycle {
     };
     if (notifyClosing && !state.closingAttempted) {
       state.closingAttempted = true;
-      await cleanup(() => activation.spot.onClosing?.(signal), () => undefined);
+      await cleanup(() => activation.spot.onClosing?.(), () => undefined);
     }
     if (!state.timersDisposed) {
       await cleanup(() => activation.timers.dispose(), () => { state.timersDisposed = true; });

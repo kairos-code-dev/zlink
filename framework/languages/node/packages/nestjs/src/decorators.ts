@@ -5,7 +5,7 @@ import type {
   ZLinkActor,
   ZLinkEntrySpot,
   ZLinkSpot
-} from '@zlink-systems/framework';
+} from '@zlink-systems/framework/nest-integration';
 import type {
   ZLinkNestEntrySpotActorRequestHandlerOptions,
   ZLinkNestEntrySpotActorSendHandlerOptions,

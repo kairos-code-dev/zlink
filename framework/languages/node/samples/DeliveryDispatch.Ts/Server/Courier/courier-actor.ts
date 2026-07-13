@@ -7,7 +7,7 @@ class CourierActor implements ZLinkActor {
 }
 
 class CourierActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): CourierActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<CourierActor> {
     const actor = new CourierActor(actorId);
     Object.defineProperty(actor, 'context', {
       configurable: true,

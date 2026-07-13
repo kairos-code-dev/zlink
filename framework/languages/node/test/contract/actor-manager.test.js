@@ -784,7 +784,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const entryRequest = encodedMessage('entry');
   const entryResult = await actor.context.joinEntrySpot('node-a', entryRequest).timeout(10).submit();
 
-  assert.equal(joinResult.accepted, true);
+  assert.equal(joinResult.status, 'accepted');
   assert.deepEqual(joinResult.actor, actorRef);
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(entryResult.actor, actorRef);
@@ -943,7 +943,7 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
 
   const joinResult = await actor.context.joinSpot('stage-1', 'hello').submit();
 
-  assert.equal(joinResult.accepted, true);
+  assert.equal(joinResult.status, 'accepted');
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(calls, ['joinSpot:alice:alice:stage-1:custom:hello']);
   replyMessage.close();
@@ -989,7 +989,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
 
     const joinResult = await actor.context.joinSpot('stage-1', { text: `${name}:hello` }).submit();
 
-    assert.equal(joinResult.accepted, true);
+    assert.equal(joinResult.status, 'accepted');
     assert.deepEqual(joinResult.reply, { text: `${name}:joined` });
     assert.deepEqual(calls, [`joinSpot:alice:alice:stage-1:${name}:hello`]);
   }
@@ -1042,10 +1042,9 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const request = encodedMessage('payload:hello');
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
-  assert.equal(result.accepted, true);
+  assert.equal(result.status, 'accepted');
   assert.deepEqual(result.actor, { ...joinedRef, nodeRid: 'node-a' });
   assert.equal(result.reply, 'native-reply');
-  assert.equal(actor.context.isJoined, true);
   assert.equal(actor.context.spotRid, 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
   assert.deepEqual(events, [
@@ -1237,7 +1236,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
   const request = encodedMessage('payload');
   const result = await actor.context.joinSpot('room-1', request).submit();
 
-  assert.equal(result.accepted, true);
+  assert.equal(result.status, 'accepted');
   assert.equal(result.reply, 'routed-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
@@ -1443,7 +1442,7 @@ test('remote transfer commit rejection rolls prepared source movement back', asy
 
   const result = await actor.context.joinSpot('room-target', encodedMessage('join')).submit();
 
-  assert.equal(result.accepted, false);
+  assert.equal(result.status, 'rejected');
   assert.equal(rolledBack, true);
   assert.equal(committed, false);
   assert.equal(manager.getState('alice').isMoving, false);

@@ -16,6 +16,11 @@ const specPath = path.join(
 );
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 const internalLocationCodecHelpers = new Set([
+  // §10 keeps these declarations only as a labeled, non-normative snapshot.
+  'IZLinkLocationRuntimeQuery',
+  'IZLinkLocationStore',
+  'IZLinkPeerLocationResolver',
+  'ZLinkSessionPacketDispatcher',
   'tryParseZLinkLocationAutoConnectType',
   'tryParseZLinkLocationRole',
   'zlinkLocationAutoConnectTypeName',
@@ -144,9 +149,7 @@ test('spot actor lifecycle handler registration API is not public', () => {
     'ActorLeftHandler',
     'ZLinkSpotActorJoinHandler',
     'ZLinkSpotPostActorJoinedHandler',
-    'ZLinkSpotActorLeftHandler',
-    '.handlers.addActorPacket(',
-    'addActorPacket(handlerType'
+    'ZLinkSpotActorLeftHandler'
   ];
 
   const remaining = removedNames.filter((name) => workspaceText.includes(name));
@@ -173,7 +176,7 @@ test('entry spot public surface exposes create lifecycle and actor join admissio
   assert.equal(entryContext.includes('close('), false);
 });
 
-test('actor join call objects expose yield terminators, bound session send awaits dispatch only', () => {
+test('actor join and one-way calls expose only their target terminators', () => {
   const actorContracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Actors', 'ZLinkActorFactory.ts'),
     'utf8');
@@ -182,18 +185,16 @@ test('actor join call objects expose yield terminators, bound session send await
     'utf8');
 
   const actorJoinCall = declarationBody(actorContracts, 'ZLinkActorJoinCall');
-  const actorYieldJoinCall = declarationBody(actorContracts, 'ZLinkActorYieldJoinCall');
   const actorJoinSpotCall = declarationBody(actorContracts, 'ZLinkActorJoinSpotCall');
   const actorJoinEntrySpotCall = declarationBody(actorContracts, 'ZLinkActorJoinEntrySpotCall');
 
   assert.equal(actorJoinCall.includes('submit<TReply'), true);
   assert.equal(actorJoinCall.includes('yield<TReply'), false);
-  assert.equal(interfaceExtends(actorYieldJoinCall, 'ZLinkActorJoinCall'), true);
-  assert.match(actorYieldJoinCall, /yield<TReply = unknown>\(signal\?: AbortSignal\): Promise<ZLinkActorJoinResult<TReply>>/);
-  assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorYieldJoinCall'), true);
-  assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorYieldJoinCall'), true);
+  assert.equal(actorContracts.includes('ZLinkActorYieldJoinCall'), false);
+  assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorJoinCall'), true);
+  assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorJoinCall'), true);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
-  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(boundSessionSendCall, /submit\(\): void/);
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
@@ -212,7 +213,7 @@ test('spot manager create surface exposes ZLinkMessage and typed request overloa
   assert.equal(spotManager.includes(`${oldOptionalAnyRequest} | ZLinkMessage`), false);
 });
 
-test('location contract enums match the shared dotnet numeric table', () => {
+test('location wire enums retain numeric values while Node-facing result enums use strings', () => {
   const framework = require('../../packages/framework/dist');
   const expectedLocationEnums = {
     ZLinkLocationAutoConnectType: {
@@ -250,14 +251,14 @@ test('location contract enums match the shared dotnet numeric table', () => {
       Takeover: 3
     },
     ZLinkLocationWriteStatus: {
-      Stored: 1,
-      IgnoredStale: 2,
-      RejectedConflict: 3
+      Stored: 'stored',
+      IgnoredStale: 'ignoredStale',
+      RejectedConflict: 'rejectedConflict'
     },
     ZLinkLocationChangeType: {
-      Upserted: 1,
-      Removed: 2,
-      Expired: 3
+      Upserted: 'upserted',
+      Removed: 'removed',
+      Expired: 'expired'
     },
     ZLinkLocationTopologyState: {
       Discovered: 1,
@@ -268,9 +269,9 @@ test('location contract enums match the shared dotnet numeric table', () => {
       Stopped: 6
     },
     ZLinkSpotKind: {
-      Invalid: 0,
-      Entry: 1,
-      User: 2
+      Invalid: 'invalid',
+      Entry: 'entry',
+      User: 'user'
     }
   };
 
@@ -332,9 +333,9 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
   assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.match(declarationBody(declarations, 'ZLinkSpotRefResolver'), /resolveSpotRef\(\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
-  assert.match(declarationBody(declarations, 'IZLinkActorAddressResolver'), /resolveActorSpotRef\(\s*actorId: string,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
-  assert.match(declarationBody(declarations, 'SpotRef'), /readonly spotKind\?: ZLinkSpotKind/);
+  assert.match(declarationBody(declarations, 'ZLinkSpotHandleResolver'), /resolveSpotHandle\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
+  assert.match(declarationBody(declarations, 'ZLinkActorSpotHandleResolver'), /resolveActorSpotHandle\(actorId: string, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
+  assert.equal(declarations.includes('interface SpotRef'), false);
   assert.equal(declarations.includes('IZLink' + 'SpotAddressResolver'), false);
   assert.equal(declarations.includes('ZLink' + 'SpotAddress'), false);
   assert.equal(declarations.includes('IZLinkRouteLocationResolver'), false);
@@ -375,10 +376,11 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   assert.match(actorClient, /sendToActor\(actor: ActorRef, message: unknown\): ZLinkActorSendCall/);
   assert.match(actorClient, /requestToActor\(actor: ActorRef, request: unknown\): ZLinkActorRequestCall/);
   assert.equal(actorClient.includes('actorId: string'), false);
-  assert.match(actorSendCall, /packetName\(packetName: string\): this/);
-  assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
-  assert.equal(actorSendCall.includes('submit(signal?: AbortSignal): void'), false);
-  assert.match(actorRequestCall, /packetName\(packetName: string\): this/);
+  assert.match(actorSendCall, /metadata\(key: string, value: string\): this/);
+  assert.match(actorSendCall, /submit\(\): void/);
+  assert.equal(actorSendCall.includes('packetName('), false);
+  assert.match(actorRequestCall, /metadata\(key: string, value: string\): this/);
+  assert.equal(actorRequestCall.includes('packetName('), false);
   assert.match(actorRequestCall, /timeout\(timeoutMs: number\): this/);
   assert.match(actorRequestCall, /submit<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
   assert.match(directory, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
@@ -405,8 +407,6 @@ test('route client surface exposes node routing only', () => {
 
 test('old public contract names from the redesign rename table do not re-enter node surfaces', () => {
   const forbidden = [
-    'StoreUnavailable',
-    'storeUnavailable',
     'IZLinkSpotLocationResolver',
     'ZLinkSpotLocationResolver',
     'IZLinkActorLocationResolver',
@@ -485,6 +485,27 @@ function pickEnumValues(enumObject, names) {
   assert.ok(enumObject, 'missing enum object');
   return Object.fromEntries(names.map((name) => [name, enumObject[name]]));
 }
+
+test('framework public root excludes internal registration implementation', () => {
+  const framework = require('../../packages/framework/dist');
+  const declarations = fs.readFileSync(path.join(declarationsRoot, '..', 'index.d.ts'), 'utf8') +
+    fs.readFileSync(path.join(declarationsRoot, 'index.d.ts'), 'utf8') +
+    fs.readFileSync(path.join(declarationsRoot, 'Configuration', 'index.d.ts'), 'utf8');
+  const forbidden = [
+    'createFrameworkRegistration',
+    'createFrameworkOptions',
+    'ZLinkFrameworkRegistration',
+    'ZLinkFrameworkRegistrationOptions',
+    'ZLinkSpotNodeRegistrationOptions',
+    'ZLinkProviderResolver'
+  ];
+
+  for (const name of forbidden) {
+    assert.equal(Object.hasOwn(framework, name), false, `${name} must not be a runtime export`);
+    assert.equal(new RegExp(`export (?:declare )?(?:function|interface|type|class) ${name}\\b`).test(declarations), false,
+      `${name} must not be a declaration export`);
+  }
+});
 
 function readTree(root) {
   let text = '';

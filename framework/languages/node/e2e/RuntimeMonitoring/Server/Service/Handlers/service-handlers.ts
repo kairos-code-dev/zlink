@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
+  ZLinkActor,
+  ZLinkMessage,
+  ZLinkSpotActorJoinResponse,
   ZLinkRequestContext,
   ZLinkRequestHandler,
   ZLinkRuntimeEventHandler,
@@ -11,7 +14,7 @@ import type {
   ZLinkLocationRuntimeEvent,
   ZLinkTimerTick
 } from '@zlink-systems/framework';
-import { ZLinkLocationRuntimeEventKind, ZLinkSocketEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
+import { ZLinkLocationRuntimeEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler, zlinkSpotTimerHandler } from '@zlink-systems/nestjs';
 import { RuntimeMonitoringNames, type ProfileRes, type ProfileReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -36,7 +39,7 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
       return;
     }
     this.evidence.add(
-      `monitor-socket|source=${event.sourceName}|kind=${ZLinkSocketEventKind[event.event]}`
+      `monitor-socket|source=${event.sourceName}|kind=${event.event}`
       + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
       + `|native=${event.diagnostic?.nativeEvent ?? '<none>'}|value=${event.diagnostic?.nativeValue ?? '<none>'}`
     );
@@ -45,12 +48,17 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
 
 @Injectable()
 export class MonitoringEntrySpot implements ZLinkEntrySpot {
-  readonly context?: ZLinkEntrySpotContext;
+  declare readonly context: ZLinkEntrySpotContext;
+
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    return { accepted: true };
+  }
+
+  async onJoinedActor(_actor: ZLinkActor): Promise<void> {}
+
+  async onLeaveActor(_actor: ZLinkActor): Promise<void> {}
 
   async onInitialize(): Promise<void> {
-    if (this.context === undefined) {
-      throw new Error('Monitoring entry spot context was not assigned.');
-    }
     await this.context.addTimer('failing', 1000, FailingTimerHandler, { stopOnUnhandledException: false });
     await this.context.addTimer('stopping', 1000, FailingTimerHandler, { stopOnUnhandledException: true });
   }
@@ -79,11 +87,7 @@ export class SpotEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSpotEven
     if (event.sourceName !== RuntimeMonitoringNames.spotNode) {
       return;
     }
-    this.evidence.add(
-      `monitor-spot|source=${event.sourceName}|kind=${ZLinkSpotEventKind[event.event]}`
-      + `|peers=${event.peers?.length ?? 0}|subjects=${event.subjects?.length ?? 0}`
-      + `|timer=${event.timerDiagnostic?.timerName ?? '<none>'}`
-    );
+    this.evidence.add(`monitor-spot|source=${event.sourceName}|kind=${event.event}|${spotEventDetails(event)}`);
   }
 }
 
@@ -98,8 +102,7 @@ export class LocationRuntimeEventRecorder implements ZLinkRuntimeEventHandler<ZL
     }
     this.evidence.add(
       `monitor-location|source=${event.sourceName}|kind=${ZLinkLocationRuntimeEventKind[event.event]}`
-      + `|topology=${event.topology?.length ?? -1}|summary=${event.serviceSummary?.length ?? -1}`
-      + `|storeHealthy=${event.status?.storeHealthy ?? '<none>'}`
+      + `|${locationEventDetails(event)}`
     );
   }
 }
@@ -113,7 +116,35 @@ export class ThrowingSocketEventRecorder implements ZLinkRuntimeEventHandler<ZLi
     if (event.sourceName !== RuntimeMonitoringNames.channelServerSource) {
       return;
     }
-    this.evidence.add(`monitor-throw|source=${event.sourceName}|kind=${ZLinkSocketEventKind[event.event]}`);
+    this.evidence.add(`monitor-throw|source=${event.sourceName}|kind=${event.event}`);
     throw new Error('monitoring dispatch failure for e2e');
+  }
+}
+
+function spotEventDetails(event: ZLinkSpotEvent): string {
+  switch (event.event) {
+    case ZLinkSpotEventKind.StatusChanged:
+      return 'peers=0|subjects=0|timer=<none>';
+    case ZLinkSpotEventKind.PeersChanged:
+      return `peers=${event.peers.length}|subjects=0|timer=<none>`;
+    case ZLinkSpotEventKind.SubjectsChanged:
+      return `peers=0|subjects=${event.subjects.length}|timer=<none>`;
+    case ZLinkSpotEventKind.TimerHandlerFailed:
+    case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
+      return `peers=0|subjects=0|timer=${event.timerDiagnostic.timerName}`;
+  }
+}
+
+function locationEventDetails(event: ZLinkLocationRuntimeEvent): string {
+  switch (event.event) {
+    case ZLinkLocationRuntimeEventKind.StatusChanged:
+      return `topology=-1|summary=-1|storeHealthy=${event.status.storeHealthy}`;
+    case ZLinkLocationRuntimeEventKind.TopologyChanged:
+      return `topology=${event.topology.length}|summary=-1|storeHealthy=<none>`;
+    case ZLinkLocationRuntimeEventKind.ServiceSummaryChanged:
+      return `topology=-1|summary=${event.serviceSummary.length}|storeHealthy=<none>`;
+    case ZLinkLocationRuntimeEventKind.StoreUnavailable:
+    case ZLinkLocationRuntimeEventKind.StoreRecovered:
+      return 'topology=-1|summary=-1|storeHealthy=<none>';
   }
 }

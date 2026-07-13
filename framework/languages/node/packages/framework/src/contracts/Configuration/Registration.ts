@@ -61,8 +61,9 @@ export function createFrameworkRegistration(
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
     filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
-    dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch },
+    dispatch: options.dispatch,
     monitoring: options.monitoring === undefined ? undefined : { ...options.monitoring },
+    metrics: options.metrics,
     locations: normalizeLocationRegistration(options.locations)
   };
   validateFrameworkRegistration(registration, options);

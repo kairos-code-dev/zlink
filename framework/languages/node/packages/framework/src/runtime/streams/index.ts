@@ -126,6 +126,7 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 interface ZLinkStartedStreamNode {
@@ -164,6 +165,7 @@ export class ZLinkStreamRuntimeManager {
         monitor,
         bindingRuntime: this.options.bindingRuntime,
         dispatchErrors: this.options.dispatchErrors,
+        metrics: this.options.metrics,
         messageSerializers: this.options.registration.messageSerializers,
         sessionFactory: (context) => createStreamSessionInstance(
           sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
@@ -184,6 +186,10 @@ export class ZLinkStreamRuntimeManager {
       await node.monitor.dispose();
       await node.socket.dispose();
     }
+  }
+
+  async notifyServerDrain(): Promise<void> {
+    await Promise.all([...this.nodes.values()].map((node) => node.runtime.drainCloseSessions()));
   }
 
 }

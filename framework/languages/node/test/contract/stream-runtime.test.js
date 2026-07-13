@@ -1500,14 +1500,14 @@ test('runtime host completes relayed actor request on captured stream after acto
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { value: 'pong' });
 });
 
-test('detached worker completion runs after response work posted by the handler turn', async () => {
+test('worker promise continuation resumes through the captured handler turn', async () => {
   const serial = new framework.ZLinkSpotSerialExecutor();
   const worker = new framework.ZLinkSpotWorkerRuntime();
   const events = [];
 
   await serial.execute(async () => {
-    new framework.DefaultZLinkWorkerCall(worker, serial, () => true)
-      .onCompleted(async () => {
+    void new framework.DefaultZLinkWorkerCall(worker, serial, () => true)
+      .submit().then(async () => {
         events.push('cleanup');
       });
     await new Promise((resolve) => setImmediate(resolve));
@@ -1515,7 +1515,7 @@ test('detached worker completion runs after response work posted by the handler 
   });
   await waitForCondition(() => events.includes('cleanup'), 'detached worker cleanup');
 
-  assert.deepEqual(events, ['response', 'cleanup']);
+  assert.deepEqual(events, ['cleanup', 'response']);
 });
 
 test('runtime host awaits routed actor disconnect notification before session cleanup completes', async () => {

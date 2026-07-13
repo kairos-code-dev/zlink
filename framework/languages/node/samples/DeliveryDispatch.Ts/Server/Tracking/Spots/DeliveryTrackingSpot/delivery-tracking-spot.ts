@@ -49,6 +49,10 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     console.error(`deliverydispatch tracking spot: joined delivery=${this.deliveryId} customer=${actor.actorId}`);
   }
 
+  async onLeaveActor(actor: CustomerActor): Promise<void> {
+    this.customers.delete(actor.actorId);
+  }
+
   record(status: DeliveryStatusReq): void {
     this.history.push(status);
   }

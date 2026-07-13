@@ -1,7 +1,8 @@
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   ZLinkLocationKind,
-  ZLinkSpotKind,
+  zlinkSpotKindFromWire,
+  zlinkSpotKindToWire,
   type RoutingId,
   type ZLinkActorLocation,
   type ZLinkPeerLocation,
@@ -82,6 +83,7 @@ function peerToJson(row: ZLinkPeerLocation): unknown {
     Role: row.role,
     Endpoint: row.endpoint,
     Weight: row.weight,
+    Draining: booleanOrFalse(row.draining),
     Value: Number(row.value),
     Metadata: jsonRecordOrNull(peerMetadataOf(row)),
     Capabilities: jsonStringArrayOrNull(peerCapabilitiesOf(row)),
@@ -100,6 +102,7 @@ function peerFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLink
     role: numberOf(row.Role),
     endpoint: stringOf(row.Endpoint),
     weight: numberOf(row.Weight),
+    draining: row.Draining === undefined ? false : booleanOf(row.Draining),
     value: BigInt(numberOf(row.Value)),
     metadata: optionalRecord(row.Metadata),
     capabilities: optionalStringArray(row.Capabilities),
@@ -115,7 +118,7 @@ function spotToJson(row: ZLinkSpotLocation): unknown {
     SpotRid: routingIdHex(row.spotRid),
     SpotType: row.spotType ?? null,
     NodeRid: routingIdHex(row.nodeRid),
-    SpotKind: row.spotKind,
+    SpotKind: zlinkSpotKindToWire(row.spotKind),
     RouteEndpoint: row.routeEndpoint ?? null,
     OwnerId: row.ownerId,
     Generation: Number(row.generation),
@@ -130,7 +133,7 @@ function spotFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLink
     spotRid: ridOf(row.SpotRid),
     spotType: optionalString(row.SpotType),
     nodeRid: ridOf(row.NodeRid),
-    spotKind: numberOf(row.SpotKind) as ZLinkSpotKind,
+    spotKind: zlinkSpotKindFromWire(numberOf(row.SpotKind)),
     routeEndpoint: optionalString(row.RouteEndpoint),
     ownerId: stringOf(row.OwnerId),
     generation,
@@ -150,7 +153,7 @@ function actorToJson(row: ZLinkActorLocation): unknown {
           generation: Number(row.actorRef.generation)
         },
     NodeRid: routingIdHex(row.nodeRid),
-    LocationKind: row.locationKind,
+    LocationKind: zlinkSpotKindToWire(row.locationKind),
     SpotMeshName: row.spotMeshName,
     SpotRid: row.spotRid == null ? null : routingIdHex(row.spotRid),
     OwnerId: row.ownerId,
@@ -167,7 +170,7 @@ function actorFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLin
     actorRef: actorRefOf(row.ActorRef),
     nodeRid: ridOf(row.NodeRid),
     generation,
-    locationKind: numberOf(row.LocationKind) as ZLinkSpotKind,
+    locationKind: zlinkSpotKindFromWire(numberOf(row.LocationKind)),
     spotMeshName: stringOf(row.SpotMeshName),
     spotRid: optionalRid(row.SpotRid),
     ownerId: stringOf(row.OwnerId),
@@ -318,6 +321,15 @@ function numberOf(value: unknown): number {
     throw new TypeError('Location row JSON field is not a number.');
   }
   return value;
+}
+
+function booleanOf(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new TypeError('Expected a boolean value.');
+  return value;
+}
+
+function booleanOrFalse(value: unknown): boolean {
+  return value === undefined ? false : booleanOf(value);
 }
 
 function optionalRecord(value: unknown): Readonly<Record<string, string>> | undefined {

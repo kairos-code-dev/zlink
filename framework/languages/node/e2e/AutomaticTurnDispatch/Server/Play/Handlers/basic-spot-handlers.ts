@@ -1,0 +1,136 @@
+import { Injectable } from '@nestjs/common';
+import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { DelayReq } from '../../../Shared/messages';
+import type {
+  DelayRes,
+  HoldMsg,
+  ProbeMsg,
+  WorkerAwaitMsg,
+  AwaitMsg,
+  AwaitReq,
+  AutomaticTurnDispatchRes
+} from '../../../Shared/messages';
+import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
+import { EvidenceStore } from '../Support/evidence-store';
+import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
+
+@Injectable()
+@ZLinkPacket('HoldMsg')
+export class HoldCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, HoldMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: HoldMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(`hold-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+    await spot.context.outbound
+      .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
+        new DelayReq(request.requestId, request.delayMs, 'hold'))
+      .timeout(5000)
+      .submit<DelayRes>();
+    this.evidence.add(`hold-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+    this.evidence.add(`hold-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+  }
+}
+
+@Injectable()
+@ZLinkPacket('AwaitMsg')
+export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: AwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(
+      `await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|correlation=${request.correlationId}|handler=spot`
+    );
+    const call = spot.context.outbound
+      .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
+        new DelayReq(request.requestId, request.delayMs, 'await'))
+      .timeout(5000);
+    this.evidence.add(
+      `await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|correlation=${request.correlationId}|handler=spot`
+    );
+    await call.submit<DelayRes>();
+    this.evidence.add(
+      `await-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|correlation=${request.correlationId}|handler=spot`
+    );
+    this.evidence.add(
+      `await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|correlation=${request.correlationId}|handler=spot`
+    );
+  }
+}
+
+@Injectable()
+@ZLinkPacket('AwaitReq')
+export class AwaitRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, AwaitReq, AutomaticTurnDispatchRes> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(
+    spot: AwaitProbeSpot,
+    request: AwaitReq,
+    context: ZLinkHandlerContext
+  ): Promise<AutomaticTurnDispatchRes> {
+    await new AwaitCommandHandler(this.evidence).handle(spot, request, context);
+    return {
+      scenarioId: request.correlationId === 'remote-spot' ? 'ATD-D2-target' : 'ATD-A2',
+      requestId: request.requestId,
+      spotRid: String(spot.context.spotRid),
+      nodeRid: String(spot.context.nodeRid),
+      marker: 'await-completed'
+    };
+  }
+}
+
+@Injectable()
+@ZLinkPacket('WorkerAwaitMsg')
+export class WorkerAwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, WorkerAwaitMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: WorkerAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(`worker-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+    const call = spot.context.runWorker(async (signal) => {
+      await delay(request.delayMs, signal);
+      return request.requestId;
+    });
+    this.evidence.add(`worker-await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+    await call.submit();
+    this.evidence.add(`worker-await-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+    this.evidence.add(`worker-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
+  }
+}
+
+@Injectable()
+@ZLinkPacket('ProbeMsg')
+export class ProbeCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, ProbeMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: ProbeMsg, context: ZLinkHandlerContext): Promise<void> {
+    void context;
+    this.evidence.add(
+      `probe-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|marker=${request.marker}|handler=spot`
+    );
+    this.evidence.add(
+      `probe-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|marker=${request.marker}|handler=spot`
+    );
+  }
+}
+
+function delay(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Worker await was aborted.'));
+      return;
+    }
+    const timer = setTimeout(resolve, delayMs);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Worker await was aborted.'));
+    }, { once: true });
+  });
+}

@@ -79,6 +79,7 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
         return poller.wait(events, timeoutMs) > 0 && events.hasEvent(0, zlink.PollEventFlag.PollIn);
       },
       dispose(): void {
+        poller.remove(socket.nativeInstance as never);
         events.close();
         poller.close();
       }

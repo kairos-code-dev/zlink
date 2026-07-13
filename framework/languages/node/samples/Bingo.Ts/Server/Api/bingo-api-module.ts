@@ -3,6 +3,7 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { SampleNames } from '../Configuration/sample-names';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
+import { bingoMeterProvider } from '../runtime-support';
 function createBingoApiModule(config: {
   apiEndpoint: string;
   redisEndpoint: string;
@@ -17,6 +18,7 @@ function createBingoApiModule(config: {
       ZLinkModule.forRootFactory({
         useFactory: () => {
           const builder = zlinkFramework();
+          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-api.log`)

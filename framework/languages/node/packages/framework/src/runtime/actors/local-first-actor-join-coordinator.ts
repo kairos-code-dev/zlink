@@ -2,9 +2,9 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkActorJoinResult,
   ZLinkSpot
 } from '../../contracts';
+import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpotNode } from '../backend';
 import type { ZLinkLocationLifecycle } from '../locations';
@@ -42,7 +42,7 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const localSpotManager = this.options.localSpotManager();
     if (
       localSpotManager === undefined ||
@@ -95,7 +95,7 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>> {
+  ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     return this.options.native.joinEntrySpot(actor, state, nodeRid, request, timeoutMs, signal);
   }
 }

@@ -5,7 +5,8 @@ import type {
   ZLinkPublishContext,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
-  ZLinkSendContext
+  ZLinkSendContext,
+  ZLinkUnhandledDispatchOptions
 } from '../../contracts';
 import {
   ZLinkDispatchErrorSurface,
@@ -18,6 +19,7 @@ import {
 } from '../configuration';
 import type { ZLinkBackendSpotRouteBridge } from '../backend/contracts';
 import type { ZLinkAsyncSubmitter } from '../messaging';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
   decodeChannelEnvelope,
   encodeChannelErrorReplyParts,
@@ -47,6 +49,7 @@ export interface ZLinkChannelRequestDispatcherOptions {
   readonly handlers: ReadonlyMap<string, ZLinkChannelRequestHandler>;
   readonly sendHandlers?: ReadonlyMap<string, ZLinkChannelSendHandler>;
   readonly filters?: readonly ZLinkHandlerFilter[];
+  readonly unhandled?: ZLinkUnhandledDispatchOptions;
   readonly replySubmitter?: ZLinkAsyncSubmitter;
 }
 
@@ -80,7 +83,8 @@ export class ZLinkChannelRequestDispatcher {
       dispatchErrors: options.dispatchErrors,
       surface: ZLinkDispatchErrorSurface.Channel,
       channelName: options.channelName,
-      filters: options.filters
+      filters: options.filters,
+      unhandled: options.unhandled
     });
   }
 
@@ -113,7 +117,9 @@ export class ZLinkChannelRequestDispatcher {
       const fields: ZLinkChannelDispatchFields = {
         messageKind: ZLinkDispatchMessageKind.Send,
         packetName,
-        correlationId
+        correlationId,
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin
       };
       const handler = this.options.sendHandlers?.get(packetName);
       const context: ZLinkSendContext = {
@@ -136,7 +142,9 @@ export class ZLinkChannelRequestDispatcher {
     const requestFields: ZLinkChannelDispatchFields = {
       messageKind: ZLinkDispatchMessageKind.Request,
       packetName,
-      correlationId
+      correlationId,
+      flowId: envelope.header.flowId,
+      flowOrigin: envelope.header.flowOrigin
     };
     if (received.requestSeq === null) {
       this.pipeline.dropMissingReplyPath(requestFields);
@@ -192,6 +200,8 @@ export interface ZLinkChannelPublishDispatcherOptions {
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: ReadonlyMap<string, ZLinkRuntimePublishHandler>;
   readonly filters?: readonly ZLinkHandlerFilter[];
+  readonly unhandled?: ZLinkUnhandledDispatchOptions;
+  readonly metrics?: ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkRuntimePublishHandler {
@@ -206,7 +216,8 @@ export class ZLinkChannelPublishDispatcher {
       dispatchErrors: options.dispatchErrors,
       surface: ZLinkDispatchErrorSurface.Channel,
       channelName: options.channelName,
-      filters: options.filters
+      filters: options.filters,
+      unhandled: options.unhandled
     });
   }
 
@@ -225,12 +236,15 @@ export class ZLinkChannelPublishDispatcher {
     const publishTopic = envelope.header.topic ?? topicMessage.topic;
     const publishSource = envelope.header.source ?? undefined;
     const publishCorr = envelope.header.correlationId ?? undefined;
+    this.options.metrics?.count('zlink.fanout.received', 1, { topic: publishTopic });
     const fields: ZLinkChannelDispatchFields = {
       messageKind: ZLinkDispatchMessageKind.Publish,
       packetName,
       topic: publishTopic,
       sourceRid: publishSource,
-      correlationId: publishCorr
+      correlationId: publishCorr,
+      flowId: envelope.header.flowId,
+      flowOrigin: envelope.header.flowOrigin
     };
     const handler = this.options.handlers.get(packetName);
     const context: ZLinkPublishContext = {
@@ -256,6 +270,7 @@ export interface ZLinkRoutePacketDispatcherOptions {
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: readonly ZLinkRouteHandlerRegistration[];
   readonly filters?: readonly ZLinkHandlerFilter[];
+  readonly unhandled?: ZLinkUnhandledDispatchOptions;
   readonly replySubmitter?: ZLinkAsyncSubmitter;
   readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge;
   readonly rawBridgeReplyHandler?: (received: {
@@ -296,7 +311,8 @@ export class ZLinkRoutePacketDispatcher {
       dispatchErrors: options.dispatchErrors,
       surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
       channelName: options.routerChannelId,
-      filters: options.filters
+      filters: options.filters,
+      unhandled: options.unhandled
     });
     this.replySubmitter = options.replySubmitter;
     this.spotRouteBridge = options.spotRouteBridge;
@@ -363,7 +379,9 @@ export class ZLinkRoutePacketDispatcher {
         messageKind: ZLinkDispatchMessageKind.Send,
         packetName,
         sourceRid: routeSource,
-        correlationId: routeCorr
+        correlationId: routeCorr,
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin
       };
       const handler = this.sendHandlers.get(packetName);
       await this.pipeline.dispatchOneWay({
@@ -385,7 +403,9 @@ export class ZLinkRoutePacketDispatcher {
         messageKind: ZLinkDispatchMessageKind.Request,
         packetName,
         sourceRid: routeSource,
-        correlationId: routeCorr
+        correlationId: routeCorr,
+        flowId: envelope.header.flowId,
+        flowOrigin: envelope.header.flowOrigin
       });
       return;
     }
@@ -394,7 +414,9 @@ export class ZLinkRoutePacketDispatcher {
       messageKind: ZLinkDispatchMessageKind.Request,
       packetName,
       sourceRid: routeSource,
-      correlationId: routeCorr
+      correlationId: routeCorr,
+      flowId: envelope.header.flowId,
+      flowOrigin: envelope.header.flowOrigin
     };
     const handler = this.requestHandlers.get(packetName);
     const requestSeq = received.requestSeq;
@@ -445,17 +467,16 @@ export class ZLinkRoutePacketDispatcher {
         channelName: this.routerChannelId,
         packetName,
         contentType: JSON_CONTENT_TYPE,
-        sourceNodeRid,
-        sourcePeerRid: sourceNodeRid
+        routerChannelId: this.routerChannelId,
+        sourceNodeRid
       };
     }
     return {
       channelName: this.routerChannelId,
       packetName,
       contentType: JSON_CONTENT_TYPE,
-      sourceNodeRid,
-      sourcePeerRid: sourceNodeRid,
-      requestSeq
+      routerChannelId: this.routerChannelId,
+      sourceNodeRid
     };
   }
 }

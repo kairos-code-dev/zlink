@@ -263,6 +263,7 @@ function peerLocation(
     role: local.role,
     endpoint: local.endpoint,
     weight,
+    draining: false,
     value: 0n,
     metadata: options.metadata,
     capabilities: options.capabilities,

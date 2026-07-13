@@ -6,6 +6,7 @@ import type {
   ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
   ZLinkMonitoringOptions,
+  ZLinkMetricsOptions,
   ZLinkPublishContext,
   ZLinkRequestContext,
   ZLinkRouteRequestContext,
@@ -40,6 +41,7 @@ export interface ZLinkFrameworkRegistration {
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
   readonly monitoring?: ZLinkMonitoringOptions;
+  readonly metrics?: ZLinkMetricsOptions;
   readonly locations: ZLinkLocationRegistration;
 }
 
@@ -69,6 +71,7 @@ export interface ZLinkWorkerOptions {
 export interface ZLinkCodecSerializerRegistration {
   readonly contentType: string;
   readonly serializer: ZLinkMessageSerializer;
+  readonly canSerialize?: (payloadType: Type) => boolean;
 }
 
 export interface ZLinkStreamCodecRegistration {
@@ -104,6 +107,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
   readonly monitoring?: ZLinkMonitoringOptions;
+  readonly metrics?: ZLinkMetricsOptions;
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
     readonly storeInstance?: ZLinkLocationStore;
@@ -191,6 +195,7 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 }
 
 export interface ZLinkSpotNodeOptions {
+  readonly drainPolicy?: import('../Eventing').ZLinkSpotDrainPolicy;
   readonly routingId?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
@@ -320,25 +325,25 @@ export interface ZLinkChannelPublishHandlerRegistration {
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
-    handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown> | unknown;
+    handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown>;
   };
 }
 
 export interface ZLinkChannelSendHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
-    handle(payload: unknown, context: ZLinkSendContext): Promise<void> | void;
+    handle(payload: unknown, context: ZLinkSendContext): Promise<void>;
   };
 }
 
 export interface ZLinkChannelPublishHandler {
-  handle(payload: unknown, context: ZLinkPublishContext): Promise<void> | void;
+  handle(payload: unknown, context: ZLinkPublishContext): Promise<void>;
 }
 
 export interface ZLinkRouteChannelSendHandler {
-  handle(payload: unknown, context: ZLinkRouteSendContext): Promise<void> | void;
+  handle(payload: unknown, context: ZLinkRouteSendContext): Promise<void>;
 }
 
 export interface ZLinkRouteChannelRequestHandler {
-  handle(payload: unknown, context: ZLinkRouteRequestContext): Promise<unknown> | unknown;
+  handle(payload: unknown, context: ZLinkRouteRequestContext): Promise<unknown>;
 }

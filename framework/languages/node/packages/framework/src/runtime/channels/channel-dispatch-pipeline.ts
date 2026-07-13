@@ -1,15 +1,18 @@
 import type {
   ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
   ZLinkHandlerContext,
-  ZLinkHandlerFilter
+  ZLinkHandlerFilter,
+  ZLinkUnhandledDispatchOptions,
+  ZLinkFlowOrigin
 } from '../../contracts';
 import {
   ZLinkDispatchErrorAction,
   ZLinkDispatchErrorReason,
+  ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageFlowOutcome
+  ZLinkMessageFlowOutcome,
+  ZLinkUnhandledDispatchAction
 } from '../../contracts';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import {
@@ -18,12 +21,14 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry
 } from './channel-envelope';
 import type { ZLinkDispatchErrorReporter } from './dispatch-error-reporter';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 
 export interface ZLinkChannelDispatchPipelineOptions {
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly surface: ZLinkDispatchErrorSurface;
   readonly channelName: string;
   readonly filters?: readonly ZLinkHandlerFilter[];
+  readonly unhandled?: ZLinkUnhandledDispatchOptions;
 }
 
 export interface ZLinkChannelDispatchFields {
@@ -32,6 +37,8 @@ export interface ZLinkChannelDispatchFields {
   readonly correlationId?: string;
   readonly topic?: string;
   readonly sourceRid?: string;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZLinkFlowOrigin;
 }
 
 interface ZLinkChannelDispatchHandler<TContext extends ZLinkHandlerContext, TResult> {
@@ -59,29 +66,36 @@ interface ZLinkRequestDispatch<TContext extends ZLinkHandlerContext> {
 
 export class ZLinkChannelDispatchPipeline {
   private readonly filters: readonly ZLinkHandlerFilter[];
+  private readonly unhandled: ZLinkUnhandledDispatchOptions;
 
   constructor(private readonly options: ZLinkChannelDispatchPipelineOptions) {
     this.filters = options.filters ?? [];
+    this.unhandled = options.unhandled ?? DEFAULT_UNHANDLED_DISPATCH;
   }
 
   async dispatchOneWay<TContext extends ZLinkHandlerContext>(dispatch: ZLinkOneWayDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
+      const action = dispatch.fields.messageKind === ZLinkDispatchMessageKind.Publish
+        ? this.unhandled.publish
+        : this.unhandled.send;
       this.report(
         dispatch.fields,
         ZLinkDispatchErrorReason.HandlerMissing,
         ZLinkDispatchErrorAction.Drop
       );
+      this.applyOneWayUnhandled(action, dispatch.fields);
       return;
     }
 
     try {
-      await this.invoke(
-        dispatch.envelope,
-        dispatch.codecs,
-        dispatch.handler,
-        dispatch.context
-      );
+      const flow = createInboundFlow(dispatch.fields.flowId, dispatch.fields.flowOrigin);
+      await runWithFlow(flow, () => this.invoke(
+          dispatch.envelope,
+          dispatch.codecs,
+          dispatch.handler!,
+          dispatch.context
+        ));
       this.trace(ZLinkMessageFlowOutcome.Dispatched, dispatch.fields);
     } catch (error) {
       this.report(
@@ -96,23 +110,32 @@ export class ZLinkChannelDispatchPipeline {
   async dispatchRequest<TContext extends ZLinkHandlerContext>(dispatch: ZLinkRequestDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
-      await dispatch.writeError(new Error(dispatch.missingHandlerMessage));
+      const missing = new Error(dispatch.missingHandlerMessage);
+      if (this.unhandled.request === ZLinkUnhandledDispatchAction.ReplyError) {
+        await dispatch.writeError(missing);
+      }
       this.report(
         dispatch.fields,
         ZLinkDispatchErrorReason.HandlerMissing,
-        ZLinkDispatchErrorAction.ReplyError
+        this.unhandled.request === ZLinkUnhandledDispatchAction.ReplyError
+          ? ZLinkDispatchErrorAction.ReplyError
+          : ZLinkDispatchErrorAction.Drop
       );
+      if (this.unhandled.request === ZLinkUnhandledDispatchAction.Throw) {
+        throw missing;
+      }
       return;
     }
 
     let reply: unknown;
     try {
-      reply = await this.invoke(
-        dispatch.envelope,
-        dispatch.codecs,
-        dispatch.handler,
-        dispatch.context
-      );
+      const flow = createInboundFlow(dispatch.fields.flowId, dispatch.fields.flowOrigin);
+      reply = await runWithFlow(flow, () => this.invoke(
+          dispatch.envelope,
+          dispatch.codecs,
+          dispatch.handler!,
+          dispatch.context
+        ));
     } catch (error) {
       try {
         await dispatch.writeError(error);
@@ -185,6 +208,8 @@ export class ZLinkChannelDispatchPipeline {
       topic: fields.topic,
       sourceRid: fields.sourceRid,
       correlationId: fields.correlationId,
+      flowId: fields.flowId,
+      flowOrigin: fields.flowOrigin,
       error
     });
   }
@@ -202,7 +227,9 @@ export class ZLinkChannelDispatchPipeline {
       channelName: this.options.channelName,
       topic: fields.topic,
       sourceRid: fields.sourceRid,
-      correlationId: fields.correlationId
+      correlationId: fields.correlationId,
+      flowId: fields.flowId,
+      flowOrigin: fields.flowOrigin
     });
   }
 
@@ -211,4 +238,35 @@ export class ZLinkChannelDispatchPipeline {
       ? ZLinkDispatchErrorReason.PayloadDecodeFailed
       : ZLinkDispatchErrorReason.HandlerException;
   }
+
+  private applyOneWayUnhandled(
+    action: ZLinkUnhandledDispatchAction,
+    fields: ZLinkChannelDispatchFields
+  ): void {
+    if (action === ZLinkUnhandledDispatchAction.Throw) {
+      throw new Error(`No ${fields.messageKind} handler is registered for '${this.options.channelName}:${fields.packetName}'.`);
+    }
+    if (action !== ZLinkUnhandledDispatchAction.LogAndDrop) {
+      return;
+    }
+    const level = fields.messageKind === ZLinkDispatchMessageKind.Publish
+      ? this.unhandled.publishLogLevel
+      : this.unhandled.sendLogLevel;
+    const logger = level === 'error' || level === 'fatal'
+      ? console.error
+      : level === 'debug' || level === 'verbose'
+        ? console.debug
+        : level === 'log'
+          ? console.log
+          : console.warn;
+    logger.call(console, `[zlink-unhandled-dispatch] kind=${fields.messageKind} channel=${this.options.channelName} packet=${fields.packetName}`);
+  }
 }
+
+const DEFAULT_UNHANDLED_DISPATCH: ZLinkUnhandledDispatchOptions = {
+  request: ZLinkUnhandledDispatchAction.ReplyError,
+  send: ZLinkUnhandledDispatchAction.LogAndDrop,
+  publish: ZLinkUnhandledDispatchAction.LogAndDrop,
+  sendLogLevel: 'warn',
+  publishLogLevel: 'warn'
+};

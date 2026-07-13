@@ -1,5 +1,9 @@
 import type { ZLinkSocketConfig } from '../Configuration';
 
+export interface ZLinkClientServerChannelOptions {
+  readonly requestTimeoutMs?: number;
+}
+
 export interface ZLinkClientServerChannelRuntimeOptions {
   configureServerSocket(): ZLinkSocketConfig;
 }

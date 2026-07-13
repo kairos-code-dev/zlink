@@ -8,6 +8,7 @@ import {
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
 import type { ZLinkRemoteBoundSessionPort } from '../streams/stream-binding-runtime-ports';
+import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispatch';
 import {
   decodeRemoteBoundSessionErrorPayload,
@@ -30,13 +31,7 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly meshRouters: MeshRouterResolver;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
-  readonly boundSessionFactory: (actorId: string) => {
-    send(message: unknown): {
-      packetName(packetName: string): unknown;
-      metadata(key: string, value: string): unknown;
-      submit(signal?: AbortSignal): Promise<void>;
-    };
-  };
+  readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
   readonly updateRemoteActorPacketTarget: (actorId: string, value: unknown) => void;
   readonly actorPacketTargetForState: (
     actorId: string,

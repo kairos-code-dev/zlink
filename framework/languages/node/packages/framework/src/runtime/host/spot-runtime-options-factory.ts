@@ -42,6 +42,7 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly dispatchErrorReporter: (errorSink: ZLinkDispatchErrorSink) => ZLinkDispatchErrorReporter;
   readonly runtimeOrPreStartErrorSink: ZLinkDispatchErrorSink;
   readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
+  readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export class ZLinkSpotRuntimeOptionsFactory {
@@ -80,6 +81,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
       actorTransferRuntime,
       boundSessionRuntime: this.options.boundSessionRelay.boundSessions,
       actorHandoffRuntime: this.options.actorHandoff,
+      metrics: this.options.metrics,
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
     };
   }

@@ -1,10 +1,10 @@
 import { Inject, Optional } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { courierActorNodeRid, SampleNames } from '../../Shared/Configuration/sample-names';
-import { PacketNames } from '../../Shared/Contracts/messages';
+import { OfferDeliveryReq, PacketNames } from '../../Shared/Contracts/messages';
 import { delay } from '../Configuration/timing';
 import type { ZLinkActorManager, ZLinkRequestContext, ZLinkRequestHandler, ZLinkRouteClient } from '@zlink-systems/framework';
-import type { OfferDeliveryReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
+import type { OfferDeliveryRes } from '../../Shared/Contracts/messages';
 import type { CourierOptions } from './courier-module';
 
 @zlinkRequestHandler('courier-gateway', PacketNames.offerDelivery)
@@ -14,8 +14,11 @@ class OfferDeliveryHandler implements ZLinkRequestHandler<OfferDeliveryReq, Offe
   async handle(request: OfferDeliveryReq, context: ZLinkRequestContext): Promise<OfferDeliveryRes> {
     void context;
     return await this.routes
-      .requestToNode(SampleNames.courierActorNodeRouteChannel, courierActorNodeRid(request.courierId), request)
-      .packetName(PacketNames.offerDelivery)
+      .requestToNode(
+        SampleNames.courierActorNodeRouteChannel,
+        courierActorNodeRid(request.courierId),
+        new OfferDeliveryReq(request.courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress)
+      )
       .timeout(3000)
       .submit<OfferDeliveryRes>();
   }

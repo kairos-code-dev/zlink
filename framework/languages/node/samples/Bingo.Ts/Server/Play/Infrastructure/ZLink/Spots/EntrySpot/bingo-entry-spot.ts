@@ -11,6 +11,7 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
+  ZLinkSpotActorJoinResponse,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type {
@@ -39,7 +40,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     const joined = await actor.context
       .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))
       .submit<BingoRoomJoinRes>();
-    return observeBingoEventsRes(joined.accepted, String(this.context.nodeRid));
+    return observeBingoEventsRes(joined.status === 'accepted', String(this.context.nodeRid));
   }
 
   private observerRoomRid(roomId: string): string {
@@ -51,6 +52,12 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
       return;
     }
     await this.context.destroyActor(actor);
+  }
+
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actorId;
+    void request;
+    return { accepted: true };
   }
 
   async onCreateActor(actor: PlayerActorType, createRequest: ZLinkMessage): Promise<void> {

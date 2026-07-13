@@ -8,17 +8,20 @@ import type {
   ZLinkFanoutClient,
   ZLinkProviderResolver,
   ZLinkSpot,
-  ZLinkSpotTimerHandlerRegistration,
-  ZLinkSpotPacketHandlerRegistration,
-  ZLinkSpotSubscriptionHandlerRegistration,
-  ZLinkSpotActorSendHandlerRegistration,
-  ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotCreateResult,
   ZLinkSpotInfo,
   ZLinkSpotManager,
   ZLinkSpotPublisherClient,
 } from '../../contracts';
+import type {
+  ZLinkSpotActorRequestHandlerRegistration,
+  ZLinkSpotActorSendHandlerRegistration,
+  ZLinkSpotPacketHandlerRegistration,
+  ZLinkSpotSubscriptionHandlerRegistration,
+  ZLinkSpotTimerHandlerRegistration
+} from '../../contracts/Configuration/RegistrationTypes';
+export { createSpotHandle, resolveSpotHandle } from './spot-handle';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
@@ -122,11 +125,12 @@ export interface ZLinkSpotManagerOptions {
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private readonly factories: ReadonlySet<Type<ZLinkSpot>>;
-  private readonly activations = new ZLinkSpotActivationRegistry();
+  private readonly activations: ZLinkSpotActivationRegistry;
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
   private readonly locationClaim: ZLinkSpotLocationClaim;
   private readonly routedSpotPackets: ZLinkRoutedSpotPacketDispatch;
@@ -134,6 +138,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private readonly activationLifecycle: ZLinkSpotActivationLifecycle;
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
+    this.activations = new ZLinkSpotActivationRegistry(options.metrics);
     this.factories = new Set(options.spotFactories);
     this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.locationClaim = new ZLinkSpotLocationClaim({
@@ -187,7 +192,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       actorHandoffRuntime: options.actorHandoffRuntime,
       leaveActor: (spotRid, actor, signal) => this.actorMembership.leaveActor(spotRid, actor, signal),
       closeSpot: (spotRid, signal) => this.close(spotRid, signal),
-      registerActivation: (activation) => this.activations.register(activation)
+      registerActivation: (activation) => this.activations.register(activation),
+      metrics: options.metrics
     });
   }
 

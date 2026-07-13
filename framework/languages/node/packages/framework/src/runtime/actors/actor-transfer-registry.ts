@@ -40,7 +40,7 @@ export class ZLinkActorTransferRegistry {
       return { state: emptyTransferState(this.messageSerializers) };
     }
     const adapter = await this.createAdapter(adapterType) as ZLinkActorTransferAdapter<ZLinkActor>;
-    const state = await adapter.transferOut(actor, signal);
+    const state = await adapter.transferOut(actor);
     if (!(state instanceof ZLinkMessage)) {
       throw new Error(`Actor transfer adapter '${adapterType.name}' returned an invalid state message.`);
     }
@@ -59,7 +59,7 @@ export class ZLinkActorTransferRegistry {
       throw new Error(`Actor transfer adapter '${adapterKey}' is not registered on the target node.`);
     }
     const adapter = await this.createAdapter(adapterType) as ZLinkActorTransferAdapter<ZLinkActor>;
-    const actor = await adapter.transferIn(actorId, state, signal);
+    const actor = await adapter.transferIn(actorId, state);
     if (actor.actorId !== actorId) {
       throw new Error(`Actor transfer adapter '${adapterType.name}' returned an actor with a different id.`);
     }

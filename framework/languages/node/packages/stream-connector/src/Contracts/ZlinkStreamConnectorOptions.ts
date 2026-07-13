@@ -25,6 +25,15 @@ export interface ZlinkStreamConnectorOptions {
   readonly compression?: ZlinkStreamCompression;
   readonly compressionCodec?: ZlinkStreamCompressionCodec;
   readonly nameResolver?: ZlinkStreamPacketNameResolver;
+  readonly meterProvider?: ZlinkStreamMeterProvider;
+}
+
+export interface ZlinkStreamMeterProvider {
+  getMeter(name: string): {
+    createCounter(name: string, options?: { readonly unit?: string }): {
+      add(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
+    };
+  };
 }
 
 export interface ZlinkStreamHeartbeatOptions {
@@ -85,4 +94,5 @@ export interface RequiredZlinkStreamConnectorOptions {
   readonly nameResolver: ZlinkStreamPacketNameResolver;
   readonly transportFactory: ZlinkStreamTransportFactory;
   readonly codec?: ZlinkStreamPayloadCodec;
+  readonly meterProvider?: ZlinkStreamMeterProvider;
 }

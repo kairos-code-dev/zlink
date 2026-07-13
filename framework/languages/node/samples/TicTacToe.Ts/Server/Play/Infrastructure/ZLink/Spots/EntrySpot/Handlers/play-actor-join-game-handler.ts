@@ -4,6 +4,7 @@ import type {
   ZLinkEntrySpotActorRequestHandler,
   ZLinkSpotActorRequestContext
 } from '@zlink-systems/framework';
+import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type { PlayEntrySpot } from '../play-entry-spot';
 import type {
   JoinGameReq,
@@ -16,6 +17,7 @@ type PlayJoinActor = TicTacToeActor & ZLinkActor;
 @Injectable()
 class PlayActorJoinGameHandler
   implements ZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayJoinActor, JoinGameReq, JoinGameRes> {
+  @ZLinkSpotActorRequest('JoinGameReq')
   async handle(
     entrySpot: PlayEntrySpot,
     actor: PlayJoinActor,

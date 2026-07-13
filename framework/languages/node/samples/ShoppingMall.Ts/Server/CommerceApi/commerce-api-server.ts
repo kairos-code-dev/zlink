@@ -1,11 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { PacketNames } from '../../Shared/Contracts/messages';
 import type {
-  ContinueOrderWorkflowRes,
-  RebuildOrderProjectionRes,
-  StartOrderReq,
-  StartOrderRes
+  StartOrderReq
 } from '../../Shared/Contracts/messages';
 import { OrderStore } from '../Shared/Store/order-store';
 import { OrderWorkflowRouterPort } from './Application/order-workflow-router-port';
@@ -41,21 +37,13 @@ function createCommerceApiServer(
       }
       if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-reserved') {
         const body = await readJson(request) as StartOrderReq;
-        sendJson(response, 200, await workflowRouter.requestWorkflow<StartOrderRes>(
-          body,
-          PacketNames.prepareInventoryReservedReq,
-          body.idempotencyKey
-        ));
+        sendJson(response, 200, await workflowRouter.prepareInventory(body));
         return;
       }
       const continueMatch = url.pathname.match(/^\/self-check\/workflow\/([^/]+)\/continue$/);
       if (request.method === 'POST' && continueMatch !== null) {
         const orderId = decodeURIComponent(continueMatch[1]);
-        sendJson(response, 200, await workflowRouter.requestWorkflow<ContinueOrderWorkflowRes>(
-          { orderId },
-          PacketNames.continueOrderWorkflowReq,
-          orderId
-        ));
+        sendJson(response, 200, await workflowRouter.continue(orderId));
         return;
       }
       const deleteMatch = url.pathname.match(/^\/self-check\/projection\/([^/]+)\/delete$/);
@@ -66,11 +54,7 @@ function createCommerceApiServer(
       const rebuildMatch = url.pathname.match(/^\/self-check\/projection\/([^/]+)\/rebuild$/);
       if (request.method === 'POST' && rebuildMatch !== null) {
         const orderId = decodeURIComponent(rebuildMatch[1]);
-        sendJson(response, 200, await workflowRouter.requestWorkflow<RebuildOrderProjectionRes>(
-          { orderId },
-          PacketNames.rebuildOrderProjectionReq,
-          orderId
-        ));
+        sendJson(response, 200, await workflowRouter.rebuild(orderId));
         return;
       }
       if (request.method === 'POST' && url.pathname === '/self-check/assert') {

@@ -192,6 +192,7 @@ export class ZLinkChannelRuntimeLifecycle {
         handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
         sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler])),
         filters: this.options.dispatchServices.handlerFilters(),
+        unhandled: this.options.registration.dispatch?.unhandled,
         replySubmitter: this.options.sockets.requireSubmitter(router)
       });
       const spotRouteBridge = this.createSpotRouteBridgeForRouter(channelName, router);
@@ -219,7 +220,9 @@ export class ZLinkChannelRuntimeLifecycle {
         codecs: this.options.codecs,
         dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
         handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler])),
-        filters: this.options.dispatchServices.handlerFilters()
+        filters: this.options.dispatchServices.handlerFilters(),
+        unhandled: this.options.registration.dispatch?.unhandled,
+        metrics: this.options.dispatchServices.metrics()
       });
       const loop = new ZLinkSubscriberReceiveLoop(this.options.adapter, subscriber, dispatcher);
       this.subscriberReceiveLoops.push(loop);
@@ -257,6 +260,7 @@ export class ZLinkChannelRuntimeLifecycle {
         dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
         handlers,
         filters: this.options.dispatchServices.handlerFilters(),
+        unhandled: this.options.registration.dispatch?.unhandled,
         replySubmitter: this.options.sockets.requireSubmitter(router),
         spotRouteBridge,
         rawBridgeReplyHandler: (received) =>

@@ -19,7 +19,7 @@ export class ScenarioActor implements ZLinkActor {
 }
 
 export class ScenarioActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): ScenarioActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<ScenarioActor> {
     return new ScenarioActor(actorId, context);
   }
 }

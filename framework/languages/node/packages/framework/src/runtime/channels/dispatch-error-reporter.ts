@@ -5,6 +5,7 @@ import {
 } from '../../contracts';
 import {
   ZLinkMessageFlowTracer,
+  DEFAULT_ZLINK_DIAGNOSTICS,
   type ZLinkDiagnosticsContext
 } from '../diagnostics';
 
@@ -32,7 +33,7 @@ export class ZLinkDispatchErrorReporter {
     ctx?: ZLinkDiagnosticsContext
   ) {
     const flowCtx: ZLinkDiagnosticsContext = ctx ?? {
-      diagnostics: {},
+      diagnostics: DEFAULT_ZLINK_DIAGNOSTICS,
       liveMode: { mode: ZLinkMessageFlowLogMode.ErrorsOnly },
       providerResolver
     };
@@ -50,6 +51,8 @@ export class ZLinkDispatchErrorReporter {
       channelName: event.channelName,
       topic: event.topic,
       correlationId: event.correlationId,
+      flowId: event.flowId,
+      flowOrigin: event.flowOrigin,
       sourceRid: event.sourceRid,
       spotRid: event.spotRid,
       actorId: event.actorId,

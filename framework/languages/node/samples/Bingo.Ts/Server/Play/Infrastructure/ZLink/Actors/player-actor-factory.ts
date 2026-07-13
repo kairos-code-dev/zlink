@@ -12,7 +12,7 @@ class PlayerActorFactory implements ZLinkActorFactory {
     this.actors = new Map();
   }
 
-  create(actorId: string, context: ZLinkActorContext): PlayerActorType {
+  async create(actorId: string, context: ZLinkActorContext): Promise<PlayerActorType> {
     const existing = this.actors.get(actorId);
     if (existing !== undefined) {
       Object.defineProperty(existing, 'context', {

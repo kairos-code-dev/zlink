@@ -3,6 +3,9 @@ const test = require('node:test');
 const framework = require('../../packages/framework/dist/internal');
 const { Message, RequestResult } = require('@zlink-systems/zlink');
 
+class ActorNotify { constructor(value) { this.value = value; } }
+class ActorAsk { constructor(value) { this.value = value; } }
+
 function actorRef(actorId = 'actor-1', generation = 1n) {
   return { nodeRid: 'node-a', actorId, generation };
 }
@@ -40,7 +43,7 @@ function createFailingResolver() {
   };
 }
 
-test('actor client sends multipart parts to a resolved actor and returns a promise terminal', async () => {
+test('actor client submits one-way sends without exposing a completion promise', async () => {
   const sends = [];
   const node = {
     sendToActor(actor, parts) {
@@ -54,10 +57,10 @@ test('actor client sends multipart parts to a resolved actor and returns a promi
     locationResolver: () => resolver
   });
 
-  const submitted = client.sendToActor(actorRef(), { value: 'ping' }).packetName('ActorNotify').submit();
+  const submitted = client.sendToActor(actorRef(), new ActorNotify('ping')).submit();
 
-  assert.equal(submitted instanceof Promise, true);
-  await submitted;
+  assert.equal(submitted, undefined);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sends.length, 1);
   assert.equal(sends[0].actor.actorId, 'actor-1');
   assert.equal(sends[0].parts.length, 2);
@@ -81,8 +84,7 @@ test('actor client request decodes the handler reply and never auto-creates a mi
     locationResolver: () => resolver
   });
 
-  const reply = await client.requestToActor(actorRef(), { value: 'ping' })
-    .packetName('ActorAsk')
+  const reply = await client.requestToActor(actorRef(), new ActorAsk('ping'))
     .timeout(100)
     .submit();
 
@@ -101,8 +103,7 @@ test('actor client request decodes a single framed handler reply through stream 
     locationResolver: () => createFailingResolver()
   });
 
-  const reply = await client.requestToActor(actorRef(), { value: 'ping' })
-    .packetName('ActorAsk')
+  const reply = await client.requestToActor(actorRef(), new ActorAsk('ping'))
     .submit();
 
   assert.deepEqual(reply, { value: 'framed-pong' });
@@ -121,16 +122,17 @@ test('actor client maps stale ActorRef sends without resolving a replacement', a
     }
   };
   const resolver = createFailingResolver();
+  let reported;
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
-    locationResolver: () => resolver
+    locationResolver: () => resolver,
+    sendErrorReporter: (error) => { reported = error; }
   });
 
-  await assert.rejects(
-    () => client.sendToActor(first, { value: 'ping' }).packetName('ActorNotify').submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
-  );
+  client.sendToActor(first, new ActorNotify('ping')).submit();
+  await new Promise((resolve) => setImmediate(resolve));
 
+  assert.equal(reported.kind, framework.ZLinkFrameworkErrorKind.ActorLocationStale);
   assert.deepEqual(sends.map((actor) => actor.generation), [1n]);
 });
 
@@ -140,7 +142,7 @@ test('actor client maps stale and disconnected route failures', async () => {
     locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => noNode.requestToActor(actorRef('missing'), { value: 'ping' }).packetName('ActorAsk').submit(),
+    () => noNode.requestToActor(actorRef('missing'), new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
   );
 
@@ -155,7 +157,7 @@ test('actor client maps stale and disconnected route failures', async () => {
     locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => stale.requestToActor(actorRef('actor-1', 1n), { value: 'ping' }).packetName('ActorAsk').submit(),
+    () => stale.requestToActor(actorRef('actor-1', 1n), new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
 
@@ -170,7 +172,7 @@ test('actor client maps stale and disconnected route failures', async () => {
     locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => disconnected.requestToActor(actorRef(), { value: 'ping' }).packetName('ActorAsk').submit(),
+    () => disconnected.requestToActor(actorRef(), new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
   );
 });

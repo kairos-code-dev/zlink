@@ -17,6 +17,7 @@ import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import { ZLinkDispatchErrorReporter, ZLinkRouteDisconnectedError } from '../channels';
 import { flowIfEnabled } from '../diagnostics';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type {
   ZLinkBackendSocketMonitor,
@@ -29,6 +30,7 @@ import {
   type ZLinkStreamFrameHeader,
   ZLinkStreamMessageKind
 } from './protocol';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import {
   streamSessionIdFromRoutingId,
   ZLinkManagedStream
@@ -52,6 +54,7 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly onError?: (error: unknown) => void;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly metrics?: ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
@@ -75,6 +78,8 @@ export class ZLinkStreamSessionRuntime {
   private connected = false;
   private disconnected = false;
   private disposed = false;
+  private closeReason = 'client_close';
+  private metricsClosed = false;
 
   constructor(
     private readonly options: ZLinkStreamSessionRuntimeOptions,
@@ -158,12 +163,22 @@ export class ZLinkStreamSessionRuntime {
     await this.cleanup();
   }
 
+  async drainClose(): Promise<void> {
+    this.closeReason = 'server_drain';
+    await this.serial.run(async () => {
+      if (this.disposed) return;
+      await this.stream.closeForDrain();
+    });
+  }
+
   private async markConnected(localAddr?: string, remoteAddr?: string): Promise<void> {
     this.stream.updateAddresses(localAddr, remoteAddr);
     if (this.connected) {
       return;
     }
     this.connected = true;
+    this.options.metrics?.change('zlink.stream.connections.active', 1);
+    this.options.metrics?.count('zlink.stream.connections.opened');
     const session = await this.requireSession();
     await session.onConnected?.(this.context);
   }
@@ -183,25 +198,28 @@ export class ZLinkStreamSessionRuntime {
         ? ZLinkDispatchMessageKind.Request
         : ZLinkDispatchMessageKind.Send;
       const streamCorr = decodedHeader.correlationId ?? decodedHeader.requestSeq?.toString();
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
-        outcome: ZLinkMessageFlowOutcome.Received,
-        surface: ZLinkDispatchErrorSurface.StreamSession,
-        messageKind: streamKind,
-        packetName: decodedHeader.name,
-        correlationId: streamCorr,
-        sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
-      });
-      await session.onDispatch?.(
-        createDispatchContext(decodedHeader),
-        wrapFrameworkPayloadMessage(dispatchPayload, this.options.messageSerializers)
-      );
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
-        outcome: ZLinkMessageFlowOutcome.Dispatched,
-        surface: ZLinkDispatchErrorSurface.StreamSession,
-        messageKind: streamKind,
-        packetName: decodedHeader.name,
-        correlationId: streamCorr,
-        sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
+      const inboundHeader = decodedHeader;
+      await runWithFlow(createInboundFlow(inboundHeader.flowId, inboundHeader.flowOrigin), async () => {
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Received,
+          surface: ZLinkDispatchErrorSurface.StreamSession,
+          messageKind: streamKind,
+          packetName: inboundHeader.name,
+          correlationId: streamCorr,
+          sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
+        });
+        await session.onDispatch?.(
+          createDispatchContext(inboundHeader),
+          wrapFrameworkPayloadMessage(dispatchPayload, this.options.messageSerializers)
+        );
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Dispatched,
+          surface: ZLinkDispatchErrorSurface.StreamSession,
+          messageKind: streamKind,
+          packetName: inboundHeader.name,
+          correlationId: streamCorr,
+          sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
+        });
       });
     } catch (error) {
       this.options.dispatchErrors?.report({
@@ -216,6 +234,8 @@ export class ZLinkStreamSessionRuntime {
         packetName: decodedHeader?.name,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId),
         correlationId: decodedHeader?.correlationId ?? decodedHeader?.requestSeq?.toString(),
+        flowId: decodedHeader?.flowId,
+        flowOrigin: decodedHeader?.flowOrigin,
         error
       });
       this.options.onError?.(error);
@@ -269,6 +289,9 @@ export class ZLinkStreamSessionRuntime {
   }
 
   private async complete(error: unknown, notifyDisconnected: boolean): Promise<void> {
+    if (error !== undefined && this.closeReason !== 'server_drain') {
+      this.closeReason = 'transport_error';
+    }
     if (error !== undefined) {
       const session = await this.requireSession();
       await session.onError?.(this.context, {
@@ -286,6 +309,11 @@ export class ZLinkStreamSessionRuntime {
   }
 
   private async cleanup(): Promise<void> {
+    if (this.connected && !this.metricsClosed) {
+      this.metricsClosed = true;
+      this.options.metrics?.change('zlink.stream.connections.active', -1);
+      this.options.metrics?.count('zlink.stream.connections.closed', 1, { close_reason: this.closeReason });
+    }
     this.context.cleanupBindings();
     this.removeSession(this.stream.sessionId, this);
   }
@@ -345,6 +373,10 @@ export class ZLinkStreamSessionNodeRuntime {
     for (const session of sessions) {
       await session.dispose();
     }
+  }
+
+  async drainCloseSessions(): Promise<void> {
+    await Promise.allSettled([...this.sessions.values()].map((session) => session.drainClose()));
   }
 
   private onFramedPacket(routingId: unknown, header: Message, payload: Message): void {

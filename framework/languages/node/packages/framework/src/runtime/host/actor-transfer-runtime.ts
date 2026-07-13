@@ -59,6 +59,7 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly clearRemoteActorPacketTarget: (actorId: string) => void;
   readonly reportPostCommitError?: (error: unknown) => void;
   readonly shutdownSignal?: () => AbortSignal | undefined;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export class ZLinkActorTransferRuntime {
@@ -126,11 +127,17 @@ export class ZLinkActorTransferRuntime {
     state: ZLinkActorRuntimeState,
     signal?: AbortSignal
   ) {
+    const transferStarted = process.hrtime.bigint();
     await this.beginSourceActorMove(actor, state);
     const sourceSpotRid = state.spotRid;
     let sourceLeaveStarted = false;
     try {
       const transfer = await this.options.actorTransferRegistry.transferOut(actor, signal);
+      this.options.metrics?.histogram(
+        'zlink.actor.transfer.pending_requests.count',
+        this.options.actorHandoff.snapshot(actor.actorId).length,
+        '{request}'
+      );
       sourceLeaveStarted = true;
       await this.prepareSourceActorLeave(actor, sourceSpotRid, signal);
       let phase: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
@@ -140,6 +147,11 @@ export class ZLinkActorTransferRuntime {
         commit: (target: Parameters<ZLinkActorHandoffCoordinator['complete']>[1], targetActorRef: ActorRef, results: Parameters<ZLinkActorHandoffCoordinator['complete']>[3]) => {
           if (phase !== 'prepared') return;
           phase = 'committed';
+          this.options.metrics?.count('zlink.actor.transfers');
+          this.options.metrics?.duration(
+            'zlink.actor.transfer.duration',
+            Number(process.hrtime.bigint() - transferStarted) / 1e9
+          );
           try {
             this.options.actorHandoff.complete(actor.actorId, target, targetActorRef, results);
           } catch (error) {

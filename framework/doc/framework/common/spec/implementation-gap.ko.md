@@ -27,17 +27,17 @@
 
 | 영역 | `.NET` | Java/Kotlin | Node.js | C++ |
 |------|--------|-------------|---------|-----|
-| request와 one-way send/publish | 충족 | `ZLinkSendCall` 계열이 `ZLinkSubmitStage`를 반환 | actor send와 bound session send가 `Promise<void>`를 반환 | 일반 send는 `result_t<void>`, actor send는 `task_t<void>`를 반환 |
-| handler 비동기 완료 | 충족 | blocking bridge 차이 | 충족 | blocking bridge 차이 |
-| Spot actor lifecycle | 충족 | callback은 있으나 동기 실행 | 충족 | callback 이름과 실행 방식 차이 |
-| typed stream session handler | 충족 | 불완전한 raw bridge | raw handler만 제공 | raw message handler만 제공 |
-| dispatch options와 diagnostics | 충족 | handler 완료형, token과 mode 제거 필요 | public mode 제거와 message-kind별 policy·진단 필드 보완 필요 | message-flow 진단 필드와 typed event 계약 누락 |
-| public export 경계 | 계약과 일치 | `ZLinkBackend*`, `*BackendAdapter`가 public 선언 | registration record와 normalizer가 package root에 노출 | 설치 header에 `*_state_t`와 runtime helper 노출 |
+| request와 one-way send/publish | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 일반 send는 `result_t<void>`, actor send는 `task_t<void>`를 반환 |
+| handler 비동기 완료 | 충족 | Java 충족, Kotlin coroutine bridge 별도 검증 필요 | 충족 | blocking bridge 차이 |
+| Spot actor lifecycle | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | callback 이름과 실행 방식 차이 |
+| typed stream session handler | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | raw message handler만 제공 |
+| dispatch options와 diagnostics | 충족 | Java target declaration 충족, Kotlin 별도 검증 필요 | 충족 | message-flow 진단 필드와 typed event 계약 누락 |
+| public export 경계 | 계약과 일치 | Java 계약과 일치, Kotlin 별도 검증 필요 | 계약과 일치 | 설치 header에 `*_state_t`와 runtime helper 노출 |
 | 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 밖 값 노출 |
-| route-mesh runtime options | 충족 | 없음 | 충족 | 없음 |
-| actor membership 상태 | 충족 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
-| actor join 결과 | 충족 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
-| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 |
+| route-mesh runtime options | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 없음 |
+| actor membership 상태 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
+| actor join 결과 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
+| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | Java public declaration과 완료된 Config 6·8 검증, 나머지 Config는 이 문서에서 미검증 | 충족: contract/unit/package, sample 6개, Config 1~11의 181개 E2E와 `.NET` 교차 검증 완료 | 새 목표 계약 전체 미검증 |
 
 ## 3. Java/Kotlin
 
@@ -165,10 +165,10 @@ Kotlin 문서의 전체 function inventory를 기준으로 검증한다. 이 항
 policy, diagnostics와 message-flow observer만 정의한다. 현재 `ZLinkDispatchOptions`는
 단일 `mode`, 단일 `unhandled.action`과 제한된 diagnostics를 제공한다.
 
-현재 구현과 다른 항목:
+2026-07-13 구현에서 다음 항목을 정식 계약에 맞췄다.
 
 ```text
-public dispatch mode 제거
+public dispatch mode 제거 완료
 request/send/publish별 unhandled policy
 ReplyError
 LogAndDrop
@@ -179,14 +179,15 @@ peerRid
 socketRole
 ```
 
-현재 확인 위치는
-`packages/framework/src/contracts/Dispatch/ZLinkDispatchOptions.ts`다.
+현재 계약과 구현 위치는
+`packages/framework/src/contracts/Dispatch/ZLinkDispatchOptions.ts`다. Config 8
+`AutomaticTurnDispatch`의 전체 Node.js runner도 통과했다.
 
 ### 4.2 public export 경계
 
-package root가 `contracts/Configuration/Registration.ts`를 다시 내보내면서 framework
-내부 등록 record, normalize/validate helper와 default builder를 public으로 노출한다.
-다음 종류의 이름은 public contract에서 제거해야 한다.
+2026-07-13 구현에서 package root와 공개 `contracts/Configuration` export가 framework
+내부 등록 record, normalize/validate helper와 default builder를 더 이상 내보내지 않도록
+정리했다. 다음 종류의 이름은 package root에서 제거했다.
 
 ```text
 createFrameworkRegistration
@@ -198,33 +199,50 @@ DefaultDispatchOptionsBuilder
 내부 normalize/validate helper
 ```
 
-공개 options, builder와 사용자가 구현하는 extension point만 package root에 남긴다.
+공개 options, builder와 사용자가 구현하는 extension point만 package root에 남겼다. NestJS는
+framework package의 `nest-integration` subpath를 통해 내부 등록 record를 사용하므로 application
+public surface에 이 구현 타입이 나타나지 않는다. source export test와 실제 `.tgz` consumer test가
+이 경계를 검증한다.
 
 ### 4.3 typed session handler
 
-현재 session packet handler는 raw `ZLinkMessage`만 받는다. 언어별 스펙의 typed payload
-handler와 serializer 연결이 public surface에 없다. raw message는 low-level extension
-경계로 제한하고 기본 application handler는 typed payload를 받아야 한다.
+typed payload handler와 serializer registry 연결을 구현했다. application handler에서 raw
+`ZLinkMessage`를 받는 escape hatch는 제거했으며, bound session도 packet 타입으로 routing한다.
 
 ### 4.4 one-way actor와 bound session
 
-channel과 일반 session one-way submit은 완료값을 반환하지 않지만 actor send와 bound
-session send는 `Promise<void>`를 반환한다. 같은 one-way 의미는 `void submit()`으로
-통일해야 한다.
+actor와 bound session을 포함한 one-way submit을 `void submit()`으로 통일했다. 취소 신호는
+actor 이동이나 session bind처럼 완료를 기다리는 장기 작업에만 남겼다.
 
 ### 4.5 interface catalog와 export 목록
 
 언어별 interface catalog는 application public 타입의 목표 시그니처를 모두 고정한다.
-현재 package root에는 내부 registration 타입이 남아 있고, location interface 13개가
-TypeScript 목표 naming과 달리 `I` prefix를 사용한다. 내부 export를 제거하고 location
-interface의 member를 유지한 채 이름을 정렬해야 한다.
+location interface의 `I` prefix를 제거했다. package root의 내부 registration 타입도 제거했고,
+companion NestJS package의 참조는 application export와 분리된 integration subpath로 옮겼다.
 
 ### 4.6 Actor membership와 join 결과
 
-현재 `spotRid`, `isJoined`를 함께 노출하고 join 결과의 `accepted`, optional actor와
-optional reply를 독립 필드로 제공한다. 목표 계약은 `spotRid`만 상태 기준으로 사용하고
-join 결과를 `status` discriminated union으로 바꾼다. 승인 variant만 필수 actor ref를
-가지며 두 variant 모두 reply를 가진다.
+`isJoined`와 중복 join call을 제거하고 `spotRid`를 membership 상태 기준으로 고정했다. join
+결과는 `status` discriminated union이며 승인 variant만 필수 actor ref를 가진다.
+
+### 4.7 관측과 종료
+
+OpenTelemetry meter `zlink.framework`, UUIDv7 flow correlation, typed graceful drain과
+`session-closing` 제어 프레임을 구현했다. Node.js Config 11 `ObservabilityOps` runner는
+OBS-A1~C5 evidence와 함께 통과했다. `Bingo.Ts`도 flow, metrics, drain 설정을 사용하는
+sample smoke를 통과했다.
+
+### 4.8 typed packet identity와 최종 상태
+
+channel, route, Spot과 fanout packet identity는 `@ZLinkPacket`이 해당 class에 직접 기록한
+metadata를 우선 사용하고, metadata가 없으면 생성자 이름을 사용한다. payload의
+`packetName()` method와 call builder의 packet name override는 제거했다. decorator가 없는
+subclass는 부모 class의 metadata를 상속하지 않는다. Stream Connector frame의 명시적 packet
+name은 별도 connector 계약이므로 이 규칙의 제거 대상이 아니다.
+
+전체 contract/unit/integration, Node 20/22 runtime matrix, sample 6개, 공통 E2E 181개,
+Node.js↔`.NET` 양방향 cross-language matrix와 실제 npm tarball consumer 검증을 통과했다.
+따라서 이 계획이 추적한 Node.js public contract 구현 차이는 모두 해소됐다.
 
 ## 5. C++
 

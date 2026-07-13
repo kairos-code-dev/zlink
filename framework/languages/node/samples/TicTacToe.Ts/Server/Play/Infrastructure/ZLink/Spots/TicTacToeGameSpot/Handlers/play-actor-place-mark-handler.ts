@@ -4,6 +4,7 @@ import type {
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler
 } from '@zlink-systems/framework';
+import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
 import type {
   PlaceMarkReq,
@@ -16,6 +17,7 @@ type PlayPlaceMarkActor = TicTacToeActor & ZLinkActor;
 @Injectable()
 class PlayActorPlaceMarkHandler
   implements ZLinkSpotActorRequestHandler<TicTacToeGameSpot, PlayPlaceMarkActor, PlaceMarkReq, PlaceMarkRes> {
+  @ZLinkSpotActorRequest('PlaceMarkReq')
   async handle(
     spot: TicTacToeGameSpot,
     actor: PlayPlaceMarkActor,

@@ -9,7 +9,9 @@ import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
   ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher
+  ZLinkRuntimeEventPublisher,
+  ZLinkDrainControl,
+  ZLinkDrainResult
 } from '../../contracts';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import { ZLinkMessageFlowLogMode } from '../../contracts';
@@ -30,7 +32,8 @@ import {
   createDiagnosticsContext,
   DefaultZLinkRuntimeEventPublisher,
   type ZLinkDiagnosticsContext,
-  type ZLinkMessageFlowModeCell
+  type ZLinkMessageFlowModeCell,
+  ZLinkRuntimeMetrics
 } from '../diagnostics';
 import {
   DefaultZLinkSpotManager,
@@ -50,6 +53,7 @@ import {
 } from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
+  type DefaultZLinkBoundSession,
   type ZLinkStreamPayloadCodec,
   ZLinkStreamBindingRuntime,
   ZLinkStreamRuntimeManager
@@ -86,7 +90,7 @@ export interface ZLinkFrameworkRuntimeHostOptions {
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
 }
 
-export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMessageFlowControl {
+export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMessageFlowControl, ZLinkDrainControl {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
   private state?: ZLinkFrameworkRuntimeState;
@@ -105,6 +109,12 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private spotManager?: DefaultZLinkSpotManager;
   private readonly destroyedActorRefs = new Map<string, ActorRef>();
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
+  private readonly metrics: ZLinkRuntimeMetrics;
+  private ready = true;
+  private drainOperation?: Promise<ZLinkDrainResult>;
+  private readonly drainedWaiters: Array<(result: ZLinkDrainResult) => void> = [];
+  private drainMetricState = 'serving';
+  private drainStartedAt?: bigint;
   // Shared, runtime-mutable message-flow mode cell — installed once so
   // setMessageFlowMode flips every surface live. Seeded from config at start().
   private readonly messageFlowModeCell: ZLinkMessageFlowModeCell = {
@@ -131,10 +141,13 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
     this.runtimeEventPublisher = options.runtimeEventPublisher ?? new DefaultZLinkRuntimeEventPublisher();
+    this.metrics = new ZLinkRuntimeMetrics(options.registration.metrics?.meterProvider);
+    this.metrics.change('zlink.drain.state', 1, { state: 'serving' });
     this.meshRouters = new MeshRouterResolver(options.registration);
     this.locationOwner = new ZLinkLocationRuntimeOwner({
       registration: options.registration,
       runtimeEventPublisher: this.runtimeEventPublisher,
+      metrics: this.metrics,
       fallbackNodeRid: `node-${randomUUID()}`
     });
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
@@ -207,7 +220,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         if (factory === undefined) {
           throw new Error('Bound session factory is not configured.');
         }
-        return factory(actorId);
+        return factory(actorId) as DefaultZLinkBoundSession;
       }
     });
     this.entryActorRuntime = new ZLinkEntryActorRuntimeService({
@@ -237,7 +250,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         this.boundSessionRelay.clearRemoteActorPacketTarget(actorId),
       reportPostCommitError: (error) =>
         (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException('source actor departure', error),
-      shutdownSignal: () => this.state?.abortController.signal
+      shutdownSignal: () => this.state?.abortController.signal,
+      metrics: this.metrics
     });
   }
 
@@ -293,7 +307,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       this.state = new ZLinkFrameworkRuntimeState(context);
       // Seed the shared live-mode cell from the configured mode (default errorsOnly).
       this.messageFlowModeCell.mode =
-        this.options.registration.dispatch?.diagnostics?.messageFlowLogMode ??
+        this.options.registration.dispatch?.diagnostics.messageFlow ??
         ZLinkMessageFlowLogMode.ErrorsOnly;
       const dispatchErrors = this.createDispatchErrorReporter(this.state.errorSink);
       channelRuntime = new ZLinkChannelRuntimeManager(
@@ -325,7 +339,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         bindingRuntime: this.streamBindingRuntime,
         spotNodes: spotNodeRuntime.nodesByName,
         providerResolver: this.options.providerResolver,
-        dispatchErrors
+        dispatchErrors,
+        metrics: this.metrics
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;
@@ -387,7 +402,104 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.stop();
+    await this.drain();
+  }
+
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  drain(deadlineMs = 30_000, signal?: AbortSignal): Promise<ZLinkDrainResult> {
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      return Promise.reject(new TypeError('Drain deadlineMs must be greater than zero.'));
+    }
+    this.drainOperation ??= this.performDrain(deadlineMs).then((result) => {
+      for (const resolve of this.drainedWaiters.splice(0)) resolve(result);
+      return result;
+    });
+    return waitForDrain(this.drainOperation, signal);
+  }
+
+  awaitDrained(signal?: AbortSignal): Promise<ZLinkDrainResult> {
+    const operation = this.drainOperation ?? new Promise<ZLinkDrainResult>((resolve) => {
+      this.drainedWaiters.push(resolve);
+    });
+    return waitForDrain(operation, signal);
+  }
+
+  private async performDrain(deadlineMs: number): Promise<ZLinkDrainResult> {
+    this.drainStartedAt = process.hrtime.bigint();
+    this.ready = false;
+    try {
+      if (this.locationOwner.currentRuntime !== undefined && !await this.locationOwner.currentRuntime.publishDraining()) {
+        throw new Error('Failed to publish draining peer rows.');
+      }
+      await this.publishDrainState('Draining');
+      await this.streamRuntime?.notifyServerDrain();
+    } catch {
+      const result = { kind: 'force-stopped', reason: 'DrainingStatePublishFailed' } as const;
+      await this.stop().catch(() => undefined);
+      await this.publishDrainState('ForceStopping', result).catch(() => undefined);
+      return result;
+    }
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timeoutHandle = setTimeout(() => resolve('timeout'), deadlineMs);
+    });
+    try {
+      const stopped = this.drainSpots().then(() => this.stop()).then(() => 'stopped' as const);
+      if (await Promise.race([stopped, timeout]) === 'timeout') {
+        const result = { kind: 'force-stopped', reason: 'DeadlineExceeded' } as const;
+        await this.publishDrainState('ForceStopping', result).catch(() => undefined);
+        await this.stop().catch(() => undefined);
+        return result;
+      }
+      const result = { kind: 'drained' } as const;
+      await this.publishDrainState('Drained', result);
+      return result;
+    } catch {
+      const result = { kind: 'force-stopped', reason: 'TeardownFailed' } as const;
+      await this.publishDrainState('ForceStopping', result).catch(() => undefined);
+      return result;
+    } finally {
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    }
+  }
+
+  private async drainSpots(): Promise<void> {
+    const manager = this.spotManager;
+    if (manager === undefined) return;
+    const policies = [...this.options.registration.spotNodes.values()]
+      .map((node) => node.drainPolicy ?? 'DrainNatural');
+    if (policies.includes('ReleaseAndRecreate')) {
+      for (const spot of await manager.list()) {
+        await manager.close(spot.spotRid);
+      }
+    }
+    while ((await manager.list()).length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  private publishDrainState(state: import('../../contracts').ZLinkDrainState, result?: ZLinkDrainResult): Promise<void> {
+    const metricState = drainMetricState(state);
+    if (metricState !== this.drainMetricState) {
+      this.metrics.change('zlink.drain.state', -1, { state: this.drainMetricState });
+      this.metrics.change('zlink.drain.state', 1, { state: metricState });
+      this.drainMetricState = metricState;
+    }
+    if (state === 'Drained' || state === 'ForceStopping') {
+      if (this.drainStartedAt !== undefined) {
+        this.metrics.duration('zlink.drain.duration', Number(process.hrtime.bigint() - this.drainStartedAt) / 1e9);
+      }
+      if (state === 'ForceStopping') this.metrics.count('zlink.drain.forced');
+    }
+    return this.runtimeEventPublisher.publish({
+      sourceName: 'drain',
+      timestamp: new Date(),
+      state,
+      result
+    });
   }
 
   setActorManager(actorManager: DefaultZLinkActorManager): void {
@@ -420,7 +532,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return this.actorRuntimeOptionsFactory().createActorClientOptions();
   }
 
-  createLocationRefResolver(): ZLinkStoreLocationResolvers | undefined {
+  createLocationHandleResolver(): ZLinkStoreLocationResolvers | undefined {
     this.ensureLocationRuntime();
     return this.locationOwner.createRefResolver(this.meshRouters.spotLocationMeshNames());
   }
@@ -442,7 +554,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       actorHandoff: this.actorHandoff,
       dispatchErrorReporter: (errorSink) => this.createDispatchErrorReporter(errorSink),
       runtimeOrPreStartErrorSink: this.runtimeOrPreStartErrorSink,
-      detachedTaskRunner: this.detachedTaskRunner()
+      detachedTaskRunner: this.detachedTaskRunner(),
+      metrics: this.metrics
     }).create(this.actorTransferRuntime);
   }
 
@@ -469,7 +582,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       actorHandoff: this.actorHandoff,
       actorTransferRuntime: this.actorTransferRuntime,
       actorTransferRegistry: this.actorTransferRegistry,
-      shutdownSignal: () => this.state?.abortController.signal
+      shutdownSignal: () => this.state?.abortController.signal,
+      metrics: this.metrics
     });
   }
 
@@ -566,6 +680,25 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return this.locationOwner.createActorLocationResolver();
   }
 
+}
+
+function drainMetricState(state: import('../../contracts').ZLinkDrainState): string {
+  switch (state) {
+    case 'Serving': return 'serving';
+    case 'Draining': return 'draining';
+    case 'Drained': return 'drained';
+    case 'ForceStopping': return 'force_stopping';
+  }
+}
+
+function waitForDrain(operation: Promise<ZLinkDrainResult>, signal?: AbortSignal): Promise<ZLinkDrainResult> {
+  if (signal?.aborted === true) return Promise.reject(signal.reason ?? new Error('Drain wait was aborted.'));
+  if (signal === undefined) return operation;
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal.reason ?? new Error('Drain wait was aborted.'));
+    signal.addEventListener('abort', aborted, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted)).catch(() => undefined);
+  });
 }
 
 function resolveBackendAdapterFactory(internalOptions: unknown): ZLinkBackendAdapterFactory {

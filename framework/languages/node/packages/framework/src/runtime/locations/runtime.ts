@@ -66,6 +66,7 @@ export interface ZLinkLocationRuntimeOptions {
   readonly now?: () => Date;
   readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkLocationEventSink {
@@ -95,11 +96,15 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   private readonly events?: ZLinkLocationEventSink;
   private readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
+  private readonly now: () => Date;
   private readonly liveRows: ZLinkLiveRowFilter;
   private readonly ownershipLostHandlers = new Set<(event: ZLinkOwnershipLostEvent) => void>();
   private heartbeatTimer: unknown;
   private nodeRidValue?: RoutingId;
   private started = false;
+  private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  private peerMetricCount = 0;
+  private nextLeaseRenewAtMs?: number;
 
   ownerLeaseHealthy = false;
   ownerLeaseRenewedAt?: Date;
@@ -110,6 +115,8 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.options = { ...zlinkDefaultLocationOptions, ...runtimeOptions.options };
     this.ownerId = runtimeOptions.ownerId ?? randomUUID().replaceAll('-', '');
     this.events = runtimeOptions.events;
+    this.metrics = runtimeOptions.metrics;
+    this.now = runtimeOptions.now ?? (() => new Date());
     this.setTimer = runtimeOptions.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimer = runtimeOptions.clearTimer ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
     const leaseTracker = runtimeOptions.leaseTracker ?? new ZLinkOwnerLeaseTracker({
@@ -181,6 +188,26 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.ownerLeaseHealthy = true;
       this.ownerLeaseRenewedAt = result.storeNow;
       this.lastError = undefined;
+      return true;
+    } catch (error) {
+      this.metrics?.count('zlink.location.owner_lease.renew.failures');
+      this.recordFailure(errorMessage(error));
+      return false;
+    }
+  }
+
+  async publishDraining(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const peers = await this.stores.peerStore.listPeers({}, signal);
+      for (const peer of peers) {
+        if (peer.ownerId !== this.ownerId || peer.draining) continue;
+        const result = await this.stores.peerStore.updatePeer(
+          { ...peer, draining: true },
+          ZLinkLocationWriteIntent.Renew,
+          signal
+        );
+        if (result.status !== ZLinkLocationWriteStatus.Stored) return false;
+      }
       return true;
     } catch (error) {
       this.recordFailure(errorMessage(error));
@@ -315,7 +342,10 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   async listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
     const rows = await this.stores.peerStore.listPeers(filter, signal);
-    return await this.filterLive(rows, (row) => row.ownerId, signal);
+    const live = await this.filterLive(rows, (row) => row.ownerId, signal);
+    this.metrics?.change('zlink.location.peers', live.length - this.peerMetricCount);
+    this.peerMetricCount = live.length;
+    return live;
   }
 
   async listSpotLocations(
@@ -474,8 +504,16 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     if (!this.started) {
       return;
     }
+    this.nextLeaseRenewAtMs = this.now().getTime() + this.options.heartbeatIntervalMs;
     this.heartbeatTimer = this.setTimer(() => {
       this.heartbeatTimer = undefined;
+      const expectedAt = this.nextLeaseRenewAtMs;
+      if (expectedAt !== undefined) {
+        this.metrics?.duration(
+          'zlink.location.owner_lease.renew.lateness',
+          Math.max(0, this.now().getTime() - expectedAt) / 1000
+        );
+      }
       void this.renewOwnerLeaseOnce().finally(() => this.scheduleHeartbeat());
     }, this.options.heartbeatIntervalMs);
   }
@@ -490,6 +528,9 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   }
 
   private notifyIfStale(result: ZLinkLocationWriteResult, kind: ZLinkLocationKind, key: string): void {
+    if (result.status === ZLinkLocationWriteStatus.IgnoredStale || result.status === ZLinkLocationWriteStatus.RejectedConflict) {
+      this.metrics?.count('zlink.location.write.conflicts');
+    }
     if (result.status !== ZLinkLocationWriteStatus.IgnoredStale) {
       return;
     }
@@ -499,6 +540,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   }
 
   private recordFailure(message: string): void {
+    this.metrics?.count('zlink.location.store.errors');
     this.ownerLeaseHealthy = false;
     this.lastError = message;
   }

@@ -2,16 +2,18 @@ import type {
   RoutingId,
   Type,
   ZLinkEntrySpot,
-  ZLinkEntrySpotTimerHandlerRegistration,
   ZLinkProviderResolver,
   ZLinkRuntimeEventPublisher,
   ZLinkSpot,
-  ZLinkSpotTimerHandlerRegistration,
   ZLinkSpotTimerHandler,
   ZLinkTimer,
   ZLinkTimerOptions,
   ZLinkTimerTick
 } from '../../contracts';
+import type {
+  ZLinkEntrySpotTimerHandlerRegistration,
+  ZLinkSpotTimerHandlerRegistration
+} from '../../contracts/Configuration/RegistrationTypes';
 import {
   ZLinkSpotEventKind,
   ZLinkTimerOverrunPolicy
@@ -20,6 +22,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createProviderInstance } from './spot-provider';
+import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 
 type ZLinkTimerOwnerSpot = ZLinkSpot | ZLinkEntrySpot;
 type ZLinkTimerFailureReporter = (
@@ -30,6 +33,8 @@ type ZLinkTimerFailureReporter = (
 
 export class ZLinkSpotTimerRegistry {
   private readonly timers = new Set<ZLinkTimer>();
+
+  constructor(private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {}
 
   async add<TSpot extends ZLinkTimerOwnerSpot, THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -50,7 +55,9 @@ export class ZLinkSpotTimerRegistry {
       periodMs,
       normalizeTimerOptions(options),
       async (tick) => {
-        await serial.execute(() => handler.handle(spot, tick));
+        this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
+        await runWithFlow(createInboundFlow(undefined, 'Timer'), () =>
+          serial.execute(() => handler.handle(spot, tick)));
       },
       reportFailure,
       () => !serial.isExecuting

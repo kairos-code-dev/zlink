@@ -151,8 +151,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
                 throw new ZLinkConfigurationException('Actor transfer registry is not configured.');
               }
               return registry.transferIn(adapterKey, actorId, transferState, signal);
-            },
-        signal
+            }
       )
     );
     try {
@@ -246,6 +245,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
       this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
+      this.options.metrics?.change('zlink.actor.count', -1);
       return;
     }
     const actorRef = state.beginDestroy(entryNodeRid);
@@ -261,6 +261,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
       this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
+      this.options.metrics?.change('zlink.actor.count', -1);
     } catch (error) {
       state.resetDestroying();
       throw error;
@@ -329,6 +330,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
 
     const state = new ZLinkActorRuntimeState(actorId);
     this.states.set(actorId, state);
+    this.options.metrics?.change('zlink.actor.count', 1);
     return state;
   }
 

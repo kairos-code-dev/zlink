@@ -19,7 +19,14 @@ export interface ActorCreateRes { actorId: string; actorType: string; nodeRid: s
 export interface CreateSpotReq { spotRid: string; mode?: string }
 export interface CreateSpotRes { spotRid: string; nodeRid: string; state: string }
 export interface GateReleaseRes { key: string; released: boolean }
-export interface JoinTargetReq { scenario: string; targetSpotRid: string; expectedMode?: string; transferId?: string }
+export class JoinTargetReq {
+  constructor(
+    readonly scenario: string,
+    readonly targetSpotRid: string,
+    readonly expectedMode?: string,
+    readonly transferId?: string
+  ) {}
+}
 export interface JoinTargetRes {
   scenario: string;
   actorId: string;
@@ -29,12 +36,15 @@ export interface JoinTargetRes {
   stateVersion: number;
   errorKind?: string;
 }
-export interface ProbeReq {
-  scenario: string;
-  marker: string;
-  delayMs?: number;
-  requestTimeoutMs?: number;
+export class ProbeReq {
+  constructor(
+    readonly scenario: string,
+    readonly marker: string,
+    readonly delayMs?: number,
+    readonly requestTimeoutMs?: number
+  ) {}
 }
+export class HandoffProbe extends ProbeReq {}
 export interface ProbeRes {
   scenario: string;
   actorId: string;
@@ -51,9 +61,20 @@ export interface BindActorSessionReq {
   transferId?: string;
 }
 export interface BindActorSessionRes { scenario: string; actorId: string; nodeRid: string; generation: string }
-export interface BoundPushReq { scenario: string; marker: string }
+export class BoundPushReq {
+  constructor(readonly scenario: string, readonly marker: string) {}
+}
 export interface BoundPushRes extends ProbeRes {}
-export interface BoundPushNotify extends ProbeRes {}
+export class BoundPushNotify implements ProbeRes {
+  constructor(
+    readonly scenario: string,
+    readonly actorId: string,
+    readonly spotRid: string,
+    readonly nodeRid: string,
+    readonly stateVersion: number,
+    readonly marker: string
+  ) {}
+}
 export interface EvidenceWaitReq { containsAll: readonly string[]; timeoutMilliseconds?: number }
 export interface ActorRefSnapshotRes { actorId: string; nodeRid: string; generation: string }
 export interface TransferStateDto { actorId: string; actorType: string; stateVersion: number }

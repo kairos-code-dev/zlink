@@ -15,7 +15,8 @@ DEFAULT_CONFIGS=(
   SpotService
   RuntimeMonitoring
   ResilienceLifecycle
-  YieldDispatch
+  AutomaticTurnDispatch
+  ObservabilityOps
   ToActorMessaging
   SpotActorTransfer
 )

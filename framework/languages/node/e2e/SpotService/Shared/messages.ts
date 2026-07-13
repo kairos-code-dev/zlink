@@ -1,4 +1,4 @@
-import type { SpotRef } from '@zlink-systems/framework';
+import type { SpotHandle } from '@zlink-systems/framework';
 
 export const SpotServiceNames = {
   spotChannel: 'spot.service',
@@ -83,10 +83,12 @@ export interface SpotOnlyMeshRes {
   readonly marker: string;
 }
 
-export interface SpotOnlyJoinReq {
-  readonly targetSpotRid: string;
-  readonly actorId: string;
-  readonly marker: string;
+export class SpotOnlyJoinReq {
+  constructor(
+    readonly targetSpotRid: string,
+    readonly actorId: string,
+    readonly marker: string
+  ) {}
 }
 
 export interface SpotOnlyJoinRes {
@@ -132,7 +134,7 @@ export interface SpotOutboundRouteRes {
 
 export interface SpotToSpotReq {
   readonly targetSpotRid: string;
-  readonly targetSpot: SpotRef;
+  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -150,7 +152,7 @@ export interface SpotToSpotRouteReq {
 
 export interface SpotToSpotTimeoutReq {
   readonly targetSpotRid: string;
-  readonly targetSpot: SpotRef;
+  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -168,7 +170,7 @@ export interface SpotToSpotTimeoutRouteReq {
 
 export interface SpotToSpotNegativeReq {
   readonly targetSpotRid: string;
-  readonly targetSpot: SpotRef;
+  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -289,14 +291,16 @@ export interface ActorPingRes {
   readonly seen: number;
 }
 
-export interface ActorPushReq {
-  readonly value: string;
+export class ActorPushReq {
+  constructor(readonly value: string) {}
 }
 
-export interface ActorPushNotify {
-  readonly actorId: string;
-  readonly value: string;
-  readonly seen: number;
+export class ActorPushNotify {
+  constructor(
+    readonly actorId: string,
+    readonly value: string,
+    readonly seen: number
+  ) {}
 }
 
 export interface CrossRoleActorPushReq {
@@ -502,6 +506,23 @@ export interface SpotWorkerCompleteReq {
   readonly marker: string;
 }
 
+export class SpotAdminReq {
+  constructor(
+    readonly operation: 'publish' | 'worker' | 'idleTimer' | 'timer' | 'overrunTimer',
+    readonly marker?: string,
+    readonly name?: string,
+    readonly periodMs?: number,
+    readonly delayMs?: number,
+    readonly policy?: 'SkipLateTicks' | 'CatchUpBounded' | 'DelayNextTick'
+  ) {}
+}
+
+export interface SpotAdminRes {
+  readonly spotRid: string;
+  readonly nodeRid: string;
+  readonly marker?: string;
+}
+
 export interface SpotWorkerCompleteRes {
   readonly spotRid: string;
   readonly marker: string;
@@ -564,4 +585,41 @@ export interface SpotTypeMismatchRes {
 export interface EvidenceWaitReq {
   readonly containsAll: readonly string[];
   readonly timeoutMilliseconds?: number;
+}
+
+export type SpotServicePacketType<T extends object> = new () => T;
+
+export function spotServicePacket<T extends object>(type: SpotServicePacketType<T>, value: T): T {
+  return Object.assign(new type(), value);
+}
+
+export class CreateSpotReq {}
+export class StateReq {}
+export class StateMsg {}
+export class StageProbeReq {}
+export class StageTimerStartMsg {}
+export class SpotMsg {}
+export class SpotOutboundMsg {}
+export class SpotOutboundNegativeMsg {}
+export class SpotToSpotReq {}
+export class SpotToSpotTimeoutReq {}
+export class SpotToSpotNegativeReq {}
+export class SlowSpotReq {}
+export class ChannelEchoReq {}
+export class ChannelNotify {}
+export class CrossRoleActorPushReq {}
+export class ControlPingReq {}
+export class EnsureActorReq {}
+export class MissingSpotReq {
+  declare readonly operation: string;
+  declare readonly delta: number;
+}
+export class MissingSpotMsg {
+  declare readonly marker: string;
+}
+export class MissingChannelReq {
+  declare readonly value: string;
+}
+export class MissingChannelNotify {
+  declare readonly marker: string;
 }

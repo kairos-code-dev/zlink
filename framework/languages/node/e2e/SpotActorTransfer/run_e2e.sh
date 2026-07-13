@@ -125,6 +125,7 @@ start_session() {
 
 start_node_a() {
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_PUBSUB"
+  NODE_A_PID="${pids[-1]}"
   wait_health "$NODE_A_URL" actor-a "${pids[-1]}"
   sleep 2
 }
@@ -141,7 +142,15 @@ run_client() {
 }
 
 restart_node_a() {
-  sleep 1
+  if [[ -n "${NODE_A_PID:-}" ]]; then
+    kill -TERM "$NODE_A_PID" 2>/dev/null || true
+    for _ in {1..50}; do
+      kill -0 "$NODE_A_PID" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$NODE_A_PID" 2>/dev/null || true
+    wait "$NODE_A_PID" || true
+  fi
   start_node_a
 }
 

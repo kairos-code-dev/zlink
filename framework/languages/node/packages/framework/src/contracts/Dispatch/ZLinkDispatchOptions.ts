@@ -1,11 +1,8 @@
-import type { ZLinkDispatchMode } from './ZLinkDispatchMode';
 import type { Type } from '../Common';
 
 export interface ZLinkDispatchOptions {
-  mode?: ZLinkDispatchMode;
-  unhandled?: ZLinkUnhandledDispatchOptions;
-  diagnostics?: ZLinkDiagnosticsOptions;
-  messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
+  readonly unhandled: ZLinkUnhandledDispatchOptions;
+  readonly diagnostics: ZLinkDiagnosticsOptions;
 }
 
 export interface ZLinkDispatchOptionsBuilder {
@@ -48,6 +45,11 @@ export interface ZLinkMessageFlowEvent {
   readonly topic?: string;
   readonly correlationId?: string;
   readonly sourceRid?: string;
+  readonly peerRid?: string;
+  readonly socketRole?: string;
+  readonly effectiveMode: ZLinkMessageFlowLogMode;
+  readonly flowId: string;
+  readonly flowOrigin: import('../Eventing/Contracts').ZLinkFlowOrigin;
   readonly spotRid?: string;
   readonly actorId?: string;
   readonly messageSize?: number;
@@ -82,18 +84,25 @@ export interface ZLinkDispatchFailure {
   readonly actorId?: string;
   readonly sourceRid?: string;
   readonly correlationId?: string;
+  readonly flowId?: string;
+  readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
   readonly errorType?: string;
   readonly errorMessage?: string;
 }
 
 export interface ZLinkUnhandledDispatchOptions {
-  action?: ZLinkUnhandledDispatchAction;
+  request: ZLinkUnhandledDispatchAction;
+  send: ZLinkUnhandledDispatchAction;
+  publish: ZLinkUnhandledDispatchAction;
+  sendLogLevel: LogLevel;
+  publishLogLevel: LogLevel;
 }
 
 export interface ZLinkDiagnosticsOptions {
-  messageFlowLogMode?: ZLinkMessageFlowLogMode;
-  sampleRate?: number;
-  includeMessageSizes?: boolean;
+  messageFlow: ZLinkMessageFlowLogMode;
+  sampleRate: number;
+  includeMessageSizes: boolean;
+  includeNativeDiagnostics: boolean;
   /** When set, tracing/error logs go to this dedicated file (separated from app logs). */
   logFile?: string;
   /** Human-readable runtime label stamped on each trace line. */
@@ -101,10 +110,13 @@ export interface ZLinkDiagnosticsOptions {
 }
 
 export enum ZLinkUnhandledDispatchAction {
-  Ignore = 'ignore',
-  Warn = 'warn',
+  ReplyError = 'replyError',
+  LogAndDrop = 'logAndDrop',
+  Drop = 'drop',
   Throw = 'throw'
 }
+
+export type LogLevel = 'log' | 'error' | 'warn' | 'debug' | 'verbose' | 'fatal';
 
 export enum ZLinkMessageFlowLogMode {
   Off = 'off',

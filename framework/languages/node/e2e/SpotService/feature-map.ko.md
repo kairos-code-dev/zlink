@@ -8,7 +8,7 @@ SM-B6, SM-B7, SM-B8, SM-B9, SM-C1, SM-C2, SM-C3, SM-C4, SM-C5, SM-D1, SM-D2, SM-
 SM-D7, SM-D8, SM-D9, SM-D10, SM-D11, SM-D12, SM-D13, SM-D14, SM-D15, SM-E1, SM-E2, SM-E3, SM-E4, SM-F1,
 SM-F2, SM-F3, SM-F4, SM-F5를 operation group 단위로 실행하고,
 outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1, SM-Q9를 별도 child scenario로 실행한다.
-SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
+SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/SpotService/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
 `.NET`의 `SmQ9Scenario.cs`는 공통 문서에 없는 보조 operation이므로 scenario 표가 아니라
@@ -61,7 +61,7 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 | SM-F1 | 구현 | target spot을 만든 뒤 route client 경로의 `/spot/state/request`와 `/spot/state/command`를 검증한다. 선택 PASS: `logs/20260630-082100-3253769` |
 | SM-F2 | 구현 | target spot request/command selectable scenario가 public route-to-spot path로 state reply와 command evidence를 검증한다. 선택 PASS: `logs/20260630-082100-3253756` |
 | SM-F3 | 구현 | `play-b`가 `play-a`의 same RouteMesh channel에 public route client로 일반 `ChannelEchoReq`를 보내고, 같은 channel의 target spot route로 `StateReq`를 보낸다. 일반 channel handler와 target spot handler evidence가 모두 `play-a`에 남는지 검증한다. 선택 PASS: `logs/20260630-091213-3386438`; `all` PASS: `logs/20260630-101424-3467655` |
-| SM-F4 | 구현 | missing target request 실패와 missing target send drop evidence를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. 선택 PASS: `logs/20260630-101412-3466073`; `all` PASS: `logs/20260702-064908-43303` |
+| SM-F4 | 구현 | 존재하지 않는 location의 request 실패를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. `all` PASS: `logs/20260713-063253-3989258` |
 | SM-F5 | 구현 | live `.NET` tree에는 `Client/Scenarios/SmF5Scenario.cs`가 없지만 공통 E2E의 channel socket 소유권 독립 요구를 public spot close 경로로 검증했다. `play-b`가 `play-a`의 same RouteMesh channel로 일반 `ChannelEchoReq`와 target spot `StateReq`를 보낸 뒤, `play-a`에서 해당 spot을 public `ZLinkSpotManager.close(...)`로 닫고 같은 channel의 일반 `ChannelEchoReq`가 계속 성공하는지 확인한다. 선택 PASS: `logs/20260630-091846-3399628`; `all` PASS: `logs/20260630-101424-3467655` |
 | SM-F6 | 구현 | RouteMesh 없이 SpotMesh만 구성한 MultiNode role에서 target spot request가 owner spot으로 도달하고 reply/evidence가 남는지 검증한다. 선택 PASS: `logs/20260707-195217-3346296`; `all` PASS: `logs/20260708-062057-353085` |
 | SM-G1 | 구현 | stream auth로 `play-a`/`play-b` actor를 각각 bind하고, `play-a` `/crash` endpoint로 프로세스를 종료한 뒤 `play-a` actor request 실패, `play-b` survivor request 유지, `session-b`에서 `play-b`로 재auth/rebind 복구를 검증했다. 선택 PASS: `logs/20260629-223922-1778101`; `all` PASS: `logs/20260708-062230-357711` |
@@ -74,7 +74,7 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 | 묶음 | Scenario | 판정 | 다음 작업 |
 |------|----------|------|-----------|
 | routed spot request | `SM-A2`, `SM-A3`, `SM-A4`, `SM-A5`, `SM-C1`, `SM-C3`, `SM-E1`, `SM-E3`, `SM-G2`, `sm-q9` | 구현 | Node spot spec의 Spot context outbound와 resolver 기반 route를 기존 public surface로 검증했다. 선택 PASS 로그는 각 scenario 행에 남겼다. |
-| route client target spot | `SM-F1`, `SM-F2`, `SM-F3`, `SM-F4`, `SM-F5` | 구현 | `SM-F1`/`SM-F2` target spot request/command, `SM-F3` same RouteMesh 일반 request와 target spot route 혼재, `SM-F4` missing target request/send drop evidence, `SM-F5` spot close 뒤 same RouteMesh 일반 channel request 생존을 public route-client와 spot 관리 표면으로 검증했다. |
+| route client target spot | `SM-F1`, `SM-F2`, `SM-F3`, `SM-F4`, `SM-F5` | 구현 | `SM-F1`/`SM-F2` target spot request/command, `SM-F3` same RouteMesh 일반 request와 target spot route 혼재, `SM-F4` 존재하지 않는 location의 request 실패, `SM-F5` spot close 뒤 same RouteMesh 일반 channel request 생존을 public route-client와 spot 관리 표면으로 검증했다. |
 | stream TLS server | `SM-D14` | 구현 | Node stream node builder의 public `setTlsServer(...)`와 stream connector의 TLS validation option으로 self-signed TLS endpoint의 reject/accept 경로를 검증했다. PASS: `logs/20260630-085904-3356699`; `all` PASS: `logs/20260630-101424-3467655` |
 
 검증:

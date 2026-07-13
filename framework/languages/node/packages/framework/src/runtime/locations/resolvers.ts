@@ -1,9 +1,8 @@
-import type { RoutingId, SpotRef } from '../../contracts/Common';
+import type { RoutingId } from '../../contracts/Common';
 import {
   ZLinkLocationKind,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
-  type IZLinkActorAddressResolver,
   type ZLinkActorLocationStore,
   type ZLinkLocationReadiness,
   type ZLinkLocationRuntimeQuery,
@@ -19,16 +18,19 @@ import {
   type ZLinkRouteLocationKey,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationKey,
-  type ZLinkSpotRefResolver
 } from '../../contracts/Locations';
 import {
-  ZLinkSpotKind
+  ZLinkSpotKind,
+  type SpotHandle,
+  type ZLinkActorSpotHandleResolver,
+  type ZLinkSpotHandleResolver
 } from '../../contracts/Spots';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts/Errors';
 import type {
   ZLinkSpotRouteResolver,
   ZLinkSpotRouteTarget
 } from '../spots/spot-routing-internal';
+import { createSpotHandle, type ResolvedSpotHandle } from '../spots/spot-handle';
 import {
   isKnownZLinkLocationAutoConnectType,
   isKnownZLinkLocationRole
@@ -60,8 +62,8 @@ export interface ZLinkStoreLocationResolversOptions {
 
 export class ZLinkStoreLocationResolvers implements
   ZLinkPeerLocationResolver,
-  ZLinkSpotRefResolver,
-  IZLinkActorAddressResolver {
+  ZLinkSpotHandleResolver,
+  ZLinkActorSpotHandleResolver {
   private readonly liveRows: ZLinkLiveRowFilter;
 
   constructor(private readonly options: ZLinkStoreLocationResolversOptions) {
@@ -91,7 +93,7 @@ export class ZLinkStoreLocationResolvers implements
     return row;
   }
 
-  async resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined> {
+  async resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<ResolvedSpotHandle | undefined> {
     const row = await this.resolveSpotRowInMeshes(spotRid, this.options.spotMeshNames ?? [], signal);
     if (row === undefined) {
       return undefined;
@@ -104,10 +106,15 @@ export class ZLinkStoreLocationResolvers implements
     };
   }
 
+  async resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined> {
+    if (await this.resolveSpotRef(spotRid, signal) === undefined) return undefined;
+    return createSpotHandle(String(spotRid), (refreshSignal) => this.resolveSpotRef(spotRid, refreshSignal));
+  }
+
   async resolveActorSpotRef(
     actorId: string,
     signal?: AbortSignal
-  ): Promise<SpotRef | undefined> {
+  ): Promise<ResolvedSpotHandle | undefined> {
     const row = await this.resolveActorRow({ actorId }, signal);
     if (row === undefined) {
       return undefined;
@@ -121,6 +128,12 @@ export class ZLinkStoreLocationResolvers implements
       spotRid: String(spotRid),
       spotKind: row.locationKind
     };
+  }
+
+  async resolveActorSpotHandle(actorId: string, signal?: AbortSignal): Promise<SpotHandle | undefined> {
+    const initial = await this.resolveActorSpotRef(actorId, signal);
+    if (initial === undefined) return undefined;
+    return createSpotHandle(initial.spotRid, (refreshSignal) => this.resolveActorSpotRef(actorId, refreshSignal));
   }
 
   async resolveSpotRow(

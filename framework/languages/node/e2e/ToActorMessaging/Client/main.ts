@@ -121,16 +121,21 @@ async function runTaB1(options: ClientOptions): Promise<void> {
 async function runTaB2(options: ClientOptions): Promise<void> {
   const taB2 = await ensureActor(options, 'ta-b2');
   const staleActor = { ...taB2.actor, generation: (BigInt(taB2.actor.generation) + 1n).toString() };
-  await assertFailure(options, 'TA-B2-stale-send', 'ta-b2', 'actorLocationStale', true, staleActor);
+  await assertCall(options, 'TA-B2-stale-send', 'ta-b2', staleActor, 'stale-send', 'sent', true);
   await assertFailure(options, 'TA-B2-stale-request', 'ta-b2', 'actorLocationStale', false, staleActor);
+  requireNoEvidence(await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`), 'TA-B2-stale-send');
   console.log('scenario TA-B2 passed');
 }
 
 async function runTaB3(options: ClientOptions): Promise<void> {
   const taB3 = await ensureActor(options, 'ta-b3');
   const disconnectedRouteActor = { ...taB3.actor, nodeRid: 'to-actor-missing-route' };
-  await assertFailure(options, 'TA-B3-route-not-connected-send', 'ta-b3', 'routeNotConnected', true, disconnectedRouteActor);
+  await assertCall(options, 'TA-B3-route-not-connected-send', 'ta-b3', disconnectedRouteActor, 'route-send', 'sent', true);
   await assertFailure(options, 'TA-B3-route-not-connected-request', 'ta-b3', 'routeNotConnected', false, disconnectedRouteActor);
+  requireNoEvidence(
+    await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`),
+    'TA-B3-route-not-connected-send'
+  );
   console.log('scenario TA-B3 passed');
 }
 
@@ -214,6 +219,13 @@ async function assertFailure(
 
 function requireEvidence(evidence: readonly ActorEvidence[], scenario: string, kind: string): void {
   requireCondition(evidence.some((item) => item.scenario === scenario && item.kind === kind), `${scenario} ${kind} evidence missing.`);
+}
+
+function requireNoEvidence(evidence: readonly ActorEvidence[], scenario: string): void {
+  requireCondition(
+    evidence.every((item) => item.scenario !== scenario),
+    `${scenario} unexpectedly reached an actor handler.`
+  );
 }
 
 async function getJson<T>(url: string): Promise<T> {

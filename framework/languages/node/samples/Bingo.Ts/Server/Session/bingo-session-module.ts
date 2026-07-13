@@ -8,6 +8,7 @@ import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
+import { bingoMeterProvider } from '../runtime-support';
 function createBingoSessionModule(endpoints: {
   sessionEndpoint: string;
   sessionRouteEndpoint: string;
@@ -25,6 +26,7 @@ function createBingoSessionModule(endpoints: {
       ZLinkModule.forRootFactory({
         useFactory: () => {
           const builder = zlinkFramework();
+          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)

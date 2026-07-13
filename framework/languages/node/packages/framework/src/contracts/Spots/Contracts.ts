@@ -1,64 +1,32 @@
 import type { ZLinkActor } from '../Actors';
-import type { ZLinkPublishCall, ZLinkSendCall, ZLinkYieldRequestCall } from '../Channels';
-import type { RoutingId, SpotRef, Type, ZLinkMessage } from '../Common';
+import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
+import type { RoutingId, Type, ZLinkMessage } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
+import type { SpotHandle } from './SpotHandle';
 
 export interface ZLinkActorHandlerRegistry {
-  addHandler(handlerType: Type): this;
+  addHandler<THandler>(handlerType: Type<THandler>): this;
+  addActorPacket<THandler, TActor extends ZLinkActor>(
+    handlerType: Type<THandler>,
+    actorType: Type<TActor>
+  ): this;
 }
 
 export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
-  transferOut(actor: TActor, signal?: AbortSignal): Promise<ZLinkMessage>;
-  transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TActor>;
+  transferOut(actor: TActor): Promise<ZLinkMessage>;
+  transferIn(actorId: string, state: ZLinkMessage): Promise<TActor>;
 }
 
-export interface ZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkActor> extends ZLinkActorHandlerRegistry {
-  addPacket(handlerType: Type, packetName?: string): this;
-  packet(packetName: string, handlerType: Type): this;
-  addSubscribe(handlerType: Type, topic: string): this;
-  subscribe(topic: string, handlerType: Type): this;
-  addSpotHandler(handlerType: Type): this;
-  actorSend(packetName: string, handlerType: Type, actorType?: Type<TActor>): this;
-  actorRequest(packetName: string, handlerType: Type, actorType?: Type<TActor>): this;
+export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+  addPacket<THandler>(handlerType: Type<THandler>): this;
+  addSubscribe<THandler>(handlerType: Type<THandler>, topic: string): this;
 }
 
-/**
- * Fluent terminator surface for a `runWorker(...)` job.
- *
- * The job result is delivered back on the owning Spot serial executor:
- * `onCompleted(...)`/`onError(...)` callbacks are enqueued into the Spot
- * dispatch queue and never run inline in the worker completion turn.
- */
 export interface ZLinkWorkerCall<T> {
-  /**
-   * Fails the caller with a `WorkerTimedOut` framework error after
-   * `durationMs` and aborts the work's `AbortSignal`. A completion that
-   * arrives after the timeout is dropped without invoking user callbacks.
-   */
   timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
-  /**
-   * Awaitable terminator (gated path). The returned promise settles in the
-   * owning Spot serial order; a handler that awaits it keeps the Spot gate
-   * until completion.
-   */
   submit(signal?: AbortSignal): Promise<T>;
-  /**
-   * Yield terminator. Only use when the handler can safely let unrelated
-   * Spot/Entry Spot work run while the worker result is pending.
-   */
-  yield(signal?: AbortSignal): Promise<T>;
-  /**
-   * Callback terminator (detached path, explicit interleaving opt-in).
-   * `callback`/`onError` always re-enter the owning Spot serial executor,
-   * so they must re-validate Spot state captured before submission.
-   */
-  onCompleted(
-    callback: (result: T, signal?: AbortSignal) => void | Promise<void>,
-    onError?: (error: unknown, signal?: AbortSignal) => void | Promise<void>,
-    signal?: AbortSignal,
-  ): void;
 }
 
 export interface ZLinkSpotCommonContext<
@@ -68,7 +36,7 @@ export interface ZLinkSpotCommonContext<
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
-  readonly handlers: ZLinkSpotHandlerRegistry<TActor>;
+  readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
   addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -134,11 +102,11 @@ export interface ZLinkSpotActorReplyOptions {
 }
 
 export interface ZLinkSpotOutbound {
-  sendToSpot(spot: SpotRef, message: unknown): ZLinkSendCall;
-  requestToSpot(spot: SpotRef, request: unknown): ZLinkYieldRequestCall;
+  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
+  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
   publish(topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-  requestToChannel(channelName: string, request: unknown): ZLinkYieldRequestCall;
+  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
 }
 
 export enum ZLinkSpotCreateState {
@@ -189,12 +157,6 @@ export interface ZLinkSpotManager {
     request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
-  executeOnSpot<TSpot extends ZLinkSpot, TResult>(
-    spotType: Type<TSpot>,
-    spotRid: RoutingId,
-    operation: (spot: TSpot) => TResult | Promise<TResult>,
-    signal?: AbortSignal
-  ): Promise<TResult>;
   find(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
   list(signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
   close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;

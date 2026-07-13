@@ -11,6 +11,11 @@ export class ZLinkSpotSerialExecutor {
   private turnSequence = 0;
   activeTurnId = 0;
 
+  constructor(
+    private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
+    private readonly kind: 'entry' | 'user' = 'user'
+  ) {}
+
   get isExecuting(): boolean {
     return this.depth > 0;
   }
@@ -42,14 +47,31 @@ export class ZLinkSpotSerialExecutor {
    * this so they never run inline inside another callback's turn.
    */
   post<T>(operation: () => Promise<T> | T): Promise<T> {
+    const queuedAt = process.hrtime.bigint();
+    this.metrics?.change('zlink.spot.queue.depth', 1, { kind: this.kind });
     const result = new Promise<T>((resolve, reject) => {
       const gate = this.tail.then(
-        () => this.runTurn(operation, resolve, reject),
-        () => this.runTurn(operation, resolve, reject)
+        () => this.startQueuedTurn(operation, queuedAt, resolve, reject),
+        () => this.startQueuedTurn(operation, queuedAt, resolve, reject)
       );
       this.tail = gate.catch(() => undefined);
     });
     return result;
+  }
+
+  private startQueuedTurn<T>(
+    operation: () => Promise<T> | T,
+    queuedAt: bigint,
+    resolve: (value: T) => void,
+    reject: (reason: unknown) => void
+  ): Promise<void> {
+    this.metrics?.change('zlink.spot.queue.depth', -1, { kind: this.kind });
+    this.metrics?.duration(
+      'zlink.spot.queue.wait.duration',
+      Number(process.hrtime.bigint() - queuedAt) / 1e9,
+      { kind: this.kind }
+    );
+    return this.runTurn(operation, resolve, reject);
   }
 
   yieldPromise<T>(pending: Promise<T>): Promise<T> {

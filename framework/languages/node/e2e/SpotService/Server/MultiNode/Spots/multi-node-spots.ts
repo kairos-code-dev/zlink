@@ -16,10 +16,11 @@ import type {
   ZLinkSpotManager,
   ZLinkSpotOutbound,
   ZLinkSpotPacketHandler,
-  ZLinkSpotRefResolver,
+  ZLinkSpotHandleResolver,
   ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { ZLinkPacket, ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type {
   MultiNodeCreateSpotRes,
   MultiNodeCreateSpotReq,
@@ -27,11 +28,9 @@ import type {
   SpotOnlyJoinRes,
   SpotOnlyMeshReq,
   SpotOnlyMeshRes,
-  StateMsg,
-  StateRes,
-  StateReq
+  StateRes
 } from '../../../Shared/messages';
-import { SpotServiceNames } from '../../../Shared/messages';
+import { SpotServiceNames, StateMsg, StateReq, spotServicePacket } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 export class MultiNodeSpotA implements ZLinkSpot {
@@ -44,13 +43,17 @@ export class MultiNodeSpotA implements ZLinkSpot {
   }
 
   configure(): void {
-    this.context.handlers.packet('StateReq', MultiNodeStateAHandler);
+    this.context.handlers.addPacket(MultiNodeStateAHandler);
   }
 
   async onInitialize(): Promise<void> {
     MultiNodeSpotA.requireEvidence()
       .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeA}|spot=${this.context.spotRid}`);
   }
+
+  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
+  async onJoinedActor(): Promise<void> {}
+  async onLeaveActor(): Promise<void> {}
 
   add(delta: number): number {
     this.value += delta;
@@ -75,13 +78,17 @@ export class MultiNodeSpotB implements ZLinkSpot {
   }
 
   configure(): void {
-    this.context.handlers.packet('StateReq', MultiNodeStateBHandler);
+    this.context.handlers.addPacket(MultiNodeStateBHandler);
   }
 
   async onInitialize(): Promise<void> {
     MultiNodeSpotB.requireEvidence()
       .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeB}|spot=${this.context.spotRid}`);
   }
+
+  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
+  async onJoinedActor(): Promise<void> {}
+  async onLeaveActor(): Promise<void> {}
 
   add(delta: number): number {
     this.value += delta;
@@ -101,7 +108,7 @@ export class MultiNodeScenarioActor implements ZLinkActor {
 }
 
 export class MultiNodeScenarioActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): ZLinkActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<ZLinkActor> {
     return new MultiNodeScenarioActor(actorId, context);
   }
 }
@@ -115,7 +122,7 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
   }
 
   configure(): void {
-    this.context.handlers.actorRequest('SpotOnlyJoinReq', MultiNodeSpotOnlyJoinHandler, MultiNodeScenarioActor);
+    this.context.handlers.addActorPacket(MultiNodeSpotOnlyJoinHandler, MultiNodeScenarioActor);
   }
 
   async onCreateActor(actor: MultiNodeScenarioActor): Promise<void> {
@@ -133,6 +140,8 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
       .add(`entry-joined|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actorId}`);
   }
 
+  async onLeaveActor(): Promise<void> {}
+
   static requireEvidence(): EvidenceStore {
     if (this.evidence === undefined) {
       throw new Error('MultiNodeEntrySpot evidence store is not configured.');
@@ -143,18 +152,18 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
 
 export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   private static evidence?: EvidenceStore;
-  private static refs?: ZLinkSpotRefResolver;
+  private static refs?: ZLinkSpotHandleResolver;
   private value = 0;
   readonly context!: ZLinkSpotContext<MultiNodeScenarioActor>;
 
-  static configureDependencies(evidence: EvidenceStore, refs: ZLinkSpotRefResolver): void {
+  static configureDependencies(evidence: EvidenceStore, refs: ZLinkSpotHandleResolver): void {
     this.evidence = evidence;
     this.refs = refs;
   }
 
   configure(): void {
-    this.context.handlers.packet('StateReq', SpotOnlyStateReqHandler);
-    this.context.handlers.packet('StateMsg', SpotOnlyStateMsgHandler);
+    this.context.handlers.addPacket(SpotOnlyStateReqHandler);
+    this.context.handlers.addPacket(SpotOnlyStateMsgHandler);
   }
 
   async onInitialize(): Promise<void> {
@@ -173,7 +182,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   }
 
   async requestSend(request: SpotOnlyMeshReq): Promise<StateRes> {
-    const target = await SpotOnlyUserSpot.requireRefs().resolveSpotRef(request.targetSpotRid);
+    const target = await SpotOnlyUserSpot.requireRefs().resolveSpotHandle(request.targetSpotRid);
     const reply = await requestSpotOnlyState(
       this.context.outbound,
       target,
@@ -202,6 +211,8 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
       .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
   }
 
+  async onLeaveActor(): Promise<void> {}
+
   add(delta: number): number {
     this.value += delta;
     return this.value;
@@ -214,7 +225,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
     return this.evidence;
   }
 
-  static requireRefs(): ZLinkSpotRefResolver {
+  static requireRefs(): ZLinkSpotHandleResolver {
     if (this.refs === undefined) {
       throw new Error('SpotOnlyUserSpot refs are not configured.');
     }
@@ -224,30 +235,28 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
 
 async function requestSpotOnlyState(
   outbound: ZLinkSpotOutbound,
-  target: Awaited<ReturnType<ZLinkSpotRefResolver['resolveSpotRef']>>,
+  target: Awaited<ReturnType<ZLinkSpotHandleResolver['resolveSpotHandle']>>,
   request: StateReq
 ): Promise<StateRes> {
   if (target === undefined) {
     throw new Error('Spot-only target is missing.');
   }
   return await outbound
-    .requestToSpot(target, request)
-    .packetName('StateReq')
+    .requestToSpot(target, spotServicePacket(StateReq, request))
     .timeout(2000)
     .submit<StateRes>();
 }
 
 async function sendSpotOnlyState(
   outbound: ZLinkSpotOutbound,
-  target: Awaited<ReturnType<ZLinkSpotRefResolver['resolveSpotRef']>>,
+  target: Awaited<ReturnType<ZLinkSpotHandleResolver['resolveSpotHandle']>>,
   message: StateMsg
 ): Promise<void> {
   if (target === undefined) {
     throw new Error('Spot-only target is missing.');
   }
   await outbound
-    .sendToSpot(target, message)
-    .packetName('StateMsg')
+    .sendToSpot(target, spotServicePacket(StateMsg, message))
     .submit();
 }
 
@@ -298,6 +307,7 @@ export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<Mul
 }
 
 @Injectable()
+@ZLinkPacket('StateReq')
 export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNodeSpotA, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -314,6 +324,7 @@ export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNode
 }
 
 @Injectable()
+@ZLinkPacket('StateReq')
 export class MultiNodeStateBHandler implements ZLinkSpotRequestHandler<MultiNodeSpotB, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -330,6 +341,7 @@ export class MultiNodeStateBHandler implements ZLinkSpotRequestHandler<MultiNode
 }
 
 @Injectable()
+@ZLinkPacket('StateReq')
 export class SpotOnlyStateReqHandler implements ZLinkSpotRequestHandler<SpotOnlyUserSpot, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -346,6 +358,7 @@ export class SpotOnlyStateReqHandler implements ZLinkSpotRequestHandler<SpotOnly
 }
 
 @Injectable()
+@ZLinkPacket('StateMsg')
 export class SpotOnlyStateMsgHandler implements ZLinkSpotPacketHandler<SpotOnlyUserSpot, StateMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -360,6 +373,7 @@ export class MultiNodeSpotOnlyJoinHandler
   implements ZLinkEntrySpotActorRequestHandler<MultiNodeEntrySpot, MultiNodeScenarioActor, SpotOnlyJoinReq, SpotOnlyJoinRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
+  @ZLinkSpotActorRequest('SpotOnlyJoinReq')
   async handle(
     entrySpot: MultiNodeEntrySpot,
     actor: MultiNodeScenarioActor,
@@ -374,12 +388,12 @@ export class MultiNodeSpotOnlyJoinHandler
       .submit();
     this.evidence.add(
       `spot-only-actor-join|rid=${this.evidence.rid}|actor=${actor.actorId}`
-      + `|target=${request.targetSpotRid}|accepted=${joined.accepted}|marker=${request.marker}`
+      + `|target=${request.targetSpotRid}|accepted=${joined.status === 'accepted'}|marker=${request.marker}`
     );
     return {
       targetSpotRid: request.targetSpotRid,
       actorId: actor.actorId,
-      accepted: joined.accepted,
+      accepted: joined.status === 'accepted',
       marker: request.marker
     };
   }
@@ -410,25 +424,23 @@ export async function requestState(
   delta: number
 ): Promise<StateRes> {
   return await routes
-    .requestToNode(channelName, spotRid, { operation: 'add', delta } satisfies StateReq)
-    .packetName('StateReq')
+    .requestToNode(channelName, spotRid, spotServicePacket(StateReq, { operation: 'add', delta }))
     .timeout(2000)
     .submit<StateRes>();
 }
 
 export async function requestStateViaSpotOutbound(
   outbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotRefResolver,
+  spotRefs: ZLinkSpotHandleResolver,
   spotRid: string,
   delta: number
 ): Promise<StateRes> {
-  const spot = await spotRefs.resolveSpotRef(spotRid);
+  const spot = await spotRefs.resolveSpotHandle(spotRid);
   if (spot === undefined) {
     throw new Error(`SpotRef '${spotRid}' was not found.`);
   }
   return await outbound
-    .requestToSpot(spot, { operation: 'add', delta } satisfies StateReq)
-    .packetName('StateReq')
+    .requestToSpot(spot, spotServicePacket(StateReq, { operation: 'add', delta }))
     .timeout(2000)
     .submit<StateRes>();
 }

@@ -7,6 +7,7 @@ import {
 import { validateName } from './Protocol/ZlinkStreamPacketNameValidator';
 import { subscription } from './ZlinkStreamSupport';
 import type { ZlinkStreamConnectorEvents } from './ZlinkStreamConnectorEvents';
+import { runWithFlow } from './ZlinkFlowContext';
 
 type EncodedMessageHandler = (
   message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>,
@@ -65,7 +66,10 @@ export class ZlinkStreamReceivedMessages {
       }
       for (const handler of handlers) {
         try {
-          await handler(message, signal);
+          await runWithFlow(
+            { flowId: message.flowId, flowOrigin: message.flowOrigin },
+            () => handler(message, signal)
+          );
         } catch (cause) {
           await this.events.publishError({
             code: ZlinkStreamErrorCode.UserCallbackFailed,

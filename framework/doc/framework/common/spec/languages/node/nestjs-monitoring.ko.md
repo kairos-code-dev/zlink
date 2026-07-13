@@ -615,7 +615,7 @@ Bingo.Ts 3노드(Api/Play/Session)는 각자 `messageFlow(KeyTransitions)` +
 | meter 이름(상수) | `ZLinkMeters.Framework` = `'zlink.framework'` |
 | 계기 방출 | OpenTelemetry Metrics API `Meter` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
 | 앱 연결(공통 케이스) | 전역 OTel `MeterProvider`(SDK) 구성 — 별도 zlink 설정 없음 |
-| 커스텀(선택) | `ZLinkModule.forRoot({ metrics: { meterProvider } })`로 provider 주입 |
+| 커스텀(선택) | `ZLinkModule.forRoot(zlinkFramework().options({ metrics: { meterProvider } }).build())`로 provider 주입 |
 
 - 공통 §3 매핑: `updown`=`UpDownCounter`, `observable`=`ObservableGauge`(관찰 콜백), histogram=`Histogram`(`s`).
 - MeterProvider가 no-op이면 계기 갱신 비용만 남고 export는 0(공통 §7.2). exporter·대시보드는 앱 몫.

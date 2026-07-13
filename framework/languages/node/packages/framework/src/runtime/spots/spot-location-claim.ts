@@ -43,7 +43,7 @@ export class ZLinkSpotLocationClaim {
     if (status !== ZLinkLocationWriteStatus.Stored) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotCreateFailed,
-        `Spot '${spotRid}' location claim failed with '${ZLinkLocationWriteStatus[status]}'.`
+        `Spot '${spotRid}' location claim failed with '${status}'.`
       );
     }
     return { claimed: true, meshName };

@@ -7,6 +7,7 @@ const {
   ZLinkSpotRoutedActorAdmission
 } = require('../../packages/framework/dist/runtime/spots/spot-routed-actor-admission');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const channelProtocol = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const connector = require('../../packages/stream-connector/dist');
 const json = connector;
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
@@ -477,6 +478,11 @@ test('ZLinkSpotManager drains SPOT subscription events that arrive during dispat
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
     createNativeSpot: () => nativeSpot,
+    detachedTaskRunner: {
+      runDetached(_taskName, callback) {
+        void callback().catch((error) => events.push(`error:${error.message}`));
+      }
+    },
     spotSubscriptionHandlers: [{
       spotType: StageSpot,
       handlerType: SubscribeHandler,
@@ -487,7 +493,11 @@ test('ZLinkSpotManager drains SPOT subscription events that arrive during dispat
   await manager.getOrCreate(StageSpot, 'stage-subscription-redrain');
   subscriptionQueue.push(subscriptionMessage('stage.updated', 'first'));
   dispatchHandler({ event: 1 });
-  await waitFor(() => events.filter((event) => event.startsWith('event:')).length === 2);
+  await waitFor(
+    () => events.filter((event) => event.startsWith('event:')).length === 2,
+    1000,
+    () => `observed events: ${events.join(', ')}`
+  );
 
   assert.deepEqual(events, [
     'subscribe:stage.updated',
@@ -1548,12 +1558,16 @@ test('spot outbound requestToChannel completion runs on the spot serial executor
 test('spot outbound routed send and request use SpotRef targets inside serial executor', async () => {
   const events = [];
   class StageSpot {}
-  const targetSpot = {
+  const targetSpotRef = {
     meshName: 'play.route',
     nodeRid: 'node-b',
     spotRid: 'stage-b',
     spotKind: framework.ZLinkSpotKind.Entry
   };
+  const targetSpot = framework.createSpotHandle(
+    targetSpotRef.spotRid,
+    async () => targetSpotRef
+  );
   const routedTransport = {
     async sendToSpot(address, message, options) {
       events.push(`send:${address.targetNodeRid}:${address.spotRid}:${address.spotKind}:${options.packetName}:${message}`);
@@ -1578,8 +1592,10 @@ test('spot outbound routed send and request use SpotRef targets inside serial ex
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
   });
-  const send = outbound.sendToSpot(targetSpot, 'notice').packetName('Notice').submit();
-  const reply = await outbound.requestToSpot(targetSpot, 'ping').packetName('Ping').timeout(250).submit();
+  class Notice extends String {}
+  class Ping extends String {}
+  const send = outbound.sendToSpot(targetSpot, new Notice('notice')).submit();
+  const reply = await outbound.requestToSpot(targetSpot, new Ping('ping')).timeout(250).submit();
   await send;
   await first;
 
@@ -1984,24 +2000,16 @@ function subscriptionMessage(topic, marker) {
   return {
     topic,
     routingId: 'publisher',
-    parts: [
-      zlink.Message.from(Buffer.from(JSON.stringify({
-        kind: 4,
-        channelName: '',
-        messageName: 'SpotMsg',
-        contentType: 'application/json',
-        correlationId: `corr-${marker}`,
-        deadline: null,
-        topic,
-        errorCode: null,
-        errorMessage: null
-      }))),
-      zlink.Message.from(Buffer.from(JSON.stringify({ marker })))
-    ]
+    parts: channelProtocol.encodeChannelPublishEnvelopeParts(
+      '',
+      topic,
+      'SpotMsg',
+      { marker }
+    ).map((part) => zlink.Message.from(part))
   };
 }
 
-async function waitFor(predicate, timeoutMs = 1000) {
+async function waitFor(predicate, timeoutMs = 1000, message) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await predicate()) {
@@ -2009,7 +2017,7 @@ async function waitFor(predicate, timeoutMs = 1000) {
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  assert.fail('timed out waiting for condition');
+  assert.fail(message?.() ?? 'timed out waiting for condition');
 }
 
 function dispatchErrorReporter(observerType, sink) {

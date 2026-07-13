@@ -47,12 +47,7 @@ export async function stopRuntimeParts(parts: ZLinkRuntimeStopParts): Promise<vo
   await runShutdownStep(errors, () => parts.locationSnapshot.lifecycle?.dispose());
   await runShutdownStep(errors, () => parts.locationSnapshot.runtime?.stop());
   await Promise.allSettled(state.listenerTasks);
-  await runShutdownStep(errors, () =>
-    (state.context as unknown as { shutdown(): void }).shutdown()
-  );
-  await nextRuntimeShutdownTurn();
   await runShutdownStep(errors, () => state.dispose());
-  await nextRuntimeShutdownTurn();
   const failures = errors.filter((error) => !isAbortError(error));
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
@@ -75,8 +70,4 @@ function isAbortError(error: unknown): boolean {
   if (error instanceof Error && error.name === 'AbortError') return true;
   return error instanceof AggregateError
     && error.errors.every((nested) => isAbortError(nested));
-}
-
-function nextRuntimeShutdownTurn(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
 }

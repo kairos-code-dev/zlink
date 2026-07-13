@@ -45,7 +45,7 @@ class CourierSession implements ZLinkSession {
 class CourierSessionFactory implements ZLinkSessionFactory<CourierSession> {
   constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {}
 
-  create(context: ZLinkSessionContext): CourierSession {
+  async create(context: ZLinkSessionContext): Promise<CourierSession> {
     return new CourierSession(context, this.channels);
   }
 }

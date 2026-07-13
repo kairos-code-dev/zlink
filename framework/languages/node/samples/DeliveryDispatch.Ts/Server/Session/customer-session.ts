@@ -77,7 +77,7 @@ class CustomerSessionFactory implements ZLinkSessionFactory<CustomerSession> {
     private readonly sessions: CustomerSessionDirectory
   ) {}
 
-  create(context: ZLinkSessionContext): CustomerSession {
+  async create(context: ZLinkSessionContext): Promise<CustomerSession> {
     return new CustomerSession(context, this.channels, this.sessions);
   }
 }

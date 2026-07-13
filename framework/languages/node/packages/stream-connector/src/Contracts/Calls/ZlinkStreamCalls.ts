@@ -10,7 +10,7 @@ export interface ZlinkStreamSendCall {
   metadata(key: string, value: string): ZlinkStreamSendCall;
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamSendCall;
   compress(): ZlinkStreamSendCall;
-  submit(signal?: AbortSignal): void;
+  submit(): void;
 }
 
 export interface ZlinkStreamRequestCall {

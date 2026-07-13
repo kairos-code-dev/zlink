@@ -9,6 +9,8 @@ class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     void request;
     return { accepted: true };
   }
+  async onJoinedActor(): Promise<void> {}
+  async onLeaveActor(): Promise<void> {}
 }
 
 export { CustomerEntrySpot };

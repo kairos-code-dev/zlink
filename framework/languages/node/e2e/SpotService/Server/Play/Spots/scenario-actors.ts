@@ -1,5 +1,4 @@
 import type {
-  ActorPushNotify,
   ActorPushReq,
   ComplexActorReq,
   ComplexActorRes,
@@ -16,6 +15,7 @@ import type {
   SnapshotRes,
   SnapshotReq
 } from '../../../Shared/messages';
+import { ActorPushNotify } from '../../../Shared/messages';
 import type {
   ZLinkActor,
   ZLinkActorContext,
@@ -27,6 +27,7 @@ import type {
   ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestContext
 } from '@zlink-systems/framework';
+import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { InMemoryActorSpotStore } from '../Infrastructure/actor-spot-store';
 
@@ -40,7 +41,7 @@ export class ScenarioActor implements ZLinkActor {
 }
 
 export class ScenarioActorFactory implements ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): ScenarioActor {
+  async create(actorId: string, context: ZLinkActorContext): Promise<ScenarioActor> {
     return new ScenarioActor(actorId, context);
   }
 }
@@ -54,16 +55,16 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   }
 
   configure(): void {
-    this.context.handlers.actorRequest('ActorPingReq', EntryActorPingHandler, ScenarioActor);
-    this.context.handlers.actorRequest('SlowActorPingReq', EntrySlowActorPingHandler, ScenarioActor);
-    this.context.handlers.actorRequest('ActorPushReq', ActorPushHandler, ScenarioActor);
-    this.context.handlers.actorRequest('UserActorPingReq', EntryUserActorPingHandler, ScenarioActor);
-    this.context.handlers.actorRequest('UserActorPushReq', EntryUserActorPushHandler, ScenarioActor);
-    this.context.handlers.actorRequest('ComplexActorReq', ComplexActorHandler, ScenarioActor);
-    this.context.handlers.actorRequest('JoinUserSpotActorReq', EntryUserSpotActorJoinHandler, ScenarioActor);
-    this.context.handlers.actorRequest('LeaveReq', EntryActorLeaveHandler, ScenarioActor);
-    this.context.handlers.actorRequest('SnapshotReq', EntryActorSnapshotHandler, ScenarioActor);
-    this.context.handlers.actorRequest('DestroyActorReq', EntryActorDestroyHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryActorPingHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntrySlowActorPingHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(ActorPushHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryUserActorPingHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryUserActorPushHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(ComplexActorHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryUserSpotActorJoinHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryActorLeaveHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryActorSnapshotHandler, ScenarioActor);
+    this.context.handlers.addActorPacket(EntryActorDestroyHandler, ScenarioActor);
   }
 
   async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<void> {
@@ -115,6 +116,7 @@ export class EntryActorPingHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('ActorPingReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -153,6 +155,7 @@ export class EntrySlowActorPingHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('SlowActorPingReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -196,6 +199,7 @@ export class EntryUserActorPingHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -229,6 +233,7 @@ export class EntryUserActorPingHandler
 
 export class ActorPushHandler
   implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+  @ZLinkSpotActorRequest('ActorPushReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -237,13 +242,8 @@ export class ActorPushHandler
   ): Promise<ActorPingRes> {
     void context;
     actor.seen += 1;
-    await actor.context.boundSession
-      .send({
-        actorId: actor.actorId,
-        value: request.value,
-        seen: actor.seen
-      } satisfies ActorPushNotify)
-      .packetName('ActorPushNotify')
+    actor.context.boundSession
+      .send(new ActorPushNotify(actor.actorId, request.value, actor.seen))
       .submit();
     return {
       actorId: actor.actorId,
@@ -257,6 +257,7 @@ export class ActorPushHandler
 
 export class EntryUserActorPushHandler
   implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+  @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -266,13 +267,8 @@ export class EntryUserActorPushHandler
     void context;
     actor.seen += 1;
     const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
-    await actor.context.boundSession
-      .send({
-        actorId: actor.actorId,
-        value: request.value,
-        seen: actor.seen
-      } satisfies ActorPushNotify)
-      .packetName('ActorPushNotify')
+    actor.context.boundSession
+      .send(new ActorPushNotify(actor.actorId, request.value, actor.seen))
       .submit();
     return {
       actorId: actor.actorId,
@@ -292,6 +288,7 @@ export class ComplexActorHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('ComplexActorReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -335,6 +332,7 @@ export class EntryActorLeaveHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('LeaveReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -372,6 +370,7 @@ export class EntryUserSpotActorJoinHandler
     JoinUserSpotActorReq,
     JoinUserSpotActorRes
   > {
+  @ZLinkSpotActorRequest('JoinUserSpotActorReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -386,16 +385,13 @@ export class EntryUserSpotActorJoinHandler
       .joinSpot(request.spotRid, request)
       .timeout(5000)
       .submit(context.connectionAborted);
-    if (!result.accepted) {
+    if (result.status === 'rejected') {
       return {
         spotRid: request.spotRid,
         actorId: actor.actorId,
         accepted: false,
-        generation: result.actor?.generation.toString() ?? '0'
+        generation: '0'
       };
-    }
-    if (result.actor === undefined) {
-      throw new Error('Accepted join result did not include an actor ref.');
     }
     InMemoryActorSpotStore.record(actor.actorId, request.spotRid);
     return {
@@ -409,6 +405,7 @@ export class EntryUserSpotActorJoinHandler
 
 export class EntryActorSnapshotHandler
   implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SnapshotReq, SnapshotRes> {
+  @ZLinkSpotActorRequest('SnapshotReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -435,6 +432,7 @@ export class EntryActorDestroyHandler
     this.evidence = evidence;
   }
 
+  @ZLinkSpotActorRequest('DestroyActorReq')
   async handle(
     entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
@@ -446,25 +444,17 @@ export class EntryActorDestroyHandler
       throw new Error('Destroy request actor does not match dispatched actor.');
     }
     const evidence = EntryActorDestroyHandler.requireEvidence();
-    entrySpot.context.runWorker(() => true).onCompleted(
-      async (_result, signal) => {
-        try {
-          await entrySpot.context.destroyActor(actor, signal);
-          evidence.add(`actor-destroyed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`);
-        } catch (error) {
-          evidence.add(
-            `actor-destroy-failed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
-            + `|error=${error instanceof Error ? error.name : String(error)}`
-          );
-        }
-      },
-      async (error) => {
+    void entrySpot.context.runWorker(() => true).submit().then(async () => {
+      try {
+        await entrySpot.context.destroyActor(actor);
+        evidence.add(`actor-destroyed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`);
+      } catch (error) {
         evidence.add(
           `actor-destroy-failed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
           + `|error=${error instanceof Error ? error.name : String(error)}`
         );
       }
-    );
+    });
     return {
       actorId: actor.actorId,
       destroyed: true

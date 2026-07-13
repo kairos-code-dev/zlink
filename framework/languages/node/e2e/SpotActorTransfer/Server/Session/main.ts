@@ -48,12 +48,12 @@ class GatewaySession implements ZLinkSession {
         'session_bound',
         `gateway=${options.rid}|node=${String(actor.nodeRid)}|generation=${actor.generation}`
       );
-      await this.context.client.reply({
+      this.context.client.reply({
         scenario: request.scenario,
         actorId: actor.actorId,
         nodeRid: String(actor.nodeRid),
         generation: actor.generation.toString()
-      } satisfies BindActorSessionRes).submit(signal);
+      } satisfies BindActorSessionRes).submit();
       return;
     }
     const actor = this.context.actors.bound[0];
@@ -64,7 +64,7 @@ class GatewaySession implements ZLinkSession {
 
 @Injectable()
 class GatewaySessionFactory implements ZLinkSessionFactory<GatewaySession> {
-  create(context: ZLinkSessionContext): GatewaySession { return new GatewaySession(context); }
+  async create(context: ZLinkSessionContext): Promise<GatewaySession> { return new GatewaySession(context); }
 }
 
 class SessionModule {}

@@ -1,6 +1,5 @@
 import type { ZLinkMessage, ZLinkSpot, ZLinkSpotContext, ZLinkSpotCreateResponse } from '@zlink-systems/framework';
 import type { ApplyGameplayEventReq, ApplyGameplayEventRes, SyncQuestProgressReq, SyncQuestProgressRes } from '../../../../../../Shared/Contracts/messages';
-import { PacketNames } from '../../../../../../Shared/Contracts/messages';
 
 class PlayerQuestSpot implements ZLinkSpot {
   readonly context!: ZLinkSpotContext;
@@ -12,6 +11,9 @@ class PlayerQuestSpot implements ZLinkSpot {
     console.error(`gamequest player quest spot ready player=${this.playerId} spot=${this.context.spotRid}`);
     return { accepted: true };
   }
+  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
+  async onJoinedActor(): Promise<void> {}
+  async onLeaveActor(): Promise<void> {}
 
   async handleApply(request: ApplyGameplayEventReq): Promise<ApplyGameplayEventRes> {
     void request;
@@ -23,9 +25,6 @@ class PlayerQuestSpot implements ZLinkSpot {
     return { updatedQuests: [] };
   }
 
-  packetName(): string {
-    return PacketNames.applyGameplayEventReq;
-  }
 }
 
 export { PlayerQuestSpot };

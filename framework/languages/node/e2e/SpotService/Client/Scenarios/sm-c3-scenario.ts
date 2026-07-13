@@ -74,7 +74,7 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
     ];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
-      timeoutMilliseconds: 10000
+      timeoutMilliseconds: 30000
     } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),

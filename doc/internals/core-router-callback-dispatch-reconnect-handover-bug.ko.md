@@ -3,7 +3,11 @@
 ## 상태
 
 - 확인일: 2026-07-13
-- 상태: core 9.0.2에서 수정 완료
+- 상태: core 9.0.4에서 수정 완료
+- 수정: commit `414554f24`에서 같은 방향 재연결을 수정했고, commit `5a237d93c`에서
+  양방향 연결 수렴 회귀를 수정했다. commit `52fe28fa1`에서 비동기 handshake 중 연결 방향이
+  사라지는 callback dispatch 경로를 수정했다.
+- 배포: tag `core/v9.0.4`의 GitHub release 생성 진행 중
 - 발견 경로: Java framework `AutomaticTurnDispatch` Config 8의 서버 종료·재기동 검증
 - 영향 범위: socket message callback dispatch가 설정된 ROUTER가 같은 routing ID로 재연결하는 경로
 
@@ -29,10 +33,9 @@ Java Config 8에서는 다음 순서로 재현됐다.
 
 ## 원인
 
-문제 코드는 `core/src/runtime/sockets/router/router_admission.cpp`에 있던
+첫 번째 문제는 `core/src/runtime/sockets/router/router_admission.cpp`에 있던
 `router_t::duplicate_pipe_should_replace(...)`에 있었다. commit `414554f24`는 같은 방향의 duplicate가
-항상 최신 pipe를 채택하도록 고쳤지만, 실제 framework 재기동에서는 기존 pipe와 새 pipe의 생성 방향이
-달라지는 경우도 확인됐다. 따라서 같은 방향만 처리한 현재 수정으로는 생명주기 결함이 닫히지 않는다.
+항상 최신 pipe를 채택하도록 고쳤다.
 
 같은 방향으로 만들어진 기존 pipe와 새 pipe의 routing ID가 같을 때 현재 구현은 다음 조건을 적용한다.
 
@@ -51,7 +54,7 @@ callback dispatch가 없으면 새 pipe를 채택한다. callback dispatch가 �
 과거 메시지 처리 횟수는 기존 pipe가 현재 유효하다는 증거가 아니다. 서버 재시작으로 만들어진 새
 pipe도 불필요한 중복 연결과 같은 방식으로 거부되기 때문에 handover 의미가 깨진다.
 
-같은 방향 교체를 적용한 뒤 Kotlin `ATD-E3`와 `OBS-C2`에서 확인한 로그는 다음과 같다.
+추가 검증 중 기존 pipe와 새 pipe의 생성 방향이 다른 로그도 확인됐다.
 
 ```text
 router identify_peer: keep existing duplicate rid=play-a existing_local=0 new_local=1
@@ -59,9 +62,22 @@ router xsend_routed: no out pipe rid_size=6 rid=play-a
 ```
 
 재기동 전 연결은 remote에서 시작한 pipe로 기록되어 있고, 재기동 뒤 새 연결은 local에서 시작한
-pipe로 들어온다. 현재 코드는 이 경우 routing ID 비교로 승자를 고르므로 새 pipe를 거부한다. 이어서
-기존 pipe도 종료되면 routing ID에 대응하는 출력 pipe가 없어지고, 다음 handshake timeout 경계까지
-route request가 처리되지 않는다.
+pipe로 들어온다. 그러나 이 로그만 보고 교차 방향에서도 무조건 새 pipe가 승리하도록 바꾸면 안 된다.
+양쪽 ROUTER가 서로 connect하는 정상 토폴로지에서는 두 connector가 상대 pipe를 계속 교체하게 되어
+연결이 수렴하지 않는다. 실제로 9.0.2의 commit `8923225a0`이 이 결정을 제거했고, 장시간 `play-b`를
+먼저 구동하지 않은 Kotlin 전체 runner의 `ATD-D2`에서 route request가 30초 뒤 timeout 되는 회귀가
+발생했다.
+
+9.0.3 검증에서 더 근본적인 두 번째 문제가 확인됐다. peer routing ID가 pipe attach 시점에 아직
+도착하지 않으면 ROUTER는 pipe를 anonymous 상태로 보관한다. 이후 routing ID를 읽는 일반 수신 경로와
+callback dispatch 경로는 원래 pipe가 local에서 시작됐는지에 관계없이
+`locally_initiated=false`로 admission을 다시 실행했다. 또한 callback dispatch가 attach보다 먼저
+routing ID frame을 처리할 수 있어 anonymous 등록과 route 채택이 서로 경쟁했다.
+
+이 때문에 같은 방향 재연결도 반대 방향 연결로 기록될 수 있었고, routing ID 비교로 정한 안정된
+방향과 실제 transport 방향이 달라졌다. 새 pipe가 잠시 등록된 뒤 상대 ROUTER가 연결을 종료하고,
+요청을 보내는 ROUTER에는 해당 routing ID의 출력 pipe가 남지 않았다. 애플리케이션이 서버 시작
+순서를 바꾸거나 30초를 기다려도 원인을 제거할 수 없는 core 상태 관리 결함이다.
 
 Java 전체 runner에서도 같은 재기동 단계가 차단됐다. 2026-07-13 실행 로그
 `framework/languages/java/e2e/AutomaticTurnDispatch/logs/20260713-151721-1434501/`에서는
@@ -72,10 +88,10 @@ ATD-A1~E2, E4, E5와 종료 대기가 통과한 뒤 `play-a`를 같은 routing I
 
 ## 기존 테스트가 놓친 이유
 
-다음 기존 테스트는 일반 handover와 connect routing ID 중복 정책을 검증하며 현재 상태에서 통과한다.
+수정 전에는 다음 기존 테스트만 일반 handover와 connect routing ID 중복 정책을 검증했다.
 
 - `core/build/bin/test_connect_rid`: 7개 테스트 통과
-- `core/build/bin/test_router_handover`: 2개 테스트 통과
+- `core/build/bin/test_router_handover`: 일반 handover 2개 테스트 통과
 
 하지만 이 테스트들은 framework와 같은 socket message callback dispatch를 활성화한 상태에서,
 메시지를 처리한 기존 pipe를 둔 채 같은 방향·같은 routing ID로 재연결하는 조합을 검증하지 않는다.
@@ -90,20 +106,25 @@ handover 정책이 활성화된 상태에서 같은 방향·같은 routing ID의
 다음 두 대안을 비교했다.
 
 1. handover가 활성화된 duplicate는 생성 방향과 관계없이 항상 최신 pipe로 교체한다.
-2. 기존 pipe의 실제 연결 상태와 새 연결의 endpoint·세대 정보를 확인해 stale pipe일 때만 교체한다.
+2. 같은 방향의 재연결은 최신 pipe로 교체하고, 교차 방향 중복은 두 routing ID로 한 방향을 결정한다.
 
-첫 번째 안을 적용했다. 기존 ROUTER handover 계약은 중복 routing ID가 들어오면 새 pipe가 identity를
-인수하고 기존 pipe를 종료한다고 이미 정의한다. 연결 방향이나 routing ID 정렬로 다시 승자를 고르면
-이 계약과 충돌하고, 애플리케이션이 서버 구동 순서를 알아야 하는 문제가 다시 생긴다. 두 번째 안은
-연결 세대와 종료 상태를 admission 계층에 새로 전달해야 하므로 내부 상태와 시간 순서 의존성을 늘린다.
+두 번째 안을 적용했다. 첫 번째 안은 9.0.2에서 실제로 적용했지만, 양쪽 peer가 서로 connect하면 종료된
+connector가 재연결될 때마다 최신 pipe가 바뀌어 안정된 경로가 형성되지 않았다. 두 번째 안은 서버
+재시작처럼 같은 방향에서 만들어진 새 pipe를 즉시 채택하면서도, 양방향 연결은 양쪽 peer가 동일하게
+계산한 한 방향으로 수렴한다. 이 결정은 framework 내부에 있으므로 애플리케이션 개발자가 구동 순서를
+선택할 필요가 없다.
 
-따라서 `duplicate_pipe_should_replace(...)`를 제거하고 handover가 활성화된 중복 routing ID는 생성
-방향과 과거 메시지 통계에 관계없이 새 pipe가 인수하도록 `adopt_peer_routing_id(...)` 한 곳에서
-처리했다. handover 비활성 상태에서는 기존처럼 새 pipe를 거부한다.
+따라서 `duplicate_pipe_should_replace(...)`는 같은 방향이면 과거 메시지 통계와 관계없이 새 pipe를
+채택한다. 방향이 다르면 local routing ID와 peer routing ID를 바이트 순서로 비교해 한 방향만
+채택한다. handover 비활성 상태에서는 기존처럼 새 pipe를 거부한다.
 
-수정 뒤 같은 방향뿐 아니라 `existing_local=0, new_local=1` 재기동 조합도 새 pipe를 즉시 채택한다.
-동시에 연결한 정상 peer의 결정적 승자 선택과 handover 비활성 duplicate 거부 계약은 별도 테스트로
-유지해야 한다. framework에서 sleep, 재시도 횟수 증가, 서버 구동 순서 고정으로 우회하지 않는다.
+9.0.4에서는 아직 routing ID가 없는 pipe를 `pipe -> locally_initiated` 맵으로 보관한다. 일반 수신과
+callback dispatch가 나중에 routing ID를 채택할 때 이 값을 그대로 사용한다. attach 시 peer 식별,
+anonymous 등록과 receive queue 연결은 같은 dispatch lock 안에서 처리해 callback이 중간 상태를
+관찰하지 못하게 했다. 공개 API나 애플리케이션 설정은 추가하지 않았다.
+
+수정 뒤 같은 방향 재기동은 즉시 교체되고, `existing_local`과 `new_local`이 다른 중복 연결은 결정된
+한 방향을 유지한다. framework에서 sleep, 재시도 횟수 증가, 서버 구동 순서 고정으로 우회하지 않는다.
 
 Java framework는 ROUTER 생성 시 binding의 공개 옵션을 사용해 handover를 활성화한다. 이 설정은
 framework 내부 연결 정책이므로 애플리케이션 개발자가 서버 구동 순서나 core 옵션을 알 필요가 없다.
@@ -121,10 +142,10 @@ core integration test에는 다음 조건을 포함하는 시나리오가 필요
    admission 판정만 검증한다.
 5. 수정 전 조건을 복원하면 새 pipe가 계속 거부되어 모든 반복 전송이 기존 peer로만 전달되고,
    이 테스트가 5초 상한을 소진한 뒤 실패하는지 확인한다.
-6. 기존 pipe가 remote 시작이고 새 pipe가 local 시작인 재기동 조합에서도 새 pipe가 즉시 채택되는지
+6. 양쪽 peer가 동시에 연결을 시작한 정상 중복 연결은 기존 결정 규칙에 따라 한 pipe로 수렴하는지
    확인한다.
-7. 양쪽 peer가 동시에 연결을 시작한 정상 중복 연결은 기존 결정 규칙에 따라 한 pipe로 수렴하는지
-   확인한다.
+7. callback dispatch를 먼저 활성화하고 peer를 나중에 시작해 routing ID가 비동기로 도착하더라도,
+   원래 연결 방향이 유지되고 반대 방향 duplicate가 기존 경로를 교체하지 않는지 확인한다.
 
 같은 endpoint에서 실제 서버를 종료하고 같은 routing ID로 재기동하는 전체 생명주기는 Java Config 8의
 `ATD-E3`에서 검증한다. core 테스트는 admission 조건을 직접 고정하고, E2E는 실제 배포 구성을 검증한다.
@@ -148,3 +169,22 @@ cd framework/languages/java/e2e/AutomaticTurnDispatch
   완료된다.
 - Kotlin `AutomaticTurnDispatch ./run_e2e.sh ATD-E3`와 Kotlin `ObservabilityOps ./run_e2e.sh OBS-C2`가
   서버 구동 순서를 조정하지 않고 통과한다.
+
+## 검증 결과
+
+2026-07-13에 다음 검증을 완료했다.
+
+- core 9.0.4 Release 전체 CTest 114개가 통과했다. `test_router_handover`는 callback dispatch가
+  활성화된 상태에서 peer가 나중에 시작하는 비동기 handshake와 반대 방향 duplicate를 포함한
+  5개 시나리오가 통과했다. `test_connect_rid`의 7개 시나리오도 통과했다.
+- Java `AutomaticTurnDispatch` 전체 selector가
+  `logs/20260713-205516-3215299/`에서 통과했다. `ATD-E3`는 같은 routing ID로 서버를 재기동한 뒤
+  handshake timeout을 기다리지 않고 요청을 처리했다.
+- Kotlin `AutomaticTurnDispatch ATD-E3`는 `logs/20260713-205642-3225711/`에서 통과했다.
+- Kotlin `ObservabilityOps OBS-C2`는 `logs/20260713-210155-3254245/`에서 통과했다.
+- Kotlin `AutomaticTurnDispatch` 전체 selector는 core 9.0.4 local package를 사용한
+  `logs/20260713-224238-3691348/`에서 통과했다. 늦게 시작한 `play-b`를 사용하는 `ATD-D2`와
+  종료·재연결을 확인하는 `ATD-D3`도 같은 실행에서 통과했다.
+- `core/v9.0.4` tag를 commit `52fe28fa1`에 생성했고 GitHub release build를 시작했다.
+
+framework와 sample에는 재연결 대기나 서버 구동 순서를 지정하는 옵션을 추가하지 않았다.

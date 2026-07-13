@@ -2343,6 +2343,316 @@ template <typename T> class result_t;
 **공개 계약층은 `result_t`로 실패를 돌려준다.** 예외는 경계에서만 쓰고, 의미는
 `framework_exception_t::code()`의 `std::error_code` 파셋으로 노출한다.
 
+
+### 16.10 Transport
+
+```cpp
+enum class transport_scheme_t { tcp, ipc, tls, websocket, websocket_tls };
+
+class transport_endpoint_t
+{
+public:
+    transport_endpoint_t (transport_scheme_t scheme, std::string uri);
+};
+```
+
+**endpoint는 scheme과 URI를 함께 갖는다.** scheme→transport 매핑의 의미는
+[Stream Connector §3](../../32-stream-connector.ko.md)이 소유한다.
+
+### 16.11 등록 builder
+
+**등록 표면은 builder 계층이다.** 각 builder가 자기 역할의 설정만 소유한다.
+
+```cpp
+class client_server_channel_builder_t;        // client/server channel
+class fanout_channel_builder_t;               // fanout channel
+class route_mesh_channel_builder_t;           // route mesh channel
+class spot_node_options_builder_t;            // SpotNode 옵션
+class spot_mesh_builder_t : public spot_node_options_builder_t;  // spot mesh + node
+class group_builder_t;                        // handler group
+class handler_options_builder_t;              // handler 옵션
+class codec_options_builder_t;                // codec registry
+class metadata_policy_builder_t;              // 전달할 metadata key
+class stream_compression_options_builder_t;   // STREAM 압축
+```
+
+- **channel 종류는 배타적이다.** client/server builder와 fanout builder를 같은 channel 이름에
+  함께 쓸 수 없다([channel-topology §4](../../10-channel-topology.ko.md)).
+- **`spot_mesh_builder_t`가 SPOT channel 이름과 그 channel을 소유하는 SpotNode를 함께 등록한다**
+  ([spot-messaging §4.1](../../20-spot-messaging.ko.md)).
+
+```cpp
+enum class spot_drain_policy_t { drain_natural, release_and_recreate };
+enum class drain_force_reason_t;
+```
+
+drain 정책의 의미는 [Graceful Drain §5](../../54-graceful-drain-handoff.ko.md)가 소유한다.
+
+### 16.12 Channel 표면
+
+```cpp
+enum class channel_capability_t;              // server, client, publisher, subscriber
+enum class route_handler_kind_t;              // route handler 종류
+struct route_handler_context_t;
+struct route_handler_registration_t;
+struct channel_runtime_options_t;
+struct client_server_channel_runtime_options_t;
+struct route_mesh_channel_runtime_options_t;
+struct channel_server_socket_runtime_options_t;
+struct channel_reliability_event_t;           // 연결 신뢰성 event
+class  channel_outbound_exchange_t;           // outbound 교환 표면
+class  relay_call_t;
+class  bound_session_send_call_t;
+```
+
+### 16.13 SPOT 표면
+
+```cpp
+enum class spot_handler_kind_t { packet, subscription, actor_send, actor_request };
+
+struct spot_route_t
+{
+    node_rid_t  node_rid;
+    spot_rid_t  spot_rid;
+    std::string spot_name;
+};
+
+struct accepted_spot_route_channel_t
+{
+    std::string              channel_name;
+    std::vector<std::string> manual_connections;
+};
+
+struct spot_info_t;                       // 조회 결과. spot rid만 담는다
+struct spot_packet_context_t;             // packet handler가 받는 문맥
+struct spot_packet_descriptor_t;
+struct spot_handler_descriptor_t;
+struct spot_lifecycle_callbacks_t;        // 생성·초기화·종료
+struct spot_actor_admission_callbacks_t;  // actor join admission
+enum  class spot_accept_reject_result_t;  // admission 결과
+class  spot_node_manager_t;               // 생성·조회·종료
+```
+
+**lifecycle callback의 호출 순서는 [spot-node §3.2](../../21-spot-node.ko.md)가 소유한다** —
+handler 구성 → 생성 callback → **수락된 경우에만** 초기화 → 종료는 한 번.
+
+### 16.14 Actor 표면
+
+```cpp
+enum class actor_placement_t;             // actor를 어디에 둘지
+
+struct actor_ref_snapshot_t
+{
+    node_rid_t    node_rid;
+    std::string   actor_id;
+    std::uint64_t generation = 0;
+
+    static actor_ref_snapshot_t from (const actor_ref_t &);
+    actor_ref_t   to_actor_ref (std::string actor_type) const;
+};
+
+struct actor_join_reply_t;                // join 결과
+class  actor_client_t;                    // actor로 보내는 client
+class  actor_directory_t;                 // actor 조회
+class  actor_send_call_t;
+class  actor_request_call_t;
+class  actor_join_call_t;
+class  relay_request_call_t;
+```
+
+**`generation`이 stale actor ref를 걸러낸다.** 의미는
+[spot-actor §8](../../23-spot-actor.ko.md)이 소유한다.
+
+### 16.15 STREAM 표면
+
+```cpp
+enum class stream_message_kind_t : std::uint8_t;   // wire kind
+enum class stream_header_flags_t : std::uint8_t;   // wire flags
+enum class stream_codec_t        : std::uint8_t;
+enum class stream_session_error_t;                 // session에 귀속되는 오류
+
+enum class stream_close_reason_t : std::uint8_t
+{
+    client_close = 1, idle_timeout = 2, heartbeat_timeout = 3,
+    server_drain = 4, protocol_error = 5, transport_error = 6
+};
+
+struct stream_header_t;
+class  stream_compression_codec_t;   // compress / decompress
+```
+
+**wire 값이 계약이다.** `stream_close_reason_t`의 1~6은
+[Stream Connector §4.6](../../32-stream-connector.ko.md)의 `session-closing` payload와 같은 값이다.
+**enum을 정수로 cast해 wire 값으로 쓰지 않는다** — codec이 명시적으로 변환한다.
+
+### 16.16 Location 표면
+
+```cpp
+enum class location_kind_t;          // peer / spot / actor / route
+enum class location_role_t;
+enum class route_kind_t;
+enum class location_readiness_t;
+enum class location_change_type_t;
+enum class location_auto_connect_type_t;
+enum class location_change_stamp_scope_t;
+
+struct peer_location_t;   struct peer_location_key_t;   struct peer_location_filter_t;
+struct spot_location_t;   struct spot_location_key_t;   struct spot_location_filter_t;
+struct actor_location_t;  struct actor_location_key_t;  struct actor_location_filter_t;
+struct route_location_t;  struct route_location_key_t;  struct route_location_filter_t;
+
+struct owner_lease_t;  struct owner_lease_snapshot_t;  struct owner_lease_renewal_t;
+struct location_changed_t;
+struct location_page_request_t;
+struct location_options_t;
+
+class peer_location_store_t;   class spot_location_store_t;
+class actor_location_store_t;  class route_location_store_t;
+class owner_lease_store_t;     class location_watch_store_t;
+class location_change_stamp_store_t;
+
+class location_runtime_query_t;   // 운영 조회
+struct location_runtime_status_t;
+struct location_topology_entry_t;   struct location_topology_filter_t;
+struct location_service_summary_t;  struct location_service_summary_filter_t;
+```
+
+**row·key·lease의 의미는 [location runtime §2~§3](../../40-location-runtime.ko.md)이 소유한다.**
+
+**resolver:**
+
+```cpp
+class spot_handle_t;                  // 불투명 spot 주소
+class spot_handle_resolver_t;         // spot rid -> handle
+class actor_spot_handle_resolver_t;   // actor -> 현재 spot handle
+class peer_location_resolver_t;
+```
+
+**`spot_handle_t`는 불투명하다.** application은 **handle 안의 위치값을 낱개로 풀어 쓰지
+않는다**([spot-address-messaging](../../24-spot-address-messaging.ko.md)).
+
+### 16.17 Runtime event
+
+```cpp
+enum class runtime_event_severity_t;
+enum class socket_event_kind_t;     struct socket_event_payload_t;
+enum class spot_event_kind_t;       struct spot_event_payload_t;
+enum class actor_event_kind_t;      struct actor_event_payload_t;
+enum class stream_event_kind_t;     struct stream_event_payload_t;
+enum class location_event_kind_t;   struct location_event_payload_t;
+struct drain_event_t;
+struct spot_timer_diagnostic_t;
+struct runtime_event_base_t;
+class  runtime_event_publisher_t;
+```
+
+**source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../50-runtime-monitoring.ko.md)가
+소유한다.** timer 실패는 **계속 도는 실패**와 **timer가 중단된 실패**를 구분한다.
+
+**metric:**
+
+```cpp
+enum class metric_instrument_kind_t;   // counter / histogram / gauge
+enum class metric_temporality_t;
+struct metric_event_payload_t;
+```
+
+계기 카탈로그는 [runtime-metrics](../../51-runtime-metrics.ko.md)가 소유한다.
+
+### 16.18 실행 문맥
+
+```cpp
+class serial_turn_t;          // spot·session의 직렬 실행 턴
+class serial_turn_scope_t;    // RAII
+struct ambient_context_hooks_t;  // flow 등 ambient 문맥 훅
+```
+
+**같은 spot의 dispatch가 직렬화되는 근거는
+[stage-wrapper §3](../../25-stage-wrapper-on-spot.ko.md)이 소유한다.**
+
+### 16.19 Codec
+
+```cpp
+struct encoded_payload_t;              // codec이 만든 payload
+template <typename T> struct is_json_serializable_t;
+template <typename T> struct is_json_deserializable_t;
+```
+
+### 16.20 Handler
+
+```cpp
+enum class handler_kind_t;   // request / send / publish
+```
+
+
+### 16.21 Configuration 조회
+
+```cpp
+class configuration_model_t;   // 계층으로 합친 설정
+enum class optional_t;         // 필수/선택
+
+class configuration_section_t
+{
+public:
+    configuration_section_t (const configuration_model_t &model, std::string prefix);
+
+    std::string key () const;                        // 이 section의 prefix
+    bool contains (std::string_view key) const;      // 하위 key 존재 여부
+    // 타입별 조회는 model이 제공한다
+};
+```
+
+**section은 prefix로 잘라낸 view다.** 설정 소스를 계층으로 합치는 규칙은
+[01 §5](01-system-structure.ko.md)가 소유한다.
+
+### 16.22 Codec 등록
+
+```cpp
+class codec_registration_context_t
+{
+public:
+    explicit codec_registration_context_t (serializer_registry_t &serializers);
+
+    template <typename TPayload>
+    codec_registration_context_t &add (...);   // payload 타입별 serializer 등록
+};
+```
+
+**codec extension이 이 context로 serializer를 등록한다.** 같은 registry를 framework·HTTP
+client·stream connector가 공유한다([channel-messaging §6](../../11-channel-messaging.ko.md)).
+
+### 16.23 Location watch
+
+```cpp
+struct location_watch_filter_t
+{
+    location_kind_t             kind = location_kind_t::peer;
+    std::optional<std::string>  mesh_name;
+    std::optional<route_kind_t> route_kind;
+};
+
+enum class location_change_type_t { upserted = 1, removed = 2, expired = 3 };
+```
+
+**watch는 필터로 좁힌다.** `expired`는 owner lease 만료이며 `removed`와 구분한다
+([location runtime §2.5](../../40-location-runtime.ko.md)).
+
+### 16.24 공개 계약이 아닌 타입
+
+**다음은 public header에 이름이 보이지만 계약이 아니다.** forward declaration만 있고 정의가
+`src/runtime/`에 있는 **runtime 내부 타입**이다. application은 이 타입을 직접 다루지 않는다.
+
+```text
+channel_runtime_t          spot_node_runtime_t        stream_runtime_t
+actor_gateway_runtime_t    actor_gateway_t            timer_runtime_t
+monitoring_runtime_t       endpoint_connections_runtime_t
+channel_runtime_manager_t  service_registry_t         injected_handler_registrar_t
+*_state_t  *_snapshot_t  *_access_t  *_impl_t  erased_*
+```
+
+**구조는 [internals/runtime-architecture](../../../../cpp/internals/runtime-architecture.ko.md)가
+소유한다.**
+
 ## 17. C++ 문서와 sample 일관성 요구
 
 C++ framework의 public 문서와 sample은 다음 표면만 사용해야 한다.

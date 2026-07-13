@@ -1131,6 +1131,6 @@ options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
 [.NET](../../spec/languages/dotnet/01-system-structure.ko.md) §10~12 ·
 [Java](../../spec/languages/java/01-system-structure.ko.md) §8~10 ·
 [Node](../../spec/languages/node/01-system-structure.ko.md) §10~12 ·
-[C++](../../spec/languages/cpp/50-monitoring.ko.md) §8~10 ·
+[C++](../../spec/languages/cpp/02-framework-interfaces.ko.md) §8~10 ·
 [Kotlin](../../spec/languages/kotlin/02-handler-interfaces.ko.md) §8. 배포 조건에서의 e2e 검증은
 [Config 11 — 관측·운영 배포](../../e2e/config-11-observability-ops.ko.md)가 다룬다.

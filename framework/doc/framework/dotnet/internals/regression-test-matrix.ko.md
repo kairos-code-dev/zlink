@@ -270,17 +270,9 @@ backend gate 와 별도로 유지한다.
 대상 문서는 다음과 같다.
 
 - `README.ko.md`
-- `handler-interfaces.ko.md`
-- `handler-interfaces.ko.md` §17
-- `system-structure.ko.md`
-- `system-structure.ko.md`
-- `25-stage-wrapper-on-spot.ko.md`
-- `system-structure.ko.md`
-- `handler-interfaces.ko.md`
-- `31-session-actor-dispatch.ko.md`
-- `21-spot-node.ko.md`
-- `system-structure.ko.md`
-- `system-structure.ko.md`
+- `01-system-structure.ko.md`
+- `02-handler-interfaces.ko.md`
+- `03-stream-connector.ko.md`
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`
 - `runtime-execution.ko.md`
@@ -304,7 +296,7 @@ backend gate 와 별도로 유지한다.
 [문서 목록](../../../README.ko.md) | [이전: Runtime Execution](runtime-execution.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
 
-## 11. 공개 계약 문서에서 이관한 회귀 항목
+## 11. 공개 계약 문서에서 이관한 회귀 테스트 항목
 
 언어별 spec을 3문서(시스템 구조 · 인터페이스 · connector)로 압축하면서, 삭제한 기능별 계약
 문서가 소유하던 회귀 항목을 이 절로 옮겼다. 계약의 의미는 공통 스펙이 소유한다.

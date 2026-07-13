@@ -56,7 +56,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 10 | [channel topology](10-channel-topology.ko.md) | O | O | ? | O | O |
-| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | ? 로그 수준 미대조 | ? 로그 수준 미대조 |
+| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | O | ? 로그 수준 미대조 |
 
 ### 2.3 SPOT · Actor (2x)
 
@@ -364,6 +364,24 @@ patch를 추가하지 않고, 브라우저 async-context 환경 또는 public ca
 확정할 때까지 이 항목을 Node.js G2 public runtime gap으로 유지한다. G2가 열려 있으므로
 후속 build·test gate인 G3와 최종 재검토 gate인 G7도 완료로 표시하지 않는다.
 
+### 4.11 dispatch 실패 수준과 `FailCaller`
+
+2026-07-13 재대조에서 두 가지 구현 차이를 추가로 확인하고 해소했다.
+
+첫째, channel dispatch error reporter가 원인과 message kind에 관계없이 모든 실패를 Error로
+기록했다. publish handler가 없으면 unhandled policy가 Warning을 한 번 더 기록해 중복 로그도
+남았다. reporter가 handler 예외는 Error, handler 없음·decode 실패·invalid frame은 send는
+Warning, publish는 Debug로 내부 결정하도록 수정했다. 공개 `ZLinkUnhandledDispatchOptions`에서
+호출자가 이 계약을 바꿀 수 있던 `sendLogLevel`과 `publishLogLevel`도 제거했다.
+
+둘째, 공통 framework API가 요구하는 `FailCaller`가 Node.js enum과 local dispatch 경로에
+없었다. local Spot request와 같은 reply frame 없는 호출은 이제 caller의 Promise를 실패시키고
+observer event에 `FailCaller`를 기록한다. transport reply frame을 만들 수 있는 request는
+기존처럼 `ReplyError`를 사용한다.
+
+두 항목은 contract test에서 로그 호출 횟수와 수준, local caller의 Promise 실패 및 observer
+event를 함께 검증한다.
+
 ## 5. C++
 
 C++ public header와 package는 이 문서가 추적하던 계약 차이를 해소했다. 아래는 각 항목의
@@ -493,7 +511,7 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 | 10.4 | **예약 packet name 범위** | C++는 `$zlink.` prefix만 거부하며 `$application.event` 같은 application 이름은 허용한다 | application 이름은 허용하고 framework 예약 prefix만 거부한다 |
 | 10.5 | **수신 메시지 큐 overflow** | `.NET`은 기존 미수신 메시지를 유지하고 새 메시지를 버린 뒤 `ReceivedMessageDropped`를 보고한다 | 큐가 가득 차면 기존 항목을 유지하고 새 항목의 drop을 관찰할 수 있다 |
 | 10.6 | **연결 상태 `Created`** | Java에 `CREATED`를 추가하고 첫 연결 시도 전 초기 상태로 사용한다. 연결 시도에 실패한 뒤에는 `DISCONNECTED`로 전환한다 | 최초 연결 전 상태와 연결 실패 뒤 상태를 구분한다 |
-| 10.7 | **dispatch error observer의 `FailCaller` 결과** | `.NET`에 `FailCaller` action을 추가하고 reply가 만들어지지 않은 local dispatch를 `ReplyPathMissing`과 함께 보고한다 | local request에 reply가 없을 때 호출 실패 action과 원인을 함께 관찰한다 |
+| 10.7 | **dispatch error observer의 `FailCaller` 결과** | `.NET`과 Node.js에 `FailCaller` action을 추가하고 reply frame이 만들어지지 않은 local dispatch가 caller를 실패시키며 같은 action을 보고한다 | local request에 reply가 없을 때 호출 실패 action과 원인을 함께 관찰한다 |
 
 10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
 회귀 검사로 같은 계약에 맞췄다.
@@ -505,7 +523,7 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 
 C++ `dispatch_error_action_t`에는 **`reply_error`와 `drop` 두 값뿐**이다. `reply_path_missing`
 reason은 enum에 있으나 이를 표현할 action이 없어, **이 경로의 dispatch 실패를 관측할 수 없다.**
-`.NET`은 §10.7에서 해소했다.
+`.NET`과 Node.js는 §10.7과 §4.11에서 해소했다.
 
 ### 10.8 dispatch 실패의 로그 수준
 

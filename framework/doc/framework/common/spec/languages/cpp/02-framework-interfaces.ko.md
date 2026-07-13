@@ -1,10 +1,9 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](01-system-structure.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ 시스템 구조](01-system-structure.ko.md) | [다음: C++ HTTP Hosting](60-http-hosting.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-system-structure.ko.md) | [channel](01-system-structure.ko.md) | [SPOT](02-framework-interfaces.ko.md) | [STREAM](02-framework-interfaces.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md) | [HTTP Hosting](60-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Interface Design
 
@@ -2156,6 +2155,29 @@ filter의 등록 순서·`next` 의미·scope는 [framework API §2.6](../../05-
   recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
 
 
+### 15.4 Timer 실행
+
+**C++ framework는 timer callback 직렬화를 위한 별도 queue나 자체 timer scheduler를 만들지 않는다.**
+CAPI timer와 CAPI SPOT dispatch event 뒤의 recv 경계를 그대로 사용한다.
+
+**같은 SPOT node의 ordering과 handler concurrency도 CAPI SPOT dispatch event 경계를 따른다.**
+framework가 별도 스케줄러를 얹지 않는다.
+
+**CPU-bound이거나 blocking 가능성이 있는 handler는 framework core의 offload 실행으로 넘긴다**
+(§16.7 worker).
+
+### 15.5 Actor gateway 결정
+
+| 항목 | 결정 |
+|------|------|
+| **`actor_ref_t` public 형태** | node routing id, actor id, **generation**을 담는 C++ 값 타입. **native 내부 ref를 그대로 노출하지 않는다** |
+| **session 생성** | session 구현체는 **DI에서 resolve한다.** handler registry callback은 낮은 수준 확장 표면으로만 둔다 |
+| **remote ActorGateway locator codec** | wire metadata는 **runtime 내부 frame으로 숨긴다.** application에는 `actor_ref_t`와 session actor 표면만 보인다 |
+| **actor factory 중복 정책** | 같은 actor id 중복은 **`actor_already_exists`**, actor id/type 불일치는 **`actor_type_mismatch`** 로 보고한다 |
+
+**`actor_ref_t`의 `node_rid`·`actor_id`·`generation`은 bind·relay·push round-trip에서 보존된다.**
+**local actor relay와 remote actor relay는 같은 public 표면을 쓴다.**
+
 ## 16. Public 타입 카탈로그
 
 **이 절은 위 절들이 다루지 않은 public 타입을 채운다.** 여기 없는 `*_state_t`·`*_snapshot_t`는
@@ -2244,7 +2266,17 @@ struct health_report_t
     bool live  () const noexcept;   // liveness  != unhealthy
 };
 
-class health_builder_t;   // health check 등록
+class health_builder_t
+{
+public:
+    health_builder_t &add_zlink_runtime_check (std::string name = "zlink.runtime");
+    health_builder_t &add_channel_check        (std::string name);
+    health_builder_t &add_location_check       (std::string name);
+    health_builder_t &add_stream_endpoint_check(std::string name);
+    health_builder_t &add_hosted_service_check (std::string name);
+
+    health_report_t report () const;
+};
 ```
 
 **`readiness`와 `liveness`를 분리한다.** 트래픽을 받을 준비(readiness)와 프로세스 생존(liveness)은
@@ -2319,6 +2351,13 @@ enum class location_change_type_t;
 ```cpp
 enum class worker_completion_mode_t;
 class worker_scheduler_t;
+
+template <typename TResult> class worker_call_t
+{
+public:
+    worker_call_t &timeout (std::chrono::milliseconds value);
+    task_t<TResult> async ();
+};
 ```
 
 **worker는 spot·session 실행 문맥 밖에서 도는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
@@ -2453,7 +2492,12 @@ struct actor_ref_snapshot_t
 
 struct actor_join_reply_t;                // join 결과
 class  actor_client_t;                    // actor로 보내는 client
-class  actor_directory_t;                 // actor 조회
+class actor_directory_t
+{
+public:
+    virtual task_t<std::optional<actor_ref_t>> find   (std::string actor_id) = 0;
+    virtual task_t<actor_ref_t>                ensure (std::string actor_id, ...) = 0;
+};
 class  actor_send_call_t;
 class  actor_request_call_t;
 class  actor_join_call_t;
@@ -2478,7 +2522,12 @@ enum class stream_close_reason_t : std::uint8_t
 };
 
 struct stream_header_t;
-class  stream_compression_codec_t;   // compress / decompress
+class stream_compression_codec_t
+{
+public:
+    virtual zlink::message_t compress   (const zlink::message_t &payload) const = 0;
+    virtual zlink::message_t decompress (const zlink::message_t &payload) const = 0;
+};
 ```
 
 **wire 값이 계약이다.** `stream_close_reason_t`의 1~6은
@@ -2487,14 +2536,12 @@ class  stream_compression_codec_t;   // compress / decompress
 
 ### 16.16 Location 표면
 
+**row·key·lease의 의미는 [location runtime §2~§3](../../40-location-runtime.ko.md)이 소유한다.**
+
 ```cpp
-enum class location_kind_t;          // peer / spot / actor / route
-enum class location_role_t;
-enum class route_kind_t;
-enum class location_readiness_t;
-enum class location_change_type_t;
-enum class location_auto_connect_type_t;
-enum class location_change_stamp_scope_t;
+enum class location_kind_t;   enum class location_role_t;   enum class route_kind_t;
+enum class location_change_type_t { upserted = 1, removed = 2, expired = 3 };
+enum class location_auto_connect_type_t;   enum class location_change_stamp_scope_t;
 
 struct peer_location_t;   struct peer_location_key_t;   struct peer_location_filter_t;
 struct spot_location_t;   struct spot_location_key_t;   struct spot_location_filter_t;
@@ -2502,34 +2549,108 @@ struct actor_location_t;  struct actor_location_key_t;  struct actor_location_fi
 struct route_location_t;  struct route_location_key_t;  struct route_location_filter_t;
 
 struct owner_lease_t;  struct owner_lease_snapshot_t;  struct owner_lease_renewal_t;
-struct location_changed_t;
-struct location_page_request_t;
-struct location_options_t;
-
-class peer_location_store_t;   class spot_location_store_t;
-class actor_location_store_t;  class route_location_store_t;
-class owner_lease_store_t;     class location_watch_store_t;
-class location_change_stamp_store_t;
-
-class location_runtime_query_t;   // 운영 조회
-struct location_runtime_status_t;
-struct location_topology_entry_t;   struct location_topology_filter_t;
-struct location_service_summary_t;  struct location_service_summary_filter_t;
+struct location_changed_t;  struct location_page_request_t;  struct location_options_t;
+struct location_watch_filter_t;
 ```
 
-**row·key·lease의 의미는 [location runtime §2~§3](../../40-location-runtime.ko.md)이 소유한다.**
+**store는 역할별 인터페이스이고, `location_store_t`가 그것들을 합친다.**
+
+```cpp
+class peer_location_store_t
+{
+public:
+    virtual task_t<location_write_result_t> update_peer (peer_location_t peer, ...) = 0;
+    virtual task_t<location_write_result_t> remove_peer (peer_location_key_t key, ...) = 0;
+    virtual task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter) = 0;
+};
+
+class spot_location_store_t
+{
+public:
+    virtual task_t<location_write_result_t> update_spot (spot_location_t spot, ...) = 0;
+    virtual task_t<location_write_result_t> remove_spot (spot_location_key_t key, ...) = 0;
+    virtual task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key) = 0;
+    virtual task_t<location_page_t<spot_location_t>>
+        list_spots (spot_location_filter_t filter, location_page_request_t page = {}) = 0;
+};
+
+class actor_location_store_t;   // update_actor / remove_actor / resolve_actor / list_actors
+class route_location_store_t;   // update_route / remove_route / resolve_route / list_routes
+
+class owner_lease_store_t
+{
+public:
+    virtual task_t<owner_lease_renewal_t>  renew_owner_lease (...) = 0;
+    virtual task_t<bool>                   remove_owner_lease (std::string owner_id) = 0;
+    virtual task_t<owner_lease_snapshot_t> list_owner_leases () = 0;
+};
+
+class location_watch_store_t
+{
+public:
+    virtual task_t<void> watch_locations (location_watch_filter_t filter, ...) = 0;
+};
+
+class location_change_stamp_store_t;
+
+// 하나의 물리 저장소가 모든 역할을 맡는다.
+class location_store_t : public peer_location_store_t,
+                         public spot_location_store_t,
+                         public actor_location_store_t,
+                         public route_location_store_t,
+                         public owner_lease_store_t
+{
+public:
+    virtual task_t<std::int64_t> remove_all_by_owner (std::string owner_id) = 0;
+};
+```
+
+**역할별 store를 따로 등록하는 표면은 없다.** owner lease와 위치 row가 **같은 물리 저장소**에
+있어야 오래된 소유자 판정과 위치 갱신을 같은 규칙으로 처리할 수 있다
+([location runtime §3](../../40-location-runtime.ko.md)).
+
+**`expired`는 owner lease 만료이며 `removed`와 구분한다.**
 
 **resolver:**
 
 ```cpp
-class spot_handle_t;                  // 불투명 spot 주소
-class spot_handle_resolver_t;         // spot rid -> handle
-class actor_spot_handle_resolver_t;   // actor -> 현재 spot handle
-class peer_location_resolver_t;
+class spot_handle_t;   // 불투명 spot 주소. 위치값을 낱개로 풀어 쓰지 않는다
+
+class peer_location_resolver_t
+{
+public:
+    virtual task_t<std::vector<peer_location_t>> list_live_peers (...) = 0;
+};
+
+class spot_handle_resolver_t
+{
+public:
+    virtual task_t<std::optional<spot_handle_t>> resolve_spot_handle (...) = 0;
+};
+
+class actor_spot_handle_resolver_t
+{
+public:
+    virtual task_t<std::optional<spot_handle_t>> resolve_actor_spot_handle (...) = 0;
+};
+
+class location_readiness_t
+{
+public:
+    virtual task_t<bool> is_peer_ready (std::string mesh_name, ...) = 0;
+};
 ```
 
-**`spot_handle_t`는 불투명하다.** application은 **handle 안의 위치값을 낱개로 풀어 쓰지
-않는다**([spot-address-messaging](../../24-spot-address-messaging.ko.md)).
+**운영 조회:**
+
+```cpp
+class location_runtime_query_t;
+struct location_runtime_status_t;
+struct location_topology_entry_t;    struct location_topology_filter_t;
+struct location_service_summary_t;   struct location_service_summary_filter_t;
+```
+
+**`spot_handle_t`는 불투명하다**([spot-address-messaging](../../24-spot-address-messaging.ko.md)).
 
 ### 16.17 Runtime event
 
@@ -2576,7 +2697,21 @@ struct ambient_context_hooks_t;  // flow 등 ambient 문맥 훅
 struct encoded_payload_t;              // codec이 만든 payload
 template <typename T> struct is_json_serializable_t;
 template <typename T> struct is_json_deserializable_t;
+
+class serializer_registry_t
+{
+public:
+    template <typename T>
+    serializer_registry_t &add (typename serializer_t<T>::serialize_fn_t   serialize,
+                                typename serializer_t<T>::deserialize_fn_t deserialize,
+                                std::string content_type = "application/octet-stream");
+
+    std::string content_type (std::type_index type) const;
+};
 ```
+
+**codec extension이 `add<T>(...)`로 payload 타입별 serializer를 등록한다.** `content_type`은
+framework·HTTP client·stream connector가 공유한다.
 
 ### 16.20 Handler
 
@@ -2676,5 +2811,5 @@ C++ framework의 public 문서와 sample은 다음 표면만 사용해야 한다
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](01-system-structure.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ 시스템 구조](01-system-structure.ko.md) | [다음: C++ HTTP Hosting](60-http-hosting.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

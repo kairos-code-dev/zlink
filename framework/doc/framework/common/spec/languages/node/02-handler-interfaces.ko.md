@@ -7,7 +7,7 @@
 ## 1. 목적과 계약 소유권
 
 이 문서는 `@zlink-systems/framework`와 `@zlink-systems/nestjs` package root가 내보내는 공개
-TypeScript declaration 전체를 고정한다. 현재 분모는 framework 269개와 NestJS 66개, 합계 335개 export다.
+TypeScript declaration 전체를 고정한다. 현재 분모는 framework 268개와 NestJS 66개, 합계 334개 export다.
 
 기능의 의미와 동작 규칙은 [공통 스펙](../../README.ko.md)이 소유하고, 사용법과 예제는
 [Node.js guide](../../../../node/guide/01-overview.ko.md)가 소유한다. Stream Connector의 공개 계약은
@@ -32,8 +32,6 @@ export interface ActorRef {
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
 
 export declare function isZLinkMessage(value: unknown): value is ZLinkMessage;
-
-export type LogLevel = 'log' | 'error' | 'warn' | 'debug' | 'verbose' | 'fatal';
 
 export declare const MESSAGE_FLOW_MODE_RANK: Record<ZLinkMessageFlowLogMode, number>;
 
@@ -285,6 +283,7 @@ export interface ZLinkDiagnosticsOptions {
 
 export declare enum ZLinkDispatchErrorAction {
     ReplyError = "replyError",
+    FailCaller = "failCaller",
     Drop = "drop"
 }
 
@@ -1747,8 +1746,6 @@ export interface ZLinkUnhandledDispatchOptions {
     request: ZLinkUnhandledDispatchAction;
     send: ZLinkUnhandledDispatchAction;
     publish: ZLinkUnhandledDispatchAction;
-    sendLogLevel: LogLevel;
-    publishLogLevel: LogLevel;
 }
 
 export interface ZLinkWorkerCall<T> {

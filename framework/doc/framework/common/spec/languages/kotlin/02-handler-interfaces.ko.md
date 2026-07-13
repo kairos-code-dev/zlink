@@ -494,7 +494,7 @@ package 구조가 아니라 이 기능 그룹을 기준으로 contract test에�
 | channel send/publish | `ZLinkClient.send`, `ZLinkRouteClient.send`, `publishToTopic` |
 | coroutine 구성 | `useCoroutineHandlers` |
 | location store | `updatePeer`, `removePeer`, `listPeerLocations`, `updateSpot`, `removeSpot`, `resolveSpot`, `listSpotLocations`, `updateActor`, `removeActor`, `resolveActor`, `listActorLocations`, `updateRoute`, `removeRoute`, `resolveRoute`, `listRouteLocations` |
-| owner lease와 resolver | `renewOwnerLease`, `removeOwnerLease`, `removeAllByOwner`, `listOwnerLeases`, `listLivePeers`, `resolveSpotHandle`, `resolveActorSpotHandle`, `isPeerReady` |
+| owner lease와 resolver | `renewOwnerLease`, `removeOwnerLease`, `removeAllByOwner`, `awaitOwnerLeases`, `listLivePeers`, `resolveSpotHandle`, `resolveActorSpotHandle`, `isPeerReady` |
 | location query와 Flow | `status`, `listTopology`, `listServiceSummaries`, `locationPages`, `spots`, `actors`, `routes`, `topology`, `changes`, `Publisher.asFlow` |
 | stream connector | `kotlin`, compression 설정 extension, request `await`, `messages`, `errors` |
 | message와 dispatch | `messageOf`, `onMessageFlow` |
@@ -524,7 +524,7 @@ isPeerReady
 kotlin
 listActorLocations
 listLivePeers
-listOwnerLeases
+awaitOwnerLeases
 listPeerLocations
 listRouteLocations
 listServiceSummaries

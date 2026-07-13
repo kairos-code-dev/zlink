@@ -113,10 +113,10 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-COMMON-019 | `90-implementation-gap.ko.md` | plan §6 `DN-001`~`DN-025`와 이 ledger | `RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods`; 각 DN 행의 exact proof는 plan과 실행 log에서 추적 |
 | DN-COMMON-020 | `32-stream-connector.ko.md` | 대상 실행 환경, transport, wire 계약, 연결 생명주기, 배포 산출물 | `StreamConnectorTests.HeaderProtocolRejectsMissingMarkerAndInvalidFlowFields`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract`; `StreamConnectorTests.SessionClosingCodecDecodesTheVersionedClosedReason`; `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame` |
 | DN-COMMON-021 | `21-spot-node.ko.md` | SpotNode 등록, Entry Spot bind 순서, SpotManager 생성·조회·종료 | `E2E:SM-A1`; `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` |
-| DN-COMMON-022 | `02-framework-interfaces.ko.md` | spot 실행 문맥 직렬화, timer, wrapper 책임 경계 | `E2E:SM-B7`; `E2E:SM-E3`; `E2E:SM-A5` |
+| DN-COMMON-022 | `25-stage-wrapper-on-spot.ko.md` | spot 실행 문맥 직렬화, timer, wrapper 책임 경계 | `E2E:SM-B7`; `E2E:SM-E3`; `E2E:SM-A5` |
 | DN-COMMON-023 | `30-stream-session.ko.md` | 서버 session 표면, dispatch 모델, 등록 검증, 오류 경계 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `StreamSessionForcedCleanupTests.Stream_node_preserves_typed_routing_id_from_backend_callback`; `E2E:SM-D7`; `E2E:SM-D8` |
 | DN-COMMON-024 | `20-spot-messaging.ko.md` | outbound 세 축, publish·subscribe, dispatch 실패 정책, route ingress, startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-C4`; `E2E:SM-B7` |
-| DN-COMMON-025 | `01-system-structure.ko.md` | channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `E2E:OBS-B1` |
+| DN-COMMON-025 | `11-channel-messaging.ko.md` | channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `E2E:OBS-B1` |
 | DN-COMMON-026 | `50-runtime-monitoring.ko.md` | source 분리, event 종류, polling 규칙, monitoring startup validation | `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures`; `RuntimeMetricsTests.Meter_Catalog_Uses_Exact_Names_Kinds_Units_And_Scope` |
 
 ## 4. .NET 정식 계약 문서 coverage
@@ -265,7 +265,7 @@ a44902a9f8775cfabe50b946fe1cab7f1a56083ad4a210c13a7d941eaca31c41 common/10-chann
 1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511 common/53-flow-correlation.ko.md
 49e0d306d42b1ab9909c9d7a29da44c25a57198168c23936070de6e5fd73cb93 common/05-framework-api.ko.md
 4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e common/54-graceful-drain-handoff.ko.md
-46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e common/90-implementation-gap.ko.md
+73e0dca1e6ebfb6f0ee0e52488e3179dcc11aa34921421edfcb2a16296347d7b common/90-implementation-gap.ko.md
 bbc0dbf64aadd7b03e6b3952b2cfc283d69ce271968926c8fda1ce5a5d491492 common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md

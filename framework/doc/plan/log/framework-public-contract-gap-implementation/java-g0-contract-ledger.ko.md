@@ -25,7 +25,7 @@
 | JV-DOC-002 | `01-system-structure.ko.md` | 패키지 구조·배포, Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring 등록 표면과 startup validation | 검토 완료 |
 | JV-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·annotation·context·options 카탈로그 | 검토 완료 |
 | JV-DOC-004 | `03-stream-connector.ko.md` | client connector의 public 표면 | 검토 완료 |
-| JV-DOC-010 | `02-framework-interfaces.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
+| JV-DOC-010 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
 공통 spec 전체(§6 snapshot이 고정한 목록)는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
@@ -83,7 +83,7 @@ a44902a9f8775cfabe50b946fe1cab7f1a56083ad4a210c13a7d941eaca31c41 common/10-chann
 1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511 common/53-flow-correlation.ko.md
 49e0d306d42b1ab9909c9d7a29da44c25a57198168c23936070de6e5fd73cb93 common/05-framework-api.ko.md
 4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e common/54-graceful-drain-handoff.ko.md
-46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e common/90-implementation-gap.ko.md
+73e0dca1e6ebfb6f0ee0e52488e3179dcc11aa34921421edfcb2a16296347d7b common/90-implementation-gap.ko.md
 bbc0dbf64aadd7b03e6b3952b2cfc283d69ce271968926c8fda1ce5a5d491492 common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md

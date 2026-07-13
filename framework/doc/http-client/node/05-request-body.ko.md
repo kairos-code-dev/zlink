@@ -44,7 +44,7 @@ await client.post('/upload')
 streaming 요청은 rewind할 수 없으므로 **자동 retry에서 제외**된다.
 
 ```ts
-const chunks: Uint8Array[] = /* ... */;
+const chunks: Uint8Array[] = [new TextEncoder().encode('payload')];
 let i = 0;
 await client.post('/upload-stream')
   .bodyStream(() => (i < chunks.length ? chunks[i++] : null), 'application/octet-stream')

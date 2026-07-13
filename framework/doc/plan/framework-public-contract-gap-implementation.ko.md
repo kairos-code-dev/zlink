@@ -67,9 +67,9 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 | Java | [handler-interfaces](../framework/common/spec/languages/java/02-handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
 | Kotlin | [handler-interfaces](../framework/common/spec/languages/kotlin/02-handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
 | Node.js | [handler-interfaces](../framework/common/spec/languages/node/02-handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
-| C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/03-handler-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
+| C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
 
-`25-stage-wrapper-on-spot.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
+`02-framework-interfaces.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
 간주하지 않는다. 다만 guide의 표준 사용 패턴이 확정 계약과 충돌하지 않는지는 G7에서 확인한다.
 
 ## 3. 완료 판정 원칙
@@ -173,8 +173,8 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 순서 | 언어 | G0 | G1 | G2 | G3 | G4 | G5 | G6 | G7 | 상태 |
 |------|------|----|----|----|----|----|----|----|----|------|
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
-| 2 | Java | [x] | [x] | [x] | [ ] | [ ] | [x] | [ ] | [ ] | 차단 |
-| 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 차단 |
+| 2 | Java | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
+| 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 | 4 | Node.js | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | browser flow와 G5 수정 및 반복 재검토 진행 |
 | 5 | C++ | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 
@@ -199,12 +199,19 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | `03-message-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `04-async-execution-policy.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `10-channel-topology.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `01-system-structure.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `20-spot-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `21-spot-node.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `22-actor-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `23-spot-actor.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `02-framework-interfaces.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `30-stream-session.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `31-session-actor-dispatch.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `32-stream-connector.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `24-spot-address-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `40-location-runtime.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `41-location-store-redis.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `50-runtime-monitoring.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `52-message-flow-tracing.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `53-flow-correlation.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 | `51-runtime-metrics.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
@@ -240,7 +247,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | `.NET` | `31-session-actor-dispatch.ko.md` | `DN-DOC-010` | [x] |
 | `.NET` | `21-spot-node.ko.md` | `DN-DOC-011` | [x] |
 | `.NET` | `32-stream-connector.ko.md` | `DN-DOC-012`, connector contract/package test | [x] |
-| `.NET` | `25-stage-wrapper-on-spot.ko.md` | interface spec이 아닌 상위 사용 모델 guide이며 G7 guide 검토에 연결 | 비적용 |
+| `.NET` | `02-framework-interfaces.ko.md` | interface spec이 아닌 상위 사용 모델 guide이며 G7 guide 검토에 연결 | 비적용 |
 | Java | `README.ko.md` | `JV-DOC-001` | [x] |
 | Java | `handler-interfaces.ko.md` | `JV-DOC-002` | [x] |
 | Java | `system-structure.ko.md` | `JV-DOC-003` | [x] |
@@ -252,18 +259,9 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | Java | `32-stream-connector.ko.md` | `JV-DOC-009` | [x] |
 | Kotlin | `README.ko.md` | - | [ ] |
 | Kotlin | `handler-interfaces.ko.md` | - | [ ] |
-| Node.js | `README.ko.md` | `ND-DOC-001` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-002` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-003` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-004` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-005` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-006` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-007` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-008` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-009` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-010` | [x] |
-| Node.js | `handler-interfaces.ko.md` | `ND-DOC-011` | [x] |
-| Node.js | `32-stream-connector.ko.md` | `ND-DOC-012` | [x] |
+| Node.js | `01-system-structure.ko.md` | `ND-DOC-001` | [x] |
+| Node.js | `02-handler-interfaces.ko.md` | `ND-DOC-002` | [x] |
+| Node.js | `03-stream-connector.ko.md` | `ND-DOC-003` | [x] |
 | C++ | `README.ko.md` | `CPP-DOC-001` | [x] |
 | C++ | `cpp-framework-interfaces.ko.md` | `CPP-DOC-002` | [x] |
 | C++ | `actor-gateway-session-relay.ko.md` | `CPP-DOC-008` | [x] |
@@ -281,10 +279,10 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 
 | 언어 | guide 문서 | 제외 근거 | G7 검토 |
 |------|------------|-----------|---------|
-| `.NET` | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
-| Java | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
-| Node.js | 공통 `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
-| C++ | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
+| `.NET` | `02-framework-interfaces.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
+| Java | `02-framework-interfaces.ko.md` | 상위 모델 guide | [ ] |
+| Node.js | 공통 `02-framework-interfaces.ko.md` | 상위 모델 guide | [x] |
+| C++ | `02-framework-interfaces.ko.md` | 상위 모델 guide | [ ] |
 
 Kotlin 행은 Kotlin 전용 계약만 나타낸다. Java 계약의 각 행에는 Kotlin 적용 여부와 Kotlin
 test ID도 함께 기록해, 상속된 public surface가 coverage에서 빠지지 않게 한다.
@@ -716,7 +714,7 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 | `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `.NET` 구현 로그 |
 | Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` |
 | Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` |
-| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 재검토 중 | client 종료 직후 disconnect 관측 시점 gap 수정과 runner 재검증 필요 |
+| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 재검토 중 | protobuf 생성 타입, flow 연속성, 실제 metric, drain, self-join, client별 marker gap 수정과 재검증 필요 |
 | C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 
 Bingo는 기존 게임 smoke 성공만으로 완료하지 않는다. G5에서 각 언어 샘플이 별도 flow id 설정 없이
@@ -942,7 +940,7 @@ ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
-- [ ] G3 전체 Gradle test source set green
+- [x] G3 전체 Gradle test source set green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
 - [x] G5 Java 공통 sample spec 6종 대조와 sample 전체 PASS
 - [ ] G6 Java E2E 전체 PASS
@@ -950,19 +948,13 @@ ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh
 - [ ] G7 gap/doc/package 최종 리뷰
 - [x] Kotlin 작업 시작 승인
 
-Java `AutomaticTurnDispatch`는
-`e2e/AutomaticTurnDispatch/logs/20260713-151721-1434501/`에서 일반 시나리오 18개와 종료 대기가
-통과했다. 그러나 같은 routing ID로 `play-a`를 재기동하는 ATD-E3 복구 단계는 readiness가 16회
-연속 실패해 G6를 닫지 않는다. 원인과 core 회귀 요구 사항은
-[`core ROUTER callback dispatch 재연결 handover 버그`](../../../doc/internals/core-router-callback-dispatch-reconnect-handover-bug.ko.md)에
-기록했다. framework나 E2E에서 재시도 횟수, 대기 시간 또는 서버 구동 순서로 우회하지 않는다.
-
-2026-07-13 전체 G3 재실행에서도 같은 결함이
-`ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds`의 client-first 기동 조합에서
-재현됐다. source/target runtime이 모두 시작된 뒤에도 route가 학습되지 않아 첫 request가
-`INTERNAL_ERROR, errno=2`로 실패했다. lifecycle fake backend 전체와 Kotlin 전용
-unit/contract/integration은 통과했지만, Java G3는 전체 integration에 실패가 남아 있으므로 완료로
-표시하지 않는다.
+core ROUTER handover 결함은 9.0.2에서 수정하고 회귀 검사를 추가했다. Java
+`AutomaticTurnDispatch` 전체 selector는
+`e2e/AutomaticTurnDispatch/logs/20260713-205516-3215299/`에서 통과했고, 같은 routing ID로
+`play-a`를 재기동하는 `ATD-E3`도 handshake timeout을 기다리지 않고 완료됐다. framework나 E2E에는
+재시도 횟수, 대기 시간 또는 서버 구동 순서를 지정하는 우회를 추가하지 않았다. Java G3 전체
+`test contractTest fakeBackendTest integrationTest sampleTest`는 2026-07-13에 다시 통과했다. G6는
+전체 E2E runner가 통과한 결과로만 닫는다.
 
 ## 11. Kotlin 실행 계획
 
@@ -1012,11 +1004,11 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 - [ ] G6 Kotlin↔`.NET`/Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
 
-Kotlin ATD-E3와 ObservabilityOps OBS-C2/C3도 같은 core handover 결함으로 차단되어 G6를 닫지
-않는다. Kotlin fixture의 구현 완료와 core 결함 해소 뒤 전체 E2E 통과는 별도 상태로 유지한다.
-세부 원인과 필수 회귀 조합은
-[`core ROUTER callback dispatch 재연결 handover 버그`](../../../doc/internals/core-router-callback-dispatch-reconnect-handover-bug.ko.md)를
-따른다.
+core 9.0.2 적용 뒤 Kotlin `AutomaticTurnDispatch ATD-E3`는
+`e2e-kotlin/AutomaticTurnDispatch/logs/20260713-205642-3225711/`에서 통과했고,
+`ObservabilityOps OBS-C2`도 `e2e-kotlin/ObservabilityOps/logs/20260713-210155-3254245/`에서
+통과했다. 종료·재기동 직후 새 location owner를 polling interval 동안 조회하지 못하던 Java framework
+문제에는 즉시 재조회와 회귀 검사를 추가했다. Kotlin G6는 전체 E2E runner가 통과한 뒤에만 닫는다.
 
 ## 12. Node.js 실행 계획
 
@@ -1052,7 +1044,8 @@ Kotlin ATD-E3와 ObservabilityOps OBS-C2/C3도 같은 core handover 결함으로
 - [ ] browser handler의 async continuation flow 보존과 관련 없는 callback 격리
   (`MFLOW-EXT-014`; 브라우저 표준 async-context 수단 또는 별도 public 계약 결정 필요)
 - [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
-- [x] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+- [ ] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
+  (G5 ledger의 protobuf·flow·metric·drain·self-join·client marker 재검토 중)
 - [ ] 공통 sample spec 6종과 Node.js sample 6종의 역할·메시지·상태·codec·self-check
   항목별 대조, 불일치 수정과 개별·통합 runner 재검증
   ([Node.js G5 공통 샘플 대조 기록](./log/framework-public-contract-gap-implementation/node-g5-sample-ledger.ko.md))

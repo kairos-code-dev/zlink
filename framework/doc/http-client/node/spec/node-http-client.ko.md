@@ -36,7 +36,8 @@ core의 기본 의존성은 아니다(단방향 의존).
   `followRedirects`, `retry`, `cookies`, `proxy`, `proxyBasicAuth`, `compression`,
   `build`, 그리고 단발 verb shortcut.
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body`(JSON/raw 오버로드),
-  `bodyStream`, `form`, `multipart`, `multipartFile`, `submitRaw`, `download`, `submit<T>`.
+  `bodyStream`, `form`, `multipart`, `multipartFile`, `submitRaw`, `download`, `submit<T>`,
+  `fetch<T>`(`Promise<T>`, body만 반환).
 - `RawHttpResponse` { `status`, `headers`, `body` }.
 - `HttpResponse<T>` { `status`, `headers`, `body`, `rawBody` }.
 - `ZLinkHttpMethod`, `BodyChunkProvider`(`() => Uint8Array | null`), `DownloadSink`.

@@ -1,10 +1,9 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ framework 인터페이스](02-framework-interfaces.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-system-structure.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [HTTP Client](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [Embedded HTTP Server](61-embedded-http-server.ko.md)
 
 # Spec -- ZLink Framework C++ HTTP Hosting
 
@@ -686,5 +685,5 @@ Handler shape regression matrix:
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ framework 인터페이스](02-framework-interfaces.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

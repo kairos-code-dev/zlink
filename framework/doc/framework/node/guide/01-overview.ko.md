@@ -15,35 +15,20 @@ ZLink Framework 는 내부 서비스 통신과 실시간 상태 서버를 한 �
 | Spot | room, stage, zone 처럼 상태를 가진 실행 단위를 만들 때 |
 | actor | 사용자나 세션처럼 긴 수명을 가진 논리 객체를 다룰 때 |
 | stream | 외부 클라이언트와 장기 연결을 유지할 때 |
-| registry | 여러 프로세스의 topology 를 발견하고 조회할 때 |
+| location store | 여러 프로세스의 topology를 등록하고 자동 연결에 사용할 때 |
 | monitoring | runtime 상태 변화를 typed event 로 관찰할 때 |
 
-## 2. zlink core 와 기본 socket 패턴
+## 2. 기능 선택
 
-ZLink Framework 는 zlink core 위에 있다. core(C API)가 socket 패턴을 제공하고, Node 바인딩이
-이를 노출하며, framework 가 channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·
-`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 socket 위에서 도는지 알면 channel 종류 선택이 쉬워진다.
-
-| framework 구성 | 하부 socket | 쓰임 |
-|----------------|-----------|------|
-| client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
-| fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
-| mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
-| STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
-
-각 socket의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
-자세히 다룬다:
-[socket 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
-[DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
-[ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
-[PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·
-[STREAM](../../../../../core/doc/guide/03-5-stream.ko.md)
+request/reply와 단방향 메시지는 channel, 다수 구독자 이벤트는 fanout,
+상태를 소유하는 실행 단위는 Spot·actor, 외부 client의 장기 연결은 stream을
+사용한다. 하부 socket 배선과 자원 수명은 사용자 가이드가 아니라 internals 문서가
+소유한다.
 
 ## 3. 기준
 
-의미와 동작은 `framework/languages/dotnet` 이 기준이다. Node 버전은 NestJS 와
-TypeScript 스타일을 사용하지만, request timeout, lifecycle 순서, session actor relay,
-registry query 같은 의미는 .NET 과 맞춘다.
+의미와 동작의 기준은 [framework 공통 spec](../../common/spec/README.ko.md)이다.
+Node 버전은 공통 계약을 NestJS 등록 표면과 TypeScript 타입으로 표현한다.
 
 ## 4. 다음에 읽을 장
 

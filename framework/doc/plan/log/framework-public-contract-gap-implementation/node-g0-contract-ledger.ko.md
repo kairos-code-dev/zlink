@@ -41,13 +41,13 @@ snapshot을 함께 갱신해야 한다.
 | common | `52-message-flow-tracing.ko.md` | `516df0e441d62169b57ae642d8e9301778c8d8e8ac7a849a9703bd7c02f6731e` |
 | common | `53-flow-correlation.ko.md` | `1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511` |
 | common | `54-graceful-drain-handoff.ko.md` | `4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e` |
-| common | `90-implementation-gap.ko.md` | `46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e` |
+| common | `90-implementation-gap.ko.md` | `73e0dca1e6ebfb6f0ee0e52488e3179dcc11aa34921421edfcb2a16296347d7b` |
 | common | `README.ko.md` | `a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e` |
 | node | `01-system-structure.ko.md` | `5805a37bb89c8b1b9dcb104dc841d30e26126ff44f52620e94ac2f7760c03a60` |
-| node | `02-handler-interfaces.ko.md` | `bd4c9dc272271b265a7447a2bdd951b964268554855d02a4b1c4c3571785b639` |
+| node | `02-handler-interfaces.ko.md` | `b8a10ef906f4ad0f2a2821122df6d08f219b225ae45cb61871154d8b92d488c3` |
 | node | `03-stream-connector.ko.md` | `108146aff90ea2d6fe1adc055e25b20ed55a31deb26782aa02a2abd978d0a0cf` |
 
-공통 `02-framework-interfaces.ko.md`는 정식 Node.js 언어 interface 3개 분모에서는 제외한다. 다만
+공통 `02-handler-interfaces.ko.md`는 정식 Node.js 언어 interface 3개 분모에서는 제외한다. 다만
 공통 spec 26개 분모에는 포함해 G0 hash를 고정했으며, G7 문서 정합성 검토 대상으로도 유지한다.
 
 bindings 기준은 `@zlink-systems/zlink` 9.0.2이며, package의 public `version()`이 보고하는 core

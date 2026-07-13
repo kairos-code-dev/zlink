@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[스펙 목차](README.ko.md) | [다음: C++ framework 인터페이스](02-framework-interfaces.ko.md)
+<!-- framework-adapter-nav:end -->
+
 # C++ 시스템 구조 — 패키지, 등록과 부트스트랩
 
 [스펙 목차](README.ko.md)

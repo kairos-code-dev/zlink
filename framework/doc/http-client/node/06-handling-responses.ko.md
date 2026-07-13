@@ -35,5 +35,11 @@ const raw = response.rawBody;      // 원본 응답 텍스트
 |------|---------|
 | `submitRaw()` | status를 그대로 돌려준다(예외 없음) |
 | `submit<T>()` | `requestFailed` 예외 |
+| `fetch<T>()` | `submit<T>()`와 같이 검증하고 디코드한 body만 `Promise<T>`로 반환 |
+
+```ts
+const profile = await client.get('/players/7281').fetch<PlayerProfile>();
+// response wrapper가 필요 없을 때 body만 받는 비동기 편의 표면이다.
+```
 
 [다음: 비동기 →](07-async.ko.md)

@@ -125,13 +125,16 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | DI channel client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkChannelClient`가 framework runtime host 시작 이후 host-owned DEALER transport로 manual channel request/reply를 수행한다 |
 | channel handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
-| send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller 실행 흐름을 block하지 않고(`Promise` 미해결 유지), ready 이후에 resolve된다 |
-| publish async submit backpressure | `integration-single-process` | HWM 조건에서 흐름을 block하지 않고 submitter timeout 정책에 따라 resolve 또는 reject |
+| send one-way submit backpressure[^backpressure] | `integration-single-process` | local queue가 frame을 수락하면 호출자에게 제어를 바로 돌려주고, 수락할 수 없으면 동기 예외를 던진다 |
+| publish one-way submit backpressure | `integration-single-process` | send와 같은 local queue 수락 계약을 사용하며 원격 수신 완료를 기다리지 않는다 |
 | request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 submitter timeout 정책으로, reply 대기는 `timeout(...)`으로 판정 |
 | pending request 정리 | `unit` | submit 실패, timeout, cancellation(`AbortSignal`), runtime stop이 일어날 때 request sequence가 pending map에서 제거된다 |
 | ready callback batch drain | `integration-single-process` | socket이 ready된 뒤 pending send/publish를 batch로 처리하고, 같은 frame을 중복 전송하지 않는다 |
 | channel wire multipart[^wire-multipart] | `integration-single-process` | 서버 간 channel send/request/reply가 `header`와 `payload`를 별도 message part로 보내고, handler dispatch는 header part만 보고 packet을 고른다 |
 | publish wire multipart | `integration-single-process` | `PUB/SUB` publish도 framework header와 payload를 별도 part로 유지하고, subscriber handler에는 typed payload만 전달된다 |
+
+one-way send와 publish의 `submit(): void`는 local queue가 수락하면 즉시 반환한다.
+local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 전송 실패는 runtime 오류 관측 경로에서 처리한다.
 
 ## 4.1 Dispatch Error Observer Regression 항목
 

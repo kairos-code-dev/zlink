@@ -126,7 +126,7 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
   누락을 client 시나리오가 늦게 발견하게 된다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
-  등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/03-handler-interfaces.ko.md)을
+  등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/02-framework-interfaces.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.
 
 ## Dispatch 오류 로그 기준

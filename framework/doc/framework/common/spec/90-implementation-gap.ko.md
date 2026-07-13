@@ -25,21 +25,88 @@
 - 명시적인 취소 인자가 없는 언어. 취소는 언어별 스펙이 제공하기로 한 작업에서만
   계약이며, 모든 언어의 필수 parity 항목이 아니다.
 
-## 2. 전체 상태
+## 2. 스펙별 확인표
 
-| 영역 | `.NET` | Java/Kotlin | Node.js | C++ |
-|------|--------|-------------|---------|-----|
-| request와 one-way send/publish | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| handler 비동기 완료 | 충족 | Java 충족, Kotlin coroutine bridge 별도 검증 필요 | 충족 | 충족 |
-| Spot actor lifecycle | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| typed stream session handler | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| dispatch options와 diagnostics | 충족 | Java target declaration 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| public export 경계 | 계약과 일치 | Java 계약과 일치, Kotlin 별도 검증 필요 | 계약과 일치 | 충족 |
-| 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 충족 |
-| route-mesh runtime options | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| actor membership 상태 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| actor join 결과 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
-| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | Java public declaration과 완료된 Config 6·8 검증, 나머지 Config는 이 문서에서 미검증 | 부분 충족: Node runtime·Config 1~11은 검증했으나 browser `MFLOW-EXT-014`와 sample 재검증은 진행 중 | 충족 |
+**공통 스펙 문서 하나가 한 행이다.** 각 칸은 그 언어 구현이 그 스펙을 충족하는지 나타낸다.
+
+| 기호 | 뜻 |
+|---|---|
+| **O** | 충족 — contract/unit test와 E2E로 검증했다 |
+| **△** | **부분 충족** — 일부 항목이 미해결이다. 해당 gap 절을 링크한다 |
+| **X** | **미충족** — 계약을 어긴다. 해당 gap 절을 링크한다 |
+| **?** | **미검증** — 이 문서가 확인하지 않았다. 충족한다는 뜻이 아니다 |
+| **—** | 구현 대상이 아니다(규약·서술 문서) |
+
+**Kotlin은 Java 런타임을 공유한다.** 표의 Kotlin 칸은 **Kotlin 고유 표면**(`suspend`, `Flow`,
+DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 하지 않았다.
+
+### 2.1 기반 (0x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 00 | [공개 계약 관리](00-public-contract-governance.ko.md) | — | — | — | — | — |
+| 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
+| 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | ? | O | O |
+| 03 | [메시지 모델](03-message-model.ko.md) | O | O | ? | O | O |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | O |
+| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | O |
+
+### 2.2 Channel (1x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 10 | [channel topology](10-channel-topology.ko.md) | O | O | ? | O | O |
+| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | ? 로그 수준 미대조 | ? 로그 수준 미대조 |
+
+### 2.3 SPOT · Actor (2x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | ? | O | O |
+| 21 | [SpotNode](21-spot-node.ko.md) | O | O | ? | O | O |
+| 22 | [Actor 모델](22-actor-model.ko.md) | O | O | ? | O | O |
+| 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | O | ? | O | O |
+| 24 | [Spot 주소 메시징](24-spot-address-messaging.ko.md) | O | O | ? | O | O |
+| 25 | [Stage Wrapper](25-stage-wrapper-on-spot.ko.md) | O | O | ? | O | O |
+
+### 2.4 STREAM (3x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 30 | [STREAM 서버 세션](30-stream-session.ko.md) | O | O | ? | O | O |
+| 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | ? | O | O |
+| 32 | [Stream Connector](32-stream-connector.ko.md) | O | O | ? | **△** 브라우저 flow 문맥 [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | O |
+
+### 2.5 Location (4x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 40 | [location runtime](40-location-runtime.ko.md) | O | O | ? | O | O |
+| 41 | [Redis location store](41-location-store-redis.ko.md) | O | O | ? | O | O |
+
+### 2.6 관측 · 운영 (5x)
+
+| # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | O | ? | O | O |
+| 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | O | **△** Config 6·8만 검증 | ? | O | O |
+| 52 | [메시지 흐름 추적](52-message-flow-tracing.ko.md) | O | **△** Config 6·8만 검증 | ? | **△** 브라우저 `MFLOW-EXT-014` [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | O |
+| 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | ? | ? | O | O |
+| 54 | [Graceful Drain](54-graceful-drain-handoff.ko.md) | O | **△** Config 6·8만 검증 | ? | O | O |
+
+### 2.7 열려 있는 gap 요약
+
+**모든 X·△를 여기 모은다.** 이 목록이 비면 구현이 정본을 전부 따른 것이다.
+
+| gap | 언어 | 내용 |
+|---|---|---|
+| [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | **Node** | 브라우저 진입점에는 `AsyncLocalStorage`에 해당하는 표준이 없어 **handler가 `await`하는 동안 관련 없는 callback에 inbound flow가 노출될 수 있다.** `MFLOW-EXT-014` 미충족 |
+| [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
+| [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
+| 전 영역 | **Kotlin** | Kotlin 고유 표면(`suspend`·`Flow`·DSL)이 각 스펙을 만족하는지 **이 문서가 검증하지 않았다** |
+| §51·§52·§54 | **Java** | 관측·운영 계약을 **Config 6·8에서만 검증했다.** 나머지 Config는 미검증 |
+
+**connector wire 계약(§10.1~§10.7)은 2026-07-13에 3개 구현 모두 해소했다**(§10).
 
 ## 3. Java/Kotlin
 
@@ -430,7 +497,7 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
 회귀 검사로 같은 계약에 맞췄다.
 
-## 10.8 dispatch 실패의 로그 수준
+### 10.8 dispatch 실패의 로그 수준
 
 **미충족(`.NET`).** [channel 메시징 §3.1](11-channel-messaging.ko.md)은 **handler 예외를 one-way
 경로에서도 Error로 기록**하고, handler 없음·decode 실패·invalid frame은 send는 Warning, publish는
@@ -444,7 +511,7 @@ Debug로 구분하도록 규정한다.
 구성에서 **오류 수준 구분이 사라진다.** 로그 파일을 지정하면 그쪽으로 출력하고 shared logger에는
 남기지 않는다. 기본 구성에서는 **application 코드가 던진 예외가 정보성 로그로 묻힌다.**
 
-## 10.9 handler filter의 적용 범위
+### 10.9 handler filter의 적용 범위
 
 **정보(설계 결정).** [framework API §2.6](05-framework-api.ko.md)이 규정하듯 filter는 **channel
 dispatch 경로에만** 적용한다. `.NET`에서 SPOT handler·STREAM session handler·route-mesh handler는

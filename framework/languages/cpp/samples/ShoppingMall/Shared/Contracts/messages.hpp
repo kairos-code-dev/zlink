@@ -66,6 +66,94 @@ struct get_order_state_res_t
     order_state_t state;
 };
 
+/* 공통 sample spec §11: 주문 이벤트 스트림 레코드. payload는 이벤트 종류별 필드를 담는다. */
+struct stored_order_event_t
+{
+    std::string event_id;
+    std::string source_command_id;
+    std::string order_id;
+    std::string event_type;
+    nlohmann::json payload = nlohmann::json::object ();
+    std::int64_t version{};
+    std::int64_t created_at_unix_ms{};
+};
+
+struct order_event_types_t
+{
+    static constexpr const char *order_started = "OrderStartedEvent";
+    static constexpr const char *inventory_reserved = "InventoryReservedEvent";
+    static constexpr const char *inventory_reservation_failed = "InventoryReservationFailedEvent";
+    static constexpr const char *payment_authorized = "PaymentAuthorizedEvent";
+    static constexpr const char *payment_failed = "PaymentFailedEvent";
+    static constexpr const char *inventory_released = "InventoryReleasedEvent";
+    static constexpr const char *order_confirmed = "OrderConfirmedEvent";
+    static constexpr const char *order_failed = "OrderFailedEvent";
+};
+
+/* 모듈 호출 계약(§11). ReservationId·PaymentId는 owner spot이 결정적으로 만들어 넘기고, 모듈은
+ * 같은 id로 다시 부르면 최초 결과를 그대로 돌려준다. */
+struct reserve_inventory_command_t
+{
+    std::string order_id;
+    std::string reservation_id;
+    std::vector<order_line_input_t> lines;
+};
+
+struct reserve_inventory_result_t
+{
+    bool accepted{};
+    std::string reason;
+};
+
+struct release_inventory_command_t
+{
+    std::string order_id;
+    std::string reservation_id;
+    std::string reason;
+};
+
+struct release_inventory_result_t
+{
+    bool released{};
+};
+
+struct authorize_payment_command_t
+{
+    std::string order_id;
+    std::string payment_id;
+    std::string payment_method_id;
+    double amount{};
+    std::string currency;
+};
+
+struct authorize_payment_result_t
+{
+    bool accepted{};
+    std::string reason;
+};
+
+/* self-check 시드(§11). */
+struct cart_seed_t
+{
+    std::string cart_id;
+    std::vector<order_line_input_t> lines;
+    double amount{};
+    std::string currency;
+};
+
+struct inventory_seed_t
+{
+    std::string sku;
+    int available_quantity{};
+};
+
+struct payment_method_seed_t
+{
+    std::string payment_method_id;
+    bool should_authorize{};
+    std::string failure_reason;
+};
+
 struct start_order_workflow_req_t
 {
     static constexpr const char *packet_name = "StartOrderWorkflowReq";
@@ -83,6 +171,13 @@ struct start_order_workflow_res_t
 {
     static constexpr const char *packet_name = "StartOrderWorkflowRes";
     order_state_t state;
+};
+
+/* 시작 handler가 스스로 예약하는 재개 호출(§9.3). 응답을 기다리지 않는 one-way다. */
+struct continue_order_workflow_msg_t
+{
+    static constexpr const char *packet_name = "ContinueOrderWorkflowMsg";
+    std::string order_id;
 };
 
 struct continue_order_workflow_req_t
@@ -183,6 +278,80 @@ inline void from_json (const nlohmann::json &json, order_line_input_t &value)
     value.sku = json.value ("sku", "");
     value.quantity = json.value ("quantity", 0);
 }
+
+inline void to_json (nlohmann::json &json, const continue_order_workflow_msg_t &value)
+{
+    json = {{"orderId", value.order_id}};
+}
+
+inline void from_json (const nlohmann::json &json, continue_order_workflow_msg_t &value)
+{
+    value.order_id = json_string (json, "orderId", "order_id");
+}
+
+inline void to_json (nlohmann::json &json, const stored_order_event_t &value)
+{
+    json = {{"eventId", value.event_id},
+            {"sourceCommandId", value.source_command_id},
+            {"orderId", value.order_id},
+            {"eventType", value.event_type},
+            {"payload", value.payload},
+            {"version", value.version},
+            {"createdAtUnixMs", value.created_at_unix_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, stored_order_event_t &value)
+{
+    value.event_id = json.value ("eventId", "");
+    value.source_command_id = json.value ("sourceCommandId", "");
+    value.order_id = json.value ("orderId", "");
+    value.event_type = json.value ("eventType", "");
+    value.payload = json.contains ("payload") ? json.at ("payload") : nlohmann::json::object ();
+    value.version = json.value ("version", std::int64_t{0});
+    value.created_at_unix_ms = json.value ("createdAtUnixMs", std::int64_t{0});
+}
+
+inline void to_json (nlohmann::json &json, const cart_seed_t &value)
+{
+    json = {{"cartId", value.cart_id},
+            {"lines", value.lines},
+            {"amount", value.amount},
+            {"currency", value.currency}};
+}
+
+inline void from_json (const nlohmann::json &json, cart_seed_t &value)
+{
+    value.cart_id = json.value ("cartId", "");
+    value.lines = json.value ("lines", std::vector<order_line_input_t>{});
+    value.amount = json.value ("amount", 0.0);
+    value.currency = json.value ("currency", "");
+}
+
+inline void to_json (nlohmann::json &json, const inventory_seed_t &value)
+{
+    json = {{"sku", value.sku}, {"availableQuantity", value.available_quantity}};
+}
+
+inline void from_json (const nlohmann::json &json, inventory_seed_t &value)
+{
+    value.sku = json.value ("sku", "");
+    value.available_quantity = json.value ("availableQuantity", 0);
+}
+
+inline void to_json (nlohmann::json &json, const payment_method_seed_t &value)
+{
+    json = {{"paymentMethodId", value.payment_method_id},
+            {"shouldAuthorize", value.should_authorize},
+            {"failureReason", value.failure_reason}};
+}
+
+inline void from_json (const nlohmann::json &json, payment_method_seed_t &value)
+{
+    value.payment_method_id = json.value ("paymentMethodId", "");
+    value.should_authorize = json.value ("shouldAuthorize", false);
+    value.failure_reason = json.value ("failureReason", "");
+}
+
 
 inline void to_json (nlohmann::json &json, const start_order_req_t &value)
 {

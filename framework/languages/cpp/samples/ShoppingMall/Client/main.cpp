@@ -78,7 +78,9 @@ int main ()
     const auto success_req =
       start_order_req_t{"cart-success", "addr-home", "pm-ok", "order-success-001"};
     auto success = api_a.post ("/orders/start").body (success_req).fetch<start_order_res_t> ();
-    ensure (success.status == order_status_t::confirmed, "successful order is confirmed");
+    /* 공통 sample spec §15: 새 주문의 StartOrderRes는 `Created`만 담고 즉시 돌아온다. 종료는
+     * GetOrderStateReq 폴링으로 확인한다. */
+    ensure (success.status == order_status_t::created, "new order responds Created");
     auto created = get_order (api_a, success.order_id);
     ensure (is_started_or_confirmed (created), "successful order was created");
     ensure (created.shipping_address_id == success_req.shipping_address_id, "shipping address");
@@ -111,9 +113,10 @@ int main ()
     ensure (pending_ok.ok, "pending hook");
     auto pending = api_b.post ("/orders/start").body (pending_req).fetch<start_order_res_t> ();
     ensure (pending.order_id == "order-pending-0001", "pending order id");
-    ensure (pending.status == order_status_t::confirmed, "pending confirmed");
-    auto pending_created = get_order (api_a, pending.order_id);
-    ensure (is_started_or_confirmed (pending_created), "pending created");
+    ensure (pending.status == order_status_t::created, "pending recovered as Created");
+    auto pending_confirmed =
+      wait_for_status (api_a, pending.order_id, order_status_t::confirmed);
+    ensure (pending_confirmed.status == order_status_t::confirmed, "pending confirmed");
 
     const auto resume_req =
       start_order_req_t{"cart-success", "addr-home", "pm-ok", "order-resume-001"};

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 namespace zlink::samples::shoppingmall
 {
@@ -35,57 +36,50 @@ class commerce_api_handlers_t
     {
     }
 
+    /* 공통 sample spec §16: CommerceApi는 HTTP API·검증·멱등 키 조회·조회 모델 조회만 맡고
+     * 도메인 이벤트를 기록하지 않는다. 새 주문의 응답은 `Created`이며, 나머지 단계는 owner가
+     * 배경에서 진행한다(§9.3). 클라이언트는 GetOrderState 폴링으로 종료를 확인한다. */
     task_t<start_order_res_t> start_order (const start_order_req_t &request)
     {
         auto command = _store.update ([&] (nlohmann::json &state) {
             auto &mappings = state["idempotency"];
-            if (mappings.contains (request.idempotency_key)
-                && mappings[request.idempotency_key].value ("started", false)) {
-                const auto order_id =
-                  mappings[request.idempotency_key].value ("orderId", std::string{});
-                const auto current = state["readModels"][order_id].get<order_state_t> ();
-                return start_order_workflow_req_t{current.order_id,
-                                                  request.cart_id,
-                                                  request.shipping_address_id,
-                                                  request.payment_method_id,
-                                                  request.idempotency_key,
-                                                  {},
-                                                  current.amount,
-                                                  current.currency};
-            }
             if (!mappings.contains (request.idempotency_key)) {
                 const auto next = state.value ("nextOrderSequence", 0) + 1;
                 state["nextOrderSequence"] = next;
-                mappings[request.idempotency_key] =
-                  nlohmann::json{{"orderId", "order-" + std::string (4 - std::to_string (next).size (), '0')
-                                               + std::to_string (next)},
-                                 {"ownerInstanceId", _instance.instance_id},
-                                 {"started", false}};
+                mappings[request.idempotency_key] = nlohmann::json{
+                  {"orderId", "order-" + std::string (4 - std::to_string (next).size (), '0')
+                                + std::to_string (next)},
+                  {"ownerInstanceId", _instance.instance_id},
+                  {"started", false}};
             }
             const auto order_id =
               mappings[request.idempotency_key].value ("orderId", std::string{});
-            state["orderPaymentMethods"][order_id] = request.payment_method_id;
-            const auto inventory_fail = request.cart_id == "cart-inventory-fail";
-            return start_order_workflow_req_t{
-              order_id,
-              request.cart_id,
-              request.shipping_address_id,
-              request.payment_method_id,
-              request.idempotency_key,
-              inventory_fail ? std::vector<order_line_input_t>{{"sku-rare", 1}}
-                             : std::vector<order_line_input_t>{{"sku-ok", 1}},
-              inventory_fail ? 1200.0 : 120.0,
-              "USD"};
+
+            /* 장바구니는 CommerceStateStore의 시드에서 읽어 검증한다 — 금액 범위나 cart id
+             * 문자열 비교로 성공·실패를 흉내내지 않는다. */
+            if (!state["carts"].contains (request.cart_id)) {
+                throw std::runtime_error ("Unknown cart: " + request.cart_id);
+            }
+            const auto cart = state["carts"][request.cart_id].get<cart_seed_t> ();
+            mappings[request.idempotency_key]["started"] = true;
+            return start_order_workflow_req_t{order_id,
+                                              request.cart_id,
+                                              request.shipping_address_id,
+                                              request.payment_method_id,
+                                              request.idempotency_key,
+                                              cart.lines,
+                                              cart.amount,
+                                              cart.currency};
         });
 
         const auto owner = _topology.for_order_id (command.order_id);
         auto state =
           (co_await request_workflow<start_order_workflow_res_t> (owner.instance_id, command)).state;
-        (void) co_await request_workflow<continue_order_workflow_res_t> (
-          owner.instance_id, continue_order_workflow_req_t{state.order_id});
-        state = _store.read ([&] (const nlohmann::json &saved) {
-            return saved["readModels"][command.order_id].get<order_state_t> ();
-        });
+        /* 나머지 단계를 진행할 재개 호출을 기다리지 않고 예약한다(§9.3). 결제 지연이 HTTP 응답
+         * 지연이 되지 않도록, 응답은 여기서 바로 돌려주고 진행은 배경에서 이어진다. */
+        if (state.status != order_status_t::confirmed && state.status != order_status_t::failed) {
+            co_await schedule_continue (state.order_id);
+        }
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
         co_return start_order_res_t{state.order_id, state.status};
@@ -110,19 +104,35 @@ class commerce_api_handlers_t
         return {};
     }
 
+    /* self-check hook(§15 "죽은 뒤 재개"): 배경 재개를 InventoryReserved에서 멈춰 중간 상태를
+     * 만든다. API가 이벤트 스트림을 잘라내는 게 아니라, owner의 루프가 이 hook을 보고 멈춘다. */
     task_t<start_order_res_t> prepare_inventory_reserved (const start_order_req_t &request)
     {
+        const auto order_id = _store.update ([&] (nlohmann::json &state) {
+            auto &mappings = state["idempotency"];
+            if (!mappings.contains (request.idempotency_key)) {
+                const auto next = state.value ("nextOrderSequence", 0) + 1;
+                state["nextOrderSequence"] = next;
+                mappings[request.idempotency_key] = nlohmann::json{
+                  {"orderId", "order-" + std::string (4 - std::to_string (next).size (), '0')
+                                + std::to_string (next)},
+                  {"ownerInstanceId", _instance.instance_id},
+                  {"started", false}};
+            }
+            const auto id = mappings[request.idempotency_key].value ("orderId", std::string{});
+            state["testHooks"]["stopAt"][id] = order_status_t::inventory_reserved;
+            return id;
+        });
+        (void) order_id;
+
         auto response = co_await start_order (request);
-        _store.update ([&] (nlohmann::json &state) {
-            auto current = state["readModels"][response.order_id].get<order_state_t> ();
-            current.status = order_status_t::inventory_reserved;
-            current.reservation_id = "reservation-" + response.order_id;
-            state["readModels"][response.order_id] = current;
-            auto &events = state["events"][response.order_id];
-            while (events.size () > 2) events.erase (events.end () - 1);
+        auto state = co_await wait_for_status (response.order_id,
+                                               order_status_t::inventory_reserved);
+        _store.update ([&] (nlohmann::json &saved) {
+            saved["testHooks"]["stopAt"].erase (response.order_id);
             return true;
         });
-        co_return start_order_res_t{response.order_id, order_status_t::inventory_reserved};
+        co_return start_order_res_t{response.order_id, state.status};
     }
 
     task_t<continue_order_workflow_res_t> continue_order (const continue_order_workflow_req_t &request)
@@ -210,6 +220,37 @@ class commerce_api_handlers_t
     }
 
   private:
+    /* 조회 모델을 폴링해 원하는 상태에 도달할 때까지 기다린다(self-check hook 전용). */
+    task_t<order_state_t> wait_for_status (const std::string &order_id, const std::string &status)
+    {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            auto current = _store.read ([&] (const nlohmann::json &state) {
+                return state["readModels"].contains (order_id)
+                         ? state["readModels"][order_id].get<order_state_t> ()
+                         : order_state_t{};
+            });
+            if (current.status == status) {
+                co_return current;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        }
+        throw framework_exception_t (framework_error_kind_t::request_failed,
+                                     "Order '" + order_id + "' did not reach status " + status);
+    }
+
+    task_t<void> schedule_continue (const std::string &order_id)
+    {
+        auto target =
+          co_await _spot_handles.resolve_spot_handle (spot_rid_t::from_string (order_id));
+        if (!target) {
+            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
+                                         "Order workflow spot '" + order_id
+                                           + "' has no live location row");
+        }
+        _routes.send_to_spot (*target, continue_order_workflow_msg_t{order_id}).submit ();
+        co_return;
+    }
+
     template <typename TReply, typename TRequest>
     task_t<TReply> request_workflow (const std::string &owner_instance_id, const TRequest &request)
     {

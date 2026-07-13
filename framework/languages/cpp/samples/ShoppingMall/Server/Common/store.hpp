@@ -54,6 +54,9 @@ class redis_state_store_t
         return func (state);
     }
 
+    /* 공통 sample spec §11: runner가 띄운 CommerceApi가 self-check 시드를 멱등하게 넣는다.
+     * 재고 실패는 AvailableQuantity 부족 장바구니가, 결제 실패는 ShouldAuthorize=false 결제수단이
+     * 만든다 — 금액 범위나 문자열 비교로 흉내내지 않는다. */
     void seed_defaults () const
     {
         update ([] (nlohmann::json &state) {
@@ -61,13 +64,29 @@ class redis_state_store_t
             state = nlohmann::json::object ();
             state["nextOrderSequence"] = 0;
             state["idempotency"] = nlohmann::json::object ();
-            state["orderPaymentMethods"] = nlohmann::json::object ();
             state["events"] = nlohmann::json::object ();
             state["readModels"] = nlohmann::json::object ();
-            state["inventory"] = {{"sku-ok", 100}, {"sku-rare", 0}};
-            state["releasedReservations"] = nlohmann::json::object ();
+            state["orderCommands"] = nlohmann::json::object ();
+            state["reservations"] = nlohmann::json::object ();
             state["payments"] = nlohmann::json::object ();
+            state["releasedReservations"] = nlohmann::json::object ();
             state["paymentAttempts"] = nlohmann::json::object ();
+            state["testHooks"] = nlohmann::json::object ();
+
+            state["carts"] = nlohmann::json::object ();
+            state["carts"]["cart-success"] =
+              cart_seed_t{"cart-success", {{"sku-ok", 1}}, 120.0, "USD"};
+            state["carts"]["cart-inventory-fail"] =
+              cart_seed_t{"cart-inventory-fail", {{"sku-rare", 1}}, 120.0, "USD"};
+
+            state["inventory"] = nlohmann::json::object ();
+            state["inventory"]["sku-ok"] = inventory_seed_t{"sku-ok", 100};
+            state["inventory"]["sku-rare"] = inventory_seed_t{"sku-rare", 0};
+
+            state["paymentMethods"] = nlohmann::json::object ();
+            state["paymentMethods"]["pm-ok"] = payment_method_seed_t{"pm-ok", true, ""};
+            state["paymentMethods"]["pm-decline"] =
+              payment_method_seed_t{"pm-decline", false, "payment declined"};
         });
     }
 
@@ -282,7 +301,7 @@ inline std::vector<std::string> event_types_for (const nlohmann::json &state,
     std::vector<std::string> result;
     if (!state["events"].contains (order_id)) return result;
     for (const auto &event : state["events"][order_id]) {
-        result.push_back (event.value ("type", ""));
+        result.push_back (event.value ("eventType", ""));
     }
     return result;
 }

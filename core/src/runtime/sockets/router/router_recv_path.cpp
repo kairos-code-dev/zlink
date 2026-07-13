@@ -97,23 +97,20 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
         errno_assert (rc == 0);
     }
 
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
     if (router_debug_enabled ()) {
         fprintf (stderr, "router xattach_pipe: pipe=%p local=%d routing_id_ok=%d\n",
                  static_cast<void *> (pipe_), locally_initiated_ ? 1 : 0, routing_id_ok ? 1 : 0);
     }
     if (routing_id_ok) {
-        {
-            socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
-            _fq.attach (pipe_);
-            (void) pipe_->check_read ();
-            if (socket_msg_dispatch_active ())
-                _fq.deactivate (pipe_);
-        }
+        _fq.attach (pipe_);
+        (void) pipe_->check_read ();
+        if (socket_msg_dispatch_active ())
+            _fq.deactivate (pipe_);
         if (local_peer_weight () != 100)
             send_local_peer_weight (pipe_);
     } else {
-        socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
         const blob_t &routing_id = pipe_->get_routing_id ();
         const out_pipe_t *const out_pipe =
           routing_id.size () > 0 ? lookup_out_pipe (routing_id) : NULL;
@@ -125,7 +122,7 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
             if (socket_msg_dispatch_active ())
                 _fq.deactivate (pipe_);
         } else {
-            _anonymous_pipes.insert (pipe_);
+            _anonymous_pipes[pipe_] = locally_initiated_;
         }
     }
 }
@@ -133,7 +130,7 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
 void zlink::router_t::xread_activated (pipe_t *pipe_)
 {
     socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
-    const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
+    const std::map<pipe_t *, bool>::iterator it = _anonymous_pipes.find (pipe_);
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text, sizeof (rid_text));
@@ -143,7 +140,7 @@ void zlink::router_t::xread_activated (pipe_t *pipe_)
     if (it == _anonymous_pipes.end ())
         _fq.activated (pipe_);
     else {
-        const bool routing_id_ok = identify_peer (pipe_, false);
+        const bool routing_id_ok = identify_peer (pipe_, it->second);
         if (router_debug_enabled ()) {
             fprintf (stderr, "router xread_activated identify_peer: pipe=%p ok=%d\n",
                      static_cast<void *> (pipe_), routing_id_ok ? 1 : 0);

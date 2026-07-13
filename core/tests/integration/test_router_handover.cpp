@@ -283,6 +283,86 @@ void test_callback_dispatch_cross_direction_duplicate_converges ()
     test_context_socket_close_zero_linger (server_one);
 }
 
+void test_async_handshake_preserves_outgoing_direction ()
+{
+    const int handover = ZLINK_RID_DUPLICATE_HANDOVER;
+    const int zero = 0;
+    const int probe_timeout = 500;
+    char client_endpoint[MAX_SOCKET_STRING];
+    char server_endpoint[MAX_SOCKET_STRING];
+
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "C", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_RID_DUPLICATE_POLICY, &handover, sizeof handover));
+    bind_loopback_ipv4 (client, client_endpoint, sizeof client_endpoint);
+
+    void *endpoint_reservation = test_context_socket (ZLINK_SOCKET_ROUTER);
+    bind_loopback_ipv4 (endpoint_reservation, server_endpoint, sizeof server_endpoint);
+    test_context_socket_close_zero_linger (endpoint_reservation);
+
+    zlink_routing_id_t unavailable_rid;
+    memset (&unavailable_rid, 0, sizeof unavailable_rid);
+    unavailable_rid.size = 1;
+    unavailable_rid.data[0] = 'X';
+    zlink_msg_t unavailable_request;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&unavailable_request, 1));
+    *static_cast<unsigned char *> (zlink_msg_data (&unavailable_request)) = 0;
+    (void) zlink_router_request (client, &unavailable_rid, &unavailable_request, 1,
+                                 &ignore_reply, NULL, ZLINK_DONTWAIT, 1);
+
+    // Start the connection before the peer exists so its routing id cannot be
+    // available when the locally initiated pipe is first attached.
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, server_endpoint));
+    msleep (SETTLE_TIME);
+
+    void *server_one = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_one, "S", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_one, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_one, ZLINK_OPT_RCVTIMEO, &probe_timeout,
+                        sizeof probe_timeout));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server_one, server_endpoint));
+
+    // No connect routing id is supplied. The client therefore learns S from
+    // the asynchronous handshake and must retain that it initiated this pipe.
+    msleep (SETTLE_TIME);
+    send_request_to_activate_callback_dispatch (client, server_one, "S");
+
+    void *server_two = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_two, "S", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_two, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server_two, ZLINK_OPT_RCVTIMEO, &probe_timeout,
+                        sizeof probe_timeout));
+
+    // C sorts before S, so the original C -> S ROUTER direction must remain
+    // selected when a new inbound peer claims S. Losing the anonymous pipe's
+    // direction makes this look like a same-side reconnect and incorrectly
+    // hands S over to the DEALER.
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (server_two, client_endpoint));
+    send_string_expect_success (server_two, "identify", 0);
+    msleep (SETTLE_TIME);
+
+    for (int i = 0; i < 10; ++i) {
+        send_string_expect_success (client, "S", ZLINK_SNDMORE);
+        send_string_expect_success (client, "stable", 0);
+        recv_string_expect_success (server_one, "C", 0);
+        recv_string_expect_success (server_one, "stable", 0);
+    }
+
+    char buffer[255];
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (server_two, buffer, sizeof buffer, 0));
+
+    test_context_socket_close_zero_linger (server_two);
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server_one);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -292,5 +372,6 @@ int main ()
     RUN_TEST (test_without_handover);
     RUN_TEST (test_callback_dispatch_same_direction_reconnect_handover);
     RUN_TEST (test_callback_dispatch_cross_direction_duplicate_converges);
+    RUN_TEST (test_async_handshake_preserves_outgoing_direction);
     return UNITY_END ();
 }

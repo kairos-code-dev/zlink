@@ -303,18 +303,24 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         }
 
         bool needs_route_registration = false;
+        bool locally_initiated = false;
         if (socket_pipe) {
+            const std::map<pipe_t *, bool>::const_iterator anonymous =
+              _anonymous_pipes.find (socket_pipe);
+            if (anonymous != _anonymous_pipes.end ())
+                locally_initiated = anonymous->second;
             blob_t routing_id_ref (
               const_cast<unsigned char *> (static_cast<unsigned char *> (msg_->data ())),
               msg_->size (), zlink::reference_tag_t ());
             const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_ref);
             needs_route_registration =
-              _anonymous_pipes.count (socket_pipe) != 0 || existing_outpipe == NULL
+              anonymous != _anonymous_pipes.end () || existing_outpipe == NULL
               || !existing_outpipe->active || existing_outpipe->weight == 0;
         }
         if (needs_route_registration) {
             blob_t routing_id (static_cast<unsigned char *> (msg_->data ()), msg_->size ());
-            if (adopt_peer_routing_id (socket_pipe, ZLINK_MOVE (routing_id), false))
+            if (adopt_peer_routing_id (
+                  socket_pipe, ZLINK_MOVE (routing_id), locally_initiated))
                 promote_anonymous_pipe_for_dispatch (socket_pipe);
         }
         store_dispatch_source_rid (&_dispatch_source_rids, source_pipe, &_dispatch_source_rid,

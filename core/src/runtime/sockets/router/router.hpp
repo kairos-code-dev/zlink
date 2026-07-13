@@ -88,8 +88,10 @@ class router_t : public routing_socket_base_t
     //  If true, more incoming message parts are expected.
     bool _more_in;
 
-    //  We keep a set of pipes that have not been identified yet.
-    std::set<pipe_t *> _anonymous_pipes;
+    //  Pipes awaiting a peer routing id retain whether this socket initiated
+    //  the transport. Duplicate admission needs that direction after the
+    //  asynchronous handshake completes.
+    std::map<pipe_t *, bool> _anonymous_pipes;
 
     //  The pipe we are currently writing to.
     zlink::pipe_t *_current_out;

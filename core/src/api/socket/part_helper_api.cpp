@@ -496,8 +496,19 @@ int zlink::part_helper_internal::prepare_staged_send_step (
         *first_part_out_ = true;
     } else {
         if (!send_spec_equals (state->send.spec, spec_)) {
-            errno = EINVAL;
-            return -1;
+            send_sequence_spec_t upgraded = state->send.spec;
+            upgraded.timeout_ms = spec_.timeout_ms;
+            upgraded.handler = spec_.handler;
+            upgraded.userdata = spec_.userdata;
+            const bool can_upgrade_staged_request =
+              state->send.spec.request_like && spec_.request_like
+              && state->send.spec.handler == NULL && spec_.handler != NULL
+              && send_spec_equals (upgraded, spec_);
+            if (!can_upgrade_staged_request) {
+                errno = EINVAL;
+                return -1;
+            }
+            state->send.spec = spec_;
         }
         *first_part_out_ = false;
     }

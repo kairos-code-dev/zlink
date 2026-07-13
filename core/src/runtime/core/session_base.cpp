@@ -108,8 +108,14 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
 
 const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
 {
-    if (_pipe)
-        return _pipe->get_routing_id ();
+    if (_pipe) {
+        const blob_t &routing_id = _pipe->get_routing_id ();
+        if (routing_id.size () > 0)
+            return routing_id;
+        const pipe_t *peer = _pipe->get_peer ();
+        if (peer)
+            return peer->get_routing_id ();
+    }
     static const blob_t empty_routing_id;
     return empty_routing_id;
 }

@@ -171,7 +171,7 @@ void router_t::promote_anonymous_pipe_for_dispatch (pipe_t *pipe_)
     if (!pipe_)
         return;
 
-    const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
+    const std::map<pipe_t *, bool>::iterator it = _anonymous_pipes.find (pipe_);
     if (it == _anonymous_pipes.end ())
         return;
 

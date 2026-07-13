@@ -1,30 +1,30 @@
-# Registry — topology 조회
+# Location topology 조회
 
-registry 는 service topology 를 관리하고 discovery 의 기준점이 된다. Node 버전은
-embedded registry 와 remote query client 를 모두 제공한다.
+Node framework는 별도 Registry 서버나 원격 Registry query client를 공개하지 않는다. 서버 자동
+연결과 Spot·actor 위치 조회는 등록한 location store를 통해 수행한다. 애플리케이션이 현재 runtime의
+topology를 확인해야 하면 framework가 제공하는 location runtime query를 사용한다.
 
-## 1. embedded registry
-
-```ts
-ZLinkRegistryModule.forRoot({
-  pubEndpoint: 'tcp://0.0.0.0:5550',
-  routerEndpoint: 'tcp://0.0.0.0:5551',
-});
-```
-
-topology, member peers 를 조회한다. query 는 lazy startup 의미를 가진다.
-
-## 2. remote query client
+## 1. location store 등록
 
 ```ts
-  endpoint: 'tcp://registry:5551',
+const builder = zlinkFramework()
+  .addLocationStore(redisLocationStore); // 이 실행이 사용하는 공유 location store를 등록한다.
+Object.assign(builder.configureLocations(), {
+  pollingIntervalMs: 1_000, // watch가 없을 때 location 변경을 확인하는 주기다.
 });
+const options = builder.build();
 ```
 
-remote query client 는 topology snapshot 만 제공한다. 이는 하부 binding의 public API
-폭과 같다.
+샘플과 E2E에서는 공식 Redis location store extension을 사용한다. Redis endpoint와 key prefix의
+격리, container 수명 관리는 runner가 맡고 애플리케이션 코드는 Docker를 직접 제어하지 않는다.
+
+## 2. runtime query
+
+NestJS 애플리케이션은 `ZLINK_LOCATION_RUNTIME_QUERY` token으로
+`ZLinkLocationRuntimeQuery`를 주입받는다. query는 framework가 이미 유지하는 location 상태를
+읽으며 별도 원격 Registry 연결을 만들지 않는다.
 
 ## 회귀 테스트
 
-registry runtime 과 query client 는 `test/contract/registry-runtime.test.js` 에서
-확인한다.
+location store와 runtime query는 `location-runtime.test.js`, `location-filter-parity.test.js`와
+공통 E2E location 시나리오에서 확인한다.

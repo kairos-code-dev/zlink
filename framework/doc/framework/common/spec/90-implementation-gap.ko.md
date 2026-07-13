@@ -280,7 +280,7 @@ framework의 다중 session 회귀 검사에서 지정된 session만 종료되�
 검증 환경에 headless 브라우저 실행 도구가 없어 실제 브라우저 프로세스는 실행하지 않았다.
 배포 전 브라우저 호환성 확인에서는 같은 WSS 시나리오를 실제 브라우저에서도 실행한다.
 
-남은 gap은 [flow correlation MFLOW-EXT-014](flow-correlation.ko.md)의 비동기 실행 문맥이다.
+남은 gap은 [flow correlation MFLOW-EXT-014](53-flow-correlation.ko.md)의 비동기 실행 문맥이다.
 현재 `BrowserZlinkFlowContext`는 한 connector instance의 current flow를 handler Promise가 끝날 때까지
 유지한다. 그래서 handler가 `await`로 기다리는 동안 관련 없는 timer나 UI callback이 같은 connector로
 메시지를 보내면 inbound flow를 잘못 재사용할 수 있다. callback 직후 current flow를 복원하면
@@ -411,18 +411,18 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 
 ## 10. Stream Connector wire·검증 계약 차이
 
-[Stream Connector 공통 스펙](stream-connector.ko.md)을 정본으로 두고 3개 connector 구현을
+[Stream Connector 공통 스펙](32-stream-connector.ko.md)을 정본으로 두고 3개 connector 구현을
 대조한 결과다. 아래는 **스펙이 맞고 구현이 틀린** 항목이다. 브라우저 실행 환경 차이는
 §4.10이 따로 소유한다.
 
 | # | 항목 | 정본 | 현재 구현 |
 |---|------|------|-----------|
-| 10.1 | **Response/Error packet name 검증** | `Response`·`Error`의 packet name은 원래 request와 같아야 한다([§5.2](stream-connector.ko.md)) | Node는 request name을 pending에 보존하고 두 reply kind에서 검증한다. `.NET`·C++는 `request_seq`만으로 pending을 완료한다 |
-| 10.2 | **Error payload 포맷** | codec과 무관하게 UTF-8 JSON object `{"code","message"}`([§5.3](stream-connector.ko.md)) | Node는 압축 해제 뒤 JSON object와 두 string field를 검증한다. C++는 Error payload를 단순 문자열로 다룬다 |
-| 10.3 | **metadata 1024바이트 한도** | 전송 전 검증하는 고정 한도이며 **public option으로 조절하지 않는다**([§4.4](stream-connector.ko.md)) | Node는 1024바이트까지 허용하고 초과 송신을 거부한다. C++는 조절 가능한 `max_metadata_size`(기본 8KiB)를 쓴다 |
-| 10.4 | **예약 packet name 범위** | `$zlink.` prefix만 금지한다([§4.6](stream-connector.ko.md)) | C++는 **`$`로 시작하는 모든 이름**을 거부해 계약보다 과하게 막는다 |
-| 10.5 | **수신 메시지 큐 overflow** | 새 message를 버리고 `ReceivedMessageDropped`를 보고한다([§10.1](stream-connector.ko.md)) | `.NET`은 **가장 오래된 미읽음 message를 조용히 밀어낸다.** 오류를 보고하지 않고 `ReceivedMessageDropped` 코드 자체가 없다 |
-| 10.6 | **연결 상태 `Created`** | `Created`는 "생성됐고 아직 연결하지 않음"을 나타내는 초기 상태다([§6](stream-connector.ko.md)) | Java `ZLinkStreamConnectionState`에 **`CREATED`가 없다.** 초기 상태를 `DISCONNECTED`와 구분하지 못해 "한 번도 연결하지 않음"과 "끊김"이 같은 값이 된다 |
+| 10.1 | **Response/Error packet name 검증** | `Response`·`Error`의 packet name은 원래 request와 같아야 한다([§5.2](32-stream-connector.ko.md)) | Node는 request name을 pending에 보존하고 두 reply kind에서 검증한다. `.NET`·C++는 `request_seq`만으로 pending을 완료한다 |
+| 10.2 | **Error payload 포맷** | codec과 무관하게 UTF-8 JSON object `{"code","message"}`([§5.3](32-stream-connector.ko.md)) | Node는 압축 해제 뒤 JSON object와 두 string field를 검증한다. C++는 Error payload를 단순 문자열로 다룬다 |
+| 10.3 | **metadata 1024바이트 한도** | 전송 전 검증하는 고정 한도이며 **public option으로 조절하지 않는다**([§4.4](32-stream-connector.ko.md)) | Node는 1024바이트까지 허용하고 초과 송신을 거부한다. C++는 조절 가능한 `max_metadata_size`(기본 8KiB)를 쓴다 |
+| 10.4 | **예약 packet name 범위** | `$zlink.` prefix만 금지한다([§4.6](32-stream-connector.ko.md)) | C++는 **`$`로 시작하는 모든 이름**을 거부해 계약보다 과하게 막는다 |
+| 10.5 | **수신 메시지 큐 overflow** | 새 message를 버리고 `ReceivedMessageDropped`를 보고한다([§10.1](32-stream-connector.ko.md)) | `.NET`은 **가장 오래된 미읽음 message를 조용히 밀어낸다.** 오류를 보고하지 않고 `ReceivedMessageDropped` 코드 자체가 없다 |
+| 10.6 | **연결 상태 `Created`** | `Created`는 "생성됐고 아직 연결하지 않음"을 나타내는 초기 상태다([§6](32-stream-connector.ko.md)) | Java `ZLinkStreamConnectionState`에 **`CREATED`가 없다.** 초기 상태를 `DISCONNECTED`와 구분하지 못해 "한 번도 연결하지 않음"과 "끊김"이 같은 값이 된다 |
 
 10.1과 10.2는 **wire 호환성 문제**다. Node는 contract test와 browser entrypoint 회귀 검사로
 두 항목을 닫았다. 표에 남은 언어는 계약대로 Error를 보낼 때 동일한 검증과 해석을 해야 한다.

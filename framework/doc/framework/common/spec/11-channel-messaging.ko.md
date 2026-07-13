@@ -5,9 +5,9 @@
 > 이 문서는 **channel messaging의 런타임 계약 정본**이다. channel runtime의 수명, dispatch 실패
 > 정책, startup validation, host 종료 중 호출의 의미를 소유한다.
 >
-> channel 종류와 topology 매핑, 자동·수동 연결은 [channel-topology](channel-topology.ko.md)가,
-> wire의 multipart 구성은 [message-model](message-model.ko.md)이,
-> 상호작용 모델은 [interaction-model](interaction-model.ko.md)이 소유한다.
+> channel 종류와 topology 매핑, 자동·수동 연결은 [channel-topology](10-channel-topology.ko.md)가,
+> wire의 multipart 구성은 [message-model](03-message-model.ko.md)이,
+> 상호작용 모델은 [interaction-model](02-interaction-model.ko.md)이 소유한다.
 >
 > 언어별 등록 표면과 시그니처는 `languages/<lang>/`의 channel 문서가 고정한다.
 
@@ -19,7 +19,7 @@
 - 각 channel runtime은 자기 channel view에 묶인 **자동 연결 reconcile과 outbound 소켓**을
   가진다.
 - 자동 연결 reconcile이 location store의 peer row로 그 channel view의 **provider 목록을
-  유지한다**([location-runtime](location-runtime.ko.md)).
+  유지한다**([location-runtime](40-location-runtime.ko.md)).
 - framework는 그 channel의 **rid 집합과 연결 상태**를 보고 요청을 보낸다.
 
 **이 모델의 핵심은 하나다.**
@@ -73,7 +73,7 @@
 **모든 설정 오류는 host 시작 전에 실패한다.**
 
 **location store가 등록되어 있어도 endpoint를 명시한 역할은 manual 연결을 사용한다.** 다른 역할의
-자동 연결 설정에는 영향을 주지 않는다([channel-topology §5](channel-topology.ko.md)).
+자동 연결 설정에는 영향을 주지 않는다([channel-topology §5](10-channel-topology.ko.md)).
 
 ## 5. Host 종료 중 호출
 
@@ -85,12 +85,12 @@
 - **runtime이 정리될 때 아직 전송되지 않은 pending submit은 예외로 완료된다.** 호출자는 **정상
   완료로 간주하면 안 된다.**
 
-우아한 종료의 전체 수명주기는 [graceful-drain-handoff](graceful-drain-handoff.ko.md)가 소유한다.
+우아한 종료의 전체 수명주기는 [graceful-drain-handoff](54-graceful-drain-handoff.ko.md)가 소유한다.
 
 ## 6. Codec
 
 - 메시지는 **header + payload**다. wire의 multipart 구성은
-  [message-model](message-model.ko.md)이 소유한다.
+  [message-model](03-message-model.ko.md)이 소유한다.
 - **header와 payload를 하나의 envelope로 합쳐 단일 message로 보내지 않는다.** route와 dispatch가
   **header만 먼저 읽고 payload decode를 handler 선택 이후로 늦출 수 있게** 하기 위해서다.
 - **application handler는 여전히 typed payload와 context를 받는다.** multipart 구조는 adapter

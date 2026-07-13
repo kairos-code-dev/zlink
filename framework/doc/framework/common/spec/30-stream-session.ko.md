@@ -5,7 +5,7 @@
 > 이 문서는 **서버 쪽 STREAM 세션 계약의 언어 중립 정본**이다. 세션 표면의 모양, dispatch 모델,
 > 등록 규칙, codec 계층 분리, 오류 경계를 소유한다.
 >
-> client 쪽 계약은 [Stream Connector 공통 스펙](stream-connector.ko.md)이 소유한다. 두 문서는
+> client 쪽 계약은 [Stream Connector 공통 스펙](32-stream-connector.ko.md)이 소유한다. 두 문서는
 > **같은 wire 계약**을 공유한다.
 >
 > 언어별 타입과 시그니처는 `languages/<lang>/`의 STREAM 문서가 고정한다.
@@ -74,7 +74,7 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 - **session handler는 codec별 helper를 직접 호출하지 않는다.** JSON·Protobuf·MessagePack·custom
   codec을 바꿔도 업무 코드는 같은 decode 표면을 쓴다.
 - codec registry는 framework, HTTP client, stream connector가 **공유한다**
-  ([Stream Connector §5.4](stream-connector.ko.md)).
+  ([Stream Connector §5.4](32-stream-connector.ko.md)).
 
 ## 6. 오류 경계
 
@@ -88,8 +88,8 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 **session 오류 callback은 monitor에서 관찰 가능한 transport 오류를 session 단위로 다시 올려주는
 축으로만 제한한다.**
 
-세션이 닫힐 때의 종료 사유는 [Stream Connector §6.2](stream-connector.ko.md)의 닫힌 집합과
-정합하며, 계기는 [runtime-metrics §4.1](runtime-metrics.ko.md)이 소유한다.
+세션이 닫힐 때의 종료 사유는 [Stream Connector §6.2](32-stream-connector.ko.md)의 닫힌 집합과
+정합하며, 계기는 [runtime-metrics §4.1](51-runtime-metrics.ko.md)이 소유한다.
 
 ## 7. 등록 모델
 
@@ -114,10 +114,10 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 ## 8. Session에서 actor로
 
 session이 받은 packet을 actor로 넘기는 계약은
-[session-actor-dispatch](session-actor-dispatch.ko.md)가 소유한다.
+[session-actor-dispatch](31-session-actor-dispatch.ko.md)가 소유한다.
 
 **session callback은 spot 상태를 직접 만지지 않는다.** actor dispatch나 spot 호출을 제출하는
-데까지만 책임진다([stage-wrapper-on-spot §3](stage-wrapper-on-spot.ko.md)).
+데까지만 책임진다([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
 
 ## 9. 회귀 테스트
 

@@ -38,13 +38,13 @@ callback에 inbound flow가 노출될 수 있으므로, 공통 MFLOW-EXT-014를 
 
 **계약은 이미 고정되어 있다.**
 
-- [공통 스펙 §2 — 대상 실행 환경](../../../framework/common/spec/stream-connector.ko.md)
-- [공통 스펙 §3.2 — 환경별 transport 가용성](../../../framework/common/spec/stream-connector.ko.md)
-- [Node 공개 계약 §2 — entrypoint 분리](../../../framework/common/spec/languages/node/stream-connector.ko.md)
+- [공통 스펙 §2 — 대상 실행 환경](../../../framework/common/spec/32-stream-connector.ko.md)
+- [공통 스펙 §3.2 — 환경별 transport 가용성](../../../framework/common/spec/32-stream-connector.ko.md)
+- [Node 공개 계약 §2 — entrypoint 분리](../../../framework/common/spec/languages/node/03-stream-connector.ko.md)
 
 transport 구현과 현재 차이의 근거는
-[Node 공개 계약 §7](../../../framework/common/spec/languages/node/stream-connector.ko.md)과
-[implementation gap §4.10](../../../framework/common/spec/implementation-gap.ko.md)이 소유한다.
+[Node 공개 계약 §7](../../../framework/common/spec/languages/node/03-stream-connector.ko.md)과
+[implementation gap §4.10](../../../framework/common/spec/90-implementation-gap.ko.md)이 소유한다.
 
 ## entrypoint 분리
 
@@ -80,4 +80,4 @@ connector는 STREAM 서버에 연결하는 client library다. 서버 framework p
 않는다. 양쪽은 STREAM header/payload wire 계약만 공유한다.
 
 wire 계약의 정본은
-[Stream Connector 공통 스펙](../../../framework/common/spec/stream-connector.ko.md)이다.
+[Stream Connector 공통 스펙](../../../framework/common/spec/32-stream-connector.ko.md)이다.

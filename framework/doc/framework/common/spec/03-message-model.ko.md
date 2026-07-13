@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](02-interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](10-channel-topology.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Message Model
 
@@ -120,7 +120,7 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 | `error-message` | 실패 원인을 설명하는 문자열 |
 | `source` | 호출자 식별 정보 |
 | `target` | 필요할 때 명시적 대상 정보 |
-| `flow-id` | 여러 단계 호출과 메시지 경계를 잇는 전역 추적 정보. 정확한 생성·전파 계약은 [메시지 흐름 상관관계](flow-correlation.ko.md)가 소유한다. |
+| `flow-id` | 여러 단계 호출과 메시지 경계를 잇는 전역 추적 정보. 정확한 생성·전파 계약은 [메시지 흐름 상관관계](53-flow-correlation.ko.md)가 소유한다. |
 | `causation-id` | 어떤 이전 메시지에서 파생됐는지 식별 |
 
 모든 framework message는 `message-kind`, `packet-name`과 `content-type`을 포함한다.
@@ -250,5 +250,5 @@ core protocol API만 제공한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](02-interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](10-channel-topology.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

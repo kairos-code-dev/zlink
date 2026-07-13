@@ -5,9 +5,9 @@
 > 이 문서는 **SPOT의 개념 위치와 메시징 축의 언어 중립 정본**이다. outbound 축의 분리,
 > publish·subscribe 모델, dispatch 실패 정책, route ingress 규칙, startup validation을 소유한다.
 >
-> SPOT 위에 상위 실행 모델을 얹는 계약은 [stage-wrapper-on-spot](stage-wrapper-on-spot.ko.md),
-> actor 이동은 [spot-actor](spot-actor.ko.md), 노드 등록은 [spot-node](spot-node.ko.md),
-> spot 주소는 [spot-address-messaging](spot-address-messaging.ko.md)이 소유한다.
+> SPOT 위에 상위 실행 모델을 얹는 계약은 [stage-wrapper-on-spot](25-stage-wrapper-on-spot.ko.md),
+> actor 이동은 [spot-actor](23-spot-actor.ko.md), 노드 등록은 [spot-node](21-spot-node.ko.md),
+> spot 주소는 [spot-address-messaging](24-spot-address-messaging.ko.md)이 소유한다.
 >
 > 언어별 등록 표면과 시그니처는 `languages/<lang>/`의 SPOT 문서가 고정한다.
 
@@ -59,7 +59,7 @@ SPOT의 outbound 호출은 **세 축으로 갈라진다.** 각 축이 쓰는 표
 - **spot 대상 호출은 호출자가 resolve해서 보관한 spot handle을 받는다.** framework가 위치 변경
   event와 주기적 조회로 handle의 주소를 갱신한다. 요청 도중 주소가 무효화되면 **안전한 경우에
   한해** 주소를 다시 조회하고 **한 번 재전송한다.** **one-way send는 이미 전달됐을 수 있으므로
-  자동 재전송하지 않는다**([spot-address-messaging](spot-address-messaging.ko.md)).
+  자동 재전송하지 않는다**([spot-address-messaging](24-spot-address-messaging.ko.md)).
 - **`targetRid + spotRid`를 낱개로 받는 raw 호출은** 하부 바인딩에 남아 있더라도 **application의
   기본 API로 문서화하지 않는다.** application은 handle을 resolver로 얻고, handle 안의 위치값을
   낱개로 풀어 쓰지 않는다.
@@ -72,7 +72,7 @@ SPOT의 outbound 호출은 **세 축으로 갈라진다.** 각 축이 쓰는 표
 | **spot outbound** | current SPOT channel publish, 다른 channel send/request, spot-routed send/request |
 
 - **timer는 outbound의 callback scheduler로 두지 않는다.** spot lifecycle 등록 표면 하나로
-  통일한다([stage-wrapper-on-spot §4](stage-wrapper-on-spot.ko.md)).
+  통일한다([stage-wrapper-on-spot §4](25-stage-wrapper-on-spot.ko.md)).
 
 ## 3. Publish 모델
 
@@ -134,7 +134,7 @@ SPOT의 outbound 호출은 **세 축으로 갈라진다.** 각 축이 쓰는 표
 
 - **user Spot은 room·game·stage 같은 하나의 상태 객체다.** 그래서 같은 user Spot 안의 서로 다른
   actor가 같은 상태를 바꾸더라도 **두 handler가 동시에 실행되지 않는다.** application이 spot
-  상태를 lock으로 보호하지 않아도 되는 근거다([stage-wrapper-on-spot §3](stage-wrapper-on-spot.ko.md)).
+  상태를 lock으로 보호하지 않아도 되는 근거다([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
 - **Entry Spot은 특정 room 상태를 소유하는 곳이 아니라 모든 actor가 처음 거쳐 가는 공용 입구다.**
   그래서 **Entry Spot actor packet은 actor별 mailbox에서 순서를 보존한다.** 같은 actor의 packet은
   순서대로 실행되지만, **서로 다른 actor의 packet은 Entry Spot 실행 queue 하나 때문에 서로 기다리지
@@ -179,7 +179,7 @@ channel은 **SPOT route ingress로 지정할 수 없다.**
 - **수동 endpoint와 store 자동 연결을 같은 route 수신 관계에서 섞으면 startup validation
   오류다.**
 - 수동 endpoint가 없으면 framework가 **location store의 peer row를 읽어 자동 연결한다**
-  ([location-runtime](location-runtime.ko.md)).
+  ([location-runtime](40-location-runtime.ko.md)).
 - **handler group이 없어도 transport 전용 channel로 쓸 수 있다.** 반대로 handler group을
   매핑해도 **route ingress가 자동으로 켜지지는 않는다.**
 - egress로 route mesh channel을 쓸 때는 **실제 target 서버 소켓에 연결되어 있어야 한다.**
@@ -204,7 +204,7 @@ channel handler·HTTP handler·background service는 **actor 생성이나 entry 
 - **request·join·worker는 완료 terminator를 하나만 제공한다.** framework는 보호 중인 spot/actor
   상태의 직렬성을 유지하면서 **continuation을 원래 실행 문맥에서 재개한다.**
 - **spot manager는 생성과 조회를 함께 가진다.** 조회를 별도 query 서비스로 분리하지 않는다
-  ([spot-node §3](spot-node.ko.md)).
+  ([spot-node §3](21-spot-node.ko.md)).
 - **subscriber concurrency와 backpressure는 per-handler·per-topic API가 아니라 subscriber 역할
   option에서 노드 단위로 설정한다.**
 - **SPOT mesh channel과 top-level node 등록을 분리해 호출하는 public 경로를 제공하지 않는다.**

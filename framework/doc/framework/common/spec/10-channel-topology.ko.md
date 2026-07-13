@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Message Model](message-model.ko.md) | [다음: ZLink Framework API](framework-api.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Message Model](03-message-model.ko.md) | [다음: ZLink Framework API](05-framework-api.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Channel Topology
 
@@ -51,7 +51,7 @@
   갱신한다. provider는 자기 peer location row를 framework lifecycle로 store에
   등록하고, consumer는 그 row를 조회한 뒤 실제 연결 상태를 맞춘다. row 모델과 자동 연결
   규칙(role matching, pairwise initiator, 장애 중 마지막 연결 판단 유지)은
-  [location runtime](location-runtime.ko.md) §2, §6을 따른다.
+  [location runtime](40-location-runtime.ko.md) §2, §6을 따른다.
 
 수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
 전체 provider 집합을 읽을 수도 있다.
@@ -70,7 +70,7 @@
 전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
 
 이 구조가 일반적인 gateway 기반 호출 모델과 어떻게 다른지, 왜 gateway 없이도
-location transparency를 얻을 수 있는지는 [overview.ko.md](overview.ko.md)의
+location transparency를 얻을 수 있는지는 [01-overview.ko.md](01-overview.ko.md)의
 section 3을 참고한다.
 
 ## 3. 상호작용 모델과 topology 매핑
@@ -180,7 +180,7 @@ channel의 `AuthenticateReq`는 서로 다른 handler로 매핑할 수 있어야
 channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, Entry Spot
 registry, user Spot registry를 namespace로 본다. actor 측 dispatch namespace의 정확한
 모델 (`Entry Spot` / user Spot 별 actor packet 등록, `Configure()` 시점에 한 번 등록 등) 은
-[actor-model.ko.md](actor-model.ko.md) §5에 정의한다.
+[22-actor-model.ko.md](22-actor-model.ko.md) §5에 정의한다.
 
 handler attribute나 annotation은 packet kind와 packet name override를 표현한다.
 channel name은 배포와 topology를 나타내는 값이므로 handler method attribute에
@@ -195,7 +195,7 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 
 - 운영 환경 기본값으로 적합하다.
 - channel name 기준 provider grouping과 자동 갱신에 유리하다. 연결 대상은
-  location store의 peer row에서 resolve된다([location runtime](location-runtime.ko.md) §6).
+  location store의 peer row에서 resolve된다([location runtime](40-location-runtime.ko.md) §6).
 - 각 channel이 자기 channel view를 독립적으로 유지하기에 적합하다.
 - 일반 요청 경로에서는 다른 channel topology를 매번 조회하지 않고, 현재 channel
   view와 `rid` 집합만 보면 된다.
@@ -244,7 +244,7 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
 - 자동 연결이 지금 보고 있는 개별 channel view 밖의 전체 상태(원시 location row,
   runtime이 합성한 topology 보기, status)를 읽을 수 있다
-  ([location runtime](location-runtime.ko.md) §7).
+  ([location runtime](40-location-runtime.ko.md) §7).
 - 일반 요청 경로에서는 runtime query보다 channel view를 기준으로
   동작하는 편을 기본 방향으로 본다.
 
@@ -256,7 +256,7 @@ runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 �
 - socket event source는 `channel + capability` 또는 `spot node + capability`
   기준이 자연스럽다.
   예: `profile.server`, `profile.client`, `stage-node.router`
-- location 계열 event source는 고정 이름을 쓴다([location runtime](location-runtime.ko.md) §9).
+- location 계열 event source는 고정 이름을 쓴다([location runtime](40-location-runtime.ko.md) §9).
   예: `location-runtime`, `location-peer`
 - spot event source는 `spot node` 등록 이름을 쓴다.
   예: `stage-node`
@@ -277,5 +277,5 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Message Model](message-model.ko.md) | [다음: ZLink Framework API](framework-api.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Message Model](03-message-model.ko.md) | [다음: ZLink Framework API](05-framework-api.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

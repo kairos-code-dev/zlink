@@ -7,7 +7,7 @@
 ## Redirect
 
 `followRedirects(max)`로 활성화한다. undici `maxRedirections: 0`으로 두고 래퍼가
-redirect 루프를 돈다.
+redirect 처리를 반복한다.
 
 - 추적 상태: `301`, `302`, `303`, `307`, `308` + `Location` 헤더.
 - 메서드 rewrite: `303`, 또는 `301`/`302` + `POST` → `GET`으로 바꾸고 본문을 제거한다.

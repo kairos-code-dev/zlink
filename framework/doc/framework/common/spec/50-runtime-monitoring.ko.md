@@ -5,9 +5,9 @@
 > 이 문서는 **runtime 변화 관측의 언어 중립 정본**이다. source별 표면을 나누는 근거, event
 > 종류, polling 규칙, startup validation을 소유한다.
 >
-> 메시지 한 건의 생애주기 관측은 [message-flow-tracing](message-flow-tracing.ko.md),
-> 계기 카탈로그는 [runtime-metrics](runtime-metrics.ko.md), 흐름 상관관계는
-> [flow-correlation](flow-correlation.ko.md)이 소유한다.
+> 메시지 한 건의 생애주기 관측은 [message-flow-tracing](52-message-flow-tracing.ko.md),
+> 계기 카탈로그는 [runtime-metrics](51-runtime-metrics.ko.md), 흐름 상관관계는
+> [flow-correlation](53-flow-correlation.ko.md)이 소유한다.
 >
 > 언어별 타입과 등록 표면은 `languages/<lang>/`의 monitoring 문서가 고정한다.
 
@@ -64,7 +64,7 @@
 ## 5. Source 이름
 
 source 이름은 topology와 역할을 읽을 수 있게 잡는다
-([channel-topology §5.4](channel-topology.ko.md)).
+([channel-topology §5.4](10-channel-topology.ko.md)).
 
 ## 6. Startup validation
 

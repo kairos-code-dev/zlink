@@ -7,7 +7,7 @@ test는 이 문서의 시그니처를 따라야 한다.
 비규범 구현 ledger다.
 
 Java interface를 그대로 사용하는 표면은
-[Java interface 계약](../java/handler-interfaces.ko.md)을 따른다. 아래 Kotlin 타입의
+[Java interface 계약](../java/02-handler-interfaces.ko.md)을 따른다. 아래 Kotlin 타입의
 package는 `systems.zlink.framework.kotlin`이다.
 
 ## 1. Channel과 Spot handler
@@ -748,7 +748,7 @@ suspend fun ZLinkLocationStore.renewOwnerLease(
 ): ZLinkOwnerLeaseRenewal
 suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): Boolean
 suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long
-suspend fun ZLinkLocationStore.listOwnerLeases(): ZLinkOwnerLeaseSnapshot
+suspend fun ZLinkLocationStore.awaitOwnerLeases(): ZLinkOwnerLeaseSnapshot
 suspend fun ZLinkPeerLocationResolver.listLivePeers(
     filter: ZLinkPeerLocationFilter,
 ): List<ZLinkPeerLocation>
@@ -848,7 +848,7 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 
 ## 8. 관측·운영 표면 (metrics · flow correlation · drain)
 
-메트릭·flow correlation·drain의 계약은 Java 공개 계약([Spring Boot Monitoring](../java/spring-boot-monitoring.ko.md)
+메트릭·flow correlation·drain의 계약은 Java 공개 계약([Spring Boot Monitoring](../java/01-system-structure.ko.md)
 §8~§10)을 그대로 따르고, 여기서 Java 타입을 복사해 다시 정의하지 않는다. Kotlin은 같은 Java runtime
 위에 **관용 델타만** 추가한다.
 

@@ -237,7 +237,7 @@ stream client가 다시 연결될 때는 courier와 customer 모두 같은 규�
 spot을 통해 actor를 만든다(claim-then-activate). 이렇게 해야 재연결해도 사용자가 보던
 actor 상태가 유지되고, session route만 최신 연결로 바뀐다. resolve 결과 `SpotRef`는 보관하되
 전송이 실패하면 재resolve한다 — 실패 분류와 재시도 의미는
-[spot 주소 메시징 스펙](../../spec/spot-address-messaging.ko.md)을 따른다.
+[spot 주소 메시징 스펙](../../spec/24-spot-address-messaging.ko.md)을 따른다.
 
 ## 7. Message 계약
 

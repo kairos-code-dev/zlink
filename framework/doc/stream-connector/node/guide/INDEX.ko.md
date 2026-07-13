@@ -16,7 +16,7 @@ TypeScript STREAM client connector(`@zlink-systems/stream-connector`)의 공식 
 | [03 — 브라우저](03-browser.ko.md) | browser entrypoint, WebSocket 연결, 현재 flow 제한 |
 
 connector의 API 표면(옵션, codec, inbound observer, 오류)은
-[Node 공개 계약](../../../framework/common/spec/languages/node/stream-connector.ko.md)이 소유한다.
+[Node 공개 계약](../../../framework/common/spec/languages/node/03-stream-connector.ko.md)이 소유한다.
 
 ## 다른 언어의 connector
 

@@ -10,7 +10,7 @@
 
 ## 1. 목적
 
-`SPOT`([spot-actor](spot-actor.ko.md), [framework API](framework-api.ko.md))은 주소를 가질 수
+`SPOT`([spot-actor](23-spot-actor.ko.md), [framework API](05-framework-api.ko.md))은 주소를 가질 수
 있는 논리 인스턴스까지를 설명한다. 그 위에 room·stage·zone 같은 **상위 실행 모델**을 올리려면
 계약이 한 단계 더 필요하다.
 
@@ -35,7 +35,7 @@ stage 성격의 모델은 보통 다음을 함께 가진다.
 | timer 등록과 취소 | **framework** |
 | DI·handler·filter·context | **framework** |
 | **같은 spot의 dispatch 직렬화** | **framework**(§3) |
-| actor join 등록, actor stream 연결·해제, actor dispatch | **framework**([spot-actor](spot-actor.ko.md), [session-actor-dispatch](session-actor-dispatch.ko.md)) |
+| actor join 등록, actor stream 연결·해제, actor dispatch | **framework**([spot-actor](23-spot-actor.ko.md), [session-actor-dispatch](31-session-actor-dispatch.ko.md)) |
 | membership 정책(입장·퇴장·인증·권한) | **wrapper / 응용** |
 | room·stage·zone 별 broadcast 정책 | **wrapper / 응용** |
 | `stageId → 위치` lookup helper | **wrapper / 응용** |

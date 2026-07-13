@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework 공통 스펙](../README.ko.md) | [다음: ZLink Framework Interaction Model](interaction-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework 공통 스펙](../README.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Overview
 
@@ -24,7 +24,7 @@ pub/sub, `SPOT`, `STREAM`, location store 기반 자동 연결을 사용할 수 
 - pub/sub integration
 - spot integration
 - stream integration
-- channel별 location store 기반 자동 연결([location runtime](location-runtime.ko.md))
+- channel별 location store 기반 자동 연결([location runtime](40-location-runtime.ko.md))
 - runtime monitoring
 - location runtime query (원시 row, runtime이 합성한 topology 보기, status 운영 조회)
 - framework-friendly handler / client / event API
@@ -137,5 +137,5 @@ header만 읽는 장점도 잃는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework 공통 스펙](../README.ko.md) | [다음: ZLink Framework Interaction Model](interaction-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework 공통 스펙](../README.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

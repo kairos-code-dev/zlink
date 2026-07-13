@@ -1,14 +1,18 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](handler-interfaces.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](20-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](03-handler-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [STREAM 가이드](../../../../cpp/guide/10-stream.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [STREAM 가이드](../../../../cpp/guide/10-stream.ko.md)
 
 # Spec -- ZLink Framework C++ STREAM
 
 > 이 문서는 C++ stream이 제공해야 하는 정식 계약이다.
+
+> 이 문서는 [STREAM 서버 세션 공통 스펙](../../30-stream-session.ko.md)의 **C++ 투영**이다.
+> dispatch 모델, codec 계층 분리, 오류 경계, 등록 규칙은 공통 스펙이 소유한다. 이 문서는
+> **C++ 표면**만 고정한다.
 
 ## 인터페이스 경계
 
@@ -78,11 +82,10 @@ public:
 
 class stream_t {
 public:
-    virtual ~stream_t() = default;
-    virtual std::string session_id() const = 0;
-    virtual task_t<void> close() = 0;
-    virtual stream_write_call_t write_packet(zlink::message_t payload) = 0;
-    virtual stream_write_call_t reply_packet(zlink::message_t payload) = 0;
+    std::string session_id() const;
+    task_t<void> close();
+    stream_write_call_t write_packet(const zlink::message_t &payload);
+    stream_write_call_t reply_packet(const zlink::message_t &payload);
 };
 
 class stream_write_call_t {
@@ -180,9 +183,10 @@ session 이름으로 사용하고, 없으면 타입 이름 기반 message name�
 - `stream_t::write_packet(...)`과 `reply_packet(...)`은 one-way write로 본다. 반환된
   `stream_write_call_t`에서 `metadata(...)`, `packet_name(...)`, `compress()`를 설정할 수 있고,
   실제 제출은 `submit()`에서 시작한다. write 제출은 응답을 기다리지 않는다.
-- `stream_t::close()`는 session을 닫고 이후 write submit을 `disconnected`로 처리하게
-  한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해 cleanup 호출자가 중복 close를
-  특별히 구분하지 않아도 되게 한다.
+- `stream_t::close()`는 session을 닫고 이후 write submit을 연결 끊김 경계 오류
+  (`framework_exception_t`, `code() == std::errc::not_connected` — public enum 값이 아니라
+  §8.1의 경계 의미)로 처리하게 한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해
+  cleanup 호출자가 중복 close를 특별히 구분하지 않아도 되게 한다.
 - session actor dispatch는 STREAM session에서 route mesh channel로 직접 packet을 만들지
   않고, ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
 - session callback 동안 받은 `payload`는 framework가 빌려준 값이므로 relay 호출자가
@@ -205,8 +209,8 @@ write backpressure, session relay 경계를 함께 검증한다.
 - `stream_t::write_packet(...)`은 submit 전에는 실행되지 않는다. `submit()`은 입력 검증과
   bounded local queue 수락 뒤 `void`로 반환한다. metadata, packet name과 compression
   flag는 submit 시점에 framework header로 반영된다.
-- `stream_t::close()` 후 새 write submit은 동기 `disconnected` 예외를 발생시키고 추가
-  frame을 쓰지 않는다.
+- `stream_t::close()` 후 새 write submit은 동기 연결 끊김 경계 예외(`framework_exception_t`,
+  `code() == std::errc::not_connected`)를 발생시키고 추가 frame을 쓰지 않는다.
 - queue 수락 뒤 disconnect가 발생하면 monitoring/error observer에 disconnected 오류를
   전달한다.
 - session-scoped service는 disconnect cleanup 뒤 해제된다.
@@ -218,5 +222,5 @@ CTest label은 `framework-zlink-stream`을 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](handler-interfaces.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](20-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](03-handler-interfaces.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

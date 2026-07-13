@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: Location Runtime](location-runtime.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md) | [다음: Location Runtime](40-location-runtime.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -9,8 +9,8 @@
 이 문서는 framework가 표준 기능으로 제공하는 **success-path 메시지 흐름 추적**의 언어 중립
 공통 스펙이다. 공통 의미(로그 모드, 이벤트, 옵저버 계약, 성능 계약, 출력 라우팅, 길목,
 스트림 correlation_id 와이어 포맷)는 이 문서가 소유하며, 언어별 문서는 여기서 정한 의미를
-자기 언어의 관용구와 표면으로만 구체화한다. 네이밍은 [framework API](framework-api.ko.md)와
-[공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
+자기 언어의 관용구와 표면으로만 구체화한다. 네이밍은 [framework API](05-framework-api.ko.md)와
+[공개 계약 관리 §4](00-public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
 
 > 실패 관측(dispatch error reporter)은 같은 어휘(`surface`/`kind`/`correlation_id`)와 같은
 > fan-out 패턴(표준 로거 라우팅 + offload observer)을 공유한다. 이 문서는 **정상 흐름**을,
@@ -29,7 +29,7 @@ grep된다. 실패는 같은 stream에 error reporter가 같은 토큰(`corr=`)�
 
 이 기능은 dispatch **제어**가 아니라 **관측**이다. 모드가 off가 아니어도 framework 기본 동작은
 변하지 않고, observer 실패가 메시지 처리나 응답 전송을 깨면 안 된다(관측 callback의 의미는
-[비동기 실행 정책 §2](async-execution-policy.ko.md)를 따른다).
+[비동기 실행 정책 §2](04-async-execution-policy.ko.md)를 따른다).
 
 ## 2. 로그 모드
 
@@ -93,7 +93,7 @@ class message_flow_observer_t { virtual void on_message_flow(const message_flow_
 // dispatch options: set_message_flow_observer(observer | callback)
 ```
 
-> `flow_id`·`flow_origin`은 [메시지 흐름 상관관계](flow-correlation.ko.md) 확장이 소유하는 additive
+> `flow_id`·`flow_origin`은 [메시지 흐름 상관관계](53-flow-correlation.ko.md) 확장이 소유하는 additive
 > 필드다. correlation_id가 channel/route/stream 경계에서만 1급인 한계(§7·§8)를, flow_id가 spot/actor
 > 경계와 fleet 전역까지 관통해 보완한다. 두 필드는 하나의 optional pair라서 항상 함께 채우거나 함께
 > 비운다. 이 확장을 쓰지 않으면 두 필드는 비어 있고 나머지 계약은 그대로다.
@@ -279,10 +279,10 @@ echo, route 전파. 두 노드 로그를 한 corr로 잇고 싶으면 이 전파
 특정 구현의 내부 tracer 구조와 파일 배치는 공통 공개 계약에 포함되지 않는다.
 
 이 문서는 언어별 구현 진행률을 기록하지 않는다. 각 언어의 현재 차이는
-[구현 차이 문서](implementation-gap.ko.md)에 기록하며, observer를 외부 수집기나
+[구현 차이 문서](90-implementation-gap.ko.md)에 기록하며, observer를 외부 수집기나
 OpenTelemetry adapter에 연결하는 일은 application 또는 별도 extension이 담당한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: Location Runtime](location-runtime.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md) | [다음: Location Runtime](40-location-runtime.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

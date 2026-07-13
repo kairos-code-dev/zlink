@@ -195,12 +195,19 @@
 | messaging request/send | Node.js | .NET | client-server channel | PASS | Node client -> dotnet channel server request/reply, one-way send |
 | messaging request | .NET | Node.js | client-server channel | PASS | dotnet client -> Node channel server |
 | messaging publish | Node.js | .NET | fanout | PASS | Node publisher -> dotnet fanout subscriber |
+| messaging publish | .NET | Node.js | fanout | PASS | dotnet publisher -> Node fanout subscriber |
+| messaging request | Node.js | .NET | direct route-mesh | PASS | Node route client -> dotnet route server request/reply |
+| messaging request | .NET | Node.js | direct route-mesh | PASS | dotnet route client -> Node route server request/reply |
 | codec/flow-wire | Node.js | .NET | STREAM JSON request | PASS | UUIDv7 flow와 shared origin wire 값, JSON reply |
 | codec/flow-wire | .NET | Node.js | STREAM JSON request | PASS | UUIDv7 flow와 shared origin wire 값, JSON reply |
 | session-closing | .NET | Node.js | STREAM server drain | PASS | `ServerDrain` 수신 뒤 disconnect |
+| session-closing | Node.js | .NET | STREAM server drain | PASS | `ServerDrain` 수신 뒤 disconnect |
 | store/draining-row | Node.js | .NET | 전용 Redis location store | PASS | typed `Draining=true` row 소비 |
 | store/draining-row | .NET | Node.js | 전용 Redis location store | PASS | typed `draining=true` row 소비 |
 
 실행 명령은 `npm run verify:cross-language`이며 모든 topology는 배포 package의 public
-surface만 사용한다. Node 단계보다 앞선 언어 중 G7을 통과한 언어는 .NET뿐이다. Java와 Kotlin은
+surface만 사용한다. runner는 시작할 때 Node framework/binding과 `.NET` framework version,
+direct channel, fanout, route-mesh, STREAM, Redis store topology, payload identity, codec과 실행별
+Redis key prefix를 `cross-manifest` 한 줄로 기록한다. Node 단계보다 앞선 언어 중 G7을 통과한
+언어는 .NET뿐이다. Java와 Kotlin은
 현재 G7 이전이므로 계획 §8.7의 순서 규칙에 따라 Node G6의 양방향 실행 분모에 포함하지 않는다.

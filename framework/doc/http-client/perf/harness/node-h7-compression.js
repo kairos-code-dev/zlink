@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 // H7 (node): gzip 응답 해제 경로의 처리량과 event loop 블로킹 측정.
 // 사용법: node node-h7-compression.js <http-client 모듈 경로>
 //   예) node node-h7-compression.js ../../../../languages/node/packages/http-client/dist

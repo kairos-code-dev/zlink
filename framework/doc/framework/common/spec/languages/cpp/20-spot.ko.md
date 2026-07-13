@@ -1,14 +1,18 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](40-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT 가이드](../../../../cpp/guide/08-spot.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [SPOT 가이드](../../../../cpp/guide/08-spot.ko.md) | [Stage wrapper](25-stage-wrapper-on-spot.ko.md)
 
 # Spec -- ZLink Framework C++ SPOT
 
 > 이 문서는 C++ Spot이 제공해야 하는 정식 계약이다.
+
+> 이 문서는 [SPOT 메시징 공통 스펙](../../20-spot-messaging.ko.md)의 **투영**이다. SPOT의 개념
+> 위치, outbound 세 축, publish·subscribe 모델, dispatch 실패 정책, route ingress 규칙,
+> startup validation은 공통 스펙이 소유한다. 이 문서는 **언어 표면**만 고정한다.
 
 ## 계약 기준
 
@@ -206,13 +210,14 @@ API가 없다. actor가 user Spot에 있으면 먼저 user Spot에서 leave를 �
 
 ```cpp
 zlink::framework::task_t<void> destroy =
-  entry_context.destroyActor(actor_ref, actor);
+  entry_context.destroy_actor(actor);
 ```
 
-`destroyActor(actor_ref, actor)`는 actor가 현재 Entry Spot에 있을 때만 성공한다. 성공한
+`destroy_actor(actor)`는 actor가 현재 Entry Spot에 있을 때만 성공한다. actor 식별은
+이 노드에 등록된 live instance에서 해석하므로 별도의 actor ref를 받지 않는다. 성공한
 호출은 lifecycle callback을 호출하지 않고 actor membership을 지운다. 같은 actor instance에
-대한 중복 호출은 성공으로 끝난다. 이전 generation의 stale actor ref는 새 actor를 지우지
-않는다.
+대한 중복 호출은 성공으로 끝난다. 이미 파괴되었거나 새 generation으로 대체된 stale
+instance는 해석되지 않아 새 actor를 지우지 않는다.
 
 Spot create callback은 `zlink::framework::message_t` 또는 typed DTO request를 받는다.
 payload 없이 create하면 빈 framework message를 전달한다. C++에서는 기본 생성 가능한 Spot을 자동 생성하고, 생성자 인자가
@@ -309,5 +314,5 @@ CTest label은 `framework-zlink-spot`을 사용한다. timer 전용 항목은 `t
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](40-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

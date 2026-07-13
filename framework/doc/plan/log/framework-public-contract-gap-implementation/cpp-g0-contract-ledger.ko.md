@@ -12,12 +12,12 @@
   `.artifacts/wsl/install/zlink-cpp/8.6.4`, `libzlink_cpp.a` SHA-256
   `e1ca346857ccf550dd17150a8a08dd7fcf4d31bce72558844bb13da75ebb6a43`)
 - production 분모: framework include/src 163개, connector/core 44개, extensions 5개 파일
-- 정식 언어 문서: 13개 (interface 분모 12 + guide `stage-wrapper-on-spot.ko.md` 제외)
+- 정식 언어 문서: 13개 (interface 분모 12 + guide `25-stage-wrapper-on-spot.ko.md` 제외)
 - 공통 E2E 분모: Config 1~11
 - baseline 명령: plan §13.2의 configure/build/ctest
   (`build-public-contract-gap`, TESTS/SAMPLES/E2E ON)
 - baseline 결과: configure/build exit 0, `ctest` exit 8 (48개 중 10개 실패)
-  - `test_cpp_framework_layout_contract`: 공통 `session-actor-dispatch.ko.md`가 개정되어
+  - `test_cpp_framework_layout_contract`: 공통 `31-session-actor-dispatch.ko.md`가 개정되어
     테스트의 고정 needle(`leaveActor` camelCase 문구)이 더 이상 없음. 정식 spec 경로
     fail-closed 검증 자체는 동작하며, needle을 개정 spec에 맞추는 작업이 G0 항목이다.
   - `test_cpp_framework_http_perf_policy`: HTTP perf 정책 문서 누락 메시지로 실패.
@@ -44,7 +44,7 @@
 | CPP-DOC-010 | `cpp-registry.ko.md` | Registry 표면 제거 선언 | 검토 완료 (규범 위반 없음) |
 | CPP-DOC-011 | `cpp-http-hosting.ko.md` | HTTP hosting | 검토 완료 |
 | CPP-DOC-012 | `cpp-embedded-http-server.ko.md` | embedded HTTP server | 검토 완료 |
-| CPP-DOC-013 | `stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
+| CPP-DOC-013 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
 공통 spec 19개는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
@@ -57,7 +57,7 @@
 | CPP-SPECDRIFT-002 | `cpp-framework-interfaces.ko.md` §11 본문 | `onLeaveActor` 표기 2곳 잔존. `handler-interfaces.ko.md` §8.1은 snake_case(`on_leave_actor`)를 목표로 고정 | §8.1이 우선. 본문 표기는 G7 문서 정합에서 갱신 |
 | CPP-SPECDRIFT-003 | `cpp-monitoring.ko.md` §2/§5 예시 | `add_discovery_events`/`add_registry_events`/`add_registry_check` 예시가 남아 있으나 `cpp-registry.ko.md`는 Registry 표면 제거를 선언, 구현은 `add_location_events`/`add_location_check` | registry 제거 선언이 우선. monitoring 예시는 location 계열로 갱신(G7). 구현에 registry 표면을 새로 만들지 않는다 |
 | CPP-SPECDRIFT-004 | `cpp-framework-interfaces.ko.md` §3.1, `cpp-stream.ko.md` §5 | 매핑 표의 error kind `timeout` 행과 write-after-close의 `disconnected` 예외 문구가 §8 enum 목록·§8.1 삭제 표·.NET 기준 enum(0~21)과 상충 | §8.1과 .NET 정합이 우선. timeout/disconnected는 public enum 값이 아니라 경계 의미(표준 관례/내부 상태)로 구현하고 두 문구는 G7에서 갱신 |
-| CPP-SPECDRIFT-005 | `async-execution-policy.ko.md` §1 vs `config-8-automatic-turn-dispatch.ko.md` ATD-A2 | 정책 문구 "같은 Spot의 보호 상태는 callback 완료까지 무관 callback 접근 금지"와 ATD-A2의 "같은 spot rid 독립 probe가 await 중 완료" 요구가 표면상 상충 | E2E 계약(ATD-A2/B2/C2)과 .NET 구현(AutomaticTurn_Allows_Later_Work)이 기준: 재진입 금지 보호 단위는 actor/timer mailbox이고 spot serial line은 await 지점에서 양보한다. C++ 구현은 이 해석을 따름. 정책 문구의 보호 단위 명시는 G7 문서 정합 검토로 |
+| CPP-SPECDRIFT-005 | `04-async-execution-policy.ko.md` §1 vs `config-8-automatic-turn-dispatch.ko.md` ATD-A2 | 정책 문구 "같은 Spot의 보호 상태는 callback 완료까지 무관 callback 접근 금지"와 ATD-A2의 "같은 spot rid 독립 probe가 await 중 완료" 요구가 표면상 상충 | E2E 계약(ATD-A2/B2/C2)과 .NET 구현(AutomaticTurn_Allows_Later_Work)이 기준: 재진입 금지 보호 단위는 actor/timer mailbox이고 spot serial line은 await 지점에서 양보한다. C++ 구현은 이 해석을 따름. 정책 문구의 보호 단위 명시는 G7 문서 정합 검토로 |
 | CPP-SPECDRIFT-006 | `cpp-stream` §2의 `stream_t` 코드 블록(abstract pure virtual + `message_t` 값 전달)이 `handler-interfaces` §8 stream 행(concrete 핸들 + `const zlink::message_t &`)과 상충. handler-interfaces가 목표 선언 정본이므로 cpp-stream 블록을 G7 정합에서 concrete 선언으로 갱신 |
 
 ## 3. symbol·동작·test gap

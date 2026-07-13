@@ -58,10 +58,10 @@ owner 문서의 `DN-COMMON-*`/`DN-DOC-*`와 plan §6의 exact test가 소유한�
 
 | namespace/type prefix | 정식 계약 owner |
 |-----------------------|------------------|
-| `Zlink.Framework.Contracts.Actors` | `handler-interfaces.ko.md`, `session-actor-dispatch.ko.md` |
-| `Zlink.Framework.Contracts.Channels`, `Configuration` | `system-structure.ko.md`, `spot-node.ko.md` |
+| `Zlink.Framework.Contracts.Actors` | `handler-interfaces.ko.md`, `31-session-actor-dispatch.ko.md` |
+| `Zlink.Framework.Contracts.Channels`, `Configuration` | `system-structure.ko.md`, `21-spot-node.ko.md` |
 | `Zlink.Framework.Contracts.Spots`, `Timers`, `Workers` | `system-structure.ko.md`, `handler-interfaces.ko.md` |
-| `Zlink.Framework.Contracts.Streams` | `system-structure.ko.md`, `session-actor-dispatch.ko.md` |
+| `Zlink.Framework.Contracts.Streams` | `system-structure.ko.md`, `31-session-actor-dispatch.ko.md` |
 | `Zlink.Framework.Contracts.Locations`, `Zlink.Framework.Locations.Redis` | `system-structure.ko.md` |
 | `Zlink.Framework.Contracts.Dispatch`, `Eventing`, `Monitoring` | `system-structure.ko.md` |
 | `Zlink.Framework.AspNetCore` | 언어 `README.ko.md`와 각 capability의 ASP.NET Core 계약 |
@@ -93,42 +93,42 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | ID | 공통 spec | .NET projection/owner | exact proof |
 |----|-----------|-----------------------|-------------|
 | DN-COMMON-001 | `README.ko.md` | `.NET/README.ko.md`, 계약 문서 위치와 취소 표현 | `RegressionTests.DotNetContractReadme_Exposes_Resolvable_Regression_Evidence` |
-| DN-COMMON-002 | `overview.ko.md` | `handler-interfaces.ko.md`, host/DI와 역할별 공개 표면 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime`; `NodesAndServicesTests.AddZLinkFramework_Uses_Standard_DI_For_Application_Dependencies` |
-| DN-COMMON-003 | `framework-api.ko.md` | `handler-interfaces.ko.md`, 여섯 public API snapshot | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `ScaffoldSmokeTests.FrameworkExportedTypes_UseContractsNamespace` |
-| DN-COMMON-004 | `interaction-model.ko.md` | channel, Spot, actor와 session interaction owner | `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes`; `E2E:SM-D11` |
-| DN-COMMON-005 | `message-model.ko.md` | typed packet identity와 framework envelope codec | `EnvelopeCodecTests.Envelope_requires_marker_and_roundtrips_flow_fields`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts` |
-| DN-COMMON-006 | `async-execution-policy.ko.md` | one-way bounded/nonblocking 수락, 단일 `Async(...)` terminator와 automatic turn | `ZLinkAsyncSubmitterTests.Async_ThrowsWhenQueueIsFull`; `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously`; `SessionActorCoordinatorTests.Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `EntrySpotActorDispatchTests.BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller`; `EntrySpotActorDispatchTests.Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line`; `E2E:ATD-A1`; `E2E:ATD-B3` |
-| DN-COMMON-007 | `channel-topology.ko.md` | `system-structure.ko.md`, manual/location 연결 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath`; `E2E:RM-A1`; `E2E:RM-A2`; `E2E:PS-A1` |
-| DN-COMMON-008 | `actor-model.ko.md` | `handler-interfaces.ko.md`, actor context와 join 결과 | `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`; `EntrySpotActorDispatchTests.EntrySpotActorDispatch_BoundRequest_UsesBoundSession_AndBindsSession`; `E2E:SM-B7` |
-| DN-COMMON-009 | `spot-actor.ko.md` | `handler-interfaces.ko.md`, `system-structure.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering`; `E2E:SM-B1`; `E2E:SM-B2` |
-| DN-COMMON-010 | `session-actor-dispatch.ko.md` | `.NET/session-actor-dispatch.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession`; `E2E:SM-D1`; `E2E:SM-D2`; `E2E:SM-D8` |
-| DN-COMMON-011 | `spot-address-messaging.ko.md` | opaque `SpotHandle`, refresh와 route egress | `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `E2E:SM-C3`; `E2E:SM-G2` |
-| DN-COMMON-012 | `location-runtime.ko.md` | `system-structure.ko.md`, row/watch/reconcile/query와 Spot mesh→route channel 매핑 | `LocationResolverTests.Spot_And_Actor_Handles_Use_Configured_Route_Channel_And_Refresh_Uses_The_Same_Map`; `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `LocationResolverTests.Watch_Upsert_Preserves_Configured_Route_Channel_Mapping`; `LocationResolverTests.Handle_Polling_Updates_Actor_Snapshot_When_Watch_Is_Unavailable`; `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones`; `LocationRuntimeTests.Shutdown_Removes_Owner_Lease_Then_Bulk_Removes_Rows`; `E2E:RM-A1`; `E2E:SF-C1` |
-| DN-COMMON-013 | `location-store-redis.ko.md` | `Zlink.Framework.Locations.Redis`와 공통 store contract | `InMemoryLocationStoreTests.Paged_List_Traverses_All_Rows_With_Continuation_Tokens`; Redis test project 전체 store contract는 G3 실행 ledger에서 별도 증명 |
-| DN-COMMON-014 | `message-flow-tracing.ko.md` | `system-structure.ko.md`, observer와 error surface | `MessageFlowTracerTests.Off_SuppressesAllTransitions`; `UnhandledDispatchPolicyTests.DispatchErrorReporter_DeliversMessageFlowErrorSnapshot`; `E2E:OBS-A1` |
-| DN-COMMON-015 | `flow-correlation.ko.md` | channel/stream codec, async flow context와 connector | `FlowCorrelationTests.Connector_and_framework_share_one_monotonic_correlation_sequence`; `FlowCorrelationTests.Awaited_work_keeps_flow_but_detached_work_loses_the_expired_lease`; `E2E:OBS-A2` |
-| DN-COMMON-016 | `runtime-metrics.ko.md` | framework `Meter`와 connector 계기 | `RuntimeMetricsTests.Meter_Catalog_Uses_Exact_Names_Kinds_Units_And_Scope`; `RuntimeMetricsTests.Inactive_Meter_Does_Not_Allocate_Or_Retain_Per_Event_State`; `StreamConnectorTests.TestMetricReaderRetainsOnlyABoundedSnapshot`; `E2E:OBS-B1` |
-| DN-COMMON-017 | `graceful-drain-handoff.ko.md` | drain control, typed `Draining`, session closing | `DrainCoordinatorTests.Drain_Is_Idempotent_And_First_Deadline_Is_Fixed`; `DrainCoordinatorTests.Waiter_Cancellation_Does_Not_Cancel_Shared_Drain`; `StreamSessionForcedCleanupTests.Rejected_terminal_disposal_and_force_close_share_one_transport_close`; `E2E:OBS-C1`; `E2E:OBS-C4` |
-| DN-COMMON-018 | `public-contract-governance.ko.md` | `handler-interfaces.ko.md` §17, fixed source/package snapshots | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions` |
-| DN-COMMON-019 | `implementation-gap.ko.md` | plan §6 `DN-001`~`DN-025`와 이 ledger | `RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods`; 각 DN 행의 exact proof는 plan과 실행 log에서 추적 |
-| DN-COMMON-020 | `stream-connector.ko.md` | 대상 실행 환경, transport, wire 계약, 연결 생명주기, 배포 산출물 | `StreamConnectorTests.HeaderProtocolRejectsMissingMarkerAndInvalidFlowFields`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract`; `StreamConnectorTests.SessionClosingCodecDecodesTheVersionedClosedReason`; `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame` |
-| DN-COMMON-021 | `spot-node.ko.md` | SpotNode 등록, Entry Spot bind 순서, SpotManager 생성·조회·종료 | `E2E:SM-A1`; `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` |
-| DN-COMMON-022 | `stage-wrapper-on-spot.ko.md` | spot 실행 문맥 직렬화, timer, wrapper 책임 경계 | `E2E:SM-B7`; `E2E:SM-E3`; `E2E:SM-A5` |
-| DN-COMMON-023 | `stream-session.ko.md` | 서버 session 표면, dispatch 모델, 등록 검증, 오류 경계 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `StreamSessionForcedCleanupTests.Stream_node_preserves_typed_routing_id_from_backend_callback`; `E2E:SM-D7`; `E2E:SM-D8` |
-| DN-COMMON-024 | `spot-messaging.ko.md` | outbound 세 축, publish·subscribe, dispatch 실패 정책, route ingress, startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-C4`; `E2E:SM-B7` |
-| DN-COMMON-025 | `channel-messaging.ko.md` | channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `E2E:OBS-B1` |
-| DN-COMMON-026 | `runtime-monitoring.ko.md` | source 분리, event 종류, polling 규칙, monitoring startup validation | `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures`; `RuntimeMetricsTests.Meter_Catalog_Uses_Exact_Names_Kinds_Units_And_Scope` |
+| DN-COMMON-002 | `01-overview.ko.md` | `handler-interfaces.ko.md`, host/DI와 역할별 공개 표면 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime`; `NodesAndServicesTests.AddZLinkFramework_Uses_Standard_DI_For_Application_Dependencies` |
+| DN-COMMON-003 | `05-framework-api.ko.md` | `handler-interfaces.ko.md`, 여섯 public API snapshot | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `ScaffoldSmokeTests.FrameworkExportedTypes_UseContractsNamespace` |
+| DN-COMMON-004 | `02-interaction-model.ko.md` | channel, Spot, actor와 session interaction owner | `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes`; `E2E:SM-D11` |
+| DN-COMMON-005 | `03-message-model.ko.md` | typed packet identity와 framework envelope codec | `EnvelopeCodecTests.Envelope_requires_marker_and_roundtrips_flow_fields`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts` |
+| DN-COMMON-006 | `04-async-execution-policy.ko.md` | one-way bounded/nonblocking 수락, 단일 `Async(...)` terminator와 automatic turn | `ZLinkAsyncSubmitterTests.Async_ThrowsWhenQueueIsFull`; `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously`; `SessionActorCoordinatorTests.Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `EntrySpotActorDispatchTests.BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller`; `EntrySpotActorDispatchTests.Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line`; `E2E:ATD-A1`; `E2E:ATD-B3` |
+| DN-COMMON-007 | `10-channel-topology.ko.md` | `system-structure.ko.md`, manual/location 연결 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath`; `E2E:RM-A1`; `E2E:RM-A2`; `E2E:PS-A1` |
+| DN-COMMON-008 | `22-actor-model.ko.md` | `handler-interfaces.ko.md`, actor context와 join 결과 | `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`; `EntrySpotActorDispatchTests.EntrySpotActorDispatch_BoundRequest_UsesBoundSession_AndBindsSession`; `E2E:SM-B7` |
+| DN-COMMON-009 | `23-spot-actor.ko.md` | `handler-interfaces.ko.md`, `system-structure.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering`; `E2E:SM-B1`; `E2E:SM-B2` |
+| DN-COMMON-010 | `31-session-actor-dispatch.ko.md` | `.NET/session-actor-dispatch.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession`; `E2E:SM-D1`; `E2E:SM-D2`; `E2E:SM-D8` |
+| DN-COMMON-011 | `24-spot-address-messaging.ko.md` | opaque `SpotHandle`, refresh와 route egress | `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `E2E:SM-C3`; `E2E:SM-G2` |
+| DN-COMMON-012 | `40-location-runtime.ko.md` | `system-structure.ko.md`, row/watch/reconcile/query와 Spot mesh→route channel 매핑 | `LocationResolverTests.Spot_And_Actor_Handles_Use_Configured_Route_Channel_And_Refresh_Uses_The_Same_Map`; `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `LocationResolverTests.Watch_Upsert_Preserves_Configured_Route_Channel_Mapping`; `LocationResolverTests.Handle_Polling_Updates_Actor_Snapshot_When_Watch_Is_Unavailable`; `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones`; `LocationRuntimeTests.Shutdown_Removes_Owner_Lease_Then_Bulk_Removes_Rows`; `E2E:RM-A1`; `E2E:SF-C1` |
+| DN-COMMON-013 | `41-location-store-redis.ko.md` | `Zlink.Framework.Locations.Redis`와 공통 store contract | `InMemoryLocationStoreTests.Paged_List_Traverses_All_Rows_With_Continuation_Tokens`; Redis test project 전체 store contract는 G3 실행 ledger에서 별도 증명 |
+| DN-COMMON-014 | `52-message-flow-tracing.ko.md` | `system-structure.ko.md`, observer와 error surface | `MessageFlowTracerTests.Off_SuppressesAllTransitions`; `UnhandledDispatchPolicyTests.DispatchErrorReporter_DeliversMessageFlowErrorSnapshot`; `E2E:OBS-A1` |
+| DN-COMMON-015 | `53-flow-correlation.ko.md` | channel/stream codec, async flow context와 connector | `FlowCorrelationTests.Connector_and_framework_share_one_monotonic_correlation_sequence`; `FlowCorrelationTests.Awaited_work_keeps_flow_but_detached_work_loses_the_expired_lease`; `E2E:OBS-A2` |
+| DN-COMMON-016 | `51-runtime-metrics.ko.md` | framework `Meter`와 connector 계기 | `RuntimeMetricsTests.Meter_Catalog_Uses_Exact_Names_Kinds_Units_And_Scope`; `RuntimeMetricsTests.Inactive_Meter_Does_Not_Allocate_Or_Retain_Per_Event_State`; `StreamConnectorTests.TestMetricReaderRetainsOnlyABoundedSnapshot`; `E2E:OBS-B1` |
+| DN-COMMON-017 | `54-graceful-drain-handoff.ko.md` | drain control, typed `Draining`, session closing | `DrainCoordinatorTests.Drain_Is_Idempotent_And_First_Deadline_Is_Fixed`; `DrainCoordinatorTests.Waiter_Cancellation_Does_Not_Cancel_Shared_Drain`; `StreamSessionForcedCleanupTests.Rejected_terminal_disposal_and_force_close_share_one_transport_close`; `E2E:OBS-C1`; `E2E:OBS-C4` |
+| DN-COMMON-018 | `00-public-contract-governance.ko.md` | `handler-interfaces.ko.md` §17, fixed source/package snapshots | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions` |
+| DN-COMMON-019 | `90-implementation-gap.ko.md` | plan §6 `DN-001`~`DN-025`와 이 ledger | `RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods`; 각 DN 행의 exact proof는 plan과 실행 log에서 추적 |
+| DN-COMMON-020 | `32-stream-connector.ko.md` | 대상 실행 환경, transport, wire 계약, 연결 생명주기, 배포 산출물 | `StreamConnectorTests.HeaderProtocolRejectsMissingMarkerAndInvalidFlowFields`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract`; `StreamConnectorTests.SessionClosingCodecDecodesTheVersionedClosedReason`; `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame` |
+| DN-COMMON-021 | `21-spot-node.ko.md` | SpotNode 등록, Entry Spot bind 순서, SpotManager 생성·조회·종료 | `E2E:SM-A1`; `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` |
+| DN-COMMON-022 | `25-stage-wrapper-on-spot.ko.md` | spot 실행 문맥 직렬화, timer, wrapper 책임 경계 | `E2E:SM-B7`; `E2E:SM-E3`; `E2E:SM-A5` |
+| DN-COMMON-023 | `30-stream-session.ko.md` | 서버 session 표면, dispatch 모델, 등록 검증, 오류 경계 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `StreamSessionForcedCleanupTests.Stream_node_preserves_typed_routing_id_from_backend_callback`; `E2E:SM-D7`; `E2E:SM-D8` |
+| DN-COMMON-024 | `20-spot-messaging.ko.md` | outbound 세 축, publish·subscribe, dispatch 실패 정책, route ingress, startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-C4`; `E2E:SM-B7` |
+| DN-COMMON-025 | `11-channel-messaging.ko.md` | channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `E2E:OBS-B1` |
+| DN-COMMON-026 | `50-runtime-monitoring.ko.md` | source 분리, event 종류, polling 규칙, monitoring startup validation | `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures`; `RuntimeMetricsTests.Meter_Catalog_Uses_Exact_Names_Kinds_Units_And_Scope` |
 
 ## 4. .NET 정식 계약 문서 coverage
 
 | ID | 정식 계약 문서 | production owner | exact proof |
 |----|----------------|------------------|-------------|
 | DN-DOC-001 | `README.ko.md` | 언어별 계약 index와 cancellation projection | `RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection` |
-| DN-DOC-002 | `system-structure.ko.md` | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-A1` |
-| DN-DOC-003 | `handler-interfaces.ko.md` | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그와 §17 공개 계약 산출물 검증 절차 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions`; `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` |
-| DN-DOC-004 | `stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
+| DN-DOC-002 | `01-system-structure.ko.md` | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-A1` |
+| DN-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그와 §17 공개 계약 산출물 검증 절차 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions`; `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` |
+| DN-DOC-004 | `32-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
 
-`stage-wrapper-on-spot.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
+`25-stage-wrapper-on-spot.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
 문서의 회귀 참조는 active unit test 또는 실제 `.NET` feature-map scenario로만 해석되며, 삭제된
 E2E class allowlist는 존재하지 않는다.
 
@@ -258,42 +258,34 @@ E2E class allowlist는 존재하지 않는다.
 증거가 아니며, 문서가 바뀌면 기존 조항 판정을 재사용하지 못하게 하는 무효화 장치다.
 
 ```text
-5146fa570e974fcf8cdfe02d7279f9a2826f86116dec7a50350314b181770401 common/README.ko.md
-3d74929d5ea0817f3768bf7f79986cff8fb929f9882d989b4eccc160a1aeb60e common/actor-model.ko.md
-125d7c6b9546f24456f4213c7d071b6d111749c6bd506f0426dbea6cbe222ec5 common/async-execution-policy.ko.md
-8f262980732bf14b3b361f1e02aabd6719b3be881240669738cb0f59f6114c74 common/channel-messaging.ko.md
-97732ddecfd56b39dd20b213dc76103d24d8e9111fb9da5db5998e1dc0018b92 common/channel-topology.ko.md
-000bd7d758c0b133d3bad35311891e72403d1fbd905c55b12edf4390cd2b2dab common/flow-correlation.ko.md
-96d97a95e3d8d021e4bbf50e8ddd3e0b251cd8faed6226c0a68e272fcd5ec9b2 common/framework-api.ko.md
-e015afd89bba3e4b36f74aadf409e4fea1f4f2bb932e57108cef4db3c67fd883 common/graceful-drain-handoff.ko.md
-944cf15bf6c806f337dcf1af208dff8f10e44695b6ea5cba20e8dad3fc6cd12d common/implementation-gap.ko.md
-921010d790f79329605006181884f257b361a58f4f13d11740b27130c9a6e624 common/interaction-model.ko.md
-e3e45861394c4f7e7c54687e63b68a17ed00b5dfa2db38c969bd3e2fd63f571d common/location-runtime.ko.md
-4040f9d3042d1d3e4cdb3533f8d033157d218970c778586a2cbcde4488c704ee common/location-store-redis.ko.md
-06dadcb858ffa2c9913dbd1931332b9dc321c7cd54ae56fd6ec4f95d803620f0 common/message-flow-tracing.ko.md
-3ce18fbcfbda8d410cf3c6792dd697773a8b4b2dca7cb0ebb0d64a48a06e7133 common/message-model.ko.md
-3fb43bd272188f83abc4ca0f7e06589b33d544f2658fe43e35d679fd39c99530 common/overview.ko.md
-d28134e15d84211823dcdbf68df23137982622754904b7f333464e70b71ff0f5 common/public-contract-governance.ko.md
-c215d647023a9b767fc048d2aa5c349ff4a3f5b49d27df97fbeaccf7aa9a214d common/runtime-metrics.ko.md
-fe9136f1bd209e27ed60d85fe01c34a1df9e997917d85f598a7a99017332f218 common/runtime-monitoring.ko.md
-3f6c88e95eefc17ebadc1559b71b62c77f4bcd5a68d9bc84db88ca7e067a71d5 common/session-actor-dispatch.ko.md
-19fe9c09a731694e19d9160853e99096e8e4284ab616565ea905b4d9e1aa5ab5 common/spot-actor.ko.md
-30827c93383fbcf0d65b607f5562091d7481504e1e907553f57efce8a84d6a82 common/spot-address-messaging.ko.md
-a819760bb71acbdb06a4290b4a293c73c9000e0ec7f5af91835313cb45d531c3 common/spot-messaging.ko.md
-a8efeed1b57db9dc0a03dc72ffdf15974b4cb6e7d7e8824c02f403f49f30a43c common/spot-node.ko.md
-5819de40f22cdf8b33822620b590af442e2b77687c1c46a13daf1ab1073979d0 common/stage-wrapper-on-spot.ko.md
-5f7c69ac0db66dbb33244e2791b18a4d00c9e079c33868e39949b5613c680c51 common/stream-connector.ko.md
-433b31fd8b11d628e0cfa8f60dfae057d7c0f78c9466dd021ef7d7b9f81d1c7c common/stream-session.ko.md
-6eb723fefb8d1a562af23da153c995e4a43b0b5ebd51f4d66350d46c91a4ea58 dotnet/README.ko.md
-baa19dcbe1584d42b7e730856244de166d6ad1a44eba0fa37ee976f51f55bc33 dotnet/stream-connector.ko.md
-6cd6af4cf69821e9bd86b6702a4ff16deee1aedd3f05656ed91a8bbd880dff6b dotnet/handler-interfaces.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-6cd6af4cf69821e9bd86b6702a4ff16deee1aedd3f05656ed91a8bbd880dff6b dotnet/handler-interfaces.ko.md
-6cd6af4cf69821e9bd86b6702a4ff16deee1aedd3f05656ed91a8bbd880dff6b dotnet/handler-interfaces.ko.md
-a9ca098fcecad37479f53acb5314e6e61c273f075e8d3d909dd38380832e0ec0 dotnet/system-structure.ko.md
-6cd6af4cf69821e9bd86b6702a4ff16deee1aedd3f05656ed91a8bbd880dff6b dotnet/handler-interfaces.ko.md
+a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.ko.md
+42d510ede11aa33269a48db8d21ad9d1f58b85845850f59c346964dbf939b101 common/22-actor-model.ko.md
+a618c98fd558a77fcc106baf82d1f64aced55d2d4e011985857d2d2c8ab157b5 common/04-async-execution-policy.ko.md
+c4bf1e04acc52e8f019e317efce655baef84e48ee6bca1f09dc35c175d0f7bf9 common/11-channel-messaging.ko.md
+4edd7ceda0c0c5508c1af458c407e19305993e4e899fc22edde92a33d4a78200 common/10-channel-topology.ko.md
+778755c8d0b278e18d691d0c7c9f9063dd9acf955eae7a5b809a96545715869f common/53-flow-correlation.ko.md
+f5e5be70f886b986097f077a1f57876359808f458927b63e6d99bd07a5612a92 common/05-framework-api.ko.md
+e1a42ee2323f58b3b0791c231caeba18c4edb5c3ea74e7880752b060e1381fba common/54-graceful-drain-handoff.ko.md
+56ff5d3c45f15a2fdebbebf59a80d0937c8026712f79f32ee6969403d20a423b common/90-implementation-gap.ko.md
+b6b54adc8eea5ab0aead4a65862f1e63ee9d944e1a3a22f880f278eeab31e253 common/02-interaction-model.ko.md
+f9ac6e812cee636d79b8d6e4c0e099c9ce9b58ae27ba1f19d15fd5384a624980 common/40-location-runtime.ko.md
+6ae2479eabdc71b1ec2d343664b3ce3d0ff9c99cc6b39d9ddeb9305757eca669 common/41-location-store-redis.ko.md
+ce881d2eb8f921299016a0f8e87132d3458db69cb56706ce2b285de40da57722 common/52-message-flow-tracing.ko.md
+0cf99c737691439d97e5ec8817061fda7244c72a289425a743bf031ebe9f2e54 common/03-message-model.ko.md
+b11559025f3b4f8090429d70d0571d8f3676a46ed69be33f108001bc6026269d common/01-overview.ko.md
+a991724444da99ad0e170cad87fcf7505d6b24293e220de6f457639110dd24cc common/00-public-contract-governance.ko.md
+a0c9bdc1921e8bdc2f78d644b98f0fcdc8fb50bc56a49bffb52e387c503e6914 common/51-runtime-metrics.ko.md
+e4b199a2f8019a2d93296f5b2cd9b98d3719b4c06cae5d6ecde527abca65b1f4 common/50-runtime-monitoring.ko.md
+90f52f3745a0365b8a5eb220dd8d658e35c97a7d45c77908983618dedf35d847 common/31-session-actor-dispatch.ko.md
+a0359fad886447347aa59182f1f6698ac91f5b78c0d682e3cef6ce3312dce6bd common/23-spot-actor.ko.md
+be51bb1575529455e0a1ef7b163883b8bbb24dafd76de48f19ebe43a2c0213ba common/24-spot-address-messaging.ko.md
+5b48a128626e30ceba413dddc86fa880bb070b65905df70a91bf0936d08dda09 common/20-spot-messaging.ko.md
+cf41d54d59f8f5e02a9c459f5f6a6781c4bbf2445167a52c71e97e3187559fe2 common/21-spot-node.ko.md
+09cc20c2f3d093724b4b5c292dcb4beefba8728ed706b1f5e84891a69cfa50d0 common/25-stage-wrapper-on-spot.ko.md
+b96317b588160db9c87b031362d6b29a9b1c3f01d7c8a49b6e0494eed67e0744 common/32-stream-connector.ko.md
+b599853acda9e675cf3f81d31cdc4fbae2322b722290e0ac2eaa76339c60d7d4 common/30-stream-session.ko.md
+c9c1680b76b866dedb84be474d9db7218537b8a89ebb9b5f82c635a0fb3ff6bb dotnet/README.ko.md
+663b90895f79cc37d627fd9d2efdf326cf0a70d68ac6c9f7e67d190b6aacb63b dotnet/03-stream-connector.ko.md
+6d1c09e7bd14df0e96cc5634bd1bc71db49639ee3821bbf6c655952a016f567d dotnet/02-handler-interfaces.ko.md
+ceedcabd5440a99941de92ceba8af2987357fa4fac36a599a89e0b3c10d26022 dotnet/01-system-structure.ko.md
 ```

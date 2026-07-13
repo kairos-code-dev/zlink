@@ -2,16 +2,13 @@
 set -euo pipefail
 
 # Aggregate sample runner template.
-# This is the only sample script that deletes stale Redis containers by prefix.
+# It delegates Redis ownership and cleanup to each selected sample runner.
 # Expected layout:
 #   samples/redis-common.sh
 #   samples/run_samples.sh
 #   samples/<language>/<Sample>/run_sample.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/redis-common.sh"
-
-SAMPLE_LANGUAGES=(${ZLINK_SAMPLE_LANGUAGES:-java})
 MAX_ATTEMPTS="${ZLINK_SAMPLE_RETRY_ATTEMPTS:-3}"
 BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
 
@@ -41,10 +38,6 @@ else
     fi
   done
 fi
-
-for language in "${SAMPLE_LANGUAGES[@]}"; do
-  zlink_redis_cleanup_scope "zlink-redis-${language}-sample"
-done
 
 run_sample_with_retry() {
   local runner="$1"

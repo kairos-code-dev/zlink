@@ -98,6 +98,35 @@ test('node spec and internals documentation do not depend on legacy draft links'
   assert.deepEqual(offenders.sort(), []);
 });
 
+test('node documentation does not restore the removed embedded Registry contract', () => {
+  assert.equal(
+    fs.existsSync(path.join(specRoot, '01-system-structure.ko.md')),
+    true,
+    'Node package, host registration and lifecycle contract is owned by system-structure'
+  );
+
+  const forbidden = [
+    /ZLinkRegistryBackendAdapter/,
+    /ZLinkRegistryModule/,
+    /ZLINK_REGISTRY_QUERY/,
+    /RegistryAndMonitoring/,
+    /embedded Registry/i
+  ];
+  const offenders = [];
+  for (const root of [specRoot, docRoot]) {
+    for (const file of allMarkdownFiles(root)) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const pattern of forbidden) {
+        if (pattern.test(content)) {
+          offenders.push(`${path.relative(workspaceRoot, file)}: ${pattern.source}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(offenders.sort(), []);
+});
+
 test('node implementation reference docs declare regression coverage sections', () => {
   const required = [
     path.join(docRoot, 'README.ko.md'),
@@ -118,8 +147,8 @@ test('node implementation reference docs declare regression coverage sections', 
 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
   const files = [
-    path.join(specRoot, 'handler-interfaces.ko.md'),
-    path.join(specRoot, 'handler-interfaces.ko.md')
+    path.join(specRoot, '02-handler-interfaces.ko.md'),
+    path.join(specRoot, '02-handler-interfaces.ko.md')
   ];
   const offenders = [];
 
@@ -214,7 +243,7 @@ test('node actor destroy docs keep Entry Spot ownership and disconnect isolation
     }
   }
 
-  const actorSpec = fs.readFileSync(path.join(specRoot, 'handler-interfaces.ko.md'), 'utf8');
+  const actorSpec = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
   assert.equal(actorSpec.includes('Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다'), true);
   assert.equal(actorSpec.includes('user Spot context 에는'), true);
   assert.equal(actorSpec.includes('destroy 나 user Spot leave 를 자동으로 만들지 않는다'), true);

@@ -1,17 +1,17 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](22-actor-model.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [Actor 모델](actor-model.ko.md) | [Spot Actor Join / Transfer](spot-actor.ko.md) | [Session Actor Dispatch 사용성](session-actor-dispatch.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [Actor 모델](22-actor-model.ko.md) | [Spot Actor Join / Transfer](23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](31-session-actor-dispatch.ko.md)
 
 # Spot Actor Join / Transfer 공통 스펙
 
 ## 1. 목적
 
 이 문서는 actor가 Entry Spot과 user Spot 사이를 이동할 때 모든 framework 언어가 지켜야 하는
-공통 계약을 정의한다. [actor-model.ko.md](actor-model.ko.md)는 actor 개념과 lifecycle 전체를
+공통 계약을 정의한다. [22-actor-model.ko.md](22-actor-model.ko.md)는 actor 개념과 lifecycle 전체를
 다루고, 이 문서는 그중 **Spot actor join과 node 간 transfer**의 완료 조건, callback 순서,
 장애 처리 기준을 고정한다.
 

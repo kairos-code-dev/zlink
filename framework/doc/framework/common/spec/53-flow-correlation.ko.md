@@ -3,11 +3,11 @@
 # 메시지 흐름 상관관계 (Flow Correlation)
 
 > **구현 상태:** 목표 계약은 이 문서에 고정되어 있으며 현재 구현과의 차이는
-> [구현 차이](implementation-gap.ko.md)와 구현 계획에서 추적한다. 채널 envelope·스트림 헤더의
+> [구현 차이](90-implementation-gap.ko.md)와 구현 계획에서 추적한다. 채널 envelope·스트림 헤더의
 > `flow_id`는 이전 framework와 호환 계층을 두지 않고 모든 언어와 connector가 같은 protocol
 > version으로 함께 전환한다.
 
-이 문서는 [메시지 흐름 추적](message-flow-tracing.ko.md)(이하 **MFT**)이 스스로 명시한 세 이음매를
+이 문서는 [메시지 흐름 추적](52-message-flow-tracing.ko.md)(이하 **MFT**)이 스스로 명시한 세 이음매를
 마감하는 언어 중립 공통 스펙이다. MFT의 개념과 관측 event를 확장하지만 `flow_id` wire 추가는
 호환 decoder를 두지 않는 일괄 codec 교체다. `correlation_id`의 기존 의미·필드 포맷은 그대로 둔다.
 
@@ -15,9 +15,9 @@
 
 | 이음매 | MFT 위치 | 문제 |
 |--------|----------|------|
-| corr 키잉 한계 | [MFT §7](message-flow-tracing.ko.md) | `correlation_id`는 channel/route/stream에서만 1급이고, spot 구독·actor·publish·join_spot은 `spot_rid`/`actor_id`로 키잉 → 한 흐름이 spot/actor 경계에서 corr로 관통되지 않음 |
-| corr 비유일성 | [MFT §8](message-flow-tracing.ko.md) | `correlation_id`는 노드별 프로세스 전역 단조 카운터라 전역 유일이 아님 → 대규모 fleet에서 grep 충돌 |
-| 언어별 구현 차이 | [MFT §11](message-flow-tracing.ko.md) | 언어별 진행률 상이 + stream/actor gateway 로거 명시 주입 누락 시 그 surface만 조용히 무로그(MFT §5 함정) |
+| corr 키잉 한계 | [MFT §7](52-message-flow-tracing.ko.md) | `correlation_id`는 channel/route/stream에서만 1급이고, spot 구독·actor·publish·join_spot은 `spot_rid`/`actor_id`로 키잉 → 한 흐름이 spot/actor 경계에서 corr로 관통되지 않음 |
+| corr 비유일성 | [MFT §8](52-message-flow-tracing.ko.md) | `correlation_id`는 노드별 프로세스 전역 단조 카운터라 전역 유일이 아님 → 대규모 fleet에서 grep 충돌 |
+| 언어별 구현 차이 | [MFT §11](52-message-flow-tracing.ko.md) | 언어별 진행률 상이 + stream/actor gateway 로거 명시 주입 누락 시 그 surface만 조용히 무로그(MFT §5 함정) |
 
 이 문서는 상위 키 **`flow_id`**를 도입해 앞 둘을, gateway 기본 배선으로 셋째를 마감한다.
 
@@ -27,7 +27,7 @@
 `correlation_id`(전송계층 request↔reply 짝짓기용)는 그대로 두고, `flow_id`는 그 위에서 흐름 전체를
 잇는다.
 
-기존 [message model §3](message-model.ko.md)의 여러 단계 추적 정보는 `flow-id`가 소유한다.
+기존 [message model §3](03-message-model.ko.md)의 여러 단계 추적 정보는 `flow-id`가 소유한다.
 public/runtime/wire 어디에도 독립된 `trace_id`와 `flow_id`를 동시에 만들지 않는다.
 
 *예:* 유저가 STREAM으로 `PlaceMark`를 보냄 → actor relay → room-spot handler. 현재 corr은
@@ -95,7 +95,7 @@ MFT §9가 correlation_id에 `has_correlation_id = 0x08`을 배정했다. `flow_
 ### 3.3 route mesh / transfer commit 전파
 
 - route mesh 메시지: envelope의 `flow_id`와 `flow_origin`을 그대로 전파.
-- actor transfer commit([spot-actor §5](spot-actor.ko.md)): commit 요청에 현재 흐름의 `flow_id`와
+- actor transfer commit([spot-actor §5](23-spot-actor.ko.md)): commit 요청에 현재 흐름의 `flow_id`와
   `flow_origin`을
   포함해, 이동 후 target actor의 후속 라인이 같은 흐름으로 이어진다(DRAIN-003 / MFLOW-EXT-002 교집합).
 
@@ -141,7 +141,7 @@ shutdown lifecycle은 `origin=lifecycle`로 새 flow를 시작한다. framework 
 
 ### 4.3 error reporter 라인
 
-MFT의 핵심 가치는 성공/실패가 같은 키 stream으로 읽히는 것이다([MFT §1](message-flow-tracing.ko.md),
+MFT의 핵심 가치는 성공/실패가 같은 키 stream으로 읽히는 것이다([MFT §1](52-message-flow-tracing.ko.md),
 MFLOW-008). 따라서 **dispatch error 이벤트에도 `flow_id` 필드를 추가**하고 error 라인에 `flow=`를
 찍는다. 그렇지 않으면 실패 지점에서 flow 추적이 끊긴다(MFLOW-EXT-009).
 
@@ -202,20 +202,20 @@ struct message_flow_event_t {
 별도 flow-id builder나 runtime control을 추가하지 않는다. 기존 message-flow mode가 `Off`인지 여부가
 생성 gate이고, ID 형식은 §6의 단일 형식이다. 이벤트에는 `flow_id`/`flow_origin` 필드를 더한다. 정식 언어 표면은
 각 언어 monitoring 문서가 소유한다:
-[.NET §11](languages/dotnet/aspnet-core-monitoring.ko.md) ·
-[Java §9](languages/java/spring-boot-monitoring.ko.md) ·
-[Node §11](languages/node/nestjs-monitoring.ko.md) ·
-[C++ §9](languages/cpp/cpp-monitoring.ko.md) · [Kotlin §8](languages/kotlin/handler-interfaces.ko.md).
+[.NET §11](languages/dotnet/01-system-structure.ko.md) ·
+[Java §9](languages/java/01-system-structure.ko.md) ·
+[Node §11](languages/node/01-system-structure.ko.md) ·
+[C++ §9](languages/cpp/50-monitoring.ko.md) · [Kotlin §8](languages/kotlin/02-handler-interfaces.ko.md).
 두 event 필드도 wire와 같은 optional pair다. `flow_id`가 없으면 `flow_origin`도 없고, `flow_id`가
 있으면 root `flow_origin`도 반드시 있다. 관측 경로는 둘 중 하나만 있는 불완전한 event를 내보내지 않는다.
-로그 토큰 `flow=`·`origin=`은 언어 간 바이트 동일([runtime-metrics §4.0](runtime-metrics.ko.md)).
+로그 토큰 `flow=`·`origin=`은 언어 간 바이트 동일([runtime-metrics §4.0](51-runtime-metrics.ko.md)).
 
 ## 9. 파싱 규약과 구현 상태
 
-- `flow`/`corr`/`label` 조합으로 다중 노드 흐름을 하나로 잇는 파싱 규약은 [MFT §5.1](message-flow-tracing.ko.md)의
+- `flow`/`corr`/`label` 조합으로 다중 노드 흐름을 하나로 잇는 파싱 규약은 [MFT §5.1](52-message-flow-tracing.ko.md)의
   구조화 필드 규약을 이 문서의 `flow`, `origin`, `corr`, `label` key로 확장한다. 정규식 없이 구조화 key/value로
   조인한다.
-- 언어별 구현 진행률과 gateway 자동 배선 현황은 [언어별 구현 차이](implementation-gap.ko.md)에
+- 언어별 구현 진행률과 gateway 자동 배선 현황은 [언어별 구현 차이](90-implementation-gap.ko.md)에
   기록한다.
 
 ## 10. 일괄 교체
@@ -255,5 +255,5 @@ struct message_flow_event_t {
 
 ---
 
-> 관련: [메시지 흐름 추적](message-flow-tracing.ko.md) · [runtime metrics](runtime-metrics.ko.md) ·
-> [graceful drain & handoff](graceful-drain-handoff.ko.md) · [spot-actor](spot-actor.ko.md)
+> 관련: [메시지 흐름 추적](52-message-flow-tracing.ko.md) · [runtime metrics](51-runtime-metrics.ko.md) ·
+> [graceful drain & handoff](54-graceful-drain-handoff.ko.md) · [spot-actor](23-spot-actor.ko.md)

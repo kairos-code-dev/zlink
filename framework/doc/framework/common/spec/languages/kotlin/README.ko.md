@@ -5,7 +5,7 @@ public contract를 소유한다. 그대로 사용하는 Java 타입과 메서드
 [Java 공개 계약](../java/README.ko.md)을 따르고 여기서 복사해 다시 정의하지 않는다.
 
 Kotlin suspending handler와 adapter 시그니처는
-[handler-interfaces](handler-interfaces.ko.md)를 기준으로 한다. Java API를 기다리는
+[handler-interfaces](02-handler-interfaces.ko.md)를 기준으로 한다. Java API를 기다리는
 extension, Stream Connector coroutine wrapper와 `Flow` 표면도 이 디렉토리의 정식
 계약에 포함한다. Kotlin source와 contract test는 이 계약을 따라야 한다.
 

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Runtime](location-runtime.ko.md) | [다음: Spot 주소 기반 메시징](spot-address-messaging.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Runtime](40-location-runtime.ko.md) | [다음: Spot 주소 기반 메시징](24-spot-address-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -7,7 +7,7 @@
 # Location Store — 공식 Redis Extension
 
 이 문서는 framework가 공식 제공하는 **Redis location store extension**의 언어 중립 공통
-스펙이다. store/lease/generation의 계약 의미는 [location runtime](location-runtime.ko.md)이
+스펙이다. store/lease/generation의 계약 의미는 [location runtime](40-location-runtime.ko.md)이
 소유하고, 이 문서는 그 계약을 Redis 위에서 어떻게 만족시키는지(key 구조, 원자성, 변경 감지,
 오류 변환, Redis 연결 수명)를 정의한다.
 

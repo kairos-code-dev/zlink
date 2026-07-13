@@ -31,7 +31,7 @@ cleanup() {
   set +e
   # Stop only the Redis container started by this script.
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
   # Stop only server/client processes started by this script.
   # kill "${SERVER_PID}" >/dev/null 2>&1 || true

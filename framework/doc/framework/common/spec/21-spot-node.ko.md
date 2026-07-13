@@ -28,13 +28,13 @@ SpotNode는 spot 인스턴스를 호스팅하는 컨테이너 노드다. 등록 
 기본 규칙이다.
 
 RouteMesh와 SpotMesh가 같은 프로세스에 있으면 **framework가 route bridge를 자동으로 붙인다.**
-discovery는 등록된 location store를 사용한다([location runtime](location-runtime.ko.md)).
+discovery는 등록된 location store를 사용한다([location runtime](40-location-runtime.ko.md)).
 
 ## 2. Entry Spot
 
 Entry Spot은 **actor가 생성 직후 머무르는 기본 spot**이다. actor가 user Spot에서 leave하면 같은
 node의 Entry Spot으로 돌아온다. 따라서 Entry Spot의 routing id는 actor remote location의 현재
-spot rid가 될 수 있다([spot-actor](spot-actor.ko.md)).
+spot rid가 될 수 있다([spot-actor](23-spot-actor.ko.md)).
 
 ### 2.1 적용 순서
 
@@ -87,7 +87,7 @@ publish 또는 attach된 channel client의 send/request로 푼다.
   사용한다.
 - **owner node rid와 spot kind는 location store에서 조회한다.** owner lease가 유효한지 확인한
   spot location row를 기준으로 사용한다. 조회와 유효성 판정은
-  [location runtime §5](location-runtime.ko.md)를 따른다.
+  [location runtime §5](40-location-runtime.ko.md)를 따른다.
 - framework가 **운영용** spot location row를 노출할 때는 Entry Spot과 user Spot을 구분한다.
 
 **actor ref publish·sync와 actor remote location에 별도 application public interface를 추가하지

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: framework API](05-framework-api.ko.md) | [다음: Actor 모델](22-actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -44,8 +44,11 @@ request, join과 worker에는 완료를 기다리는 terminator를 하나만 제
 별도 public terminator는 두지 않는다.
 
 framework는 현재 실행 문맥과 대상 실행 줄을 알고 있으므로, self-deadlock 없이 완료를
-기다리는 방법을 내부에서 선택한다. 같은 Spot이나 actor의 보호 상태는 callback 완료까지
-서로 무관한 callback이 접근하지 못한다. 다만 현재 callback이 시작하고 직접 기다리는
+기다리는 방법을 내부에서 선택한다. 재진입을 막는 보호 단위는 actor와 timer의 mailbox다:
+같은 actor나 timer의 보호 상태는 callback 완료까지 서로 무관한 callback이 접근하지
+못한다. Spot의 직렬 실행 줄은 handler가 완료 값을 기다리는 await 지점에서 양보하므로,
+같은 Spot의 독립 callback은 그 대기 중에 시작할 수 있다(자동 turn dispatch E2E ATD-A2가
+이 의미를 고정한다). 다만 현재 callback이 시작하고 직접 기다리는
 동일 실행 줄의 후속 작업은 같은 논리적 turn의 일부로 순서대로 실행할 수 있다. 이 인과
 관계가 없는 callback은 그 사이에 끼워 넣지 않는다. 이렇게 하면 보호 상태의 직렬성을
 유지하면서, 현재 callback의 결과를 만들기 위해 같은 실행 줄이 필요한 경우에도 교착하지
@@ -321,5 +324,5 @@ delegate 모델을 우선하고 coroutine API를 public 표면에 강제하지 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: framework API](05-framework-api.ko.md) | [다음: Actor 모델](22-actor-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

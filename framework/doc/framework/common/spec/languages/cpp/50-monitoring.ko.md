@@ -1,15 +1,19 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](40-registry.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Registry](cpp-registry.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [인터페이스](03-handler-interfaces.ko.md) | [Registry](40-registry.ko.md)
 
 # Spec -- ZLink Framework C++ Monitoring
 
 > 이 문서는 C++ monitoring 공개 표면을 고정한다. handler 등록, source 등록 검증,
 > 직접 publish와 channel, registry, Spot runtime의 자동 event 발행이 공개 계약이다.
+
+> 이 문서는 [런타임 모니터링 공통 스펙](../../50-runtime-monitoring.ko.md)의 **투영**이다.
+> source를 나누는 근거, event 종류, polling 규칙, startup validation은 공통 스펙이 소유한다.
+> 이 문서는 **언어 표면**만 고정한다.
 
 ## 인터페이스 경계
 
@@ -62,8 +66,7 @@ monitoring.add_socket_events("profile.server");
 monitoring.add_socket_events(
   "profile.client",
   {socket_event_kind_t::connection_ready});
-monitoring.add_discovery_events("profile.client.discovery");
-monitoring.add_registry_events("registry", std::chrono::seconds(1));
+monitoring.add_location_events("location", std::chrono::seconds(1));
 monitoring.add_spot_events("stage-node", std::chrono::seconds(1));
 monitoring.add_spot_timer_events("spot-timer");
 ```
@@ -124,7 +127,7 @@ publisher와 같은 의미로, 운영자가 전체 event stream을 먼저 볼 �
 auto report = app.health()
   .add_zlink_runtime_check()
   .add_channel_check("profile.server")
-  .add_registry_check("registry")
+  .add_location_check("location")
   .add_stream_endpoint_check("game.stream")
   .add_hosted_service_check("worker")
   .report();
@@ -169,7 +172,7 @@ app.metrics()
 
 monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
 생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. C++는 이 기능의
-**레퍼런스 구현**이다. 공통 의미는 [공통 스펙 — 메시지 흐름 추적](../../message-flow-tracing.ko.md)이
+**레퍼런스 구현**이다. 공통 의미는 [공통 스펙 — 메시지 흐름 추적](../../52-message-flow-tracing.ko.md)이
 소유하고, 이 절은 C++ 표면만 적는다. dispatch 제어가 아니라 관측이며, observer 실패가 처리/응답을
 깨지 않는다.
 
@@ -235,7 +238,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 
 ## 8. 런타임 메트릭 (runtime metrics)
 
-공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 C++ 표면만
+공통 의미는 [공통 스펙 — 런타임 메트릭](../../51-runtime-metrics.ko.md)이 소유한다. 이 절은 C++ 표면만
 적는다.
 
 > **설계 원칙(같은 개념 → 같은 메커니즘).** C++에는 이미 §6의 metric event 표면
@@ -275,7 +278,7 @@ OTel bridge는 이름별 카탈로그를 다시 하드코딩하지 않고 이 �
 
 ## 9. 메시지 흐름 상관관계 (flow correlation)
 
-공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. §7(메시지
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../53-flow-correlation.ko.md)가 소유한다. §7(메시지
 흐름 추적)의 additive 확장이다.
 
 ### 9.1 표면
@@ -292,7 +295,7 @@ OTel bridge는 이름별 카탈로그를 다시 하드코딩하지 않고 이 �
 
 ## 10. Graceful Drain & Handoff
 
-공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../54-graceful-drain-handoff.ko.md)가 소유한다.
 lifecycle 제어 표면(관측 아님)의 C++ 투영이다.
 
 ### 10.1 표면
@@ -336,5 +339,5 @@ bool is_ready() const;
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](40-registry.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

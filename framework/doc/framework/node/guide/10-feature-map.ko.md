@@ -8,7 +8,7 @@
 | `IZLinkChannelClient` | `ZLinkChannelClient` |
 | `IZLinkFanoutClient` | `ZLinkFanoutClient` |
 | `IZLinkSpotManager` | `ZLinkSpotManager` |
-| `Yield(...)` | `yield(...)` |
+| `Yield(...)` | 직접 대응하는 public API 없음. Promise handler의 직렬 완료 계약 사용 |
 | `IZLinkActorManager` | `ZLinkActorManager` |
 | `IZLinkRuntimeEventHandler<T>` | `ZLinkRuntimeEventHandler<T>` |
 | `Systems.Zlink.Stream.Connector` | `@zlink-systems/stream-connector` |

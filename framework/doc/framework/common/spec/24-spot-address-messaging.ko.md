@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](location-store-redis.ko.md) | [다음: 공통 Sample](../sample/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](41-location-store-redis.ko.md) | [다음: 공통 Sample](../sample/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -9,7 +9,7 @@
 이 문서는 spot/actor 대상 메시징의 언어 중립 공통 스펙이다. **논리 전송 대상
 (`SpotHandle`), 주소 갱신, 메시징 표면과 실패 계약**의 의미를 소유한다.
 위치 저장·resolver·자동 연결의 하부 계약은
-[location runtime](location-runtime.ko.md)이 소유하고 이 문서는 반복하지 않는다.
+[location runtime](40-location-runtime.ko.md)이 소유하고 이 문서는 반복하지 않는다.
 
 > 설계의 제1원칙: **호출자는 transport 주소의 수명과 재조회 순서를 관리하지 않는다.**
 > resolver가 반환한 handle이 논리 대상과 주소 snapshot을 함께 소유하고, framework가
@@ -39,7 +39,7 @@ store 구현과 runtime 진단에서는 이 값을 사용할 수 있지만 appli
 
 ## 2. 조회 표면
 
-메시징 조회는 [location runtime §5](location-runtime.ko.md)의 두 resolver다. 모든 조회가
+메시징 조회는 [location runtime §5](40-location-runtime.ko.md)의 두 resolver다. 모든 조회가
 store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 입력 | 반환 |
@@ -87,7 +87,7 @@ owner 이동, node 장애, 정상 lifecycle의 spot destroy 후 보유 주소는
 ### 4.1 request 실패 분류 — fail-fast
 
 이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(이 표를 위한 새 종류를 추가하지 않는다).
-actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-api.ko.md)을 따른다.
+actor 대상 표면의 실패 분류는 [framework API 오류 계약](05-framework-api.ko.md)을 따른다.
 
 | 상태 | 판정 위치 | framework 동작 | 최종 결과 |
 |------|-----------|----------------|-----------|

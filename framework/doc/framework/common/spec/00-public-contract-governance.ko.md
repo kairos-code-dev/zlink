@@ -15,7 +15,7 @@ framework 공개 계약은 두 층으로 나눈다.
 
 정식 스펙은 모든 언어가 도달해야 하는 목표 계약이다. 현재 구현이 없거나 다른
 시그니처를 제공하더라도 스펙을 구현에 맞춰 축소하지 않는다. 차이는
-[언어별 구현 차이](implementation-gap.ko.md)에 기록하고, 이후 코드와 contract test를
+[언어별 구현 차이](90-implementation-gap.ko.md)에 기록하고, 이후 코드와 contract test를
 정식 스펙에 맞춘다.
 
 ## 2. 정식 계약 고정

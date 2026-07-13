@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](01-system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](system-structure.ko.md) | [SPOT](system-structure.ko.md) | [STREAM](system-structure.ko.md) | [Monitoring](system-structure.ko.md) | [Location](system-structure.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](01-system-structure.ko.md) | [SPOT](01-system-structure.ko.md) | [STREAM](01-system-structure.ko.md) | [Monitoring](01-system-structure.ko.md) | [Location](01-system-structure.ko.md)
 
 # ZLink Framework .NET Interface Catalog
 
@@ -17,26 +17,26 @@
 다른 문서에서 interface 를 참조할 때는 항상 이 문서를 기준으로 삼는다.
 
 Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 계약이며,
-그 동작 의미는 [공통 스펙](../../spot-actor.ko.md)을 따른다. 구현이나 contract test가
+그 동작 의미는 [공통 스펙](../../23-spot-actor.ko.md)을 따른다. 구현이나 contract test가
 이 시그니처와 다르면 계약 불일치로 처리한다.
 
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래
 문서들을 참고한다.
 
 - 서버 간 messaging 프로그래밍 모델 →
-  [system-structure.ko.md](system-structure.ko.md)
+  [system-structure.ko.md](01-system-structure.ko.md)
 - 서버 간 messaging 샘플 →
   [.NET channel 가이드](../../../../dotnet/guide/05-channel-messaging.ko.md)
 - SPOT 통합 →
-  [system-structure.ko.md](system-structure.ko.md)
+  [system-structure.ko.md](01-system-structure.ko.md)
 - SPOT 샘플 →
   [.NET SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md)
 - STREAM 통합 →
-  [system-structure.ko.md](system-structure.ko.md)
+  [system-structure.ko.md](01-system-structure.ko.md)
 - STREAM 샘플 →
   [.NET STREAM 가이드](../../../../dotnet/guide/09-stream.ko.md)
 - Location 통합 →
-  [system-structure.ko.md](system-structure.ko.md)
+  [system-structure.ko.md](01-system-structure.ko.md)
 
 ## 2. 인터페이스 전체 목록
 
@@ -1336,7 +1336,7 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 - `IZLinkEntrySpot<TActor>.OnLeaveActorAsync(...)`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
 
-`stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
+`25-stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
 어떻게 구성하는지 보여 주는 상위 모델 문서다. 함께 읽으면 도움이 된다.
 
 ##### zlink native Actor API 위임
@@ -3012,8 +3012,8 @@ public sealed class ZLinkPacketAttribute : Attribute
 ## 10. Location 조회 인터페이스
 
 위치 조회 인터페이스는 infrastructure 성격이므로 상세 정의는
-[system-structure.ko.md](system-structure.ko.md)와
-[공통 location runtime 스펙](../../location-runtime.ko.md)에 있다.
+[system-structure.ko.md](01-system-structure.ko.md)와
+[공통 location runtime 스펙](../../40-location-runtime.ko.md)에 있다.
 여기서는 역할만 요약한다.
 
 location store 를 등록한 배포에서 DI 로 노출되는 조회 표면이다. 캐시가 없고,
@@ -3072,7 +3072,7 @@ public interface IZLinkActorSpotHandleResolver
 - 조회 API 가 비동기인 이유는 저장소가 프로세스 밖(store)에 있기 때문이다.
 - 사용할 수 없는 서버의 row는 owner lease 만료 후 성공 결과에서 자동 제외된다.
 - 메시징 resolver는 불투명한 `SpotHandle`을 반환한다. handle이 내부 주소 snapshot과
-  안전한 1회 갱신을 소유한다([spot 주소 메시징](../../spot-address-messaging.ko.md)).
+  안전한 1회 갱신을 소유한다([spot 주소 메시징](../../24-spot-address-messaging.ko.md)).
 
 ### 10.2.1 Redis location store
 
@@ -3347,7 +3347,7 @@ public abstract record ZLinkSpotEvent(
 monitoring 이 socket/location/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
 생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미
 (로그 모드·phase·event·observer·off 제로코스트 성능 계약·출력 라우팅·길목·스트림
-correlation_id 와이어)는 [공통 스펙 — 메시지 흐름 추적](../../message-flow-tracing.ko.md)이
+correlation_id 와이어)는 [공통 스펙 — 메시지 흐름 추적](../../52-message-flow-tracing.ko.md)이
 소유한다. 이 절은 그 의미의 `.NET` 표면만 적는다. dispatch **제어**가 아니라 **관측**이며,
 observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
 
@@ -3414,7 +3414,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 
 ### 10.5 런타임 메트릭 (runtime metrics)
 
-공통 의미(계기 카탈로그·종류·라벨·성능 계약)는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이
+공통 의미(계기 카탈로그·종류·라벨·성능 계약)는 [공통 스펙 — 런타임 메트릭](../../51-runtime-metrics.ko.md)이
 소유한다. 이 절은 `.NET` 표면만 적는다.
 
 > **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** framework는 안정된 이름의 `Meter` 하나로 카탈로그
@@ -3452,7 +3452,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 
 ### 10.6 메시지 흐름 상관관계 (flow correlation)
 
-공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. 이 절은
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../53-flow-correlation.ko.md)가 소유한다. 이 절은
 §9(메시지 흐름 추적)의 확장이며 **새 설정 표면을 만들지 않는다**. 기존 message-flow mode가 `Off`가
 아니면 framework가 전역 유일 id를 자동 생성하고 기존 event에 필드를 더한다.
 
@@ -3479,7 +3479,7 @@ options.ConfigureDispatch()
 
 ### 10.7 Graceful Drain & Handoff
 
-공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../54-graceful-drain-handoff.ko.md)가 소유한다.
 이 절은 **lifecycle 제어 표면**(관측이 아님)의 `.NET` 투영이다.
 
 > **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 host shutdown에 자동 참여해 drain하므로
@@ -3608,7 +3608,7 @@ public enum ZLinkFrameworkErrorKind
 ```
 
 각 kind 의 발생 조건과 cross-binding 의미는
-[policy/session-gateway-usability.ko.md](../../session-actor-dispatch.ko.md)
+[policy/session-gateway-usability.ko.md](../../31-session-actor-dispatch.ko.md)
 §17 error-kind 매트릭스에서 다룬다.
 
 `ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
@@ -4515,7 +4515,7 @@ interface가 그 동작을 보장하도록 한다.
 관측·운영 public inventory에는 `ZLinkMeters`, `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `IZLinkDrainControl`,
 `ZlinkStreamCloseReason`, `ZlinkStreamDisconnected`도 포함한다. 앞의 connector 선언과
-[ASP.NET Core Monitoring §10~12](system-structure.ko.md)의 전체 declaration이 정확한 member,
+[ASP.NET Core Monitoring §10~12](01-system-structure.ko.md)의 전체 declaration이 정확한 member,
 overload, default와 반환형을 고정하며 contract test는 이 타입들을 누락 없이 검사한다.
 
 ### 16.3 Exported 보조 타입의 정식 선언
@@ -4924,5 +4924,5 @@ cd framework/languages/dotnet
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](01-system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

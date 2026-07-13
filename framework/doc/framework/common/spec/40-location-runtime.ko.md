@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md) | [다음: Location Store — Redis](location-store-redis.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md) | [다음: Location Store — Redis](41-location-store-redis.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -9,8 +9,8 @@
 이 문서는 framework의 **분산 위치 관리(location runtime)** 언어 중립 공통 스펙이다. 위치 모델
 (peer/spot/actor/route row), owner lease와 generation, store/resolver 계약, 자동 연결 규칙,
 watch/polling, 운영 조회 모델의 의미는 이 문서가 소유한다. 다른 spec 문서는 이 문서를
-링크하고 세부 모델을 반복하지 않는다. 네이밍은 [framework API](framework-api.ko.md)와
-[공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
+링크하고 세부 모델을 반복하지 않는다. 네이밍은 [framework API](05-framework-api.ko.md)와
+[공개 계약 관리 §4](00-public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
 
 > core discovery/registry는 framework 표면에서 제거됐다. 위치 정보의 기준 저장소는 사용자가
 > 등록하는 **location store**(공식 Redis extension 또는 사용자 구현체)이며, framework runtime이
@@ -97,7 +97,7 @@ true로 갱신한다. 이 마커는 **"신규 배치 제외"와 "기존 연결 �
 
 `Draining`은 기본값 false인 필수 typed 필드다. 이번 framework 계약 교체에서는 구형 row decoder나
 metadata fallback을 두지 않으며 store row schema와 모든 언어 codec을 함께 바꾼다. 전체 drain 수명주기 계약은
-[Graceful Drain & Handoff](graceful-drain-handoff.ko.md) §3이 소유한다.
+[Graceful Drain & Handoff](54-graceful-drain-handoff.ko.md) §3이 소유한다.
 
 **actor 배치 capability.** Spot mesh의 Spot 역할 peer row는 그 노드가 actor factory로 수용할 수 있는
 actor type마다 `Capabilities`에 `actor:<actor-type>`을 하나씩 기록한다. 여기서 `<actor-type>`은
@@ -216,7 +216,7 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 - 메시징 resolver는 **전송 handle**을 반환한다. handle이 내부 `SpotRef` snapshot과
   안전한 1회 갱신을 소유하며 caller는 주소 수명을 관리하지 않는다. 상세는
-  [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
+  [spot 주소 메시징](24-spot-address-messaging.ko.md)이 정본이다.
 - location store 기반 Spot handle resolver는 spot row의 mesh 이름으로 route mesh
   channel을 고른다. spot mesh 이름과 route mesh channel 이름이 다르면 location option에
   `spot mesh -> route mesh channel` 매핑을 등록해야 한다. 매핑이 없으면 같은 이름을 사용한다.
@@ -319,8 +319,8 @@ cache 관련 option은 없다(캐시 제거 결정).
 ## 9. 관측 (event source)
 
 registry/discovery event source는 location runtime event source로 대체됐다. 각 source의
-kind는 닫힌 enum이다. 상세 계약은 [메시지 흐름 추적](message-flow-tracing.ko.md)의 observer
-계약과 [비동기 실행 정책](async-execution-policy.ko.md)을 따른다.
+kind는 닫힌 enum이다. 상세 계약은 [메시지 흐름 추적](52-message-flow-tracing.ko.md)의 observer
+계약과 [비동기 실행 정책](04-async-execution-policy.ko.md)을 따른다.
 
 | source | kind |
 |--------|------|
@@ -356,6 +356,6 @@ store 구현체가 지켜야 하는 최소 요구:
 - `UpdatedAt`/`LeaseExpiresAt`은 store 기준 시각으로 기록한다.
 - continuation token은 opaque하며 filter가 같은 연속 호출에서만 유효하면 된다.
 
-공식 참조 구현은 Redis extension([location-store-redis](location-store-redis.ko.md))이다.
+공식 참조 구현은 Redis extension([location-store-redis](41-location-store-redis.ko.md))이다.
 framework 본체는 특정 store 제품에 의존하지 않으며, in-memory 구현은 단일 process 테스트
 전용이다. store 제품 자체의 HA/복제는 store 구현체 책임이고 framework가 검증하지 않는다.

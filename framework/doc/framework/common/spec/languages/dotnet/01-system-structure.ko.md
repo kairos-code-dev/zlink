@@ -9,17 +9,17 @@
 > 이 문서는 **ASP.NET Core 위에서 ZLink framework를 어떻게 구성하는가**를 소유한다. 어떤 등록
 > 표면이 무엇을 켜고, 무엇이 무엇에 붙고, 어떤 순서를 지켜야 하는지다.
 >
-> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../channel-messaging.ko.md),
-> [spot-messaging](../../spot-messaging.ko.md), [spot-node](../../spot-node.ko.md),
-> [stream-session](../../stream-session.ko.md), [actor-model](../../actor-model.ko.md),
-> [session-actor-dispatch](../../session-actor-dispatch.ko.md),
-> [runtime-monitoring](../../runtime-monitoring.ko.md),
-> [location-runtime](../../location-runtime.ko.md),
-> [channel-topology](../../channel-topology.ko.md).
+> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-spot-node.ko.md),
+> [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
+> [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
+> [runtime-monitoring](../../50-runtime-monitoring.ko.md),
+> [location-runtime](../../40-location-runtime.ko.md),
+> [channel-topology](../../10-channel-topology.ko.md).
 >
-> **public 타입과 시그니처는 [handler-interfaces](handler-interfaces.ko.md)가 소유한다.**
+> **public 타입과 시그니처는 [handler-interfaces](02-handler-interfaces.ko.md)가 소유한다.**
 > **사용 예제와 튜토리얼은 [.NET 가이드](../../../../dotnet/guide/01-overview.ko.md)가 소유한다.**
-> client connector는 [stream-connector](stream-connector.ko.md)가 소유한다.
+> client connector는 [stream-connector](03-stream-connector.ko.md)가 소유한다.
 
 ## 1. 계약 기준
 
@@ -50,11 +50,11 @@
 
 - **codec 구현을 core에 섞지 않는다.** JSON은 기본 codec이고, Protobuf·MessagePack은 **extension
   package**로 분리한다. 같은 extension을 framework codec registry, HTTP client, stream connector가
-  **공유한다**([channel-messaging §6](../../channel-messaging.ko.md)).
+  **공유한다**([channel-messaging §6](../../11-channel-messaging.ko.md)).
 - **location store 구현도 extension이다.** core는 `IZLinkLocationStore` 계약만 알고, Redis 구현은
   별도 package가 제공한다(§10).
 - **connector는 서버 framework package를 참조하지 않는다.** 반대 방향도 같다
-  ([stream-connector §1](stream-connector.ko.md)).
+  ([stream-connector §1](03-stream-connector.ko.md)).
 - **host adapter(`AspNetCore`)와 core를 나눈다.** core는 ASP.NET Core에 의존하지 않는다.
 
 ## 3. 배포 계획
@@ -68,9 +68,9 @@
 
 - **Unity(네이티브)와 Godot C#은 전용 package를 두지 않는다.** 위 connector package를 그대로
   사용한다. **웹(WASM) 빌드에는 쓸 수 없다** — TypeScript connector를 사용한다
-  ([stream-connector 공통 스펙 §11](../../stream-connector.ko.md)).
+  ([stream-connector 공통 스펙 §11](../../32-stream-connector.ko.md)).
 - **package 계약은 archive entry, metadata, dependency까지 snapshot으로 고정한다.** 갱신 절차와
-  검증은 [handler-interfaces §17](handler-interfaces.ko.md)이 소유한다.
+  검증은 [handler-interfaces §17](02-handler-interfaces.ko.md)이 소유한다.
 
 **미결정:** Unity 배포 채널(NuGet 직접 소비 vs UPM 패키지 제공).
 
@@ -105,7 +105,7 @@ channel 등록은 **소켓 한 쌍을 만드는 일이 아니라 역할을 켜�
 
 ### 5.2 자동 연결과 수동 연결
 
-규칙은 [channel-topology §5](../../channel-topology.ko.md)가 소유한다. `.NET` 표면에서의 귀결은
+규칙은 [channel-topology §5](../../10-channel-topology.ko.md)가 소유한다. `.NET` 표면에서의 귀결은
 다음과 같다.
 
 - **client·subscriber 역할은 location store가 등록되어 있으면 그것을 기본 연결 방식으로 쓴다.**
@@ -208,7 +208,7 @@ spot publisher client가 각자 endpoint 집합을 갖는다.
 
 ### 6.4 Route ingress
 
-규칙은 [spot-messaging §6](../../spot-messaging.ko.md)이 소유한다. `.NET`에서는:
+규칙은 [spot-messaging §6](../../20-spot-messaging.ko.md)이 소유한다. `.NET`에서는:
 
 - `node.EnableRouter(endpoint)`로 ingress를 켠다.
 - 수동 endpoint는 `AddRouteMeshChannel(...)` builder의 `EnableServer(endpoint)`(ingress `ROUTER`)와
@@ -222,7 +222,7 @@ spot publisher client가 각자 endpoint 집합을 갖는다.
 facade의 설정을, 후자는 구현 타입을 등록한다.
 
 **Entry Spot routing id는 native SpotNode가 bind되기 전에 적용해야 한다.** core가 bind 이후 변경을
-잠그기 때문이다([spot-node §2.1](../../spot-node.ko.md)).
+잠그기 때문이다([spot-node §2.1](../../21-spot-node.ko.md)).
 
 1. `ApplyEntrySpotRoutingIdBeforeBind()` — `ConfigureEntrySpot(...)`의 `RoutingId`를 native
    facade(`entrySpot.SetRoutingId(...)`)에 적용한다.
@@ -240,11 +240,11 @@ facade의 설정을, 후자는 구현 타입을 등록한다.
 - **한 stream node에는 session을 하나만 둔다.**
 - **bind endpoint는 반드시 있어야 한다.**
 - **header binary 형식은 framework와 connector가 공유하는 내부 프로토콜로 고정된다.** application이
-  이 형식을 바꾸는 설정을 갖지 않는다([stream-session §2](../../stream-session.ko.md)).
+  이 형식을 바꾸는 설정을 갖지 않는다([stream-session §2](../../30-stream-session.ko.md)).
 
 ## 8. Session actor dispatch 등록
 
-계약은 [session-actor-dispatch](../../session-actor-dispatch.ko.md)가 소유한다. host 등록에서 필요한
+계약은 [session-actor-dispatch](../../31-session-actor-dispatch.ko.md)가 소유한다. host 등록에서 필요한
 것은 둘이다.
 
 | 표면 | 역할 |
@@ -257,7 +257,7 @@ facade의 설정을, 후자는 구현 타입을 등록한다.
 
 ## 9. Monitoring 등록
 
-계약은 [runtime-monitoring](../../runtime-monitoring.ko.md)이 소유한다. `.NET` 등록 표면은
+계약은 [runtime-monitoring](../../50-runtime-monitoring.ko.md)이 소유한다. `.NET` 등록 표면은
 `IZLinkMonitoringOptions`이며 source별로 나뉜다.
 
 | source | 등록 조건 |
@@ -285,29 +285,29 @@ query로 관찰한다.
   channel을 사용한다.** 등록하지 않은 mesh나 channel을 가리키는 매핑은 **시작 검증에서 거부한다.**
 
 공식 Redis store(`ZLinkRedisLocationStore`)의 타입과 옵션은
-[handler-interfaces §10.2.1](handler-interfaces.ko.md)이 소유한다.
+[handler-interfaces §10.2.1](02-handler-interfaces.ko.md)이 소유한다.
 
 ## 11. Host lifecycle
 
 **channel·spot·stream runtime은 host startup 단계에서 등록된 역할을 보고 만들고, host shutdown
 단계에서 정리한다. lazy first-call 생성으로 숨기지 않는다** — 설정 오류가 startup에서 드러나도록
-하기 위해서다([channel-messaging §2](../../channel-messaging.ko.md)).
+하기 위해서다([channel-messaging §2](../../11-channel-messaging.ko.md)).
 
 `.NET`에서는 `IHostedService` 계열의 hosted lifecycle에 연동한다 — runtime 부팅 → store 자동 연결
 수립 → handler dispatcher 시작 → 종료 시 graceful shutdown.
 
-**host 종료 중 호출**의 계약은 [channel-messaging §5](../../channel-messaging.ko.md)가, 우아한
-종료의 수명주기는 [graceful-drain-handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+**host 종료 중 호출**의 계약은 [channel-messaging §5](../../11-channel-messaging.ko.md)가, 우아한
+종료의 수명주기는 [graceful-drain-handoff](../../54-graceful-drain-handoff.ko.md)가 소유한다.
 
 ## 12. DI
 
-DI 등록 조건과 public service 노출 기준은 [handler-interfaces §13](handler-interfaces.ko.md)이
+DI 등록 조건과 public service 노출 기준은 [handler-interfaces §13](02-handler-interfaces.ko.md)이
 소유한다.
 
 ## 13. Startup validation
 
-검증 항목의 정본은 [channel-messaging §4](../../channel-messaging.ko.md)와
-[spot-messaging §8](../../spot-messaging.ko.md)이 소유한다.
+검증 항목의 정본은 [channel-messaging §4](../../11-channel-messaging.ko.md)와
+[spot-messaging §8](../../20-spot-messaging.ko.md)이 소유한다.
 
 **`.NET`은 모든 위반을 `ZLinkConfigurationException`으로 host 시작 전에 던진다.**
 

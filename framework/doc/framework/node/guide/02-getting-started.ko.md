@@ -58,8 +58,9 @@ export class ProfileClient {
 }
 ```
 
-기본 경로에서는 payload 타입이 packet 이름을 스스로 제공해야 한다. plain object literal처럼
-타입에서 이름을 안정적으로 얻을 수 없는 경우에만 `.packetName(...)` override를 쓴다.
+기본 경로에서는 이름이 있는 class payload를 사용한다. framework는 타입에 직접 선언한
+`@ZLinkPacket` metadata를 우선하고, 없으면 생성자 이름을 packet 이름으로 사용한다. plain object
+literal은 안정적인 타입 이름이 없으므로 typed channel 호출에 사용하지 않는다.
 
 ## 2. handler group
 

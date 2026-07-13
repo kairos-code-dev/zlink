@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Interaction Model
 
@@ -32,7 +32,7 @@
 | `stream` | 연결 수명 위에서 packet 또는 session 단위로 처리한다 | 높음 |
 
 각 모델이 어떤 내부 transport에 매핑되는지는
-[channel-topology.ko.md](channel-topology.ko.md)의 section 3을 참고한다.
+[10-channel-topology.ko.md](10-channel-topology.ko.md)의 section 3을 참고한다.
 
 ## 3. 모델별 기본 의미
 
@@ -49,7 +49,7 @@
   일반 handler dispatch 경로에 넣지 않는다.
 - `SPOT` 쪽 public request는 resolver가 만든 `SpotHandle`을 받는다.
   위치값을 낱개(`targetRid + spotRid`)로 받는 표면은 두지 않는다
-  ([spot 주소 메시징](spot-address-messaging.ko.md)).
+  ([spot 주소 메시징](24-spot-address-messaging.ko.md)).
 
 ### 3.2 command
 
@@ -122,7 +122,7 @@
 stream session 위에 actor/session 모델을 얹을 수 있다. 이 경우 session은 연결과
 packet ingress를 맡고, actor는 계정 또는 플레이어 같은 논리 객체를 표현한다.
 actor 자체의 라이프사이클(Entry Spot 머무름, session bind, user Spot join /
-leave, destroy)과 application 로직 분담은 [actor-model.ko.md](actor-model.ko.md)
+leave, destroy)과 application 로직 분담은 [22-actor-model.ko.md](22-actor-model.ko.md)
 가 별도로 정의한다. 본 절은 그 actor 모델이 상호작용 모델 중 stream session
 경로와 어떻게 결합되는지만 다룬다.
 
@@ -158,8 +158,8 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 ## 4. 기본 원칙
 
 - framework가 직접 통합할 transport 축은 네 가지로 한정한다. 구체적인 축
-  정의는 [overview.ko.md](overview.ko.md)의 section 2를, 각 모델과의 매핑은
-  [channel-topology.ko.md](channel-topology.ko.md)의 section 3을 참고한다.
+  정의는 [01-overview.ko.md](01-overview.ko.md)의 section 2를, 각 모델과의 매핑은
+  [10-channel-topology.ko.md](10-channel-topology.ko.md)의 section 3을 참고한다.
 - 서버 간 `send/request`는 프레임워크 사용자에게 HTTP handler 매핑과 비슷한
   방식으로 보여야 한다.
 - 이 경로에서 wire header는 공용 handler 시그니처에 직접 노출하지 않는다.
@@ -180,5 +180,5 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -1,17 +1,20 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ SPOT](cpp-spot.ko.md) | [다음: C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ SPOT](20-spot.ko.md) | [다음: C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [SPOT](cpp-spot.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [SPOT](20-spot.ko.md)
 
 # Spec -- C++ Stage Wrapper On SPOT
 
-> 이 문서는 `SPOT` 위에 상위 stage 모델을 얹는 **패턴 가이드**다. C++ framework public
-> 표면에 별도 stage wrapper 계약 타입/빌더는 없고, 테스트의 지역 예제 패턴으로 존재한다.
-> stage 같은 상위 모델을 `SPOT` 위에 감쌀 때 필요한
-> 조건을 정리한다.
+> 이 문서는 [Stage Wrapper On SPOT 공통 스펙](../../25-stage-wrapper-on-spot.ko.md)의 **C++
+> 투영**이다. 책임 경계, 실행 문맥 보장, timer 의미, membership·directory의 소유는 공통 스펙이
+> 소유한다.
+>
+> C++ framework public 표면에 별도 stage wrapper 계약 타입이나 빌더는 없다. 테스트의 지역 예제
+> 패턴으로 존재한다. 이 문서는 stage 같은 상위 모델을 `SPOT` 위에 감쌀 때 **C++에서 필요한
+> 조건**을 정리한다.
 
 ## 인터페이스 경계
 
@@ -41,5 +44,5 @@ room이나 stage 상태 변경은 core SPOT dispatch boundary 안에서만 처�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ SPOT](cpp-spot.ko.md) | [다음: C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ SPOT](20-spot.ko.md) | [다음: C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

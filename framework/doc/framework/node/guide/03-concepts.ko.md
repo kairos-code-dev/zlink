@@ -23,12 +23,12 @@ join 이후에는 현재 Spot 위치를 다시 확인해 dispatch 한다.
 stream 은 외부 client 와 장기 연결을 유지한다. session 은 `onConnected`,
 `onDispatch`, `onDisconnected`, `onError` 로 lifecycle 을 받는다.
 
-## 5. registry와 monitoring
+## 5. location store와 monitoring
 
-registry 는 topology 조회와 discovery 의 기준점이다. monitoring 은 socket,
-registry, Spot 상태 변화를 framework typed event 로 전달한다.
+location store는 topology 조회와 자동 연결의 기준이다. monitoring은 socket, location runtime,
+Spot 상태 변화를 framework typed event로 전달한다.
 
 ## 회귀 테스트
 
-각 개념의 동작은 `test/contract` 의 channel, spot, actor, stream, registry,
+각 개념의 동작은 `test/contract` 의 channel, spot, actor, stream, location,
 monitoring 테스트에서 확인한다.

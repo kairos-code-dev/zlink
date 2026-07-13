@@ -11,7 +11,7 @@
 > [공통 스펙](../common/README.ko.md)을 따른다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
 
 ## 0. Kotlin 표면 한눈에
 
@@ -61,16 +61,16 @@ Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend
 | 문서 | 범위 |
 |------|------|
 | [Kotlin spec 목차](../common/spec/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
-| [Kotlin handler interfaces](../common/spec/languages/kotlin/handler-interfaces.ko.md) | suspending handler와 lifecycle adapter |
+| [Kotlin handler interfaces](../common/spec/languages/kotlin/02-handler-interfaces.ko.md) | suspending handler와 lifecycle adapter |
 | [Java spec 목차](../common/spec/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
-| [Java handler interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | Java interface, annotation, context, options |
-| [spring-boot-channel-messaging](../common/spec/languages/java/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
-| [spring-boot-spot](../common/spec/languages/java/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](../common/spec/languages/java/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
-| [spring-boot-stream](../common/spec/languages/java/spring-boot-stream.ko.md) | stream node, header session |
-| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [spring-boot-registry](../common/spec/languages/java/spring-boot-registry.ko.md) | embedded registry, remote query |
-| [spring-boot-monitoring](../common/spec/languages/java/spring-boot-monitoring.ko.md) | runtime event, typed handler |
+| [Java handler interfaces](../common/spec/languages/java/02-handler-interfaces.ko.md) | Java interface, annotation, context, options |
+| [spring-boot-channel-messaging](../common/spec/languages/java/01-system-structure.ko.md) | channel 등록, outbound client, dispatch |
+| [spring-boot-spot](../common/spec/languages/java/01-system-structure.ko.md) | Spot lifecycle, Entry Spot, timer |
+| [spring-boot-actor-session](../common/spec/languages/java/01-system-structure.ko.md) | actor factory, SessionRelay, bound session |
+| [spring-boot-stream](../common/spec/languages/java/01-system-structure.ko.md) | stream node, header session |
+| [stream-connector](../common/spec/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
+| [spring-boot-registry](../common/spec/languages/java/01-system-structure.ko.md) | embedded registry, remote query |
+| [spring-boot-monitoring](../common/spec/languages/java/01-system-structure.ko.md) | runtime event, typed handler |
 
 ## 3. 내부 기준 — Java/Kotlin 공유
 

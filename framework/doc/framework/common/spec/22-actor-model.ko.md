@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](05-framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [Session Actor Dispatch 사용성](session-actor-dispatch.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [Session Actor Dispatch 사용성](31-session-actor-dispatch.ko.md)
 
 # ZLink Framework Actor Model
 
@@ -65,7 +65,7 @@ zlink core의 actor 모델에서 다음 제약은 모든 binding이 그대로 �
 - **actor location row는 actor 생성 전에 Entry 위치로 claim한다.** 활성화가 끝나면 actor
   ref를 publish하고, user Spot join / leave 성공 때 현재 위치로 갱신한다. session
   bind / unbind는 location row를 만들거나 제거하지 않는다
-  ([location runtime](location-runtime.ko.md) §2.3).
+  ([location runtime](40-location-runtime.ko.md) §2.3).
 - **1 session ↔ N actor / 1 actor ↔ ≤1 session.** 한 session은 여러 actor를 묶을
   수 있지만, 한 actor는 동시에 두 session에 묶이지 않는다.
 
@@ -106,7 +106,7 @@ actor를 새로 만들 때는 먼저 actor location key에 대해 `NewClaim`을 
 얻은 실행만 actor 인스턴스를 활성화하고 `onCreateActor` callback을 한 번 호출한다.
 동시에 같은 actor id를 만들려는 다른 실행은 활성화 전에 충돌로 실패해야 한다. 정확한
 claim 조건과 generation 발급 규칙은
-[location runtime §4](location-runtime.ko.md#4-ownergeneration-규칙)의
+[location runtime §4](40-location-runtime.ko.md#4-ownergeneration-규칙)의
 claim-then-activate 계약을 따른다.
 
 actor 객체 생성이 끝나면 framework는 `onCreateActor` callback을 한 번 호출한다.
@@ -302,7 +302,7 @@ public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표�
 그대로 들고 다니면 된다.
 
 위치 조회는 framework의 location resolver가 맡는다
-([location runtime §5](location-runtime.ko.md)). 기본 구현은 등록된 location store를
+([location runtime §5](40-location-runtime.ko.md)). 기본 구현은 등록된 location store를
 읽고, 결과로 내부 주소 갱신을 소유하는 `SpotHandle`을 돌려준다.
 
 | resolver | 책임 |
@@ -328,7 +328,7 @@ send와 request는 모두 `ActorRef`를 대상으로 받으며, actor id만 받�
 - request 완료는 같은 인계 뒤 actor handler의 reply가 caller에게 돌아왔음을 뜻한다.
 - 어느 경우에도 이 호출로 actor의 bound session을 만들거나 바꾸지 않는다.
 - 존재하지 않는 actor, stale generation, 끊긴 route는
-  [framework API의 오류 분류](framework-api.ko.md)에 따라 구분한다.
+  [framework API의 오류 분류](05-framework-api.ko.md)에 따라 구분한다.
 
 구체적인 bind 상태별 검증은 [Config 9](../e2e/config-9-to-actor-messaging.ko.md)에 둔다.
 
@@ -349,7 +349,7 @@ gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서도 cli
   종료할 때 쓰는 표면. 내부적으로 core actor-session binding을 사용한다.
 
 이 use case의 사용성과 typed handler / route resolver 결정은
-[session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에 정리되어
+[31-session-actor-dispatch.ko.md](31-session-actor-dispatch.ko.md)에 정리되어
 있다. 본 문서는 그 표면이 actor model의 일부라는 점만 고정한다.
 
 ## 8. 등록 표면 (binding 중립)
@@ -382,12 +382,12 @@ actor factory와 location store를 등록하지만 framework location resolver �
 
 각 binding에서 본 모델을 어떻게 노출하는지는 해당 디렉토리에서 다룬다.
 
-- `.NET`: [aspnet-core-actor.ko.md](languages/dotnet/aspnet-core-actor.ko.md)
+- `.NET`: [handler-interfaces.ko.md](languages/dotnet/02-handler-interfaces.ko.md)
   -- `IZLinkActor`, `IZLinkActorContext`, `IZLinkActorFactory`, typed handler
   인터페이스, `IZLinkActorManager`, `IZLinkBoundSession`, 등록 API
 - `Java`, `Node`, `Python`, `Go`, `Rust`, `C++` 등 다른 binding은 각자 디렉토리
   안에 같은 의미의 표면을 각 언어의 관례에 맞춰 적는다 (자세한 규칙은
-  [공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙) 참고).
+  [공개 계약 관리 §4](00-public-contract-governance.ko.md#4-언어별-표현-원칙) 참고).
 
 ## 10. 결정된 기준
 
@@ -412,5 +412,5 @@ actor factory와 location store를 등록하지만 framework location resolver �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](05-framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

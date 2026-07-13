@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](../../common/spec/languages/node/handler-interfaces.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](../../common/spec/languages/node/02-handler-interfaces.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
 
 # ZLink Framework Node.js Backend Dependency Policy
 
@@ -101,8 +101,8 @@ framework 와 backend 사이에는 항상 어댑터 한 층을 두고, 역할을
 - framework 내부에는 backend adapter layer[^backend-adapter] 를 둔다. 이 어댑터는
   `runtime/backend/contracts` 의 포트 인터페이스(`ZLinkBackendAdapterFactory`,
   `ZLinkChannelBackendAdapter`, `ZLinkSpotBackendAdapter`,
-  `ZLinkStreamBackendAdapter`, `ZLinkRegistryBackendAdapter`,
-  `ZLinkMonitoringBackendAdapter`)를 `@zlink-systems/zlink` 위에 구현한 것이다.
+  `ZLinkStreamBackendAdapter`, `ZLinkMonitoringBackendAdapter`)를
+  `@zlink-systems/zlink` 위에 구현한 것이다.
   실제 구현은 `runtime/backend/node`(`ZLinkNodeBackendAdapterFactory`)에 있다.
 - registration, lifecycle[^lifecycle], monitoring, query 같은 framework 본연의
   역할은 framework service(NestJS provider) 가 맡는다. 실제 backend 호출은
@@ -137,8 +137,8 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `backend-public-api-only.test.js` › `framework contract surface does not alias binding concrete types` | 허용한 값 타입(`RoutingId`/`Message`/`SendFlags`)을 제외하면, backend concrete type(`DealerSocket`/`RouterSocket`/`SpotNode`/`Spot`/`Registry` 등)이 public surface 에 나타나지 않는다. |
-| `backend-contract.test.js` › `backend adapter factory exposes the five backend adapters` | backend factory 가 channel, Registry, SPOT, STREAM, monitoring adapter 를 모두 만들어 낸다. |
+| `backend-public-api-only.test.js` › `framework contract surface does not alias binding concrete types` | 허용한 값 타입(`RoutingId`/`Message`/`SendFlags`)을 제외하면, backend concrete type(`DealerSocket`/`RouterSocket`/`SpotNode`/`Spot` 등)이 public surface 에 나타나지 않는다. |
+| `backend-contract.test.js` › `backend adapter factory exposes the supported backend adapters` | backend factory 가 channel, SPOT, STREAM, monitoring adapter 를 만들고 Registry adapter는 노출하지 않는다. |
 | `backend-public-api-only.test.js` › `framework packages only depend on binding public entry points` | monitoring adapter 생성 경로를 포함해 framework 가 binding public entry point 만 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

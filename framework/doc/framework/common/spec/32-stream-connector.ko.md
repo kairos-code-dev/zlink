@@ -8,7 +8,7 @@
 > 언어별 public 타입과 시그니처는
 > [`languages/<lang>/stream-connector.ko.md`](languages/README.ko.md)가 고정한다. 이 문서는
 > **무엇을 보장하는가**를 정의하고, 언어별 스펙은 **그 의미가 그 언어에서 어떤 모양인가**를
-> 정의한다([공개 계약 관리](public-contract-governance.ko.md)).
+> 정의한다([공개 계약 관리](00-public-contract-governance.ko.md)).
 
 ## 1. 목적과 범위
 
@@ -111,7 +111,7 @@ STREAM frame의 앞쪽 2바이트는 `header_size`다.
 - packet name은 `u8 name_len + UTF-8 bytes`이며 **최대 255바이트**다.
 - metadata는 `u16 meta_len + metadata bytes`, correlation id는 `u8 len + bytes`로 이어진다.
 - flow 필드는 **36바이트 `flow_id`와 1바이트 `flow_origin`이 항상 함께** 존재하거나 함께 없다.
-  의미는 [메시지 흐름 상관관계 §3.2](flow-correlation.ko.md)가 소유한다.
+  의미는 [메시지 흐름 상관관계 §3.2](53-flow-correlation.ko.md)가 소유한다.
 - **모든 multi-byte 정수는 network byte order**다.
 
 application code는 이 header를 직접 만들거나 수정하지 않는다. connector runtime이 소유한다.
@@ -126,7 +126,7 @@ application code는 이 header를 직접 만들거나 수정하지 않는다. co
 | has correlation id | `0x08` | correlation id 필드가 있다 |
 | has flow id | `0x10` | `flow_id`·`flow_origin` 필드가 있다 |
 
-`Control` packet에는 `has flow id`를 세우지 않는다([flow-correlation §3.2](flow-correlation.ko.md)).
+`Control` packet에는 `has flow id`를 세우지 않는다([flow-correlation §3.2](53-flow-correlation.ko.md)).
 
 ### 4.4 metadata
 
@@ -178,7 +178,7 @@ control frame은 `Raw` codec, request sequence 없음, metadata 없음, flow fla
 | `session-closing` | **비어 있지 않다** — 아래 참조 |
 
 `session-closing`은 서버가 세션을 닫기 직전에 보내는 control packet이며, client는 이를 읽어
-`closeReason`을 확정한다([graceful-drain-handoff §7.1](graceful-drain-handoff.ko.md)).
+`closeReason`을 확정한다([graceful-drain-handoff §7.1](54-graceful-drain-handoff.ko.md)).
 
 ```text
 +------------+-------------------+----------------+--------------------+
@@ -336,7 +336,7 @@ client, stream connector에 등록하면 세 표면이 **같은 content type과 
 ### 6.2 종료 사유
 
 연결이 끊기면 connector는 **종료 사유**를 노출한다. 값 집합은 서버 측 `close_reason`
-([runtime-metrics §4.1](runtime-metrics.ko.md))과 정합하는 **닫힌 집합**이며, wire 인코딩은
+([runtime-metrics §4.1](51-runtime-metrics.ko.md))과 정합하는 **닫힌 집합**이며, wire 인코딩은
 §4.6의 `session-closing` control packet이 소유한다.
 
 | 사유 | 의미 |
@@ -349,7 +349,7 @@ client, stream connector에 등록하면 세 표면이 **같은 content type과 
 | `TransportError` | transport 수준 실패로 끊겼다 |
 
 `ServerDrain`을 받은 client는 이 값을 보고 **재접속과 백오프를 결정한다**
-([Graceful Drain & Handoff §7.1](graceful-drain-handoff.ko.md)). **서버가 대체 endpoint를
+([Graceful Drain & Handoff §7.1](54-graceful-drain-handoff.ko.md)). **서버가 대체 endpoint를
 지정하는 기능은 이 계약에 포함하지 않는다.**
 
 언어별 문서는 이 사유를 표현하는 **타입 이름과 노출 방식**(속성인지 이벤트 인자인지)만
@@ -471,12 +471,12 @@ client, stream connector에 등록하면 세 표면이 **같은 content type과 
 
 ## 12. 구현 차이
 
-현재 구현과 이 스펙의 차이는 [구현 차이](implementation-gap.ko.md)에 기록한다.
+현재 구현과 이 스펙의 차이는 [구현 차이](90-implementation-gap.ko.md)에 기록한다.
 
 TypeScript connector는 Node 기본 진입점과 `/browser` 진입점을 분리해 §2.1의 두 환경을
 지원한다. 브라우저 진입점은 플랫폼의 네이티브 `WebSocket`을 사용하며 `tcp://`와 `tls://`를
 구성 오류로 즉시 거부한다. 구현 근거와 검증 범위는
-[Node Stream Connector 공개 계약 §7](languages/node/stream-connector.ko.md)에 기록한다.
+[Node Stream Connector 공개 계약 §7](languages/node/03-stream-connector.ko.md)에 기록한다.
 
 ## 13. 회귀 테스트
 

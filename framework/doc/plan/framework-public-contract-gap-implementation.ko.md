@@ -27,7 +27,7 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 1. 공통 정식 spec의 기능, 동작, 오류와 완료 조건
 2. 해당 언어 디렉터리의 정식 public interface 문서 집합
 3. 공통 또는 언어별 guide에 기록된 사용 원칙
-4. `implementation-gap.ko.md`의 현재 구현 차이
+4. `90-implementation-gap.ko.md`의 현재 구현 차이
 5. 실제 public source, package export와 contract test
 6. sample과 E2E
 
@@ -53,23 +53,23 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 
 기준 문서:
 
-- [공개 계약 관리](../framework/common/spec/public-contract-governance.ko.md)
-- [언어별 구현 차이](../framework/common/spec/implementation-gap.ko.md)
-- [비동기 실행 정책](../framework/common/spec/async-execution-policy.ko.md)
-- [Spot 주소 메시징](../framework/common/spec/spot-address-messaging.ko.md)
+- [공개 계약 관리](../framework/common/spec/00-public-contract-governance.ko.md)
+- [언어별 구현 차이](../framework/common/spec/90-implementation-gap.ko.md)
+- [비동기 실행 정책](../framework/common/spec/04-async-execution-policy.ko.md)
+- [Spot 주소 메시징](../framework/common/spec/24-spot-address-messaging.ko.md)
 - [소프트웨어 설계 원칙](../../../doc/principal/software-design-principles.md)
 
 언어별 계약 소유권은 다음과 같다. 한 문서만 읽고 전체 public surface를 판정하지 않는다.
 
 | 언어 | 전체 interface 기준 | 함께 읽어야 하는 기능별 정식 계약 | 비고 |
 |------|---------------------|----------------------------------|------|
-| `.NET` | [handler-interfaces](../framework/common/spec/languages/dotnet/handler-interfaces.ko.md) | 같은 디렉터리의 ASP.NET Core, actor, channel, location, monitoring, Spot, stream, session dispatch, Spot node 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
-| Java | [handler-interfaces](../framework/common/spec/languages/java/handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
-| Kotlin | [handler-interfaces](../framework/common/spec/languages/kotlin/handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
-| Node.js | [handler-interfaces](../framework/common/spec/languages/node/handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
-| C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/handler-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
+| `.NET` | [handler-interfaces](../framework/common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 같은 디렉터리의 ASP.NET Core, actor, channel, location, monitoring, Spot, stream, session dispatch, Spot node 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
+| Java | [handler-interfaces](../framework/common/spec/languages/java/02-handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
+| Kotlin | [handler-interfaces](../framework/common/spec/languages/kotlin/02-handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
+| Node.js | [handler-interfaces](../framework/common/spec/languages/node/02-handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
+| C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/03-handler-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
 
-`stage-wrapper-on-spot.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
+`25-stage-wrapper-on-spot.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
 간주하지 않는다. 다만 guide의 표준 사용 패턴이 확정 계약과 충돌하지 않는지는 G7에서 확인한다.
 
 ## 3. 완료 판정 원칙
@@ -181,7 +181,7 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
 계약 ledger, G4 finding ledger와 구현 로그에서 확인한다.
 
-`flow-correlation.ko.md`, `runtime-metrics.ko.md`, `graceful-drain-handoff.ko.md`와 Config 11도
+`53-flow-correlation.ko.md`, `51-runtime-metrics.ko.md`, `54-graceful-drain-handoff.ko.md`와 Config 11도
 이 계획의 필수 범위다. 별도 후속 계획으로 분리하지 않고, 각 언어의 G0~G7 안에서 함께 구현하고
 검증한다.
 
@@ -193,24 +193,24 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 공통 spec | `.NET` | Java | Kotlin | Node.js | C++ |
 |-----------|--------|------|--------|---------|-----|
 | `README.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `overview.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `framework-api.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `interaction-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `message-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `async-execution-policy.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `channel-topology.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `actor-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `spot-actor.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `session-actor-dispatch.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `spot-address-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `location-runtime.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `location-store-redis.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `message-flow-tracing.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `flow-correlation.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `runtime-metrics.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `graceful-drain-handoff.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `public-contract-governance.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
-| `implementation-gap.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `01-overview.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `05-framework-api.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `02-interaction-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `03-message-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `04-async-execution-policy.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `10-channel-topology.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `22-actor-model.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `23-spot-actor.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `31-session-actor-dispatch.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `24-spot-address-messaging.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `40-location-runtime.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `41-location-store-redis.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `52-message-flow-tracing.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `53-flow-correlation.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `51-runtime-metrics.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `54-graceful-drain-handoff.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `00-public-contract-governance.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
+| `90-implementation-gap.ko.md` | [x] | [ ] | [ ] | [x] | [ ] |
 
 이 표도 고정 개수로 간주하지 않는다. G0에서 다음 명령의 결과와 표의 행을 비교하고 새
 공통 정식 spec이 있으면 해당 행을 먼저 추가한다.
@@ -237,10 +237,10 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | `.NET` | `system-structure.ko.md` | `DN-DOC-007` | [x] |
 | `.NET` | `system-structure.ko.md` | `DN-DOC-008` | [x] |
 | `.NET` | `system-structure.ko.md` | `DN-DOC-009` | [x] |
-| `.NET` | `session-actor-dispatch.ko.md` | `DN-DOC-010` | [x] |
-| `.NET` | `spot-node.ko.md` | `DN-DOC-011` | [x] |
-| `.NET` | `stream-connector.ko.md` | `DN-DOC-012`, connector contract/package test | [x] |
-| `.NET` | `stage-wrapper-on-spot.ko.md` | interface spec이 아닌 상위 사용 모델 guide이며 G7 guide 검토에 연결 | 비적용 |
+| `.NET` | `31-session-actor-dispatch.ko.md` | `DN-DOC-010` | [x] |
+| `.NET` | `21-spot-node.ko.md` | `DN-DOC-011` | [x] |
+| `.NET` | `32-stream-connector.ko.md` | `DN-DOC-012`, connector contract/package test | [x] |
+| `.NET` | `25-stage-wrapper-on-spot.ko.md` | interface spec이 아닌 상위 사용 모델 guide이며 G7 guide 검토에 연결 | 비적용 |
 | Java | `README.ko.md` | `JV-DOC-001` | [x] |
 | Java | `handler-interfaces.ko.md` | `JV-DOC-002` | [x] |
 | Java | `system-structure.ko.md` | `JV-DOC-003` | [x] |
@@ -249,7 +249,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | Java | `system-structure.ko.md` | `JV-DOC-006` | [x] |
 | Java | `system-structure.ko.md` | `JV-DOC-007` | [x] |
 | Java | `system-structure.ko.md` | `JV-DOC-008` | [x] |
-| Java | `stream-connector.ko.md` | `JV-DOC-009` | [x] |
+| Java | `32-stream-connector.ko.md` | `JV-DOC-009` | [x] |
 | Kotlin | `README.ko.md` | - | [ ] |
 | Kotlin | `handler-interfaces.ko.md` | - | [ ] |
 | Node.js | `README.ko.md` | `ND-DOC-001` | [x] |
@@ -263,7 +263,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 | Node.js | `handler-interfaces.ko.md` | `ND-DOC-009` | [x] |
 | Node.js | `handler-interfaces.ko.md` | `ND-DOC-010` | [x] |
 | Node.js | `handler-interfaces.ko.md` | `ND-DOC-011` | [x] |
-| Node.js | `stream-connector.ko.md` | `ND-DOC-012` | [x] |
+| Node.js | `32-stream-connector.ko.md` | `ND-DOC-012` | [x] |
 | C++ | `README.ko.md` | `CPP-DOC-001` | [x] |
 | C++ | `cpp-framework-interfaces.ko.md` | `CPP-DOC-002` | [x] |
 | C++ | `actor-gateway-session-relay.ko.md` | `CPP-DOC-008` | [x] |
@@ -281,10 +281,10 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 
 | 언어 | guide 문서 | 제외 근거 | G7 검토 |
 |------|------------|-----------|---------|
-| `.NET` | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
-| Java | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
-| Node.js | 공통 `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
-| C++ | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
+| `.NET` | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
+| Java | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
+| Node.js | 공통 `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
+| C++ | `25-stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
 
 Kotlin 행은 Kotlin 전용 계약만 나타낸다. Java 계약의 각 행에는 Kotlin 적용 여부와 Kotlin
 test ID도 함께 기록해, 상속된 public surface가 coverage에서 빠지지 않게 한다.
@@ -826,7 +826,7 @@ topology는 해당 공통 spec이 요구하는 direct, registry/store discovery,
 ### 8.8 G7 — 최종 closure
 
 - [ ] 언어별 interface 문서의 구현 차이 표 갱신
-- [ ] `implementation-gap.ko.md`의 해결 항목 제거 또는 완료 증거 연결
+- [ ] `90-implementation-gap.ko.md`의 해결 항목 제거 또는 완료 증거 연결
 - [ ] feature map, README, guide와 sample 설명 갱신
 - [ ] 배포 package의 public export 재검증
 - [ ] repository 전체에서 제거 대상 symbol과 compatibility 이름이 검색되지 않음
@@ -861,7 +861,7 @@ topology는 해당 공통 spec이 요구하는 direct, registry/store discovery,
 - [x] message-flow 설정에 연결된 자동 flow id, `AsyncLocal` 전파·정리와 `0xF2` marker codec 교체
 - [x] `IZLinkDrainControl`의 공유 결과, hosted-service 종료 순서와 typed `Draining` field 구현
 - [x] `session-closing` 제어 프레임과 connector `CloseReason` 구현
-- [x] 공통 connector 계약과 API/package snapshot을 연결하는 `.NET` 정식 계약 문서 `languages/dotnet/stream-connector.ko.md` 작성·검증
+- [x] 공통 connector 계약과 API/package snapshot을 연결하는 `.NET` 정식 계약 문서 `languages/dotnet/03-stream-connector.ko.md` 작성·검증
 - [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
 - [x] Bingo §17의 .NET flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
@@ -1207,7 +1207,7 @@ ctest --test-dir <coverage-build-dir> \
 - [ ] 5개 언어의 G0~G7이 모두 체크되어 있다.
 - [ ] 공통 spec coverage matrix의 모든 셀이 체크되어 있다.
 - [ ] 모든 ledger 행이 완료 또는 승인된 비적용 근거를 가진다.
-- [ ] `implementation-gap.ko.md`에 해결되지 않은 대상 언어 gap이 없다.
+- [ ] `90-implementation-gap.ko.md`에 해결되지 않은 대상 언어 gap이 없다.
 - [ ] 5개 언어의 public contract/unit/integration test가 모두 성공한다.
 - [ ] 각 언어별 Codex DDD/POSD 최종 리뷰가 `NO DDD/POSD FINDINGS`다.
 - [ ] 각 언어의 sample runner가 모두 성공한다.

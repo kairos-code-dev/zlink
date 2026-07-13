@@ -4,7 +4,7 @@
 
 # Node / TypeScript Stream Connector
 
-> 이 문서는 [Stream Connector 공통 스펙](../../stream-connector.ko.md)의 **TypeScript 투영**이다.
+> 이 문서는 [Stream Connector 공통 스펙](../../32-stream-connector.ko.md)의 **TypeScript 투영**이다.
 > transport·wire·생명주기·오류 의미는 공통 스펙이 소유하고, 이 문서는 그 의미가
 > TypeScript에서 갖는 **정확한 public 표면**을 고정한다.
 
@@ -16,7 +16,7 @@ encode/decode한다.
 
 ## 1. 대상 실행 환경
 
-**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../stream-connector.ko.md)가 소유한다.**
+**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../32-stream-connector.ko.md)가 소유한다.**
 그 배정에 따라 TypeScript connector가 담당하는 것은 **브라우저 계열**(웹 client, Unity WebGL,
 Cocos Creator web, Godot Web)과 **Node**(서버 E2E·도구·봇)다.
 
@@ -44,7 +44,7 @@ TypeScript 표면에 남기는 결과가 **entrypoint 분리**(§2)다.
 
 ## 3. Transport
 
-scheme → transport 매핑은 [공통 스펙 §3.1](../../stream-connector.ko.md)을 따른다.
+scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.ko.md)을 따른다.
 **사용 가능한 transport는 entrypoint가 결정한다.**
 
 | entrypoint | 사용 가능한 transport |
@@ -102,19 +102,19 @@ interface ZlinkStreamConnector {
 connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한다.
 
 - **취소는 optional `AbortSignal`로 전달한다.** 다른 언어의 cancellation token 모양을 복제하지
-  않는다([비동기 실행과 coroutine 정책](../../async-execution-policy.ko.md)).
+  않는다([비동기 실행과 coroutine 정책](../../04-async-execution-policy.ko.md)).
 - **event 구독은 `Disposable`을 반환한다.** 해제는 그 `Disposable`로 한다.
 - `send`·`request`·`waitFor`는 즉시 실행하지 않고 **call builder를 반환한다.** builder에
   `packetName(...)`·`metadata(...)`·`timeout(...)`·`compress()`를 붙인 뒤 `submit()`으로 제출한다.
   `send`의 `submit()`은 응답을 기다리지 않는다.
 
-option의 기본값은 [공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다. TypeScript는 이를
+option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다. TypeScript는 이를
 `ZlinkStreamConnectorOptions`의 필드로 표현하며, 해석된 전체 값을 `RequiredZlinkStreamConnectorOptions`로
 노출한다.
 
 ## 5. Inbound Observer와 수신 큐
 
-관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../stream-connector.ko.md)이 소유한다. 이
+관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../32-stream-connector.ko.md)이 소유한다. 이
 문서는 TypeScript 표면만 고정한다.
 
 `observeInbound(...)`는 `Disposable`을 반환하며, **`connect(...)` 호출 전에만** 등록할 수 있다.
@@ -130,7 +130,7 @@ await client.connect();
 ```
 
 두 큐의 한도는 다음 option으로 조절한다. 기본값은
-[공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다.
+[공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다.
 
 | option | 대상 큐 | overflow 시 error handler로 보고하는 코드 |
 |---|---|---|
@@ -142,7 +142,7 @@ observer callback 실패는 `ZlinkStreamErrorCode.ObserverFailed`로 보고한�
 
 ## 6. 세션 종료 사유 (close reason)
 
-사유의 값 집합과 의미는 [공통 스펙 §6.2](../../stream-connector.ko.md)가 소유한다. 이 문서는
+사유의 값 집합과 의미는 [공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. 이 문서는
 TypeScript 표면만 고정한다.
 
 `ZlinkStreamCloseReason`은 닫힌 union이다.
@@ -170,11 +170,11 @@ runtime에는 Node 전용 모듈을 import하지 않는다. Node 전용 transpor
 실행하지 못했다. 대신 네이티브 `WebSocket`과 같은 event 계약을 제공하는 테스트 대역으로
 WSS 연결, request/reply, push 수신을 검증했다.
 
-브라우저 비동기 flow 문맥은 아직 [공통 flow 계약의 MFLOW-EXT-014](../../flow-correlation.ko.md)를
+브라우저 비동기 flow 문맥은 아직 [공통 flow 계약의 MFLOW-EXT-014](../../53-flow-correlation.ko.md)를
 충족하지 못한다. browser runtime에는 `AsyncLocalStorage`에 해당하는 표준 기능이 없고, 현재
 `BrowserZlinkFlowContext`는 handler가 기다리는 동안 관련 없는 callback에 inbound flow를 노출할
 수 있다. callback 직후 문맥을 지우면 반대로 `await` 이후 continuation이 flow를 잃으므로 완료로
-표시하지 않는다. 현재 구현 차이는 [implementation gap §4.10](../../implementation-gap.ko.md)에
+표시하지 않는다. 현재 구현 차이는 [implementation gap §4.10](../../90-implementation-gap.ko.md)에
 기록한다.
 
 ## 8. 회귀 테스트

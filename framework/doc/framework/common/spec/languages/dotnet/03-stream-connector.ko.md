@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: .NET 시스템 구조](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: .NET 시스템 구조](01-system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [.NET spec 목차](README.ko.md)
 
 # .NET Stream Connector 공개 계약
 
-> 이 문서는 [Stream Connector 공통 스펙](../../stream-connector.ko.md)의 **`.NET` 투영**이다.
+> 이 문서는 [Stream Connector 공통 스펙](../../32-stream-connector.ko.md)의 **`.NET` 투영**이다.
 > **대상 실행 환경, transport, wire 계약, packet 모델, 연결 생명주기, 오류 의미, 기본값은 공통
 > 스펙이 소유한다.** 이 문서는 그 의미가 `.NET`에서 갖는 **정확한 public 표면**만 고정한다.
 >
@@ -24,10 +24,10 @@ runtime에 의존하지 않는다.**
 - [package snapshot](../../../../../../languages/dotnet/contract/packages/Systems.Zlink.Stream.Connector.package.txt)
 
 이 문서는 snapshot의 member를 반복해 나열하지 않고 **표면의 구조와 `.NET` 고유 의미**를 고정한다.
-검증 절차는 [handler-interfaces §17](handler-interfaces.ko.md)이 소유한다.
+검증 절차는 [handler-interfaces §17](02-handler-interfaces.ko.md)이 소유한다.
 
 **담당 대상은 네이티브 빌드다**(데스크톱·서버, Unity, Godot C#). **웹(브라우저·WASM) 빌드는
-담당하지 않는다**([공통 스펙 §2](../../stream-connector.ko.md)).
+담당하지 않는다**([공통 스펙 §2](../../32-stream-connector.ko.md)).
 
 ## 2. 진입점
 
@@ -137,7 +137,7 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 
 ## 6. Lifecycle과 완료 의미
 
-**`.NET` 고유 계약이다.** 상태 전이 자체는 [공통 스펙 §6](../../stream-connector.ko.md)이 소유한다.
+**`.NET` 고유 계약이다.** 상태 전이 자체는 [공통 스펙 §6](../../32-stream-connector.ko.md)이 소유한다.
 
 - `Connect.Async(...)`는 **연결과 receive loop 준비가 끝나면** 완료된다.
 - **callback 밖**의 `Close.Async(...)`는 연결 종료와 terminal callback 정리가 끝나면 완료된다.
@@ -170,14 +170,14 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 `WaitFor(...)`가 사용할 unread 수신 기록은 `MaxReceivedMessages`로 제한한다. **이 제한은 response와
 heartbeat 같은 control frame의 처리를 막지 않는다.**
 
-> ⚠️ **공통 계약과 다르다.** [공통 스펙 §10.1](../../stream-connector.ko.md)은 **새로 도착한 message를
+> ⚠️ **공통 계약과 다르다.** [공통 스펙 §10.1](../../32-stream-connector.ko.md)은 **새로 도착한 message를
 > 버리고 `ReceivedMessageDropped`를 보고**하도록 규정한다. 현재 `.NET`은 **가장 오래된 unread 기록을
 > 조용히 제거하며** 그 오류 코드 자체가 없다.
-> [구현 차이 §10.5](../../implementation-gap.ko.md)가 이 gap을 소유한다.
+> [구현 차이 §10.5](../../90-implementation-gap.ko.md)가 이 gap을 소유한다.
 
 ## 9. Inbound observer
 
-관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../stream-connector.ko.md)이 소유한다.
+관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../32-stream-connector.ko.md)이 소유한다.
 `.NET` 표면의 제약은 다음과 같다.
 
 - `ObserveInbound(...)`는 **연결 시작 전에만** 등록하고 `IDisposable`을 반환한다.
@@ -187,7 +187,7 @@ heartbeat 같은 control frame의 처리를 막지 않는다.**
 
 ## 10. Transport와 TLS
 
-scheme → transport 매핑은 [공통 스펙 §3.1](../../stream-connector.ko.md)이 소유한다. `.NET`은 이를
+scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.ko.md)이 소유한다. `.NET`은 이를
 `ZlinkStreamTransport` enum(`Tcp`, `Tls`, `WebSocket`, `WebSocketSecure`)으로 표현한다.
 
 - **nullable `Transport` option은 transport를 고르는 경로가 아니다.** URI scheme과 설정이 일치하는지
@@ -198,7 +198,7 @@ scheme → transport 매핑은 [공통 스펙 §3.1](../../stream-connector.ko.m
 
 ## 11. 종료 사유
 
-값 집합과 의미는 [공통 스펙 §6.2](../../stream-connector.ko.md)가 소유한다. `.NET`은
+값 집합과 의미는 [공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. `.NET`은
 `ZlinkStreamCloseReason` enum으로 표현하고 **`Disconnected` event의 인자
 `ZlinkStreamDisconnected.CloseReason`으로 노출한다.**
 
@@ -215,18 +215,18 @@ scheme → transport 매핑은 [공통 스펙 §3.1](../../stream-connector.ko.m
 callback 안에서 시작한 후속 operation은 **현재 inbound flow를 재사용하고, callback이 끝나면 ambient
 flow를 정리한다.**
 
-wire 표현은 [공통 스펙 §4.2](../../stream-connector.ko.md)와
-[flow-correlation](../../flow-correlation.ko.md)이 소유한다.
+wire 표현은 [공통 스펙 §4.2](../../32-stream-connector.ko.md)와
+[flow-correlation](../../53-flow-correlation.ko.md)이 소유한다.
 
 ## 13. Metric
 
-connector metric은 [runtime metric 공통 계약](../../runtime-metrics.ko.md)의 STREAM catalog와 닫힌
+connector metric은 [runtime metric 공통 계약](../../51-runtime-metrics.ko.md)의 STREAM catalog와 닫힌
 label을 따른다. connector는 **reconnect 시도 횟수, handshake 시간과 실패 횟수, inbound/outbound wire
 byte 수**를 기록한다. **metric listener 실패는 send/request 결과나 연결 상태를 바꾸지 않는다.**
 
 ## 14. Options와 검증
 
-**기본값은 [공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다.** `.NET`은 이를
+**기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다.** `.NET`은 이를
 `ZlinkStreamConnectorOptions`(+ `ZlinkStreamHeartbeatOptions`, `ZlinkStreamReconnectOptions`)의
 property로 표현한다.
 

@@ -4,10 +4,14 @@
 
 ## 패키지 참조
 
+이 패키지는 현재 저장소 workspace 안에서만 사용하는 private package다. 아래 의존성은 일반 npm
+registry 설치 예제가 아니라 이 저장소의 workspace 또는 같은 버전의 local artifact를 사용하는
+내부 소비자 설정이다.
+
 ```jsonc
 // package.json
 "dependencies": {
-  "@zlink-systems/http-client": "0.1.0-SNAPSHOT"
+  "@zlink-systems/http-client": "0.3.0"
 }
 ```
 

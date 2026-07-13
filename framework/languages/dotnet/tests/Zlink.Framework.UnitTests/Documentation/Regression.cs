@@ -10,9 +10,9 @@ public sealed class RegressionTests
         "README.ko.md",
         // 언어별 공개 계약은 3문서로 압축한다: 시스템 구조 · 인터페이스 · connector.
         // 기능별 의미는 공통 스펙(framework/doc/framework/common/spec)이 소유한다.
-        "system-structure.ko.md",
-        "handler-interfaces.ko.md",
-        "stream-connector.ko.md",
+        "01-system-structure.ko.md",
+        "02-handler-interfaces.ko.md",
+        "03-stream-connector.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",
         "runtime-execution.ko.md",
@@ -136,13 +136,8 @@ public sealed class RegressionTests
             Assert.DoesNotContain("AddRouteChannel(", text, StringComparison.Ordinal);
         }
 
-        var spotSpec = File.ReadAllText(ResolveDoc("system-structure.ko.md"));
-        var channelSpec = File.ReadAllText(
-            ResolveDoc("system-structure.ko.md"));
-        var combined = string.Join(
-            Environment.NewLine,
-            spotSpec,
-            channelSpec);
+        // SPOT과 channel 등록 표면은 한 문서(시스템 구조)가 함께 소유한다.
+        var combined = File.ReadAllText(ResolveDoc("01-system-structure.ko.md"));
 
         Assert.DoesNotContain("AcceptSpotRoutesFromChannel", combined,
             StringComparison.Ordinal);
@@ -370,12 +365,13 @@ public sealed class RegressionTests
     [Fact]
     public void SpotNodeContractsUseTheLocationStoreAsTheAddressSourceOfTruth()
     {
-        var dotnet = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "spot-node.ko.md"));
+        // SpotNode 등록 계약은 언어별 시스템 구조 문서가 소유한다.
+        var dotnet = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
         var node = File.ReadAllText(Path.GetFullPath(Path.Combine(
             GetDotNetContractDocRoot(),
             "..",
             "node",
-            "spot-node.ko.md")));
+            "01-system-structure.ko.md")));
 
         Assert.Contains("location store", dotnet, StringComparison.Ordinal);
         Assert.Contains("location store", node, StringComparison.Ordinal);
@@ -386,13 +382,13 @@ public sealed class RegressionTests
     [Fact]
     public void DotNetLanguageContractsPreserveTheReviewedPublicRuntimeDecisions()
     {
-        var handlers = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "handler-interfaces.ko.md"));
+        var handlers = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "02-handler-interfaces.ko.md"));
         var channel = File.ReadAllText(Path.Combine(
             GetDotNetContractDocRoot(),
-            "system-structure.ko.md"));
-        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "system-structure.ko.md"));
-        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "handler-interfaces.ko.md"));
-        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "system-structure.ko.md"));
+            "01-system-structure.ko.md"));
+        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
+        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "02-handler-interfaces.ko.md"));
+        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
 
         Assert.Contains("`IZLinkEndpointConnections`", handlers, StringComparison.Ordinal);
         Assert.Contains("`IZLinkSpotMeshBuilder`", handlers, StringComparison.Ordinal);
@@ -435,7 +431,7 @@ public sealed class RegressionTests
             .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
             .Select(Path.GetFileName)
             .OfType<string>()
-            .Where(static file => file != "stage-wrapper-on-spot.ko.md")
+            .Where(static file => file != "25-stage-wrapper-on-spot.ko.md")
             .Order(StringComparer.Ordinal)
             .ToArray();
 
@@ -450,7 +446,7 @@ public sealed class RegressionTests
 
         Assert.Equal(commonSpecs.Length, Regex.Matches(ledger, @"(?m)^\| DN-COMMON-[0-9]+ \|").Count);
         Assert.Equal(contractSpecs.Length, Regex.Matches(ledger, @"(?m)^\| DN-DOC-[0-9]+ \|").Count);
-        Assert.Contains("stage-wrapper-on-spot.ko.md", ledger, StringComparison.Ordinal);
+        Assert.Contains("25-stage-wrapper-on-spot.ko.md", ledger, StringComparison.Ordinal);
 
         var formalMatrixIds = commonSpecs
             .Select(spec => File.ReadAllText(Path.Combine(commonSpecRoot, spec)))

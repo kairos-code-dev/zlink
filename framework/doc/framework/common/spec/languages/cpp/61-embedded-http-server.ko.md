@@ -1,17 +1,17 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](cpp-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](cpp-monitoring.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](60-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](50-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](cpp-application-framework.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-application-framework.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [HTTP Hosting](60-http-hosting.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md)
 
 # Spec -- ZLink Framework C++ Embedded HTTP Server
 
 > 이 문서는 `C++` framework 안에서 제공하는 내장 HTTP 웹서버 runtime의
 > 정식 계약을 정리한다.
 >
-> [HTTP Hosting](cpp-http-hosting.ko.md)이 사용자가 보는 route, handler, DTO binding
+> [HTTP Hosting](60-http-hosting.ko.md)이 사용자가 보는 route, handler, DTO binding
 > 표면을 다룬다면, 이 문서는 그 표면 뒤에서 동작하는 server runtime, connection lifecycle,
 > timeout, TLS, shutdown, observability, 성능 기준을 다룬다.
 
@@ -832,5 +832,5 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](cpp-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](cpp-monitoring.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](60-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](50-monitoring.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

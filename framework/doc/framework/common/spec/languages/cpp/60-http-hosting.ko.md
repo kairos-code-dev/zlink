@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](cpp-embedded-http-server.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](cpp-application-framework.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [HTTP Client](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [Embedded HTTP Server](cpp-embedded-http-server.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-application-framework.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [HTTP Client](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [Embedded HTTP Server](61-embedded-http-server.ko.md)
 
 # Spec -- ZLink Framework C++ HTTP Hosting
 
@@ -619,7 +619,7 @@ Bingo sample은 HTTP entry를 사용하지 않으며 session stream 중심 검�
 | method 지원 | `GET`, `POST`, `PUT`, `DELETE`를 같은 builder 패턴으로 지원한다 |
 | cancellation token | C++ public handler signature에는 별도 cancel token을 넣지 않는다. shutdown/drain과 timeout 정책으로 처리한다 |
 | response customization | typed DTO는 `200 OK` 기본이다. status/header 직접 제어는 `http_response_t` 반환 handler로 지원한다 |
-| embedded server hardening | [Embedded HTTP Server](cpp-embedded-http-server.ko.md)의 hardening 기준을 따른다 |
+| embedded server hardening | [Embedded HTTP Server](61-embedded-http-server.ko.md)의 hardening 기준을 따른다 |
 
 ## 12. 회귀 테스트
 
@@ -660,7 +660,7 @@ Bingo sample은 HTTP entry를 사용하지 않으며 session stream 중심 검�
 - error mapping: invalid JSON은 `400`, unknown route는 `404`, timeout은 `504`
 - server validation: unsupported content type은 `400`, body limit 초과는 `413`
 - embedded server lifecycle: keep-alive, request timeout, graceful shutdown drain, connection
-  metrics는 [Embedded HTTP Server](cpp-embedded-http-server.ko.md) 회귀 테스트로 검증한다
+  metrics는 [Embedded HTTP Server](61-embedded-http-server.ko.md) 회귀 테스트로 검증한다
 - lifecycle: `app.stop()`이 HTTP accept loop를 닫고 worker thread를 join한다
 - TicTacToe sample e2e: client가 `POST /games` 뒤 stream connector로 게임을 진행한다
 
@@ -686,5 +686,5 @@ Handler shape regression matrix:
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](cpp-embedded-http-server.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../../../../http-client/cpp/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

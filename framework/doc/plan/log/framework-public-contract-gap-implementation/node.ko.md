@@ -23,3 +23,7 @@
 | 2026-07-13 | G7 | 작업 tree | `npm run verify:release` | 0 | PASS | CI, sample, runtime matrix와 cross-language gate 재실행 PASS |
 | 2026-07-13 | G7 | 작업 tree | package metadata와 제거 대상 symbol 재검토 | 0 | PASS | contract/supporting package는 publishable이며 license 포함; 별도 HTTP client는 계획 분모 밖이라 private 유지 |
 | 2026-07-13 | 환경 정리 | 작업 tree | `docker container prune -f`, `docker volume prune -af` | 0 | PASS | Docker volume 0개; 다른 언어가 실행 중인 Java E2E container는 제거하지 않음 |
+| 2026-07-13 | G2 | 작업 tree | one-way `submit()`의 runtime/queue 동기 수락 계약 회귀 수정 | 0 | PASS | runtime 미시작, queue full, 즉시 transport 오류가 동기 예외이며 `channel-client.test.js` 69/69 PASS |
+| 2026-07-13 | G0 | 작업 tree | binding 중앙 pin, lock, 설치 graph를 9.0.1로 정렬 | 0 | PASS | archive SHA-256 `f0d15bac...19f31e`; `npm ls @zlink-systems/zlink --all`에서 9.0.1 단일 resolve |
+| 2026-07-13 | G6 | 작업 tree | 보완한 `npm run verify:cross-language` | 0 | PASS | fanout, route-mesh, STREAM session-closing, Redis row의 Node↔`.NET` 양방향 13개 marker PASS |
+| 2026-07-13 | G4/G7 | 작업 tree | adversarial 재검토 finding 수정 | 0 | 진행 | 정식 spec/guide 정렬과 review manifest 기록 완료; 별도 read-only 최종 reviewer 판정 대기 |

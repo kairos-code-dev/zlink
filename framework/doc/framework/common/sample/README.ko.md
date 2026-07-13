@@ -35,10 +35,10 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [ZoneWorld](zoneworld/README.ko.md) **⛔ 착수 금지 — 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | zone spot, player actor, owner 일관 channel, fanout subscriber | JSON |
 
 > **⛔ ZoneWorld는 아직 착수하지 않는다.**
-> [TypeScript connector의 브라우저 결함 수정](../draft/browser-stream-connector.ko.md)이
-> 완료되기 전까지 **서버·client 어느 쪽도 구현하지 않는다.** 이 샘플의 검증 수단이 브라우저
-> 화면인데 현재 connector가 브라우저에서 동작하지 않으므로, 서버만 먼저 구현하면 검증할 수
-> 없는 코드가 5개 언어에 쌓인다.
+> browser connector의 비동기 flow 문맥 gap과 실제 브라우저 검증이 완료되기 전까지
+> **서버·client 어느 쪽도 구현하지 않는다.** 이 샘플의 검증 수단이 브라우저 화면이므로,
+> 관측 계약을 검증하지 못한 상태에서 서버만 먼저 구현하면 검증할 수 없는 코드가 5개 언어에
+> 쌓인다. 현재 차이는 [implementation gap §4.10](../spec/90-implementation-gap.ko.md)이 소유한다.
 >
 > **ZoneWorld는 다른 샘플과 두 가지가 다르다.** (1) **브라우저 UI**를 제공해 zone 이동과
 > 노드 관제를 눈으로 확인한다. (2) server는 언어별로 구현하되 **client는 TypeScript 하나만**
@@ -126,7 +126,7 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
   누락을 client 시나리오가 늦게 발견하게 된다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
-  등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/handler-interfaces.ko.md)을
+  등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/03-handler-interfaces.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.
 
 ## Dispatch 오류 로그 기준
@@ -182,9 +182,9 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 
 - 개별 `run_sample.*`는 build → 로그 디렉토리 생성 → 필요한 Redis 준비 → 서버 시작
   → readiness 확인 → client self-check 실행 → 서버와 Redis 정리 순서를 책임진다.
-- 각 언어는 sample runner들이 공유하는 Redis helper를 둔다. helper는 "prefix로 남은
-  container 정리"와 "scoped Redis container 시작"을 공통 함수로 제공하고, 개별 sample
-  script가 Docker 명령을 직접 조합하지 않게 한다.
+- 각 언어는 sample runner들이 공유하는 Redis helper를 둔다. helper는 실행별 Redis container
+  시작과 그 실행이 만든 container id 정리를 공통 함수로 제공하고, 개별 sample script가 Docker
+  명령을 직접 조합하지 않게 한다.
 - Redis가 필요한 sample은 runner가 실행마다 전용 Docker Redis container를 직접 띄운다.
   이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면 안 된다. Redis key prefix가
   달라도 cleanup, 장애 주입, latency injection, sample 간 데이터 정리 시점이 섞이면 테스트
@@ -204,21 +204,20 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   드러내는 prefix를 붙인다. 예를 들어 Java sample은 `zlink-redis-java-sample...`,
   Kotlin sample은 `zlink-redis-kotlin-sample...`처럼 같은 언어·sample 범위를 한눈에
   알 수 있어야 한다.
-- 개별 `run_sample.*`는 시작 시 같은 prefix의 다른 container를 지우지 않는다. 같은
-  prefix cleanup은 통합 sample runner가 실행 시작 전에 반드시 한 번 수행한다. 이렇게 해야
-  병렬 실행을 허용하지 않는 현재 gate에서도, 사람이 단일 sample을 따로 돌리는 중인 container를
-  다른 단일 sample 실행이 지우는 일이 없다.
+- 개별 `run_sample.*`와 통합 sample runner는 시작 시 같은 prefix의 다른 container를 지우지
+  않는다. 같은 언어 runner도 동시에 실행될 수 있으므로 prefix cleanup은 다른 실행의 전용 Redis를
+  제거할 수 있다.
 - 개별 `run_sample.*`는 정상 종료와 실패 종료 모두에서 자신이 만든 Redis container id만
   정리한다. prefix로 넓게 지우는 cleanup을 개별 script의 exit trap에 넣지 않는다.
-- 통합 sample runner는 시작 시 언어별 sample prefix로 남은 Redis container를 정리한 뒤
-  각 개별 `run_sample.*`를 순차 호출한다. 이 runner도 sample을 병렬 실행하지 않는다.
+- 통합 sample runner는 다른 실행의 Redis를 정리하지 않고 각 개별 `run_sample.*`를 순차 호출한다.
+  이 runner도 한 실행 안에서는 sample을 병렬 실행하지 않는다.
 - 통합 sample runner는 특정 sample 리스트만 실행할 수 있어야 한다. 인자가 없으면 모든 sample을
   실행하고, 인자가 있으면 지정한 sample runner만 순차 실행한다. 예:
   `./run_samples.sh Bingo SupportChat` 또는 언어별 경로를 구분해야 하는 runner에서는
   `./run_samples.sh java/Bingo kotlin/SupportChat`처럼 쓴다. 통합 runner는 sample 내부 절차를
   재구현하지 않고 선택한 개별 `run_sample.*`만 호출한다.
-- 통합 sample runner는 sample별 내부 동작을 다시 구현하지 않는다. prefix cleanup을 한 뒤
-  개별 `run_sample.*`를 호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성,
+- 통합 sample runner는 sample별 내부 동작을 다시 구현하지 않는다. 선택한 개별 `run_sample.*`를
+  호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성,
   readiness, 로그 위치, self-check 세부 절차는 개별 script와 공통 helper가 맡는다.
 - Redis host port는 고정값을 쓰지 않고 Docker가 비어 있는 loopback port를 배정하게 한다.
   runner는 배정된 port를 inspect로 읽어 애플리케이션 설정에 전달한다. Redis key prefix도

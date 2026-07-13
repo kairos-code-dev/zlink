@@ -206,12 +206,13 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 쓰고 마지막에 한꺼번에 보여 주면 멈춘 것처럼 보이므로 표준으로 보지 않는다. 파일 로그가 필요하면
 `tee`처럼 콘솔 출력과 파일 저장을 함께 만족하는 방식으로 처리한다.
 
-`Ctrl-C`, `TERM`, 정상 종료 모두 같은 정리 경로를 사용한다. 집계 runner는 종료 시 현재 언어의 e2e
-하위 프로세스를 정리하고, 언어별 Redis scope에 속한 container도 제거한다. 정리 함수는 여러 번
-호출돼도 안전해야 한다. 중단 시에는 예를 들어 아래처럼 한 줄로 정리 중임을 알린 뒤 종료한다.
+`Ctrl-C`, `TERM`, 정상 종료 모두 같은 정리 경로를 사용한다. 집계 runner는 종료 시 자신이 시작한
+현재 config 하위 프로세스만 정리한다. Redis는 개별 config runner가 자신이 만든 container id만
+정리한다. 정리 함수는 여러 번 호출돼도 안전해야 한다. 중단 시에는 예를 들어 아래처럼 한 줄로
+정리 중임을 알린 뒤 종료한다.
 
 ```text
-[<language>-e2e] interrupted; cleaning up processes and Redis...
+[<language>-e2e] interrupted; stopping the current configuration...
 ```
 
 ### 2.2 언어별 포팅 단위
@@ -354,9 +355,9 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   client가 이해하는 하나의 scenario selector로 정규화해서 전달한다.
 - 스크립트는 build → 로그 디렉토리 생성 → 서버 시작 → readiness 확인 → client 실행 → 서버 종료
   순서를 책임진다.
-- 각 언어는 e2e runner들이 공유하는 Redis helper를 둔다. helper는 "prefix로 남은 container
-  정리"와 "scoped Redis container 시작"을 공통 함수로 제공하고, 개별 config script가 Docker
-  명령을 직접 조합하지 않게 한다.
+- 각 언어는 e2e runner들이 공유하는 Redis helper를 둔다. helper는 실행별 Redis container 시작과
+  그 실행이 만든 container id 정리를 공통 함수로 제공하고, 개별 config script가 Docker 명령을
+  직접 조합하지 않게 한다.
 - readiness는 고정 sleep만으로 보지 않는다. 각 role server의 `/health`, 포트 open, 또는 명시 marker로
   확인한다.
 - 실패 시 `log_dir=...`를 출력하고, 각 role server와 client의 stdout/stderr/framework log를 남긴다.
@@ -382,17 +383,17 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - Redis container 이름에는 언어와 e2e 실행 범위를 드러내는 prefix를 붙인다. 예를 들어 Java e2e는
   `zlink-redis-java-e2e...`, Kotlin e2e는 `zlink-redis-kotlin-e2e...`처럼 잡는다. 다른 언어도
   같은 규칙으로 `<language>-e2e` 범위를 이름에서 확인할 수 있어야 한다.
-- 통합 e2e runner는 시작 시 해당 언어의 e2e prefix로 남아 있는 Redis container를 반드시 정리한 뒤,
-  config별 개별 `run_e2e.*`를 순차 호출한다. 전체 runner와 개별 runner 모두 config를 병렬 실행하지
-  않는다.
+- 통합 e2e runner는 다른 실행의 Redis를 정리하지 않고 config별 개별 `run_e2e.*`를 순차 호출한다.
+  한 통합 실행 안에서는 config를 병렬 실행하지 않지만, 같은 언어의 다른 개별 실행이나 통합 실행과
+  자원을 공유하거나 제거해서는 안 된다.
 - 통합 e2e runner도 실행 대상을 좁힐 수 있어야 한다. 인자가 없으면 모든 config의 `all`을 실행하고,
   인자가 있으면 지정한 config만 실행한다. config 안의 일부 시나리오만 실행할 때는
   `Config:ScenarioA,ScenarioB` 형식을 사용한다. 예: `./run_e2e_all.sh RegistrationCodec:RC-B2,RC-B4`
   또는 `./run_e2e_all.sh ResilienceLifecycle:RL-A4,RL-C2 PubSub:PS-A1`. 통합 runner는 이 선택
   정보를 해석만 하고, 실제 readiness, Redis endpoint 생성, server 시작, client scenario 실행은
   해당 config의 개별 `run_e2e.*`에 위임한다.
-- 통합 e2e runner는 config별 내부 동작을 다시 구현하지 않는다. prefix cleanup을 한 뒤 개별
-  `run_e2e.*`를 호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성, readiness,
+- 통합 e2e runner는 config별 내부 동작을 다시 구현하지 않는다. 선택한 개별 `run_e2e.*`를 호출하고,
+  retry 여부와 최종 결과만 관리한다. Redis endpoint 생성, readiness,
   로그 위치, scenario 실행 세부 절차는 개별 config script와 공통 helper가 맡는다.
 - Redis host port는 고정하지 않는다. Docker가 비어 있는 loopback port를 배정하게 하고, runner가
   inspect 결과로 endpoint를 얻어 각 role server와 client에 전달한다. Redis key prefix, routing id,
@@ -534,8 +535,8 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
   multi-process config의 공유 저장소는 공식 Redis extension을 기본으로 하고, 단일 process
   smoke는 in-memory store(`UseInMemoryLocationStores()`)를 쓸 수 있다.
 - port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다. Docker Redis를 쓰는
-  runner는 언어·e2e 범위 prefix로 container를 만들고, 전체 runner만 같은 prefix의 오래된
-  container를 시작 전에 정리한다.
+  runner는 언어·e2e 범위 prefix로 container를 만들고 자신이 만든 container id만 정리한다.
+  통합 runner도 같은 prefix의 다른 실행 container를 제거하지 않는다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
 - 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
   marker를 조합한다. location store를 쓰는 config는 `IZLinkLocationRuntimeQuery`로 조회한
@@ -551,7 +552,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 모든 e2e는 **파일 로깅과 메시지 흐름 추적을 반드시 켜고** 작성·디버깅한다. ad-hoc `printf`나
 콘솔 스크롤로 때우지 않는다. 트레이싱은 "메시지가 도착했나 / 핸들러로 갔나 / 응답이 나갔나"를
 표준 기능으로 찍어 주므로, 테스트를 만들면서 1차 디버깅 도구로 쓴다.
-(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/message-flow-tracing.ko.md))
+(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/52-message-flow-tracing.ko.md))
 
 ### 6.1 모든 로그를 파일로 (`log/` 폴더)
 

@@ -3,7 +3,7 @@
 # Graceful Drain & Handoff 수명주기 계약
 
 > **구현 상태:** 목표 계약은 이 문서에 고정되어 있으며 현재 구현과의 차이는
-> [구현 차이](implementation-gap.ko.md)와 구현 계획에서 추적한다. [location runtime](location-runtime.ko.md)의
+> [구현 차이](90-implementation-gap.ko.md)와 구현 계획에서 추적한다. [location runtime](40-location-runtime.ko.md)의
 > typed `Draining` 필드와 STREAM 계층의 `session-closing` 제어 프레임을 모든 언어가 같은 의미로
 > 구현해야 한다.
 
@@ -11,7 +11,7 @@
 비워질 때, 무슨 일이 어떤 순서로 일어나는지를 정하는 언어 중립 공통 계약이다. 이것은 **런북이
 아니라 계약**이다 — 배포 자동화(예: Kubernetes `preStop`)가 훅을 걸 수 있도록 framework가 노출하는
 API와 상태 기계를 정의한다. 환경별 배포 매니페스트·grace period 값·용량 산정·대시보드는 이 문서의
-범위가 아니다(팀의 몫). 네이밍은 [framework API](framework-api.ko.md)의 언어별 표현 원칙을 따른다.
+범위가 아니다(팀의 몫). 네이밍은 [framework API](05-framework-api.ko.md)의 언어별 표현 원칙을 따른다.
 
 ## 1. 목적과 성격
 
@@ -46,13 +46,13 @@ stateDiagram-v2
 
 ## 3. location runtime 상호작용 (P0 핵심)
 
-drain의 정확성은 [location runtime](location-runtime.ko.md)과의 상호작용에 달려 있다. 이 절이 이
+drain의 정확성은 [location runtime](40-location-runtime.ko.md)과의 상호작용에 달려 있다. 이 절이 이
 계약의 가장 미묘한 부분이다.
 
 ### 3.1 "연결 유지 + 배치 제외"의 분리 — draining 마커
 
 **순진한 구현의 자기모순:** Draining 진입 시 이 노드의 peer row를 **삭제**하면, [location-runtime
-§6.3](location-runtime.ko.md)의 자동 연결 diff가 이 peer로의 연결을 **끊는다**. 그러면 §5의
+§6.3](40-location-runtime.ko.md)의 자동 연결 diff가 이 peer로의 연결을 **끊는다**. 그러면 §5의
 "in-flight reply까지 마무리"와 actor transfer commit·핸드오프 메시징이 전부 깨진다. 즉 peer row
 삭제로는 "신규 배정 제외"와 "기존 연결 유지"를 동시에 만족할 수 없다.
 
@@ -77,16 +77,16 @@ drain의 정확성은 [location runtime](location-runtime.ko.md)과의 상호작
 
 ### 3.2 owner lease는 Draining 동안 계속 갱신한다
 
-핸드오프는 곧 location row의 소유권 이동이다. [location-runtime §2.5](location-runtime.ko.md)에서
+핸드오프는 곧 location row의 소유권 이동이다. [location-runtime §2.5](40-location-runtime.ko.md)에서
 owner lease heartbeat(기본 5s)가 끊기면 TTL(기본 15s) 후 **그 owner의 전 row가 stale**이 되어
 핸드오프 중 라우팅이 붕괴한다. 따라서:
 
 1. **Draining ~ Drained 동안 owner lease heartbeat를 계속 갱신**한다. drain이 lease 갱신을 멈추면 안
    된다.
 2. 핸드오프 완료 단위마다 대상 row는 target owner가 `Takeover`로 이전한다([location-runtime
-   §3.1/§4](location-runtime.ko.md)의 계획된 이동 = deactivate-first + `Takeover`).
+   §3.1/§4](40-location-runtime.ko.md)의 계획된 이동 = deactivate-first + `Takeover`).
 3. workload 정리가 끝나면 `RemoveOwnerLease` + owner별 일괄 row 제거를 완료한다([location-runtime
-   §3.2](location-runtime.ko.md)의 "owner 자신의 shutdown 경로"). 이때까지 store와 lease runtime을
+   §3.2](40-location-runtime.ko.md)의 "owner 자신의 shutdown 경로"). 이때까지 store와 lease runtime을
    유지한다.
 4. row/lease 정리가 성공한 뒤에만 `Drained`로 전이하고 terminal result를 완료한다. 실패가 deadline까지
    계속되면 `ForceStopping` 정리 경로를 거쳐 `ForceStopped`를 반환한다.
@@ -152,7 +152,7 @@ framework는 redirect endpoint를 반환하지 않는다. 자동 배치와 disco
 
 ### 5.1 SPOT 정책 (앱이 선언)
 
-framework에는 **actor** transfer 표면만 있고 **SPOT 상태 이동** 표면은 없다([spot-actor](spot-actor.ko.md)는
+framework에는 **actor** transfer 표면만 있고 **SPOT 상태 이동** 표면은 없다([spot-actor](23-spot-actor.ko.md)는
 actor의 spot 간 이동만 정의). 따라서 SPOT drain 정책은 다음 둘이며 **`migrate`는 이 계약 범위 밖**
 이다(§5.4).
 
@@ -171,18 +171,18 @@ Spot을 close하고 owner row를 해제한다. queue가 비기 전에 row만 먼
 
 ### 5.2 actor 핸드오프와 mid-transfer 경합
 
-- **transfer adapter 미등록 actor도 이동 대상이다.** [spot-actor §6](spot-actor.ko.md): 미등록은
+- **transfer adapter 미등록 actor도 이동 대상이다.** [spot-actor §6](23-spot-actor.ko.md): 미등록은
   실패가 아니라 **빈 state transfer가 기본**이다(도메인 상태만 빈 채로, target에서 lazy-load).
   v1은 별도 actor drain policy를 공개하지 않는다. target이 있으면 모든 actor를 이동하고, 없으면
   §5.3의 자연 종료/전역 deadline 규칙을 적용한다.
-- **mid-transfer × Drain 3케이스**([spot-actor §5.1/§5.2/§5.3](spot-actor.ko.md)):
+- **mid-transfer × Drain 3케이스**([spot-actor §5.1/§5.2/§5.3](23-spot-actor.ko.md)):
   1. **source가 draining, outbound transfer 진행 중** → 그 transfer는 §5.1의 10단계 완료 조건까지
      완주한 뒤 집계한다. deadline 내 미완이면 §7 강제 종료 경로.
   2. **draining 노드가 transfer의 target** → 신규 admission(`OnActorJoin`)은 거부하되(§4-2), **이미
      admission accept된 commit은 수용**한다 — 거부하면 actor가 미아가 된다(§5.3).
   3. **drain의 대량 transfer 증폭** → drain은 다수 actor를 이동시키므로 moving 직전 pending request
-     분포를 `zlink.actor.transfer.pending_requests.count`([runtime-metrics §4.3](runtime-metrics.ko.md))로
-     관측한다. drain deadline은 [spot-actor §10.4](spot-actor.ko.md)의 forwarding window(기본 5s)를
+     분포를 `zlink.actor.transfer.pending_requests.count`([runtime-metrics §4.3](51-runtime-metrics.ko.md))로
+     관측한다. drain deadline은 [spot-actor §10.4](23-spot-actor.ko.md)의 forwarding window(기본 5s)를
      고려한다.
 
 ### 5.3 핸드오프 대상 선택과 "갈 곳 없음"
@@ -236,7 +236,7 @@ grace deadline 초과 시:
 
 - 잔여 actor/room을 **강제 종료**한다.
 - 활성 STREAM 세션에 **종료 사유 코드**를 담은 종료 통지를 보낸다(`close_reason=server_drain`,
-  [runtime-metrics §4.1](runtime-metrics.ko.md) 닫힌 enum).
+  [runtime-metrics §4.1](51-runtime-metrics.ko.md) 닫힌 enum).
 - 유실 in-flight는 `zlink.drain.forced`(§9)로 계수.
 - 통지 전송 자체가 deadline을 다시 무한 지연시키지 않도록 통지 상한을 둔다.
 
@@ -293,10 +293,10 @@ close reason을 저장한 뒤 disconnect event를 내보낸다.
 대체하지 않는다.
 
 대체 endpoint 선택과 재접속은 **앱/connector의 몫**으로 둔다. connector의 disconnect 이벤트/오류
-표면은 `closeReason`(닫힌 enum, [runtime-metrics §4.1](runtime-metrics.ko.md)의 `close_reason`과 정합)을
+표면은 `closeReason`(닫힌 enum, [runtime-metrics §4.1](51-runtime-metrics.ko.md)의 `close_reason`과 정합)을
 노출한다. 언어별 projection은 각 connector 문서가 소유한다(예:
-[Java `ZLinkStreamCloseReason`](languages/java/stream-connector.ko.md),
-[Node `closeReason` union](languages/node/stream-connector.ko.md)); .NET/C++/Kotlin connector도 같은
+[Java `ZLinkStreamCloseReason`](languages/java/03-stream-connector.ko.md),
+[Node `closeReason` union](languages/node/03-stream-connector.ko.md)); .NET/C++/Kotlin connector도 같은
 닫힌 enum을 언어 케이싱으로 노출한다. 서버가 대체 endpoint를 지정하는 기능은 이 계약에 포함하지
 않는다.
 
@@ -320,9 +320,9 @@ framework는 아래 훅 지점만 제공하고, 스크립트·probe 배선은 �
 
 ## 9. 관측
 
-drain lifecycle 이벤트는 [MFT observer 계약](message-flow-tracing.ko.md)(offload executor, 예외
-격리 — [비동기 실행 정책](async-execution-policy.ko.md))을 따른다. 계기 이름 문법·종류·라벨은
-[runtime-metrics](runtime-metrics.ko.md)를 따른다.
+drain lifecycle 이벤트는 [MFT observer 계약](52-message-flow-tracing.ko.md)(offload executor, 예외
+격리 — [비동기 실행 정책](04-async-execution-policy.ko.md))을 따른다. 계기 이름 문법·종류·라벨은
+[runtime-metrics](51-runtime-metrics.ko.md)를 따른다.
 
 **drain 이벤트는 source 등록이 필요 없다(오류를 정의로 제거).** socket/spot monitoring source와 달리
 drain은 노드 생애 수 회의 저빈도 lifecycle 이벤트라 polling·filter 파라미터가 없다. 따라서 등록 표면
@@ -345,7 +345,7 @@ correlation이 제거한 "조용한 무관측" 함정이 drain에서 재발하�
 
 ## 10. 구현 상태
 
-언어별 drain API 표면과 현재 차이는 [언어별 구현 차이](implementation-gap.ko.md)에 기록한다.
+언어별 drain API 표면과 현재 차이는 [언어별 구현 차이](90-implementation-gap.ko.md)에 기록한다.
 
 ## 11. 회귀 테스트 매트릭스 (DRAIN)
 
@@ -361,7 +361,7 @@ correlation이 제거한 "조용한 무관측" 함정이 drain에서 재발하�
 | DRAIN-008 | drain 계기(state/duration/handed_off/forced)가 실제 결과와 일치 |
 | DRAIN-009 | Draining 동안 owner lease가 계속 갱신되어 기존 row가 stale로 전락하지 않음 |
 | DRAIN-010 | draining 노드로 향하던 진행 중 transfer의 inbound commit은 수용, 신규 admission은 거부 |
-| DRAIN-011 | outbound transfer 진행 중 Drain 발화 시 [spot-actor §5.1](spot-actor.ko.md) 10단계까지 완주 후 집계 |
+| DRAIN-011 | outbound transfer 진행 중 Drain 발화 시 [spot-actor §5.1](23-spot-actor.ko.md) 10단계까지 완주 후 집계 |
 | DRAIN-012 | eligible target이 없을 때 actor는 source에서 deadline까지 유지되고 Spot은 선언 정책을 적용 |
 | DRAIN-013 | readiness flip 후 기존 연결로 도착한 request가 전파 지연 창 동안 정상 처리(오류율 0) |
 | DRAIN-014 | 핸드오프 완료 단위 location row가 `Takeover`/재등록으로 이전되고 구 row resolve가 실패하지 않음(전환 원자성) |
@@ -383,5 +383,5 @@ correlation이 제거한 "조용한 무관측" 함정이 drain에서 재발하�
 
 ---
 
-> 관련: [location runtime](location-runtime.ko.md) · [spot-actor](spot-actor.ko.md) ·
-> [runtime metrics](runtime-metrics.ko.md) · [메시지 흐름 상관관계](flow-correlation.ko.md)
+> 관련: [location runtime](40-location-runtime.ko.md) · [spot-actor](23-spot-actor.ko.md) ·
+> [runtime metrics](51-runtime-metrics.ko.md) · [메시지 흐름 상관관계](53-flow-correlation.ko.md)

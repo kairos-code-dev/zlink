@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](20-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [Registry](cpp-registry.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [SPOT](20-spot.ko.md) | [STREAM](30-stream.ko.md) | [Registry](40-registry.ko.md)
 
 # Spec -- ZLink Framework C++ ActorGateway Session Relay
 
@@ -155,7 +155,7 @@ actor가 client 연결을 끊어야 할 때는 `co_await bound_session_t::discon
 
 ## 7. 결정된 세부 정책
 
-[공통 Session Actor Dispatch 계약](../../session-actor-dispatch.ko.md)을 C++ 사용자가
+[공통 Session Actor Dispatch 계약](../../31-session-actor-dispatch.ko.md)을 C++ 사용자가
 같은 수준으로 사용할 수 있도록 아래 정책을 적용한다.
 
 | 항목 | 결정 |
@@ -193,5 +193,5 @@ CTest label은 `framework-zlink-actor-gateway`를 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](20-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

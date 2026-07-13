@@ -360,7 +360,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   server push 수신을 관찰하기 위한 것이며, payload 검증이나 push 대기를 대신하지 않는다.
   observer callback에서는 connector send/request/wait를 다시 호출하지 않는다.
 - Java와 Kotlin client scenario의 `submit`과 `await` 의미는
-  [framework 공통 비동기 정책](../../spec/async-execution-policy.ko.md)을 따른다.
+  [framework 공통 비동기 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
   `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
   결과를 받는 이름으로 사용한다.
 - sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
@@ -1063,8 +1063,8 @@ evidence를 남겨야 한다.
 
 Bingo는 이미 세션 게이트웨이(STREAM)·actor 이동·룸 타이머·bound push를 갖춰, 관측·운영 기능이
 관측하는 사건을 그대로 만들어 낸다. 그래서 사용자가 **바로 따라 켜 보기** 좋은 샘플이다. 세
-기능은 각각 [메시지 흐름 상관관계](../../spec/flow-correlation.ko.md), [런타임 메트릭](../../spec/runtime-metrics.ko.md),
-[Graceful Drain & Handoff](../../spec/graceful-drain-handoff.ko.md)이 계약을 소유하고, 언어별 표면은
+기능은 각각 [메시지 흐름 상관관계](../../spec/53-flow-correlation.ko.md), [런타임 메트릭](../../spec/51-runtime-metrics.ko.md),
+[Graceful Drain & Handoff](../../spec/54-graceful-drain-handoff.ko.md)이 계약을 소유하고, 언어별 표면은
 각 언어 monitoring 문서가 소유한다. **셋 다 공통 케이스는 무설정에 가깝다.**
 
 ### 17.1 메시지 흐름 추적 로그 (flow correlation)
@@ -1128,9 +1128,9 @@ options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
 ### 17.4 언어별 표면
 
 같은 세 기능의 언어별 정식 표면은 각 언어 monitoring 문서를 본다:
-[.NET](../../spec/languages/dotnet/aspnet-core-monitoring.ko.md) §10~12 ·
-[Java](../../spec/languages/java/spring-boot-monitoring.ko.md) §8~10 ·
-[Node](../../spec/languages/node/nestjs-monitoring.ko.md) §10~12 ·
-[C++](../../spec/languages/cpp/cpp-monitoring.ko.md) §8~10 ·
-[Kotlin](../../spec/languages/kotlin/handler-interfaces.ko.md) §8. 배포 조건에서의 e2e 검증은
+[.NET](../../spec/languages/dotnet/01-system-structure.ko.md) §10~12 ·
+[Java](../../spec/languages/java/01-system-structure.ko.md) §8~10 ·
+[Node](../../spec/languages/node/01-system-structure.ko.md) §10~12 ·
+[C++](../../spec/languages/cpp/50-monitoring.ko.md) §8~10 ·
+[Kotlin](../../spec/languages/kotlin/02-handler-interfaces.ko.md) §8. 배포 조건에서의 e2e 검증은
 [Config 11 — 관측·운영 배포](../../e2e/config-11-observability-ops.ko.md)가 다룬다.

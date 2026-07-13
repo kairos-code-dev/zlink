@@ -29,8 +29,8 @@
 | JV-DOC-006 | `system-structure.ko.md` | location store/runtime | 검토 완료 |
 | JV-DOC-007 | `system-structure.ko.md` | Spot/actor lifecycle와 messaging | 검토 완료 |
 | JV-DOC-008 | `system-structure.ko.md` | server STREAM/session | 검토 완료 |
-| JV-DOC-009 | `stream-connector.ko.md` | client connector 전체 계약 | 검토 완료 |
-| JV-DOC-010 | `stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
+| JV-DOC-009 | `32-stream-connector.ko.md` | client connector 전체 계약 | 검토 완료 |
+| JV-DOC-010 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
 공통 spec 19개는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
@@ -52,7 +52,7 @@
 | JV-G0-EXPORT-001 | application package에 public contract만 export | backend와 handler runtime SPI가 internal 경계에 있음 | clean packaged consumer는 별도 gate | target contract PASS | PARTIAL |
 | JV-G0-NAMING-001 | `CompletionStage` method에 불필요한 `Async` suffix 없음 | application 공개 계약의 legacy suffix 제거 | connector transport internal 이름은 public application 계약과 분리 유지 | target contract PASS | DONE |
 | JV-G0-LOC-001 | sealed `ZLinkLocationKey`과 전체 store/runtime facets | exact facet 구현과 real Redis 장애·복구 검증 완료 | 없음 | target contract PASS, Config 6 SF-A1~E1 PASS | DONE |
-| JV-G0-CONNECTOR-001 | Java Stream Connector 정식 전체 계약 | lifecycle/call/codec/observer/TLS/package coverage 미완전 | `stream-connector.ko.md` 전체 member와 동작 정렬 | JAR snapshot과 §13 contract tests | GAP |
+| JV-G0-CONNECTOR-001 | Java Stream Connector 정식 전체 계약 | lifecycle/call/codec/observer/TLS/package coverage 미완전 | `32-stream-connector.ko.md` 전체 member와 동작 정렬 | JAR snapshot과 §13 contract tests | GAP |
 | JV-G0-REUSE-001 | Kotlin coroutine invocation의 단일 owner | Java core fallback 제거, Kotlin module provider만 소유 | Kotlin provider 동작은 Kotlin gate에서 검증 | Java target contract PASS | PARTIAL |
 
 ## 4. E2E·sample inventory
@@ -81,41 +81,36 @@ application-visible backend/adapter/handler factory/suspend invoker, obsolete `*
 ## 6. 문서 snapshot
 
 ```text
-5146fa570e974fcf8cdfe02d7279f9a2826f86116dec7a50350314b181770401 common/README.ko.md
-3d74929d5ea0817f3768bf7f79986cff8fb929f9882d989b4eccc160a1aeb60e common/actor-model.ko.md
-125d7c6b9546f24456f4213c7d071b6d111749c6bd506f0426dbea6cbe222ec5 common/async-execution-policy.ko.md
-8f262980732bf14b3b361f1e02aabd6719b3be881240669738cb0f59f6114c74 common/channel-messaging.ko.md
-97732ddecfd56b39dd20b213dc76103d24d8e9111fb9da5db5998e1dc0018b92 common/channel-topology.ko.md
-000bd7d758c0b133d3bad35311891e72403d1fbd905c55b12edf4390cd2b2dab common/flow-correlation.ko.md
-96d97a95e3d8d021e4bbf50e8ddd3e0b251cd8faed6226c0a68e272fcd5ec9b2 common/framework-api.ko.md
-e015afd89bba3e4b36f74aadf409e4fea1f4f2bb932e57108cef4db3c67fd883 common/graceful-drain-handoff.ko.md
-944cf15bf6c806f337dcf1af208dff8f10e44695b6ea5cba20e8dad3fc6cd12d common/implementation-gap.ko.md
-921010d790f79329605006181884f257b361a58f4f13d11740b27130c9a6e624 common/interaction-model.ko.md
-e3e45861394c4f7e7c54687e63b68a17ed00b5dfa2db38c969bd3e2fd63f571d common/location-runtime.ko.md
-4040f9d3042d1d3e4cdb3533f8d033157d218970c778586a2cbcde4488c704ee common/location-store-redis.ko.md
-06dadcb858ffa2c9913dbd1931332b9dc321c7cd54ae56fd6ec4f95d803620f0 common/message-flow-tracing.ko.md
-3ce18fbcfbda8d410cf3c6792dd697773a8b4b2dca7cb0ebb0d64a48a06e7133 common/message-model.ko.md
-3fb43bd272188f83abc4ca0f7e06589b33d544f2658fe43e35d679fd39c99530 common/overview.ko.md
-d28134e15d84211823dcdbf68df23137982622754904b7f333464e70b71ff0f5 common/public-contract-governance.ko.md
-c215d647023a9b767fc048d2aa5c349ff4a3f5b49d27df97fbeaccf7aa9a214d common/runtime-metrics.ko.md
-fe9136f1bd209e27ed60d85fe01c34a1df9e997917d85f598a7a99017332f218 common/runtime-monitoring.ko.md
-3f6c88e95eefc17ebadc1559b71b62c77f4bcd5a68d9bc84db88ca7e067a71d5 common/session-actor-dispatch.ko.md
-19fe9c09a731694e19d9160853e99096e8e4284ab616565ea905b4d9e1aa5ab5 common/spot-actor.ko.md
-30827c93383fbcf0d65b607f5562091d7481504e1e907553f57efce8a84d6a82 common/spot-address-messaging.ko.md
-a819760bb71acbdb06a4290b4a293c73c9000e0ec7f5af91835313cb45d531c3 common/spot-messaging.ko.md
-a8efeed1b57db9dc0a03dc72ffdf15974b4cb6e7d7e8824c02f403f49f30a43c common/spot-node.ko.md
-5819de40f22cdf8b33822620b590af442e2b77687c1c46a13daf1ab1073979d0 common/stage-wrapper-on-spot.ko.md
-5f7c69ac0db66dbb33244e2791b18a4d00c9e079c33868e39949b5613c680c51 common/stream-connector.ko.md
-433b31fd8b11d628e0cfa8f60dfae057d7c0f78c9466dd021ef7d7b9f81d1c7c common/stream-session.ko.md
-dd55303b795f84f4c156f4effb2eeb44a70d27987b36d2216c073a4a1f296d75 java/README.ko.md
-452915e0f12291ae505aa1e14ca5fe7f4316430488b9dd54135a81a0b989fb32 java/handler-interfaces.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-9854cacab20fe2dca5415549083ff800f4aeda31d5863d8fa795399eb512e956 java/system-structure.ko.md
-a17b3aabba943702cc39292627e9552a54b74825d6d7ef30ef5e7fb6e199b2d5 java/stream-connector.ko.md
+a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.ko.md
+42d510ede11aa33269a48db8d21ad9d1f58b85845850f59c346964dbf939b101 common/22-actor-model.ko.md
+a618c98fd558a77fcc106baf82d1f64aced55d2d4e011985857d2d2c8ab157b5 common/04-async-execution-policy.ko.md
+c4bf1e04acc52e8f019e317efce655baef84e48ee6bca1f09dc35c175d0f7bf9 common/11-channel-messaging.ko.md
+4edd7ceda0c0c5508c1af458c407e19305993e4e899fc22edde92a33d4a78200 common/10-channel-topology.ko.md
+778755c8d0b278e18d691d0c7c9f9063dd9acf955eae7a5b809a96545715869f common/53-flow-correlation.ko.md
+f5e5be70f886b986097f077a1f57876359808f458927b63e6d99bd07a5612a92 common/05-framework-api.ko.md
+e1a42ee2323f58b3b0791c231caeba18c4edb5c3ea74e7880752b060e1381fba common/54-graceful-drain-handoff.ko.md
+56ff5d3c45f15a2fdebbebf59a80d0937c8026712f79f32ee6969403d20a423b common/90-implementation-gap.ko.md
+b6b54adc8eea5ab0aead4a65862f1e63ee9d944e1a3a22f880f278eeab31e253 common/02-interaction-model.ko.md
+f9ac6e812cee636d79b8d6e4c0e099c9ce9b58ae27ba1f19d15fd5384a624980 common/40-location-runtime.ko.md
+6ae2479eabdc71b1ec2d343664b3ce3d0ff9c99cc6b39d9ddeb9305757eca669 common/41-location-store-redis.ko.md
+ce881d2eb8f921299016a0f8e87132d3458db69cb56706ce2b285de40da57722 common/52-message-flow-tracing.ko.md
+0cf99c737691439d97e5ec8817061fda7244c72a289425a743bf031ebe9f2e54 common/03-message-model.ko.md
+b11559025f3b4f8090429d70d0571d8f3676a46ed69be33f108001bc6026269d common/01-overview.ko.md
+a991724444da99ad0e170cad87fcf7505d6b24293e220de6f457639110dd24cc common/00-public-contract-governance.ko.md
+a0c9bdc1921e8bdc2f78d644b98f0fcdc8fb50bc56a49bffb52e387c503e6914 common/51-runtime-metrics.ko.md
+e4b199a2f8019a2d93296f5b2cd9b98d3719b4c06cae5d6ecde527abca65b1f4 common/50-runtime-monitoring.ko.md
+90f52f3745a0365b8a5eb220dd8d658e35c97a7d45c77908983618dedf35d847 common/31-session-actor-dispatch.ko.md
+a0359fad886447347aa59182f1f6698ac91f5b78c0d682e3cef6ce3312dce6bd common/23-spot-actor.ko.md
+be51bb1575529455e0a1ef7b163883b8bbb24dafd76de48f19ebe43a2c0213ba common/24-spot-address-messaging.ko.md
+5b48a128626e30ceba413dddc86fa880bb070b65905df70a91bf0936d08dda09 common/20-spot-messaging.ko.md
+cf41d54d59f8f5e02a9c459f5f6a6781c4bbf2445167a52c71e97e3187559fe2 common/21-spot-node.ko.md
+09cc20c2f3d093724b4b5c292dcb4beefba8728ed706b1f5e84891a69cfa50d0 common/25-stage-wrapper-on-spot.ko.md
+b96317b588160db9c87b031362d6b29a9b1c3f01d7c8a49b6e0494eed67e0744 common/32-stream-connector.ko.md
+b599853acda9e675cf3f81d31cdc4fbae2322b722290e0ac2eaa76339c60d7d4 common/30-stream-session.ko.md
+ec90bd78db9467e2d1f0e8a7a78a6b5246927ab5f165f67e65f44a9014813ee2 java/README.ko.md
+9ebc0cc7dda6617507bc635bd6cbbcd67215e15109ca896f9e7efdf4df022a27 java/02-handler-interfaces.ko.md
+90f185d93bc93af527ccc9d40a192ee1e1500c1622fe3080c9374f43fb4bb8ea java/01-system-structure.ko.md
+470e3abcad0d7c8f07b7610176924de8110a5507fc839c3c846e4b30b39ed306 java/03-stream-connector.ko.md
 ```
 
 ## 7. G0 완료 조건

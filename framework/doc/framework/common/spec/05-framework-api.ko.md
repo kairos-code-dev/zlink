@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](10-channel-topology.ko.md) | [다음: ZLink Framework Actor Model](22-actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework API
 
@@ -37,7 +37,7 @@
   bindings message boundary 정렬).
 - raw transport header는 handler 인자로 직접 노출하지 않는다.
 - 서버 간 framework transport는 공통
-  [message-model.ko.md](message-model.ko.md)의 multipart `header + payload` 계약을
+  [03-message-model.ko.md](03-message-model.ko.md)의 multipart `header + payload` 계약을
   따른다. 각 언어 adapter는 payload를 header object 안에 다시 넣어 단일 메시지로
   직렬화하면 안 된다.
 
@@ -58,7 +58,7 @@
   session error는 error kind enum과 native detail을 함께 가진 구조화된 값으로
   받는 편이 자연스럽다.
 - stream 직렬성 / callback 실행 규칙의 권위는
-  [interaction-model.ko.md §3.4](interaction-model.ko.md)에 둔다. 이 문서는
+  [02-interaction-model.ko.md §3.4](02-interaction-model.ko.md)에 둔다. 이 문서는
   필요한 곳에서 같은 규칙을 따른다고만 적고, 정의는 한 곳에서만 한다.
 
 ### 2.2 클라이언트 쪽
@@ -117,7 +117,7 @@
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
   있어야 한다.
 - 운영 점검이나 관리 API에서는 location runtime query
-  (`IZLinkLocationRuntimeQuery` — [location runtime](location-runtime.ko.md) §7)의
+  (`IZLinkLocationRuntimeQuery` — [location runtime](40-location-runtime.ko.md) §7)의
   원시 row, runtime이 합성한 topology 보기, status를 읽는 별도 조회 표면을 둘 수 있어야 한다.
 - socket/location runtime/spot 변화를 typed event handler로 받을 수
   있는 별도 monitoring surface도 둘 수 있어야 한다.
@@ -132,8 +132,8 @@
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
   공개 키로 사용한다. session -> actor 방향은 actor bind/relay helper로,
   actor -> client 방향은 bound session(`IZLinkBoundSession`)으로 나눈다. actor 개념의 라이프사이클
-  과 표면은 [actor-model.ko.md](actor-model.ko.md)에서, gateway 패턴의 사용성
-  결정은 [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에서
+  과 표면은 [22-actor-model.ko.md](22-actor-model.ko.md)에서, gateway 패턴의 사용성
+  결정은 [31-session-actor-dispatch.ko.md](31-session-actor-dispatch.ko.md)에서
   본다.
 
 ### 2.3 Framework 오류 kind
@@ -173,11 +173,11 @@ framework 오류는 언어마다 exception/error 표현이 달라도 같은 kind
 
 ### 2.4 transport 통합 축
 
-framework가 직접 통합할 transport 축은 [overview.ko.md](overview.ko.md)의
+framework가 직접 통합할 transport 축은 [01-overview.ko.md](01-overview.ko.md)의
 section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`
 세 축을 중심으로 보되, 공통 API 원칙과 lifecycle 경계에 직접 영향을 주는
 `SPOT` 표면도 함께 다룬다. `SPOT`의 자세한 계약과 샘플은
-[.NET SPOT 문서](languages/dotnet/aspnet-core-spot.ko.md) 등 별도
+[.NET SPOT 문서](languages/dotnet/01-system-structure.ko.md) 등 별도
 문서에서 따로 다룬다.
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
@@ -242,7 +242,7 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
   둔다.
 - socket source는 하부 monitor를 감싸는 편이 자연스럽다.
 - location runtime/spot source는 raw monitor를 가장한 표면보다, 일정 주기로 상태를 읽고 직전 상태와
-  비교해 바뀐 때만 event를 만드는 방식으로 설명하는 편이 맞다([location runtime](location-runtime.ko.md) §9).
+  비교해 바뀐 때만 event를 만드는 방식으로 설명하는 편이 맞다([location runtime](40-location-runtime.ko.md) §9).
 - application은 typed runtime event handler를 구현해서 이 이벤트를 받는 모델을
   기본으로 본다.
 
@@ -675,7 +675,7 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
   Entry Spot destroy 경로에서만 application이 명시적으로 선택한다.
 
 자세한 contract와 샘플은
-[.NET SPOT 문서](languages/dotnet/aspnet-core-spot.ko.md)
+[.NET SPOT 문서](languages/dotnet/01-system-structure.ko.md)
 같은 binding 문서를 기준으로 본다.
 
 #### 3.4.1 Actor lifecycle과 core 위임
@@ -687,7 +687,7 @@ framework는 actor 생성, Spot 입장, 이탈과 actor 메시지 수신을 core
 새 actor는 location runtime의 `NewClaim`을 먼저 얻은 실행만 활성화한다. framework는
 claim 성공 뒤 factory, `Configure()`, create lifecycle 순서로 진행하며, 같은 actor id의
 동시 생성에서 claim을 얻지 못한 실행은 application actor를 활성화하지 않는다
-([location runtime §4](location-runtime.ko.md#4-ownergeneration-규칙)).
+([location runtime §4](40-location-runtime.ko.md#4-ownergeneration-규칙)).
 
 입장 요청을 받으면 framework는 요청을 application join handler에 전달하고, handler의
 허용 또는 거부 결과와 선택적 reply를 core 응답으로 변환한다. 입장이 완료된 actor의
@@ -865,5 +865,5 @@ dispatch loop를 framework host가 직접 관리하는 것이다. application이
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](10-channel-topology.ko.md) | [다음: ZLink Framework Actor Model](22-actor-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

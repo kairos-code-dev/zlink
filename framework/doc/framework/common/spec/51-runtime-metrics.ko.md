@@ -3,16 +3,16 @@
 # 런타임 메트릭 계기 (Runtime Metrics Instruments)
 
 > **구현 상태:** 목표 계약은 이 문서에 고정되어 있으며 현재 구현과의 차이는
-> [구현 차이](implementation-gap.ko.md)와 구현 계획에서 추적한다. 계기 이름·라벨·단위는 모든
+> [구현 차이](90-implementation-gap.ko.md)와 구현 계획에서 추적한다. 계기 이름·라벨·단위는 모든
 > 언어가 동일한 의미로 구현해야 한다.
 
 이 문서는 framework가 표준 기능으로 노출하는 **런타임 메트릭 계기**의 언어 중립 공통 스펙이다.
 공통 의미(계기 카탈로그, 계기 종류, 라벨 규약, 이름 문법, 성능 계약, 수집 백엔드 경계)는 이
 문서가 소유하고, 언어별 문서는 여기서 정한 의미를 자기 언어의 계기 API 표면으로만 구체화한다.
-네이밍은 [framework API](framework-api.ko.md)와
-[공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
+네이밍은 [framework API](05-framework-api.ko.md)와
+[공개 계약 관리 §4](00-public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
 
-이 문서는 [메시지 흐름 추적](message-flow-tracing.ko.md)(이하 **MFT**)과 **짝**을 이룬다. MFT가
+이 문서는 [메시지 흐름 추적](52-message-flow-tracing.ko.md)(이하 **MFT**)과 **짝**을 이룬다. MFT가
 "메시지 한 건이 dispatch 됐는가"(per-message 로그·이벤트)를 담당한다면, 이 문서는 "지금 이 노드
 상태가 정상인가"(집계 시계열)를 담당한다. 둘은 같은 관측 철학 — **framework는 신호를 주고,
 백엔드·대시보드는 앱이 끼운다** — 을 공유한다.
@@ -30,7 +30,7 @@
 - actor 이동(transfer) 횟수·소요, 이동 commit 시점 pending request 수는 framework만 관측한다.
 
 이 기능은 dispatch **제어**가 아니라 **관측**이다. 계기 갱신 실패나 reader 예외가 dispatch
-결과·성능을 바꾸면 안 된다(관측 callback 의미는 [비동기 실행 정책 §2](async-execution-policy.ko.md)를
+결과·성능을 바꾸면 안 된다(관측 callback 의미는 [비동기 실행 정책 §2](04-async-execution-policy.ko.md)를
 따른다).
 
 ## 2. 추적·monitoring 이벤트와의 경계
@@ -41,7 +41,7 @@ framework는 이미 두 관측 표면을 가진다. 메트릭은 이 둘과 **�
 | 표면 | 무엇 | 언제 |
 |------|------|------|
 | **메시지 흐름 추적**(MFT) | per-message 로그 라인(`corr=…`, phase) | "이 메시지가 dispatch 됐나" 디버깅 |
-| **location/runtime 이벤트**([location-runtime §9](location-runtime.ko.md)) | 상태 변화 통지(`TopologyChanged`, `StoreUnavailable` 등) | "무엇이 바뀌었나" 알림 |
+| **location/runtime 이벤트**([location-runtime §9](40-location-runtime.ko.md)) | 상태 변화 통지(`TopologyChanged`, `StoreUnavailable` 등) | "무엇이 바뀌었나" 알림 |
 | **런타임 메트릭**(이 문서) | 집계 시계열(counter/gauge/histogram) | "지금 상태가 정상인가" 그래프·알람 |
 
 **왜 이벤트/observer 훅으로 메트릭을 대체할 수 없나.** MFT의 `message_flow_observer`는 이벤트
@@ -112,7 +112,7 @@ stream connector가 자동 재접속 attempt를 시작할 때 한 번 증가시�
 | `zlink.spot.timer.tick.lateness` | histogram | `s` | timer tick 예정 대비 실제 지연 |
 | `zlink.spot.created` / `zlink.spot.closed` | counter | `{spot}` | 생성·소멸 누계 |
 
-`kind` 라벨은 [location-runtime §2.0](location-runtime.ko.md)의 `SpotKind`(`entry`/`user`)를 쓴다.
+`kind` 라벨은 [location-runtime §2.0](40-location-runtime.ko.md)의 `SpotKind`(`entry`/`user`)를 쓴다.
 Entry Spot은 노드당 상주라 "룸 수"가 아니다 — **user spot 수 ≈ 룸 수**이고, Entry Spot 큐 깊이는
 매치메이킹/배정 병목의 신호다.
 
@@ -126,14 +126,14 @@ Entry Spot은 노드당 상주라 "룸 수"가 아니다 — **user spot 수 ≈
 | `zlink.actor.count` | updown | `{actor}` | 현재 유지 중인 actor 수 |
 | `zlink.actor.mailbox.depth` | updown | `{item}` | mailbox 대기 메시지 수 |
 | `zlink.actor.transfers` | counter | `{transfer}` | 노드 간 이동 완료 수(폭증=리밸런싱 폭풍) |
-| `zlink.actor.transfer.duration` | histogram | `s` | 이동 소요(out→commit ack, [spot-actor §5.1](spot-actor.ko.md)) |
+| `zlink.actor.transfer.duration` | histogram | `s` | 이동 소요(out→commit ack, [spot-actor §5.1](23-spot-actor.ko.md)) |
 | `zlink.actor.transfer.pending_requests.count` | histogram | `{request}` | moving 전이 직전 pending request 개수 분포 |
 
 pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않는다. source node가 actor를 moving으로
 전이시키기 직전에 현재 pending 개수를 한 번 기록한다. transfer 하나당 histogram sample 하나이며
 같은 request를 누적 counter처럼 중복 계수하지 않는다.
 
-> [spot-actor §10.5](spot-actor.ko.md)는 이동을 가로지른 request의 reply correlation·timeout 보존을
+> [spot-actor §10.5](23-spot-actor.ko.md)는 이동을 가로지른 request의 reply correlation·timeout 보존을
 > 요구한다. pending sample은 유실 수가 아니므로 0을 성공 기준으로 삼지 않는다. moving 직전 실제
 > snapshot과 일치하는지, 그 request들이 원래 reply 또는 timeout으로 완료되는지를 함께 검증한다.
 
@@ -177,7 +177,7 @@ pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않�
 | `zlink.location.write.conflicts` | counter | `{write}` | `RejectedConflict`/`IgnoredStale` 발생(스플릿 브레인/이중 owner 신호) |
 
 > lease 갱신 지연이 TTL(기본 15s)의 2/3를 넘으면 **그 owner의 전 row가 stale 임박**이다 — 가장
-> 치명적인 선행 신호이므로 `renew.lateness`를 1급으로 둔다([location-runtime §2.5](location-runtime.ko.md)).
+> 치명적인 선행 신호이므로 `renew.lateness`를 1급으로 둔다([location-runtime §2.5](40-location-runtime.ko.md)).
 
 ### 4.6 관측 인프라 자체
 
@@ -192,10 +192,10 @@ pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않�
 
 | 계기 | 소유 스펙 |
 |------|-----------|
-| `zlink.drain.*`(`duration`/`actors.handed_off`/`rooms.drained`/`forced`) | [graceful drain & handoff](graceful-drain-handoff.ko.md) §9 |
+| `zlink.drain.*`(`duration`/`actors.handed_off`/`rooms.drained`/`forced`) | [graceful drain & handoff](54-graceful-drain-handoff.ko.md) §9 |
 
 **`session.bind.duration` 구간 정의**: 시작=STREAM 세션이 actor bind를 요청한 시점, 끝=
-[session-actor-dispatch](session-actor-dispatch.ko.md)의 bind 완료(actor location row 확정 +
+[session-actor-dispatch](31-session-actor-dispatch.ko.md)의 bind 완료(actor location row 확정 +
 bound session route 활성화).
 
 ## 5. 라벨(attribute) 규약 — 닫힌 집합 규칙
@@ -213,11 +213,11 @@ bound session route 활성화).
 >
 > 개별 흐름 식별은 메트릭이 아니라 **추적**의 몫이다. 메트릭에서 `actor_id`로 per-actor 시계열을
 > 만들지 않는다 — 그 조인은 흐름 로그의 `flow_id`(있으면)/`corr`로 한다
-> ([flow correlation](flow-correlation.ko.md) 채택 시 조인 상위 키는 `flow_id`).
+> ([flow correlation](53-flow-correlation.ko.md) 채택 시 조인 상위 키는 `flow_id`).
 
 ## 6. 수집 백엔드 경계
 
-경계 원칙의 정본은 [MFT §6](message-flow-tracing.ko.md)이다. 이 문서는 그 원칙을 반복하지 않고
+경계 원칙의 정본은 [MFT §6](52-message-flow-tracing.ko.md)이다. 이 문서는 그 원칙을 반복하지 않고
 **메트릭 특화 차분**만 정의한다. **framework는 특정 메트릭 백엔드/SDK에 하드 의존하지 않는다.**
 
 **framework가 제공 (백엔드 무관, 의존성 0):**
@@ -278,7 +278,7 @@ framework는 **기록만** 하고 aggregation·버킷 경계는 provider 책임�
 ## 9. 구현 상태
 
 이 문서는 언어별 구현 진행률을 기록하지 않는다. 언어별 계기 표면과 현재 차이는
-[언어별 구현 차이](implementation-gap.ko.md)에 기록한다. observer/reader를 외부 수집기나 OTel
+[언어별 구현 차이](90-implementation-gap.ko.md)에 기록한다. observer/reader를 외부 수집기나 OTel
 adapter에 연결하는 일은 application 또는 별도 extension이 담당한다.
 
 ## 10. 회귀 테스트 매트릭스 (RMETRIC)
@@ -323,5 +323,5 @@ export에 scope로 실리는 백엔드 식별자이므로 계기 이름과 같�
 
 ---
 
-> 관련: [메시지 흐름 추적](message-flow-tracing.ko.md) · [메시지 흐름 상관관계](flow-correlation.ko.md) ·
-> [graceful drain & handoff](graceful-drain-handoff.ko.md) · [location runtime](location-runtime.ko.md)
+> 관련: [메시지 흐름 추적](52-message-flow-tracing.ko.md) · [메시지 흐름 상관관계](53-flow-correlation.ko.md) ·
+> [graceful drain & handoff](54-graceful-drain-handoff.ko.md) · [location runtime](40-location-runtime.ko.md)

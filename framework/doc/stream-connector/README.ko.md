@@ -32,23 +32,23 @@ OS 소켓을 열 수 있는 언어가 없기 때문이다.
 하나뿐이라 엔진별로 갈라질 것이 없기 때문이다. 사용법은
 [Java framework 가이드 07 — STREAM](../framework/java/guide/07-stream.ko.md)에 thin client로
 포함되고, 계약은
-[Java/Kotlin 공개 계약](../framework/common/spec/languages/java/stream-connector.ko.md)이 소유한다.
+[Java/Kotlin 공개 계약](../framework/common/spec/languages/java/03-stream-connector.ko.md)이 소유한다.
 
 ## 계약 문서
 
 | 문서 | 소유 범위 |
 |------|-----------|
-| [Stream Connector 공통 스펙](../framework/common/spec/stream-connector.ko.md) | **정본** — 대상 실행 환경, transport, wire 계약, 연결 생명주기, 오류 의미, 배포 산출물 |
-| [`.NET` 공개 계약](../framework/common/spec/languages/dotnet/stream-connector.ko.md) | `.NET` public 타입과 시그니처 |
-| [Java/Kotlin 공개 계약](../framework/common/spec/languages/java/stream-connector.ko.md) | Java/Kotlin public 타입과 시그니처 |
-| [Node 공개 계약](../framework/common/spec/languages/node/stream-connector.ko.md) | TypeScript public 타입과 시그니처, entrypoint 분리 |
+| [Stream Connector 공통 스펙](../framework/common/spec/32-stream-connector.ko.md) | **정본** — 대상 실행 환경, transport, wire 계약, 연결 생명주기, 오류 의미, 배포 산출물 |
+| [`.NET` 공개 계약](../framework/common/spec/languages/dotnet/03-stream-connector.ko.md) | `.NET` public 타입과 시그니처 |
+| [Java/Kotlin 공개 계약](../framework/common/spec/languages/java/03-stream-connector.ko.md) | Java/Kotlin public 타입과 시그니처 |
+| [Node 공개 계약](../framework/common/spec/languages/node/03-stream-connector.ko.md) | TypeScript public 타입과 시그니처, entrypoint 분리 |
 
 가이드와 계약이 어긋나면 **계약이 기준이다**. 차이는
-[구현 차이](../framework/common/spec/implementation-gap.ko.md)에 기록하고 구현이 계약을 따르게 한다.
+[구현 차이](../framework/common/spec/90-implementation-gap.ko.md)에 기록하고 구현이 계약을 따르게 한다.
 
 ## 알려진 구현 차이
 
 TypeScript browser entrypoint의 WebSocket transport는 구현되어 있다. 남은 차이는 handler의
 `await` continuation에 flow를 보존하면서 관련 없는 callback의 flow 누출을 막는
 MFLOW-EXT-014다. 현재 상태는
-[implementation gap §4.10](../framework/common/spec/implementation-gap.ko.md)이 소유한다.
+[implementation gap §4.10](../framework/common/spec/90-implementation-gap.ko.md)이 소유한다.

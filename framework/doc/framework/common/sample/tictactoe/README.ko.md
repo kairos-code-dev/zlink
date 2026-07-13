@@ -277,7 +277,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
   push 대기를 대신하지 않는다. observer callback에서는 connector send/request/wait를
   다시 호출하지 않는다.
 - Java와 Kotlin client scenario의 `submit`과 `await` 의미는
-  [framework 공통 비동기 정책](../../spec/async-execution-policy.ko.md)을 따른다.
+  [framework 공통 비동기 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
   `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
   결과를 받는 이름으로 사용한다.
 - sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.

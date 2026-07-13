@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](system-structure.ko.md) | [다음: Spring Boot SPOT](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](01-system-structure.ko.md) | [다음: Spring Boot SPOT](01-system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [channel](system-structure.ko.md) | [SPOT](system-structure.ko.md) | [Actor/session](system-structure.ko.md) | [STREAM](system-structure.ko.md) | [Monitoring](system-structure.ko.md) | [Registry](system-structure.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [channel](01-system-structure.ko.md) | [SPOT](01-system-structure.ko.md) | [Actor/session](01-system-structure.ko.md) | [STREAM](01-system-structure.ko.md) | [Monitoring](01-system-structure.ko.md) | [Registry](01-system-structure.ko.md)
 
 # ZLink Framework Java Interface Catalog
 
@@ -69,7 +69,7 @@ Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외�
 ### 0.2 Spot Actor Join / Transfer 계약
 
 Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 계약이며,
-그 동작 의미는 [공통 스펙](../../spot-actor.ko.md)을 따른다. 구현이나 regression test가
+그 동작 의미는 [공통 스펙](../../23-spot-actor.ko.md)을 따른다. 구현이나 regression test가
 이 시그니처와 다르면 계약 불일치로 처리한다.
 
 ## 1. 인터페이스 전체 목록
@@ -1053,7 +1053,7 @@ Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지�
 
 send/publish는 one-way submit이다. 송신 수락과 backpressure 처리는 framework
 내부 책임이며, 호출자가 완료값을 기다리는 흐름으로 설명하지 않는다.
-공통 의미는 [framework 공통 정책](../../async-execution-policy.ko.md)을 따른다.
+공통 의미는 [framework 공통 정책](../../04-async-execution-policy.ko.md)을 따른다.
 request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
 reply 대기는 request timeout이 따로 정한다.
 호출별 `timeout(...)`이 가장 먼저 적용되고, 그 다음 채널별
@@ -1703,10 +1703,10 @@ contract로 고정하지 않는다.
 
 관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `ZLinkDrainControl`,
-`ZLinkStreamCloseReason`과 disconnect event type도 포함한다. [Spring Boot Monitoring §8~10](system-structure.ko.md)과
-[Stream Connector](stream-connector.ko.md)의 전체 declaration이 정확한 member와 반환형을 고정한다.
+`ZLinkStreamCloseReason`과 disconnect event type도 포함한다. [Spring Boot Monitoring §8~10](01-system-structure.ko.md)과
+[Stream Connector](03-stream-connector.ko.md)의 전체 declaration이 정확한 member와 반환형을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](system-structure.ko.md) | [다음: Spring Boot SPOT](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](01-system-structure.ko.md) | [다음: Spring Boot SPOT](01-system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -53,19 +53,17 @@ await fanout
   .submit();
 ```
 
-guide의 기본 예시는 이름이 있는 class payload를 기준으로 둔다. plain object literal이나
-구조적 타입 payload를 바로 넘기는 것은 예외 경로다. 이 경우 framework가 packet 이름을
-자동으로 얻을 수 없으면 `.packetName(...)` override가 필요하다.
+channel 호출에는 이름이 있는 class payload를 사용한다. framework는 타입에 직접 선언한
+`@ZLinkPacket` metadata 또는 생성자 이름으로 packet을 식별하며, 호출별 이름 변경 표면을
+제공하지 않는다. 구조적 타입이 필요하면 명시적인 class로 정의한다.
 
 ```ts
-interface WarmProfilePayload {
-  readonly userId: string;
+@ZLinkPacket('WarmProfile')
+class WarmProfilePayload {
+  constructor(readonly userId: string) {}
 }
 
-await client
-  .sendToChannel('profile', { userId: 'u1' } satisfies WarmProfilePayload)
-  .packetName('WarmProfile')
-  .submit();
+client.sendToChannel('profile', new WarmProfilePayload('u1')).submit();
 ```
 
 ## 4. handler 노출
@@ -163,11 +161,16 @@ const registration = framework.createFrameworkRegistration({
 등록 후에는 high-level 호출이 그대로 업무 객체를 주고받고, 직렬화는 Avro로 처리된다.
 
 ```ts
-await client.requestToChannel('orders', { sku: 'A-1', qty: 3 }).packetName('PlaceOrder').submit();
+@ZLinkPacket('PlaceOrder')
+class PlaceOrderRequest {
+  constructor(readonly sku: string, readonly qty: number) {}
+}
+
+await client.requestToChannel('orders', new PlaceOrderRequest('A-1', 3)).submit();
 ```
 
 framework당 custom serializer는 하나만 둔다(둘 이상이면 모호성 구성 오류). 다른 언어의
-등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md)의 표를 본다.
+등록 표면은 [framework-api §2.2](../../common/spec/05-framework-api.ko.md)의 표를 본다.
 
 ## 회귀 테스트
 

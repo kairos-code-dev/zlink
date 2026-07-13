@@ -7,7 +7,7 @@
 > Java/Kotlin 표면으로 구체화한다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
 
 > **Kotlin 사용자**는 [Kotlin 전용 guide](../kotlin/README.ko.md)를 본다.
 > `zlink-framework-kotlin`은 이 런타임을 공유하는 얇은 coroutine idiom 레이어다.
@@ -44,9 +44,9 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 | 문서 | 범위 |
 |------|------|
 | [spec 목차](../common/spec/languages/java/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
-| [system-structure](../common/spec/languages/java/system-structure.ko.md) | Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring · registry 등록 표면 |
-| [handler-interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | interface, annotation, context, options 카탈로그 |
-| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | client connector |
+| [system-structure](../common/spec/languages/java/01-system-structure.ko.md) | Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring · registry 등록 표면 |
+| [handler-interfaces](../common/spec/languages/java/02-handler-interfaces.ko.md) | interface, annotation, context, options 카탈로그 |
+| [stream-connector](../common/spec/languages/java/03-stream-connector.ko.md) | client connector |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
 그 의미가 Java/Kotlin에서 어떤 모양인지만 고정한다.

@@ -1,17 +1,16 @@
 # 인터페이스 카탈로그
 
 이 장은 사용자가 자주 찾는 public interface 위치를 정리한다. 전체 계약의 단일 기준은
-정식 spec 인 [handler-interfaces](../../common/spec/languages/node/handler-interfaces.ko.md) 다.
+정식 spec 인 [handler-interfaces](../../common/spec/languages/node/02-handler-interfaces.ko.md) 다.
 
 ## 1. NestJS module
 
 - `ZLinkModule`
-- `ZLinkRegistryModule`
 - `ZLINK_CHANNEL_CLIENT`
 - `ZLINK_FANOUT_CLIENT`
 - `ZLINK_SPOT_MANAGER`
 - `ZLINK_ACTOR_MANAGER`
-- `ZLINK_REGISTRY_QUERY`
+- `ZLINK_LOCATION_RUNTIME_QUERY`
 
 ## 2. channel
 

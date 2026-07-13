@@ -199,7 +199,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 ## 6. Stream Regression 항목
 
 별도 client package의 정확한 lifecycle, dispatch, transport와 observer 계약은
-[.NET Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)을
+[.NET Stream Connector 공개 계약](../../common/spec/languages/dotnet/03-stream-connector.ko.md)을
 따른다.
 
 | 항목 | 계층 | 통과 기준 |
@@ -274,11 +274,11 @@ backend gate 와 별도로 유지한다.
 - `handler-interfaces.ko.md` §17
 - `system-structure.ko.md`
 - `system-structure.ko.md`
-- `stage-wrapper-on-spot.ko.md`
+- `25-stage-wrapper-on-spot.ko.md`
 - `system-structure.ko.md`
 - `handler-interfaces.ko.md`
-- `session-actor-dispatch.ko.md`
-- `spot-node.ko.md`
+- `31-session-actor-dispatch.ko.md`
+- `21-spot-node.ko.md`
 - `system-structure.ko.md`
 - `system-structure.ko.md`
 - `regression-test-matrix.ko.md`

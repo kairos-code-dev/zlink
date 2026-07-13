@@ -105,11 +105,11 @@ client.onDisconnected(() => {
 ```
 
 값의 정본은
-[Node 공개 계약 §5](../../../framework/common/spec/languages/node/stream-connector.ko.md)다.
+[Node 공개 계약 §5](../../../framework/common/spec/languages/node/03-stream-connector.ko.md)다.
 
 ## 그다음
 
 - 옵션·codec·inbound observer·오류 코드의 정확한 표면:
-  [Node 공개 계약](../../../framework/common/spec/languages/node/stream-connector.ko.md)
+  [Node 공개 계약](../../../framework/common/spec/languages/node/03-stream-connector.ko.md)
 - wire 계약과 연결 생명주기의 정본:
-  [Stream Connector 공통 스펙](../../../framework/common/spec/stream-connector.ko.md)
+  [Stream Connector 공통 스펙](../../../framework/common/spec/32-stream-connector.ko.md)

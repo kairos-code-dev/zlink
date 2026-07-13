@@ -9,16 +9,16 @@
 > 이 문서는 **Spring Boot 위에서 ZLink framework를 어떻게 구성하는가**를 소유한다. 등록,
 > DI, lifecycle, 그리고 각 기능(channel · SPOT · STREAM · monitoring · registry)의 **등록 표면**이다.
 >
-> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../channel-messaging.ko.md),
-> [spot-messaging](../../spot-messaging.ko.md), [spot-node](../../spot-node.ko.md),
-> [stream-session](../../stream-session.ko.md), [actor-model](../../actor-model.ko.md),
-> [session-actor-dispatch](../../session-actor-dispatch.ko.md),
-> [runtime-monitoring](../../runtime-monitoring.ko.md),
-> [location-runtime](../../location-runtime.ko.md),
-> [stage-wrapper-on-spot](../../stage-wrapper-on-spot.ko.md).
+> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-spot-node.ko.md),
+> [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
+> [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
+> [runtime-monitoring](../../50-runtime-monitoring.ko.md),
+> [location-runtime](../../40-location-runtime.ko.md),
+> [stage-wrapper-on-spot](../../25-stage-wrapper-on-spot.ko.md).
 >
-> **public 타입과 시그니처는 [handler-interfaces](handler-interfaces.ko.md)가 소유한다.**
-> client connector는 [stream-connector](stream-connector.ko.md)가 소유한다.
+> **public 타입과 시그니처는 [handler-interfaces](02-handler-interfaces.ko.md)가 소유한다.**
+> client connector는 [stream-connector](03-stream-connector.ko.md)가 소유한다.
 
 
 ## 1. 패키지 구조
@@ -39,7 +39,7 @@
 
 - **codec 구현을 core에 섞지 않는다.** JSON은 기본 codec이고, Protobuf·MessagePack은 **extension
   모듈**로 분리한다. 같은 extension을 framework codec registry, HTTP client, stream connector가
-  **공유한다**([channel-messaging §6](../../channel-messaging.ko.md)).
+  **공유한다**([channel-messaging §6](../../11-channel-messaging.ko.md)).
 - **location store 구현도 extension이다.**
 - **connector는 서버 framework 모듈을 참조하지 않는다.** 반대 방향도 같다.
 - **host adapter(starter)와 core를 나눈다.** core는 Spring Boot에 의존하지 않는다.
@@ -56,7 +56,7 @@
 | `zlink-stream-connector` | Maven | **JVM 애플리케이션**(서버 도구·E2E·봇) |
 
 **Java/Kotlin connector의 대상은 JVM 애플리케이션 하나뿐이다.** 게임 엔진과 브라우저는 담당하지
-않으므로 엔진별 갈래가 없다([stream-connector 공통 스펙 §2](../../stream-connector.ko.md)).
+않으므로 엔진별 갈래가 없다([stream-connector 공통 스펙 §2](../../32-stream-connector.ko.md)).
 
 **미결정:** connector의 Maven 좌표 확정.
 
@@ -236,7 +236,7 @@ channel runtime이 계속 소유하며, bridge는 SPOT relay packet만 분류한
 `SpotNode` topic plane으로 외부 publish가 필요하면 raw `PUB` attach가 아니라 public
 publisher handle을 사용한다.
 
-> 이 문서는 [SPOT 메시징 공통 스펙](../../spot-messaging.ko.md)의 **투영**이다. SPOT의 개념
+> 이 문서는 [SPOT 메시징 공통 스펙](../../20-spot-messaging.ko.md)의 **투영**이다. SPOT의 개념
 > 위치, outbound 세 축, publish·subscribe 모델, dispatch 실패 정책, route ingress 규칙,
 > startup validation은 공통 스펙이 소유한다. 이 문서는 **언어 표면**만 고정한다.
 
@@ -889,7 +889,7 @@ runtime을 멈춘다. 일시적인 registry query 실패나 spot snapshot 실패
 
 monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
 생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미는
-[공통 스펙 — 메시지 흐름 추적](../../message-flow-tracing.ko.md)이 소유하고, 이 절은
+[공통 스펙 — 메시지 흐름 추적](../../52-message-flow-tracing.ko.md)이 소유하고, 이 절은
 Java 표면만 적는다. dispatch 제어가 아니라 관측이며, observer 실패가 처리나 응답을 깨지 않는다.
 
 #### 7.1 표면
@@ -946,7 +946,7 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 
 ### 8. 런타임 메트릭 (runtime metrics)
 
-공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 Java 표면만
+공통 의미는 [공통 스펙 — 런타임 메트릭](../../51-runtime-metrics.ko.md)이 소유한다. 이 절은 Java 표면만
 적는다.
 
 > **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** Spring Boot 앱에 Micrometer `MeterRegistry` 빈이
@@ -971,7 +971,7 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 
 ### 9. 메시지 흐름 상관관계 (flow correlation)
 
-공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. §7(메시지
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../53-flow-correlation.ko.md)가 소유한다. §7(메시지
 흐름 추적)의 additive 확장이며 새 최상위 표면을 만들지 않는다.
 
 #### 9.1 표면
@@ -993,7 +993,7 @@ ZLinkFrameworkConfigurer dispatchTracing() {
 
 ### 10. Graceful Drain & Handoff
 
-공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../54-graceful-drain-handoff.ko.md)가 소유한다.
 lifecycle 제어 표면(관측 아님)의 Java 투영이다.
 
 > **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 Spring `SmartLifecycle`로 graceful

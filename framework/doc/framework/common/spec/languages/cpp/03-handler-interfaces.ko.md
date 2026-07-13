@@ -1,17 +1,17 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT](cpp-spot.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md) | [다음: C++ SPOT](20-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [channel](cpp-channel-messaging.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [Monitoring](cpp-monitoring.ko.md) | [Registry](cpp-registry.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [channel](11-channel-messaging.ko.md) | [SPOT](20-spot.ko.md) | [STREAM](30-stream.ko.md) | [Monitoring](50-monitoring.ko.md) | [Registry](40-registry.ko.md)
 
 # Spec -- ZLink Framework C++ Public Interface
 
 > 이 문서는 C++ framework의 정식 public interface 계약이다.
 > 공통 기능을 C++의 값 타입, RAII 객체, coroutine awaitable로 표현하는 정확한
 > 시그니처와 현재 구현의 차이를 함께 기록한다. 전체 public interface의 구성은
-> [Framework 인터페이스](cpp-framework-interfaces.ko.md)다.
+> [Framework 인터페이스](02-framework-interfaces.ko.md)다.
 
 ## 1. 역할
 
@@ -21,7 +21,7 @@
 관련 public interface와 실행 구조는 아래 문서에서 설명한다.
 
 - [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
-- [Framework 인터페이스](cpp-framework-interfaces.ko.md)
+- [Framework 인터페이스](02-framework-interfaces.ko.md)
 
 이 문서의 선언은 정식 계약이다. 현재 public header와 다른 선언은 §8.1에서
 구현 차이로 명시하며, 구현은 그 차이를 해소할 때 이 문서의 선언을 따른다.
@@ -254,7 +254,7 @@ interface 또는 template 요구 조건으로, 호출 표면은 RAII facade와 �
 | actor factory/transfer | actor factory는 builder의 typed factory 요구 조건을 만족한다. `template <typename TActor> class actor_transfer_adapter_t`는 `task_t<message_t> transfer_out(const TActor &actor)`와 `task_t<TActor> transfer_in(std::string actor_id, message_t state)`를 제공하며 중단 토큰을 받지 않는다. |
 | Spot lifecycle | `spot_t`와 `entry_spot_t`는 역할을 표시하는 기반 타입이다. 목표 lifecycle callback은 `on_actor_join`, `on_actor_joined`, `on_create_actor`, `on_leave_actor`, `on_disconnect_actor`의 snake_case 이름을 사용하고 비동기 완료를 `task_t<T>`로 표현한다. 현재 구현의 duck typing 이름과 동기 반환 차이는 §8.1에 기록한다. |
 | Spot context/registry | `spot_context_t`는 `node_rid_t node_rid() const`, `spot_rid_t spot_rid() const`, `std::string spot_name() const`, `spot_handler_registry_t handlers()`, `spot_node_manager_t manager() const`, `channel_client_t outbound() const`, `task_t<bool> close()`를 제공한다. actor 이탈은 `template <typename TActor> task_t<actor_ref_t> leave_actor(const actor_ref_t &actor_ref, TActor &actor);`다. `template <typename TResult, typename TWork> worker_call_t<TResult> run_worker(TWork work);`도 제공한다. Entry Spot 전용 `entry_spot_context_t`는 `template <typename TActor> task_t<void> destroy_actor(TActor &actor);`를 추가한다. timer 등록은 `template <typename THandler> timer_t add_timer(std::string name, std::chrono::milliseconds interval, timer_options_t options = {});`다. registry의 typed member 등록은 각각 `template <auto Method> void add_handler();`, `add_subscribe()`, `add_actor_send()`, `add_actor_request()` 형태다. |
-| Spot manager/publisher | `spot_node_manager_t`의 전체 생성 overload는 [C++ SPOT 계약](cpp-spot.ko.md)에 고정한다. 조회와 종료는 `task_t<std::optional<spot_info_t>> find_spot(spot_rid_t spot_rid);`, `task_t<std::vector<spot_info_t>> list_spots();`, `task_t<bool> close_spot(spot_rid_t spot_rid);`다. publisher는 `template <typename TEvent> send_call_t publish(std::string channel_name, std::string topic, const TEvent &event) const;`를 제공하며 `submit()`으로 끝낸다. |
+| Spot manager/publisher | `spot_node_manager_t`의 전체 생성 overload는 [C++ SPOT 계약](20-spot.ko.md)에 고정한다. 조회와 종료는 `task_t<std::optional<spot_info_t>> find_spot(spot_rid_t spot_rid);`, `task_t<std::vector<spot_info_t>> list_spots();`, `task_t<bool> close_spot(spot_rid_t spot_rid);`다. publisher는 `template <typename TEvent> send_call_t publish(std::string channel_name, std::string topic, const TEvent &event) const;`를 제공하며 `submit()`으로 끝낸다. |
 | stream | `stream_t`는 `std::string session_id() const`, `task_t<void> close()`, `stream_write_call_t write_packet(const zlink::message_t &)`, `reply_packet(const zlink::message_t &)`를 제공한다. write call은 metadata, packet name, compression 설정과 목표 종결자 `void submit()`을 제공한다. |
 | typed stream session | `packet_stream_session_t`는 `on_connected(stream_t &)`, `on_disconnected(stream_t &)`, `on_error(stream_t &, const stream_error_t &)`와 `on_packet(stream_t &, const stream_dispatch_context_t &, const zlink::message_t &)`를 `task_t<void>`로 반환한다. 목표 typed handler concept는 `task_t<void> handle(TSessionContext &, const TPayload &)`를 만족한다. |
 | session actor/bound session | `task_t<void> session_actor_t::relay(const zlink::message_t &message);`와 `task_t<void> notify_disconnected();`는 relay와 연결 해제 알림 완료를 기다린다. `template <typename TMessage> send_call_t bound_session_t::send(const TMessage &message);`는 one-way `submit()`으로 끝나고 `task_t<void> bound_session_t::disconnect();`는 client 연결 해제 완료를 기다린다. |
@@ -296,37 +296,23 @@ public:
 ```
 
 `task_t<T>`는 C++ coroutine awaitable이다. 목표 계약은 framework 전용
-`cancellation_token_t`와 `cancellation_token_source_t`를 포함하지 않는다. 현재 배포된
-header에는 두 타입과 yield call이 남아 있으며, 이는 아래 표의 구현 차이다.
-장기 작업 중단이 필요하면 C++ 관례에 맞는 타입과 적용 범위를 정식 계약 변경으로 먼저 명시한다.
+`cancellation_token_t`와 `cancellation_token_source_t`를 포함하지 않으며, 배포 header에도
+두 타입과 yield call은 없다. 장기 작업 중단이 필요하면 C++ 관례에 맞는 타입과 적용 범위를
+정식 계약 변경으로 먼저 명시한다.
 
 ### 8.1 목표 interface와 현재 구현
 
-| 기능 | 목표 C++ 계약 | 현재 구현 | 상태와 구현 참고 |
-|------|---------------|-----------|------------------|
-| coroutine handler | handler와 lifecycle의 `task_t<T>` 완료를 executor가 재개 | `spot_node_builder_t::add_actor_transfer_adapter`가 만든 `transfer_out`/`transfer_in` invoker가 `task_t<T>::result()`를 호출 | gap. 두 `result()` bridge를 제거하고 executor의 coroutine chain에서 `co_await`한다. |
-| one-way call | `send_call_t`, `route_send_call_t`, `actor_send_call_t`, `stream_write_call_t`의 `submit(): void` | 일반/route/stream send는 `result_t<void> submit()`을 제공하고 actor send는 `task_t<void> async()`를 제공한다. relay도 one-way `submit()`으로 구현되어 있다. | gap. 네 send 종결자를 `void submit()`으로 맞추고 relay는 `task_t<void>` 완료로 바꾼다. request, relay와 disconnect만 완료값을 반환한다. |
-| request/join/worker 완료 | `async<T>()` terminator 하나 | yield call 타입과 callback worker submit이 공개 header에 존재한다. | gap. 별도 실행 방식 선택을 제거하고 executor가 실행 줄을 관리한다. |
-| Spot lifecycle | `on_actor_join`, `on_actor_joined`, `on_create_actor`, `on_leave_actor`, `on_disconnect_actor`를 snake_case와 `task_t<T>` 완료로 제공 | detection은 `on_actor_join`, `on_actor_joined`, `onCreateActor`, `onLeaveActor`, `onDisconnectActor`를 탐색한다. join 이후 callback은 선택 사항이고 callback 반환도 동기 형식이다. | gap. camelCase 세 이름을 snake_case로 바꾸고 lifecycle callback의 비동기 완료와 필수 여부를 target concept에 고정한다. |
-| transfer adapter | `transfer_out`/`transfer_in`이 signal 인자 없는 `task_t<T>` 반환 | 등록 adapter invoker가 두 task에 `.result()` 호출 | gap. 두 invoker를 coroutine으로 만들고 lifecycle task chain에서 `co_await`한다. |
-| cancellation | framework 전용 token을 노출하지 않는다. 필요한 장기 작업만 정식 spec에 고정된 C++ 중단 관례를 사용한다. | `cancellation_token_t`, `cancellation_token_source_t`와 token을 받는 yield overload가 공개 header에 존재한다. | gap. token 타입과 yield API를 public contract에서 제거한다. 대체 중단 API는 별도 계약이 승인되기 전에는 추가하지 않는다. |
-| typed session handler | `typed_session_packet_handler_for<T, TContext, TPayload>`의 `handle(TContext &, const TPayload &): task_t<void>` | `packet_stream_session_t::on_packet(...)`의 raw `message_t` callback만 존재 | gap. serializer registry 이후 typed invoker를 추가하고 raw callback은 session runtime 경계에만 둔다. |
-| location watch callback | `watch_locations(location_watch_filter_t, location_watch_callback_t): task_t<void>` | 목표 선언과 callback 값 전달 형식이 공개 header에 존재한다. | 일치. 별도 `async_range_t`나 `watch()`를 추가하지 않는다. |
-| message-flow runtime control | `dispatch_options_t::message_flow(...)`와 `app_t::set_message_flow_mode(...)`/`message_flow_mode()` | 세 멤버가 공개 header에 존재한다. | 일치. 별도 control interface를 추가하지 않는다. |
-| monitoring 자동 event | 등록된 channel, registry, Spot과 timer failure를 typed event로 자동 발행 | source 등록과 직접 publisher는 있으나 runtime 자동 발행 연결이 E2E로 검증되지 않음 | gap. 네 source family를 publisher path에 연결하고 E2E에서 payload를 관측한다. |
-| route-mesh runtime options | `channel_runtime_options_t::client_server_channel(name)`와 `route_mesh_channel(name)` | `client_server_channel(name)`만 공개 | gap. `route_mesh_channel(std::string_view)`와 `route_mesh_channel_runtime_options_t`를 추가한다. |
-| Spot messaging target | `spot_handle_t`와 handle resolver | public `spot_ref_t` 주소 snapshot을 호출자가 전달 | gap. owner node와 갱신 순서를 handle 내부로 이동한다. |
-| actor membership | `std::optional<spot_rid_t> spot_rid()`가 join 상태의 단일 기준 | `bool is_joined()`만 공개 | gap. nullable 논리 Spot 식별자로 교체한다. |
-| actor join 결과 | 승인/거절 `variant`이며 승인 값만 필수 actor ref를 가짐 | result code, actor와 reply를 독립 필드로 공개 | gap. 모순 상태를 만들 수 없는 `variant`로 교체한다. |
-| Spot/Entry context | 공통 context에 worker를 두고 user Spot은 leave/close, Entry Spot은 destroy만 추가 | 단일 context에 역할별 기능이 정리되지 않고 worker 생성 member가 없음 | gap. 역할별 context로 유효한 작업만 노출한다. |
-| Spot manager query | async `find_spot`, `list_spots`, `close_spot` | 동기 find와 list 누락 | gap. 다른 언어와 같은 비동기 조회/목록 표면으로 정렬한다. |
-| manual connection | capability별 `endpoint_connections_t` runtime handle | startup endpoint 등록만 공개 | gap. manual 역할의 실행 중 endpoint 제어 handle을 추가한다. |
-| typed packet name | type descriptor가 registration 시 결정 | call object의 `packet_name(...)` override 공개 | gap. typed call override를 제거한다. |
-| dispatch 최적화 | registration 시 runtime이 선택하며 public mode 없음 | `dispatch_mode_t`, `spot_dispatch_mode`, `stream_dispatch_mode`가 public header에 존재 | gap. 최적화 enum과 두 option을 public contract에서 제거한다. |
-| error kind | 공통 오류 집합만 public | `framework_error_kind_t`가 `actor_stale_generation`, `timeout`, `shutdown`, `disconnected`, `closed`, `cancelled`를 공개 | gap. 공통 오류로 승인되지 않은 여섯 enumerator를 public enum에서 제거하고 내부 상태로 옮긴다. |
-| public/runtime 경계 | facade, 값 타입과 extension contract만 application namespace에 둔다. | `actor_gateway_state_t`, `timer_state_t`, `service_scope_state_t`, `zlink_builder_state_t`, `app_state_t`, `serializer_registry_state_t`, `handler_registry_state_t`, `stream_state_t`는 모두 `detail` namespace에 선언되어 있다. | 일치. 이 state들을 application public contract로 문서화하지 않는다. |
+목표 계약과 C++ 구현은 일치한다. 이전 판에서 gap으로 기록했던 항목은 모두 해소했다:
+coroutine handler와 transfer adapter의 `.result()` bridge 제거, 네 one-way 종결자의
+`void submit()`과 relay/disconnect의 `task_t<void>`, `async<T>()` 단일 terminator(yield
+call·callback worker submit 삭제), Spot lifecycle callback snake_case, framework 전용
+cancellation token 제거, typed session handler, monitoring 자동 event, route-mesh runtime
+options, `spot_handle_t` 기반 Spot messaging, `std::optional<spot_rid_t> spot_rid()`
+membership, 승인/거절 `variant` join 결과.
+
+각 항목의 근거(계약 test, unit test, E2E와 sample 실행)는 C++ 계약 ledger와 구현 로그에 있다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT](cpp-spot.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](30-stream.ko.md) | [다음: C++ SPOT](20-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

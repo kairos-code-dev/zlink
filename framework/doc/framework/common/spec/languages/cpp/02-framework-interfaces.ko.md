@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](11-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](cpp-application-framework.ko.md) | [channel](cpp-channel-messaging.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-application-framework.ko.md) | [channel](11-channel-messaging.ko.md) | [SPOT](20-spot.ko.md) | [STREAM](30-stream.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md) | [HTTP Hosting](60-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Interface Design
 
@@ -262,7 +262,7 @@ retriable 여부로 사상한다. 이 매핑은 handler, channel, connector samp
 
 | native/error code | C++ error kind | retriable |
 |-------------------|----------------|-----------|
-| `timed_out`, `timeout` | `timeout` | no |
+| `timed_out`, `timeout` | 경계 timeout — public enum 값이 아니라 `framework_exception_t`의 `code() == std::errc::timed_out` 파셋(§8.1) | no |
 | `not_connected`, `route_not_connected` | `route_not_connected` | yes |
 | `not_found`, `request_target_not_found` | `request_target_not_found` | no |
 | `rejected`, `request_rejected` | `request_rejected` | no |
@@ -1426,7 +1426,7 @@ SPOT node는 router 또는 pub/sub 역할 중 하나 이상을 켜야 한다. `a
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
 Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 계약이며,
-그 동작 의미는 [공통 스펙](../../spot-actor.ko.md)을 따른다. 구현이나 contract test가
+그 동작 의미는 [공통 스펙](../../23-spot-actor.ko.md)을 따른다. 구현이나 contract test가
 이 시그니처와 다르면 계약 불일치로 처리한다.
 
 `actor_transfer_adapter_t<TActor>`는 remote transfer에서 domain state를 옮겨야 하는 actor type에만
@@ -1436,10 +1436,10 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 
 C++의 일반 packet handler registry는 `spot_context_t::handlers()`가 맡는다. 다만 actor
 lifecycle은 registry 등록 표면이 아니다. user Spot은
-`on_actor_join(actor_id, zlink::framework::message_t)`, `on_actor_joined(actor)`, `onLeaveActor(actor)`
+`on_actor_join(actor_id, zlink::framework::message_t)`, `on_actor_joined(actor)`, `on_leave_actor(actor)`
 member callback을 직접 제공한다. Entry Spot도 user Spot에서 Entry Spot으로 돌아오는
 명시적 join을 `on_actor_join(actor_id, zlink::framework::message_t)`에서 accept/reject하고, commit 이후
-callback인 `on_actor_joined(actor)`와 `onLeaveActor(actor)`를 제공한다.
+callback인 `on_actor_joined(actor)`와 `on_leave_actor(actor)`를 제공한다.
 일반 Spot 타입은 `zlink::framework::spot_t`를 상속해야 하고, Entry Spot 타입은
 `zlink::framework::entry_spot_t`를 상속해야 한다. 이름이나 파일 위치로 역할을 추론하지 않는다.
 `add_spot<TSpot>()`와 `add_entry_spot<TEntrySpot>()`가 이 계약을 compile-time으로 확인한다.
@@ -1458,7 +1458,7 @@ public:
 
     void on_actor_joined(const player_actor_t &actor);
 
-    void onLeaveActor(const player_actor_t &actor);
+    void on_leave_actor(const player_actor_t &actor);
 
     void configure(zlink::framework::spot_context_t &context)
     {
@@ -2149,5 +2149,5 @@ C++ framework의 public 문서와 sample은 다음 표면만 사용해야 한다
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](11-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

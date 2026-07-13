@@ -20,10 +20,10 @@ core의 기본 의존성은 아니다(단방향 의존).
 
 | 역할 | 위치 | 공개 여부 |
 |------|------|-----------|
-| 공개 contract | `packages/http-client/src/{index,client,request-builder,types}.ts` | public |
+| 라이브러리 contract | `packages/http-client/src/{index,client,request-builder,types}.ts` | package 내부 공개 표면 |
 | runtime 구현 | `packages/http-client/src/runtime/*` | internal |
 | 회귀 테스트 | `test/contract/http-client.test.js` | private |
-| 패키지 | `@zlink-systems/http-client` | public package |
+| 패키지 | `@zlink-systems/http-client` | 현재 workspace 전용 private package |
 
 공개 표면에는 undici `Dispatcher`/`Agent`/`request` 타입을 노출하지 않는다.
 

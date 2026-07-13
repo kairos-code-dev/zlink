@@ -20,8 +20,8 @@
   자체의 HA/복제는 store 구현체(예: Redis) 책임이며 framework가 검증하지 않는다.
 
 fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 상세는
-[location runtime spec](../spec/location-runtime.ko.md)과
-[Redis store spec](../spec/location-store-redis.ko.md)을 기준으로 하고 이 문서에서
+[location runtime spec](../spec/40-location-runtime.ko.md)과
+[Redis store spec](../spec/41-location-store-redis.ko.md)을 기준으로 하고 이 문서에서
 반복하지 않는다.
 
 판정은 public 표면으로만 한다: `IZLinkLocationRuntimeQuery.GetStatusAsync`(store health,
@@ -194,7 +194,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
   (예: baseline의 N배 이내로 사전 정의). `GetStatusAsync` 조회 자체도 무관 요청 경로를 막지
   않는다. 이 결과로 store client가 스레드나 이벤트 루프를 점유하지 않고 진짜 비동기·논블로킹으로
   I/O를 수행함을 실측으로 증명한다. 비동기 실행 계약은
-  [공통 비동기 실행 정책](../spec/async-execution-policy.ko.md)을 따른다.
+  [공통 비동기 실행 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
 - 세부 동작: Redis 응답 지연이 코루틴 dispatcher(Kotlin)나 core I/O 스레드(C++, `PERF_IO_THREADS`)를
   점유하지 않음을 검증. 이 트랙은 store 자체의 정상/비정상보다 client 구현의 비블로킹 여부를 보는
   점에서 Track A~D와 다르다.

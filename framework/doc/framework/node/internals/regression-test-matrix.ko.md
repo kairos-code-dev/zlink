@@ -16,8 +16,9 @@
 정리한다. 공개 동작은 책임 spec이 소유하고, 이 문서는 검증과 release gate만
 소유한다.
 
-dotnet 테스트 프로젝트는 다음 세 묶음이다. Node 테스트 패키지는 이를 1:1로
-미러링한다.
+dotnet 테스트 프로젝트의 계약·단위·E2E 구분은 비교할 때 참고한다. Node는
+`node:test` 기반의 자체 디렉토리와 테스트 이름을 사용하므로 파일 구조나 테스트
+이름을 그대로 복제하지 않는다.
 
 | dotnet 프로젝트 | node 테스트 패키지 | 계층 매핑 |
 |------|------|------|
@@ -25,11 +26,8 @@ dotnet 테스트 프로젝트는 다음 세 묶음이다. Node 테스트 패키�
 | `Zlink.Framework.UnitTests` | unit 테스트(`test/unit/**/*.test.js`) | `unit` |
 | `Zlink.Framework.E2ETests` | e2e 테스트(`test/e2e/**/*.test.js`) | `integration-single-process` + `integration-multi-process` |
 
-> dotnet `ContractTests` 의 `Channels/Handlers/Spots/Streams/Configuration/
-> Registry/Actors/Timers/Eventing/Codecs` 하위 묶음, `UnitTests` 의
-> `Configuration/Registration`, `Contracts`, `Runtime`, `Documentation`,
-> `Samples` 묶음, `E2ETests` 의 `Channels/Spot/Stream/Registry/Monitoring/
-> Lifecycle/MultiProcess` 묶음을 같은 디렉토리 구조로 재현한다.
+> 공통 공개 계약이 같은 동작을 요구하는지는 비교하되, Node에 존재하지 않는
+> Registry runtime이나 테스트 묶음을 비교 대상 언어에서 그대로 가져오지 않는다.
 
 ## 2. CI 계층
 
@@ -228,9 +226,6 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
 | location store 기반 SpotRef resolver 등록 | `unit` | location store 등록 시 기본 `ZLinkSpotRefResolver` 와 actor spot ref resolver 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
-| Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
-| Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
-| Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.getOrCreate(spotType, spotRid, request?)` 로 만든 Spot 을 `find(...)` 로 찾고, `close(...)` 성공 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | sample-only store 없이 framework/session 흐름 사용 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
@@ -351,8 +346,8 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 대상은 현재 실제로 존재하는 Node 공개 계약과 구현 기준 문서다.
 
 - `framework/common/spec/languages/node/README.ko.md`
-- `framework/common/spec/languages/node/handler-interfaces.ko.md`
-- `framework/common/spec/languages/node/stream-connector.ko.md`
+- `framework/common/spec/languages/node/02-handler-interfaces.ko.md`
+- `framework/common/spec/languages/node/03-stream-connector.ko.md`
 - `framework/node/README.ko.md`
 - `framework/node/internals/regression-test-matrix.ko.md`
 - `framework/node/internals/runtime-lifecycle.ko.md`
@@ -446,12 +441,11 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistryAndMonitoring.throws_whenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외로 이어진다. |
-| `Events.registryMonitoring_emits_statusChanged_forEmbeddedRegistry` | embedded Registry 의 상태 변경 event 가 발생한다. |
-| `Events.registryMonitoring_emits_topologyAndServiceSummary_whenFrameworkHostRegisters` | framework host 등록 후 topology 와 service summary event 가 발생한다. |
-| `Events.spotMonitoring_emits_subjectsChanged_whenSpotIsCreated` | spot 생성 후 subject 변화 event 가 발생한다. |
-| `Events.spotMonitoring_emits_peersChanged_whenRemoteNodeAppears` | remote spot node 가 나타나면 peer 변화 event 가 발생한다. |
-| `Timer.spotTimer_reports_handlerException_toMonitoring` | timer handler 예외가 `TimerHandlerFailed` event 와 `ZLinkSpotTimerDiagnostic` payload 로 발생한다. |
+| `socket monitoring source maps backend raw events into framework typed events` | socket backend event를 framework의 typed event로 변환한다. |
+| `location runtime monitoring source publishes snapshot changes and suppresses unchanged polls` | location runtime snapshot이 바뀔 때만 상태·topology·service summary event를 전달한다. |
+| `location monitoring event emitter publishes registered row and resolve-miss events` | location row 등록과 resolve 실패를 typed event로 전달한다. |
+| `spot monitoring source publishes status peers and subjects snapshot changes` | Spot의 status·peer·subject snapshot 변경을 typed event로 전달한다. |
+| `spot timer reports handler failure immediately through runtime publisher` | timer handler 예외를 runtime publisher를 통해 즉시 전달한다. |
 | 공통 개념 | Node 타입 / 멤버 |
 | 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
 | outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
@@ -474,14 +468,6 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 | 종료 결과 | `ZLinkDrainResult` = `{ kind: 'drained' } | { kind: 'force-stopped'; reason: 'DeadlineExceeded' | 'DrainingStatePublishFailed' | 'OwnerCleanupFailed' | 'TeardownFailed' }` |
 | readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator`를 제공, health controller에 등록. 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
 | 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `sourceName` = 고정값 `'drain'` |
-
-### Registry
-
-| 테스트 케이스 | 확인 기준 |
-|---------------|-----------|
-| `RegistryAndMonitoring.forRoot_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
-| `RegistryAndMonitoring.forRoot_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
-| `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
 
 ### Session actor dispatch
 

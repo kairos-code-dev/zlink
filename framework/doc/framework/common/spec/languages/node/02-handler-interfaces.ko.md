@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](stream-connector.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](03-stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Node.js 묶음](../../../../node/README.ko.md) | [공개 interface](handler-interfaces.ko.md) | [Stream Connector](stream-connector.ko.md)
+[Node.js 묶음](../../../../node/README.ko.md) | [공개 interface](02-handler-interfaces.ko.md) | [Stream Connector](03-stream-connector.ko.md)
 
 # ZLink Framework Node.js Interface Catalog
 
@@ -19,7 +19,7 @@ Node.js의 실제 이름과 시그니처는 이 문서가 정식 계약이며,
 `framework/languages/node`의 public declaration과 contract test는 이 계약을 따라야 한다.
 
 Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 계약이며,
-그 동작 의미는 [공통 스펙](../../spot-actor.ko.md)을 따른다. 구현이나 contract test가
+그 동작 의미는 [공통 스펙](../../23-spot-actor.ko.md)을 따른다. 구현이나 contract test가
 이 시그니처와 다르면 계약 불일치로 처리한다.
 
 Node.js 표면 규칙은 다음과 같다.
@@ -48,13 +48,13 @@ Node.js 표면 규칙은 다음과 같다.
 
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래 문서를 참고한다.
 
-- 서버 간 messaging 의미 → [공통 channel 계약](../../channel-messaging.ko.md)
+- 서버 간 messaging 의미 → [공통 channel 계약](../../11-channel-messaging.ko.md)
 - 서버 간 messaging 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- SPOT 통합 의미 → [공통 SpotNode 계약](../../spot-node.ko.md)
+- SPOT 통합 의미 → [공통 SpotNode 계약](../../21-spot-node.ko.md)
 - SPOT 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- STREAM 통합 의미 → [공통 stream session 계약](../../stream-session.ko.md)
+- STREAM 통합 의미 → [공통 stream session 계약](../../30-stream-session.ko.md)
 - STREAM 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- Actor 통합 → [handler-interfaces.ko.md](handler-interfaces.ko.md)
+- Actor 통합 → [handler-interfaces.ko.md](02-handler-interfaces.ko.md)
 - location store 통합 → location resolver/store 공통 계약
 
 ### 1.1 공통 표면 규칙
@@ -3143,7 +3143,7 @@ export interface ZLinkSerializerRegistryLike {
 
 2026-07-13 구현과 package export를 다시 비교했다. 아래 표에서 추적하는 framework handler와
 runtime 차이는 해소됐다. Stream Connector browser handler의 비동기 flow 문맥 차이는
-[Stream Connector 계약](./stream-connector.ko.md)의 구현 차이 표에서 별도로 추적한다.
+[Stream Connector 계약](./03-stream-connector.ko.md)의 구현 차이 표에서 별도로 추적한다.
 
 | 영역 | 해소된 항목 | 현재 구현과 검증 | 상태 |
 |------|-------------|------------------|------|
@@ -3209,8 +3209,8 @@ handler는 application이 직접 사용하는 기능이므로 public contract에
 
 관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `ZLinkDrainControl`과 stream disconnect의
-`closeReason` union도 포함한다. [공통 runtime monitoring 계약](../../runtime-monitoring.ko.md)과
-[Stream Connector](stream-connector.ko.md)의 전체 declaration이 optional parameter, `AbortSignal`,
+`closeReason` union도 포함한다. [공통 runtime monitoring 계약](../../50-runtime-monitoring.ko.md)과
+[Stream Connector](03-stream-connector.ko.md)의 전체 declaration이 optional parameter, `AbortSignal`,
 readonly field와 Promise 반환형을 고정한다.
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
@@ -3218,5 +3218,5 @@ readonly field와 Promise 반환형을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](stream-connector.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](03-stream-connector.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

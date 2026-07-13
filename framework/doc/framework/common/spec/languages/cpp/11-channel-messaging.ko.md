@@ -1,14 +1,18 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ Channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ Channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](02-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](02-framework-interfaces.ko.md) | [channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md)
 
 # Spec -- ZLink Framework C++ Channel Messaging
 
 > 이 문서는 C++ channel messaging이 제공해야 하는 정식 계약이다.
+
+> 이 문서는 [Channel 메시징 공통 스펙](../../11-channel-messaging.ko.md)의 **투영**이다. 호출 모델,
+> channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출은 공통 스펙이
+> 소유한다. 이 문서는 **언어 표면**만 고정한다.
 
 ## 인터페이스 경계
 
@@ -205,5 +209,5 @@ CTest label은 `framework-zlink-channel`을 사용한다. 전체 zlink 회귀 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: C++ Channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: C++ Channel 가이드](../../../../cpp/guide/07-channel-messaging.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](02-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

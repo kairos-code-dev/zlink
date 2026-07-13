@@ -1,14 +1,14 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](01-system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [STREAM](system-structure.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
+[Java 묶음](../../../../java/README.ko.md) | [STREAM](01-system-structure.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
 
 # Java/Kotlin Stream Connector
 
-> 이 문서는 [Stream Connector 공통 스펙](../../stream-connector.ko.md)의 **Java/Kotlin
+> 이 문서는 [Stream Connector 공통 스펙](../../32-stream-connector.ko.md)의 **Java/Kotlin
 > 투영**이다. transport·wire·생명주기·오류 의미는 공통 스펙이 소유하고, 이 문서는 그 의미가
 > Java/Kotlin에서 갖는 **정확한 public 표면**을 고정한다.
 
@@ -23,7 +23,7 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 
 ### 1.1 대상 실행 환경
 
-**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../stream-connector.ko.md)가 소유한다.**
+**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../32-stream-connector.ko.md)가 소유한다.**
 그 배정에 따라 Java/Kotlin connector가 담당하는 것은 **JVM 애플리케이션**(서버 도구·E2E 테스트·
 봇)이며, 게임 엔진과 브라우저는 담당하지 않는다.
 
@@ -95,7 +95,7 @@ Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의�
 등록 해제는 반환된 `AutoCloseable`로 한다.
 
 **세션 종료 사유 (close reason).** 값 집합과 의미는
-[공통 스펙 §6.2](../../stream-connector.ko.md)가 소유한다. Java는 이를 닫힌 enum
+[공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. Java는 이를 닫힌 enum
 `ZLinkStreamCloseReason`(`CLIENT_CLOSE`, `IDLE_TIMEOUT`, `HEARTBEAT_TIMEOUT`, `SERVER_DRAIN`,
 `PROTOCOL_ERROR`, `TRANSPORT_ERROR`)으로 표현하고, **`ZLinkStreamDisconnectedHandler`가 받는
 disconnect 이벤트의 `ZLinkStreamCloseReason closeReason()`으로 노출한다.**
@@ -110,11 +110,11 @@ Java connector는 같은 작업을 현재 thread에서 기다리는 별도 block
 lifecycle도 `connect().submit()`, `dispatch().submit()`처럼 같은 call builder 규칙을 따른다.
 Kotlin wrapper는 `submit()`으로 얻은
 `CompletionStage`를 coroutine suspension으로 기다린다. 이 실행 의미는
-[framework 공통 정책](../../async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../04-async-execution-policy.ko.md)을 따른다.
 
 ## 4. Options
 
-**기본값은 [공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다.** Java는 이를 flat field를
+**기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다.** Java는 이를 flat field를
 갖는 record로 표현한다(heartbeat·reconnect를 nested 객체로 두지 않는다).
 `createDefault(URI endpoint)`로 기본값 인스턴스를 만든다.
 
@@ -150,7 +150,7 @@ public record ZLinkStreamConnectorOptions(
 
 ## 5. Transport와 codec
 
-scheme → transport 매핑과 TLS 검증 규칙은 [공통 스펙 §3](../../stream-connector.ko.md)이 소유한다.
+scheme → transport 매핑과 TLS 검증 규칙은 [공통 스펙 §3](../../32-stream-connector.ko.md)이 소유한다.
 Java는 **transport를 별도 enum 옵션으로 고르지 않고 endpoint URI scheme으로 추론한다.**
 
 ```java
@@ -296,7 +296,7 @@ thread에서 `dispatch().submit()`을 호출한다.
 
 ## 10. 연결 상태
 
-상태의 의미와 전이는 [공통 스펙 §6](../../stream-connector.ko.md)이 소유한다. Java는 닫힌 enum으로
+상태의 의미와 전이는 [공통 스펙 §6](../../32-stream-connector.ko.md)이 소유한다. Java는 닫힌 enum으로
 표현한다.
 
 ```java
@@ -313,11 +313,11 @@ public enum ZLinkStreamConnectionState {
 
 > ⚠️ **공통 계약과 다르다.** 공통 스펙은 초기 상태 `Created`("생성됐고 아직 연결하지 않음")를
 > 규정하지만 **Java enum에는 `CREATED`가 없다.** "한 번도 연결한 적 없음"과 "끊김"이 같은
-> `DISCONNECTED`가 된다. [구현 차이 §10.6](../../implementation-gap.ko.md)이 이 gap을 소유한다.
+> `DISCONNECTED`가 된다. [구현 차이 §10.6](../../90-implementation-gap.ko.md)이 이 gap을 소유한다.
 
 ## 11. Error Code
 
-오류의 의미는 [공통 스펙 §9](../../stream-connector.ko.md)가 소유한다. Java는 닫힌 enum으로
+오류의 의미는 [공통 스펙 §9](../../32-stream-connector.ko.md)가 소유한다. Java는 닫힌 enum으로
 표현한다.
 
 ```java
@@ -342,7 +342,7 @@ public enum ZLinkStreamErrorCode {
 
 ## 12. Inbound Observer
 
-관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../stream-connector.ko.md)이 소유한다.
+관찰 의미와 격리·overflow 규칙은 [공통 스펙 §10](../../32-stream-connector.ko.md)이 소유한다.
 Java는 **연결 시작 전에만 등록**하고 `AutoCloseable`로 해제한다.
 
 ```java
@@ -431,5 +431,5 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](01-system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

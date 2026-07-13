@@ -150,15 +150,13 @@ public sealed class ContractSurfaceCoverage
     public void Fixed_spec_snapshot_matches_every_exported_contract_signature()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var specRoot = Path.Combine(
+        // 기계 판독용 계약 snapshot은 문서 트리가 아니라 .NET 코드 옆(framework/languages/dotnet/contract)에 둔다.
+        var contractRoot = Path.Combine(
             repositoryRoot,
             "framework",
-            "doc",
-            "framework",
-            "common",
-            "spec",
             "languages",
-            "dotnet");
+            "dotnet",
+            "contract");
         var assemblies = new[]
             {
                 typeof(IZLinkFrameworkOptions).Assembly,
@@ -170,7 +168,7 @@ public sealed class ContractSurfaceCoverage
             }
             .Distinct()
             .ToArray();
-        var snapshotRoot = Path.Combine(specRoot, "public-contract", "api");
+        var snapshotRoot = Path.Combine(contractRoot, "api");
         var expected = string.Concat(assemblies
             .Select(static assembly => assembly.GetName().Name!)
             .Order(StringComparer.Ordinal)

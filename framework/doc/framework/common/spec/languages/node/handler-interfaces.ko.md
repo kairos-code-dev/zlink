@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../node/README.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Node.js 묶음](../../../../node/README.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Actor](nestjs-actor.ko.md) | [Monitoring](nestjs-monitoring.ko.md)
+[Node.js 묶음](../../../../node/README.ko.md) | [공개 interface](handler-interfaces.ko.md) | [Stream Connector](stream-connector.ko.md)
 
 # ZLink Framework Node.js Interface Catalog
 
@@ -48,13 +48,13 @@ Node.js 표면 규칙은 다음과 같다.
 
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래 문서를 참고한다.
 
-- 서버 간 messaging 프로그래밍 모델 → [nestjs-channel-messaging.ko.md](nestjs-channel-messaging.ko.md)
+- 서버 간 messaging 의미 → [공통 channel 계약](../../channel-messaging.ko.md)
 - 서버 간 messaging 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- SPOT 통합 → [nestjs-spot.ko.md](nestjs-spot.ko.md)
+- SPOT 통합 의미 → [공통 SpotNode 계약](../../spot-node.ko.md)
 - SPOT 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- STREAM 통합 → [nestjs-stream.ko.md](nestjs-stream.ko.md)
+- STREAM 통합 의미 → [공통 stream session 계약](../../stream-session.ko.md)
 - STREAM 샘플 → [정본 샘플](../../../../node/README.ko.md)
-- Actor 통합 → [nestjs-actor.ko.md](nestjs-actor.ko.md)
+- Actor 통합 → [handler-interfaces.ko.md](handler-interfaces.ko.md)
 - location store 통합 → location resolver/store 공통 계약
 
 ### 1.1 공통 표면 규칙
@@ -490,7 +490,7 @@ export interface ZLinkEntrySpotContext {
 
   runWorker<TResult>(work: () => TResult | Promise<TResult>): ZLinkWorkerCall<TResult>;
 
-  destroyActor(actor: ZLinkActor): Promise<void>;
+  destroyActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 
   addTimer<THandler>(
     name: string,
@@ -500,6 +500,10 @@ export interface ZLinkEntrySpotContext {
   ): Promise<ZLinkTimer>;
 }
 ```
+
+Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다. actor 삭제는 Entry Spot이
+소유하며 user Spot context 에는 이 메서드가 없다. stream session disconnect는 actor의 bound
+session만 해제하고 destroy 나 user Spot leave 를 자동으로 만들지 않는다.
 
 > `Type<T>` 는 NestJS 의 `Type<T> = new (...args: any[]) => T` 이다. dotnet 의
 > `where THandler : class` 처럼 "이 handler 타입을 spot scope 에서 resolve 해 달라"
@@ -1275,7 +1279,7 @@ export interface ZLinkPublishCall {
 }
 
 export interface ZLinkFanoutClient {
-  publish<TEvent>(channelName: string, topic: string, message: TEvent): ZLinkPublishCall;
+  publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
 }
 ```
 
@@ -1286,6 +1290,10 @@ export interface ZLinkFanoutClient {
 `profile.cache-refreshed` topic 으로 fan-out 한다. publish 도 timeout 을 두지 않고, packet
 identity override를 두지 않는다. `submit()`은 입력 검증과 framework의 bounded local
 queue 수락이 끝나면 반환한다. remote 처리 완료를 기다리지 않는다.
+
+```ts
+publisher.publish(ch, topic, evt).submit(); // 지정한 fanout channel과 topic으로 event를 전송한다.
+```
 
 입력이 잘못됐거나 route가 준비되지 않았거나 local queue가 수락할 수 없으면 `submit()`이
 즉시 예외를 던진다. 수락 뒤 발생한 transport 실패는 monitoring/error observer로 전달하며
@@ -1436,8 +1444,8 @@ handoff하고 이후 old ref packet은 즉시 `ActorLocationStale`로 끝난다.
 
 #### (A) NestJS module-options 대응
 
-하위 설정 람다는 NestJS fluent builder 로 옮긴다. 정확한 메서드와 형태는 각 채널별 spec
-(`nestjs-channel-messaging`, `nestjs-spot`, `nestjs-stream`)이 확정한다.
+하위 설정 람다는 NestJS fluent builder 로 옮긴다. 정확한 메서드와 형태는 이 문서의
+공개 interface 선언이 확정한다.
 
 ```ts
 @Module({
@@ -1469,18 +1477,18 @@ export class AppModule {}
 
 | dotnet builder 메서드 | node builder 표면 | spec |
 |------|------|------|
-| `addClientServerChannel(name)` | `addClientServerChannel(name)` | nestjs-channel-messaging |
-| `addFanoutChannel(name)` | `addFanoutChannel(name)` | nestjs-channel-messaging |
-| `addRouteMesh(name)` | `addRouteMesh(name)` | nestjs-channel-messaging |
-| `addSpotMesh(name)` | `addSpotMesh(name)` | nestjs-spot |
-| `addStreamNode(name)` | `addStreamNode(name)` | nestjs-stream |
+| `addClientServerChannel(name)` | `addClientServerChannel(name)` | 이 문서 §6 |
+| `addFanoutChannel(name)` | `addFanoutChannel(name)` | 이 문서 §6 |
+| `addRouteMesh(name)` | `addRouteMesh(name)` | 이 문서 §6 |
+| `addSpotMesh(name)` | `addSpotMesh(name)` | 이 문서 §6 |
+| `addStreamNode(name)` | `addStreamNode(name)` | 이 문서 §6 |
 | `configureLocationStore(...)` | `addLocationStore(...)` / `configureLocations()` | handler-interfaces §10 |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
-| `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | nestjs-actor |
+| `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | 이 문서 §6 |
 | `codecs` | `codecs().use(zlinkProtobufCodec())`  | §4.5 |
-| `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
+| `configureMetadata(...)` | `metadata: { forward: [...] }` | 이 문서 §6 |
 | location resolver/store | `useInMemoryLocationStores()` / `addLocationStore(...)` | handler-interfaces §10 |
 
 #### channel builder
@@ -1895,7 +1903,6 @@ Spot snapshot diff 를 감싼다.
 ```ts
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
-  registry?: ZLinkPollingMonitoringRegistration[];
   spot?: ZLinkPollingMonitoringRegistration[];
   locationRuntime?: ZLinkPollingMonitoringRegistration[];
   locationPeer?: ZLinkLocationMonitoringRegistration[];
@@ -2132,7 +2139,7 @@ status/peers/subjects 의 polling + diff 합성이다.
 ### 10.4 Location / Spot monitoring model
 
 monitoring/location event payload 에 쓰이는 model 과 enum 이다. 상세 의미는 location
-resolver/store 공통 계약과 [nestjs-monitoring.ko.md](nestjs-monitoring.ko.md)가 소유한다.
+resolver/store 공통 계약과 이 문서의 공개 location interface가 소유한다.
 여기서는 표면만 고정한다.
 
 ```ts
@@ -2510,7 +2517,7 @@ framework.configureDispatch()
 - public surface 가 backend(Node 바인딩) 구현 세부사항을 새어 내지 않는지.
 - 등록 · handler · client 표면이 런타임 테스트와 같은 이름을 유지하는지.
 
-interface 설명을 바꾸면 Node.js 회귀 테스트(scaffold smoke, registry와 monitoring,
+interface 설명을 바꾸면 Node.js 회귀 테스트(scaffold smoke, location runtime과 monitoring,
 filter order, handler result, Spot actor registry와 local session relay)도 함께 조정한다.
 테스트는 이 문서의 public interface와 공통 동작 의미를 검증해야 한다.
 
@@ -3134,8 +3141,9 @@ export interface ZLinkSerializerRegistryLike {
 
 ### 16.2 목표 interface와 현재 구현
 
-2026-07-13 구현과 package export를 다시 비교했다. 아래 표에서 추적하던 차이는 모두
-해소됐으며, Node.js에 남은 public contract 구현 차이는 없다.
+2026-07-13 구현과 package export를 다시 비교했다. 아래 표에서 추적하는 framework handler와
+runtime 차이는 해소됐다. Stream Connector browser handler의 비동기 flow 문맥 차이는
+[Stream Connector 계약](./stream-connector.ko.md)의 구현 차이 표에서 별도로 추적한다.
 
 | 영역 | 해소된 항목 | 현재 구현과 검증 | 상태 |
 |------|-------------|------------------|------|
@@ -3146,7 +3154,7 @@ export interface ZLinkSerializerRegistryLike {
 | stream과 session | typed handler registry, raw session dispatcher root export 제거, session actor collection, session-closing | stream/session contract test와 Config 11 및 cross-language smoke가 검증 | 일치 |
 | location | `I` prefix 없는 interface, string enum, 7개 runtime query member, resolver/readiness | location contract test, Redis store test와 Node↔.NET store smoke가 검증 | 일치 |
 | codec과 packet 이름 | fluent registrar와 conditional serializer, registration이 결정하는 typed packet 이름 | codec contract test, RegistrationCodec E2E와 package consumer가 검증 | 일치 |
-| monitoring과 drain | tagged runtime event, registry/socket/Spot/location source, OpenTelemetry catalog, typed drain 결과 | monitoring/drain contract test와 Config 7·11이 검증 | 일치 |
+| monitoring과 drain | tagged runtime event, socket/Spot/location source, OpenTelemetry catalog, typed drain 결과 | monitoring/drain contract test와 Config 7·11이 검증 | 일치 |
 | package export | contract와 사용자 extension만 root export하고 registration 구현은 `nest-integration` subpath로 제한 | source export test와 새 npm project가 실제 `.tgz` 7개를 설치하는 packaged contract 검증이 통과 | 일치 |
 
 이전에 공개됐던 `IZLink...` location 이름, `ZLinkSessionPacketDispatcher`, channelless
@@ -3201,7 +3209,7 @@ handler는 application이 직접 사용하는 기능이므로 public contract에
 
 관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `ZLinkDrainControl`과 stream disconnect의
-`closeReason` union도 포함한다. [NestJS Monitoring §10~12](nestjs-monitoring.ko.md)과
+`closeReason` union도 포함한다. [공통 runtime monitoring 계약](../../runtime-monitoring.ko.md)과
 [Stream Connector](stream-connector.ko.md)의 전체 declaration이 optional parameter, `AbortSignal`,
 readonly field와 Promise 반환형을 고정한다.
 
@@ -3210,5 +3218,5 @@ readonly field와 Promise 반환형을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../node/README.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [다음: Stream Connector](stream-connector.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

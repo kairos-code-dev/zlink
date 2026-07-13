@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Monitoring](aspnet-core-monitoring.ko.md) | [Location](aspnet-core-location.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](system-structure.ko.md) | [SPOT](system-structure.ko.md) | [STREAM](system-structure.ko.md) | [Monitoring](system-structure.ko.md) | [Location](system-structure.ko.md)
 
 # ZLink Framework .NET Interface Catalog
 
@@ -24,19 +24,19 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 문서들을 참고한다.
 
 - 서버 간 messaging 프로그래밍 모델 →
-  [aspnet-core-channel-messaging.ko.md](aspnet-core-channel-messaging.ko.md)
+  [system-structure.ko.md](system-structure.ko.md)
 - 서버 간 messaging 샘플 →
   [.NET channel 가이드](../../../../dotnet/guide/05-channel-messaging.ko.md)
 - SPOT 통합 →
-  [aspnet-core-spot.ko.md](aspnet-core-spot.ko.md)
+  [system-structure.ko.md](system-structure.ko.md)
 - SPOT 샘플 →
   [.NET SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md)
 - STREAM 통합 →
-  [aspnet-core-stream.ko.md](aspnet-core-stream.ko.md)
+  [system-structure.ko.md](system-structure.ko.md)
 - STREAM 샘플 →
   [.NET STREAM 가이드](../../../../dotnet/guide/09-stream.ko.md)
 - Location 통합 →
-  [aspnet-core-location.ko.md](aspnet-core-location.ko.md)
+  [system-structure.ko.md](system-structure.ko.md)
 
 ## 2. 인터페이스 전체 목록
 
@@ -3012,7 +3012,7 @@ public sealed class ZLinkPacketAttribute : Attribute
 ## 10. Location 조회 인터페이스
 
 위치 조회 인터페이스는 infrastructure 성격이므로 상세 정의는
-[aspnet-core-location.ko.md](aspnet-core-location.ko.md)와
+[system-structure.ko.md](system-structure.ko.md)와
 [공통 location runtime 스펙](../../location-runtime.ko.md)에 있다.
 여기서는 역할만 요약한다.
 
@@ -3073,6 +3073,39 @@ public interface IZLinkActorSpotHandleResolver
 - 사용할 수 없는 서버의 row는 owner lease 만료 후 성공 결과에서 자동 제외된다.
 - 메시징 resolver는 불투명한 `SpotHandle`을 반환한다. handle이 내부 주소 snapshot과
   안전한 1회 갱신을 소유한다([spot 주소 메시징](../../spot-address-messaging.ko.md)).
+
+### 10.2.1 Redis location store
+
+공식 Redis extension 은 `Zlink.Framework.Locations.Redis` 패키지의
+`ZLinkRedisLocationStore` 다. 옵션은 빌더 형식이다:
+`new ZLinkRedisLocationStore(redis => redis.SetConnectionString(...).SetKeyPrefix(...))`
+(`SetConfiguration(ConfigurationOptions)` 으로 StackExchange.Redis 옵션 직접 전달 가능).
+
+```csharp
+public sealed class ZLinkRedisLocationOptions
+{
+    public string? ConnectionString { get; set; }
+    public ConfigurationOptions? ConfigurationOptions { get; set; }
+    public string KeyPrefix { get; set; } = string.Empty;
+
+    public ZLinkRedisLocationOptions SetConnectionString(string connectionString);
+    public ZLinkRedisLocationOptions SetConfiguration(ConfigurationOptions configuration);
+    public ZLinkRedisLocationOptions SetKeyPrefix(string keyPrefix);
+}
+
+public sealed class ZLinkRedisLocationStore :
+    IZLinkLocationStore,
+    IZLinkLocationChangeStampStore,
+    IAsyncDisposable
+{
+    public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options);
+    public ZLinkRedisLocationStore(Action<ZLinkRedisLocationOptions> configure);
+}
+```
+
+두 constructor는 같은 설정 계약을 사용한다. `KeyPrefix`는 빈 문자열일 수 없고,
+`ConnectionString`과 `ConfigurationOptions` 중 하나를 지정해야 한다.
+`ConfigurationOptions`를 지정하면 `ConnectionString`보다 먼저 적용한다.
 
 ### 10.3 runtime monitoring
 
@@ -3308,6 +3341,295 @@ public abstract record ZLinkSpotEvent(
 - spot event
   - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
     `Status()`, `Peers()`, `Subjects()`.
+
+### 10.4 메시지 흐름 추적 (dispatch 관측)
+
+monitoring 이 socket/location/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
+생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미
+(로그 모드·phase·event·observer·off 제로코스트 성능 계약·출력 라우팅·길목·스트림
+correlation_id 와이어)는 [공통 스펙 — 메시지 흐름 추적](../../message-flow-tracing.ko.md)이
+소유한다. 이 절은 그 의미의 `.NET` 표면만 적는다. dispatch **제어**가 아니라 **관측**이며,
+observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
+
+#### 표면
+
+| 공통 개념 | `.NET` 타입 / 멤버 |
+|-----------|---------------------|
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
+| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
+| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, `FlowId`, nullable `FlowOrigin`, 오류 필드 |
+| observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
+| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
+| 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
+
+게이팅(공통 규칙): `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/
+`Replied`/`Sent`/`ReplyReceived`)는 `KeyTransitions` 이상에서 발화한다. `SampleRate<1`은 성공
+전이만 thinning하고 `Dropped`·에러는 항상 통과한다.
+
+### 9.2 설정 (builder 전용)
+
+진단 필드는 read-only이며 `ConfigureDispatch()` fluent 체인으로만 설정한다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ConfigureDispatch()
+        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일(앱 로그와 분리)
+        .TraceLabel("api")                  // 구조화 필드 label= 식별자
+        .IncludeMessageSizes(true)           // Verbose에서 size= 출력
+        .SetMessageFlowObserver<ApiFlowObserver>();   // 선택: 콜렉터/OTel 어댑터(앱 레이어)
+});
+```
+
+- `TraceLogFile` 지정 시 트레이싱/에러는 전용 파일로만 가고 앱 `ILogger`와 섞이지 않는다.
+  미지정 + 앱 로거 sink 있으면 통합, 둘 다 없으면 표준 에러스트림 폴백.
+- 출력은 카테고리 `zlink.framework.dispatch` + 구조화 필드(phase/surface/kind/packet/channel/
+  topic/corr/src/spot/actor/size/node)로 나가 콜렉터가 정규식 파싱 없이 ingest할 수 있다.
+- `Off`이고 explicit observer도 없을 때는 log event를 생성하지 않는다(호출부 가드 + lazy).
+  explicit observer를 등록한 경우에는 로그 모드와 별개로 observer에 전달할 event를 발행한다.
+
+### 9.3 런타임 토글
+
+`IZLinkMessageFlowControl`을 DI에서 받아 재시작 없이 모드를 바꾼다. 공유 live cell을 모든
+surface가 읽으므로 즉시 반영된다. `MessageFlow(...)`는 seed(기본값)다.
+
+```csharp
+var control = app.Services.GetRequiredService<IZLinkMessageFlowControl>();
+control.SetMessageFlowMode(ZLinkMessageFlowLogMode.KeyTransitions);  // off→on, 즉시 반영
+```
+
+### 9.4 관측 백엔드 경계
+
+framework 가 제공하는 것은 `CorrelationId` + 구조화 필드 + observer 훅까지다. OpenTelemetry /
+span / 외부 콜렉터(Loki/ELK 등) 어댑터는 앱이 `IZLinkMessageFlowObserver` 콜백에서 받아 끼운다.
+framework 는 OTel에 의존하지 않는다(공통 스펙 §6 경계 원칙).
+
+### 9.5 샘플
+
+Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
+`TraceLogFile(SampleFlowLog.Path(role))` + `TraceLabel(role)`로 분리 파일 로깅을 시연한다
+(`BINGO_LOG_DIR`로 로그 디렉토리 override). 한 요청을 `corr=`로 grep하면 노드 간
+`outcome=sent`→`outcome=received`→`outcome=replied`→`outcome=reply-received`가 시간순으로 이어진다.
+
+### 10.5 런타임 메트릭 (runtime metrics)
+
+공통 의미(계기 카탈로그·종류·라벨·성능 계약)는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이
+소유한다. 이 절은 `.NET` 표면만 적는다.
+
+> **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** framework는 안정된 이름의 `Meter` 하나로 카탈로그
+> 계기를 방출하고, 앱은 자기 OpenTelemetry 파이프라인에 그 meter만 포함한다. per-계기 API는
+> 노출하지 않는다 — 계기 갱신 지점·라벨은 framework 내부에 있고, 앱이 배우는 것은 meter 이름
+> 하나뿐이다.
+
+### 10.1 표면
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
+| 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
+| 비-OTel/테스트 수집 | .NET 표준 `MeterListener`가 `ZLinkMeters.Framework`를 직접 구독 — zlink 전용 listener interface 없음 |
+
+```csharp
+// 앱은 이 한 줄로 zlink 계기를 자기 OTel 파이프라인에 넣는다. 별도 zlink 설정 없음.
+builder.Services.AddOpenTelemetry().WithMetrics(m => m
+    .AddMeter(ZLinkMeters.Framework)
+    .AddPrometheusExporter());
+```
+
+- 공통 §3의 `updown`=`UpDownCounter<long>`, `observable`=`ObservableGauge`(scrape 시 콜백),
+  histogram=`Histogram<double>`(단위 `s`, 공통 §4.0).
+- meter가 어떤 listener에도 연결되지 않으면 event별 allocation, lock, clock read와 sample 보관 없이
+  최소 비용의 비활성 경로로 끝난다. 고정 instrument는 startup에 한 번 만들 수 있다(공통 §7.2).
+- 대시보드·exporter는 앱 몫. framework는 내장 scrape 서버를 제공하지 않는다(공통 §6).
+
+### 10.2 왜 새 인터페이스가 없나
+
+`.NET`의 `Meter`/`MeterListener`가 이미 벤더 중립 계기 파사드다. framework가 별도 `IZLinkMetrics*`
+표면을 두면 그 위에 pass-through 층이 생겨 깊이가 없다(얕은 모듈). 그래서 공개 표면을 **안정된 meter
+이름 하나**로 최소화한다. contract/E2E collector도 표준 `MeterListener`를 사용한다.
+
+### 10.6 메시지 흐름 상관관계 (flow correlation)
+
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. 이 절은
+§9(메시지 흐름 추적)의 확장이며 **새 설정 표면을 만들지 않는다**. 기존 message-flow mode가 `Off`가
+아니면 framework가 전역 유일 id를 자동 생성하고 기존 event에 필드를 더한다.
+
+### 11.1 표면
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
+| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
+
+```csharp
+options.ConfigureDispatch()
+    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions); // flow id는 자동 생성·전파
+```
+
+- 생성은 트레이싱 모드 게이트, **전파(echo)는 무조건**이라 off 노드를 지나도 흐름이 끊기지 않는다
+  (공통 §2.2).
+- 두 필드는 하나의 optional pair다. `FlowId`가 빈 문자열이면 `FlowOrigin`은 `null`이고, `FlowId`가
+  있으면 `FlowOrigin`도 반드시 있다. 로그와 observer event도 이 불변식을 유지한다.
+- stream/actor gateway 로거는 부트스트랩에서 **자동 배선**된다(공통 §7). 명시 주입이 우선하되, 없을
+  때 침묵 대신 기본 sink로 폴백 — "조용한 무로그"를 기본에서 제거한다. 게이팅은 불변(배선 ≠ 출력,
+  `Off`면 완전 침묵).
+- 로그 토큰 `flow=`는 언어 간 바이트 동일(공통 §8).
+
+### 10.7 Graceful Drain & Handoff
+
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+이 절은 **lifecycle 제어 표면**(관측이 아님)의 `.NET` 투영이다.
+
+> **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 host shutdown에 자동 참여해 drain하므로
+> 앱은 아무 코드도 쓰지 않는다. draining 마커·owner lease 유지·`Takeover` 순서 같은 분산 정합은
+> 공통 스펙 §3이 소유하며 앱 표면에 노출하지 않는다.
+
+### 12.1 표면
+
+```csharp
+public static class ZLinkMeters { public const string Framework = "zlink.framework"; }
+public enum ZLinkFlowOrigin : byte
+{
+    Inbound = 1, Timer = 2, Application = 3, Lifecycle = 4
+}
+public enum ZLinkSpotDrainPolicy { DrainNatural = 0, ReleaseAndRecreate = 1 }
+public enum ZLinkDrainForceReason
+{
+    DeadlineExceeded = 0, DrainingStatePublishFailed = 1,
+    OwnerCleanupFailed = 2, TeardownFailed = 3
+}
+public enum ZLinkDrainState
+{
+    Serving = 0, Draining = 1, Drained = 2, ForceStopping = 3
+}
+public sealed record ZLinkDrainEvent(
+    DateTimeOffset Timestamp,
+    ZLinkDrainState State) : IZLinkRuntimeEvent
+{
+    public string SourceName => "drain";
+}
+public abstract record ZLinkDrainResult;
+public sealed record Drained : ZLinkDrainResult;
+public sealed record ForceStopped(ZLinkDrainForceReason Reason) : ZLinkDrainResult;
+public interface IZLinkDrainControl
+{
+    bool IsReady { get; }
+    ValueTask<ZLinkDrainResult> DrainAsync(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkDrainResult> DrainAsync(
+        TimeSpan deadline, CancellationToken cancellationToken = default);
+    ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
+        CancellationToken cancellationToken = default);
+}
+public static class ServiceCollectionExtensions
+{
+    public static IHealthChecksBuilder AddZLinkDrainHealthCheck(
+        this IHealthChecksBuilder builder);
+}
+```
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/ReleaseAndRecreate})` |
+| terminal result | abstract `ZLinkDrainResult` + sealed `Drained`, `ForceStopped(ZLinkDrainForceReason Reason)`; reason은 `DeadlineExceeded`, `DrainingStatePublishFailed`, `OwnerCleanupFailed`, `TeardownFailed` |
+| 명시 제어(선택) | `IZLinkDrainControl` { `ValueTask<ZLinkDrainResult> DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(30초), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
+| readiness probe | `IZLinkDrainControl.IsReady` 또는 `IHealthChecksBuilder.AddZLinkDrainHealthCheck()` |
+| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
+
+```csharp
+// SPOT별 정책만 선언 — 나머지는 전부 기본 동작
+options.AddSpotMesh("orders")
+    .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate);  // event-sourcing owner spot
+
+// 배포 자동화가 세밀 제어를 원할 때만 (대개 불필요)
+var drain = app.Services.GetRequiredService<IZLinkDrainControl>();
+await drain.DrainAsync(TimeSpan.FromSeconds(25), ct);
+await drain.AwaitDrainedAsync(ct);
+```
+
+- **왜 새 이벤트 구독을 안 만드나:** drain 상태 관측은 monitoring의 `IZLinkRuntimeEventHandler<T>`를
+  그대로 쓴다(같은 개념 → 같은 메커니즘). 새 관측 표면을 만들지 않는다.
+- **drain 이벤트는 source 등록이 필요 없다.** socket/spot source와 달리 drain은 노드 생애 수 회의
+  저빈도 lifecycle 이벤트라 polling·filter 파라미터가 없다. `IZLinkRuntimeEventHandler<ZLinkDrainEvent>`
+  핸들러가 DI에 있으면 monitoring 구성 유무와 무관하게 항상 수신한다 — flow correlation이 제거한
+  "조용한 무관측" 함정을 여기서도 만들지 않는다(공통 §9).
+- **왜 앱이 `Drain`을 안 불러도 되나:** host 종료 신호 처리를 framework가 흡수한다. `IZLinkDrainControl`
+  은 배포 자동화가 세밀 제어할 때만 쓰는 탈출구다.
+- `IsReady`는 술어 프로퍼티다(`Draining`이면 false). readiness probe가 이 값을 그대로 읽는다.
+
+### 5.8 Session/actor dispatch 오류 표현 (`.NET` exception)
+
+이 절은 framework 가 던지는 오류가 `.NET` 표면에서 어떤 모양으로 보이는지를
+정리한다.
+
+public `.NET` API 에서는 framework error 를 하나의 exception family 로
+모은다.
+
+```csharp
+public sealed class ZLinkFrameworkException : Exception
+{
+    public ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind kind,
+        string message,
+        bool? isRetriable = null,
+        Exception? innerException = null);
+
+    public ZLinkFrameworkErrorKind Kind { get; }
+    public bool IsRetriable { get; }
+}
+
+public enum ZLinkFrameworkErrorKind
+{
+    ActorRouteNotFound = 0,
+    ActorCreateFailed = 1,
+    ActorAlreadyExists = 2,
+    ActorTypeMismatch = 3,
+    SpotCreateFailed = 4,
+    SpotRouteNotFound = 5,
+    SpotTypeMismatch = 6,
+    ActorSessionNotBound = 7,
+    HandlerNotFound = 8,
+    RouteHandlerNotFound = 9,
+    ActorDispatchHandlerNotFound = 10,
+    PayloadDecodeFailed = 11,
+    RouteNotConnected = 12,
+    RequestTargetNotFound = 13,
+    RequestRejected = 14,
+    RequestProtocolError = 15,
+    RequestFailed = 16,
+    WorkerQueueFull = 17,
+    WorkerTimedOut = 18,
+    WorkerFailed = 19,
+    ActorLocationStale = 20,
+    ActorCreateRejected = 21,
+}
+```
+
+각 kind 의 발생 조건과 cross-binding 의미는
+[policy/session-gateway-usability.ko.md](../../session-actor-dispatch.ko.md)
+§17 error-kind 매트릭스에서 다룬다.
+
+`ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
+`IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
+`SpotCreateFailed`, `SpotRouteNotFound`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 와
+registry 기반 spot route 조회에서 사용한다.
+`BindAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
+생성하지 않는다. bind 는 logical actor handle 을 core session relay binding 으로 넘기며,
+actor ref resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
+gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에
+bound 된 session 이 없어서 client push 를 보낼 수 없으면 `ActorSessionNotBound` 로
+분류한다.
+handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
+`HandlerNotFound`, `RouteHandlerNotFound`, `ActorDispatchHandlerNotFound`,
+`PayloadDecodeFailed` 로 분류한다. route/request 하부에서 반환되는 실패는
+`RouteNotConnected`, `RequestTargetNotFound`, `RequestRejected`,
+`RequestProtocolError`, `RequestFailed` 로 매핑한다.
+
+`IsRetriable` 은 framework 가 자동으로 retry 해 준다는 의미가 아니다. caller
+가 retry policy 를 만들 때 참고할 수 있는 분류일 뿐이다. sample 코드에서도 이
+값을 이용해 retry loop 를 만들지 않는다.
 
 ## 11. Attribute 정의
 
@@ -4193,7 +4515,7 @@ interface가 그 동작을 보장하도록 한다.
 관측·운영 public inventory에는 `ZLinkMeters`, `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `IZLinkDrainControl`,
 `ZlinkStreamCloseReason`, `ZlinkStreamDisconnected`도 포함한다. 앞의 connector 선언과
-[ASP.NET Core Monitoring §10~12](aspnet-core-monitoring.ko.md)의 전체 declaration이 정확한 member,
+[ASP.NET Core Monitoring §10~12](system-structure.ko.md)의 전체 declaration이 정확한 member,
 overload, default와 반환형을 고정하며 contract test는 이 타입들을 누락 없이 검사한다.
 
 ### 16.3 Exported 보조 타입의 정식 선언
@@ -4530,10 +4852,77 @@ public sealed class ZlinkStreamTypedRequestBuilder
 }
 ```
 
+## 17. 공개 계약 산출물 검증
+
+이 절은 **사람이 읽는 이 문서의 계약과 실제 배포 산출물을 정확히 비교하는 방법**을 정의한다.
+공개 API의 의미와 사용 조건은 위 절들이 설명한다. 아래 text snapshot은 그 계약을 assembly와
+NuGet package에서 **한 항목도 빠뜨리지 않고 검사하기 위한 기계 판독 가능한 부속 명세**다.
+
+**snapshot은 문서 트리가 아니라 `.NET` 코드 옆(`framework/languages/dotnet/contract/`)에 둔다.**
+사람이 읽는 문서가 아니라 검증기가 읽는 산출물이기 때문이다.
+
+### 17.1 API snapshot
+
+`framework/languages/dotnet/contract/api/`에는 정식 배포 대상 assembly 여섯 개의 모든 public type과 member를 기록한다.
+각 파일은 다음 항목을 구분한다.
+
+- assembly와 type 소유권
+- base type과 구현 interface
+- field, constructor, property, event와 method
+- overload, parameter 이름, 기본값과 `ref`·`in`·`out`
+- nullable read/write 상태
+- generic variance와 runtime metadata에 남는 제약
+- `required`, `init`, readonly struct, ref struct와 custom modifier
+
+검증기는 정식 snapshot, source build assembly, 실제 NuGet package assembly를 세 방향으로 비교한다.
+세 결과 중 하나라도 다르면 공개 계약 검증은 실패한다.
+
+### 17.2 package snapshot
+
+`framework/languages/dotnet/contract/packages/`에는 package마다 다음 정보를 기록한다.
+
+- 전체 archive entry 경로
+- package id, 작성자, 설명과 repository metadata
+- target framework별 dependency id, version과 asset 제외 조건
+- 배포 DLL과 XML 문서의 위치
+
+매번 달라지는 contract 검증용 version, Git commit 값과 NuGet core-properties 파일 이름만 명시한
+placeholder로 정규화한다. 그 밖의 예상하지 않은 파일이나 metadata 변화는 검증 실패다.
+
+### 17.3 갱신 절차
+
+일반 검증은 다음 명령을 사용한다.
+
+```bash
+cd framework/languages/dotnet
+./scripts/verify_packaged_contract.sh
+```
+
+공개 계약 변경 후보를 검토할 때는 정식 snapshot 디렉토리 밖의 별도 경로에 snapshot 후보를 생성한다.
+
+```bash
+./scripts/verify_packaged_contract.sh \
+  --generate-snapshot /tmp/zlink-dotnet-contract-review
+```
+
+생성 모드는 정식 snapshot 디렉토리를 직접 덮어쓰지 못한다. 후보와 현재 snapshot의 diff를 기능별 공개
+계약 문서의 전·후 시그니처와 함께 리뷰한 뒤, 승인된 항목만 정식 snapshot에 반영한다. 구현이
+달라졌다는 이유만으로 snapshot을 먼저 갱신하지 않는다. 검증기는 모든 project의 MSBuild
+`IsPackable` 평가 결과, 정확한 6개 package 집합, package source mapping, 임시 package cache와
+깨끗한 consumer 실행까지 함께 확인한다.
+
+### 17.4 회귀 테스트
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` | source build assembly만 대상으로 정식 API snapshot과 모든 공개 서명이 일치하는지 확인한다. package 산출물은 이 테스트의 범위가 아니다. |
+| `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions` | snapshot renderer가 nullable, accessor, generic, by-ref와 type 제약을 서로 다른 계약으로 기록한다. |
+| `SCRIPT:scripts/verify_packaged_contract.sh` | 정식 API snapshot, source build assembly, 실제 NuGet package assembly의 공개 서명을 세 방향으로 비교하고 package snapshot과 깨끗한 consumer 실행까지 검증한다. 실제 배포 package 계약의 최종 gate다. |
+
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink에서는 socket, stream, route 등이 이에 해당한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../../../../dotnet/guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

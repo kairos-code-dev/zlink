@@ -179,6 +179,20 @@ store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대�
 이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide에서
 다룬다.
 
+> **샘플에서 보기 — [TicTacToe](../../common/sample/tictactoe/README.ko.md).** 다섯 개념이
+> 한 샘플에 전부 나오는 가장 작은 예다. Play 서버의 등록 코드 한 곳에서 다섯이 만난다.
+>
+> | 개념 | TicTacToe에서 |
+> |---|---|
+> | channel | Api 서버와 Play 서버가 `AddClientServerChannel`로 방 생성·배정을 주고받는다 |
+> | spot | 대국 한 판이 `TicTacToeGame` spot 하나 — 두 플레이어의 수가 이 안에서 직렬 처리된다 |
+> | actor | 플레이어가 actor이고, 재접속해도 같은 actor로 이어져 두던 판을 계속한다 |
+> | stream | client가 Play 서버의 STREAM endpoint에 직접 붙어 수를 두고 push를 받는다 |
+> | location | Redis location store가 Api↔Play 연결을 자동으로 잇는다 — 주소가 코드에 없다 |
+>
+> 다섯 개념이 각각 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
+> 이 샘플이 보여 준다.
+
 ## 6. 보조 — 실행·구성 모델
 
 위 다섯 개념을 받치는 공통 동작이다. 여기서 한 번 짚고, 상세는 각 챕터가 소유한다.

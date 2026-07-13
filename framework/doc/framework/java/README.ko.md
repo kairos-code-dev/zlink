@@ -44,14 +44,12 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 | 문서 | 범위 |
 |------|------|
 | [spec 목차](../common/spec/languages/java/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
-| [handler-interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | interface, annotation, context, options |
-| [spring-boot-channel-messaging](../common/spec/languages/java/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
-| [spring-boot-spot](../common/spec/languages/java/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](../common/spec/languages/java/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
-| [spring-boot-stream](../common/spec/languages/java/spring-boot-stream.ko.md) | stream node, header session |
-| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [spring-boot-registry](../common/spec/languages/java/spring-boot-registry.ko.md) | embedded registry, remote query |
-| [spring-boot-monitoring](../common/spec/languages/java/spring-boot-monitoring.ko.md) | runtime event, typed handler |
+| [system-structure](../common/spec/languages/java/system-structure.ko.md) | Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring · registry 등록 표면 |
+| [handler-interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | interface, annotation, context, options 카탈로그 |
+| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | client connector |
+
+**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
+그 의미가 Java/Kotlin에서 어떤 모양인지만 고정한다.
 
 ## 3. 내부 기준
 

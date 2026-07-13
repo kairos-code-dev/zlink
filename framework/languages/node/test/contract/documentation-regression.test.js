@@ -118,7 +118,7 @@ test('node implementation reference docs declare regression coverage sections', 
 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
   const files = [
-    path.join(specRoot, 'nestjs-channel-messaging.ko.md'),
+    path.join(specRoot, 'handler-interfaces.ko.md'),
     path.join(specRoot, 'handler-interfaces.ko.md')
   ];
   const offenders = [];
@@ -126,11 +126,8 @@ test('node documentation keeps fanout and route client public surface aligned wi
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
     const relative = path.relative(workspaceRoot, file);
-    if (/ZLinkFanoutClient\.publish\(channelName/.test(content)) {
-      offenders.push(`${relative}: old fanout publish signature`);
-    }
-    if (/publisher\.publish\(ch, topic, evt\)/.test(content)) {
-      offenders.push(`${relative}: old fanout publish example`);
+    if (/publishToChannel/.test(content) && !/호환 alias로 남기지 않는다/.test(content)) {
+      offenders.push(`${relative}: removed fanout publish name`);
     }
     if (/public client 로 노출하지 않는다|internal-only/.test(content)) {
       offenders.push(`${relative}: route client described as internal-only`);
@@ -138,6 +135,9 @@ test('node documentation keeps fanout and route client public surface aligned wi
   }
 
   assert.deepEqual(offenders.sort(), []);
+  const channelSpec = fs.readFileSync(files[0], 'utf8');
+  assert.match(channelSpec, /publish\(channelName: string, topic: string, event: unknown\)/);
+  assert.match(channelSpec, /publisher\.publish\(ch, topic, evt\)/);
 });
 
 test('node framework docs do not describe removed nested configuration callbacks', () => {
@@ -214,7 +214,7 @@ test('node actor destroy docs keep Entry Spot ownership and disconnect isolation
     }
   }
 
-  const actorSpec = fs.readFileSync(path.join(specRoot, 'nestjs-actor.ko.md'), 'utf8');
+  const actorSpec = fs.readFileSync(path.join(specRoot, 'handler-interfaces.ko.md'), 'utf8');
   assert.equal(actorSpec.includes('Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다'), true);
   assert.equal(actorSpec.includes('user Spot context 에는'), true);
   assert.equal(actorSpec.includes('destroy 나 user Spot leave 를 자동으로 만들지 않는다'), true);

@@ -4,8 +4,8 @@
 
 # 8. Session Actor Dispatch
 
-> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)와
-> [spec/session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/handler-interfaces.ko.md)와
+> [spec/session-actor-dispatch](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다.
 > 이 챕터는 actor의 **binding 축** — STREAM session에 bound 된 actor로 client packet을
 > relay 하고, actor가 자기 client로 push 하는 면 — 을 다룬다. actor 모델과 spot 호스팅(location
 > 축)은 [07-actor-spot](07-actor-spot.ko.md)을 먼저 본다.
@@ -84,8 +84,8 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 > STREAM의 actor-gateway 입구는 **같은 프로세스의 (router가 켜진) SpotNode로 자동 연결**된다 —
-> stream과 SpotNode를 한 프로세스에 두면 framework가 알아서 잇는다(별도 호출 없음). 통합·분리의
-> 진짜 차이는 그 gateway SpotNode가 **actor를 직접 호스팅하느냐(통합)** vs **원격 Play SpotNode로
+> stream과 SpotNode를 한 프로세스에 두면 framework가 자동으로 연결한다(별도 호출 없음). 통합·분리의
+> 실질적인 차이는 그 gateway SpotNode가 **actor를 직접 호스팅하느냐(통합)** vs **원격 Play SpotNode로
 > forward 하느냐(분리)** 다. actor의 실제 위치는 bind 된 ref가 운반하고, gateway SpotNode는
 > 그쪽으로 relay·return을 잇는 입구일 뿐이다.
 
@@ -416,14 +416,14 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)와 샘플 코드를
+> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/handler-interfaces.ko.md)와 샘플 코드를
 > 기준으로 확인한다.
 
 ## 7. 더 보기
 
 - actor 모델·spot 호스팅 콜백(location 축): [07-actor-spot](07-actor-spot.ko.md)
 - bound session push 계약: [13-interface-catalog](13-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
-- 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/handler-interfaces.ko.md), [spec/session-actor-dispatch](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 - 전체 예제: [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md), [bingo 샘플](../../common/sample/bingo/README.ko.md)
 - 외부 client를 STREAM으로 받는 법: [09-stream](09-stream.ko.md)
 

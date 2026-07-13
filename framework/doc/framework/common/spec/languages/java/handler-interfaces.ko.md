@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: Spring Boot SPOT](spring-boot-spot.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](system-structure.ko.md) | [다음: Spring Boot SPOT](system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [channel](spring-boot-channel-messaging.ko.md) | [SPOT](spring-boot-spot.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [STREAM](spring-boot-stream.ko.md) | [Monitoring](spring-boot-monitoring.ko.md) | [Registry](spring-boot-registry.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [channel](system-structure.ko.md) | [SPOT](system-structure.ko.md) | [Actor/session](system-structure.ko.md) | [STREAM](system-structure.ko.md) | [Monitoring](system-structure.ko.md) | [Registry](system-structure.ko.md)
 
 # ZLink Framework Java Interface Catalog
 
@@ -1033,8 +1033,8 @@ public record ZLinkSpotTimerStoppedAfterUnhandledException(
 두 timer failure record는 `ZLinkSpotTimerDiagnostic`을 가진다. kind와 여러 nullable
 payload를 독립 필드로 두지 않는다.
 
-위 registration 타입들이 `spring-boot-channel-messaging.ko.md`,
-`spring-boot-channel-messaging.ko.md`와 `spring-boot-spot.ko.md`에서 쓰는 기준 표면이다.
+위 registration 타입들이 `system-structure.ko.md`,
+`system-structure.ko.md`와 `system-structure.ko.md`에서 쓰는 기준 표면이다.
 
 수동 연결은 `channel` 전체가 아니라 `channel + capability` 또는
 `spot node + capability` 기준으로 관리해야 한다. 예를 들면 `profile.client`와
@@ -1597,8 +1597,9 @@ public interface ZLinkStreamConnectionStateHandler {
 }
 @FunctionalInterface
 public interface ZLinkStreamDisconnectedHandler {
-    CompletionStage<Void> handle();
+    CompletionStage<Void> handle(ZLinkStreamDisconnected event);
 }
+public record ZLinkStreamDisconnected(ZLinkStreamCloseReason closeReason) {}
 @FunctionalInterface
 public interface ZLinkStreamMessageHandler<TPayload> {
     CompletionStage<Void> handle(ZLinkStreamMessage<TPayload> message);
@@ -1676,31 +1677,23 @@ public @interface ZLinkStreamPacketName {
 
 | 대상 symbol | 목표 Java 계약 | 현재 public 선언 | 판정과 구현 작업 |
 |-------------|----------------|------------------|------------------|
-| `ZLinkRequestHandler.handle`, `ZLinkSendHandler.handle`, `ZLinkPublishHandler.handle`, route handler의 `handle` | `CompletionStage<TReply>` 또는 `CompletionStage<Void>` | 값 또는 `void` 직접 반환 | gap — 네 handler 계열의 반환형을 바꾸고 stage 완료까지 serial turn을 유지한다. |
-| `ZLinkSpotPacketHandler.handle`, `ZLinkSpotRequestHandler.handle`, `ZLinkSpotSubscriptionHandler.handle`, `ZLinkSpotTimerHandler.handle` | 위 선언의 `CompletionStage` 반환 | 값 또는 `void` 직접 반환 | gap — 네 interface와 registry invoker를 함께 변경한다. |
-| `ZLinkActorFactory.create` | `CompletionStage<TActor>` | actor 직접 반환 | gap — factory와 생성 call site를 stage로 연결한다. |
-| `ZLinkSpot`, `ZLinkEntrySpot`, `ZLinkSpotActorLifecycle` | lifecycle은 `CompletionStage`, token 인자 없음 | 동기 반환이며 actor lifecycle에 `CancellationToken` 존재 | gap — member 시그니처와 lifecycle invoker를 함께 변경한다. |
-| `ZLinkActorTransferAdapter.transferOut/transferIn` | `CompletionStage`, token 인자 없음 | 동기 반환과 `CancellationToken` 인자 | gap — adapter registry가 반환 stage를 lifecycle 완료에 포함한다. |
-| `ZLinkSendCall.submit`, `ZLinkActorSendCall.submit`, `ZLinkSessionSendCall.submit`, `ZLinkSessionReplyCall.submit`, `ZLinkBoundSessionSendCall.submit`, `ZLinkStreamSendCall.submit` | `void` | `CompletionStage<Void>` 또는 `ZLinkSubmitStage`와 blocking `await()` | gap — one-way 완료 객체와 `await()`를 제거한다. |
-| `ZLinkTypedSessionPacketHandler` | application용 handler 하나. message type descriptor로 packet identity를 정하고 typed `CompletionStage<Void> handle(...)` 제공 | raw handler를 상속하고 raw default method가 `UnsupportedOperationException`을 던지며 packet name도 handler가 반복함 | gap — raw application handler를 제거하고 typed registry와 framework dispatcher로 경계를 분리한다. |
-| `ZLinkActorContext.joinSpot/joinEntrySpot` | request를 반드시 받는 두 interface member | 요청 없는 overload와 요청을 받는 overload가 있고 default method가 `ZLinkConfigurationException`을 던짐 | gap — 요청 없는 overload와 default body를 제거해 구현 누락을 compile 단계에서 검출한다. |
-| `ZLinkChannelRuntimeOptions.routeMeshChannel`, `ZLinkRouteMeshChannelRuntimeOptions` | 위 선언대로 제공 | 두 symbol 없음 | gap — client-server와 같은 조회 facade를 route-mesh에 추가한다. |
-| request/join/worker 완료 | `CompletionStage` 완료 terminator 하나 | yield call 타입, blocking `await`, worker callback submit이 public | gap — 별도 실행 방식 선택을 제거하고 framework가 실행 줄을 관리한다. |
-| `ZLinkWorkerTask.run` | `T run() throws Exception` | `run(CancellationToken)` | gap — Java 전용 token parameter를 제거하고 timeout 결과와 worker 수명은 worker call/runtime이 관리한다. |
-| `ZLinkHandlerContext.cancellationToken`과 actor/Spot handler의 `CancellationToken` parameter | public 계약에 없음 | public으로 노출됨 | gap — context property와 handler parameter를 제거하고 host 종료는 내부 lifecycle로 전달한다. |
-| `CompletionStage`를 반환하는 public method 전체 | Java naming으로 `Async` 접미사 없음 | location store/query/resolver, dispatcher, timer, invoker와 stream handler에 `Async` 접미사가 존재 | gap — 반환형이 비동기 완료를 나타내므로 `updatePeer`, `listTopology`, `tryHandle`, `cancel`, `handle`처럼 접미사를 제거한다. |
-| `ZLinkLocationKey` | 네 location key를 감싸는 sealed interface | 현재 symbol 없음 | gap — `.NET`과 같은 통합 key 사용성을 Java sealed interface와 record로 추가한다. |
-| manual connection | 역할별 builder가 같은 `ZLinkEndpointConnections` 계약을 반환 | 역할별 표면과 공통 표면이 정리되지 않음 | gap — capability state는 분리하되 동일한 세 member의 nominal interface를 반복하지 않는다. |
-| Spot messaging target | `SpotHandleResolver`, `ActorSpotHandleResolver`, `SpotHandle` | `SpotRef` 계열과 legacy `SpotRemoteRefResolver`, `SpotRemoteRef` 공개 | gap — node 주소를 숨기는 handle 계약으로 교체한다. |
-| dispatch 최적화 | public mode 없이 registration 시 최적화 | `ZLinkDispatchMode`와 두 mode option 공개 | gap — 구현 전략 option을 제거한다. |
-| typed packet name | type descriptor가 registration 시 한 번 결정 | call/handler/options 여러 위치에서 override 가능 | gap — typed call override를 제거하고 raw extension만 명시 이름을 받는다. |
-| actor Spot 접근 | generic actor context에 Spot getter 없음 | `getSpot()` overload 공개 | gap — getter를 제거하고 Spot handler 인자를 사용한다. |
-| actor membership | `Optional<RoutingId> spotRid()`가 join 상태의 단일 기준 | `spotRid()`와 `isJoined()`를 함께 공개 | gap — 중복 boolean을 제거한다. |
-| actor join 결과 | 승인/거절 sealed interface이며 승인 결과만 필수 actor ref를 가짐 | result code, actor와 reply를 독립 필드로 공개 | gap — 모순 상태를 만들 수 없는 sealed 결과로 교체한다. |
-| actor join call | timeout과 typed/reply-less submit을 가진 `ZLinkActorJoinCall` 하나 | member가 같은 Spot/Entry call과 별도 base call이 중복됨 | gap — 공통 call 하나로 합친다. |
-| Spot context/manager | handler registry, user Spot close와 request를 받는 create/getOrCreate overload | registry/close와 request overload가 누락됨 | gap — Kotlin wrapper 및 다른 언어와 같은 기능을 추가한다. |
-| monitoring | registry/Spot/socket/location source 전체와 sealed event | location 등록이 없고 event payload가 nullable 독립 필드 | gap — source 등록을 보완하고 유효 상태만 표현하는 sealed event로 교체한다. |
-| 이 절의 exact declaration | 이름, member, 반환형과 generic 제약을 모두 고정 | 기존 문서는 이름만 나열 | 문서 gap 해소 — contract test가 각 선언을 직접 검증해야 한다. |
+| application handler와 actor factory | `CompletionStage<T>` 또는 `CompletionStage<Void>` | channel, route, Spot, actor, session handler와 `ZLinkActorFactory.create`가 `CompletionStage`를 반환한다. | 충족 — exact 반환형 contract test와 automatic-turn Config 8 전체 실행으로 확인했다. |
+| Spot, entry Spot, actor lifecycle과 transfer | lifecycle은 `CompletionStage`, token 인자 없음 | lifecycle과 transfer adapter가 `CompletionStage`를 반환하며 framework cancellation token을 노출하지 않는다. | 충족 — reflection contract와 production symbol no-hit로 확인했다. |
+| one-way call의 `submit` | `void` | send, publish, session reply와 bound-session send의 `submit()`은 `void`다. | 충족 — `ZLinkSubmitStage`, `ZLinkAwait`, yield call은 production symbol에 없고 exact return contract가 통과한다. |
+| `ZLinkTypedSessionPacketHandler` | typed `CompletionStage<Void> handle(...)` | raw application handler를 상속하지 않는 typed interface와 framework dispatcher로 분리되어 있다. | 충족 — exact hierarchy contract와 fake backend typed dispatch test로 확인했다. |
+| actor join | request를 받는 `joinSpot`/`joinEntrySpot`, 단일 `ZLinkActorJoinCall`, sealed 결과 | 요청 없는 overload와 default throw가 없고 `Accepted`/`Rejected` 결과를 사용한다. | 충족 — reflection 및 implementor contract가 통과한다. |
+| route-mesh와 manual connection | route-mesh 조회 facade와 공통 `ZLinkEndpointConnections` | `ZLinkChannelRuntimeOptions.routeMeshChannel`과 역할별 builder의 공통 endpoint 계약이 존재한다. | 충족 — exact facade contract가 통과한다. |
+| worker 완료와 취소 | worker request는 `CompletionStage`, task는 token 없이 실행 | `ZLinkWorkerCall.submit()`은 `CompletionStage<T>`이고 framework cancellation token은 없다. | 충족 — legacy terminator와 token production symbol no-hit로 확인했다. |
+| 비동기 Java 이름 | `CompletionStage` method에 불필요한 `Async` 접미사 없음 | application 공개 계약은 Java 이름을 사용한다. | 충족 — public method contract가 통과한다. transport와 runtime internal method는 application 계약이 아니다. |
+| location key와 runtime facet | sealed `ZLinkLocationKey`와 store/query/readiness facet | 네 key record가 sealed key를 구현하며 정식 location facet이 존재한다. | 충족 — exact location contract와 Config 6 SF-A1~E1 전체 실행으로 확인했다. |
+| Spot messaging target | `SpotHandleResolver`, `ActorSpotHandleResolver`, `SpotHandle` | opaque handle과 두 resolver를 제공하고 legacy remote ref를 노출하지 않는다. | 충족 — exact symbol contract와 production symbol no-hit로 확인했다. |
+| dispatch와 typed packet identity | dispatch 전략은 내부에 두고 typed identity는 type descriptor가 결정 | public dispatch mode와 typed call packet-name override가 없다. | 충족 — public method 및 symbol absence contract가 통과한다. |
+| actor membership과 Spot 접근 | `Optional<RoutingId> spotRid()` 하나, generic Spot getter 없음 | `spotRid()`가 단일 membership 값이며 `isJoined`와 `getSpot`은 없다. | 충족 — exact method contract와 production symbol no-hit로 확인했다. |
+| Spot context와 manager | handler registry, close, request-bearing create/get-or-create | 정식 member와 overload를 공개한다. | 충족 — exact reflection contract가 통과한다. |
+| 관측·운영 public declaration | monitoring, flow, metrics, drain과 location event의 유효 상태를 타입으로 표현 | 정식 public type과 member가 구현되어 있다. | 선언 충족 — `JavaTargetContractGapTest`의 관측·운영 계약이 통과한다. 전체 운영 동작은 완료된 Config만 증거로 사용하며 미실행 Config는 이 표에서 완료로 판정하지 않는다. |
+| application export 경계 | backend와 handler runtime SPI를 application package에 노출하지 않음 | runtime SPI는 internal package로 이동했고 application public surface에서 제외됐다. | 충족 — package와 modifier contract가 통과한다. |
+| Kotlin suspend invocation 소유권 | Kotlin module provider 한 곳이 소유 | Java core에 Kotlin reflection fallback이 없다. | 충족 — fallback symbol absence contract가 통과한다. |
+| 이 절의 exact declaration | 이름, member, 반환형과 generic 제약을 고정 | `JavaTargetContractGapTest`가 target contract 14개 영역을 직접 검증한다. | 충족 — 2026-07-13 전체 test가 통과했다. |
 
 `systems.zlink.framework.runtime.*`와 backend adapter package에 선언된 public interface는
 application contract가 아니다. `ZLinkHandlerFactory`, `ZLinkSuspendHandlerInvoker`와
@@ -1710,10 +1703,10 @@ contract로 고정하지 않는다.
 
 관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `ZLinkDrainControl`,
-`ZLinkStreamCloseReason`과 disconnect event type도 포함한다. [Spring Boot Monitoring §8~10](spring-boot-monitoring.ko.md)과
+`ZLinkStreamCloseReason`과 disconnect event type도 포함한다. [Spring Boot Monitoring §8~10](system-structure.ko.md)과
 [Stream Connector](stream-connector.ko.md)의 전체 declaration이 정확한 member와 반환형을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: Spring Boot SPOT](spring-boot-spot.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](system-structure.ko.md) | [다음: Spring Boot SPOT](system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

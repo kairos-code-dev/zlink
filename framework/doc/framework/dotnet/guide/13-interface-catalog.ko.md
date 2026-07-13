@@ -687,7 +687,7 @@ await publisher.PublishAsync(socketEvent, ct);   // IZLinkRuntimeEventPublisher
 ### 6.1 운영 — 메트릭 · flow 상관관계 · drain
 
 > 사용법은 [12-operations](12-operations.ko.md). 자세한 계약은
-> [spec/aspnet-core-monitoring §10~§12](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md).
+> [spec/aspnet-core-monitoring §10~§12](../../common/spec/languages/dotnet/system-structure.ko.md).
 
 ```csharp
 builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter(ZLinkMeters.Framework));

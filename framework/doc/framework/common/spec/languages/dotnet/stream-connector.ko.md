@@ -1,10 +1,14 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ASP.NET Core STREAM](aspnet-core-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ASP.NET Core STREAM](system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [.NET spec 목차](README.ko.md)
 
 # .NET Stream Connector 공개 계약
+
+> 이 문서는 [Stream Connector 공통 스펙](../../stream-connector.ko.md)의 **`.NET` 투영**이다.
+> transport·wire·생명주기·오류 의미는 공통 스펙이 소유하고, 이 문서는 그 의미가 `.NET`에서 갖는
+> **정확한 public 표면**을 고정한다.
 
 ## 1. 목적과 package 경계
 
@@ -15,12 +19,23 @@ Spot, actor와 location runtime에는 의존하지 않는다.
 공개 package는 `Systems.Zlink.Stream.Connector`다. 정확한 public 타입과 시그니처 및 배포 archive는
 다음 고정 snapshot이 소유한다.
 
-- [API snapshot](public-contract/api/Systems.Zlink.Stream.Connector.api.txt)
-- [package snapshot](public-contract/packages/Systems.Zlink.Stream.Connector.package.txt)
+- [API snapshot](../../../../../../languages/dotnet/contract/api/Systems.Zlink.Stream.Connector.api.txt)
+- [package snapshot](../../../../../../languages/dotnet/contract/packages/Systems.Zlink.Stream.Connector.package.txt)
 
 이 문서는 snapshot의 각 member를 반복해서 나열하지 않고, 사용자가 관찰하는 동작과 옵션 의미를
 고정한다. connector 생성은 `ZlinkStreamConnectorFactory.Create(options)`를 사용하고 반환 타입은
 `IZlinkStreamConnector`다.
+
+### 1.1 대상 실행 환경
+
+**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../stream-connector.ko.md)가 소유한다.**
+그 배정에 따라 `.NET` connector가 담당하는 것은 **네이티브 빌드**(데스크톱·서버 애플리케이션,
+Unity, Godot C#)이며, 웹(브라우저·WASM) 빌드는 담당하지 않는다.
+
+이 배정이 `.NET` 표면에 남기는 결과는 하나다. 게임 엔진 객체를 main thread 밖에서 다룰 수
+없으므로 **dispatch mode 기본값이 `Manual`** 이고(§3), 사용자가 main thread에서
+`Dispatch.Async()`로 펌프한다. 엔진별 사용법은
+[.NET Stream Connector 가이드](../../../../../stream-connector/dotnet/guide/INDEX.ko.md)가 다룬다.
 
 ## 2. lifecycle과 완료 의미
 
@@ -126,31 +141,25 @@ TLS와 WSS는 기본적으로 인증서 chain과 host name을 검증한다.
 
 ## 7. heartbeat, reconnect와 종료 사유
 
-heartbeat는 기본으로 활성화되며 interval은 1초, timeout은 5초다. reconnect도 기본으로 활성화되고
-250ms에서 시작해 최대 5초까지 2배 backoff를 적용하며 기본 최대 시도 횟수는 3회다. reconnect는
-같은 endpoint에만 수행하며 서버가 대체 endpoint를 전달하는 계약은 없다.
+heartbeat와 reconnect의 **기본값은 [공통 스펙 §6.1](../../stream-connector.ko.md)이 소유한다.**
+reconnect는 같은 endpoint에만 수행하며 서버가 대체 endpoint를 전달하는 계약은 없다.
 
-`ZlinkStreamDisconnected.CloseReason`은 다음 닫힌 값을 사용한다.
+종료 사유의 **값 집합과 의미는 [공통 스펙 §6.2](../../stream-connector.ko.md)가 소유한다.**
+`.NET`은 이 값을 `ZlinkStreamCloseReason` enum으로 표현하고
+**`Disconnected` event의 인자 `ZlinkStreamDisconnected.CloseReason`으로 노출한다.**
 
-- `ClientClose`
-- `IdleTimeout`
-- `HeartbeatTimeout`
-- `ServerDrain`
-- `ProtocolError`
-- `TransportError`
-
-공통 `session-closing` frame의 wire 값은 1~6이고 `.NET` enum의 내부 ordinal은 0~5다. codec이 둘을
-명시적으로 변환하므로 enum을 정수로 cast해 wire 값으로 사용하지 않는다. 서버 drain이 정상적으로
-전달되면 `Disconnected` event의 사유는 `ServerDrain`이다.
+`session-closing` frame의 wire 값은 1~6이고 `.NET` enum의 내부 ordinal은 0~5다. codec이 둘을
+명시적으로 변환하므로 **enum을 정수로 cast해 wire 값으로 사용하지 않는다.**
 
 ## 8. compression과 payload 제한
 
-기본 compression은 LZ4다. `CompressionCodec`을 지정하면 built-in codec 대신 해당 구현을 사용한다.
-compression을 `None`으로 두면 compressed frame을 허용하지 않으며 `.Compress()`를 요청한 call도
-실패한다.
+압축 기본값과 `None`의 의미는 [공통 스펙 §8](../../stream-connector.ko.md)이 소유한다.
+`.NET`은 `CompressionCodec`을 지정하면 built-in codec 대신 해당 구현을 사용하고, `.Compress()`가
+압축을 명시적으로 요청하는 call 표면이다.
 
-기본 최대 송신 및 수신 payload 크기는 각각 64 KiB다. 수신 frame이 제한을 넘으면 application
-handler나 request completion으로 전달하지 않고 `FrameTooLarge` 오류로 현재 연결을 종료한다.
+payload 한도는 [공통 스펙 §4.7](../../stream-connector.ko.md)이 소유한다. `.NET`에서 수신 frame이
+제한을 넘으면 application handler나 request completion으로 전달하지 않고 `FrameTooLarge` 오류로
+현재 연결을 종료한다.
 disconnect 사유는 `TransportError`이며 reconnect가 활성화되어 있으면 같은 endpoint로 재연결을
 시도한다.
 

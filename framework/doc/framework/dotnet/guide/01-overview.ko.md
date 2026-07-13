@@ -57,10 +57,10 @@ correlation은 framework가 처리한다.
 **자체 런타임의 섬**에 들어가 로직 작성 방식·설정·배포·운영을 엔진 방식으로 다시
 배우거나.
 
-**실제로는 어떻게 만들어 왔나.** 엔지니어링 블로그·커뮤니티·클라우드 벤더 문서에
-공개된 게임 서버 구조도들을 묶으면 대략 네 갈래다. 어느 구조도든 login/auth,
-gateway, DB cache 같은 상자가 반복해서 등장하지만 — 그걸 받쳐 주는 공통
-프레임워크는 없어서, 팀은 자기 장르의 갈래를 골라 그 구조를 소켓부터 다시 만든다.
+**실제로는 어떻게 만들어 왔나.** 업계에서 통용되는 이름이 붙은 패턴으로 묶으면
+대략 네 갈래다. 어느 패턴이든 login/auth, gateway, DB cache 같은 상자가 반복해서
+등장하지만 — 그걸 받쳐 주는 공통 프레임워크는 없어서, 팀은 자기 장르의 갈래를
+골라 그 구조를 소켓부터 다시 만든다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -69,7 +69,7 @@ flowchart TB
     direction LR
     C1["client"] --> GW["gateway"] --> Z1["zone 서버 A"]
     GW --> Z2["zone 서버 B"]
-    Z1 <-.->|"경계 이동 이관<br/>(자체 프로토콜)"| Z2
+    Z1 <-.->|"경계 넘으면 서로 넘겨줌<br/>(자체 프로토콜)"| Z2
   end
   subgraph rm["② lobby + room형 — 캐주얼·MO·보드게임"]
     direction LR
@@ -81,29 +81,37 @@ flowchart TB
   end
   subgraph act["④ 분산 actor 서비스형 — 메타·소셜 백엔드"]
     direction LR
-    C4["client"] --> AP["API"] --> AC["분산 actor<br/>(플레이어·세션 단위 상태)"]
+    C4["client"] --> AP["API 서버<br/>(stateless front-end)"] --> AC["actor 클러스터<br/>(플레이어·길드 단위 상태,<br/>노드 간 위치 투명)"]
   end
   mmo ~~~ rm
   ded ~~~ act
 ```
 
-- ① zone 분할: gateway가 packet을 zone(scene) 서버로 넘기고, 경계를 넘는
-  플레이어를 zone 서버끼리 이관한다([Alibaba Cloud MMO 아키텍처](https://alibaba-cloud.medium.com/alibaba-cloud-mmo-gaming-solution-architecture-8f771567f63f)류).
-- ② lobby+room: 유저를 zone/lobby로 받고 room 단위로 묶는다
-  ([SmartFoxServer zones & rooms](https://docs2x.smartfoxserver.com/Overview/zones-room-architecture)·Photon류).
-- ③ matchmaker+dedicated: 매칭 ticket이 모이면 fleet에서 서버 하나를 할당하고
-  client에 접속 정보(IP/port)를 줘 직접 붙게 한다([GameLift Realtime
-  구조](https://docs.aws.amazon.com/gamelift/latest/developerguide/realtime-architecture.html)·[Open Match + Agones](https://aws.amazon.com/solutions/guidance/game-server-hosting-using-agones-and-open-match-on-amazon-eks/)류).
-- ④ actor 서비스: 플레이어·세션 상태를 분산 actor로 둔다(Halo 4/5의
-  [Orleans](https://www.infoq.com/presentations/halo-4-orleans/) 사례).
+- **① zoning(zone 분할).** 월드를 지리적 구역으로 나눠 구역마다 서버(노드)가
+  담당하고, 캐릭터가 경계를 넘으면 시뮬레이션을 인접 구역 서버로 넘긴다. 대규모
+  오픈월드를 감당하기 위한 MMORPG의 표준 확장 기법이다. sharding(월드를 통째로
+  복제해 인구를 나눔), instancing(같은 구역의 독립된 사본을 인원수만큼 생성)과
+  함께 세 자매 기법으로 묶인다.
+- **② lobby + room.** 유저를 lobby/매칭에서 받아 room에 배정하고, 그 room이 판이
+  끝날 때까지 참가자 상태를 소유한다. room은 보통 한 프로세스 안에 여러 개가
+  함께 도는 논리 단위다. 캐주얼·모바일 MO·보드게임에서 흔하다.
+- **③ session 기반 dedicated fleet.** 매칭 ticket이 모이면 fleet에서 판 전용
+  서버 프로세스를 하나 할당하고, client는 그 서버에 직접 접속한다. 판이 끝나면
+  프로세스가 반납된다. ②와 달리 **판 하나 = 프로세스 하나**가 기본 단위다.
+  경쟁 FPS·배틀로얄 같은 세션 기반 게임의 표준 구성이다.
+- **④ stateful actor.** 플레이어·길드 같은 엔티티 상태를 서버 메모리 위 actor로
+  유지하고, DB는 주기적 저장소 역할만 한다. 읽기 편중 부하가 줄고 별도 캐싱
+  계층이 필요 없어져, 메타·소셜 백엔드에서 흔히 쓰인다. 대표 프레임워크는
+  Orleans·Akka이고, ZLink의 SPOT/actor와 어떻게 다른지는
+  [14장 §7](14-grpc-alternative.ko.md)에서 정직하게 비교한다.
 
 **ZLink가 제공하는 것.** 어려움 하나하나에 기능이 대응한다.
 
 | 어려움 | ZLink 기능 | 자세히 |
 |--------|------------|--------|
-| 장르별 토폴로지를 소켓부터 자작 | **channel 조합으로 토폴로지 선언** — 1:N 요청/응답, fan-out, 노드 지목 route mesh, room 단위 spot mesh를 등록 몇 줄로 조합, 연결은 location store가 자동 유지 | [§3 아키텍처](#아키텍처--어디에-올라가고-무엇을-선언하나) · [05](05-channel-messaging.ko.md)·[06](06-spot.ko.md)·[10](10-location.ko.md) |
+| 장르별 토폴로지를 소켓부터 직접 만듦 | **channel 조합으로 토폴로지 선언** — 1:N 요청/응답, fan-out, 노드 지목 route mesh, room 단위 spot mesh를 등록 몇 줄로 조합, 연결은 location store가 자동 유지 | [§3 아키텍처](#아키텍처--어디에-올라가고-무엇을-선언하나) · [05](05-channel-messaging.ko.md)·[06](06-spot.ko.md)·[10](10-location.ko.md) |
 | in-memory 상태의 lock·경합 | **SPOT 직렬 실행** — 한 room의 모든 메시지를 하나의 실행 줄로 세워 순서대로 실행. lock이 업무 로직에서 사라진다 | 아래 코드 · [06](06-spot.ko.md) |
-| 소켓 framing·세션 수명 자작 | **STREAM** — 연결 수명·framing·packet codec을 framework가 소유(TCP/TLS/WS/WSS) | [09](09-stream.ko.md) |
+| 소켓 framing·세션 수명 직접 구현 | **STREAM** — 연결 수명·framing·packet codec을 framework가 소유(TCP/TLS/WS/WSS) | [09](09-stream.ko.md) |
 | 재접속 유저 위치 추적 | **actor binding** — 재접속한 새 연결이 같은 actor로 이어진다 | [08](08-actor-session.ko.md) |
 | 배포 때 유저 튕김 | **graceful drain** — 신규 차단, actor handoff, 진행 중 마무리 후 종료. 앱 코드 0줄 | [12](12-operations.ko.md) |
 
@@ -112,13 +120,14 @@ flowchart TB
 
 | 갈래 | ZLink로는 |
 |------|-----------|
-| ① zone 분할 | zone = `AddSpotMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 transfer**가 이관을 대신한다([07](07-actor-spot.ko.md)) |
+| ① zone 분할 | zone = `AddSpotMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 transfer**가 대신 넘겨준다([07](07-actor-spot.ko.md)) |
 | ② lobby + room | 입장·매칭 = Entry Spot, 방 = room spot을 `GetOrCreate`로 — [Bingo](../../common/sample/bingo/README.ko.md)가 이 갈래 그대로다 |
 | ③ matchmaker + dedicated | 매칭 = channel handler, 판 = 아무 노드에나 `GetOrCreate`되는 room spot. client는 STREAM으로 직접 접속하고, fleet 증설 자체는 K8s가 그대로 맡는다 |
 | ④ actor 서비스 | ZLink actor — 같은 virtual actor 모델을 .NET 전용이 아니라 **폴리글랏 + 메이저 프레임워크 통합**으로 |
 
-> 경계 하나는 그대로다: 트위치 FPS의 **초저지연 UDP snapshot netcode** 자체는
-> ZLink 범위 밖이다(STREAM은 TCP/TLS/WS/WSS). 그 게임에서도 매칭·로비·메타·소셜은
+> 트위치 FPS의 **초저지연 snapshot netcode**는 유실을 허용하는 비신뢰 전송을 쓴다.
+> 현재 STREAM이 제공하는 transport는 TCP/TLS/WS/WSS이며, **비신뢰 전송(QUIC
+> datagram·WebTransport)은 지원 예정**이다. 지금도 그 게임의 매칭·로비·메타·소셜은
 > 위 갈래들로 덮인다. 경계 전체는 [14장](14-grpc-alternative.ko.md) §4가 다룬다.
 
 **게임 서버 엔진·서비스와는 어떻게 다른가.** 직접 만들지 않는 길로는 엔진과
@@ -308,10 +317,157 @@ actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).Submit(
 ```
 
 실행되는 근거 샘플: [SupportChat](../../common/sample/supportchat/README.ko.md) ·
-[DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) ·
-[ShoppingMall](../../common/sample/event/shoppingmall.ko.md)
+[DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md)
 
-두 상황의 차이는 진입점일 뿐, 쓰는 표면은 같다. 기능 하나씩 제공하는 제품은
+### 실시간 기능이 없어도 — 이벤트 중심 업무 처리를 단순화할 때
+
+ZLink의 사용 지점은 실시간 기능만이 아니다. 주문 처리·정산·재고처럼 **같은 엔티티의
+이벤트를 순서대로, 중복 없이 처리해야 하는** 업무는 화면에 실시간 push가 하나도 없어도
+같은 복잡도 문제를 만난다.
+
+**왜 복잡해지는가.** 이런 업무의 표준 답은 Kafka 같은 log 기반 파이프라인이다(이벤트
+소싱 구성도 보통 이 위에 올린다). 그런데 log가 실제로 해결하는 것은 "같은 key를 한
+곳에 모아 순서대로"인데, 그 하나를 위해 조각이 줄줄이 따라온다.
+
+- **순서가 partition에 묶인다.** 같은 주문의 이벤트를 순서대로 처리하려면 key
+  partition으로 모아야 하고, 소비자 수는 partition 수에 묶이며, consumer group의
+  rebalance와 offset 관리가 운영 항목으로 따라온다.
+- **소비자가 stateless라 상태는 매번 DB 왕복이다.** 이벤트 하나를 처리할 때마다 DB에서
+  현재 상태를 읽고-고치고-쓴다. 반복 읽기를 줄이려 캐시를 붙이면 무효화 문제가
+  따라온다.
+- **at-least-once라 멱등성이 앱 몫이 된다.** 재전달·rebalance·재처리로 같은 이벤트가
+  두 번 올 수 있어, version check나 dedupe 정책 없이는 중복 반영된다.
+- 처리 결과 조회용 read model을 따로 만들고, 파이프라인이 밀리면 lag 모니터링과
+  재동기화 잡이 남는다.
+
+stateful stream processor(Kafka Streams/Flink)로 상태를 소비자 곁에 두면 DB 왕복은
+줄지만, partition 설계·state store 복구·rebalance가 운영 책임으로 남는다 — 이 비교의
+상세는 [GameQuest 공통 시나리오 §3](../../common/sample/event/gamequest.ko.md)이 다룬다.
+
+같은 업무 — 주문 workflow — 를 두 방식으로 그리면 조각 차이가 그림에서 바로 보인다.
+
+**기존 방식** — 순서 처리를 위한 파이프라인 조각(주황)이 본체만큼 추가된다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+    Client["클라이언트 앱"]
+    LB["L7 LB / gateway<br/>(K8s Ingress)"]:::infra
+    Api["API 서버들 ×N<br/>(stateless)"]:::app
+    LOG["Kafka log — 주문 처리 경로의 순서 담당<br/>(OrderId key partition)"]:::extra
+    CG["주문 처리 소비자 ×N<br/>consumer group · offset · rebalance<br/>version check · dedupe"]:::extra
+    SVC["서버 간 호출용 LB<br/>(K8s Service · service discovery)"]:::extra
+    INV["재고 · 결제 서비스들 ×N"]:::app
+    CACHE["캐시<br/>(반복 읽기 회피)"]:::extra
+    DB[("주문 상태 DB")]:::infra
+    RM[("조회용 read model")]:::extra
+    JOB["lag 모니터링 ·<br/>재동기화 잡"]:::extra
+
+    Client -- "주문 HTTP" --> LB --> Api
+    Api -- "event append" --> LOG
+    LOG -- "같은 OrderId는 같은 partition" --> CG
+    CG -- "이벤트마다 load-modify-store" --> DB
+    CG <-.-> CACHE
+    CACHE -.miss.-> DB
+    CG -- "재고 확보 · 결제 승인<br/>(HTTP/gRPC)" --> SVC --> INV
+    CG -- "갱신" --> RM
+    Client -- "조회 HTTP" --> LB
+    Api -.-> RM
+    JOB -.보정.-> DB
+
+    classDef app fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
+    classDef extra fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c
+```
+
+**ZLink 방식** — Kafka를 대체하는 것이 아니다. **주문 처리 경로에서** 파이프라인
+조각(주황)이 사라지고, Kafka는 자기 본연의 자리 — 확정된 사실을 독립 시스템들에
+전파하고 replay가 필요한 이벤트를 보존하는 durable log — 로 남는다(회색).
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+    Client2["클라이언트 앱"]
+    LB2["L7 LB / gateway<br/>(K8s Ingress — HTTP 진입은 그대로)"]:::infra
+    Api2["API 서버들 ×N<br/>ASP.NET Core + ZLink<br/>channel client"]:::app
+    Spot["OrderWorkflow 서버들 ×N<br/>OrderWorkflowSpot<br/>(OrderId owner · 직렬 실행 · hot state)"]:::app
+    INV2["재고 · 결제 서비스들 ×N<br/>(ZLink channel server)"]:::app
+    DB2[("주문 상태 DB")]:::infra
+    LOG2[("Kafka log — 남는 역할:<br/>외부 시스템 전파 · replay용 보존")]:::infra
+    EXT["정산 · 분석 · 타 팀 시스템<br/>(독립 소비자들)"]:::infra
+    Store["location store<br/>(peer rows)"]:::infra
+
+    Client2 -- "주문 HTTP" --> LB2 --> Api2
+    Api2 -- "owner routing by OrderId (직접)" --> Spot
+    Spot -- "channel name으로 호출 (직접)<br/>재고 확보 · 결제 승인" --> INV2
+    Spot -- "업무 규칙에 맞는 시점에 저장" --> DB2
+    Spot -- "확정 사실 발행" --> LOG2
+    LOG2 --> EXT
+    Client2 -- "조회 HTTP" --> LB2
+    Api2 -.조회.-> DB2
+    Api2 -.->|"주소 해석"| Store
+    Spot -.->|"주소 해석"| Store
+    INV2 -.->|등록| Store
+
+    classDef app fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
+```
+
+두 그림에서 Kafka의 색이 바뀐 것이 핵심이다. 처리 경로 **안에서** 순서를 담당하던
+Kafka(주황)가 처리 경로 **밖으로** 나가 전파·보존만 맡는다(회색). 그러면서 순서
+담당을 위해 조립했던 조각들 — 주문 처리 소비자 그룹(offset·rebalance·dedupe), 캐시,
+조회용 read model, 재동기화 잡 — 이 사라진다. 같은 `OrderId`가 항상 같은 owner에서
+직렬로 처리되므로, 파이프라인이 제공하던 순서·중복 방지를 조립할 필요가 없어진
+것이다.
+
+**서버 간 호출의 LB도 사라진다.** 주문 처리는 재고·결제 같은 다른 서비스를 동기
+호출하는데, 기존 방식은 그 경로마다 K8s Service나 service discovery로 상대를 찾아
+분배해야 한다(주소를 코드에 하드코딩할 수는 없으니까). ZLink에서는 `"inventory"` 같은
+**channel name으로 부르고 location store가 현재 살아 있는 peer를 알려 주므로**, 서버 간
+호출용 LB 계층이 따로 필요 없다 — 그래서 after 그림에서 주황 `서버 간 호출용 LB`가
+사라진다.
+
+**남는 것은 남는다.** 클라이언트 HTTP 진입은 여전히 stateless라 L7 LB/Ingress가 평소처럼
+API 서버에 분배하고(회색), 주문 상태는 여전히 DB에 저장한다. gRPC와 달리 이 HTTP 진입
+경로에 L7 분배 장치를 **추가로** 요구하지도 않는다(그 이유는
+[14장 §6.1](14-grpc-alternative.ko.md)이 다룬다).
+
+**ZLink가 제공하는 것.** "같은 key를 한 곳에 모아 순서대로"를 log가 아니라 **owner
+routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 사라진다.
+
+| 조립하던 것 | ZLink 기능 | 자세히 |
+|-------------|------------|--------|
+| key partition + consumer group | **SPOT owner routing** — 같은 `OrderId`는 항상 같은 Spot에서 직렬 실행. 어느 API 인스턴스가 받아도 같은 owner로 route된다 | [06](06-spot.ko.md) |
+| 이벤트마다 DB load-modify-store | **owner spot의 hot state** — 상태가 owner 메모리에 있고, 저장 시점은 업무 규칙에 맞춰 앱이 결정한다 | [06](06-spot.ko.md) |
+| 재전달 대비 version check·분산 락 | **직렬 실행** — 같은 단위에 동시 writer가 없어 정상 경로에서 락·version 경합이 없다 | [06 §3](06-spot.ko.md) |
+| 서버 간 호출용 LB·service discovery | **channel name + location store** — `"inventory"` 이름으로 부르면 현재 살아 있는 peer로 직접 간다 | [05](05-channel-messaging.ko.md)·[10](10-location.ko.md) |
+| offset·lag·재동기화 잡 운영 | 소비 파이프라인이 없으므로 해당 운영 항목 자체가 없다 | |
+
+**경계는 그대로다.** durable log가 진짜 필요한 요구 — 이벤트 replay, 장기 보존, 독립
+시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([14장 §4](14-grpc-alternative.ko.md)).
+ZLink가 줄이는 것은 "엔티티 단위 순서 처리"만을 위해 log 파이프라인을 조립하던
+경우다. 순서와 정합성이 목적의 전부였다면, owner routing이 그 목적을 파이프라인 없이
+직접 달성한다.
+
+**코드로 보면.** partition 소비자 자리에 owner Spot handler가 온다.
+
+```csharp
+// 같은 OrderId의 처리는 항상 이 Spot 안에서 순서대로 실행된다 —
+// partition도, offset도, 분산 락도, 멱등성 재시도 정책도 조립하지 않는다.
+public sealed class StartOrderWorkflowHandler :
+    IZLinkSpotRequestHandler<OrderWorkflowSpot, StartOrderWorkflowReq, StartOrderWorkflowRes>
+{
+    public ValueTask<StartOrderWorkflowRes> HandleAsync(
+        OrderWorkflowSpot spot, StartOrderWorkflowReq request, CancellationToken ct)
+        => spot.StartOrderWorkflowAsync(request, ct);   // spot 상태에 lock 없이 접근
+}
+```
+
+실행되는 근거 샘플: [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) — 실시간 push
+없이 HTTP API + 주문 workflow만으로 구성된 이 상황의 정본 샘플이다. 주문 상태
+전이·보상 흐름·중복 방지·projection 재생성을 owner routing 위에서 검증한다.
+
+세 상황의 차이는 진입점일 뿐, 쓰는 표면은 같다. 기능 하나씩 제공하는 제품은
 있어도 — RPC는 gRPC가, actor는 Orleans가, 연결은 게임 엔진이 — **메이저
 프레임워크 통합 + 직렬 실행 상태 단위 + 자동 연결 토폴로지를 한 몸에 담은
 조합**이 ZLink의 자리다.
@@ -612,7 +768,7 @@ framework와 독립적으로 배포되며, client application에서 TCP/TLS/WS/W
 
 - **백엔드 API 개발자**: HTTP endpoint 안에서 다른 내부 서비스로 요청을 보내거나,
   기존 gRPC 호출을 논리 `channel name` 기반 request / response로 바꾸려는 사람.
-- **마이크로서비스 운영 개발자**: 서버 instance가 늘고 줄어도 주소를 코드에 박지 않고,
+- **마이크로서비스 운영 개발자**: 서버 instance가 늘고 줄어도 주소를 코드에 하드코딩하지 않고,
   location store가 관리하는 현재 서버 목록으로 자동 연결하려는 사람.
 - **실시간 서비스 개발자**: game room, stage, zone, 주문 workflow처럼 상태를 가진
   단위를 SPOT으로 묶고, 같은 상태에 들어오는 packet을 한 실행 흐름에서 처리하려는 사람.

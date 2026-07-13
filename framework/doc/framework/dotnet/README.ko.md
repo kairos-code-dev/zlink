@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [인터페이스](../common/spec/languages/dotnet/handler-interfaces.ko.md) | [channel](../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | [SPOT](../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [SpotNode](../common/spec/languages/dotnet/spot-node.ko.md) | [Stage wrapper](../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | [STREAM](../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [Actor](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../common/spec/languages/dotnet/session-actor-dispatch.ko.md) | [Stream Connector](../common/spec/languages/dotnet/stream-connector.ko.md) | [Unity 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | [Monitoring](../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) | [Location](../common/spec/languages/dotnet/aspnet-core-location.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [시스템 구조](../common/spec/languages/dotnet/system-structure.ko.md) | [인터페이스](../common/spec/languages/dotnet/handler-interfaces.ko.md) | [Stream Connector](../common/spec/languages/dotnet/stream-connector.ko.md) | [Unity 가이드](../../stream-connector/dotnet/guide/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
@@ -164,15 +164,13 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [aspnet-core-channel-messaging.ko.md](../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, router-capable channel의 SPOT route 수신, lifecycle, middleware / filter |
-| [spot-node.ko.md](../common/spec/languages/dotnet/spot-node.ko.md) | Entry Spot routing id 설정, `ConfigureEntrySpot(...)` 적용 순서, Spot route kind 보존 규칙 |
-| [aspnet-core-actor.ko.md](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkBoundSession, session actor dispatch (gateway) 패턴 |
-| [session-actor-dispatch.ko.md](../common/spec/languages/dotnet/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkBoundSession`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../common/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
-| [aspnet-core-stream.ko.md](../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
-| [Unity Stream Connector 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `Dispatch.Async()`를 호출하는 사용법 |
-| [aspnet-core-monitoring.ko.md](../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) | socket / location / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
-| [stage-wrapper-on-spot.ko.md](../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |
-| [aspnet-core-location.ko.md](../common/spec/languages/dotnet/aspnet-core-location.ko.md) | location store 등록, 자동 연결, resolver/runtime query DI 표면, monitoring 연동 |
+| [system-structure.ko.md](../common/spec/languages/dotnet/system-structure.ko.md) | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation |
+| [handler-interfaces.ko.md](../common/spec/languages/dotnet/handler-interfaces.ko.md) | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그 |
+| [stream-connector.ko.md](../common/spec/languages/dotnet/stream-connector.ko.md) | 별도 client connector의 lifecycle, dispatch, codec, transport, 종료 사유 |
+| [public-contract.ko.md](../common/spec/languages/dotnet/handler-interfaces.ko.md) | 문서 계약과 실제 assembly·NuGet 산출물의 exact 검증 절차 |
+
+**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
+그 의미가 `.NET`에서 어떤 모양인지만 고정한다.
 
 ### 2.3 유지보수 문서
 
@@ -200,11 +198,11 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 | 개념 | 다루는 곳 | 다른 문서에서는 |
 |------|----------|---------------|
 | 인터페이스, attribute, context 전체 정의 | [handler-interfaces](../common/spec/languages/dotnet/handler-interfaces.ko.md) | 교차 참조 |
-| channel 등록(AddZLinkFramework), lifecycle | [aspnet-core-channel-messaging](../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | 필요할 때 링크만 |
+| channel 등록(AddZLinkFramework), lifecycle | [aspnet-core-channel-messaging](../common/spec/languages/dotnet/system-structure.ko.md) | 필요할 때 링크만 |
 | handler / client 사용 예시, dispatch 흐름 | aspnet-core-channel-messaging, 샘플 | |
-| SPOT 개념, 등록, lifecycle | [aspnet-core-spot](../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | 필요할 때 링크만 |
-| Actor 라이프사이클, session bind, user Spot join, session actor dispatch | [aspnet-core-actor](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | 필요할 때 링크만 |
-| location store 등록, 자동 연결, 운영 조회 | [aspnet-core-location](../common/spec/languages/dotnet/aspnet-core-location.ko.md) | 필요할 때 링크만 |
+| SPOT 개념, 등록, lifecycle | [aspnet-core-spot](../common/spec/languages/dotnet/system-structure.ko.md) | 필요할 때 링크만 |
+| Actor 라이프사이클, session bind, user Spot join, session actor dispatch | [aspnet-core-actor](../common/spec/languages/dotnet/handler-interfaces.ko.md) | 필요할 때 링크만 |
+| location store 등록, 자동 연결, 운영 조회 | [aspnet-core-location](../common/spec/languages/dotnet/system-structure.ko.md) | 필요할 때 링크만 |
 
 ## 3. 핵심 방향
 

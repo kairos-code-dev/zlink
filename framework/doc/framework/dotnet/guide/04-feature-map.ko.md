@@ -20,21 +20,21 @@
 
 | 기능 | 난이도 | 언제 쓰나 | 가이드 | 정식 문서 |
 |------|:------:|-----------|--------|-----------|
-| 서버 간 request/response | 낮음 | 서비스 A가 서비스 B의 결과가 필요할 때 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) |
-| 서버 간 단방향 send | 낮음 | 응답 없는 작업 위임/통지 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) |
-| pub/sub 이벤트 fan-out | 낮음 | domain event를 여러 구독자에게 전파 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) |
-| SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 단위 라우팅 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) |
-| 일반 handler에서 Spot 흐름 진입 | 중간 | HTTP/세션 gateway가 actor 생성 또는 Entry Spot join으로 `ActorRef` 확보 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) |
+| 서버 간 request/response | 낮음 | 서비스 A가 서비스 B의 결과가 필요할 때 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/system-structure.ko.md) |
+| 서버 간 단방향 send | 낮음 | 응답 없는 작업 위임/통지 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/system-structure.ko.md) |
+| pub/sub 이벤트 fan-out | 낮음 | domain event를 여러 구독자에게 전파 | [5](05-channel-messaging.ko.md) | [channel-messaging](../../common/spec/languages/dotnet/system-structure.ko.md) |
+| SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 단위 라우팅 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/system-structure.ko.md) |
+| 일반 handler에서 Spot 흐름 진입 | 중간 | HTTP/세션 gateway가 actor 생성 또는 Entry Spot join으로 `ActorRef` 확보 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/system-structure.ko.md) |
 | Spot 자동 turn dispatch | 높음 | I/O 완료를 기다리는 동안 실행 turn을 반납하고 원래 dispatcher 문맥에서 재개할 때 | [6](06-spot.ko.md) | [async-execution-policy](../../common/spec/async-execution-policy.ko.md) |
-| Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) |
-| Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 얹을 때 | [6](06-spot.ko.md) | [stage-wrapper](../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) |
-| actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [7](07-actor-spot.ko.md) | [actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md) |
-| session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [8](08-actor-session.ko.md) | [session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md) |
-| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | [9](09-stream.ko.md) | [stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) |
+| Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [6](06-spot.ko.md) | [spot](../../common/spec/languages/dotnet/system-structure.ko.md) |
+| Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 얹을 때 | [6](06-spot.ko.md) | [stage-wrapper](../../common/spec/languages/dotnet/handler-interfaces.ko.md) |
+| actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [7](07-actor-spot.ko.md) | [actor](../../common/spec/languages/dotnet/handler-interfaces.ko.md) |
+| session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [8](08-actor-session.ko.md) | [session-actor-dispatch](../../common/spec/languages/dotnet/handler-interfaces.ko.md) |
+| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | [9](09-stream.ko.md) | [stream](../../common/spec/languages/dotnet/system-structure.ko.md) |
 | Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [9](09-stream.ko.md) | [공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md) |
 | Location 자동 연결·운영 조회 | 중간 | endpoint를 코드에 적지 않고 서버 증감을 따라가고 싶을 때 | [10](10-location.ko.md) | [location runtime](../../common/spec/location-runtime.ko.md) |
 | spot 주소 메시징 | 중간 | 다른 노드의 spot/actor로 반복해서 보낼 때(조회 1회 후 주소 보관) | [6](06-spot.ko.md) §5 | [spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md) |
-| runtime monitoring | 낮음 | socket/location/spot 이벤트 관찰 | [11](11-monitoring.ko.md) | [monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) |
+| runtime monitoring | 낮음 | socket/location/spot 이벤트 관찰 | [11](11-monitoring.ko.md) | [monitoring](../../common/spec/languages/dotnet/system-structure.ko.md) |
 | 메시지 흐름 추적 · flow_id | 낮음 | 요청 하나·업무 흐름 하나의 생애주기를 노드 간에 추적 | [11](11-monitoring.ko.md) §5 | [message-flow-tracing](../../common/spec/message-flow-tracing.ko.md) · [flow-correlation](../../common/spec/flow-correlation.ko.md) |
 | 런타임 메트릭 | 낮음 | CCU·큐 깊이·요청 지연을 대시보드로 볼 때(`AddMeter` 한 줄) | [12](12-operations.ko.md) §1 | [runtime-metrics](../../common/spec/runtime-metrics.ko.md) |
 | graceful drain & readiness | 중간 | 무중단 배포·축소에서 접속 유저를 지키며 노드를 내릴 때 | [12](12-operations.ko.md) §2~§4 | [graceful-drain-handoff](../../common/spec/graceful-drain-handoff.ko.md) |

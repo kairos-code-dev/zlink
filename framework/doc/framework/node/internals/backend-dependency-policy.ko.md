@@ -77,7 +77,7 @@ breaking change[^breaking-change] 로 이어지기 때문이다.
 
 ## 6. 진단 / 운영 타입 정책
 
-monitoring, registry query, spot status 같이 하부와 가까운 값은 일부가 public
+monitoring, location runtime query, Spot status 같이 하부와 가까운 값은 일부가 public
 surface 에 남을 수 있다. 그래도 다음 원칙으로 폭을 좁힌다.
 
 - source 이름, timestamp, logical event kind 같은 값은 framework 가 의미를

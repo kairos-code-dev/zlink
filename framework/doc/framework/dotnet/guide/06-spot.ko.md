@@ -4,8 +4,8 @@
 
 # 6. SPOT — room · stage · zone
 
-> 정식 계약은 [spec/aspnet-core-spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md),
-> [spec/spot-node](../../common/spec/languages/dotnet/spot-node.ko.md), [spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md)가
+> 정식 계약은 [spec/aspnet-core-spot](../../common/spec/languages/dotnet/system-structure.ko.md),
+> [spec/spot-node](../../common/spec/languages/dotnet/system-structure.ko.md), [spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가
 > 다룬다. 이 챕터는 SPOT을 등록하고 다루는 사용법 중심이다.
 >
 > 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)의
@@ -71,7 +71,7 @@ flowchart LR
 
 - **Spot은 `SpotNode` 안에 존재한다.** 특정 service에 종속되는 게 아니라, 자신을
   호스팅하는 노드(컨테이너)에 속한다. 그림의 Spot 들이 노드 박스 안에 들어 있는 모습.
-- **같은 channel 노드끼리는 알아서 연결된다.** 같은 channel의 SpotNode 끼리는
+- **같은 channel 노드끼리는 자동으로 연결된다.** 같은 channel의 SpotNode 끼리는
   router·pub/sub mesh가 자동으로 이어진다(굵은 화살표). 다른 channel로 나가는 연결은
   별도 함수가 필요하고, 아래 §2 그림에서 본다.
 - **한 `SpotNode`는 한 channel만 본다.** active SPOT channel view가 정확히 하나라,
@@ -125,7 +125,7 @@ node 역할은 서로 독립이다.
 | `EnableRouter(endpoint)` | 이 노드의 router 소켓을 열어 **같은 channel의 다른 SpotNode와 spot↔spot routed send/request**(mesh) |
 | `EnablePubSub(endpoint)` | 이 노드의 pub/sub 소켓을 열어 **같은 channel topic publish/subscribe**(mesh). local spot의 `Publish`/구독에 필요(없으면 불가) |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
-| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)) |
+| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../common/spec/languages/dotnet/handler-interfaces.ko.md)) |
 | `UseDrainPolicy(정책)` | 노드가 graceful drain으로 내려갈 때 이 mesh의 spot을 정리하는 방식 선언. 기본 `DrainNatural`(자연 종료 대기), 외부 영속 상태에서 재구성 가능한 spot은 `ReleaseAndRecreate`([12-operations §3](12-operations.ko.md)) |
 
 위 표는 **SpotNode 자체 설정**이다 — 자기 소켓(`EnableRouter`·`EnablePubSub`)과 만들 spot 타입
@@ -248,9 +248,9 @@ flowchart LR
 
 - **자동(location store 기준, 기본).**
   router/pub bind endpoint를 location store에 peer row로 등록하고, store에서 읽은 같은
-  channel peer 들과 router↔router·sub↔pub를 **런타임이 알아서 잇는다.** connect 코드가 없다.
-- **수동(store 없이 직접 지정).** peer 주소를 코드로 박는다. 내 router가 어느 peer router로
-  연결될지는 `ConnectRouter(endpoint)`(peer를 콕 집으려면 `ConnectRouter(peerRid, endpoint)`),
+  channel peer 들과 router↔router·sub↔pub를 **런타임이 자동으로 연결한다.** connect 코드가 없다.
+- **수동(store 없이 직접 지정).** peer 주소를 코드에 직접 지정한다. 내 router가 어느 peer router로
+  연결될지는 `ConnectRouter(endpoint)`(peer를 정확히 지정하려면 `ConnectRouter(peerRid, endpoint)`),
   내 sub가 어느 peer의 pub을 구독할지는 `ConnectPeerPub(peerPubEndpoint)`로 지정한다. peer가
   늘면 그만큼 호출을 반복한다(노드 수가 고정된 토폴로지에 적합).
 
@@ -632,7 +632,7 @@ _timer = await Context.AddTimer<StageTickHandler>(
 timer 다. 실시간 전투 room을 보자. 두 개의 timer를 둔다.
 
 - **`battle.sim` (50ms, 20Hz)** — 전투 simulation step. cooldown, 투사체 이동,
-  도트 데미지가 모두 step 수에 묶여 있어 **빠진 step을 그냥 버리면 게임이 어긋난다.**
+  도트 데미지가 모두 step 수에 묶여 있어 **빠진 step을 단순히 버리면 게임이 어긋난다.**
   그래서 `CatchUpBounded`로 빠진 step을 일부 보충하되, GC 정지처럼 길게 멈췄을 때
   수백 step을 몰아 도는 death-spiral은 `MaxCatchUpTicks`로 막는다.
 - **`battle.snapshot` (100ms)** — 클라이언트로 world 상태 broadcast. 밀린 snapshot을
@@ -1144,7 +1144,7 @@ send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper는 그 
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 
 자세한 추가 요건(실행 컨텍스트 계약, 생성 시 초기 메타데이터, directory)은
-[spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md)가 다룬다.
+[spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다.
 
 ## 7. 자주 막히는 곳
 
@@ -1169,7 +1169,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 
 - 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [13-interface-catalog](13-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
 - 노드/채널 builder 계약: [13-interface-catalog](13-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
-- 정식 계약: [spec/aspnet-core-spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md), [spec/spot-node](../../common/spec/languages/dotnet/spot-node.ko.md)
+- 정식 계약: [spec/aspnet-core-spot](../../common/spec/languages/dotnet/system-structure.ko.md), [spec/spot-node](../../common/spec/languages/dotnet/system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - spot 안의 참가자별 상태/세션이 필요하면: [07-actor-spot](07-actor-spot.ko.md)
 

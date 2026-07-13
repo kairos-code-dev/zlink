@@ -13,7 +13,7 @@
 |---------|----------|--------|------|
 | **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
 | **HTTP Client** | `http-client/` | [언어별 문서](http-client/dotnet/README.ko.md) | fluent HTTP/JSON client |
-| **Stream Connector** | `stream-connector/` | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) | client 측 STREAM 접속 라이브러리(C++) |
+| **Stream Connector** | `stream-connector/` | [README](stream-connector/README.ko.md) | client 측 STREAM 접속 라이브러리(C++ · `.NET` · TypeScript) |
 
 정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
 
@@ -90,18 +90,35 @@ coroutine `suspend` 표면으로 같은 기능을 제공한다.
 
 ## 3. Stream Connector (`stream-connector/`)
 
-client 측에서 STREAM 서버에 접속하는 별도 라이브러리(C++). Unreal/Godot/Axmol engine adapter 포함.
+client 측에서 STREAM 서버에 접속하는 별도 라이브러리. 게임 엔진 adapter 포함.
 
-[가이드 INDEX](stream-connector/cpp/guide/INDEX.ko.md)
+[문서 트리 README](stream-connector/README.ko.md) — **어떤 connector를 쓰는지는 언어가 아니라
+"엔진 × 빌드 타깃"이 결정한다.** 웹(브라우저·WASM)으로 빌드하면 언어와 무관하게 TypeScript
+connector를 사용한다.
+
+| 언어 | 대상 | 가이드 |
+|------|------|--------|
+| C++ | Unreal, Godot(GDExtension), Axmol, 일반 C++, 서버 e2e/perf | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) |
+| `.NET` | Unity(네이티브), Godot C#, 데스크톱·서버 | [INDEX](stream-connector/dotnet/guide/INDEX.ko.md) |
+| Node / TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web), Node | [INDEX](stream-connector/node/guide/INDEX.ko.md) |
 
 | 영역 | 문서 |
 |------|------|
-| 가이드 | [01 개요](stream-connector/cpp/guide/01-overview.ko.md) · [02 시작하기](stream-connector/cpp/guide/02-getting-started.ko.md) · [03 옵션](stream-connector/cpp/guide/03-connector-options.ko.md) · [04 송신](stream-connector/cpp/guide/04-sending.ko.md) · [05 수신](stream-connector/cpp/guide/05-receiving.ko.md) · [06 lifecycle](stream-connector/cpp/guide/06-lifecycle.ko.md) · [07 에러 처리](stream-connector/cpp/guide/07-error-handling.ko.md) · [08 e2e client](stream-connector/cpp/guide/08-e2e-client.ko.md) · [09 engine adapter](stream-connector/cpp/guide/09-engine-adapters.ko.md) · [10 packaging](stream-connector/cpp/guide/10-packaging.ko.md) · [11 성능](stream-connector/cpp/guide/11-performance.ko.md) |
-| core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
-| e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
+| C++ 가이드 | [01 개요](stream-connector/cpp/guide/01-overview.ko.md) · [02 시작하기](stream-connector/cpp/guide/02-getting-started.ko.md) · [03 옵션](stream-connector/cpp/guide/03-connector-options.ko.md) · [04 송신](stream-connector/cpp/guide/04-sending.ko.md) · [05 수신](stream-connector/cpp/guide/05-receiving.ko.md) · [06 lifecycle](stream-connector/cpp/guide/06-lifecycle.ko.md) · [07 에러 처리](stream-connector/cpp/guide/07-error-handling.ko.md) · [08 e2e client](stream-connector/cpp/guide/08-e2e-client.ko.md) · [09 engine adapter](stream-connector/cpp/guide/09-engine-adapters.ko.md) · [10 packaging](stream-connector/cpp/guide/10-packaging.ko.md) · [11 성능](stream-connector/cpp/guide/11-performance.ko.md) |
+| C++ core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
+| C++ e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
+| `.NET` 가이드 | [01 개요](stream-connector/dotnet/guide/01-overview.ko.md) · [02 Unity](stream-connector/dotnet/guide/02-unity.ko.md) · [03 Godot C#](stream-connector/dotnet/guide/03-godot-csharp.ko.md) |
+| Node 가이드 | [01 개요](stream-connector/node/guide/01-overview.ko.md) · [02 Node](stream-connector/node/guide/02-node.ko.md) |
 
-> `.NET`·`Java/Kotlin`·`Node.js`는 connector가 framework guide의 STREAM·streaming-client
-> 장에 thin client로 포함된다(별도 트리 없음).
+계약의 정본은 [Stream Connector 공통 스펙](framework/common/spec/stream-connector.ko.md)이며,
+언어별 public 표면은 `framework/common/spec/languages/<lang>/stream-connector.ko.md`가 소유한다.
+
+**Java/Kotlin은 별도 가이드 트리를 두지 않는다.** 대상이 JVM 애플리케이션 하나뿐이라 엔진별로
+갈라질 것이 없어, connector 사용법이
+[Java framework 가이드 07 — STREAM](framework/java/guide/07-stream.ko.md)에 thin client로 포함된다.
+
+> TypeScript browser entrypoint는 WebSocket transport를 제공한다. 비동기 flow 문맥의 남은 차이는
+> [implementation gap §4.10](framework/common/spec/implementation-gap.ko.md)에서 확인한다.
 
 ---
 

@@ -4,7 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$DOTNET_ROOT/../../.." && pwd)"
-SPEC_ROOT="$REPO_ROOT/framework/doc/framework/common/spec/languages/dotnet/public-contract"
+# 기계 판독용 계약 snapshot은 문서 트리가 아니라 .NET 코드 옆에 둔다.
+SPEC_ROOT="$DOTNET_ROOT/contract"
 SPEC_API_DIR="$SPEC_ROOT/api"
 SPEC_PACKAGE_DIR="$SPEC_ROOT/packages"
 VERSION="0.0.0-contract.$(date +%s).$$"

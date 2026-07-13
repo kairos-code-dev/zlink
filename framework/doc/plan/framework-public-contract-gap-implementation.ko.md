@@ -66,7 +66,7 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 | `.NET` | [handler-interfaces](../framework/common/spec/languages/dotnet/handler-interfaces.ko.md) | 같은 디렉터리의 ASP.NET Core, actor, channel, location, monitoring, Spot, stream, session dispatch, Spot node 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
 | Java | [handler-interfaces](../framework/common/spec/languages/java/handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
 | Kotlin | [handler-interfaces](../framework/common/spec/languages/kotlin/handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
-| Node.js | [handler-interfaces](../framework/common/spec/languages/node/handler-interfaces.ko.md) | 같은 디렉터리의 NestJS, actor, channel, monitoring, registry, Spot, stream, session dispatch, Spot node, Stream Connector 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
+| Node.js | [handler-interfaces](../framework/common/spec/languages/node/handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
 | C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/handler-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
 
 `stage-wrapper-on-spot.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
@@ -173,9 +173,9 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 순서 | 언어 | G0 | G1 | G2 | G3 | G4 | G5 | G6 | G7 | 상태 |
 |------|------|----|----|----|----|----|----|----|----|------|
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
-| 2 | Java | [x] | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | 진행 |
-| 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | 진행 |
-| 4 | Node.js | [x] | [x] | [x] | [x] | [ ] | [ ] | [x] | [ ] | G5 수정 및 반복 재검토 진행 |
+| 2 | Java | [x] | [x] | [x] | [ ] | [ ] | [x] | [ ] | [ ] | 차단 |
+| 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 차단 |
+| 4 | Node.js | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | browser flow와 G5 수정 및 반복 재검토 진행 |
 | 5 | C++ | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 
 현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
@@ -230,39 +230,39 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 |------|----------------|------------------|------|
 | `.NET` | `README.ko.md` | `DN-DOC-001` | [x] |
 | `.NET` | `handler-interfaces.ko.md` | `DN-DOC-002` | [x] |
-| `.NET` | `public-contract.ko.md` | `DN-016`, 고정 API/package snapshot | [x] |
-| `.NET` | `aspnet-core-actor.ko.md` | `DN-DOC-004` | [x] |
-| `.NET` | `aspnet-core-channel-messaging.ko.md` | `DN-DOC-005` | [x] |
-| `.NET` | `aspnet-core-location.ko.md` | `DN-DOC-006` | [x] |
-| `.NET` | `aspnet-core-monitoring.ko.md` | `DN-DOC-007` | [x] |
-| `.NET` | `aspnet-core-spot.ko.md` | `DN-DOC-008` | [x] |
-| `.NET` | `aspnet-core-stream.ko.md` | `DN-DOC-009` | [x] |
+| `.NET` | `handler-interfaces.ko.md` §17 | `DN-016`, 고정 API/package snapshot | [x] |
+| `.NET` | `handler-interfaces.ko.md` | `DN-DOC-004` | [x] |
+| `.NET` | `system-structure.ko.md` | `DN-DOC-005` | [x] |
+| `.NET` | `system-structure.ko.md` | `DN-DOC-006` | [x] |
+| `.NET` | `system-structure.ko.md` | `DN-DOC-007` | [x] |
+| `.NET` | `system-structure.ko.md` | `DN-DOC-008` | [x] |
+| `.NET` | `system-structure.ko.md` | `DN-DOC-009` | [x] |
 | `.NET` | `session-actor-dispatch.ko.md` | `DN-DOC-010` | [x] |
 | `.NET` | `spot-node.ko.md` | `DN-DOC-011` | [x] |
 | `.NET` | `stream-connector.ko.md` | `DN-DOC-012`, connector contract/package test | [x] |
 | `.NET` | `stage-wrapper-on-spot.ko.md` | interface spec이 아닌 상위 사용 모델 guide이며 G7 guide 검토에 연결 | 비적용 |
 | Java | `README.ko.md` | `JV-DOC-001` | [x] |
 | Java | `handler-interfaces.ko.md` | `JV-DOC-002` | [x] |
-| Java | `spring-boot-actor-session.ko.md` | `JV-DOC-003` | [x] |
-| Java | `spring-boot-channel-messaging.ko.md` | `JV-DOC-004` | [x] |
-| Java | `spring-boot-monitoring.ko.md` | `JV-DOC-005` | [x] |
-| Java | `spring-boot-registry.ko.md` | `JV-DOC-006` | [x] |
-| Java | `spring-boot-spot.ko.md` | `JV-DOC-007` | [x] |
-| Java | `spring-boot-stream.ko.md` | `JV-DOC-008` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-003` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-004` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-005` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-006` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-007` | [x] |
+| Java | `system-structure.ko.md` | `JV-DOC-008` | [x] |
 | Java | `stream-connector.ko.md` | `JV-DOC-009` | [x] |
 | Kotlin | `README.ko.md` | - | [ ] |
 | Kotlin | `handler-interfaces.ko.md` | - | [ ] |
 | Node.js | `README.ko.md` | `ND-DOC-001` | [x] |
 | Node.js | `handler-interfaces.ko.md` | `ND-DOC-002` | [x] |
-| Node.js | `nestjs-actor.ko.md` | `ND-DOC-003` | [x] |
-| Node.js | `nestjs-channel-messaging.ko.md` | `ND-DOC-004` | [x] |
-| Node.js | `nestjs-monitoring.ko.md` | `ND-DOC-005` | [x] |
-| Node.js | `nestjs-overview.ko.md` | `ND-DOC-006` | [x] |
-| Node.js | `nestjs-registry.ko.md` | `ND-DOC-007` | [x] |
-| Node.js | `nestjs-spot.ko.md` | `ND-DOC-008` | [x] |
-| Node.js | `nestjs-stream.ko.md` | `ND-DOC-009` | [x] |
-| Node.js | `session-actor-dispatch.ko.md` | `ND-DOC-010` | [x] |
-| Node.js | `spot-node.ko.md` | `ND-DOC-011` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-003` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-004` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-005` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-006` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-007` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-008` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-009` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-010` | [x] |
+| Node.js | `handler-interfaces.ko.md` | `ND-DOC-011` | [x] |
 | Node.js | `stream-connector.ko.md` | `ND-DOC-012` | [x] |
 | C++ | `README.ko.md` | `CPP-DOC-001` | [x] |
 | C++ | `cpp-framework-interfaces.ko.md` | `CPP-DOC-002` | [x] |
@@ -283,7 +283,7 @@ rg --files framework/doc/framework/common/spec -g '*.ko.md' \
 |------|------------|-----------|---------|
 | `.NET` | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide; G0 hash와 G7 정합성 리뷰에서 정식 interface와 충돌 없음 확인 | [x] |
 | Java | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
-| Node.js | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
+| Node.js | 공통 `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [x] |
 | C++ | `stage-wrapper-on-spot.ko.md` | 상위 모델 guide | [ ] |
 
 Kotlin 행은 Kotlin 전용 계약만 나타낸다. Java 계약의 각 행에는 Kotlin 적용 여부와 Kotlin
@@ -716,7 +716,7 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 | `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `.NET` 구현 로그 |
 | Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` |
 | Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | `ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` |
-| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 완료 | Node.js 구현 로그와 `npm run verify:samples` |
+| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [x] | [x] | 재검토 중 | client 종료 직후 disconnect 관측 시점 gap 수정과 runner 재검증 필요 |
 | C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
 
 Bingo는 기존 게임 smoke 성공만으로 완료하지 않는다. G5에서 각 언어 샘플이 별도 flow id 설정 없이
@@ -942,9 +942,9 @@ ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
 - [x] G2 runtime/unit test
-- [x] G3 전체 Gradle test source set green
+- [ ] G3 전체 Gradle test source set green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 Java 공통 sample spec 6종 대조와 sample 전체 PASS
+- [x] G5 Java 공통 sample spec 6종 대조와 sample 전체 PASS
 - [ ] G6 Java E2E 전체 PASS
 - [ ] G6 `.NET`↔Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
@@ -956,6 +956,13 @@ Java `AutomaticTurnDispatch`는
 연속 실패해 G6를 닫지 않는다. 원인과 core 회귀 요구 사항은
 [`core ROUTER callback dispatch 재연결 handover 버그`](../../../doc/internals/core-router-callback-dispatch-reconnect-handover-bug.ko.md)에
 기록했다. framework나 E2E에서 재시도 횟수, 대기 시간 또는 서버 구동 순서로 우회하지 않는다.
+
+2026-07-13 전체 G3 재실행에서도 같은 결함이
+`ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds`의 client-first 기동 조합에서
+재현됐다. source/target runtime이 모두 시작된 뒤에도 route가 학습되지 않아 첫 request가
+`INTERNAL_ERROR, errno=2`로 실패했다. lifecycle fake backend 전체와 Kotlin 전용
+unit/contract/integration은 통과했지만, Java G3는 전체 integration에 실패가 남아 있으므로 완료로
+표시하지 않는다.
 
 ## 11. Kotlin 실행 계획
 
@@ -1000,7 +1007,7 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 - [x] G2 coroutine/runtime unit test
 - [x] G3 Kotlin Gradle test green
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS`
-- [ ] G5 Kotlin 공통 sample spec 6종 대조와 sample 전체 PASS
+- [x] G5 Kotlin 공통 sample spec 6종 대조와 sample 전체 PASS
 - [ ] G6 Kotlin E2E 전체 PASS
 - [ ] G6 Kotlin↔`.NET`/Java cross-language matrix PASS/승인된 비적용
 - [ ] G7 gap/doc/package 최종 리뷰
@@ -1039,6 +1046,11 @@ Kotlin ATD-E3와 ObservabilityOps OBS-C2/C3도 같은 core handover 결함으로
 - [x] 자동 flow id, `AsyncLocalStorage` 전파·정리와 `0xF2` marker codec 교체
 - [x] `ZLinkDrainControl` 결과, NestJS shutdown 종료 순서와 typed `Draining` field 구현
 - [x] `session-closing` 제어 프레임과 connector `closeReason` 구현
+- [x] native stream disconnect routing id를 Node monitor와 다중 session 정리에 전달
+- [x] Stream Connector reply name, Error JSON object와 metadata 1024바이트 계약 구현
+- [x] Stream Connector browser entrypoint와 네이티브 WebSocket transport 구현
+- [ ] browser handler의 async continuation flow 보존과 관련 없는 callback 격리
+  (`MFLOW-EXT-014`; 브라우저 표준 async-context 수단 또는 별도 public 계약 결정 필요)
 - [x] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
 - [x] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 - [ ] 공통 sample spec 6종과 Node.js sample 6종의 역할·메시지·상태·codec·self-check
@@ -1068,12 +1080,12 @@ npm run verify:release
 
 - [x] G0 inventory/실패 테스트
 - [x] G1 interface/export
-- [x] G2 runtime/unit test
-- [x] G3 build/typecheck/lint/test/coverage green
+- [ ] G2 runtime/unit test — Node runtime은 검증했으나 browser handler의 `MFLOW-EXT-014`가 남아 있다.
+- [ ] G3 build/typecheck/lint/test/coverage green — G2와 sample 수정이 끝난 뒤 전체 명령을 다시 실행한다.
 - [ ] G4 Codex DDD/POSD loop `NO DDD/POSD FINDINGS` — 구현 agent 검토와 수정 완료, 별도 read-only reviewer 대기
 - [ ] G5 sample 전체 PASS — 공통 sample 스펙과 다시 대조하여 발견한 불일치를 수정하고 반복 재검토 중
-- [x] G6 E2E와 cross-language 전체 PASS
-- [x] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS; Java/Kotlin은 아직 G7 이전이므로 Node.js 단계 분모에서 제외
+- [ ] G6 E2E와 cross-language 전체 PASS — production runtime 수정 뒤 전체 분모를 다시 실행한다.
+- [ ] G6 Node.js와 이미 G7을 통과한 `.NET`의 양방향 matrix PASS — runtime 수정 뒤 양방향 matrix를 다시 실행한다.
 - [ ] G7 gap/doc/package 최종 리뷰 — 문서와 package 정렬 완료, 별도 read-only 최종 리뷰 대기
 
 ## 13. C++ 실행 계획

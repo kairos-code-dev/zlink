@@ -2,7 +2,7 @@
 [문서 목록](../../../README.ko.md) | [다음: Runtime Execution](runtime-execution.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[.NET 묶음](../README.ko.md) | [Backend Policy](backend-dependency-policy.ko.md) | [공개 lifecycle 계약](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
+[.NET 묶음](../README.ko.md) | [Backend Policy](backend-dependency-policy.ko.md) | [공개 lifecycle 계약](../../common/spec/languages/dotnet/system-structure.ko.md)
 
 # ZLink Framework .NET Runtime Lifecycle
 

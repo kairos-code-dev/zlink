@@ -4,9 +4,9 @@
 
 # 9. STREAM — 외부 client 받기
 
-> 서버 측 정식 계약은 [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md),
+> 서버 측 정식 계약은 [spec/aspnet-core-stream](../../common/spec/languages/dotnet/system-structure.ko.md),
 > client connector는 [Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)과
-> [Unity 가이드](../../../../../core/doc/guide/unity-stream-connector.ko.md)가 다룬다.
+> [Unity 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md)가 다룬다.
 >
 > 🔰 STREAM·session·connector 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)
 > 한 줄 풀이를 먼저 본다.
@@ -118,7 +118,7 @@ public sealed class ClientHeaderSession(
 ### lifecycle과 실행 보장
 
 - 콜백은 socket monitor 이벤트에 매핑된다: `OnConnectedAsync` ← connection ready,
-  `OnDisconnectedAsync` ← disconnected. session에 귀속되는 transport 오류는
+  `OnDisconnectedAsync` ← disconnected. session에서 나는 transport 오류는
   `OnErrorAsync`가 먼저, 연결 종료 확정 후 `OnDisconnectedAsync`가 따른다.
 - handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
   runtime monitoring 으로만 간다([11-monitoring](11-monitoring.ko.md)).
@@ -323,7 +323,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 [framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
 코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
-[Unity Stream Connector 가이드](../../../../../core/doc/guide/unity-stream-connector.ko.md).
+[Unity Stream Connector 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md).
 
 ## 3. 오류 코드와 결과
 
@@ -356,7 +356,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 ## 5. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [13-interface-catalog](13-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
-- 서버 정식 계약: [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md)
+- 서버 정식 계약: [spec/aspnet-core-stream](../../common/spec/languages/dotnet/system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - client 계약: [Stream Connector](../../common/spec/languages/dotnet/stream-connector.ko.md)
 

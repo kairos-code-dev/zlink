@@ -9,9 +9,9 @@ ASP.NET Core, actor, stream, location과 monitoring 문서에서 설명한다.
 [Stream Connector 공개 계약](stream-connector.ko.md)은 별도 client package의 lifecycle, dispatch,
 codec, transport와 종료 의미를 고정한다.
 
-[`public-contract.ko.md`](public-contract.ko.md)는 사람이 읽는 계약 문서와 실제 assembly·NuGet
-산출물 사이의 exact 검증 절차를 정의한다. `public-contract/api/`는 모든 public type과 member의
-기계 판독 가능한 정식 서명 부속 명세이고, `public-contract/packages/`는 package archive와
+[`handler-interfaces.ko.md` §17](handler-interfaces.ko.md)는 사람이 읽는 계약 문서와 실제 assembly·NuGet
+산출물 사이의 exact 검증 절차를 정의한다. `framework/languages/dotnet/contract/api/`는 모든 public type과 member의
+기계 판독 가능한 정식 서명 부속 명세이고, `framework/languages/dotnet/contract/packages/`는 package archive와
 metadata의 정식 부속 명세다. 구현에서 자동으로 최신 상태를 받아들이는 파일이 아니며, 공개 계약
 리뷰를 마친 변경에서만 함께 갱신한다.
 

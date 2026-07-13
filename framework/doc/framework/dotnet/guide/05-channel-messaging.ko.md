@@ -4,7 +4,7 @@
 
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)와
+> 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/system-structure.ko.md)와
 > [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
@@ -639,6 +639,17 @@ options.Codecs.Use(ZLinkMessagePackCodec.Default);
 payload는 codec이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
+> **샘플에서 보기 — 언제 codec을 명시하나.**
+> [Bingo](../../common/sample/bingo/README.ko.md)만 `Codecs.Use(ZLinkProtobufCodec.Default)`를
+> 등록하고 `.proto`로 DTO를 정의한다 — 실시간 게임이라 packet 크기와 인코딩 비용을
+> 줄이려는 선택이다. 나머지 샘플
+> ([TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
+> [SupportChat](../../common/sample/supportchat/README.ko.md) ·
+> [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) ·
+> [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) ·
+> [GameQuest](../../common/sample/event/gamequest.ko.md))는 **codec을 아예 등록하지 않고** 기본값을
+> 쓴다. 즉 명시 등록은 필요할 때만 하는 선택이고, 기본값으로 시작해도 된다.
+
 기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer`를 구현해
 content type으로 등록한다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만
 맡고, packet name 결정·codec 선택은 framework가 그대로 처리한다. custom serializer는
@@ -679,6 +690,12 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 처리량을 늘리려면 같은 client-server channel 이름으로 provider를 여러 개 실행하고,
 호출 노드는 location store 자동 연결 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint를 붙인다.
 호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)`를 사용한다.
+
+> **샘플에서 보기 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md).** `CommerceApi`
+> 2개와 `OrderWorkflow` 2개를 동시에 띄워 이 절의 확장을 실제로 검증한다. 호출자
+> (`CommerceApi`)는 provider가 몇 개인지 모르고 channel 이름으로만 부르며, 어느
+> `CommerceApi` instance가 요청을 받아도 같은 `OrderId`는 항상 같은 owner spot으로
+> 도착한다. 두 instance 중 어디서 조회해도 같은 결과가 나오는지가 self-check 항목이다.
 
 ```csharp
 // 처리 노드 A
@@ -884,7 +901,7 @@ public sealed class UserCacheRefreshedEventHandler
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [13-interface-catalog](13-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
-- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
+- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - 다음 축: [06-spot](06-spot.ko.md)
 

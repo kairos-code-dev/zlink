@@ -10,14 +10,14 @@
 > 어디에 연결돼 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
 >
-> [01-overview §2](01-overview.ko.md)의 두 상황(실시간 게임 서버, 웹 서비스에
-> 실시간 기능 추가)이 "왜 필요한가"였다면, 이 챕터는 그 판단을 기술 선택
-> 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
+> [01-overview §2](01-overview.ko.md)의 세 상황(실시간 게임 서버, 웹 서비스에
+> 실시간 기능 추가, 이벤트 중심 업무 처리 단순화)이 "왜 필요한가"였다면, 이 챕터는
+> 그 판단을 기술 선택 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
 > sample이, 기능별 사용법은 05~12 챕터가 다룬다.
 
 ## 1. 한눈에 보는 사용처
 
-먼저 경계를 잡는다. **모노리스나 모듈러 모노리스로 충분하면 ZLink를 먼저 넣지
+먼저 경계를 잡는다. **모노리스나 모듈러 모노리스로 충분하면 ZLink를 먼저 적용하지
 않는다.** 같은 프로세스 안의 모듈 호출은 함수 호출이면 되고, 서버 간 transport가
 필요 없다. ZLink는 여러 프로세스/서버로 나뉘어야 하는 이유가 생겼을 때, 그 사이의
 통신·연결·라우팅·상태 dispatch 복잡도를 줄이는 도구다.
@@ -34,8 +34,8 @@
 
 ## 2. 무엇을 덜 고민하게 되나 — 개발 모델
 
-ZLink의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 덜 고민한다"** 에 있다.
-어플리케이션은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework가 가져간다.
+ZLink의 체감 장점은 인프라 구성 요소가 사라지는 데 있지 않고, **"개발자가 덜 고민한다"** 에 있다.
+어플리케이션은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework가 처리한다.
 
 - **channel name만 알고 호출한다** — 대상 host/port/stub를 모른다.
 - **service location과 peer 분배**는 location store 기반 자동 연결이 맡는다([10-location](10-location.ko.md)).
@@ -46,7 +46,7 @@ ZLink의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 
 - **handler/filter/DI 모델**이 `ASP.NET Core` 방식과 맞아 익숙하게 쓴다.
 
 > ZLink는 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
-> correlation·dispatch 직렬성을 framework가 가져가므로, 어플리케이션 코드가 transport
+> correlation·dispatch 직렬성을 framework가 처리하므로, 어플리케이션 코드가 transport
 > 설정이 아니라 **업무 흐름처럼** 보인다.
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
@@ -116,9 +116,9 @@ channel/spot 계약으로 메시징할 수 있다.
 §1의 "내부 `.NET` 서비스끼리 자주 호출" 이 왜 ZLink 후보인지, gRPC 스택과 비교해
 근거를 본다.
 
-### 6.1 gRPC는 혼자 끝나지 않는다
+### 6.1 gRPC만으로는 충분하지 않다
 
-gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로덕션급"** 으로 만들려면
+gRPC 자체의 성능은 우수하다. 문제는 이런 류의 서비스를 **"프로덕션급"** 으로 만들려면
 공식 베스트프랙티스가 곧바로 추가 인프라를 요구한다는 점이다.
 
 - **channel/stub 재사용 강제.** "Always re-use stubs and channels when possible" —
@@ -133,11 +133,11 @@ gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로�
   - 그런데 gRPC는 **HTTP/2** 위에서 **연결 하나를 오래 열어 둔 채(long-lived
     connection)** 그 연결에 여러 요청을 겹쳐 실어 보낸다. 이렇게 한 연결로 여러 호출을
     동시에 실어 나르는 것을 **multiplex(다중화)** 라고 한다.
-  - 그래서 L4 로드밸런서 눈에는 **연결이 1개뿐**이라, 그 연결이 처음 붙은 **서버 한
-    대로 모든 요청이 쏠린다**(나머지 서버는 거의 논다).
+  - 그래서 L4 로드밸런서 입장에서는 **연결이 1개**로만 보이므로, 그 연결이 처음 붙은
+    **서버 한 대로 모든 요청이 몰린다**(나머지 서버는 거의 유휴 상태로 남는다).
   - 고르게 나누려면 연결이 아니라 **요청(request) 하나하나를 보고 분배**해야 한다.
     이렇게 애플리케이션 7계층에서 요청 단위로 나누는 것을 **L7 분배**라고 한다.
-  - 그래서 보통 아래 중 하나를 추가로 끌어온다.
+  - 그래서 보통 아래 중 하나를 추가로 도입한다.
     - **client-side LB**: 클라이언트가 서버 목록을 보관하고 직접 번갈아 호출하는 방식.
     - **headless service**(Kubernetes): 서비스를 단일 가상 IP 하나가 아니라 **뒤에
       있는 각 파드의 IP 목록**으로 노출해, 클라이언트가 직접 골고루 분배하게 하는
@@ -262,7 +262,85 @@ sequenceDiagram
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [11-monitoring](11-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
-## 7. 더 보기
+## 7. 참고 — 분산 actor 프레임워크(Orleans/Akka)와의 비교
+
+[01-overview §2](01-overview.ko.md)의 ④ stateful actor 패턴에 실제로 쓰이는 대표
+프레임워크가 Microsoft Orleans와 Akka다. ZLink의 SPOT/actor는 같은 프리미티브
+(mailbox 직렬화 + 위치 투명)를 제공하므로, 이 워크로드에서 후보가 겹친다.
+
+### 7.1 Orleans/Akka만으로도 충분하지 않다
+
+Orleans·Akka는 **actor 프리미티브 하나에** 깊이 집중한다. 그런데 이 가이드가 다루는
+"실시간 상태 서버 하나"를 만들려면 actor 밖의 것들을 여전히 따로 조립해야 한다.
+
+- **외부 client 연결이 없다.** 둘 다 client가 직접 grain/actor를 호출하는 프로토콜을
+  내장하지 않는다. 웹 client는 보통 SignalR이나 별도 WebSocket 서버를 앞에 두고,
+  그 서버가 actor를 호출하는 구조로 조립한다.
+- **폴리글랏이 아니다.** Orleans는 `.NET` 전용, Akka는 JVM 전용이다(Akka.NET은 별도
+  포트 구현). C++ room 서버와 `.NET` API 서버를 같은 계약으로 묶는 조합은 설계
+  범위 밖이다.
+- **서비스 간 메시징은 actor 호출과 별개다.** grain-to-grain 호출은 있지만, channel
+  이름 기반 요청/응답이나 fanout 같은 일반 서비스 메시징 표면은 없다 — 필요하면
+  gRPC나 메시지 브로커를 별도로 추가한다.
+
+### 7.2 배치 구조 비교
+
+```text
+[Orleans/Akka] actor cluster + 앞단 조립
+
+  +------------------+     +------------------+
+  | ASP.NET Core /    |     | SignalR /        |
+  | Spring 앞단       +---->| WebSocket 서버   |  (client 연결 전용, 별도 조립)
+  +--------+---------+     +------------------+
+           |
+  +--------v---------+
+  | Orleans/Akka      |
+  | actor cluster     |
+  | (storage provider |
+  |  로 persistence)  |
+  +-------------------+
+```
+
+```text
+[ZLink] 통합 스택
+
+  +-----------------------------------------------+
+  | ASP.NET Core / Spring / NestJS + ZLink         |
+  |  STREAM(client 연결) · SPOT/actor(상태)         |
+  |  · channel(서비스 간 메시징) · location store   |
+  +-----------------------------------------------+
+```
+
+client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에서 하나로 내려온다.
+다만 이 그림이 감추지 않는 것도 있다 — Orleans/Akka가 미리 만들어 둔 배터리
+(persistence 커넥터·reminder 스케줄러)까지 하나로 내려오는 건 아니다. 아래 표에서
+어디까지가 원시 기능 차이고 어디부터가 배터리 차이인지 나눠서 본다.
+
+### 7.3 기능 비교 — 유리한 것과 불리한 것을 같이 본다
+
+| 항목 | Orleans / Akka | ZLink |
+|------|----------------|-------|
+| actor 프리미티브(mailbox 직렬화 + 위치 투명) | ✅ | ✅ (SPOT/actor) |
+| 외부 client 연결 내장 | ❌ SignalR/WS 별도 조립 | ✅ STREAM |
+| 폴리글랏 | ❌ 단일 언어(.NET 또는 JVM) | ✅ |
+| 서비스 간 typed 메시징 + 토폴로지 선언 | ❌ 별도 조립(gRPC 등) | ✅ channel + location store |
+| actor 상태 persistence | ✅ 성숙한 provider 생태계(다수 storage backend를 미리 만들어 둠) | 프레임워크는 `OnCreateAsync`/`OnClosingAsync` 같은 lifecycle 훅을 이미 제공한다. **어느 DB에 어떻게 저장할지는 배터리가 아니라 앱 로직**이다 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md)이 그 예다. 훅이 아니라 미리 만들어진 커넥터 모음이 없다는 뜻이다 |
+| 살아있는 spot의 timer 재개(주기 tick·하트비트) | ✅ | ✅ — `OnInitializeAsync`가 생성 때마다 다시 실행돼 `AddTimer`도 다시 등록된다. 재구성 트리거는 `GetOrCreateAsync`(§4). 특별한 장치가 필요 없다 |
+| dormant actor를 예정 시각에 깨움(reminder) | ✅ 클러스터 세이프 등록이 API 한 콜(Orleans Reminder) | wake 원시 기능은 이미 있다 — `GetOrCreateAsync`가 "없으면 만들고 있으면 그대로 쓴다"는 그 동작이다. **예정 시각 스케줄링과 클러스터 중복 방지는 actor 모델과 무관한 일반 분산 job 문제**라, Quartz.NET Clustered·Hangfire·DB `SKIP LOCKED` 같은 기존 도구를 앱이 추가로 사용한다. 매치메이킹 규칙과 같은 카테고리 — 프레임워크가 막고 있는 게 아니라 배터리가 없을 뿐이다 |
+| 분산 트랜잭션 | Orleans 실험적 지원 | ❌ 없음(saga는 앱이 구성) — 이는 실제 프로토콜 난이도의 문제라 기존 primitive로 우회할 수 없다 |
+| 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | MPL-2.0 |
+| 실전 검증 기간 | 10년 이상(Halo, Microsoft 365, Skype) | 짧음 — 이 프로젝트 자체가 진행 중 |
+
+**결론.** "실시간 상태 서버 하나를 조립 없이 만든다"는 이 가이드의 워크로드에는
+ZLink가 대체 후보다. persistence·timer·reminder는 프레임워크가 막고 있는 게
+아니라 **미리 만들어진 커넥터·도구 모음(배터리)이 아직 없을 뿐**이고, 필요한
+원시 기능(lifecycle 훅, `GetOrCreateAsync`)은 이미 있다 — 기존 표준 도구를
+추가로 사용하면 된다. 실제로 좁은 의미의 격차는 **분산 트랜잭션**과, 이미 Orleans/Akka
+위에 큰 시스템을 올린 조직의 전환 비용 정도다. 신생 프로젝트가 10년 된
+생태계의 배터리를 아직 못 따라가는 것은 당연한 현재 상태이지, 두 접근의 우열
+판단이 아니다.
+
+## 8. 더 보기
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../common/sample/README.ko.md)
 - `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
@@ -276,6 +354,8 @@ sequenceDiagram
 - gRPC Load Balancing on Kubernetes without Tears — https://kubernetes.io/blog/2018/11/07/grpc-load-balancing-on-kubernetes-without-tears/
 - System Design Study: Netflix's adoption of Service Mesh — https://vivekbansal.substack.com/p/system-design-study-netflixs-adoption
 - Scaling Microservices: Lessons from Netflix, Uber, Amazon, and Spotify — https://www.netguru.com/blog/scaling-microservices
+- Orleans overview (Microsoft Learn) — https://learn.microsoft.com/en-us/dotnet/orleans/overview
+- Akka License Change의 영향 (Coralogix) — https://coralogix.com/blog/akka-license-change/
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

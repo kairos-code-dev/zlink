@@ -6,7 +6,7 @@
 
 > 정식 계약은 공통 스펙 [런타임 메트릭](../../common/spec/runtime-metrics.ko.md)과
 > [Graceful Drain & Handoff](../../common/spec/graceful-drain-handoff.ko.md)가 다룬다.
-> `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md)다.
+> `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../common/spec/languages/dotnet/system-structure.ko.md)다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
 ## 0. 무엇을 해주는가

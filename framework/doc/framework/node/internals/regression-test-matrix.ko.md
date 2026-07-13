@@ -38,7 +38,7 @@ dotnet 테스트 프로젝트는 다음 세 묶음이다. Node 테스트 패키�
 | 계층 | 목적 | 예시 |
 |------|------|------|
 | `unit` | registration validation, dispatch lookup, option parsing | 중복 등록, module options validation |
-| `integration-single-process` | 같은 호스트(Node process) 안에서 runtime 조합이 정상 동작하는지 확인 | channel request/send, embedded registry, monitoring attach |
+| `integration-single-process` | 같은 호스트(Node process) 안에서 runtime 조합이 정상 동작하는지 확인 | channel request/send, location runtime, monitoring attach |
 | `integration-multi-process` | 실제 topology[^topology]와 reconnect 동작 확인 | 원격 registry query, discovery 변화, spot peer 변화 |
 
 ## 3. 최소 CI 매트릭스
@@ -78,7 +78,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| binding public API parity | `unit` | channel, Spot, stream, registry, monitoring, session relay와 bound session이 binding public API만으로 동작한다 |
+| binding public API parity | `unit` | channel, Spot, stream, monitoring, session relay와 bound session이 binding public API만으로 동작한다 |
 | framework public-api-only import guard | `unit` | framework runtime/adapter package가 binding internal path, native addon symbol, generated private helper를 import하지 않는다 |
 | session relay public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 동작한다(별도 attach 없음) |
 | bound session public API smoke | `integration-single-process` | bound session send/disconnect가 binding public API만으로 동작한다 |
@@ -266,17 +266,14 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | handler `Promise<T>` 결과 await | `unit` | handler invoker가 generic `Promise<T>`를 실제 결과 값으로 변환하고, 값 타입 변환 오류를 내지 않는다 |
 | abstract wire payload validation | `unit` | converter 없는 abstract/interface payload가 node 경계 DTO에 포함되면 등록 시점 또는 첫 submit 직전에 configuration 오류로 실패한다 |
 
-## 7. Registry / Monitoring Regression 항목
+## 7. Location / Monitoring Regression 항목
 
-> dotnet `ContractTests/Registry`, `ContractTests/Eventing`,
-> `E2ETests/Registry`, `E2ETests/Monitoring` 미러. embedded registry 시동 순서,
+공통 location runtime과 monitoring 계약을 Node 공개 표면으로 검증한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| embedded registry 시작 순서 | `integration-single-process` | framework discovery가 registry bind 이후에 시작된다 |
-| 원격 query client | `integration-multi-process` | topology snapshot 조회가 성공한다 |
 | monitoring source 이름 불일치 | `unit` | startup validation 예외 |
-| registry polling diff | `integration-multi-process` | topology, status, service summary event가 발생한다 |
+| location runtime polling diff | `integration-multi-process` | topology, status, service summary event가 발생한다 |
 | spot polling diff | `integration-multi-process` | status, peers, subjects event가 발생한다 |
 
 ## 8. Release Gate
@@ -323,14 +320,13 @@ backend gate 와 별도로 유지한다.
 | Node stream connector -> dotnet stream server | `integration-multi-process` | header session request/reply와 notification dispatch가 동작한다 |
 | dotnet connector -> Node stream server | `integration-multi-process` | dotnet connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
 
-## 8.2 Spot yield dispatch regression
+## 8.2 Spot 비동기 직렬 실행 regression
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `entry-spot-serial-dispatch.test.js` yield 항목 | request와 `runWorker`의 `yield(...)`이 captured turn을 반납하고 completion 뒤 원래 실행 줄에서 재개된다. |
-| `contract-surface.test.js` actor/bound session declaration 항목 | actor `joinSpot`/`joinEntrySpot` call object와 bound session send call object가 `yield(...)`를 public contract로 제공한다. |
-| `channel-client.test.js` route request 항목 | route request에는 `yield(...)` surface가 노출되지 않는다. |
-| `npm run build --prefix framework/languages/node/samples/Bingo.Ts` | Bingo.Ts Entry Spot sample이 `joinSpot(...).yield(...)`으로 compile된다. |
+| `entry-spot-serial-dispatch.test.js` 직렬 실행 항목 | Promise handler가 완료될 때까지 같은 actor 또는 Spot 실행 경계의 다음 작업이 시작되지 않는다. |
+| `contract-surface.test.js` call declaration 항목 | actor, bound session과 route call object가 제거된 `yield(...)`를 public contract로 제공하지 않는다. |
+| `npm run build --prefix framework/languages/node/samples/Bingo.Ts` | Bingo.Ts가 공개 `yield(...)` 없이 `submit(...)`과 Promise 완료 계약으로 compile된다. |
 
 ## 9. 문서별 회귀 테스트 단락
 
@@ -352,24 +348,15 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 > 현재 node 묶음은 구현 기준 문서(`spec/`, `internals/`, root plan, sample plan)만
 > strict 집합으로 둔다.
 
-대상 문서는 현재 `framework/doc/framework/node` 아래에 실제 존재하는 구현용 문서다.
-dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한다.
+대상은 현재 실제로 존재하는 Node 공개 계약과 구현 기준 문서다.
 
-- `README.ko.md`
-- `nestjs-actor.ko.md` (dotnet `actor-gateway-session-relay.ko.md` /
-  `aspnet-core-actor.ko.md` 대응)
-- `handler-interfaces.ko.md`
-- `nestjs-channel-messaging.ko.md` (dotnet `aspnet-core-channel-messaging.ko.md`)
-- `nestjs-spot.ko.md` (dotnet `aspnet-core-spot.ko.md`)
-- `stage-wrapper-on-spot.ko.md`
-- `nestjs-stream.ko.md` (dotnet `aspnet-core-stream.ko.md`)
-- `session-actor-dispatch.ko.md`
-- `spot-node.ko.md`
-- `nestjs-monitoring.ko.md` (dotnet `aspnet-core-monitoring.ko.md`)
-- `nestjs-registry.ko.md` (dotnet `aspnet-core-registry.ko.md`)
-- `regression-test-matrix.ko.md`
-- `runtime-lifecycle.ko.md`
-- `backend-dependency-policy.ko.md`
+- `framework/common/spec/languages/node/README.ko.md`
+- `framework/common/spec/languages/node/handler-interfaces.ko.md`
+- `framework/common/spec/languages/node/stream-connector.ko.md`
+- `framework/node/README.ko.md`
+- `framework/node/internals/regression-test-matrix.ko.md`
+- `framework/node/internals/runtime-lifecycle.ko.md`
+- `framework/node/internals/backend-dependency-policy.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^regression]: regression(회귀) 은 이전 버전에서 잘 동작하던 기능이 새 변경 때문에 다시 깨지는 현상을 가리킨다. regression test 는 그런 일을 막기 위해 항상 돌리는 테스트 묶음이다.
@@ -388,3 +375,163 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
+
+## 공개 계약 문서에서 이관한 회귀 항목
+
+언어별 spec을 3문서(시스템 구조 · 인터페이스 · connector)로 압축하면서, 삭제한 기능별 계약
+문서가 소유하던 회귀 항목을 이 절로 옮겼다. 계약의 의미는 공통 스펙이 소유한다.
+
+### Channel
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `Channels.forRoot_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
+| `Channels.forRoot_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
+| `ClientServer.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
+| `ClientServer.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
+| `FiltersAndHttp.HttpHandler_Uses_SameContainer_ToResolve_ZLinkChannelClient` | HTTP controller가 같은 DI container에서 `ZLinkChannelClient`를 받아 호출한다. |
+| `channel runtime drains backpressured requests from send-ready callback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
+
+### SPOT
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `forRoot throws when spot factory class is duplicated across nodes` | 같은 Spot factory 클래스를 중복 등록하면 startup validation 예외가 난다. |
+| `forRoot allows standalone local spot node` | Discovery 없이도 local-only SpotNode 구성은 시작할 수 있다. |
+| `spotManager create/find/list/close work through framework runtime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관된다. |
+| `spot publish/timer and close stop callbacks work` | timer 와 publish callback 이 spot lifecycle 안에서 돌고, 종료 뒤에는 멈춘다. |
+| `spot timer provides tick metadata` | timer handler 가 callback 번호, 예정/시작 시각, 지연, skip metadata 를 받는다. |
+| `spot timer skips late ticks when configured` | `SkipLateTicks` 정책은 늦은 tick 을 무제한 전달하지 않고 `skippedTicks` 로 드러낸다. |
+| `spot timer catches up within configured limit` | `CatchUpBounded` 정책은 `maxCatchUpTicks` 상한 안에서만 연속 실행한다. |
+| `spot timer delayNextTick waits after handler completion` | `DelayNextTick` 정책은 handler 완료 뒤 period 를 다시 기다린다. |
+| `spot timer rejects unknown overrun policy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
+| `spot timer reports handler exception to monitoring` | handler 예외가 runtime monitoring 의 timer failure event 로 기록된다. |
+| `spot timer stopOnUnhandledException stops timer` | `stopOnUnhandledException` 이 켜진 timer 는 첫 handler 예외 뒤 중단된다. |
+| `spot timer cancel stops managed timer loop` | `cancel()` 뒤 managed timer loop 가 추가 callback 을 실행하지 않는다. |
+| `outbound-only spot publisher client publishes to target channel` | 외부 publisher client 가 target SPOT channel 로 publish 한다. |
+| `spot actor join/move/submit run through spot execution context` | actor join, 이동, packet dispatch 가 현재 spot 실행 문맥에서 실행된다. |
+| `entry spot actor packets use actor mailboxes without entry-wide serial dispatch` | Entry Spot actor packet 은 대상 actor mailbox 를 사용하고, 서로 다른 actor 는 Entry Spot 전체 실행 줄 때문에 서로 기다리지 않는다. |
+| `entrySpot packet handlers use entrySpot serialization` | Entry Spot 일반 packet handler 가 user Spot 처럼 Spot 단위 직렬 실행 줄을 사용한다. |
+| `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
+| `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
+
+### Actor
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| --- | --- |
+| `actorFactoryNameIsDuplicated` | actor factory 이름(actorType)이 중복되면 startup validation에서 예외로 막는다. |
+| `entrySpotAndUserSpotActorPacketRegistriesDispatch` | Entry Spot과 user Spot에 등록한 actor packet handler와 disconnected handler가 정상적으로 dispatch된다. |
+| `entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap` | Entry Spot callback 이 backend task 문맥과 무관하게 Entry Spot 실행 줄에서 순서대로 실행된다. |
+| `entry spot does not start the next callback before the previous handler promise settles` | Entry Spot handler Promise 가 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
+| `spotActorJoinMoveAndSubmitRunThroughSpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
+| `sessionActorDispatchRelaysStreamRequestAndRoutesBySequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
+| `localSessionActorDispatchRepliesFromRequestHandler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
+| `spotActorRegistryDoesNotResolveRequestToSendHandler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `publicSurfaceRemovesActorReplyAndStreamClientContracts` | actor context reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |
+
+### STREAM
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `nodesAndServices.throwsWhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
+| `ZLinkModule.forRoot maps stream node options into runtime registration` | Node builder 표면에서도 같은 stream node 에 session 을 두 번 등록하면 startup validation 예외가 발생한다. |
+| `protocol.streamSessionRuntimeOnlyExposesEnqueueCallbackEntrypoints` | transport 진입점은 public enqueue API만 노출한다. |
+| `stream session node runtime does not invoke user callbacks inside transport callback` | transport callback 은 user `onDispatch(...)` 를 같은 호출 스택에서 직접 실행하지 않고 managed queue 로 넘긴다. |
+| `headerStreamSession.receivesRepliesAndTracksLifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
+| `headerStreamSession.canCloseCurrentClientStream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+| `stream session and bound session require packetName for structural payloads` | 구조적 payload 는 stream session send 와 bound session send 양쪽에서 명시 packet name 없이 전송되지 않는다. |
+
+### Monitoring
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistryAndMonitoring.throws_whenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외로 이어진다. |
+| `Events.registryMonitoring_emits_statusChanged_forEmbeddedRegistry` | embedded Registry 의 상태 변경 event 가 발생한다. |
+| `Events.registryMonitoring_emits_topologyAndServiceSummary_whenFrameworkHostRegisters` | framework host 등록 후 topology 와 service summary event 가 발생한다. |
+| `Events.spotMonitoring_emits_subjectsChanged_whenSpotIsCreated` | spot 생성 후 subject 변화 event 가 발생한다. |
+| `Events.spotMonitoring_emits_peersChanged_whenRemoteNodeAppears` | remote spot node 가 나타나면 peer 변화 event 가 발생한다. |
+| `Timer.spotTimer_reports_handlerException_toMonitoring` | timer handler 예외가 `TimerHandlerFailed` event 와 `ZLinkSpotTimerDiagnostic` payload 로 발생한다. |
+| 공통 개념 | Node 타입 / 멤버 |
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
+| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
+| event | `ZLinkMessageFlowEvent`: `phase`, `surface`, `messageKind`, `packetName?`, `channelName?`, `topic?`, `correlationId?`, `sourceRid?`, `spotRid?`, `actorId?`, `messageSize?` |
+| observer | `ZLinkMessageFlowObserver.onMessageFlow(flow): Promise<void> \| void` |
+| 진단 옵션 | `ZLinkDiagnosticsOptions` { `messageFlowLogMode?`, `sampleRate?`, `includeMessageSizes?`, `logFile?`, `label?` } |
+| 런타임 토글 | host `ZLinkMessageFlowControl.setMessageFlowMode(mode)` / `messageFlowMode()` |
+| 공통 개념 | Node.js |
+| meter 이름(상수) | `ZLinkMeters.Framework` = `'zlink.framework'` |
+| 계기 방출 | OpenTelemetry Metrics API `Meter` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| 앱 연결(공통 케이스) | 전역 OTel `MeterProvider`(SDK) 구성 — 별도 zlink 설정 없음 |
+| 커스텀(선택) | `ZLinkModule.forRoot(zlinkFramework().options({ metrics: { meterProvider } }).build())`로 provider 주입 |
+| 공통 개념 | Node.js |
+| 생성 게이트 | 기존 `configureDispatch().messageFlow(...)` 설정을 그대로 사용한다. 별도 flow id 설정은 없다. |
+| event 필드(추가) | `readonly flowId: string`, `readonly flowOrigin: ZLinkFlowOrigin` — 오류 이벤트에도 동일한 root 값 |
+| 공통 개념 | Node.js |
+| 자동 drain(기본) | framework가 `onApplicationShutdown(signal)`에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy('ReleaseAndRecreate')`(기본 `'DrainNatural'`) |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(deadlineMs?: number, signal?: AbortSignal): Promise<ZLinkDrainResult>`, `awaitDrained(signal?: AbortSignal): Promise<ZLinkDrainResult>`, `isReady(): boolean` } (기본 30,000ms, injectable) |
+| 종료 결과 | `ZLinkDrainResult` = `{ kind: 'drained' } | { kind: 'force-stopped'; reason: 'DeadlineExceeded' | 'DrainingStatePublishFailed' | 'OwnerCleanupFailed' | 'TeardownFailed' }` |
+| readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator`를 제공, health controller에 등록. 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
+| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `sourceName` = 고정값 `'drain'` |
+
+### Registry
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistryAndMonitoring.forRoot_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
+| `RegistryAndMonitoring.forRoot_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
+| `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
+
+### Session actor dispatch
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
+| `ActorDisconnectNotifyTests.ClientClose_Cleans_Session_Without_Actor_Disconnect_Callback` | client stream close 는 session binding cleanup 만 수행하고 Actor disconnect callback 을 호출하지 않는다. |
+| `ActorBindingTests.BindActorAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
+| `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote fallback 을 수행하지 않는다. |
+| `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `boundSession.disconnect(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
+| `entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap` | backend callback 이 서로 다른 task 문맥에서 도착해도 Entry Spot 실행 줄에서 등록 순서대로 겹치지 않고 실행된다. |
+| `entry spot does not start the next callback before the previous handler promise settles` | handler Promise 가 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
+| `entry spot actor packets use actor mailboxes without entry-wide serial dispatch` | Entry Spot actor packet 은 대상 actor mailbox 를 사용하고, 서로 다른 actor 는 Entry Spot 전체 실행 줄 때문에 서로 기다리지 않는다. |
+| `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
+| `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
+| `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `runtime task runner observes detached task exceptions without unhandled rejection` | Node runtime task runner 가 detached task 예외를 관찰하고 unhandled rejection 을 만들지 않는다. |
+| `framework runtime state aborts listener tasks before disposing backend context` | runtime state shutdown 이 listener task 에 stop signal 을 먼저 전달하고 backend context 를 마지막에 정리한다. |
+| `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
+| `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `run(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
+| `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |
+| `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
+| `RegressionTests.NodeSessionActorDispatch_Documents_ExecutionSerialization_Core_Code` | 실행 직렬화 핵심 코드 섹션이 queue, runtime task, error sink, cancellation 의미를 계속 설명한다. |
+| `RegressionTests.NodeRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
+
+### SpotNode
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `entrySpot.routingId` 로 지정한 routing id 가 native Entry Spot facade 에 적용되고 Entry Spot activation 의 `spotRid` 로 노출된다. |
+| `LocationRuntimeTests.SpotRefResolver_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route는 Spot rid만 찾는 색인으로 쓰고, resolver가 유효한 spot location row의 owner node rid와 `SpotKind.User`를 보존한다. |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관되게 동작한다. |
+
+### Stage wrapper
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `E2E:SM-B7` | actor join 뒤 stage 역할의 Spot에서 packet이 lifecycle 순서에 맞게 처리된다. |
+| `E2E:SM-E3` | stage tick으로 쓰는 timer가 Spot 종료 뒤 추가 callback을 만들지 않는다. |
+| `E2E:SM-A5` | application stage wrapper가 Spot request, timer와 lifecycle을 public API로 실행한다. |
+
+### Bootstrap/Overview
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `backend-contract.test.js` | backend adapter factory가 channel, Spot, stream, monitoring adapter를 모두 제공한다. |
+| `backend-public-api-only.test.js` | framework runtime 이 binding internal/native 경로를 직접 import 하지 않는다. |
+| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootFactory`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
+| `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |

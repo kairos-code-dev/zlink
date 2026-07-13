@@ -271,16 +271,16 @@ backend gate 와 별도로 유지한다.
 
 - `README.ko.md`
 - `handler-interfaces.ko.md`
-- `public-contract.ko.md`
-- `aspnet-core-channel-messaging.ko.md`
-- `aspnet-core-spot.ko.md`
+- `handler-interfaces.ko.md` §17
+- `system-structure.ko.md`
+- `system-structure.ko.md`
 - `stage-wrapper-on-spot.ko.md`
-- `aspnet-core-stream.ko.md`
-- `aspnet-core-actor.ko.md`
+- `system-structure.ko.md`
+- `handler-interfaces.ko.md`
 - `session-actor-dispatch.ko.md`
 - `spot-node.ko.md`
-- `aspnet-core-monitoring.ko.md`
-- `aspnet-core-location.ko.md`
+- `system-structure.ko.md`
+- `system-structure.ko.md`
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`
 - `runtime-execution.ko.md`
@@ -303,3 +303,142 @@ backend gate 와 별도로 유지한다.
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [이전: Runtime Execution](runtime-execution.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
+
+## 11. 공개 계약 문서에서 이관한 회귀 항목
+
+언어별 spec을 3문서(시스템 구조 · 인터페이스 · connector)로 압축하면서, 삭제한 기능별 계약
+문서가 소유하던 회귀 항목을 이 절로 옮겼다. 계약의 의미는 공통 스펙이 소유한다.
+
+### Channel
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ChannelsTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 자동 연결(store)이나 수동 연결이 없으면 시작 전에 실패한다. |
+| `E2E:RM-A2` | 수동 endpoint 연결 경로에서 client request marker를 검증한다. |
+| `E2E:RM-C1` | client/server request와 send가 실제 프로세스 사이에서 모두 처리된다. |
+| `E2E:RM-A1` | store 자동 연결 기반 client가 request를 실제 다중 프로세스에서 처리한다. |
+| `ZLinkAsyncSubmitterTests.Async_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
+
+### SPOT
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes` | 같은 Spot factory 타입을 중복 등록하면 startup validation 예외가 난다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | location store 없이도 local-only SpotNode 구성은 시작할 수 있다. |
+| `E2E:SM-A6` | Spot initialize와 명시적 close lifecycle이 실제 runtime에서 한 번씩 완료된다. |
+| `E2E:SM-E2` | Spot timer tick이 등록된 handler에 전달된다. |
+| `E2E:SM-E3` | idle timer가 Spot을 닫고 이후 요청이 실패해 timer와 lifecycle 종료를 함께 검증한다. |
+| `E2E:SM-E4` | timer overrun 정책이 늦은 tick을 계약에 맞게 제한한다. |
+| `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | handler 예외가 계속 실행되는 실패와 timer 중단 실패로 구분되어 monitoring event에 반영된다. |
+| `E2E:SM-C4` | 외부 Spot publisher client가 target SPOT channel로 publish한다. |
+| `E2E:SM-B7` | actor 생성, join과 packet dispatch가 현재 Spot lifecycle 순서로 실행된다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하지만, 서로 다른 actor는 Entry Spot 직렬 실행 줄 때문에 시작이 막히지 않는다. native actor readable 경로와 같은 actor dispatch 경계에서도 actor별 mailbox 가 실행 순서의 기준이다. |
+| `E2E:ATD-C2` | 같은 timer의 다음 tick은 이전 callback의 continuation과 완료 뒤 실행되어 재진입하지 않는다. |
+
+### Actor
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| --- | --- |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
+| `E2E:SM-B7` | actor 생성, user Spot join과 actor packet dispatch 순서가 실제 노드에서 이어진다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 actor별 mailbox 순서를 따르며, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
+| `E2E:SM-G2` | logical owner 변경 뒤 actor packet이 새 owner에서만 처리되어 이전 Spot으로 dispatch되지 않는다. |
+| `E2E:SM-D2` | stream session에서 원격 bound actor로 request가 전달되고 reply가 같은 session으로 돌아온다. |
+| `E2E:SM-D1` | local actor bind와 relay가 request/reply를 같은 session에서 완료한다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession` | Entry Spot actor request가 request handler 결과로 응답하고 send handler나 session bind 경로로 바뀌지 않는다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public API 표면에 다시 노출되지 않는다. |
+
+### STREAM
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
+| `StreamSessionForcedCleanupTests.Stream_node_preserves_typed_routing_id_from_backend_callback` | transport callback에서 받은 typed routing id가 session dispatch까지 정보 손실 없이 전달된다. |
+| `E2E:SM-D7` | stream 인증과 dispatch가 실제 connector와 session node 사이에서 완료된다. |
+| `E2E:SM-D8` | stream 종료로 pending request가 실패하고 새 session의 인증과 bind 뒤 messaging이 재개된다. |
+
+### Monitoring
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `CoverageCriticalRuntimeTests.MonitoringEventMapper_MapsAndFiltersSocketEvents` | socket runtime event 를 public monitoring event 로 매핑하고 내부 event 는 밖으로 내보내지 않는다. |
+| `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | timer handler 예외가 계속 실행되는 실패와 timer 중단 실패를 구분해 typed event 로 만들어진다. |
+| `MonitoringTests.AddZLinkMonitoring_RequiresPositivePollingIntervals` | Spot과 location runtime polling interval이 0보다 커야 한다. |
+| `MonitoringTests.MonitoringSourceValidator_RequiresLocationRuntimeForLocationSources` | location source를 등록했지만 location runtime이 없으면 시작 전에 거부한다. |
+| `MonitoringTests.AddZLinkMonitoring_Throws_WhenSpotSourceDoesNotMatchRegisteredSpotNode` | Spot source 이름이 등록된 SpotNode 이름과 정확히 일치하지 않으면 시작 전에 거부한다. |
+| `MonitoringTests.AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery` | Spot source는 자동으로 추가되지 않으며 명시한 SpotNode 이름만 등록한다. |
+| `MonitoringTests.SpotPollingEventDiff_EmitsSealedVariantsOnlyForChangedSnapshotParts` | 최초 snapshot과 후속 차이를 sealed Spot event variant로 정확히 발행한다. |
+| 공통 개념 | `.NET` 타입 / 멤버 |
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
+| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
+| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, `FlowId`, nullable `FlowOrigin`, 오류 필드 |
+| observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
+| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
+| 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
+| 공통 개념 | `.NET` |
+| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
+| 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
+| 비-OTel/테스트 수집 | .NET 표준 `MeterListener`가 `ZLinkMeters.Framework`를 직접 구독 — zlink 전용 listener interface 없음 |
+| 공통 개념 | `.NET` |
+| 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
+| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
+| 공통 개념 | `.NET` |
+| 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/ReleaseAndRecreate})` |
+| terminal result | abstract `ZLinkDrainResult` + sealed `Drained`, `ForceStopped(ZLinkDrainForceReason Reason)`; reason은 `DeadlineExceeded`, `DrainingStatePublishFailed`, `OwnerCleanupFailed`, `TeardownFailed` |
+| 명시 제어(선택) | `IZLinkDrainControl` { `ValueTask<ZLinkDrainResult> DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(30초), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
+| readiness probe | `IZLinkDrainControl.IsReady` 또는 `IHealthChecksBuilder.AddZLinkDrainHealthCheck()` |
+| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
+
+### Session actor dispatch
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `E2E:SM-D2` | session callback에서 원격 actor request를 relay하고 reply를 같은 stream session으로 되돌린다. |
+| `E2E:SM-D5` | client close와 명시적 actor disconnect notification의 차이를 실제 lifecycle marker로 검증한다. |
+| `E2E:SM-D1` | local actor binding과 relay가 별도 원격 route fallback 없이 동작한다. |
+| `E2E:SM-D6` | bound session push가 지정한 client session에만 도달한다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하고, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
+| `SerialExecutorTests.ActorDispatchMailbox_Runs_Waiters_In_Fifo_Order` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 등록 순서를 따른다. |
+| `E2E:SM-G2` | actor owner가 바뀐 뒤 대기 중이던 요청도 새 owner에서 처리되고 이전 위치로 전달되지 않는다. |
+| `E2E:SM-B7` | actor join 이후 packet dispatch가 현재 Spot lifecycle 순서로 실행된다. |
+| `E2E:SM-D8` | 이전 stream 종료 뒤 새 session에서 재인증·재bind하고 messaging을 재개한다. |
+| `StreamSessionForcedCleanupTests.Rejected_terminal_work_starts_disposal_and_releases_the_session_scope` | session 종료 작업이 queue에서 거절되어도 stream close와 session scope 정리가 완료된다. |
+| `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
+| `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `RunAsync(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
+| `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |
+| `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
+| `RegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
+
+### SpotNode
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `E2E:SM-A1` | Entry Spot routing id를 사용한 request가 실제 Entry Spot handler에 도달한다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 제거된 route 계약이 public API 표면으로 다시 노출되지 않고 actor/session 계약은 유지된다. |
+
+### Stage wrapper
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `E2E:SM-B7` | actor join 뒤 stage 역할의 Spot에서 packet이 lifecycle 순서에 맞게 처리된다. |
+| `E2E:SM-E3` | stage tick으로 쓰는 timer가 Spot 종료 뒤 추가 callback을 만들지 않는다. |
+| `E2E:SM-A5` | application stage wrapper가 Spot request, timer와 lifecycle을 public API로 실행한다. |
+
+### Location
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `NodesAndServicesTests.AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance` | 하나의 store 인스턴스가 모든 location 역할로 등록된다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore` | 외부 store와 in-memory store를 함께 등록하면 시작 전에 실패한다. |
+| `LocationResolverTests.Rows_Of_Expired_Owner_Are_Not_Returned` | owner lease가 만료된 위치 row를 resolver가 반환하지 않는다. |
+| `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones` | 자동 연결이 새 peer를 연결하고 사라진 peer를 연결 집합에서 제거한다. |
+| `RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations` | in-memory와 Redis 구현이 같은 write status와 generation을 반환한다. |
+| `E2E:RM-A1`, `E2E:RM-A4`, `E2E:RM-B1`, `E2E:RM-B2` | store 기반 자동 연결, failover, scale-out과 scale-in을 실제 프로세스에서 검증한다. |
+| `E2E:SF-B1`, `E2E:SF-B2`, `E2E:SF-C1`, `E2E:SF-C2`, `E2E:SF-D3` | store 장애 중 연결 유지, 복구, owner lease 만료와 정상 종료 정리를 검증한다. |
+| `RegressionTests.DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery` | .NET sample 이 제거된 Registry/Discovery API 를 다시 사용하지 않는다 |

@@ -8,18 +8,11 @@ public sealed class RegressionTests
     private static readonly string[] DotNetContractDocuments =
     [
         "README.ko.md",
+        // 언어별 공개 계약은 3문서로 압축한다: 시스템 구조 · 인터페이스 · connector.
+        // 기능별 의미는 공통 스펙(framework/doc/framework/common/spec)이 소유한다.
+        "system-structure.ko.md",
         "handler-interfaces.ko.md",
-        "public-contract.ko.md",
-        "aspnet-core-channel-messaging.ko.md",
-        "aspnet-core-spot.ko.md",
-        "stage-wrapper-on-spot.ko.md",
-        "aspnet-core-stream.ko.md",
-        "aspnet-core-actor.ko.md",
-        "session-actor-dispatch.ko.md",
-        "spot-node.ko.md",
         "stream-connector.ko.md",
-        "aspnet-core-monitoring.ko.md",
-        "aspnet-core-location.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",
         "runtime-execution.ko.md",
@@ -143,9 +136,9 @@ public sealed class RegressionTests
             Assert.DoesNotContain("AddRouteChannel(", text, StringComparison.Ordinal);
         }
 
-        var spotSpec = File.ReadAllText(ResolveDoc("aspnet-core-spot.ko.md"));
+        var spotSpec = File.ReadAllText(ResolveDoc("system-structure.ko.md"));
         var channelSpec = File.ReadAllText(
-            ResolveDoc("aspnet-core-channel-messaging.ko.md"));
+            ResolveDoc("system-structure.ko.md"));
         var combined = string.Join(
             Environment.NewLine,
             spotSpec,
@@ -396,10 +389,10 @@ public sealed class RegressionTests
         var handlers = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "handler-interfaces.ko.md"));
         var channel = File.ReadAllText(Path.Combine(
             GetDotNetContractDocRoot(),
-            "aspnet-core-channel-messaging.ko.md"));
-        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-spot.ko.md"));
-        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-actor.ko.md"));
-        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "aspnet-core-location.ko.md"));
+            "system-structure.ko.md"));
+        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "system-structure.ko.md"));
+        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "handler-interfaces.ko.md"));
+        var location = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "system-structure.ko.md"));
 
         Assert.Contains("`IZLinkEndpointConnections`", handlers, StringComparison.Ordinal);
         Assert.Contains("`IZLinkSpotMeshBuilder`", handlers, StringComparison.Ordinal);

@@ -4,7 +4,7 @@
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
 축소하지 않고, 구현과 contract test를 정식 스펙에 맞춘다.
 
-검토 기준일은 2026-07-12이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
+검토 기준일은 2026-07-13이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
 ## 1. 판정 기준
 
@@ -27,33 +27,30 @@
 
 | 영역 | `.NET` | Java/Kotlin | Node.js | C++ |
 |------|--------|-------------|---------|-----|
-| request와 one-way send/publish | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 일반 send는 `result_t<void>`, actor send는 `task_t<void>`를 반환 |
-| handler 비동기 완료 | 충족 | Java 충족, Kotlin coroutine bridge 별도 검증 필요 | 충족 | blocking bridge 차이 |
-| Spot actor lifecycle | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | callback 이름과 실행 방식 차이 |
-| typed stream session handler | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | raw message handler만 제공 |
-| dispatch options와 diagnostics | 충족 | Java target declaration 충족, Kotlin 별도 검증 필요 | 충족 | message-flow 진단 필드와 typed event 계약 누락 |
-| public export 경계 | 계약과 일치 | Java 계약과 일치, Kotlin 별도 검증 필요 | 계약과 일치 | 설치 header에 `*_state_t`와 runtime helper 노출 |
-| 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 밖 값 노출 |
-| route-mesh runtime options | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 없음 |
-| actor membership 상태 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
-| actor join 결과 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
-| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | Java public declaration과 완료된 Config 6·8 검증, 나머지 Config는 이 문서에서 미검증 | 충족: contract/unit/package, sample 6개, Config 1~11의 181개 E2E와 `.NET` 교차 검증 완료 | 새 목표 계약 전체 미검증 |
+| request와 one-way send/publish | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| handler 비동기 완료 | 충족 | Java 충족, Kotlin coroutine bridge 별도 검증 필요 | 충족 | 충족 |
+| Spot actor lifecycle | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| typed stream session handler | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| dispatch options와 diagnostics | 충족 | Java target declaration 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| public export 경계 | 계약과 일치 | Java 계약과 일치, Kotlin 별도 검증 필요 | 계약과 일치 | 충족 |
+| 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 충족 |
+| route-mesh runtime options | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| actor membership 상태 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| actor join 결과 | 충족 | Java 충족, Kotlin 별도 검증 필요 | 충족 | 충족 |
+| 관측·운영(metrics/flow/drain) | 충족: contract/unit/package, Bingo sample과 Config 1~11의 181개 E2E 검증 완료 | Java public declaration과 완료된 Config 6·8 검증, 나머지 Config는 이 문서에서 미검증 | 부분 충족: Node runtime·Config 1~11은 검증했으나 browser `MFLOW-EXT-014`와 sample 재검증은 진행 중 | 충족 |
 
 ## 3. Java/Kotlin
 
-### 3.1 handler 완료가 비동기 계약과 다름
+### 3.1 handler 비동기 완료
 
-Java request, send와 publish handler는 현재 값을 직접 반환하거나 `void`로 끝난다.
-정식 계약은 handler가 비동기 완료 값을 반환하면 framework가 완료까지 같은 실행 줄의
-다음 callback을 시작하지 않는 것이다. Java 표면에서는 `CompletionStage<T>`와
-`CompletionStage<Void>`로 이 완료를 표현해야 한다.
+Java request, send, publish, Spot, actor와 session handler는 `CompletionStage<T>` 또는
+`CompletionStage<Void>`를 반환한다. automatic turn은 handler가 stage를 반환할 때까지 다음
+handler의 시작 순서를 보장하며, 반환된 incomplete stage의 완료는 기다리지 않는다.
 
-현재 확인 위치:
+확인 근거:
 
-- `channels/ZLinkRequestHandler.java`: `TReply` 직접 반환
-- `channels/ZLinkSendHandler.java`: `void` 반환
-- `channels/ZLinkPublishHandler.java`: `void` 반환
-- `actors/ZLinkActorFactory.java`: actor instance 직접 반환
+- `JavaTargetContractGapTest.handlersFactoriesAndLifecycleExposeCompletionStages`
+- Config 8 `AutomaticTurnDispatch` 전체 selector
 
 Kotlin adapter는 여러 lifecycle과 actor callback을 `runBlocking`으로 Java 동기
 callback에 연결한다. `CompletionStage.await()`도 내부에서 `join()`을 사용한다. 이
@@ -67,23 +64,20 @@ callback에 연결한다. `CompletionStage.await()`도 내부에서 `join()`을 
 ### 3.2 one-way call 완료 표면
 
 `ZLinkSendCall`, `ZLinkSessionSendCall`, `ZLinkSessionReplyCall`과
-`ZLinkBoundSessionSendCall`은 현재 `ZLinkSubmitStage`를 반환하고 blocking `await()`도
-제공한다. 정식 계약에서 one-way submit은 완료 객체를 반환하지 않는다. 전송 실패는
-framework error observer와 runtime 진단 경로로 보고하며 request reply처럼 호출자가
-완료를 기다리는 표면으로 만들지 않는다.
+`ZLinkBoundSessionSendCall`의 one-way `submit()`은 `void`다. `ZLinkSubmitStage`, public
+`await`와 yield call은 production source에 없다. 전송 실패는 framework error observer와
+runtime 진단 경로로 보고한다.
 
 ### 3.3 typed session handler
 
-현재 `ZLinkTypedSessionPacketHandler`는 raw handler를 상속하고 raw method의 기본 구현이
-`UnsupportedOperationException`을 던진다. 구현 누락이 컴파일 단계가 아니라 실행 중
-예외로 나타나므로 정식 typed handler 계약을 충족하지 않는다. typed handler와 raw
-handler의 등록 경계를 분리해야 한다.
+`ZLinkTypedSessionPacketHandler`는 raw application handler를 상속하지 않는다. message type
+descriptor와 typed `CompletionStage<Void> handle(...)`을 제공하며 framework dispatcher와
+application handler의 등록 경계가 분리되어 있다.
 
-### 3.4 Actor context 기본 예외
+### 3.4 Actor join 계약
 
-현재 `ZLinkActorContext.joinSpot(...)`과 `joinEntrySpot(...)`의 default method는 항상
-`ZLinkConfigurationException`을 던진다. 필수 기능이면 구현자가 method를 반드시
-구현하도록 하고, 선택 기능이면 별도 capability로 분리해야 한다.
+`ZLinkActorContext.joinSpot(...)`과 `joinEntrySpot(...)`은 요청을 필수로 받는다. 요청 없는
+overload와 default throw는 없으며, 단일 `ZLinkActorJoinCall`과 sealed 승인·거절 결과를 사용한다.
 
 ### 3.5 interface inventory 문서 상태
 
@@ -153,9 +147,16 @@ errors
 목표 계약은 sealed 승인/거절 결과로 바꾼다. 승인 결과만 필수 actor ref를 가지며 두
 결과 모두 reply를 가진다. Kotlin은 Java sealed 계약을 그대로 사용한다.
 
-location store/query, compression과 connector에 선언된 나머지 public extension은
-Kotlin 문서의 전체 function inventory를 기준으로 검증한다. 이 항목의 남은 작업은
-문서 추가가 아니라 실제 public declaration 및 contract test 정렬이다.
+location store/query, compression과 connector에 선언된 Kotlin public extension은 Kotlin
+문서의 전체 function inventory를 기준으로 별도 검증한다. Java 완료 판정이 Kotlin 완료를
+의미하지 않는다.
+
+### 3.7 Java 검증 상태
+
+Java target public declaration은 `JavaTargetContractGapTest` 전체 통과와 production symbol
+검색으로 확인했다. Config 6 `StoreFailure`의 SF-A1~E1과 Config 8
+`AutomaticTurnDispatch`의 정식 selector는 real E2E 전체 실행을 통과했다. 다른 Config와
+sample은 이 갱신에서 다시 실행하지 않았으므로 Java 전체 완료 증거로 사용하지 않는다.
 
 ## 4. Node.js
 
@@ -240,65 +241,78 @@ metadata를 우선 사용하고, metadata가 없으면 생성자 이름을 사�
 subclass는 부모 class의 metadata를 상속하지 않는다. Stream Connector frame의 명시적 packet
 name은 별도 connector 계약이므로 이 규칙의 제거 대상이 아니다.
 
-전체 contract/unit/integration, Node 20/22 runtime matrix, sample 6개, 공통 E2E 181개,
-Node.js↔`.NET` 양방향 cross-language matrix와 실제 npm tarball consumer 검증을 통과했다.
-따라서 이 계획이 추적한 Node.js public contract 구현 차이는 모두 해소됐다.
+### 4.9 stream disconnect routing id
+
+SupportChat의 즉시 재연결 검증에서 기존 연결의 disconnect 처리와 새 actor binding이 겹치는
+경합을 발견했다. Node.js framework는 같은 actor의 disconnect와 새 binding을 직렬화하고, 이전
+binding token이 새 binding을 지우지 못하도록 수정했다. Stream Connector도 `close()`가 TCP 종료를
+완료한 뒤 반환하도록 수정했다.
+
+**충족.** core STREAM session은 disconnect monitor event에 peer routing id를 기록한다. Node addon은
+이 값을 public `MonitorEvent.routingId`로 전달하고, framework adapter는 같은 값을 session runtime에
+넘긴다. 따라서 같은 endpoint에 여러 session이 있어도 종료된 session 하나만 선택해 disconnect
+callback과 binding 정리를 실행한다. routing id가 없는 이전 event를 endpoint만으로 추측하지 않는
+방어 동작은 유지한다.
+
+검증은 실제 STREAM peer를 연결·종료해 addon event의 routing id가 비어 있지 않은지 확인하고,
+framework의 다중 session 회귀 검사에서 지정된 session만 종료되는지 확인했다. sample 재검토는
+별도 G5 gate에서 계속 추적한다.
+
+### 4.10 Stream Connector 브라우저 진입점과 비동기 flow 문맥
+
+**transport 충족, flow 문맥 미충족.** `@zlink-systems/stream-connector/browser`를 추가하고 플랫폼의 네이티브
+`WebSocket`을 기본 transport로 연결했다. 브라우저 진입점은 `ws://`와 `wss://`만 허용하며,
+`tcp://`와 `tls://`는 connector를 만들 때 `ConfigurationError`로 거부한다.
+
+공용 runtime에서 `node:async_hooks`, `node:crypto`와 Node 기본 transport의 정적 import를
+제거했다. Node 진입점만 해당 구현을 선택하므로 브라우저 bundle 그래프에는 `net`, `tls`,
+`async_hooks`, `crypto` Node 모듈과 `Buffer`가 포함되지 않는다. 두 진입점은 같은 public export
+목록과 connector option·interface type을 유지한다.
+
+검증은 다음 범위를 통과했다.
+
+- esbuild로 생성한 실제 browser bundle과 module graph 검사
+- 플랫폼 `WebSocket` event 계약을 사용한 WSS request/reply·push 수신 smoke
+- `tcp://`·`tls://` 즉시 거부 contract test
+- Node Stream Connector contract test 전체
+- 실제 npm tarball의 Node·browser runtime import와 TypeScript 소비자 compile
+
+검증 환경에 headless 브라우저 실행 도구가 없어 실제 브라우저 프로세스는 실행하지 않았다.
+배포 전 브라우저 호환성 확인에서는 같은 WSS 시나리오를 실제 브라우저에서도 실행한다.
+
+남은 gap은 [flow correlation MFLOW-EXT-014](flow-correlation.ko.md)의 비동기 실행 문맥이다.
+현재 `BrowserZlinkFlowContext`는 한 connector instance의 current flow를 handler Promise가 끝날 때까지
+유지한다. 그래서 handler가 `await`로 기다리는 동안 관련 없는 timer나 UI callback이 같은 connector로
+메시지를 보내면 inbound flow를 잘못 재사용할 수 있다. callback 직후 current flow를 복원하면
+`await` 이후 continuation이 flow를 잃으므로 해결이 아니다.
+
+브라우저 표준에는 `AsyncLocalStorage`에 해당하는 기능이 없고, 저장소의 기존 dependency에도 이를
+대신할 수단이 없다. `zone.js` 0.16.2도 native async function의 첫 `await` 뒤 child Zone을 보존하지
+못해 계약 테스트의 기반으로 사용할 수 없었다. public callback에 flow-bound sender를 추가하면
+공통 스펙이 금지한 v1 capture/wrap 표면을 새로 만들게 된다. 따라서 불완전한 전역 변수나 Promise
+patch를 추가하지 않고, 브라우저 async-context 환경 또는 public callback 계약을 별도 설계로
+확정할 때까지 이 항목을 Node.js G2 public runtime gap으로 유지한다. G2가 열려 있으므로
+후속 build·test gate인 G3와 최종 재검토 gate인 G7도 완료로 표시하지 않는다.
 
 ## 5. C++
 
-### 5.1 coroutine blocking bridge
+C++ public header와 package는 이 문서가 추적하던 계약 차이를 해소했다. 아래는 각 항목의
+해소 결과이며, 상세 근거는 C++ 계약 ledger와 구현 로그에 있다.
 
-Spot lifecycle과 transfer 등록 adapter가 coroutine task의 `.result()`를 호출한다.
-정식 계약은 handler executor가 task 완료 때 coroutine을 재개하고 worker 또는 receive
-경계를 blocking하지 않는 것이다.
+| 항목 | 해소 결과 |
+|------|-----------|
+| coroutine blocking bridge | 공개 계약층의 `.result()` bridge 제거(lifecycle/transfer adapter는 coroutine). runtime 내부의 동기 소비 경로는 실행 줄 소유자가 관리한다 |
+| 오류 kind | 공통 집합 밖 여섯 enumerator를 public enum에서 제거하고 `detail::boundary_error_t` 내부 상태로 강등. 경계 의미는 `framework_exception_t::code()`(`std::error_code`) 파셋으로 노출 |
+| callback 이름 | `on_create_actor`/`on_actor_join(ed)`/`on_leave_actor`/`on_disconnect_actor`/`destroy_actor` snake_case 통일(camelCase 탐지 경로 삭제) |
+| typed session handler와 route-mesh options | `typed_session_packet_handler_for` concept과 serializer 경유 typed invoker 추가, route-mesh runtime options 정렬 |
+| one-way, location watch와 message-flow control | 일반 one-way와 actor send 모두 `void submit()`, relay/disconnect는 `task_t<void>`. location watch와 message-flow 계약 표면 반영 |
+| actor membership와 join 결과 | `is_joined()` 제거 후 `std::optional<spot_rid_t> spot_rid()` 단일 상태, join 결과는 승인/거절 `std::variant` |
+| 관측·운영(metrics/flow/drain) | flow correlation, 계기 카탈로그, graceful drain(핸드오프·liveness·session-closing)을 구현하고 Config 1~11 E2E와 sample로 검증 |
 
-현재 확인 위치는 `contracts/spots/spot.hpp`의 lifecycle adapter와 transfer adapter다.
-
-### 5.2 오류 kind
-
-현재 public `error_kind_t`는 공통 오류 집합 밖의 다음 값을 추가로 노출한다.
-
-```text
-actor_stale_generation
-timeout
-shutdown
-disconnected
-closed
-cancelled
-```
-
-공통 오류로 채택되지 않은 값은 public framework error kind에서 제거하거나 내부 runtime
-상태로 내려야 한다.
-
-### 5.3 callback 이름
-
-같은 Spot contract 안에서 `on_actor_join`, `on_actor_joined`, `onCreateActor`,
-`onLeaveActor`가 섞여 있다. C++ public method는 `snake_case`로 통일해야 한다. 이 변경은
-기존 호출자 호환성 검토가 필요한 public contract 변경이다.
-
-### 5.4 typed session handler와 route-mesh options
-
-현재 packet stream session handler는 raw `zlink::message_t`를 받는다. 기본 application
-handler에는 typed payload 표면이 필요하다. 또한 client-server runtime options만 있고
-route-mesh runtime options가 없어 channel 역할별 구성 사용성이 다르다.
-
-### 5.5 one-way, location watch와 message-flow control
-
-일반 one-way call은 `result_t<void> submit()`, actor send는 `task_t<void> async()`를
-노출한다. 목표 계약은 모두 `void submit()`이다. 또한 location watch의
-`async_range_t<T>`와 runtime `message_flow_control_t`가 public header에 없으므로 C++
-언어별 interface 계약의 정확한 member를 추가해야 한다.
-
-현재 session actor relay도 one-way call로 끝나며 bound-session disconnect는 일반 send
-call을 반환한다. 다른 언어와 같은 오류 관찰 의미를 위해 relay와 disconnect는
-`task_t<void>` 완료를 반환하고, bound-session send만 one-way `submit()`으로 유지한다.
-
-### 5.6 Actor membership와 join 결과
-
-현재 actor context는 `is_joined()`만 제공해 join 여부는 알 수 있지만 현재 user Spot의
-논리 식별자를 같은 계약으로 얻을 수 없다. 목표 계약은
-`std::optional<spot_rid_t> spot_rid()`를 단일 상태 값으로 제공한다. join 결과는
-`std::variant`의 승인/거절 값으로 바꾸고 승인 값만 actor ref를 갖게 한다.
+STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
+`[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의
+단일 프레임 인코딩이며, 원인(프레임워크 부착 SPOT의 multipart publish가 첫 파트만 전달)이
+core 소유라 C++ 계약 ledger에 열린 항목으로 남겨 두었다.
 
 ## 6. `.NET` 구현 상태
 
@@ -395,7 +409,28 @@ Java runtime을 공유하는 Kotlin도 별도 완료 판정을 받는다. Kotlin
 framework가 signal handler를 설치하지 않으며 애플리케이션이 소유한 종료 실행 문맥에서 drain을
 호출하는 예제를 제공해야 한다.
 
-## 10. 완료 조건
+## 10. Stream Connector wire·검증 계약 차이
+
+[Stream Connector 공통 스펙](stream-connector.ko.md)을 정본으로 두고 3개 connector 구현을
+대조한 결과다. 아래는 **스펙이 맞고 구현이 틀린** 항목이다. 브라우저 실행 환경 차이는
+§4.10이 따로 소유한다.
+
+| # | 항목 | 정본 | 현재 구현 |
+|---|------|------|-----------|
+| 10.1 | **Response/Error packet name 검증** | `Response`·`Error`의 packet name은 원래 request와 같아야 한다([§5.2](stream-connector.ko.md)) | Node는 request name을 pending에 보존하고 두 reply kind에서 검증한다. `.NET`·C++는 `request_seq`만으로 pending을 완료한다 |
+| 10.2 | **Error payload 포맷** | codec과 무관하게 UTF-8 JSON object `{"code","message"}`([§5.3](stream-connector.ko.md)) | Node는 압축 해제 뒤 JSON object와 두 string field를 검증한다. C++는 Error payload를 단순 문자열로 다룬다 |
+| 10.3 | **metadata 1024바이트 한도** | 전송 전 검증하는 고정 한도이며 **public option으로 조절하지 않는다**([§4.4](stream-connector.ko.md)) | Node는 1024바이트까지 허용하고 초과 송신을 거부한다. C++는 조절 가능한 `max_metadata_size`(기본 8KiB)를 쓴다 |
+| 10.4 | **예약 packet name 범위** | `$zlink.` prefix만 금지한다([§4.6](stream-connector.ko.md)) | C++는 **`$`로 시작하는 모든 이름**을 거부해 계약보다 과하게 막는다 |
+| 10.5 | **수신 메시지 큐 overflow** | 새 message를 버리고 `ReceivedMessageDropped`를 보고한다([§10.1](stream-connector.ko.md)) | `.NET`은 **가장 오래된 미읽음 message를 조용히 밀어낸다.** 오류를 보고하지 않고 `ReceivedMessageDropped` 코드 자체가 없다 |
+| 10.6 | **연결 상태 `Created`** | `Created`는 "생성됐고 아직 연결하지 않음"을 나타내는 초기 상태다([§6](stream-connector.ko.md)) | Java `ZLinkStreamConnectionState`에 **`CREATED`가 없다.** 초기 상태를 `DISCONNECTED`와 구분하지 못해 "한 번도 연결하지 않음"과 "끊김"이 같은 값이 된다 |
+
+10.1과 10.2는 **wire 호환성 문제**다. Node는 contract test와 browser entrypoint 회귀 검사로
+두 항목을 닫았다. 표에 남은 언어는 계약대로 Error를 보낼 때 동일한 검증과 해석을 해야 한다.
+
+10.5는 **관찰 가능한 동작이 언어별로 갈리는** 문제다. 같은 부하에서 `.NET` client는 오래된
+메시지를 잃고도 아무 신호를 주지 않고, Node client는 새 메시지를 잃으면서 오류를 보고한다.
+
+## 11. 완료 조건
 
 각 항목은 다음 조건을 모두 만족해야 닫을 수 있다.
 

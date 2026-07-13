@@ -210,7 +210,7 @@ public sealed partial class RegressionTests
                     offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "aspnet-core-actor.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "handler-interfaces.ko.md"));
         var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);

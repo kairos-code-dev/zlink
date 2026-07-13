@@ -31,7 +31,7 @@ NestJS 애플리케이션 개발자가 읽고 바로 따라 쓸 수 있도록 �
 | [05-spot](guide/05-spot.ko.md) | Spot manager, outbound, timer |
 | [06-actor-session](guide/06-actor-session.ko.md) | actor bind, relay, bound session |
 | [07-stream](guide/07-stream.ko.md) | stream session 과 connector |
-| [08-registry](guide/08-registry.ko.md) | embedded registry 와 topology query |
+| [08-registry](guide/08-registry.ko.md) | location store와 runtime topology query |
 | [09-monitoring](guide/09-monitoring.ko.md) | typed runtime event 관찰 |
 | [10-feature-map](guide/10-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
 | [11-interface-catalog](guide/11-interface-catalog.ko.md) | 주요 public interface 목록 |
@@ -45,16 +45,10 @@ API만 설명한다.
 | 문서 | 범위 |
 |------|------|
 | [handler-interfaces](../common/spec/languages/node/handler-interfaces.ko.md) | 모든 interface·decorator·context·options 카탈로그 |
-| [nestjs-overview](../common/spec/languages/node/nestjs-overview.ko.md) | module bootstrap, DI, lifecycle, backend 어댑터 |
-| [nestjs-channel-messaging](../common/spec/languages/node/nestjs-channel-messaging.ko.md) | channel 등록, outbound client, dispatch, filter |
-| [nestjs-spot](../common/spec/languages/node/nestjs-spot.ko.md) | SPOT lifecycle, publish/subscribe, channel attach |
-| [nestjs-actor](../common/spec/languages/node/nestjs-actor.ko.md) | actor factory, Entry Spot, bound session |
-| [nestjs-stream](../common/spec/languages/node/nestjs-stream.ko.md) | header session, single `onDispatch`, registration, lifecycle |
-| [nestjs-registry](../common/spec/languages/node/nestjs-registry.ko.md) | registry startup, query, topology |
-| [nestjs-monitoring](../common/spec/languages/node/nestjs-monitoring.ko.md) | runtime 이벤트 등록, typed event |
-| [session-actor-dispatch](../common/spec/languages/node/session-actor-dispatch.ko.md) | session → actor relay dispatch 정식 정의 |
-| [spot-node](../common/spec/languages/node/spot-node.ko.md) | SpotNode 등록·관리 표면 |
-| [stage-wrapper-on-spot](../common/spec/languages/node/stage-wrapper-on-spot.ko.md) | stage 상위 모델을 SPOT 위에 감싸는 조건 |
+| [stream-connector](../common/spec/languages/node/stream-connector.ko.md) | client connector — entrypoint 분리, transport, 표면 |
+
+**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
+그 의미가 Node/NestJS에서 어떤 모양인지만 고정한다.
 
 ## 3. 내부 기준 (`internals/`)
 
@@ -65,6 +59,7 @@ API만 설명한다.
 |------|------|
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | backend 교체 가능성, public surface 격리 |
 | [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | NestJS hook과 내부 runtime의 시작·종료 배선 |
+| [actor-execution-serialization](internals/actor-execution-serialization.ko.md) | actor 실행 직렬화 참조 구현 — queue 소유자와 completion 의미 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | 회귀 테스트 기준 |
 
 ## 4. 공통 샘플
@@ -82,4 +77,4 @@ API만 설명한다.
 | `documentation-regression.test.js › node README links every guide chapter` | `README.ko.md`가 12개 guide 장을 모두 연결한다. |
 | `documentation-regression.test.js › node documentation relative markdown links resolve` | 문서 간 상대 링크가 깨지지 않는다. |
 | `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | guide 01–12가 제목과 회귀 테스트 섹션을 갖춘다. |
-| `sample-regression.test.js › node samples define the required sample directories and README files` | 정본 샘플 디렉토리와 README 가 README 에서 연결된다. |
+| `sample-regression.test.js › node samples define required files and use only common sample documents` | 샘플 구현이 공통 sample 문서만 참조하고 삭제한 언어별 sample README를 다시 만들지 않는지 확인한다. |

@@ -4,7 +4,7 @@
 
 # 11. Monitoring — runtime 이벤트 관찰
 
-> 정식 계약은 [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md)가
+> 정식 계약은 [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/system-structure.ko.md)가
 > 다룬다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
@@ -220,7 +220,7 @@ spot event는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event로 남는다.
   observer는 관측용이므로 callback이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 - **handler payload의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
-  [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) 참고.
+  [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/system-structure.ko.md) 참고.
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
@@ -249,8 +249,19 @@ builder.Services.AddZLinkFramework(options =>
 - 콜렉터/OTel 연동: `IZLinkMessageFlowObserver`를 등록해 구조화 이벤트를 받는다(앱 레이어).
   framework는 OTel에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
   (작성법은 바로 아래 "observer로 흐름 이벤트 받기").
-- 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md), 공통 의미는
+- 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/languages/dotnet/system-structure.ko.md), 공통 의미는
   [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md) 참고.
+
+> **샘플에서 보기 — 전 샘플.** [Bingo](../../common/sample/bingo/README.ko.md) ·
+> [TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
+> [SupportChat](../../common/sample/supportchat/README.ko.md) ·
+> [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) ·
+> [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) ·
+> [GameQuest](../../common/sample/event/gamequest.ko.md)가 **모두 위 세 줄을 그대로 켠다** —
+> 서버마다 `MessageFlow(KeyTransitions)` + `TraceLogFile(...)` + `TraceLabel(...)`이다.
+> 이유는 E2E 규약이다: 시나리오가 실패하면 노드별 flow 로그를 evidence로 남겨
+> `corr=`로 요청 하나의 생애주기를 노드 간에 이어 원인 레이어를 좁힌다. 여러 서버가
+> 도는 샘플에서 `TraceLabel`이 어느 노드의 로그인지 구분해 준다.
 
 ### observer로 흐름 이벤트 받기
 
@@ -332,7 +343,7 @@ relay되고, spot이 actor를 호출하고, actor가 다른 channel로 send를 �
 ## 6. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
-- 정식 계약: [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md)
+- 정식 계약: [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/system-structure.ko.md)
 - location 운영 조회: [10-location](10-location.ko.md)
 - 런타임 메트릭·drain 상태 관측: [12-operations](12-operations.ko.md)
 

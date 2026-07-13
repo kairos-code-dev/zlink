@@ -4,8 +4,9 @@
 소유한다. package export, public declaration과 contract test는 이 계약을 따라야 한다.
 
 전체 public interface, decorator, context, option과 client 시그니처의 기준은
-[handler-interfaces](handler-interfaces.ko.md)다. 기능별 계약은 같은 디렉토리의
-NestJS, actor, stream, registry와 monitoring 문서에서 설명한다.
+[handler-interfaces](handler-interfaces.ko.md)다. 패키지 구조·배포와 등록 표면은
+[system-structure](system-structure.ko.md)가 소유한다. client Stream Connector의 정확한 표면은
+[stream-connector](stream-connector.ko.md)가 소유하며, 공통 동작은 상위 공통 spec을 따른다.
 
 ## 취소 인자
 

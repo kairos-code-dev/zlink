@@ -1,12 +1,16 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](spring-boot-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](system-structure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [STREAM](spring-boot-stream.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
+[Java 묶음](../../../../java/README.ko.md) | [STREAM](system-structure.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
 
 # Java/Kotlin Stream Connector
+
+> 이 문서는 [Stream Connector 공통 스펙](../../stream-connector.ko.md)의 **Java/Kotlin
+> 투영**이다. transport·wire·생명주기·오류 의미는 공통 스펙이 소유하고, 이 문서는 그 의미가
+> Java/Kotlin에서 갖는 **정확한 public 표면**을 고정한다.
 
 ## 1. 목표
 
@@ -16,6 +20,15 @@ framework header 기반 STREAM packet을 외부 client가 같은 방식으로 �
 
 이 모듈은 Spring Boot server adapter, SPOT, Registry에 의존하지 않는다. transport,
 codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 의존성만 가진다.
+
+### 1.1 대상 실행 환경
+
+**엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../stream-connector.ko.md)가 소유한다.**
+그 배정에 따라 Java/Kotlin connector가 담당하는 것은 **JVM 애플리케이션**(서버 도구·E2E 테스트·
+봇)이며, 게임 엔진과 브라우저는 담당하지 않는다.
+
+대상이 하나뿐이라 이 배정이 Java/Kotlin 표면에 남기는 결과는 없다. 엔진별 갈래가 없으므로
+별도 가이드 트리도 두지 않는다.
 
 ## 2. 모듈
 
@@ -71,7 +84,6 @@ public interface ZLinkStreamConnector {
 
 public interface ZLinkStreamLifecycleCall {
     CompletionStage<Void> submit();
-    void await() throws Exception;
 }
 
 public final class ZLinkStreamConnectorFactory {
@@ -82,23 +94,21 @@ public final class ZLinkStreamConnectorFactory {
 Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의미는 같다.
 등록 해제는 반환된 `AutoCloseable`로 한다.
 
-**세션 종료 사유 (close reason).** `ZLinkStreamDisconnectedHandler`가 받는 disconnect 이벤트는
-`ZLinkStreamCloseReason closeReason()`을 노출한다. 값은 서버 측 `close_reason`
-([runtime-metrics §4.1](../../runtime-metrics.ko.md))과 정합하는 닫힌 enum이다:
-`CLIENT_CLOSE`, `IDLE_TIMEOUT`, `HEARTBEAT_TIMEOUT`, `SERVER_DRAIN`, `PROTOCOL_ERROR`,
-`TRANSPORT_ERROR`. 서버가 우아한 종료(graceful drain)로 세션을 닫으면 `SERVER_DRAIN`이 오며,
-클라이언트는 이 값을 보고 재접속·백오프를 결정한다([Graceful Drain & Handoff §7.1](../../graceful-drain-handoff.ko.md)).
-서버가 대체 endpoint를 지정하는 기능은 이 계약에 포함하지 않는다.
+**세션 종료 사유 (close reason).** 값 집합과 의미는
+[공통 스펙 §6.2](../../stream-connector.ko.md)가 소유한다. Java는 이를 닫힌 enum
+`ZLinkStreamCloseReason`(`CLIENT_CLOSE`, `IDLE_TIMEOUT`, `HEARTBEAT_TIMEOUT`, `SERVER_DRAIN`,
+`PROTOCOL_ERROR`, `TRANSPORT_ERROR`)으로 표현하고, **`ZLinkStreamDisconnectedHandler`가 받는
+disconnect 이벤트의 `ZLinkStreamCloseReason closeReason()`으로 노출한다.**
 `waitFor(...)`는 특정 packet name의 server push를 한 번 기다리는 call builder를 반환한다.
 필요한 message만 고를 때는 builder의 `where(...)`를 사용한다. timeout이 지나면 반환된
 `CompletionStage`가 timeout 실패로 끝난다. 별도 timeout을 지정하지 않으면 connector
 options의 `waitTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
-기존처럼 `dispatch().submit()` 또는 `dispatch().await()`를 호출해야 wait handler가 실행된다.
+`dispatch().submit()`을 호출해야 wait handler가 실행된다.
 
 Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다.
-`await(...)`는 같은 작업의 완료를 현재 thread에서 기다린 뒤 결과를 반환한다. lifecycle도
-`connect().submit()`, `connect().await()`, `dispatch().submit()`, `dispatch().await()`
-처럼 같은 call builder 규칙을 따른다. Kotlin wrapper는 `submit()`으로 얻은
+Java connector는 같은 작업을 현재 thread에서 기다리는 별도 blocking terminator를 제공하지 않는다.
+lifecycle도 `connect().submit()`, `dispatch().submit()`처럼 같은 call builder 규칙을 따른다.
+Kotlin wrapper는 `submit()`으로 얻은
 `CompletionStage`를 coroutine suspension으로 기다린다. 이 실행 의미는
 [framework 공통 정책](../../async-execution-policy.ko.md)을 따른다.
 
@@ -234,8 +244,6 @@ public interface ZLinkStreamWaitCall {
     CompletionStage<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> submit();
     <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> submit(
         Class<TPayload> payloadType);
-    <TPayload> ZLinkStreamMessage<TPayload> await(Class<TPayload> payloadType)
-        throws Exception;
 }
 ```
 
@@ -295,7 +303,7 @@ public enum ZLinkStreamDispatchMode {
 
 기본값은 `MANUAL`이다. receive loop, reconnect loop, request callback task가 사용자
 handler를 직접 호출하지 않고 dispatch queue에 넣는다. application은 자신이 원하는
-thread에서 `dispatch().submit()` 또는 `dispatch().await()`를 호출한다.
+thread에서 `dispatch().submit()`을 호출한다.
 
 `AUTO`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
 있는 client sample은 `MANUAL`을 유지한다.
@@ -324,7 +332,7 @@ DISCONNECTED -> CONNECTING
 
 heartbeat timeout이나 transport disconnect가 발생하면 reconnect가 켜져 있을 때
 `RECONNECTING`으로 이동한다. `maxAttempts`를 넘으면 `DISCONNECTED`가 된다.
-`close().submit()` 또는 `close().await()` 이후에는 `CLOSED`이고, 새 `connect()`는 실패한다.
+`close().submit()`이 완료된 이후에는 `CLOSED`이고, 새 `connect()`는 실패한다.
 
 ## 11. Error Code
 
@@ -354,7 +362,7 @@ error event로 올리고, connector lifecycle은 명시된 상태 전이 규칙�
 ## 12. Inbound Observer
 
 `observeInbound(...)`는 수신 frame을 읽기 전용으로 관찰하는 API다. client code는
-connector를 만든 뒤 `connect().submit()` 또는 `connect().await()`를 호출하기 전에
+connector를 만든 뒤 `connect().submit()`을 호출하기 전에
 observer를 등록한다. 연결이 시작된 뒤 등록하면 invalid state 오류로 실패한다.
 
 ```java
@@ -366,7 +374,7 @@ try (AutoCloseable log = connector.observeInbound(observation -> {
         observation.requestSeq(),
         observation.payloadLength());
 })) {
-    connector.connect().await();
+    connector.connect().submit(); // 연결 완료는 반환된 CompletionStage로 관찰한다.
 }
 ```
 
@@ -452,5 +460,5 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](spring-boot-stream.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](system-structure.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

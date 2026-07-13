@@ -1,0 +1,131 @@
+# STREAM 서버 세션 — 공통 스펙
+
+[스펙 목차](README.ko.md)
+
+> 이 문서는 **서버 쪽 STREAM 세션 계약의 언어 중립 정본**이다. 세션 표면의 모양, dispatch 모델,
+> 등록 규칙, codec 계층 분리, 오류 경계를 소유한다.
+>
+> client 쪽 계약은 [Stream Connector 공통 스펙](stream-connector.ko.md)이 소유한다. 두 문서는
+> **같은 wire 계약**을 공유한다.
+>
+> 언어별 타입과 시그니처는 `languages/<lang>/`의 STREAM 문서가 고정한다.
+
+## 1. 목적
+
+STREAM은 일반 request-response와 성격이 다르다. 다음이 훨씬 중요한 축이 된다.
+
+- 연결 수명
+- peer 식별
+- packet framing
+- session lifecycle
+
+**framework는 STREAM을 "header 기반 packet session"으로 다룬다.** raw byte stream을 그대로
+application에 넘기지 않는다.
+
+## 2. 기본 방향
+
+- **framework가 stream header를 decode한 뒤** dispatch context와 payload를 session callback에
+  전달한다.
+- **header는 framework 내부에서 packet name과 metadata로 해석한다.** application은 packet name을
+  보고 필요한 타입으로 decode한다.
+- **payload decode를 transport 본체에 섞지 않는다.** framework runtime이 등록된 codec registry로
+  message를 만들고, application은 필요한 packet만 decode한다(§5).
+- session lifecycle callback(**연결·연결 해제**)을 기본 표면으로 올린다.
+- **오류 callback은 application 예외가 아니라, 그 session에 귀속되는 transport 오류만** 올린다(§6).
+
+**범위에서 제외하는 것:**
+
+- **application이 직접 recv loop를 돌리는 방식**(§4)
+- **raw chunk 직접 처리**
+- **사용자 정의 header framing** — header binary 형식은 framework와 connector가 공유하는 내부
+  프로토콜로 고정된다. **application은 이 형식을 바꾸는 설정을 갖지 않는다.**
+
+## 3. Dispatch 모델
+
+**session callback은 transport callback을 직접 실행하지 않는다.** framework가 관리하는 queue를
+거쳐 dispatch한다. 그래야 dispatch·DI·filter·logging을 일관되게 묶을 수 있다.
+
+- session callback이 받는 것은 **dispatch context**(packet name, metadata, request 정보 등)와
+  **payload**다.
+- **request header 값은 runtime이 dispatch context 안에서 보존한다.** application이 header 객체를
+  만들거나 relay 호출에 다시 넘기지 않는다.
+- transport callback에서 받은 **peer 식별 값(routing id)은 session dispatch까지 정보 손실 없이**
+  전달된다.
+
+## 4. recv loop를 기본 표면에서 빼는 이유
+
+recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 표면으로 그대로 끌어올리면
+문제가 생긴다.
+
+- framework가 dispatch·DI·filter·logging을 일관되게 묶기 어려워진다.
+- **application이 loop·취소·backpressure를 직접 떠안게 된다.**
+- header 기반 packet dispatch를 일관된 모델로 설명하기 어려워진다.
+
+**recv 기반 사용을 금지하는 것이 아니다. framework의 기본 application 표면으로 올리지 않는다는
+뜻이다.**
+
+## 5. Codec 계층 분리
+
+**framework 기본 표면은 session·session context·stream·message까지만 유지한다.**
+
+- 객체 변환은 binding core의 message가 아니라 **framework message와 별도 codec extension**이
+  맡는다.
+- **transport core나 framework 기본 runtime에 특정 codec 구현을 직접 섞지 않는다.**
+- **session handler는 codec별 helper를 직접 호출하지 않는다.** JSON·Protobuf·MessagePack·custom
+  codec을 바꿔도 업무 코드는 같은 decode 표면을 쓴다.
+- codec registry는 framework, HTTP client, stream connector가 **공유한다**
+  ([Stream Connector §5.4](stream-connector.ko.md)).
+
+## 6. 오류 경계
+
+| 오류 | 어디로 가는가 |
+|---|---|
+| **그 session에 귀속되는 transport 오류** | **session 오류 callback** |
+| handshake 실패 | **runtime monitoring** — session callback에 올리지 않는다 |
+| socket·node 단위 오류 | **runtime monitoring** — session callback에 올리지 않는다 |
+| application handler 예외 | session 오류 callback이 아니다. handler 예외 처리 경로를 따른다 |
+
+**session 오류 callback은 monitor에서 관찰 가능한 transport 오류를 session 단위로 다시 올려주는
+축으로만 제한한다.**
+
+세션이 닫힐 때의 종료 사유는 [Stream Connector §6.2](stream-connector.ko.md)의 닫힌 집합과
+정합하며, 계기는 [runtime-metrics §4.1](runtime-metrics.ko.md)이 소유한다.
+
+## 7. 등록 모델
+
+**stream node 등록은 명시적으로 한다.** attribute·decorator 기반 암시 등록으로 열지 않는다.
+
+등록 표면의 축:
+
+| 축 | 의미 |
+|---|---|
+| **stream node 이름** | node 식별 |
+| **bind endpoint** | **반드시 있어야 한다** |
+| **session 타입 등록** | **한 stream node에는 session을 하나만 둔다** |
+
+**startup validation** — 다음은 host 시작 **전에** 설정 오류로 실패한다.
+
+- bind endpoint가 없다.
+- 같은 session 타입을 중복 등록한다.
+- 한 node에 session을 둘 이상 등록한다.
+
+등록 시점에 **이 node가 header 기반 packet 경로라는 사실이 분명히 드러나야 한다.**
+
+## 8. Session에서 actor로
+
+session이 받은 packet을 actor로 넘기는 계약은
+[session-actor-dispatch](session-actor-dispatch.ko.md)가 소유한다.
+
+**session callback은 spot 상태를 직접 만지지 않는다.** actor dispatch나 spot 호출을 제출하는
+데까지만 책임진다([stage-wrapper-on-spot §3](stage-wrapper-on-spot.ko.md)).
+
+## 9. 회귀 테스트
+
+| 항목 | 검증 |
+|---|---|
+| dispatch 경로 | session lifecycle과 packet dispatch가 transport callback을 직접 실행하지 않고 managed queue를 거친다 |
+| peer 식별 보존 | transport callback의 routing id가 session dispatch까지 손실 없이 전달된다 |
+| 등록 검증 | 같은 node에 session을 둘 이상 등록하면 startup에서 실패한다 |
+| 오류 경계 | handshake·socket 오류가 session 오류 callback으로 올라오지 않는다 |
+| 인증과 dispatch | connector와 session node 사이에서 인증과 packet dispatch가 완료된다 |
+| 종료와 재개 | stream 종료로 pending request가 실패하고, 새 session의 인증·bind 뒤 messaging이 재개된다 |

@@ -99,6 +99,8 @@
 | `ZLINK_BOUND_SESSION_FACTORY` | bound session factory |
 | `ZLINK_RUNTIME_EVENT_PUBLISHER` | runtime event publisher |
 | `ZLINK_DRAIN_CONTROL` | graceful drain control |
+| `ZLINK_CHANNEL_RUNTIME_OPTIONS` | channel runtime options |
+| `ZLinkDrainHealthIndicator` | drain readiness와 health indicator |
 | `ZLINK_MESSAGE_METADATA_POLICY` | metadata 정책 |
 | `ZLINK_FRAMEWORK_RUNTIME` · `ZLINK_FRAMEWORK_REGISTRATION` | runtime과 등록 |
 

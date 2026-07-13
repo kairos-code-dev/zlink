@@ -9,8 +9,46 @@
 | ND-DOC-002 | `02-handler-interfaces.ko.md` | 전체 public interface, overload, actor, Spot, stream, location과 monitoring 시그니처 검토 완료 |
 | ND-DOC-003 | `03-stream-connector.ko.md` | connector framing, flow, closing 계약 검토 완료 |
 
-공통 `25-stage-wrapper-on-spot.ko.md`는 정식 언어 interface가 아닌 상위 사용 모델이므로 분모에서는
-제외했다. G7 문서 정합성 검토 대상으로 유지한다.
+## 정식 spec SHA-256 snapshot
+
+아래 목록은 Node.js G0가 실제로 읽은 공통 spec 26개와 Node.js 정식 계약 3개의 전체 분모다.
+파일이 추가되거나 내용이 바뀌면 문서 회귀 검증이 실패하며, 변경된 계약을 다시 검토한 뒤 이
+snapshot을 함께 갱신해야 한다.
+
+| 범위 | 파일 | SHA-256 |
+|------|------|---------|
+| common | `00-public-contract-governance.ko.md` | `67c50c2750243eaaaad34dd579d45707dd37eacca9c31d3c074601ce3692bd88` |
+| common | `01-overview.ko.md` | `9bb03da9c4e7522c409597f63228b35ce23a8f5136e965d2ce160323cf65599a` |
+| common | `02-interaction-model.ko.md` | `5abba134f48f8d95d63e8cc409de998ab146cdad39fdf7cba22f6455b19b046d` |
+| common | `03-message-model.ko.md` | `c8477f874dbf0ff6aa8110708b9a5e7a1dc0b99ae387c79cbe06e1df8c0c9d2e` |
+| common | `04-async-execution-policy.ko.md` | `7993d0aa2f5f1a286a19e55a05eb71bdbb14f44926967aa1f58cb7d22378de0c` |
+| common | `05-framework-api.ko.md` | `4e2e7767a0a0ff2324108270f53b0ae51f8f9792991c8db4885ab5f4bdbe8636` |
+| common | `10-channel-topology.ko.md` | `b39269fb7176468f35ddbef69d73cefe02f46b8e1778809d5af0d9e91fcc42d5` |
+| common | `11-channel-messaging.ko.md` | `7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d` |
+| common | `20-spot-messaging.ko.md` | `34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4` |
+| common | `21-spot-node.ko.md` | `03f4e3e114799a62cdd64cc230e11d5e8c024109747714db7306c000404552aa` |
+| common | `22-actor-model.ko.md` | `8235c0dc082bc8f0460457f77b96fa05064898cc01cd5be4f27cbfd9b26c7025` |
+| common | `23-spot-actor.ko.md` | `a4e8e2231abb2ecbb70e3c1938bb5b9bf39233981e329a25f8dc5d8befa407b2` |
+| common | `24-spot-address-messaging.ko.md` | `5c3b233e111d37d4089969b8ba317f7d5525dce6adcab6d8bdd6fe9b3b072c9d` |
+| common | `25-stage-wrapper-on-spot.ko.md` | `d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c` |
+| common | `30-stream-session.ko.md` | `fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd` |
+| common | `31-session-actor-dispatch.ko.md` | `53da37eed4b40fa63e6ad1b0936456b317b9026b173f5f379a0c5e27e3bed88a` |
+| common | `32-stream-connector.ko.md` | `01b72e31d4f661c60cf70110e53d2d158b68d5ce18c270f4fdc033adc083da05` |
+| common | `40-location-runtime.ko.md` | `e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6` |
+| common | `41-location-store-redis.ko.md` | `253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210` |
+| common | `50-runtime-monitoring.ko.md` | `7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94` |
+| common | `51-runtime-metrics.ko.md` | `d808af4314ff9e1a3531275310a2aa2325403c74f362fb637da60c35937653dd` |
+| common | `52-message-flow-tracing.ko.md` | `68b153f892d88b9f0ddab3d7f2fa266606f7b4d3527746172662166ff011144a` |
+| common | `53-flow-correlation.ko.md` | `3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8` |
+| common | `54-graceful-drain-handoff.ko.md` | `1d415bb35d1614e428ca90d8b7ea3bacd8ee78520330c7aa393bfc7316b1f754` |
+| common | `90-implementation-gap.ko.md` | `f8420c27e1ccb1c534e48980ef5b5fabc5628eb377d592db4746b5ae28ae4e83` |
+| common | `README.ko.md` | `a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e` |
+| node | `01-system-structure.ko.md` | `f511367df706d8524b87b341d73de4ab8e2addf3d0f8b3e238c8b0338973f568` |
+| node | `02-handler-interfaces.ko.md` | `bd4c9dc272271b265a7447a2bdd951b964268554855d02a4b1c4c3571785b639` |
+| node | `03-stream-connector.ko.md` | `108146aff90ea2d6fe1adc055e25b20ed55a31deb26782aa02a2abd978d0a0cf` |
+
+공통 `25-stage-wrapper-on-spot.ko.md`는 정식 Node.js 언어 interface 3개 분모에서는 제외한다. 다만
+공통 spec 26개 분모에는 포함해 G0 hash를 고정했으며, G7 문서 정합성 검토 대상으로도 유지한다.
 
 bindings 기준은 `@zlink-systems/zlink` 9.0.2이며, package의 public `version()`이 보고하는 core
 runtime도 9.0.2이다.

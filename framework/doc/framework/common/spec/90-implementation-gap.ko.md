@@ -417,19 +417,28 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 대조해 확인한 차이는 2026-07-13에 모두 해소했다. 브라우저 실행 환경 차이는 §4.10이
 따로 소유한다.
 
-| # | 항목 | 해소 결과 | 회귀 검사 |
+| # | 항목 | 해소 결과 | 검증 항목 |
 |---|------|-----------|-----------|
-| 10.1 | **Response/Error packet name 검증** | `.NET`과 C++도 request name을 pending 상태에 보존하고 reply 이름이 다르면 `FrameDecodeFailed`로 완료한다 | `.NET` `PendingResponseRejectsMismatchedPacketName`, C++ mismatched reply 검사 |
-| 10.2 | **Error payload 포맷** | C++도 압축 해제 뒤 UTF-8 JSON object를 읽고 `code`와 `message`가 문자열인지 검증한다 | C++ invalid Error payload 검사 |
-| 10.3 | **metadata 1024바이트 한도** | C++ public option을 제거하고 송수신 양쪽에 고정된 1024바이트 한도를 적용한다 | C++ 1024바이트 경계와 1025바이트 거부 검사 |
-| 10.4 | **예약 packet name 범위** | C++는 `$zlink.` prefix만 거부하며 `$application.event` 같은 application 이름은 허용한다 | C++ application 이름 허용과 예약 이름 거부 검사 |
-| 10.5 | **수신 메시지 큐 overflow** | `.NET`은 기존 미수신 메시지를 유지하고 새 메시지를 버린 뒤 `ReceivedMessageDropped`를 보고한다 | `.NET` `ReceivedMessagesDropNewestEntryAndReportOverflowAtConfiguredLimit` |
-| 10.6 | **연결 상태 `Created`** | Java에 `CREATED`를 추가하고 첫 연결 시도 전 초기 상태로 사용한다. 연결 시도에 실패한 뒤에는 `DISCONNECTED`로 전환한다 | Java `connectorStartsInCreatedStateBeforeFirstConnectAttempt`와 lifecycle 전체 검사 |
-
-| 10.7 | **dispatch error observer의 `FailCaller` 결과** | `.NET`에 `FailCaller` action을 추가하고 reply가 만들어지지 않은 local dispatch를 `ReplyPathMissing`과 함께 보고한다 | `.NET` `ReplyPathMissing_ReportsFailCallerMessageFlowError`와 enum contract 검사 |
+| 10.1 | **Response/Error packet name 검증** | `.NET`과 C++도 request name을 pending 상태에 보존하고 reply 이름이 다르면 `FrameDecodeFailed`로 완료한다 | 정상 reply와 이름이 다른 reply를 구분하고 pending request를 실패로 완료한다 |
+| 10.2 | **Error payload 포맷** | C++도 압축 해제 뒤 UTF-8 JSON object를 읽고 `code`와 `message`가 문자열인지 검증한다 | 올바른 Error object를 읽고 문자열이나 필수 필드가 잘못된 payload를 거부한다 |
+| 10.3 | **metadata 1024바이트 한도** | C++ public option을 제거하고 송수신 양쪽에 고정된 1024바이트 한도를 적용한다 | 경계값은 허용하고 한도를 넘은 송수신 metadata는 거부한다 |
+| 10.4 | **예약 packet name 범위** | C++는 `$zlink.` prefix만 거부하며 `$application.event` 같은 application 이름은 허용한다 | application 이름은 허용하고 framework 예약 prefix만 거부한다 |
+| 10.5 | **수신 메시지 큐 overflow** | `.NET`은 기존 미수신 메시지를 유지하고 새 메시지를 버린 뒤 `ReceivedMessageDropped`를 보고한다 | 큐가 가득 차면 기존 항목을 유지하고 새 항목의 drop을 관찰할 수 있다 |
+| 10.6 | **연결 상태 `Created`** | Java에 `CREATED`를 추가하고 첫 연결 시도 전 초기 상태로 사용한다. 연결 시도에 실패한 뒤에는 `DISCONNECTED`로 전환한다 | 최초 연결 전 상태와 연결 실패 뒤 상태를 구분한다 |
+| 10.7 | **dispatch error observer의 `FailCaller` 결과** | `.NET`에 `FailCaller` action을 추가하고 reply가 만들어지지 않은 local dispatch를 `ReplyPathMissing`과 함께 보고한다 | local request에 reply가 없을 때 호출 실패 action과 원인을 함께 관찰한다 |
 
 10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
 회귀 검사로 같은 계약에 맞췄다.
+
+## 10.8 dispatch 실패의 로그 수준
+
+**미충족(`.NET`).** [channel 메시징 §3.1](11-channel-messaging.ko.md)은 **handler 예외를 one-way
+경로에서도 Error로 기록**하고, handler 없음·decode 실패·invalid frame은 send는 Warning, publish는
+Debug로 구분하도록 규정한다.
+
+`.NET` dispatch 파이프라인은 **`LogLevel.Error`를 넘기고도 `writeLog: false`로 실제 기록을
+억제한다.** 최종적으로 message flow tracer가 **모든 dispatch 오류를 `Information`으로** 기록하므로
+**계약이 요구하는 수준 구분이 사라진다.** application 코드가 던진 예외가 정보성 로그로 묻힌다.
 
 ## 11. 완료 조건
 

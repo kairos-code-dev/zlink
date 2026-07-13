@@ -689,48 +689,52 @@ message flow error event로 기록한다.
 ## 12.1 내부 routed wire 계약
 
 **server 사이를 잇는 내부 route transport는 [message-model](03-message-model.ko.md)의 multipart
-계약을 그대로 따른다.** public API는 typed object 중심이지만, wire는 part로 나뉜다.
+계약을 따른다.** public API는 typed object 중심이지만, wire는 part로 나뉜다.
 
-**Session 서버 → Play 서버 actor** (actor dispatch request / send):
-
-| part | 내용 |
-|---|---|
-| `parts[0]` | **routed framework header.** packet name은 internal actor dispatch packet 이름 |
-| `parts[1]` | **actor dispatch metadata.** actor route와, local actor를 새로 만들어야 하는 경우를 위한 **actor id와 actor type만** 둔다 |
-| `parts[2]` | **encoded stream header bytes.** stream packet kind, codec, request sequence, packet name, metadata snapshot을 **모두 이 part에** 둔다 |
-| `parts[3]` | **application payload bytes.** codec이 만든 payload를 그대로 둔다 |
-
-**Play 서버 actor → Session 서버의 client stream** (bound session send / request):
+**core의 actor gateway가 이 구간을 소유한다.** framework는 stream frame과 payload를 넘기고,
+gateway가 각 delivery를 다음 구성으로 만든다.
 
 | part | 내용 |
 |---|---|
-| `parts[0]` | **routed framework header.** packet name은 internal bound session packet 이름 |
-| `parts[1]` | **bound session metadata.** actor id, **binding token**, client packet name, reply 필요 여부, metadata snapshot |
-| `parts[2]` | **application payload bytes** |
+| `parts[0]` | **routed control.** spot routed 계층이 붙이는 라우팅 head |
+| `parts[1]` | **actor gateway control.** kind, session rid, **actor id**, **generation**, part flag |
+| `parts[2]` | **payload part** |
 
-**reply도 같은 원칙이다.** routed reply header는 `parts[0]`, reply payload는 별도 part에 둔다.
-**payload가 없으면 빈 payload part를 그대로 남긴다.**
+### 12.1.1 Session 서버 → Play 서버 actor
 
-### 12.1.1 금지하는 형태
+**stream header와 stream payload를 하나의 메시지에 4개 part로 묶지 않는다.** framework는 두 part를
+넘기고, **gateway가 각 part를 별도 delivery로 보낸다.** 각 delivery는 위 3-part 구성을 갖고,
+**`part flag`가 그 delivery가 header part인지 payload part인지 구분한다.**
 
-**다음은 이 계약이 아니다.**
+**받는 쪽은 part flag로 두 delivery를 다시 하나의 stream frame으로 복원한다.**
 
-- **단일 DTO 안에 stream header와 payload bytes를 같이 넣고, 그 DTO 전체를 다시 직렬화**하는 방식
-- **단일 DTO 안에 proxy metadata와 payload bytes를 함께 묶는** 방식
-- **`parts[0]` 한 part만 보내고 그 안에서 header와 payload를 모두 decode**하는 방식
+### 12.1.2 Play 서버 actor → Session 서버의 client stream
 
-**이유는 성능만이 아니다.**
+**bound session push는 완전한 stream frame 하나를 보낸다.** framework가 stream header와 payload를
+**하나의 frame으로 encode한 뒤** gateway에 넘기므로, `parts[2]`는 **header + payload가 합쳐진 완전한
+stream frame**이다.
 
-- **route와 dispatch는 header와 metadata만 읽고도 target과 handler를 결정할 수 있어야 한다.**
+**reply도 같다** — 완전한 frame 하나를 전달한다.
+
+### 12.1.3 왜 이렇게 나누는가
+
+**application payload를 route 경로에서 재인코딩하지 않기 위해서다.**
+
+- **route와 dispatch는 control part만 읽고 target과 handler를 결정할 수 있어야 한다.**
 - **application payload는 handler가 정해진 뒤에 등록된 codec이 decode해야 한다.**
 
 그래야 큰 payload·binary payload·압축 payload·attachment가 들어와도 **framework 내부 route
 경로가 payload 재인코딩 비용을 떠안지 않는다.**
 
-### 12.1.2 STREAM은 예외다
+**금지하는 형태:**
 
-**client와 Session 서버 사이의 STREAM transport는 stream packet 하나 안에 header와 payload
-frame을 그대로 담는다**([Stream Connector §4](32-stream-connector.ko.md)). 위 multipart 계약은
+- **단일 DTO 안에 stream header와 payload bytes를 같이 넣고, 그 DTO 전체를 다시 직렬화**하는 방식
+- **control part 하나만 보내고 그 안에서 header와 payload를 모두 decode**하는 방식
+
+### 12.1.4 STREAM은 예외다
+
+**client와 Session 서버 사이의 STREAM transport는 stream packet 하나 안에 header와 payload frame을
+그대로 담는다**([Stream Connector §4](32-stream-connector.ko.md)). 위 multipart 계약은
 **framework 서버끼리 주고받는 routed transport 구간에만** 적용한다.
 
 ## 13. 자동 연결 정책

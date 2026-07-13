@@ -81,8 +81,8 @@ interface ZlinkStreamConnector {
 
   send(payload: unknown, messageType?: Function): ZlinkStreamSendCall;
   request(payload: unknown, messageType?: Function): ZlinkStreamRequestCall;
-  waitFor<TPayload>(name: string): ZlinkStreamWaitCall<TPayload>;
-  on<TPayload>(
+  waitFor<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamWaitCall<TPayload>;
+  on<TPayload = ZlinkStreamEncodedPayload>(
     name: string,
     handler: (message: ZlinkStreamMessage<TPayload>, signal?: AbortSignal) => Promise<void> | void,
     messageType?: Function

@@ -4714,7 +4714,8 @@ public enum ZlinkStreamErrorCode
     Disconnected, ConfigurationError, ValidationFailed, RequestTimeout,
     ConnectTimeout, FrameDecodeFailed, FrameTooLarge, SendFailed,
     CompressionFailed, TlsValidationFailed, DecompressionFailed,
-    UserCallbackFailed, ObserverFailed, ObserverDropped, RemoteError
+    UserCallbackFailed, ObserverFailed, ObserverDropped, RemoteError,
+    ReceivedMessageDropped
 }
 
 public static class ZlinkStreamConnectorFactory

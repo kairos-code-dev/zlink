@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 import type { Readable } from 'node:stream';
 import { ZLinkFrameworkException, ZLinkFrameworkErrorKind } from '@zlink-systems/framework';

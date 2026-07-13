@@ -9,6 +9,11 @@
         <!-- Consumers own their Zlink.Framework reference (the framework is never snapshot-
              pinned), so the local package declares no dependencies. -->
         <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <!-- Overrides Directory.Build.props: this package wraps System.Net.Http rather
+             than any zlink-original transport, so it ships under Apache-2.0 instead of
+             the framework-wide FSL. -->
+        <PackageLicenseFile></PackageLicenseFile>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>

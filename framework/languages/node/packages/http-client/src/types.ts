@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 /** HTTP methods supported by the ZLink HTTP client. */
 export type ZLinkHttpMethod =

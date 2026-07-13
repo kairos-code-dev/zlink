@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 /**
  * Wrapper-owned cookie jar mirroring the deliberately narrow C++ `cookie_jar.cpp` semantics so

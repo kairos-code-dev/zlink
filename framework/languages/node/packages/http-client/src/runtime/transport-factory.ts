@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 import { readFileSync } from 'node:fs';
 import { rootCertificates } from 'node:tls';

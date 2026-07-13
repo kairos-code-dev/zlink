@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 import { gunzip as gunzipCallback, inflate as inflateCallback, inflateRaw as inflateRawCallback } from 'node:zlib';
 import { promisify } from 'node:util';

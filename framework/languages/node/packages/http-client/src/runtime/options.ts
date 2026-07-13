@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 /**
  * Immutable snapshot of the client configuration produced by the builder. Mirrors the C++

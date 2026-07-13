@@ -26,15 +26,9 @@ application 책임으로 남고, ZLink 는 서비스 간 통신 배선을 줄인
 
 ## 4. 정본 sample
 
-실제 업무 흐름은 [공통 sample](../../common/sample/README.ko.md)이 정의한다. Node.js와
-NestJS 공개 API를 사용한 실행 방법은 다음 sample 문서에서 확인한다.
-
-- [Bingo](samples/bingo-game-sample.ko.md)
-- [TicTacToe](samples/tictactoe-game-sample.ko.md)
-- [SupportChat](samples/supportchat-sample.ko.md)
-- [DeliveryDispatch](samples/deliverydispatch-sample.ko.md)
-- [ShoppingMall](samples/shoppingmall-sample.ko.md)
-- [GameQuest](samples/gamequest-sample.ko.md)
+실제 업무 흐름과 완료 기준은
+[공통 샘플 시나리오](../../common/sample/README.ko.md)가 정의한다. 언어별 문서에서
+같은 샘플 계약을 다시 정의하지 않는다.
 
 cross-language wire 계약 smoke 기준은
 [regression test matrix](../internals/regression-test-matrix.ko.md#81-sample--guide--cross-language-release-항목)에 있다.

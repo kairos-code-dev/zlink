@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Java Channel Messaging Samples](../../../../java/guide/samples/channel-messaging-samples.ko.md) | [다음: ZLink Framework Java SPOT Samples](../../../../java/guide/samples/spot-samples.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: Spring Boot SPOT](spring-boot-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [channel](spring-boot-channel-messaging.ko.md) | [channel 샘플](../../../../java/guide/samples/channel-messaging-samples.ko.md) | [SPOT](spring-boot-spot.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [STREAM](spring-boot-stream.ko.md) | [Monitoring](spring-boot-monitoring.ko.md) | [Registry](spring-boot-registry.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [channel](spring-boot-channel-messaging.ko.md) | [SPOT](spring-boot-spot.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [STREAM](spring-boot-stream.ko.md) | [Monitoring](spring-boot-monitoring.ko.md) | [Registry](spring-boot-registry.ko.md)
 
 # ZLink Framework Java Interface Catalog
 
@@ -1034,8 +1034,7 @@ public record ZLinkSpotTimerStoppedAfterUnhandledException(
 payload를 독립 필드로 두지 않는다.
 
 위 registration 타입들이 `spring-boot-channel-messaging.ko.md`,
-`spring-boot-spot.ko.md`, `channel-messaging-samples.ko.md`,
-`spot-samples.ko.md`에서 쓰는 기준 표면이다.
+`spring-boot-channel-messaging.ko.md`와 `spring-boot-spot.ko.md`에서 쓰는 기준 표면이다.
 
 수동 연결은 `channel` 전체가 아니라 `channel + capability` 또는
 `spot node + capability` 기준으로 관리해야 한다. 예를 들면 `profile.client`와
@@ -1716,5 +1715,5 @@ contract로 고정하지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Java Channel Messaging Samples](../../../../java/guide/samples/channel-messaging-samples.ko.md) | [다음: ZLink Framework Java SPOT Samples](../../../../java/guide/samples/spot-samples.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: Spring Boot SPOT](spring-boot-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

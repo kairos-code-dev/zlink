@@ -31,7 +31,7 @@
 | actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [7](07-actor-spot.ko.md) | [actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md) |
 | session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [8](08-actor-session.ko.md) | [session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md) |
 | STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | [9](09-stream.ko.md) | [stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) |
-| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [9](09-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
+| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [9](09-stream.ko.md) | [공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md) |
 | Location 자동 연결·운영 조회 | 중간 | endpoint를 코드에 적지 않고 서버 증감을 따라가고 싶을 때 | [10](10-location.ko.md) | [location runtime](../../common/spec/location-runtime.ko.md) |
 | spot 주소 메시징 | 중간 | 다른 노드의 spot/actor로 반복해서 보낼 때(조회 1회 후 주소 보관) | [6](06-spot.ko.md) §5 | [spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md) |
 | runtime monitoring | 낮음 | socket/location/spot 이벤트 관찰 | [11](11-monitoring.ko.md) | [monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) |
@@ -74,12 +74,12 @@ flowchart TD
 
 | sample | 핵심 기능 묶음 | codec | 언어별 실행 문서 |
 |--------|----------------|:-----:|------------------|
-| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
-| Bingo | location store 자동 연결, 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [Bingo](samples/bingo-game-sample.ko.md) |
-| SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [SupportChat](samples/supportchat-sample.ko.md) |
-| DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
-| ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [ShoppingMall](samples/shoppingmall-sample.ko.md) |
-| GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [GameQuest](samples/gamequest-sample.ko.md) |
+| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [TicTacToe](../../common/sample/tictactoe/README.ko.md) |
+| Bingo | location store 자동 연결, 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [Bingo](../../common/sample/bingo/README.ko.md) |
+| SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [SupportChat](../../common/sample/supportchat/README.ko.md) |
+| DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) |
+| ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) |
+| GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [GameQuest](../../common/sample/event/gamequest.ko.md) |
 
 > 기능별 사용법은 05~12가, 샘플의 언어 중립 공통 시나리오는
 > [spec/sample](../../common/sample/README.ko.md)가 다룬다.

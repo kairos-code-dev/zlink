@@ -788,7 +788,7 @@ var summaries = await query.ListServiceSummariesAsync(new ZLinkLocationServiceSu
 > client 측 Stream Connector(`Systems.Zlink.Stream.Connector`)의 `Zlink*` 타입은
 > 별도 client 라이브러리라 이 카탈로그(서버 framework 계약)에 포함되지 않는다.
 > connector 표면은 [09-stream](09-stream.ko.md) §2와
-> [samples/streaming-client](samples/streaming-client.ko.md)가 다룬다.
+> [Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)이 다룬다.
 
 ## 10. 더 보기
 

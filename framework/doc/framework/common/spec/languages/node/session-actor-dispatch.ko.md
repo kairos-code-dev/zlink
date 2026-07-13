@@ -1429,7 +1429,7 @@ retry helper 와는 성격이 다르다. diagnostic helper 가 보여 주는 것
 - actor 라이프사이클과 actor handler 모델 →
   [nestjs-actor.ko.md](nestjs-actor.ko.md)
 - TicTacToe sample contract →
-  [tictactoe-game-sample.ko.md](../../../../dotnet/guide/samples/tictactoe-game-sample.ko.md)
+  [공통 TicTacToe 시나리오](../../../sample/tictactoe/README.ko.md)
 - STREAM session 라이프사이클 →
   [nestjs-stream.ko.md](nestjs-stream.ko.md)
 

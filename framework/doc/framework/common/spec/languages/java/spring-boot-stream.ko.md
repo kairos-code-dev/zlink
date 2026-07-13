@@ -4,7 +4,7 @@
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [STREAM 샘플](../../../../java/guide/samples/stream-samples.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md)
 
 # ZLink Framework Spring Boot STREAM
 

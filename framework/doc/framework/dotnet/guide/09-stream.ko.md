@@ -5,7 +5,7 @@
 # 9. STREAM — 외부 client 받기
 
 > 서버 측 정식 계약은 [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md),
-> client connector는 [samples/streaming-client](samples/streaming-client.ko.md)와
+> client connector는 [Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)과
 > [Unity 가이드](../../../../../core/doc/guide/unity-stream-connector.ko.md)가 다룬다.
 >
 > 🔰 STREAM·session·connector 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)
@@ -300,11 +300,11 @@ backoff 2.0, 최대 3회)가 켜져 있다.
 - disconnect 시 대기 중인 모든 request가 실패하고 reconnect 후 자동 재전송되지
   않는다. 재전송은 어플리케이션 책임이다.
 
-> **샘플에서 보기 — [TicTacToe](samples/tictactoe-game-sample.ko.md).** 게임
+> **샘플에서 보기 — [TicTacToe](../../common/sample/tictactoe/README.ko.md).** 게임
 > 클라이언트가 Stream Connector로 접속해 인증 packet을 보내고, session이 인증된
 > actor를 bind해 대국에 참여하는 전 과정을 보여준다. connector 표면 자체를
 > transport별(TCP/TLS/WS/WSS)로 다루는 문서는
-> [streaming-client](samples/streaming-client.ko.md)다.
+> [Stream Connector 공개 계약](../../common/spec/languages/dotnet/stream-connector.ko.md)이다.
 
 ### TLS
 
@@ -357,7 +357,8 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 - 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [13-interface-catalog](13-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - 서버 정식 계약: [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md)
-- 전체 예제: [STREAM 샘플](samples/stream-samples.ko.md), [Stream Connector 가이드](samples/streaming-client.ko.md)
+- 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
+- client 계약: [Stream Connector](../../common/spec/languages/dotnet/stream-connector.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

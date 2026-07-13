@@ -183,7 +183,6 @@ payload codec과 compression codec은 서로 다른 설정이다. payload codec�
 ## 4. 더 보기
 
 - session을 actor에 묶기: [07-actor-session](06-actor-session.ko.md)
-- 전체 예제: [stream 샘플](samples/stream-samples.ko.md)
 - client connector 상세: [stream-connector](../../common/spec/languages/java/stream-connector.ko.md)
 - 서버 정식 계약: [spring-boot-stream](../../common/spec/languages/java/spring-boot-stream.ko.md)
 

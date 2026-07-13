@@ -4,7 +4,7 @@
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [SPOT 샘플](../../../../java/guide/samples/spot-samples.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor/session](spring-boot-actor-session.ko.md) | [SPOT 가이드](../../../../java/guide/05-spot.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md)
 
 # ZLink Framework Spring Boot SPOT
 

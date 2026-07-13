@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [STREAM 샘플](../../../../cpp/guide/samples/stream-samples.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [STREAM 가이드](../../../../cpp/guide/10-stream.ko.md)
 
 # Spec -- ZLink Framework C++ STREAM
 

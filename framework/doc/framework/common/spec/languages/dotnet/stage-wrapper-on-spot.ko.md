@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [SPOT 샘플](../../../../dotnet/guide/samples/spot-samples.ko.md) | [인터페이스](handler-interfaces.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md) | [인터페이스](handler-interfaces.ko.md)
 
 # Stage Wrapper On SPOT
 

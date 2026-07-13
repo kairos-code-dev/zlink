@@ -88,20 +88,10 @@ Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend
 샘플은 Java와 같은 scenario set을 Kotlin coroutine 구현으로 제공한다. 정본 6종은
 per-app 문서로, 기능 축 샘플은 별도 문서로 둔다.
 
-Bingo와 TicTacToe를 제외한 정본 샘플(SupportChat, DeliveryDispatch,
-ShoppingMall, GameQuest)은 공통 샘플 기준에 따라 JSON codec, Registry/Discovery
-자동 연결, Spring component scan 기반 handler 자동 등록을 사용한다. 이 기준은
-[공통 샘플 포팅 기준](../common/sample/README.ko.md#샘플-포팅-기준)을 따른다.
+정본 6종의 서버 역할, 메시지 계약, 상태 전이와 완료 기준은
+[공통 샘플](../common/sample/README.ko.md)이 소유한다. Kotlin 문서는 이 계약을 다시
+서술하지 않는다.
 
 | 문서 | 범위 |
 |------|------|
 | [samples README](../../../languages/java/samples/README.md) | Java/Kotlin sample 구조와 실행 방법 |
-| [bingo-game-sample](guide/samples/bingo-game-sample.ko.md) | Session/Api/Play/Registry, Entry Spot, room Spot, timer, bound push (Protobuf) |
-| [tictactoe-game-sample](guide/samples/tictactoe-game-sample.ko.md) | Api/Play 두 서버, 수동 연결, typed session dispatch |
-| [supportchat-sample](guide/samples/supportchat-sample.ko.md) | conversation Spot, idle timer, reconnect, 양방향 push (JSON) |
-| [deliverydispatch-sample](guide/samples/deliverydispatch-sample.ko.md) | 배차, timeout 재배정, 상태 fanout, 고객 stream push |
-| [shoppingmall-sample](guide/samples/shoppingmall-sample.ko.md) | event-sourced workflow Spot, projection, scale-out |
-| [gamequest-sample](guide/samples/gamequest-sample.ko.md) | event-sourced quest Spot, fanout owner routing, projection rebuild, snapshot 재동기화 (JSON, Kotlin) |
-| [channel-messaging-samples](guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, outbound client 샘플 |
-| [spot-samples](guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
-| [stream-samples](guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |

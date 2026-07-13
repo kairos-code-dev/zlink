@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [channel 샘플](../../../../dotnet/guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [SPOT 샘플](../../../../dotnet/guide/samples/spot-samples.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [STREAM 샘플](../../../../dotnet/guide/samples/stream-samples.ko.md) | [Monitoring](aspnet-core-monitoring.ko.md) | [Location](aspnet-core-location.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Monitoring](aspnet-core-monitoring.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework .NET Interface Catalog
 
@@ -26,15 +26,15 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 - 서버 간 messaging 프로그래밍 모델 →
   [aspnet-core-channel-messaging.ko.md](aspnet-core-channel-messaging.ko.md)
 - 서버 간 messaging 샘플 →
-  [channel-messaging-samples.ko.md](../../../../dotnet/guide/samples/channel-messaging-samples.ko.md)
+  [.NET channel 가이드](../../../../dotnet/guide/05-channel-messaging.ko.md)
 - SPOT 통합 →
   [aspnet-core-spot.ko.md](aspnet-core-spot.ko.md)
 - SPOT 샘플 →
-  [spot-samples.ko.md](../../../../dotnet/guide/samples/spot-samples.ko.md)
+  [.NET SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md)
 - STREAM 통합 →
   [aspnet-core-stream.ko.md](aspnet-core-stream.ko.md)
 - STREAM 샘플 →
-  [stream-samples.ko.md](../../../../dotnet/guide/samples/stream-samples.ko.md)
+  [.NET STREAM 가이드](../../../../dotnet/guide/09-stream.ko.md)
 - Location 통합 →
   [aspnet-core-location.ko.md](aspnet-core-location.ko.md)
 

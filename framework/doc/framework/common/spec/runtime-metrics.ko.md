@@ -74,7 +74,7 @@ framework는 이미 두 관측 표면을 가진다. 메트릭은 이 둘과 **�
 
 - 계기 이름은 `zlink.<surface>.<name>` 규약을 쓴다.
 - **계기 이름·라벨 키는 언어 간 바이트 동일**하다(§9, [X-1]). 이는 와이어/백엔드 식별자이므로
-  API 타입·메서드에 적용하는 케이싱 변환([01-overview §8](../dotnet/guide/01-overview.ko.md)) 대상이
+  API 타입·메서드에 적용하는 케이싱 변환([01-overview §8](../../dotnet/guide/01-overview.ko.md)) 대상이
   아니다. Java에서 `zlinkActorCount`처럼 케이싱을 바꾸지 않는다.
 - 접미사 규칙(대시보드 사고 방지): **counter=복수 명사 또는 과거분사**(`transfers`, `reconnects`,
   `timeouts`), **gauge=단수 명사 또는 상태값**(`active`, `count`, `depth`), 시간 histogram은
@@ -157,8 +157,9 @@ pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않�
 | `zlink.fanout.received` | counter | `{message}` | subscriber 수신 수(`topic` 라벨) |
 | `zlink.fanout.dropped` | counter | `{message}` | framework가 원인을 확정한 fanout 유실 |
 
-> `published`와 `received`의 노드 간 차분이 [GameQuest §4](../dotnet/guide/samples/gamequest-sample.ko.md)
-> 의 "fanout event 누락 보정" 시나리오의 유일한 실측 창이다.
+> `published`와 `received`의 노드 간 차분은
+> [Bingo의 Spot pub/sub](../sample/bingo/README.ko.md)처럼 여러 노드로 전달되는 event의
+> 발행 수와 수신 수를 비교하는 실측 창이다.
 
 `fanout.dropped`는 core/binding이 drop callback 또는 명시 오류를 제공할 때만 증가시킨다. 단순히
 `published - received` 차이를 drop으로 추정하지 않는다. 관측 capability가 없으면 이 계기를 등록하지

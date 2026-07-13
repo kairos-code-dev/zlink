@@ -38,8 +38,6 @@
 [backend dependency policy](internals/backend-dependency-policy.ko.md) ·
 [regression test matrix](internals/regression-test-matrix.ko.md)
 
-기능별 실행 예제는 guide의 [channel](guide/samples/channel-messaging-samples.ko.md),
-[Spot](guide/samples/spot-samples.ko.md),
-[stream](guide/samples/stream-samples.ko.md) 문서에서 확인한다.
+공통 6종의 역할, DTO와 검증 기준은 [공통 샘플](../common/sample/README.ko.md)에서 확인한다.
 
 상위 framework 공통 문서는 [framework/doc](../../README.ko.md)을 본다.

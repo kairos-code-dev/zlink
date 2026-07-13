@@ -167,8 +167,8 @@ class RegistryConfig {
 ```
 
 배포 모델(embedded/standalone)과 topology 조회는 [08-registry](08-registry.ko.md)에서
-다룬다. 수동 연결만으로 Registry 없이 붙이는 방법은
-[channel 샘플 §2](samples/channel-messaging-samples.ko.md)에 있다.
+다룬다. 수동 연결만으로 Registry 없이 구성하는 방법은
+[04-channel-messaging](04-channel-messaging.ko.md)에서 확인한다.
 
 ## 7. 실행과 확인
 

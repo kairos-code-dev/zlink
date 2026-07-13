@@ -291,9 +291,9 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 - **Play 서버**: `addSpotMesh(...)` 아래 `addActorFactory(...)`로 play-node에
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 
-전체 등록 시그니처와 sample 흐름은
-[spring-boot-actor-session](../../common/spec/languages/java/spring-boot-actor-session.ko.md)과
-[stream 샘플](samples/stream-samples.ko.md)이 소유한다.
+전체 등록 시그니처는
+[spring-boot-actor-session](../../common/spec/languages/java/spring-boot-actor-session.ko.md)이
+소유한다.
 
 ## 6. Reconnect와 gotcha
 

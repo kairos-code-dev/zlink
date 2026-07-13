@@ -16,7 +16,7 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `.NET: Client/DeliveryDispatchClientScenario.cs` | `Client/src/main/kotlin/.../client/Program.kt` | client-scenario | done | stream connector wait API로 성공 배차, timeout 재배정, server evidence를 검증한다. standalone runtime proof 통과. |
 | `.NET: Client/Program.cs` | `Client/src/main/kotlin/.../client/Program.kt` | client-entrypoint | done | Client role entrypoint |
 | `.NET: DeliveryDispatch.sln` | `standalone.settings.gradle.kts` | build-root | done | Kotlin standalone multi-project |
-| `.NET: README.ko.md` | `framework/doc/framework/kotlin/guide/samples/deliverydispatch-sample.ko.md` | language-guide | done | Kotlin guide는 완료된 runtime path와 검증 기준을 설명한다. |
+| 공통 DeliveryDispatch 문서 | `framework/doc/framework/common/sample/deliverydispatch/README.ko.md` | common-sample | done | 공통 문서가 시나리오, DTO와 검증 기준을 소유하며 Kotlin 전용 계약은 두지 않는다. |
 | `.NET: Server/Configuration/DeliveryDispatch.Server.Configuration.csproj` | `Server/Configuration/build.gradle.kts` | server-config-project | done | shared server configuration project |
 | `.NET: Server/Configuration/EvidenceStore.cs` | `Server/Configuration/src/main/kotlin/.../DeliveryEvidenceStore.kt` | server-evidence | done | Tracking role이 delivery별 status evidence를 파일에 기록한다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/Configuration/src/main/kotlin/.../SampleFlowLog.kt` | logging | done | Dispatch, Tracking, CustomerGateway role log에 flow evidence를 남긴다. |

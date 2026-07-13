@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 14. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
@@ -104,12 +104,12 @@ channel/spot 계약으로 메시징할 수 있다.
 
 | sample | 확인하는 업무 흐름 | `.NET` 실행 문서 |
 |--------|--------------------|------------------|
-| Bingo | session gateway, Entry Spot, room timer, bound push | [Bingo](samples/bingo-game-sample.ko.md) |
-| TicTacToe | 수동 연결, scale-out, 실시간 게임 | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
-| SupportChat | 대화 상태, 재연결, idle close | [SupportChat](samples/supportchat-sample.ko.md) |
-| DeliveryDispatch | 배차, 재배정, 상태 fanout | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
-| ShoppingMall | 주문 workflow, 보상, projection | [ShoppingMall](samples/shoppingmall-sample.ko.md) |
-| GameQuest | player owner routing, quest event sourcing | [GameQuest](samples/gamequest-sample.ko.md) |
+| Bingo | session gateway, Entry Spot, room timer, bound push | [Bingo](../../common/sample/bingo/README.ko.md) |
+| TicTacToe | 수동 연결, scale-out, 실시간 게임 | [TicTacToe](../../common/sample/tictactoe/README.ko.md) |
+| SupportChat | 대화 상태, 재연결, idle close | [SupportChat](../../common/sample/supportchat/README.ko.md) |
+| DeliveryDispatch | 배차, 재배정, 상태 fanout | [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) |
+| ShoppingMall | 주문 workflow, 보상, projection | [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) |
+| GameQuest | player owner routing, quest event sourcing | [GameQuest](../../common/sample/event/gamequest.ko.md) |
 
 ## 6. 참고 — gRPC·service mesh 스택과의 비교
 
@@ -265,7 +265,7 @@ sequenceDiagram
 ## 7. 더 보기
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../common/sample/README.ko.md)
-- `.NET` 실행 예제: [Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
+- `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
 - 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, [13-interface-catalog](13-interface-catalog.ko.md) §1.6
 - 기능 선택 지도: [04-feature-map](04-feature-map.ko.md)
 
@@ -279,5 +279,5 @@ sequenceDiagram
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

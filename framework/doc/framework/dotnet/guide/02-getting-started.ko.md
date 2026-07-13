@@ -212,7 +212,7 @@ store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으�
 | request/send/pub-sub 전체 사용법 | [05-channel-messaging](05-channel-messaging.ko.md) |
 | room/stage 같은 동적 단위 | [06-spot](06-spot.ko.md) |
 | 외부 game/mobile client 받기 | [09-stream](09-stream.ko.md) |
-| 실행 가능한 전체 예제 | [guide/samples](samples/channel-messaging-samples.ko.md) |
+| 실행 가능한 전체 시나리오 | [공통 샘플](../../common/sample/README.ko.md) |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

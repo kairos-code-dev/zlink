@@ -10,11 +10,17 @@
 복사하지 않고 이 공통 시나리오와 해당 언어 spec을 함께 따른다.
 
 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
-GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
-(dotnet/java/kotlin/node/cpp)가 동일하게 코드와 문서로 구현한다. 언어별 framework를
+GameQuest)은 이 디렉터리의 각 시나리오 문서를 기준으로 삼고, 모든 framework 언어
+(dotnet/java/kotlin/node/cpp)가 동일하게 코드로 구현한다. 언어별 framework를
 구현할 때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태 필드, 같은
 smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을 읽었을 때
 같은 framework 기능을 같은 순서로 확인할 수 있어야 한다.
+
+언어별 guide는 정본 6종의 목적, 서버 구성, 메시지 계약, 상태 전이, 검증 순서를 다시
+정의하지 않는다. 이런 내용을 언어별로 복사하면 공통 문서와 서로 다른 구현 기준이 생길 수
+있기 때문이다. 언어별 DTO 표현을 따로 적어야 하는지는
+[언어별 표현 기준](languages/README.ko.md)에 따라 판단한다. 실제 표현 차이가 없으면 언어별
+샘플 문서를 만들지 않는다.
 
 ## 샘플 목록
 
@@ -65,26 +71,6 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 내부 메시지는 예외가 아니다. 이런 메시지는 호출 방식에 맞춰 `Msg`(one-way send) 또는
 `Req`/`Res`(request/reply)로 이름 붙인다.
 
-## 언어별 구현 수준
-
-공통 시나리오는 샘플이 최종적으로 보여 주어야 하는 역할과 흐름을 정의한다. 다만 언어별 샘플은
-현재 구현 단계가 다를 수 있으므로, 문서와 코드를 비교할 때 아래 구분을 먼저 확인한다.
-
-| 샘플 | full 구조 구현 | compact 구현 |
-|------|----------------|---------------|
-| Bingo | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| TicTacToe | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| SupportChat | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| DeliveryDispatch | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| ShoppingMall | .NET, Java, Node.js | Kotlin, C++ |
-| GameQuest | .NET, Java, Kotlin, Node.js | C++ |
-
-full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, location store 기반 자동
-연결과 위치 조회 경계를 샘플 코드에 그대로 둔 구현이다. compact 구현은 같은 업무 흐름과 client self-check를 제공하지만,
-일부 상태 소유 흐름을 일반 channel handler나 role service로 접어 넣은 구현이다. compact 구현을
-full 구조라고 설명하면 안 된다. full 구조로 승격할 때는 먼저 해당 언어의 framework public API와
-공통 시나리오 문서가 요구하는 Spot owner 경계를 맞춘 뒤 sample regression을 갱신한다.
-
 ## Spot 자동 turn dispatch 샘플 기준
 
 Bingo의 Entry Spot match handler는 player actor 한 명의 입장 준비를 보여 주는 기준
@@ -117,9 +103,9 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 - framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
   누락을 client 시나리오가 늦게 발견하게 된다.
-- C++ 샘플은 handler 자동 등록 예외다. C++ framework는 compile-time 타입과 명시 등록을
-  기준으로 삼으므로, C++ 샘플은 같은 메시지·역할·JSON codec·연결 방식을 유지하되 handler
-  등록은 해당 C++ public builder 표면에 맞게 명시한다.
+- C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
+  등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/handler-interfaces.ko.md)을
+  따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.
 
 ## Dispatch 오류 로그 기준
 

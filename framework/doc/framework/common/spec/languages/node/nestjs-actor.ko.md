@@ -1190,7 +1190,7 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 - session actor dispatch 정책 문서:
   [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)
 - TicTacToe sample에서 모든 표면이 함께 쓰이는 예시:
-  [tictactoe-game-sample.ko.md](../../../../dotnet/guide/samples/tictactoe-game-sample.ko.md)
+  [공통 TicTacToe 시나리오](../../../sample/tictactoe/README.ko.md)
 
 ## 13. 결정된 기준
 

@@ -478,7 +478,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > 메시지의 `context.Topic`을 handler 안에서 보고 처리/무시를 정한다. 즉 topic으로 받을 메시지를
 > 미리 거르는 게 아니라, 받아서 `context.Topic`으로 분기한다.
 
-> **샘플에서 보기 — [DeliveryDispatch](samples/deliverydispatch-sample.ko.md).**
+> **샘플에서 보기 — [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md).**
 > HTTP로 접수한 주문을 channel 호출로 배차 서버에 위임하고, 배송 상태 변화를 fanout
 > publish로 관제·고객 push 구독자에 전파한다. request/send/publish 세 표면이 한 업무
 > 흐름 안에서 함께 쓰이는 대표 예다.
@@ -885,7 +885,7 @@ public sealed class UserCacheRefreshedEventHandler
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [13-interface-catalog](13-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 - dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
-- 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](samples/channel-messaging-samples.ko.md)
+- 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - 다음 축: [06-spot](06-spot.ko.md)
 
 ---

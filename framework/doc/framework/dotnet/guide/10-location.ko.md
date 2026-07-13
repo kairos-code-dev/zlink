@@ -80,9 +80,9 @@ framework.AddClientServerChannel("shop.profile").EnableClient();
 - 단일 프로세스 개발·테스트는 `framework.UseInMemoryLocationStores()` 한 줄로
   Redis 없이 같은 동작을 얻는다.
 
-> **샘플에서 보기 — [Bingo](samples/bingo-game-sample.ko.md).** gateway와 play
+> **샘플에서 보기 — [Bingo](../../common/sample/bingo/README.ko.md).** gateway와 play
 > 노드를 분리한 배포에서 endpoint를 코드에 적지 않고 store 자동 연결로 서로 찾는다.
-> 반대로 [TicTacToe](samples/tictactoe-game-sample.ko.md)는 store 없이 수동
+> 반대로 [TicTacToe](../../common/sample/tictactoe/README.ko.md)는 store 없이 수동
 > endpoint로 직접 잇는 최소 구성이라, 두 샘플을 비교하면 store가 지우는 코드가
 > 정확히 보인다.
 

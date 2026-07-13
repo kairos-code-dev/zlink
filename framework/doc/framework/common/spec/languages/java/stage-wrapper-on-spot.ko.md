@@ -4,7 +4,7 @@
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [SPOT](spring-boot-spot.ko.md) | [SPOT 샘플](../../../../java/guide/samples/spot-samples.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [SPOT](spring-boot-spot.ko.md) | [SPOT 가이드](../../../../java/guide/05-spot.ko.md)
 
 # Java Stage Wrapper On SPOT
 

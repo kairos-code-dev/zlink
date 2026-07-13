@@ -464,7 +464,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 actor dispatch 세부 규칙은 [07-actor-spot](07-actor-spot.ko.md)과
 [08-actor-session](08-actor-session.ko.md)에서 함께 본다.
 
-> **샘플에서 보기 — [Bingo](samples/bingo-game-sample.ko.md).** 플레이어들의 카드
+> **샘플에서 보기 — [Bingo](../../common/sample/bingo/README.ko.md).** 플레이어들의 카드
 > 제출과 room timer의 번호 추첨·자동 mark·승리 판정이 전부 room Spot 하나의 실행
 > 줄에서 직렬로 처리된다. 게임 상태를 만지는 코드 어디에도 lock이 없다 — 이
 > 직렬화 보장이 그 이유다.
@@ -808,7 +808,7 @@ await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
     cancellationToken);
 ```
 
-> **샘플에서 보기 — [ShoppingMall](samples/shoppingmall-sample.ko.md).** `OrderId`를
+> **샘플에서 보기 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md).** `OrderId`를
 > spotRid로 쓰는 owner routing의 대표 예다. 같은 주문의 모든 이벤트가 그 주문의
 > workflow Spot 한 곳에서 직렬로 처리되고, spot이 event sourcing으로 재구성
 > 가능하므로 노드가 바뀌어도 다음 `GetOrCreateAsync`가 이어받는다.
@@ -1170,7 +1170,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 - 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [13-interface-catalog](13-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
 - 노드/채널 builder 계약: [13-interface-catalog](13-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
 - 정식 계약: [spec/aspnet-core-spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md), [spec/spot-node](../../common/spec/languages/dotnet/spot-node.ko.md)
-- 실행 가능한 전체 예제(room/stage/zone): [guide/samples/spot-samples](samples/spot-samples.ko.md)
+- 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - spot 안의 참가자별 상태/세션이 필요하면: [07-actor-spot](07-actor-spot.ko.md)
 
 ---

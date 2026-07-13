@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Java SPOT Samples](../../../../java/guide/samples/spot-samples.ko.md) | [다음: ZLink Framework Spring Boot Monitoring](spring-boot-monitoring.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot SPOT](spring-boot-spot.ko.md) | [다음: ZLink Framework Spring Boot Monitoring](spring-boot-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 샘플](../../../../java/guide/samples/channel-messaging-samples.ko.md) | [SPOT](spring-boot-spot.ko.md) | [Registry](spring-boot-registry.ko.md)
+[Java 묶음](../../../../java/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 가이드](../../../../java/guide/04-channel-messaging.ko.md) | [SPOT](spring-boot-spot.ko.md) | [Registry](spring-boot-registry.ko.md)
 
 # ZLink Framework Spring Boot Channel Messaging
 
@@ -172,5 +172,5 @@ spot router channel 매핑을 명시해야 한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Java SPOT Samples](../../../../java/guide/samples/spot-samples.ko.md) | [다음: ZLink Framework Spring Boot Monitoring](spring-boot-monitoring.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot SPOT](spring-boot-spot.ko.md) | [다음: ZLink Framework Spring Boot Monitoring](spring-boot-monitoring.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

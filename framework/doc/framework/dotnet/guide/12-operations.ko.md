@@ -126,7 +126,7 @@ options.AddSpotMesh("orders")
 `ReleaseAndRecreate`는 그 spot이 외부 영속 상태에서 재구성 가능할 때만 선언한다.
 framework가 메모리 상태를 자동으로 복사해 주지 않는다.
 
-> **샘플에서 보기 — [ShoppingMall](samples/shoppingmall-sample.ko.md).** 주문
+> **샘플에서 보기 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md).** 주문
 > workflow Spot이 event sourcing으로 재구성 가능하므로 `ReleaseAndRecreate`를
 > 선언한다. drain된 노드가 갖고 있던 주문은 다음 요청의 `GetOrCreateAsync`가 다른
 > 노드에서 이어받는다.

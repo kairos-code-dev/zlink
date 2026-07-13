@@ -126,14 +126,14 @@ MFT §7 길목 표에 flow 열을 더한다. flow의 **생성/전파/기록** �
 
 ### 4.1 publish fan-out — 트리 허용
 
-한 흐름이 publish로 N개 구독자에 갈라진다([GameQuest](../dotnet/guide/samples/gamequest-sample.ko.md):
-gameplay event → 다중 instance 구독). **트리 구조를 허용**한다 — N개 구독자 라인이 모두 같은
+한 흐름이 publish로 N개 구독자에 갈라진다([Bingo](../sample/bingo/README.ko.md):
+room reward event → 다른 Play 구독자). **트리 구조를 허용**한다 — N개 구독자 라인이 모두 같은
 `flow_id`를 가진다. owner가 아니어서 **skip하는 구독자 라인에도 flow=를 찍어** "왜 처리 안 됐나"를
 추적 가능하게 한다(MFLOW-EXT-010).
 
 ### 4.2 인바운드가 없는 발원 콜백
 
-SPOT timer, [DeliveryDispatch](../dotnet/guide/samples/deliverydispatch-sample.ko.md)의 timeout 재배정,
+SPOT timer, [DeliveryDispatch](../sample/deliverydispatch/README.ko.md)의 timeout 재배정,
 drain 같은 lifecycle callback에는 인바운드 메시지가 없다. timer는 `origin=timer`, drain·startup·
 shutdown lifecycle은 `origin=lifecycle`로 새 flow를 시작한다. framework callback 밖의 application
 코드가 첫 outbound를 제출하면 `origin=application`으로 시작한다. 인바운드 발원은 `origin=inbound`다.

@@ -4,7 +4,7 @@
 
 [Java spec 목차](README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [STREAM](spring-boot-stream.ko.md) | [STREAM 샘플](../../../../java/guide/samples/stream-samples.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
+[Java 묶음](../../../../java/README.ko.md) | [STREAM](spring-boot-stream.ko.md) | [STREAM 가이드](../../../../java/guide/07-stream.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
 
 # Java/Kotlin Stream Connector
 

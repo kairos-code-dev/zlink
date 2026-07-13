@@ -12,7 +12,7 @@
 >
 > 🔰 actor·session·binding·Entry Spot 용어가 낯설면 [03-concepts §0](03-concepts.ko.md) 한 줄 풀이를 먼저 본다.
 
-> **샘플에서 보기 — [SupportChat](samples/supportchat-sample.ko.md).** 이 축의
+> **샘플에서 보기 — [SupportChat](../../common/sample/supportchat/README.ko.md).** 이 축의
 > 효용이 가장 잘 드러나는 예다. 상담 client의 연결이 끊겨도 conversation Spot과
 > actor 상태는 남고, 재접속한 새 session이 같은 actor에 bind되어 대화가 이어진다
 > (재접속 이전성). 방치된 대화는 idle timer가 닫는다.
@@ -424,7 +424,7 @@ builder.Services.AddZLinkFramework(options =>
 - actor 모델·spot 호스팅 콜백(location 축): [07-actor-spot](07-actor-spot.ko.md)
 - bound session push 계약: [13-interface-catalog](13-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
 - 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)
-- 전체 예제: [tictactoe 샘플](samples/tictactoe-game-sample.ko.md), [bingo 샘플](samples/bingo-game-sample.ko.md)
+- 전체 예제: [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md), [bingo 샘플](../../common/sample/bingo/README.ko.md)
 - 외부 client를 STREAM으로 받는 법: [09-stream](09-stream.ko.md)
 
 ---

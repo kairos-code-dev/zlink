@@ -1121,7 +1121,7 @@ public interface IZLinkFrameworkOptions
 - session actor dispatch 정책 문서:
   [session-gateway-usability.ko.md](../../session-actor-dispatch.ko.md)
 - TicTacToe sample에서 모든 표면이 함께 쓰이는 예시:
-  [tictactoe-game-sample.ko.md](../../../../dotnet/guide/samples/tictactoe-game-sample.ko.md)
+  [공통 TicTacToe 시나리오](../../../sample/tictactoe/README.ko.md)
 
 ## 12. 결정된 기준
 

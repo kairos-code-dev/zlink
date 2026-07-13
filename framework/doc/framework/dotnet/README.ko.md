@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [인터페이스](../common/spec/languages/dotnet/handler-interfaces.ko.md) | [channel](../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | [SPOT](../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [SpotNode](../common/spec/languages/dotnet/spot-node.ko.md) | [Stage wrapper](../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | [STREAM](../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [Actor](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../common/spec/languages/dotnet/session-actor-dispatch.ko.md) | [Stream Connector](guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | [Monitoring](../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) | [Location](../common/spec/languages/dotnet/aspnet-core-location.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md) | [channel 샘플](guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](guide/samples/spot-samples.ko.md) | [STREAM 샘플](guide/samples/stream-samples.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [인터페이스](../common/spec/languages/dotnet/handler-interfaces.ko.md) | [channel](../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | [SPOT](../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [SpotNode](../common/spec/languages/dotnet/spot-node.ko.md) | [Stage wrapper](../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | [STREAM](../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [Actor](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../common/spec/languages/dotnet/session-actor-dispatch.ko.md) | [Stream Connector](../common/spec/languages/dotnet/stream-connector.ko.md) | [Unity 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | [Monitoring](../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) | [Location](../common/spec/languages/dotnet/aspnet-core-location.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
@@ -131,11 +131,7 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 `guide/`는 `.NET`/`ASP.NET Core` 개발자가 각 기능을 **읽고 바로 따라 쓸 수
 있도록** 개념과 사용법을 직접 설명한다. 개념의 정식 의미는 공통 스펙이, 정식
 계약은 spec 문서가 다루며, 가이드는 그 의미를 실사용 코드로 풀어 준다. 실행
-가능한 전체 샘플은 `guide/samples/`에 모여 있다.
-
-업무 흐름의 정본은 공통 sample이고, `guide/samples/`는 그 흐름을 `.NET` 공개 API로
-실행하는 방법을 설명한다. 도입 범위와 기술 선택 기준은 기능 guide가 담당하며,
-실행되지 않는 별도 도메인 사례 문서는 두지 않는다.
+가능한 전체 샘플의 업무 흐름은 [공통 sample](../common/sample/README.ko.md)이 정의한다.
 
 | 문서 | 역할 |
 |------|------|
@@ -173,7 +169,6 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 | [aspnet-core-actor.ko.md](../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkBoundSession, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](../common/spec/languages/dotnet/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkBoundSession`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../common/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
-| [streaming-client.ko.md](guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `Dispatch.Async()`를 호출하는 사용법 |
 | [aspnet-core-monitoring.ko.md](../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) | socket / location / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |
@@ -199,15 +194,6 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [channel-messaging-samples.ko.md](guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client 를 한 번에 보여 주는 샘플 |
-| [spot-samples.ko.md](guide/samples/spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록과 handler, channel send / request, publish 를 한 번에 보여 주는 샘플 |
-| [stream-samples.ko.md](guide/samples/stream-samples.ko.md) | STREAM framework Header 기반 packet session 과 등록 코드를 한 번에 보여 주는 샘플 |
-| [tictactoe-game-sample.ko.md](guide/samples/tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor 를 함께 사용하는 틱택토 게임 샘플 초안(TicTacToe direct + session actor dispatch contract) |
-| [bingo-game-sample.ko.md](guide/samples/bingo-game-sample.ko.md) | matching room 기반 빙고 샘플 설계 노트. Session 서버, API 서버, Play 서버, Entry Spot lobby, room host 시작, timer 진행을 함께 보여 준다. |
-| [supportchat-sample.ko.md](guide/samples/supportchat-sample.ko.md) | 1:1 고객 상담 샘플. session gateway, conversation Spot, reconnect 이전성, idle timer→close, bound push 를 함께 보여 준다(JSON). |
-| [deliverydispatch-sample.ko.md](guide/samples/deliverydispatch-sample.ko.md) | 배송 배차 샘플. HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 stream push 를 함께 보여 준다(JSON). |
-| [shoppingmall-sample.ko.md](guide/samples/shoppingmall-sample.ko.md) | 주문 체크아웃 샘플. event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out(2×2) 을 함께 보여 준다(JSON). |
-| [gamequest-sample.ko.md](guide/samples/gamequest-sample.ko.md) | quest 진행 샘플. gameplay event fanout 구독, player owner routing, quest event sourcing, reward idempotency 를 함께 보여 준다(JSON). |
 
 ### 2.5 범위 원칙
 

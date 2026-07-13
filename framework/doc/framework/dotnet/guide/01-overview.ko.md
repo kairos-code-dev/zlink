@@ -113,7 +113,7 @@ flowchart TB
 | 갈래 | ZLink로는 |
 |------|-----------|
 | ① zone 분할 | zone = `AddSpotMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 transfer**가 이관을 대신한다([07](07-actor-spot.ko.md)) |
-| ② lobby + room | 입장·매칭 = Entry Spot, 방 = room spot을 `GetOrCreate`로 — [Bingo](samples/bingo-game-sample.ko.md)가 이 갈래 그대로다 |
+| ② lobby + room | 입장·매칭 = Entry Spot, 방 = room spot을 `GetOrCreate`로 — [Bingo](../../common/sample/bingo/README.ko.md)가 이 갈래 그대로다 |
 | ③ matchmaker + dedicated | 매칭 = channel handler, 판 = 아무 노드에나 `GetOrCreate`되는 room spot. client는 STREAM으로 직접 접속하고, fleet 증설 자체는 K8s가 그대로 맡는다 |
 | ④ actor 서비스 | ZLink actor — 같은 virtual actor 모델을 .NET 전용이 아니라 **폴리글랏 + 메이저 프레임워크 통합**으로 |
 
@@ -201,8 +201,8 @@ public sealed class MarkNumberHandler
 실행하기 때문이다. 여기서 직렬은 codec 직렬화가 아니라 **실행 순서의
 직렬화**다([06 §3](06-spot.ko.md)).
 
-실행되는 근거 샘플: [TicTacToe](samples/tictactoe-game-sample.ko.md) ·
-[Bingo](samples/bingo-game-sample.ko.md) · [GameQuest](samples/gamequest-sample.ko.md)
+실행되는 근거 샘플: [TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
+[Bingo](../../common/sample/bingo/README.ko.md) · [GameQuest](../../common/sample/event/gamequest.ko.md)
 
 ### 기존 웹 서비스에 실시간 기능을 붙일 때
 
@@ -307,9 +307,9 @@ await spots.GetOrCreateAsync<OrderWorkflowSpot>(
 actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).Submit(ct);
 ```
 
-실행되는 근거 샘플: [SupportChat](samples/supportchat-sample.ko.md) ·
-[DeliveryDispatch](samples/deliverydispatch-sample.ko.md) ·
-[ShoppingMall](samples/shoppingmall-sample.ko.md)
+실행되는 근거 샘플: [SupportChat](../../common/sample/supportchat/README.ko.md) ·
+[DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) ·
+[ShoppingMall](../../common/sample/event/shoppingmall.ko.md)
 
 두 상황의 차이는 진입점일 뿐, 쓰는 표면은 같다. 기능 하나씩 제공하는 제품은
 있어도 — RPC는 gRPC가, actor는 Orleans가, 연결은 게임 엔진이 — **메이저
@@ -621,17 +621,13 @@ framework와 독립적으로 배포되며, client application에서 TCP/TLS/WS/W
 - **기술 리더와 리뷰어**: ZLink를 도입할 만한 문제인지 판단하고, 어떤 책임은 ZLink가
   맡고 어떤 책임은 DB, broker, domain service에 남겨야 하는지 확인하려는 사람.
 
-`guide/samples/` 아래 문서는 ZLink의 용도를 가장 구체적으로 보여 준다. 먼저
-[channel messaging 샘플](samples/channel-messaging-samples.ko.md)에서 서비스 간
-request / response, HTTP handler 안에서의 outbound 호출, publish / subscribe 흐름을
-본다. 상태 소유와 라우팅은 [SPOT 샘플](samples/spot-samples.ko.md), 외부 client 연결은
-[STREAM 샘플](samples/stream-samples.ko.md)과 [Stream Connector](samples/streaming-client.ko.md),
-실시간 game server 구조는 [TicTacToe](samples/tictactoe-game-sample.ko.md)와
-[Bingo](samples/bingo-game-sample.ko.md)에서 확인한다.
-[ShoppingMall](samples/shoppingmall-sample.ko.md),
-[DeliveryDispatch](samples/deliverydispatch-sample.ko.md),
-[GameQuest](samples/gamequest-sample.ko.md),
-[SupportChat](samples/supportchat-sample.ko.md)은 주문 workflow, 배정·상태 추적,
+ZLink의 용도를 구체적인 업무 흐름으로 확인할 때는 [공통 샘플](../../common/sample/README.ko.md)을
+본다. 실시간 game server 구조는 [TicTacToe](../../common/sample/tictactoe/README.ko.md)와
+[Bingo](../../common/sample/bingo/README.ko.md)에서 확인한다.
+[ShoppingMall](../../common/sample/event/shoppingmall.ko.md),
+[DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md),
+[GameQuest](../../common/sample/event/gamequest.ko.md),
+[SupportChat](../../common/sample/supportchat/README.ko.md)은 주문 workflow, 배정·상태 추적,
 게임 진행, 상담·채팅처럼 업무 도메인까지 붙인 end-to-end 샘플이다.
 
 **이 계층이 하지 않는 것도 분명하다.** ZLink Framework는 새 transport나 새 socket 의미를 만드는 계층이
@@ -681,7 +677,7 @@ public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/
 10. [04-feature-map](04-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 12. [14-grpc-alternative](14-grpc-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
-13. [guide/samples](samples/channel-messaging-samples.ko.md) — 정본 업무 시나리오의 등록 코드와 실행 흐름
+13. [공통 샘플](../../common/sample/README.ko.md) — 정본 업무 시나리오와 검증 기준
 14. [spec/](../../common/spec/languages/dotnet/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---

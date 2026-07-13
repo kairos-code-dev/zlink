@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT Samples](../../../../cpp/guide/samples/spot-samples.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT](cpp-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
@@ -328,5 +328,5 @@ header에는 두 타입과 yield call이 남아 있으며, 이는 아래 표의 
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT Samples](../../../../cpp/guide/samples/spot-samples.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](cpp-stream.ko.md) | [다음: C++ SPOT](cpp-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [다음: Bingo Sample](samples/bingo-game-sample.ko.md)
+[문서 목록](../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Kotlin gRPC Alternative Guide
@@ -30,14 +30,9 @@ ZLink는 gRPC를 대체하는 범용 RPC 문법이 아니라, zlink core의 chan
 실제 업무 흐름은 [공통 sample](../../common/sample/README.ko.md)이 정의한다. Kotlin에서
 coroutine 표면으로 등록하고 실행하는 방법은 다음 sample 문서에서 확인한다.
 
-- [Bingo](samples/bingo-game-sample.ko.md)
-- [TicTacToe](samples/tictactoe-game-sample.ko.md)
-- [SupportChat](samples/supportchat-sample.ko.md)
-- [DeliveryDispatch](samples/deliverydispatch-sample.ko.md)
-- [ShoppingMall](samples/shoppingmall-sample.ko.md)
-- [GameQuest](samples/gamequest-sample.ko.md)
+- [공통 샘플 시나리오](../../common/sample/README.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [다음: Bingo Sample](samples/bingo-game-sample.ko.md)
+[문서 목록](../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

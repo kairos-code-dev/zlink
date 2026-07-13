@@ -734,7 +734,7 @@ handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
 - actor 라이프사이클과 actor handler 모델 →
   [aspnet-core-actor.ko.md](aspnet-core-actor.ko.md)
 - TicTacToe sample contract →
-  [tictactoe-game-sample.ko.md](../../../../dotnet/guide/samples/tictactoe-game-sample.ko.md)
+  [공통 TicTacToe 시나리오](../../../sample/tictactoe/README.ko.md)
 - STREAM session 라이프사이클 →
   [aspnet-core-stream.ko.md](aspnet-core-stream.ko.md)
 

@@ -370,9 +370,6 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`
 - `backend-dependency-policy.ko.md`
-- `channel-messaging-samples.ko.md`
-- `spot-samples.ko.md`
-- `stream-samples.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^regression]: regression(회귀) 은 이전 버전에서 잘 동작하던 기능이 새 변경 때문에 다시 깨지는 현상을 가리킨다. regression test 는 그런 일을 막기 위해 항상 돌리는 테스트 묶음이다.

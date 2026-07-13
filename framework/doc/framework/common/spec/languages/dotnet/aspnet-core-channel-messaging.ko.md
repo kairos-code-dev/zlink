@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 샘플](../../../../dotnet/guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Location](aspnet-core-location.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 가이드](../../../../dotnet/guide/05-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework ASP.NET Core Channel Messaging
 
@@ -39,7 +39,7 @@ route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접
 `AddZLinkFramework(...)`, `IZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
 등록부터 handler, HTTP endpoint, outbound 호출까지 흐름을 한 번에 보고 싶다면,
-[channel-messaging-samples.ko.md](../../../../dotnet/guide/samples/channel-messaging-samples.ko.md) 를 참고한다.
+[.NET channel 가이드](../../../../dotnet/guide/05-channel-messaging.ko.md)를 참고한다.
 
 ## 2. 기반이 되는 .NET binding
 

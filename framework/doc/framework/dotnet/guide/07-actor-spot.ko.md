@@ -378,9 +378,9 @@ join의 `request`와 actor 이동 `state`는 서로 다른 message다. `request`
 판단하는 입력이고, `state`는 source actor의 이동 가능한 domain 상태다. application은 raw byte나
 transport frame을 직접 다루지 않고 `ZLinkMessage.From(...)`과 `Decode<T>()`를 사용한다.
 
-> **샘플에서 보기.** [Bingo](samples/bingo-game-sample.ko.md)는 actor가 Entry
+> **샘플에서 보기.** [Bingo](../../common/sample/bingo/README.ko.md)는 actor가 Entry
 > Spot에서 room으로, 그리고 다른 노드의 room으로 이동하는 전체 사슬을 보여준다.
-> [GameQuest](samples/gamequest-sample.ko.md)는 player actor를 owner로 두고 quest
+> [GameQuest](../../common/sample/event/gamequest.ko.md)는 player actor를 owner로 두고 quest
 > 이벤트를 누적하는 장기 상태 actor의 예다.
 
 ```csharp
@@ -613,7 +613,7 @@ match handler → `JoinSpot`→ room `OnActorJoin`(admission)/`OnJoined` → 게
 - session ↔ actor relay(인증·binding·bound session push·등록 코드): [08-actor-session](08-actor-session.ko.md)
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [13-interface-catalog](13-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
 - 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)
-- 전체 예제: [bingo 샘플](samples/bingo-game-sample.ko.md), [tictactoe 샘플](samples/tictactoe-game-sample.ko.md)
+- 전체 예제: [bingo 샘플](../../common/sample/bingo/README.ko.md), [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md)
 - Spot 자체(생성·메시징·timer): [06-spot](06-spot.ko.md)
 
 ---

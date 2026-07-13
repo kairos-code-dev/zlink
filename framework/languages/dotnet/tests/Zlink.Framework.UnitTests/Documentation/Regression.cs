@@ -18,22 +18,12 @@ public sealed class RegressionTests
         "session-actor-dispatch.ko.md",
         "spot-node.ko.md",
         "stream-connector.ko.md",
-        "streaming-client.ko.md",
         "aspnet-core-monitoring.ko.md",
         "aspnet-core-location.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",
         "runtime-execution.ko.md",
         "backend-dependency-policy.ko.md",
-        "channel-messaging-samples.ko.md",
-        "spot-samples.ko.md",
-        "stream-samples.ko.md",
-        "tictactoe-game-sample.ko.md",
-        "bingo-game-sample.ko.md",
-        "supportchat-sample.ko.md",
-        "deliverydispatch-sample.ko.md",
-        "shoppingmall-sample.ko.md",
-        "gamequest-sample.ko.md"
     ];
 
     private static readonly string[] GuideNarrativeDocuments =
@@ -61,7 +51,7 @@ public sealed class RegressionTests
         var contractDirectory = GetDotNetContractDocRoot();
         // Narrative guide docs are onboarding prose, not contract docs, so they
         // are exempt from the regression-section requirement.
-        // Samples remain contract-bound and stay in the strict set.
+        // API examples remain tied to regression evidence and stay in the strict set.
         var guideRoot = Path.Combine(directory, "guide");
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
@@ -156,12 +146,10 @@ public sealed class RegressionTests
         var spotSpec = File.ReadAllText(ResolveDoc("aspnet-core-spot.ko.md"));
         var channelSpec = File.ReadAllText(
             ResolveDoc("aspnet-core-channel-messaging.ko.md"));
-        var spotSamples = File.ReadAllText(ResolveDoc("spot-samples.ko.md"));
         var combined = string.Join(
             Environment.NewLine,
             spotSpec,
-            channelSpec,
-            spotSamples);
+            channelSpec);
 
         Assert.DoesNotContain("AcceptSpotRoutesFromChannel", combined,
             StringComparison.Ordinal);

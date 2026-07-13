@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](../../../../dotnet/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [SPOT 샘플](../../../../dotnet/guide/samples/spot-samples.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [STREAM](aspnet-core-stream.ko.md)
+[.NET 묶음](../../../../dotnet/README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [STREAM](aspnet-core-stream.ko.md)
 
 # ZLink Framework ASP.NET Core SPOT Integration
 
@@ -55,7 +55,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 목적이다.
 
 등록 코드부터 handler, channel send / request, topic publish 까지 한 흐름으로
-보는 샘플은 [spot-samples.ko.md](../../../../dotnet/guide/samples/spot-samples.ko.md) 에 모아 두었다. 또한
+보는 방법은 [.NET SPOT 가이드](../../../../dotnet/guide/06-spot.ko.md)에 정리했다. 또한
 `playhouse` 의 `Stage` 같은 상위 모델을 `SPOT` 위에 다시 감쌀 때 필요한 추가
 조건은 [stage-wrapper-on-spot.ko.md](stage-wrapper-on-spot.ko.md) 에서 다룬다.
 

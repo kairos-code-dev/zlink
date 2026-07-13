@@ -1,6 +1,6 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
+import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
 import { PlayerActor } from './Infrastructure/ZLink/Actors/player-actor';
 import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
@@ -24,10 +24,8 @@ import { bingoMeterProvider } from '../runtime-support';
 function createBingoPlayModule(config: {
 	  playEndpoint: string;
 	  playRouteEndpoint: string;
-	  routePeerEndpoints: string[];
 	  playSpotEndpoint: string;
 	  playSpotPubSubEndpoint: string;
-  playSpotPubSubPeerEndpoints: string[];
   playSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
@@ -48,18 +46,17 @@ function createBingoPlayModule(config: {
           Object.assign(builder.configureLocations(), bingoLocationOptions());
           return builder
           .codecs()
-            .use(zlinkProtobufCodec())
+            .use(bingoFrameworkProtobuf)
           .addRouteMeshChannel(SampleNames.playChannel)
             .enableRouter(config.playRouteEndpoint)
             .routingId(config.playSpotNodeRid)
-            .connect(config.routePeerEndpoints)
             .addHandlerGroup('play')
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
           .addActorTransferAdapter(PlayerActor, PlayerActorTransferAdapter)
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
-            .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid, config.playSpotPubSubPeerEndpoints)
+            .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
             .actorFactory(SampleNames.playerActorType, PlayerActorFactory)

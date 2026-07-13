@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
-import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
+import { GameQuestSelfCheckStore, GameplayStateStore } from '../Shared/Store/quest-progress-store';
 import {
   deleteQuestProjectionReq,
   rebuildQuestProjectionReq
@@ -21,7 +21,8 @@ function startGameApiServer(
   config: GameQuestServerConfig,
   instanceId: 'api-a' | 'api-b'
 ): Promise<http.Server> {
-  const store = app.get(QuestProgressStore, { strict: false });
+  const gameplayState = app.get(GameplayStateStore, { strict: false });
+  const selfCheck = app.get(GameQuestSelfCheckStore, { strict: false });
   const routes = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const base = new URL(instanceId === 'api-a' ? config.apiAHttpUrl : config.apiBHttpUrl);
   const server = http.createServer(async (request, response) => {
@@ -30,19 +31,9 @@ function startGameApiServer(
         sendJson(response, 200, { ready: true, role: instanceId });
         return;
       }
-      if (request.method === 'POST' && request.url === '/combat/kill') {
-        store.killWithoutPublish('player-alice');
-        sendJson(response, 200, { accepted: true });
-        return;
-      }
       if (request.method === 'POST' && request.url === '/internal/snapshot') {
         const body = await readJson<GetGameplaySnapshotReq>(request);
-        sendJson(response, 200, store.readGameplaySnapshot(body.playerId));
-        return;
-      }
-      const progressMatch = request.url?.match(/^\/quest\/progress\/([^/]+)$/);
-      if (request.method === 'GET' && progressMatch !== undefined && progressMatch !== null) {
-        sendJson(response, 200, { activeQuests: store.readProjection(decodeURIComponent(progressMatch[1])) });
+        sendJson(response, 200, gameplayState.readGameplaySnapshot(body.playerId));
         return;
       }
       const deleteMatch = request.url?.match(/^\/self-check\/projection\/([^/]+)\/([^/]+)\/delete$/);
@@ -53,7 +44,6 @@ function startGameApiServer(
           .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), deleteQuestProjectionReq(playerId, questId))
           .timeout(SampleNames.requestTimeout)
           .submit<DeleteQuestProjectionRes>();
-        store.deleteProjection(playerId, questId);
         sendJson(response, 200, deleted);
         return;
       }
@@ -62,21 +52,20 @@ function startGameApiServer(
         const playerId = decodeURIComponent(rebuildMatch[1]);
         const questId = decodeURIComponent(rebuildMatch[2]);
         const rebuilt = await routes
-          .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), rebuildQuestProjectionReq(playerId, questId, 0))
+          .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), rebuildQuestProjectionReq(playerId, questId))
           .timeout(SampleNames.requestTimeout)
           .submit<QuestProgress>();
-        store.mergeProjection(playerId, [rebuilt]);
         sendJson(response, 200, rebuilt);
         return;
       }
       const missedMatch = request.url?.match(/^\/self-check\/gameplay\/kill-without-publish\/([^/]+)$/);
       if (request.method === 'POST' && missedMatch !== undefined && missedMatch !== null) {
-        store.killWithoutPublish(decodeURIComponent(missedMatch[1]));
+        gameplayState.killWithoutPublish(decodeURIComponent(missedMatch[1]));
         sendJson(response, 200, { accepted: true });
         return;
       }
       if (request.method === 'POST' && request.url === '/self-check/assert') {
-        sendJson(response, 200, store.assertServerEvidence() satisfies GameQuestServerAssertRes);
+        sendJson(response, 200, selfCheck.assertServerEvidence() satisfies GameQuestServerAssertRes);
         return;
       }
       sendJson(response, 404, { error: 'not-found' });

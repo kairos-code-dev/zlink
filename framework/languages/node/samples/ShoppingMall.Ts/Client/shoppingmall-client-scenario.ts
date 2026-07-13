@@ -7,11 +7,15 @@ import type {
   RebuildOrderProjectionRes,
   ServerAssertionRes,
   StartOrderReq,
-  StartOrderRes
+  StartOrderRes,
+  VerifyExpectedVersionFenceRes
 } from '../Shared/Contracts/messages';
 
 class ShoppingMallClientScenario {
   async run(apiA: ZLinkHttpClient, apiB: ZLinkHttpClient, signal?: AbortSignal): Promise<void> {
+    const seeded = await apiA.post('/self-check/seed').submitRaw();
+    ensure(() => seeded.status >= 200 && seeded.status < 300);
+
     const successReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-success-001');
     const success = await apiA.post('/orders/start').body(successReq).fetch<StartOrderRes>();
     ensure(() => success.status === OrderStatuses.Created);
@@ -67,6 +71,22 @@ class ShoppingMallClientScenario {
     ensure(() => resumed.state.paymentId === `payment-${inventoryReserved.orderId}`);
     console.log('shoppingmall-resume=completed');
 
+    const interruptedReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-interrupted-001');
+    const interrupted = await apiA.post('/self-check/workflow/inventory-effect')
+      .body(interruptedReq)
+      .fetch<StartOrderRes>();
+    ensure(() => interrupted.status === OrderStatuses.Created);
+    const interruptionRecovered = await apiB.post(`/self-check/workflow/${interrupted.orderId}/continue`)
+      .fetch<ContinueOrderWorkflowRes>();
+    ensure(() => interruptionRecovered.state.status === OrderStatuses.Confirmed);
+    console.log('shoppingmall-effect-interruption=completed');
+
+    const fence = await apiA.post(`/self-check/workflow/${success.orderId}/verify-fence`)
+      .fetch<VerifyExpectedVersionFenceRes>();
+    ensure(() => fence.rejected);
+    ensure(() => fence.actualVersion > fence.expectedVersion);
+    console.log('shoppingmall-version-fence=completed');
+
     const inventoryReq = startOrderReq('cart-inventory-fail', 'addr-home', 'pm-ok', 'order-inventory-001');
     const inventoryStarted = await apiA.post('/orders/start').body(inventoryReq).fetch<StartOrderRes>();
     const inventoryFailed = await this.waitForStatus(apiA, inventoryStarted.orderId, OrderStatuses.Failed, signal);
@@ -101,10 +121,18 @@ class ShoppingMallClientScenario {
     ensure(() => delayedSecond.status === OrderStatuses.Failed);
     console.log('shoppingmall-consistency=completed');
 
-    const scaleReq = startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-001');
-    const scale = await apiB.post('/orders/start').body(scaleReq).fetch<StartOrderRes>();
-    const scaleConfirmed = await this.waitForStatus(apiA, scale.orderId, OrderStatuses.Confirmed, signal);
-    ensure(() => scaleConfirmed.status === OrderStatuses.Confirmed);
+    const scaleA = await apiA.post('/orders/start')
+      .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-001'))
+      .fetch<StartOrderRes>();
+    const scaleB = await apiB.post('/orders/start')
+      .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-002'))
+      .fetch<StartOrderRes>();
+    const [scaleAConfirmed, scaleBConfirmed] = await Promise.all([
+      this.waitForStatus(apiB, scaleA.orderId, OrderStatuses.Confirmed, signal),
+      this.waitForStatus(apiA, scaleB.orderId, OrderStatuses.Confirmed, signal)
+    ]);
+    ensure(() => scaleAConfirmed.status === OrderStatuses.Confirmed);
+    ensure(() => scaleBConfirmed.status === OrderStatuses.Confirmed);
     console.log('shoppingmall-scaleout=completed');
 
     const assertion = await apiA.post('/self-check/assert')
@@ -113,9 +141,10 @@ class ShoppingMallClientScenario {
         pendingRecoveredOrderId: pending.orderId,
         concurrentOrderId: concurrentA.orderId,
         resumedOrderId: inventoryReserved.orderId,
+        interruptedOrderId: interrupted.orderId,
         inventoryFailureOrderId: inventoryStarted.orderId,
         paymentFailureOrderId: paymentStarted.orderId,
-        scaleOutOrderId: scale.orderId
+        scaleOutOrderIds: [scaleA.orderId, scaleB.orderId]
       })
       .fetch<ServerAssertionRes>();
     ensure(() => assertion.passed);

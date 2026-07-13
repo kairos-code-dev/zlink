@@ -3,15 +3,17 @@ import {
   BingoRoomStatus,
   BingoSamplePlayers,
   PacketNames,
-  authenticateReq,
-  deterministicCard,
-  matchBingoReq,
-  observeBingoEventsReq,
-  stopObservingBingoEventsReq,
-  submitBingoCardReq
+  deterministicCard
 } from '../Shared/Contracts/messages';
+import {
+  AuthenticateReq,
+  MatchBingoReq,
+  ObserveBingoEventsReq,
+  StopObservingBingoEventsReq,
+  SubmitBingoCardReq
+} from '../Shared/Contracts/bingo-messages.generated';
 import type {
-  AuthenticateSessionRes,
+  AuthenticateRes,
   BingoRewardAnnouncedNotify,
   MatchBingoRes,
   NumberDrawnNotify,
@@ -49,9 +51,12 @@ class BingoClientScenario {
     await client2.connect(signal);
     await observer.connect(signal);
 
-    const client1Auth = await client1.request(authenticateReq(BingoSamplePlayers.player1)).submit<AuthenticateSessionRes>(signal);
-    const client2Auth = await client2.request(authenticateReq(BingoSamplePlayers.player2)).submit<AuthenticateSessionRes>(signal);
-    const observerAuth = await observer.request(authenticateReq(BingoSamplePlayers.observer)).submit<AuthenticateSessionRes>(signal);
+    const client1Auth = await client1.request(new AuthenticateReq({ accessToken: BingoSamplePlayers.player1 }))
+      .packetName(PacketNames.authenticateReq).submit<AuthenticateRes>(signal);
+    const client2Auth = await client2.request(new AuthenticateReq({ accessToken: BingoSamplePlayers.player2 }))
+      .packetName(PacketNames.authenticateReq).submit<AuthenticateRes>(signal);
+    const observerAuth = await observer.request(new AuthenticateReq({ accessToken: BingoSamplePlayers.observer }))
+      .packetName(PacketNames.authenticateReq).submit<AuthenticateRes>(signal);
 
     ensure(() => client1Auth.actorId === BingoSamplePlayers.player1);
     ensure(() => client2Auth.actorId === BingoSamplePlayers.player2);
@@ -60,26 +65,29 @@ class BingoClientScenario {
     ensure(() => client2Auth.actorNodeRid.length > 0);
     ensure(() => observerAuth.actorNodeRid.length > 0);
     ensure(() => client2Auth.actorId !== client1Auth.actorId);
+    ensure(() => client2Auth.actorNodeRid !== client1Auth.actorNodeRid);
 
     // 2. player-1 matches first, gets a waiting room, and receives no self-join notify.
-    const client1SelfJoinNotify = expectNoMessage(
+    const client1SelfJoinNotify = whileNoMessage(
       client1,
       PacketNames.playerJoinedNotify,
       (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.actorId,
+      () => client1.request(new MatchBingoReq({ mode: 'two-player' }))
+        .packetName(PacketNames.matchBingoReq).submit<MatchBingoRes>(signal),
       signal
     );
-    const client1MatchRes = await client1.request(matchBingoReq()).submit<MatchBingoRes>(signal);
+    const client1MatchRes = await client1SelfJoinNotify;
 
     ensure(() => client1MatchRes.roomId.length > 0);
     ensure(() => stateOf(client1MatchRes).roomId === client1MatchRes.roomId);
     ensure(() => stateOf(client1MatchRes).status === BingoRoomStatus.WaitingForPlayers);
     ensure(() => stateOf(client1MatchRes).hostActorId === client1Auth.actorId);
     ensure(() => client1MatchRes.roomOwnerNodeRid === client1Auth.actorNodeRid);
-    await client1SelfJoinNotify;
 
     // 3. The third client observes rewards through a local BingoRoom on SessionB's Play node.
     const observed = await observer
-      .request(observeBingoEventsReq(client1MatchRes.roomId))
+      .request(new ObserveBingoEventsReq({ roomId: client1MatchRes.roomId }))
+      .packetName(PacketNames.observeBingoEventsReq)
       .submit<ObserveBingoEventsRes>(signal);
     ensure(() => observed.subscribed);
     ensure(() => observed.observerNodeRid === observerAuth.actorNodeRid);
@@ -94,23 +102,23 @@ class BingoClientScenario {
       .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
       .where((message) => message.payload.actorId === client2Auth.actorId)
       .submit(signal);
-    const client2SelfJoinNotify = expectNoMessage(
+    const client1StartedTask = client1.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
+    const client2StartedTask = client2.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
+    const client2MatchResTask = whileNoMessage(
       client2,
       PacketNames.playerJoinedNotify,
       (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.actorId,
+      () => client2.request(new MatchBingoReq({ mode: 'two-player' }))
+        .packetName(PacketNames.matchBingoReq).submit<MatchBingoRes>(signal),
       signal
     );
-    const client1StartedTask = client1.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
-    const client2StartedTask = client2.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
-
-    const client2MatchRes = await client2.request(matchBingoReq()).submit<MatchBingoRes>(signal);
+    const client2MatchRes = await client2MatchResTask;
 
     ensure(() => client2MatchRes.roomId === client1MatchRes.roomId);
     ensure(() => client2MatchRes.roomOwnerNodeRid === client1MatchRes.roomOwnerNodeRid);
     ensure(() => client2Auth.actorNodeRid !== client2MatchRes.roomOwnerNodeRid);
     ensure(() => stateOf(client2MatchRes).roomId === client1MatchRes.roomId);
     ensure(() => stateOf(client2MatchRes).status === BingoRoomStatus.Running);
-    await client2SelfJoinNotify;
 
     const [client1Joined, client1Started, client2Started] = await Promise.all([
       client1SawClient2Join,
@@ -128,7 +136,11 @@ class BingoClientScenario {
 
     // 7. Both clients submit deterministic cards and responses show both 3 x 3 cards.
     const client2Card = await client2
-      .request(submitBingoCardReq(client2MatchRes.roomId, deterministicCard(client2Auth.actorId)))
+      .request(new SubmitBingoCardReq({
+        roomId: client2MatchRes.roomId,
+        card: deterministicCard(client2Auth.actorId)
+      }))
+      .packetName(PacketNames.submitBingoCardReq)
       .submit<SubmitBingoCardRes>(signal);
 
     ensure(() => stateOf(client2Card).status === BingoRoomStatus.Running);
@@ -149,7 +161,11 @@ class BingoClientScenario {
     const client2EndedTask = client2.waitFor<StateEnvelope>(PacketNames.gameEndedNotify).submit(signal);
 
     const client1Card = await client1
-      .request(submitBingoCardReq(client1MatchRes.roomId, deterministicCard(client1Auth.actorId)))
+      .request(new SubmitBingoCardReq({
+        roomId: client1MatchRes.roomId,
+        card: deterministicCard(client1Auth.actorId)
+      }))
+      .packetName(PacketNames.submitBingoCardReq)
       .submit<SubmitBingoCardRes>(signal);
 
     ensure(() => stateOf(client1Card).status === BingoRoomStatus.Running);
@@ -210,7 +226,8 @@ class BingoClientScenario {
     ensure(() => reward.payload.receivingSpotNodeRid !== client1MatchRes.roomOwnerNodeRid);
 
     const stopped = await observer
-      .request(stopObservingBingoEventsReq(client1MatchRes.roomId))
+      .request(new StopObservingBingoEventsReq({ roomId: client1MatchRes.roomId }))
+      .packetName(PacketNames.stopObservingBingoEventsReq)
       .submit<StopObservingBingoEventsRes>(signal);
     ensure(() => stopped.stopped);
     ensure(() => stopped.observerNodeRid === observed.observerNodeRid);
@@ -240,32 +257,39 @@ function waitForDraw(
     .submit(signal);
 }
 
-async function expectNoMessage<TPayload>(
+async function whileNoMessage<TPayload, TResult>(
   client: ZlinkStreamConnector,
   packetName: string,
   predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
+  operation: () => Promise<TResult>,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<TResult> {
+  const boundary = new AbortController();
+  const abort = () => boundary.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const absence = client
+    .waitFor<TPayload>(packetName)
+    .where(predicate)
+    .submit(boundary.signal)
+    .then(() => {
+      throw new Error(`Unexpected stream message '${packetName}'.`);
+    })
+    .catch((error) => {
+      if (boundary.signal.aborted) return;
+      throw error;
+    });
   try {
-    await client
-      .waitFor<TPayload>(packetName)
-      .where(predicate)
-      .timeout(25)
-      .submit(signal);
-  } catch (error) {
-    if (isRequestTimeout(error)) {
-      return;
-    }
-    throw error;
+    const result = await operation();
+    boundary.abort();
+    await absence;
+    return result;
+  } catch (operationError) {
+    boundary.abort();
+    await Promise.allSettled([absence]);
+    throw operationError;
+  } finally {
+    signal?.removeEventListener('abort', abort);
   }
-  throw new Error(`Unexpected stream message '${packetName}'.`);
-}
-
-function isRequestTimeout(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'error' in error
-    && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
 }
 
 function ensure(condition: () => boolean): void {

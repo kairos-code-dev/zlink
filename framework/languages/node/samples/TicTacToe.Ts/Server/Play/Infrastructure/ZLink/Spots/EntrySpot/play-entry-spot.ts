@@ -13,7 +13,7 @@ import type {
 import type {
   JoinGameRes,
   PlayerInfo,
-  PlayerWinMilestoneMsg,
+  PlayerWinMilestoneEvent,
   TicTacToeGameJoinReq,
   TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
@@ -32,10 +32,10 @@ class MilestoneObserverRegistry {
     this.observers.delete(actor.actorId);
   }
 
-  async notify(event: PlayerWinMilestoneMsg, receivingSpotNodeRid: string): Promise<void> {
+  async notify(event: PlayerWinMilestoneEvent, receivingSpotNodeRid: string): Promise<void> {
     const payload = winMilestoneNotify(event, receivingSpotNodeRid);
     for (const actor of [...this.observers.values()]) {
-      actor.push(payload);
+      await actor.push(payload);
     }
   }
 }
@@ -78,7 +78,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     return observeMilestoneRes(true);
   }
 
-  async notifyMilestone(event: PlayerWinMilestoneMsg): Promise<void> {
+  async notifyMilestone(event: PlayerWinMilestoneEvent): Promise<void> {
     await this.milestoneObservers.notify(event, String(this.context.nodeRid));
   }
 
@@ -104,7 +104,9 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
 
   async onJoinedActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
     if (actor.destroyAfterEntrySpotJoin) {
+      console.log(`entry spot: actor destroy started. actor=${actor.actorId}`);
       await this.context.destroyActor(actor, signal);
+      console.log(`entry spot: actor destroyed. actor=${actor.actorId}`);
     }
   }
 

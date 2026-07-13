@@ -1,8 +1,21 @@
-type OrderDomainEvent =
-  | { readonly type: 'OrderStarted'; readonly orderId: string }
-  | { readonly type: 'InventoryReserved'; readonly orderId: string }
-  | { readonly type: 'PaymentAuthorized'; readonly orderId: string }
-  | { readonly type: 'OrderConfirmed'; readonly orderId: string }
-  | { readonly type: 'OrderFailed'; readonly orderId: string; readonly reason: string };
+type OrderEventType =
+  | 'OrderStarted'
+  | 'InventoryReserved'
+  | 'InventoryReservationFailed'
+  | 'PaymentAuthorized'
+  | 'PaymentFailed'
+  | 'InventoryReleased'
+  | 'OrderConfirmed'
+  | 'OrderFailed';
 
-export type { OrderDomainEvent };
+interface StoredOrderEvent {
+  eventId: string;
+  sourceCommandId?: string;
+  orderId: string;
+  eventType: OrderEventType;
+  payload: readonly number[];
+  version: number;
+  createdAtUnixMs: number;
+}
+
+export type { OrderEventType, StoredOrderEvent };

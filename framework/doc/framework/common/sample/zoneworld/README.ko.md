@@ -2,19 +2,11 @@
 
 [샘플 목록](../README.ko.md)
 
-> # ⛔ 구현 착수 금지 — 선행 조건 미충족
+> # 설계 초안 — browser connector 선행 조건 충족
 >
-> **이 샘플은 착수하지 않는다.**
-> browser connector의 비동기 flow 문맥 gap과 실제 브라우저 검증이 완료되기 전까지
-> **서버·client 어느 쪽도 구현하지 않는다.**
->
-> 이유: 이 샘플의 검증 수단이 **브라우저 화면**이다(경계 이동·노드 관제를 눈으로 확인).
-> WebSocket transport는 구현됐지만 비동기 flow 격리와 실제 브라우저 실행 증거가 남아 있다(§14).
-> 이 상태에서 서버만 먼저 구현하면 **검증할 수 없는 코드**가 5개 언어에 쌓이고, 남은 계약 결정 뒤
-> 그 서버들을 다시 고쳐야 한다.
->
-> **착수 조건:** connector 수정(spec + 구현 + 회귀 테스트)이 완료되고, 브라우저에서
-> `wss://` 연결·request/reply·push 수신이 확인될 것.
+> TypeScript connector는 명시적 flow 전달 계약과 실제 Chromium의 `ws`·`wss`, request/reply,
+> push, reconnect 검증을 통과했다. 이 문서는 구현 전 sample 설계이며, ZoneWorld 구현 자체는 별도
+> 작업 범위다.
 
 > **이 문서는 구현 전 시나리오 초안이다.** 아직 어느 언어에서도 구현되지 않았다.
 > 다른 정본 샘플과 달리 **브라우저 UI를 제공**하며, server는 언어별로 구현하되
@@ -884,45 +876,17 @@ zoneworld=completed
 - `PlayerId`·`ZoneId`·`NodeId`는 명시적 domain id이며 routing id hex를 client에 노출하지
   않는다.
 
-## 14. 의존 — TypeScript connector의 브라우저 결함 수정
+## 14. TypeScript browser connector 의존
 
-이 샘플은 브라우저 client를 제공하는 첫 샘플이며,
-[TypeScript Stream Connector의 비동기 flow 문맥 gap](../../spec/90-implementation-gap.ko.md)이
-해소되고 실제 브라우저 검증이 완료되어야 구현할 수 있다.
+이 샘플의 client는 browser-only TypeScript connector package root를 사용한다. 외부 STREAM
+endpoint는 `ws://` 또는 `wss://`여야 하며 HTTP 호출은 runner의 same-origin reverse proxy를
+통과한다.
 
-**이것은 이 샘플을 위해 새로 생긴 요구가 아니다.** TypeScript connector가 원래 목표로 하던
-용도 — 브라우저 웹 client, Cocos Creator web, Unity WebGL의 JS 계층 — 에 필요한 flow 격리
-계약이 아직 완성되지 않은 기존 차이다. ZoneWorld는 그 차이를 드러낸 계기다.
-
-browser entrypoint의 네이티브 WebSocket transport와 package export 분리는 구현됐다. 남은 문제는
-**"WebSocket으로 송수신한다"와 "비동기 handler의 flow 문맥을 정확히 격리한다"가 다른 계약**이라는
-점이다.
-
-### 14.1 분리 전 Node WS 구현
-
-browser entrypoint를 추가하기 전 Node `ws://` 연결은 다음 순서로 만들어졌다.
-
-1. `net.connect()` — **생 TCP 소켓**을 연다.
-2. `completeWebSocketHandshake()` — `GET ... HTTP/1.1` + `Sec-WebSocket-Key` 헤더를 직접
-   조립해 전송한다.
-3. `NodeWebSocketConnection` — WebSocket 프레임(opcode·mask·payload length)을 **직접 비트
-   연산으로** 인코딩·디코딩한다.
-
-즉 **생 TCP 소켓 위에 WebSocket 프로토콜을 손으로 구현한 것**이다. 당시 소비자가
-Node·Unity 같은 네이티브 client였고 브라우저가 요구에 없었으므로 자연스러운 선택이었다.
-
-브라우저에서는 이 방식이 세 겹으로 막힌다.
-
-| 막히는 지점 | 이유 |
-|---|---|
-| 생 TCP 소켓 | 브라우저에는 `net.connect()`에 해당하는 API가 **없다**. 보안 샌드박스가 원천 차단한다. TCP를 열 수 없으므로 그 위의 핸드셰이크·프레이밍 코드도 쓸 수 없다 |
-| 정적 import | `NodeSocketConnector`와 `NodeWebSocketConnection`이 파일 최상단에서 `node:net`·`node:tls`를 import한다. **번들러가 브라우저 빌드를 시도하는 순간 실패**하므로 실행까지 가지 못한다 |
-| package export | `exports`에 브라우저 entrypoint가 없어 다른 transport 구현으로 교체할 통로가 없다 |
-
-### 14.2 브라우저에서는 그 코드가 필요 없다
-
-브라우저에는 네이티브 `WebSocket` API가 있고, **핸드셰이크와 프레이밍을 브라우저가
-수행**한다.
+inbound handler가 시작한 관련 outbound는 `flowFrom(message)`로 표시한다. 표시하지 않은 UI나
+timer callback은 새 application flow를 시작하므로 동시에 실행되어도 inbound flow가 누출되지
+않는다. 실제 Chromium의 WS/WSS, reconnect와 종료 검증 결과는
+[implementation gap §4.10](../../spec/90-implementation-gap.ko.md)과 browser-only 구현 계획에서
+추적한다.
 
 ```ts
 const ws = new WebSocket(endpoint);
@@ -940,20 +904,18 @@ ws.onmessage = e => ...;   // 디프레이밍을 브라우저가 수행한다
 |---|---|---|
 | `stream-wire`(ZLink 프레이밍·헤더 codec) | `Uint8Array` 기반이며 `Buffer`를 쓰지 않는다 | ✅ **그대로 재사용** |
 | Runtime(dispatcher, pending request, observer) | transport에 의존하지 않는다 | ✅ **그대로 재사용** |
-| Transport | `ZlinkStreamTransportFactory` 인터페이스로 Node와 browser 구현을 분리했다 | ✅ **분리 완료** |
+| Transport | 플랫폼 `WebSocket`을 사용하는 browser 구현 하나를 제공한다 | ✅ **전환 완료** |
 
 완료한 transport 작업은 셋이다.
 
-1. **transport를 core에서 분리** — `node:net`·`node:tls` import가 core 경로에 남지 않도록
-   한다.
+1. **Node transport 제거** — `node:net`·`node:tls` import와 Node 전용 flow context를 package에서
+   제거했다.
 2. **브라우저 transport 추가** — 네이티브 `WebSocket`을 `ZlinkStreamConnection`으로 감싸는
    어댑터를 만든다.
-3. **package export 분기** — `exports`에 `browser` 조건을 추가해 Node/브라우저 entrypoint를
-   나눈다.
+3. **package root 단일화** — 별도 browser subpath 없이 ESM browser runtime 하나를 내보낸다.
 
-transport 설계 기록은 [별도 초안](../../draft/browser-stream-connector.ko.md)에 남아 있다.
-현재 public 계약과 남은 구현 차이는 각각 Node connector spec과 implementation gap이 소유한다.
-MFLOW-EXT-014와 실제 브라우저 실행 증거가 닫히기 전까지 ZoneWorld는 착수하지 않는다.
+현재 public 계약은 [TypeScript Stream Connector](../../spec/languages/typescript/03-stream-connector.ko.md)가
+소유한다. 실제 Chromium에서 request/reply, push, reconnect와 명시적 flow 전달을 검증했다.
 
 ## 15. 이 샘플이 채우는 커버리지 공백
 

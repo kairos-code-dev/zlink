@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-source "${NODE_ROOT}/e2e/redis-container.sh"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 cd "${NODE_ROOT}"
@@ -12,8 +11,6 @@ env -u NODE_TEST_CONTEXT node --test \
   --test-name-pattern 'ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle callbacks' \
   test/contract/actor-manager.test.js
 echo "node actor lifecycle sample gate completed"
-
-zlink_redis_cleanup_scope "zlink-redis-node-sample"
 
 declare -A SAMPLE_SCRIPTS=(
   [TicTacToe.Ts]="${SCRIPT_DIR}/TicTacToe.Ts/run_sample.sh"

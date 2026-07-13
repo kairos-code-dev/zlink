@@ -1,8 +1,13 @@
-import { ConversationStatuses } from '../../../../../../../Shared/Contracts/messages';
+import { AgentAvailabilityDirectory } from '../../../../../Application/ConversationAssignment/agent-availability-directory';
+import type { ZLinkSpotTimerHandler, ZLinkTimerTick } from '@zlink-systems/framework';
+import type { ConversationSpot } from '../conversation-spot';
 
-class ConversationIdleTimerHandler {
-  waitingStatus(): string {
-    return ConversationStatuses.WaitingForClose;
+class ConversationIdleTimerHandler implements ZLinkSpotTimerHandler<ConversationSpot> {
+  constructor(private readonly availability: AgentAvailabilityDirectory) {}
+
+  async handle(spot: ConversationSpot, tick: ZLinkTimerTick): Promise<void> {
+    const releasedAgent = spot.onTimer(tick.scheduledAt.getTime());
+    if (releasedAgent !== undefined) this.availability.released(releasedAgent);
   }
 }
 

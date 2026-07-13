@@ -1,6 +1,40 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Invoke-Docker {
+    param([string[]] $Arguments, [int] $TimeoutSeconds = 10)
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = "docker"
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+        $process.Kill($true)
+        throw "docker $($Arguments -join ' ') timed out after ${TimeoutSeconds}s"
+    }
+    $output = $process.StandardOutput.ReadToEnd().Trim()
+    $errorOutput = $process.StandardError.ReadToEnd().Trim()
+    if ($process.ExitCode -ne 0) {
+        throw "docker $($Arguments -join ' ') failed ($($process.ExitCode)): $errorOutput"
+    }
+    return $output
+}
+
+function Wait-Redis([string]$Container) {
+    for ($i = 0; $i -lt 300; $i++) {
+        try {
+            if ((Invoke-Docker -Arguments @("exec", $Container, "redis-cli", "PING") -TimeoutSeconds 5) -eq "PONG") {
+                return
+            }
+        }
+        catch {}
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for Redis container $Container to answer PING."
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $IsWindows) {
     & bash (Join-Path $scriptDir "run_sample.sh")
@@ -11,6 +45,7 @@ $logDir = Join-Path $runDir "logs"
 New-Item -ItemType Directory -Path $logDir | Out-Null
 $processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $redisContainer = $null
+$probe = $null
 
 function Get-FreePorts([int]$Count) {
     $listeners = New-Object System.Collections.Generic.List[System.Net.Sockets.TcpListener]
@@ -39,7 +74,7 @@ function Use-Default([string]$Value, [string]$Fallback) {
 }
 
 function Get-EndpointParts([string]$Endpoint) {
-    $value = $Endpoint -replace '^tcp://', ''
+    $value = $Endpoint -replace '^tcp://', '' -replace '^ws://', ''
     $index = $value.LastIndexOf(':')
     return @{ Host = $value.Substring(0, $index); Port = [int]$value.Substring($index + 1) }
 }
@@ -163,13 +198,27 @@ function Assert-LogContains([string]$Path, [string]$Pattern, [string]$Message) {
     }
 }
 
+function Assert-LogCount([string]$Pattern, [int]$Expected, [string]$Message) {
+    $count = @(Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern $Pattern).Count
+    if ($count -ne $Expected) { throw "$Message Expected=$Expected Actual=$count" }
+}
+
 try {
+    Push-Location $scriptDir
+    try {
+        npm run build | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Bingo.Ts build failed." }
+    }
+    finally {
+        Pop-Location
+    }
+    $env:BINGO_LOG_DIR = $logDir
     $ports = Get-FreePorts 18
-    $sessionAEndpoint = Use-Default $env:BINGO_SESSION_A_ENDPOINT "tcp://127.0.0.1:$($ports[2])"
+    $sessionAEndpoint = Use-Default $env:BINGO_SESSION_A_ENDPOINT "ws://127.0.0.1:$($ports[2])"
     $sessionARouteEndpoint = Use-Default $env:BINGO_SESSION_A_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[3])"
     $sessionASpotEndpoint = Use-Default $env:BINGO_SESSION_A_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[4])"
     $sessionASpotNodeRid = Use-Default $env:BINGO_SESSION_A_SPOT_NODE_RID "bingo-session-node-a"
-    $sessionBEndpoint = Use-Default $env:BINGO_SESSION_B_ENDPOINT "tcp://127.0.0.1:$($ports[5])"
+    $sessionBEndpoint = Use-Default $env:BINGO_SESSION_B_ENDPOINT "ws://127.0.0.1:$($ports[5])"
     $sessionBRouteEndpoint = Use-Default $env:BINGO_SESSION_B_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[6])"
     $sessionBSpotEndpoint = Use-Default $env:BINGO_SESSION_B_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[7])"
     $sessionBSpotNodeRid = Use-Default $env:BINGO_SESSION_B_SPOT_NODE_RID "bingo-session-node-b"
@@ -193,13 +242,19 @@ try {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
     }
-    $redisContainer = "bingo-node-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --tmpfs /data --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis Docker container."
-    }
-    $redisPort = (& docker port $redisContainer "6379/tcp") -replace '^.*:', ''
+    $redisName = "zlink-redis-node-bingo-$PID-$([Guid]::NewGuid().ToString('N'))"
+    $redisImage = Use-Default $env:ZLINK_REDIS_IMAGE "redis:7.2-alpine"
+    $redisContainer = Invoke-Docker -Arguments @("create", "--name", $redisName, "--tmpfs", "/data", "-p", "127.0.0.1::6379", $redisImage)
+    if ([string]::IsNullOrWhiteSpace($redisContainer)) { throw "Failed to create Redis Docker container." }
+    Invoke-Docker -Arguments @("start", $redisContainer) | Out-Null
+    $running = Invoke-Docker -Arguments @("inspect", "-f", "{{.State.Running}}", $redisContainer)
+    if ($running -ne 'true') { throw "Redis Docker container is not running." }
+    $redisPort = Invoke-Docker -Arguments @(
+        "inspect", "-f", "{{(index (index .NetworkSettings.Ports `"6379/tcp`") 0).HostPort}}", $redisContainer
+    )
+    if ($redisPort -notmatch '^\d+$') { throw "Failed to inspect Redis Docker host port." }
     $redisEndpoint = "127.0.0.1:$redisPort"
+    Wait-Redis $redisContainer
 
     $clientConfig = Join-Path $runDir "client.config.json"
     $apiAConfig = Join-Path $runDir "api-a.config.json"
@@ -219,18 +274,13 @@ try {
     })
     Write-SampleConfig $apiAConfig ($base + @{
         apiEndpoint = $apiAEndpoint
-        apiNodeRid = "bingo-api-node-a"
-        playRouteEndpoints = @($playARouteEndpoint, $playBRouteEndpoint)
     })
     Write-SampleConfig $apiBConfig ($base + @{
         apiEndpoint = $apiBEndpoint
-        apiNodeRid = "bingo-api-node-b"
-        playRouteEndpoints = @($playARouteEndpoint, $playBRouteEndpoint)
     })
     Write-SampleConfig $playAConfig ($base + @{
         playEndpoint = $playAEndpoint
         playRouteEndpoint = $playARouteEndpoint
-        routePeerEndpoints = @($playBRouteEndpoint, $sessionARouteEndpoint, $sessionBRouteEndpoint)
         playSpotEndpoint = $playASpotEndpoint
         playSpotPubSubEndpoint = $playASpotPubSubEndpoint
         playSpotNodeRid = $playASpotNodeRid
@@ -238,7 +288,6 @@ try {
     Write-SampleConfig $playBConfig ($base + @{
         playEndpoint = $playBEndpoint
         playRouteEndpoint = $playBRouteEndpoint
-        routePeerEndpoints = @($playARouteEndpoint, $sessionARouteEndpoint, $sessionBRouteEndpoint)
         playSpotEndpoint = $playBSpotEndpoint
         playSpotPubSubEndpoint = $playBSpotPubSubEndpoint
         playSpotNodeRid = $playBSpotNodeRid
@@ -249,7 +298,6 @@ try {
         sessionSpotEndpoint = $sessionASpotEndpoint
         sessionSpotNodeRid = $sessionASpotNodeRid
         preferredPlayNodeRid = $playASpotNodeRid
-        preferredPlayRouteEndpoint = $playARouteEndpoint
     })
     Write-SampleConfig $sessionBConfig ($base + @{
         sessionEndpoint = $sessionBEndpoint
@@ -257,16 +305,7 @@ try {
         sessionSpotEndpoint = $sessionBSpotEndpoint
         sessionSpotNodeRid = $sessionBSpotNodeRid
         preferredPlayNodeRid = $playBSpotNodeRid
-        preferredPlayRouteEndpoint = $playBRouteEndpoint
     })
-
-    Push-Location $scriptDir
-    try {
-        npm run build | Out-Host
-    }
-    finally {
-        Pop-Location
-    }
 
     Wait-Port "redis" "tcp://$redisEndpoint"
 
@@ -284,6 +323,7 @@ try {
         "play-a-spot" = $playASpotEndpoint
         "play-a-spot-pubsub" = $playASpotPubSubEndpoint
     }
+    $playA = $processes[$processes.Count - 1]
 
     Start-ServerAndWait "play-b" "dist/Server/Play/main.js" $playBConfig @{
         "play-b" = $playBEndpoint
@@ -305,31 +345,123 @@ try {
     }
     Wait-LocationReady "$redisEndpoint" "$($redisKeyPrefix)location" $apiAEndpoint $apiBEndpoint $playASpotEndpoint $playBSpotEndpoint
 
+    $probeLog = Join-Path $logDir "drain-probe.log"
+    $probeGate = Join-Path $runDir "drain-probe.gate"
+    $probe = Start-Process -FilePath "node" `
+        -ArgumentList @((Join-Path $scriptDir "../../scripts/browser-e2e/run-sample.mjs"), "Bingo.Ts", "drain-match-probe.ts") `
+        -WorkingDirectory $scriptDir `
+        -RedirectStandardOutput $probeLog `
+        -RedirectStandardError (Join-Path $logDir "drain-probe.err.log") `
+        -Environment @{
+            ZLINK_SAMPLE_CONFIG = $clientConfig
+            BINGO_DRAIN_EXCLUDED_NODE_RID = $playASpotNodeRid
+            BINGO_DRAIN_GATE_FILE = $probeGate
+        } `
+        -PassThru
+    $probeReadyDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $probeReady = Select-String -Path $probeLog -SimpleMatch "bingo-drain-probe ready" -Quiet
+        if (-not $probeReady -and -not $probe.HasExited) { Start-Sleep -Milliseconds 50 }
+    } while (-not $probeReady -and -not $probe.HasExited -and [DateTime]::UtcNow -lt $probeReadyDeadline)
+    if (-not $probeReady) { throw "Drain matching probe did not authenticate before drain." }
+
     $clientLog = Join-Path $logDir "client.log"
-    $clientEnv = @{ ZLINK_SAMPLE_CONFIG = $clientConfig }
     $client = Start-Process -FilePath "node" `
-        -ArgumentList @((Join-Path $scriptDir "dist/Client/main.js")) `
+        -ArgumentList @((Join-Path $scriptDir "../../scripts/browser-e2e/run-sample.mjs"), "Bingo.Ts") `
         -WorkingDirectory $scriptDir `
         -RedirectStandardOutput $clientLog `
         -RedirectStandardError (Join-Path $logDir "client.err.log") `
-        -Environment $clientEnv `
-        -Wait `
         -PassThru
+    $timerDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $timerStarted = Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "bingo-lifecycle timer-started" -Quiet
+        if (-not $timerStarted -and -not $client.HasExited) { Start-Sleep -Milliseconds 50 }
+    } while (-not $timerStarted -and -not $client.HasExited -and [DateTime]::UtcNow -lt $timerDeadline)
+    if (-not $timerStarted) { throw "Bingo.Ts did not reach the drain checkpoint." }
+    & node -e "process.kill($($playA.Id), 'SIGBREAK')"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to signal play-a drain." }
+    $drainingDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $draining = Select-String -Path (Join-Path $logDir "play-a.log") `
+            -SimpleMatch 'zlink metric name=zlink.drain.state value=1 attributes={"state":"draining"}' `
+            -Quiet
+        if (-not $draining) { Start-Sleep -Milliseconds 50 }
+    } while (-not $draining -and [DateTime]::UtcNow -lt $drainingDeadline)
+    if (-not $draining) { throw "play-a did not publish its draining state." }
+    Set-Content -Path $probeGate -Value "draining"
+    $probe.WaitForExit()
+    if ($probe.ExitCode -ne 0) { throw "Drain matching probe exited with $($probe.ExitCode)." }
+    Assert-LogContains $probeLog "bingo-drain-probe .* excluded=$playASpotNodeRid" "Drain probe did not exclude play-a."
+    $client.WaitForExit()
     if ($client.ExitCode -ne 0) {
         throw "Bingo.Ts client exited with $($client.ExitCode)."
     }
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    $requiredLifecyclePatterns = @(
+        "bingo-lifecycle session-disconnect actor=observer destroy=false",
+        "bingo-lifecycle session-disconnect actor=player-1 destroy=false",
+        "bingo-lifecycle session-disconnect actor=player-2 destroy=false",
+        "bingo-lifecycle entry-destroy-complete actor=player-1",
+        "bingo-lifecycle entry-destroy-complete actor=player-2"
+    )
+    do {
+        $lifecycleReady = $true
+        foreach ($pattern in $requiredLifecyclePatterns) {
+            if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern $pattern -Quiet)) {
+                $lifecycleReady = $false
+                break
+            }
+        }
+        if (-not $lifecycleReady) { Start-Sleep -Milliseconds 50 }
+    } while (-not $lifecycleReady -and [DateTime]::UtcNow -lt $deadline)
     Assert-LogContains $clientLog "stream-inbound sample=Bingo" "Bingo.Ts client did not write stream-inbound marker."
     Assert-LogContains $clientLog "stream-inbound sample=Bingo .* seq=[0-9]" "Bingo.Ts client did not write sequenced stream-inbound response marker."
     Assert-LogContains $clientLog "stream-inbound sample=Bingo .* name=.*Notify" "Bingo.Ts client did not write stream-inbound push marker."
+    Assert-LogContains $clientLog "client=player-1" "Bingo.Ts client did not write player-1 inbound marker."
+    Assert-LogContains $clientLog "client=player-2" "Bingo.Ts client did not write player-2 inbound marker."
     Assert-LogContains $clientLog "client=observer" "Bingo.Ts client did not write observer inbound marker."
     Assert-LogContains $clientLog "name=BingoRewardAnnouncedNotify" "Bingo.Ts client did not observe reward push."
-    if (-not (Get-ChildItem -Path (Join-Path $scriptDir "logs") -Filter "*.log" -ErrorAction SilentlyContinue | Select-String -Pattern "message flow" -Quiet)) {
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" -ErrorAction SilentlyContinue | Select-String -Pattern "message flow" -Quiet)) {
         throw "Bingo.Ts did not write message flow logs."
+    }
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "origin=Timer" -Quiet)) {
+        throw "Bingo.Ts did not write timer-origin flow evidence."
+    }
+    & node (Join-Path $scriptDir "scripts/verify-flow-evidence.js") $logDir
+    if ($LASTEXITCODE -ne 0) { throw "Bingo.Ts flow continuity validation failed." }
+    Assert-LogContains (Join-Path $logDir "play-a.log") "bingo-drain result=drained" "play-a did not drain cleanly."
+    Assert-LogContains (Join-Path $logDir "play-a.log") "zlink metric name=zlink.drain.actors.handed_off" "play-a did not hand off an actor during drain."
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "zlink metric name=zlink.stream.connections.active" -Quiet)) {
+        throw "Bingo.Ts did not export stream connection metrics."
+    }
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern 'zlink metric name=zlink.spot.queue.depth .*attributes=.*"kind":"user"' -Quiet)) {
+        throw "Bingo.Ts did not export user queue depth metrics."
+    }
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "zlink metric name=zlink.actor.transfers" -Quiet)) {
+        throw "Bingo.Ts did not export actor transfer metrics."
+    }
+    Assert-LogCount "bingo-lifecycle timer-started" 1 "Bingo draw timer did not start exactly once."
+    foreach ($actor in @("player-1", "player-2")) {
+        Assert-LogCount "bingo-lifecycle room-leave actor=$actor" 1 "Room leave evidence is invalid for $actor."
+        Assert-LogCount "bingo-lifecycle entry-leave actor=$actor" 1 "Entry leave evidence is invalid for $actor."
+        Assert-LogCount "bingo-lifecycle entry-destroy-complete actor=$actor" 1 "Destroy evidence is invalid for $actor."
+        Assert-LogCount "bingo-lifecycle session-disconnect actor=$actor destroy=false" 1 "Disconnect evidence is invalid for $actor."
+    }
+    Assert-LogCount "bingo-lifecycle room-leave actor=observer" 1 "Observer leave evidence is invalid."
+    if (-not (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "bingo-lifecycle entry-joined actor=observer destroy=false" -Quiet)) {
+        throw "Observer did not rejoin its Entry Spot."
+    }
+    Assert-LogCount "bingo-lifecycle session-disconnect actor=observer destroy=false" 1 "Observer disconnect evidence is invalid."
+    if (Get-ChildItem -Path $logDir -Filter "*.log" | Select-String -Pattern "handlerException|phase=error|dispatch error" -Quiet) {
+        throw "Bingo.Ts emitted a dispatch error."
     }
     Write-Host "bingo=completed"
     Write-Host "PASS Bingo.Ts"
 }
 finally {
+    if ($null -ne $probe -and -not $probe.HasExited) {
+        Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+    }
     for ($i = $processes.Count - 1; $i -ge 0; $i--) {
         $process = $processes[$i]
         if (-not $process.HasExited) {
@@ -337,7 +469,7 @@ finally {
         }
     }
     if ($redisContainer) {
-        & docker rm -f $redisContainer *> $null
+        try { Invoke-Docker -Arguments @("rm", "-f", "-v", $redisContainer) | Out-Null } catch {}
     }
     if ($env:BINGO_TS_KEEP_RUN_DIR -ne "1") {
         Remove-Item -Recurse -Force $runDir -ErrorAction SilentlyContinue

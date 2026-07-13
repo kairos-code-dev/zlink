@@ -5,7 +5,7 @@ import { SampleNames } from '../../Configuration/sample-settings';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
   CreateGameHttpRes,
-  CreateGameReq,
+  CreateGameHttpReq,
   CreateGameRes
 } from '../../../Shared/Contracts/messages';
 
@@ -13,9 +13,9 @@ import type {
 class CreateGameEndpoint {
   constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly playClient: ZLinkChannelClient) {}
 
-  async handle(request: CreateGameReq): Promise<CreateGameHttpRes> {
+  async handle(request: CreateGameHttpReq): Promise<CreateGameHttpRes> {
     const response = await this.playClient
-      .requestToChannel(SampleNames.playChannel, createGameReq(request.gameName))
+      .requestToChannel(SampleNames.playChannel, createGameReq(request.gameName ?? 'match'))
       .submit<CreateGameRes>();
     return createGameHttpRes(response);
   }

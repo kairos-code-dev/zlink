@@ -7,7 +7,7 @@ import type {
 import { ZLinkSpotActorSend } from '@zlink-systems/framework';
 import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
 import type {
-  LeaveGameMsg,
+  LeaveGameReq,
   TicTacToeActor
 } from '../../../../../../../Shared/Contracts/messages';
 
@@ -15,17 +15,17 @@ type PlayLeaveActor = TicTacToeActor & ZLinkActor;
 
 @Injectable()
 class PlayActorLeaveGameHandler
-  implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayLeaveActor, LeaveGameMsg> {
-  @ZLinkSpotActorSend('LeaveGameMsg')
+  implements ZLinkSpotActorSendHandler<TicTacToeGameSpot, PlayLeaveActor, LeaveGameReq> {
+  @ZLinkSpotActorSend('LeaveGameReq')
   async handle(
     spot: TicTacToeGameSpot,
     actor: PlayLeaveActor,
     context: ZLinkSpotActorSendContext,
-    request: LeaveGameMsg
+    request: LeaveGameReq
   ): Promise<void> {
     void context;
     await spot.leaveGame(actor, request.roomId);
-    console.log(`actor: LeaveGameMsg completed. actor=${actor.actorId}`);
+    console.log(`actor: LeaveGameReq completed. actor=${actor.actorId}`);
   }
 }
 

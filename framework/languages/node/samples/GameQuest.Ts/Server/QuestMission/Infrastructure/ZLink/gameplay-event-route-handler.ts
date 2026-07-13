@@ -1,22 +1,24 @@
-import { zlinkRequestHandler } from '@zlink-systems/nestjs';
-import { PacketNames } from '../../../../Shared/Contracts/messages';
-import { QuestEventProcessor } from '../../Application/quest-event-processor';
+import { zlinkSendHandler } from '@zlink-systems/nestjs';
+import { GameplayMsg, PacketNames } from '../../../../Shared/Contracts/messages';
 import { QuestOwnerRouter } from '../../Application/quest-owner-router';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
-import type { ApplyGameplayEventReq, ApplyGameplayEventRes } from '../../../../Shared/Contracts/messages';
+import { PlayerQuestSpotProvisioner } from './player-quest-spot-provisioner';
+import type { ZLinkSendHandler } from '@zlink-systems/framework';
 
-@zlinkRequestHandler('quest-owner', PacketNames.applyGameplayEventReq)
-class GameplayEventRouteHandler implements ZLinkRequestHandler<ApplyGameplayEventReq, ApplyGameplayEventRes> {
+@zlinkSendHandler('quest-owner', PacketNames.gameplayMsg)
+class GameplayEventRouteHandler implements ZLinkSendHandler<GameplayMsg> {
   constructor(
-    private readonly processor: QuestEventProcessor,
-    private readonly ownerRouter: QuestOwnerRouter
+    private readonly ownerRouter: QuestOwnerRouter,
+    private readonly playerQuests: PlayerQuestSpotProvisioner
   ) {}
 
-  async handle(request: ApplyGameplayEventReq): Promise<ApplyGameplayEventRes> {
-    if (!this.ownerRouter.isLocalOwner(request.event.playerId)) {
-      return { applied: false, projection: [] };
+  async handle(message: GameplayMsg): Promise<void> {
+    if (!this.ownerRouter.isLocalOwner(message.playerId)) {
+      return;
     }
-    return await this.processor.process(request.event);
+    await this.playerQuests.send(
+      message.playerId,
+      new GameplayMsg(message.eventId, message.playerId, message.type, [...message.payload], message.occurredAtUnixMs)
+    );
   }
 }
 

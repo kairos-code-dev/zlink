@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_ROUTE_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
-import { PacketNames, allocateBingoRoomReq, matchBingoApiRes, withPlayerIdentity } from '../../../Shared/Contracts/messages';
+import { PacketNames } from '../../../Shared/Contracts/messages';
+import { AllocateBingoRoomReq, MatchBingoApiRes } from '../../../Shared/Contracts/bingo-messages.generated';
 import { SampleNames } from '../../Configuration/sample-names';
 import type {
   ZLinkRouteClient,
@@ -8,8 +9,7 @@ import type {
 } from '@zlink-systems/framework';
 import type {
   AllocateBingoRoomRes,
-  MatchBingoApiReq,
-  MatchBingoApiRes
+  MatchBingoApiReq
 } from '../../../Shared/Contracts/messages';
 
 @zlinkRequestHandler('api', PacketNames.matchBingoApiReq)
@@ -21,10 +21,14 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoApiReq, MatchBi
       .requestToNode(
         SampleNames.playChannel,
         request.actorNodeRid,
-        withPlayerIdentity(allocateBingoRoomReq(request.mode), request.actorId, request.displayName)
+        new AllocateBingoRoomReq({
+          mode: request.mode,
+          actorId: request.actorId,
+          preferredOwnerNodeRid: request.actorNodeRid
+        })
       )
       .submit<AllocateBingoRoomRes>();
-    return matchBingoApiRes(allocated.roomId, allocated.roomOwnerNodeRid);
+    return new MatchBingoApiRes({ roomId: allocated.roomId, roomOwnerNodeRid: allocated.roomOwnerNodeRid });
   }
 }
 

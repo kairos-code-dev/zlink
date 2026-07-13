@@ -32,13 +32,11 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | channel handler, Spot actor join | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | event-sourced OrderWorkflowSpot, 조회 모델 adapter | JSON |
 | [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | owner routing handler, event-sourced PlayerQuestSpot, 조회 모델 adapter | JSON |
-| [ZoneWorld](zoneworld/README.ko.md) **⛔ 착수 금지 — 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | zone spot, player actor, owner 일관 channel, fanout subscriber | JSON |
+| [ZoneWorld](zoneworld/README.ko.md) **설계 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | zone spot, player actor, owner 일관 channel, fanout subscriber | JSON |
 
-> **⛔ ZoneWorld는 아직 착수하지 않는다.**
-> browser connector의 비동기 flow 문맥 gap과 실제 브라우저 검증이 완료되기 전까지
-> **서버·client 어느 쪽도 구현하지 않는다.** 이 샘플의 검증 수단이 브라우저 화면이므로,
-> 관측 계약을 검증하지 못한 상태에서 서버만 먼저 구현하면 검증할 수 없는 코드가 5개 언어에
-> 쌓인다. 현재 차이는 [implementation gap §4.10](../spec/90-implementation-gap.ko.md)이 소유한다.
+> ZoneWorld의 browser connector 선행 조건은 충족됐다. 명시적 flow 전달 계약과 실제 Chromium의
+> `ws`·`wss`, request/reply, push, reconnect 검증이 완료됐다. 이 문서는 설계 초안이며 ZoneWorld
+> 구현 자체는 별도 sample 작업으로 진행한다.
 >
 > **ZoneWorld는 다른 샘플과 두 가지가 다르다.** (1) **브라우저 UI**를 제공해 zone 이동과
 > 노드 관제를 눈으로 확인한다. (2) server는 언어별로 구현하되 **client는 TypeScript 하나만**

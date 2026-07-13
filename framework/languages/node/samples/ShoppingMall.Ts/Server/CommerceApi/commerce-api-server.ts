@@ -26,6 +26,10 @@ function createCommerceApiServer(
         sendJson(response, 200, await startOrder.start(body));
         return;
       }
+      if (request.method === 'POST' && url.pathname === '/self-check/seed') {
+        sendJson(response, 200, store.seedSelfCheck());
+        return;
+      }
       if (request.method === 'GET' && url.pathname.startsWith('/orders/')) {
         sendJson(response, 200, store.getOrder(decodeURIComponent(url.pathname.substring('/orders/'.length))));
         return;
@@ -37,7 +41,14 @@ function createCommerceApiServer(
       }
       if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-reserved') {
         const body = await readJson(request) as StartOrderReq;
-        sendJson(response, 200, await workflowRouter.prepareInventory(body));
+        const result = await workflowRouter.prepareInventory(store.reserveOrder(body));
+        sendJson(response, 200, { orderId: result.state.orderId, status: result.state.status });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-effect') {
+        const body = await readJson(request) as StartOrderReq;
+        const result = await workflowRouter.prepareInventoryEffect(store.reserveOrder(body));
+        sendJson(response, 200, { orderId: result.state.orderId, status: result.state.status });
         return;
       }
       const continueMatch = url.pathname.match(/^\/self-check\/workflow\/([^/]+)\/continue$/);
@@ -55,6 +66,11 @@ function createCommerceApiServer(
       if (request.method === 'POST' && rebuildMatch !== null) {
         const orderId = decodeURIComponent(rebuildMatch[1]);
         sendJson(response, 200, await workflowRouter.rebuild(orderId));
+        return;
+      }
+      const fenceMatch = url.pathname.match(/^\/self-check\/workflow\/([^/]+)\/verify-fence$/);
+      if (request.method === 'POST' && fenceMatch !== null) {
+        sendJson(response, 200, await workflowRouter.verifyExpectedVersionFence(decodeURIComponent(fenceMatch[1])));
         return;
       }
       if (request.method === 'POST' && url.pathname === '/self-check/assert') {

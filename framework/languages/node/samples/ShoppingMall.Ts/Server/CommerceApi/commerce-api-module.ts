@@ -4,7 +4,7 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createShoppingMallLocationStore, shoppingMallLocationOptions } from '../Configuration/location-store';
 import type { ShoppingMallServerConfig } from '../Configuration/sample-config';
 import { OrderStore } from '../Shared/Store/order-store';
-import { orderWorkflowChannelFor, SampleNames } from '../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { OrderWorkflowRouterPort } from './Application/order-workflow-router-port';
 import { StartOrderUseCase } from './Application/start-order-use-case';
 import { ZLinkOrderWorkflowRouter } from './Infrastructure/ZLink/zlink-order-workflow-router';
@@ -24,9 +24,7 @@ function createShoppingMallCommerceApiModule(role: string, config: ShoppingMallS
           builder.addLocationStore(createShoppingMallLocationStore(config));
           Object.assign(builder.configureLocations(), shoppingMallLocationOptions());
           return builder
-            .addClientServerChannel(orderWorkflowChannelFor(SampleNames.workflowA))
-              .enableClient()
-            .addClientServerChannel(orderWorkflowChannelFor(SampleNames.workflowB))
+            .addClientServerChannel(SampleNames.orderWorkflowChannel)
               .enableClient()
             .build();
         }

@@ -29,14 +29,12 @@ function createTicTacToePlayModule(config: {
   playEndpoints: string[];
   playSpotEndpoint: string;
   playSpotPubSubEndpoint: string;
-  playRouteEndpoint: string;
   playStreamEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
   playSpotNodeRid: string;
   peerPlaySpotNodeRid: string;
   peerPlaySpotEndpoint: string;
-  peerPlayRouteEndpoint: string;
   peerPlaySpotPubEndpoint: string;
 }) {
   class TicTacToePlayModule {}

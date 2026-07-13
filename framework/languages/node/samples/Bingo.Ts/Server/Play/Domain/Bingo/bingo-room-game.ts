@@ -28,7 +28,7 @@ type BingoPlayerSeat = {
 type BingoRoomSnapshot = {
   roomId: string;
   status: BingoRoomStatus;
-  hostActorId: string | null;
+  hostActorId: string;
   canStart: boolean;
   drawSeq: number;
   lastDrawnNumber: number | null;
@@ -114,7 +114,7 @@ class BingoRoomGame {
     return {
       roomId: this.roomId,
       status: this.status,
-      hostActorId: this.players[0]?.actor.actorId ?? null,
+      hostActorId: this.players[0]?.actor.actorId ?? '',
       canStart: false,
       drawSeq: this.game.drawnNumbers.length,
       lastDrawnNumber: this.game.lastDrawnNumber(),

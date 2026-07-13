@@ -1,12 +1,12 @@
 import { zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
 import { BingoEntrySpot } from '../bingo-entry-spot';
 import { PlayerActor } from '../../../Actors/player-actor';
+import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
 import {
-  bingoRoomJoinReq,
-  matchBingoApiReq,
-  matchBingoRes,
-  PacketNames
-} from '../../../../../../../Shared/Contracts/messages';
+  BingoRoomJoinReq,
+  MatchBingoApiReq,
+  MatchBingoRes
+} from '../../../../../../../Shared/Contracts/bingo-messages.generated';
 import { SampleNames, SampleTimings } from '../../../../../../Configuration/sample-names';
 import type {
   ZLinkEntrySpotActorRequestHandler,
@@ -17,8 +17,7 @@ import type { PlayerActor as PlayerActorType } from '../../../Actors/player-acto
 import type {
   BingoRoomJoinRes,
   MatchBingoApiRes,
-  MatchBingoReq,
-  MatchBingoRes
+  MatchBingoReq
 } from '../../../../../../../Shared/Contracts/messages';
 
 @zlinkEntrySpotActorRequestHandler({
@@ -40,21 +39,26 @@ class MatchBingoActorHandler
     const matched = await entrySpot.context.outbound
         .requestToChannel(
           SampleNames.apiChannel,
-          matchBingoApiReq(actorId, displayName, request.mode, String(entrySpot.context.nodeRid))
+          new MatchBingoApiReq({
+            actorId,
+            displayName,
+            actorNodeRid: String(entrySpot.context.nodeRid),
+            mode: request.mode
+          })
         )
         .timeout(SampleTimings.requestTimeout)
         .submit<MatchBingoApiRes>();
 
     const roomId = matched.roomId;
     const joined = await actor.context
-      .joinSpot(roomId, bingoRoomJoinReq(roomId, actorId, displayName))
+      .joinSpot(roomId, new BingoRoomJoinReq({ roomId, actorId, displayName, observeOnly: false }))
       .timeout(SampleTimings.requestTimeout)
       .submit<BingoRoomJoinRes>();
     if (joined.status === 'rejected') {
       throw new Error(`Room ${roomId} rejected actor '${actorId}'.`);
     }
 
-    return matchBingoRes(roomId, joined.reply.state, matched.roomOwnerNodeRid);
+    return new MatchBingoRes({ roomId, state: joined.reply.state, roomOwnerNodeRid: matched.roomOwnerNodeRid });
   }
 }
 

@@ -12,11 +12,11 @@ const PacketNames = Object.freeze({
   observeMilestoneRes: 'ObserveMilestoneRes',
   placeMarkReq: 'PlaceMarkReq',
   placeMarkRes: 'PlaceMarkRes',
-  leaveGameMsg: 'LeaveGameMsg',
+  leaveGameReq: 'LeaveGameReq',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStateNotify: 'GameStateNotify',
   winMilestoneNotify: 'WinMilestoneNotify',
-  playerWinMilestoneEvent: 'PlayerWinMilestoneMsg'
+  playerWinMilestoneEvent: 'PlayerWinMilestoneEvent'
 });
 
 export interface AuthenticateReq {
@@ -48,16 +48,24 @@ export interface AuthenticatePlayerRes {
 }
 
 export interface CreateGameReq {
-  gameName?: string;
+  gameName: string;
 }
 
-export class CreateGameReq implements CreateGameReq {
+export class CreateGameHttpReq {
   gameName?: string;
 
   constructor(gameName?: string) {
     if (gameName !== undefined) {
       this.gameName = gameName;
     }
+  }
+}
+
+export class CreateGameReq implements CreateGameReq {
+  gameName: string;
+
+  constructor(gameName: string) {
+    this.gameName = gameName;
   }
 }
 
@@ -97,7 +105,6 @@ export interface PlayNodeInfo {
 
 export interface JoinGameReq {
   roomId: string;
-  player?: PlayerInfo;
 }
 
 export class JoinGameReq {
@@ -109,7 +116,7 @@ export class JoinGameReq {
 }
 
 export interface JoinGameRes {
-  state: unknown;
+  state: GameState;
 }
 
 export interface TicTacToeGameJoinReq {
@@ -124,19 +131,15 @@ export interface ObserveMilestoneRes {
   subscribed: boolean;
 }
 
-export interface PlaceMarkStreamReq {
-  cell: number;
-}
-
 export class PlaceMarkReq {
   constructor(readonly cell: number) {}
 }
 
 export interface PlaceMarkRes {
-  state: unknown;
+  state: GameState;
 }
 
-export class LeaveGameMsg {
+export class LeaveGameReq {
   constructor(readonly roomId: string) {}
 }
 
@@ -147,7 +150,7 @@ export class PlayerJoinedNotify {
     readonly displayName: string,
     readonly level: number,
     readonly mark: string,
-    readonly state: unknown
+    readonly state: GameState
   ) {}
 }
 
@@ -190,7 +193,7 @@ export class WinMilestoneNotify {
   ) {}
 }
 
-export class PlayerWinMilestoneMsg {
+export class PlayerWinMilestoneEvent {
   constructor(
     readonly roomId: string,
     readonly actorId: string,
@@ -210,13 +213,13 @@ export interface TicTacToeActor {
   markDisconnected(): void;
   markForDestroyAfterRoomLeave(): void;
   destroyAfterEntrySpotJoin: boolean;
-  push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): void;
+  push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): Promise<void>;
 }
 
 export interface TicTacToeActorClient {
   send(message: unknown): {
     metadata(key: string, value: string): {
-      submit(): void;
+      submit(): Promise<void>;
     };
   };
 }
@@ -254,8 +257,12 @@ function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
   };
 }
 
-function createGameReq(gameName?: string): CreateGameReq {
+function createGameReq(gameName: string): CreateGameReq {
   return new CreateGameReq(gameName);
+}
+
+function createGameHttpReq(gameName?: string): CreateGameHttpReq {
+  return new CreateGameHttpReq(gameName);
 }
 
 function createGameRes(
@@ -288,7 +295,7 @@ function joinGameReq(roomId: string): JoinGameReq {
   return new JoinGameReq(roomId);
 }
 
-function joinGameRes(state: unknown): JoinGameRes {
+function joinGameRes(state: GameState): JoinGameRes {
   return { state };
 }
 
@@ -296,11 +303,11 @@ function observeMilestoneRes(subscribed: boolean): ObserveMilestoneRes {
   return { subscribed };
 }
 
-function placeMarkStreamReq(cell: number): PlaceMarkStreamReq {
+function placeMarkStreamReq(cell: number): PlaceMarkReq {
   return new PlaceMarkReq(cell);
 }
 
-function placeMarkRes(state: unknown): PlaceMarkRes {
+function placeMarkRes(state: GameState): PlaceMarkRes {
   return { state };
 }
 
@@ -310,7 +317,7 @@ function playerJoinedNotify(
   displayName: string,
   level: number,
   mark: string,
-  state: unknown
+  state: GameState
 ): PlayerJoinedNotify {
   return new PlayerJoinedNotify(roomId, actorId, displayName, level, mark, state);
 }
@@ -324,12 +331,12 @@ function playerWinMilestoneEvent(
   actorId: string,
   displayName: string,
   wins: number
-): PlayerWinMilestoneMsg {
-  return new PlayerWinMilestoneMsg(roomId, actorId, displayName, wins);
+): PlayerWinMilestoneEvent {
+  return new PlayerWinMilestoneEvent(roomId, actorId, displayName, wins);
 }
 
 function winMilestoneNotify(
-  event: PlayerWinMilestoneMsg,
+  event: PlayerWinMilestoneEvent,
   receivingSpotNodeRid: string
 ): WinMilestoneNotify {
   return new WinMilestoneNotify(
@@ -350,6 +357,7 @@ export {
   authenticateRes,
   createGameRes,
   createGameHttpRes,
+  createGameHttpReq,
   createGameReq,
   gameStateNotify,
   joinGameReq,

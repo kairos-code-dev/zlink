@@ -5,13 +5,10 @@ type BingoSampleConfig = {
   sessionSpotEndpoint: string;
   sessionSpotNodeRid: string;
   preferredPlayNodeRid: string;
-  preferredPlayRouteEndpoint: string;
   playEndpoint: string;
   playRouteEndpoint: string;
-  routePeerEndpoints: string[];
   playSpotEndpoint: string;
   playSpotPubSubEndpoint: string;
-  playSpotPubSubPeerEndpoints: string[];
   playSpotNodeRid: string;
   apiEndpoint: string;
   redisEndpoint: string;
@@ -31,15 +28,10 @@ function loadSampleConfig(): BingoSampleConfig {
     sessionSpotEndpoint: requireEnv('BINGO_SESSION_SPOT_ENDPOINT'),
     sessionSpotNodeRid: process.env.BINGO_SESSION_SPOT_NODE_RID ?? 'bingo-session-node',
     preferredPlayNodeRid: process.env.BINGO_PREFERRED_PLAY_NODE_RID ?? '',
-    preferredPlayRouteEndpoint: process.env.BINGO_PREFERRED_PLAY_ROUTE_ENDPOINT ?? '',
     playEndpoint: requireEnv('BINGO_PLAY_ENDPOINT'),
     playRouteEndpoint: requireEnv('BINGO_PLAY_ROUTE_ENDPOINT'),
-    routePeerEndpoints: requireEnv('BINGO_ROUTE_PEER_ENDPOINTS').split(',').filter((endpoint) => endpoint.length > 0),
     playSpotEndpoint: requireEnv('BINGO_PLAY_SPOT_ENDPOINT'),
     playSpotPubSubEndpoint: requireEnv('BINGO_PLAY_SPOT_PUBSUB_ENDPOINT'),
-    playSpotPubSubPeerEndpoints: (process.env.BINGO_PLAY_SPOT_PUBSUB_PEER_ENDPOINTS ?? '')
-      .split(',')
-      .filter((endpoint) => endpoint.length > 0),
     playSpotNodeRid: process.env.BINGO_PLAY_SPOT_NODE_RID ?? 'bingo-play-node',
     apiEndpoint: requireEnv('BINGO_API_ENDPOINT'),
     redisEndpoint: requireEnv('BINGO_REDIS_ENDPOINT'),

@@ -2,57 +2,20 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { BindCourierHandler } from './bind-courier-handler';
-import { CourierActorFactory } from './courier-actor';
+import { CourierActorDirectory, CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
-import { OfferDeliveryActorNodeHandler, OfferDeliveryHandler } from './offer-delivery-handler';
+import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler, OfferDeliveryActorNodeHandler } from './offer-delivery-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 type CourierOptions = {
   courierId: string;
-  mode: string;
 };
-
-function createCourierGatewayModule(config: DeliveryDispatchServerConfig) {
-  class CourierGatewayModule {}
-
-  Module({
-    imports: [
-      ZLinkModule.forRootFactory({
-        useFactory: () => {
-          const builder = zlinkFramework();
-          builder.configureDispatch()
-            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-courier-gateway.log`)
-            .traceLabel('courier-gateway');
-          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.courierRouteChannel)
-              .enableServer(config.courierRouteEndpoint)
-              .addHandlerGroup('courier-gateway')
-            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
-              .routingId('courier-gateway')
-              .connect([
-                config.courierActorNode1RouteEndpoint,
-                config.courierActorNode2RouteEndpoint
-              ])
-            .build();
-        }
-      })
-    ],
-    providers: [
-      BindCourierHandler,
-      OfferDeliveryHandler
-    ]
-  })(CourierGatewayModule);
-
-  return CourierGatewayModule;
-}
 
 function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, options: CourierOptions) {
   class CourierActorNodeModule {}
+  const directory = new CourierActorDirectory();
+  CourierActorFactory.useDirectory(directory);
   const endpoint = options.courierId === 'courier-a'
     ? config.courierActorNode1RouteEndpoint
     : config.courierActorNode2RouteEndpoint;
@@ -86,10 +49,15 @@ function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, opti
       })
     ],
     providers: [
-      { provide: 'DELIVERYDISPATCH_COURIER_OPTIONS', useValue: options },
+      { provide: CourierActorDirectory, useValue: directory },
       CourierActorFactory,
       CourierEntrySpot,
-      OfferDeliveryActorNodeHandler
+      OfferDeliveryActorNodeHandler,
+      EnsureCourierActorHandler,
+      CourierActorBindHandler,
+      CourierActorSessionBindHandler,
+      CourierActorOfferHandler,
+      CourierActorDecisionHandler
     ]
   })(CourierActorNodeModule);
 
@@ -97,8 +65,7 @@ function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, opti
 }
 
 export {
-  createCourierActorNodeModule,
-  createCourierGatewayModule
+  createCourierActorNodeModule
 };
 
 export type {

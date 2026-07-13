@@ -1,10 +1,10 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import {
-  bingoRoomJoinReq,
-  bingoRoomSettingsPayload,
-  observeBingoEventsRes
-} from '../../../../../../Shared/Contracts/messages';
+  BingoRoomJoinReq,
+  BingoRoomSettingsPayload,
+  ObserveBingoEventsRes
+} from '../../../../../../Shared/Contracts/bingo-messages.generated';
 import { createObserverRoomSettings } from '../../../../Domain/Bingo/bingo-room-models';
 import { BingoRoomSpot } from '../BingoRoomSpot/bingo-room-spot';
 import type {
@@ -17,8 +17,7 @@ import type {
 import type {
   BingoRoomJoinRes,
   EnsurePlayerActorReq,
-  ObserveBingoEventsReq,
-  ObserveBingoEventsRes
+  ObserveBingoEventsReq
 } from '../../../../../../Shared/Contracts/messages';
 import type { PlayerActor as PlayerActorType } from '../../Actors/player-actor';
 
@@ -35,12 +34,24 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     await this.spots.getOrCreate(
       BingoRoomSpot,
       observerRid,
-      bingoRoomSettingsPayload(settings)
+      new BingoRoomSettingsPayload({
+        ...settings,
+        purpose: settings.purpose,
+        observedRoomId: settings.observedRoomId
+      })
     );
     const joined = await actor.context
-      .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))
+      .joinSpot(observerRid, new BingoRoomJoinReq({
+        roomId: request.roomId,
+        actorId: actor.actorId,
+        displayName: actor.displayName,
+        observeOnly: true
+      }))
       .submit<BingoRoomJoinRes>();
-    return observeBingoEventsRes(joined.status === 'accepted', String(this.context.nodeRid));
+    return new ObserveBingoEventsRes({
+      subscribed: joined.status === 'accepted',
+      observerNodeRid: String(this.context.nodeRid)
+    });
   }
 
   private observerRoomRid(roomId: string): string {
@@ -49,9 +60,12 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
 
   async onJoinedActor(actor: PlayerActorType): Promise<void> {
     if (!actor.destroyAfterEntrySpotJoin) {
+      console.error(`bingo-lifecycle entry-joined actor=${actor.actorId} destroy=false`);
       return;
     }
+    console.error(`bingo-lifecycle entry-destroy-start actor=${actor.actorId}`);
     await this.context.destroyActor(actor);
+    console.error(`bingo-lifecycle entry-destroy-complete actor=${actor.actorId}`);
   }
 
   async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
@@ -68,7 +82,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   }
 
   async onLeaveActor(actor: PlayerActorType): Promise<void> {
-    void actor;
+    console.error(`bingo-lifecycle entry-leave actor=${actor.actorId}`);
   }
 
   async onDisconnectActor(actor: PlayerActorType): Promise<void> {

@@ -25,7 +25,7 @@ function questMissionSpotRid(playerId: string): string {
 
 function ownerIndex(playerId: string): number {
   let sum = 0;
-  for (const byte of Buffer.from(playerId, 'utf8')) {
+  for (const byte of new TextEncoder().encode(playerId)) {
     sum += byte;
   }
   return sum % 2;

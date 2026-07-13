@@ -40,7 +40,7 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
   if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=${RUN_DIR}"
@@ -57,7 +57,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 8:
+    while len(sockets) < 10:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -79,7 +79,7 @@ if [[ -z "${PORT_OUTPUT}" ]]; then
   PORT_OUTPUT="$(python3 - <<'PY'
 import random
 base = random.randint(41000, 60000)
-print(" ".join(str(base + i) for i in range(8)))
+print(" ".join(str(base + i) for i in range(10)))
 PY
 )"
 fi
@@ -93,18 +93,22 @@ export SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
 export SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
 export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+export SHOPPINGMALL_WORKFLOW_A_SPOT_PUB_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+export SHOPPINGMALL_WORKFLOW_B_SPOT_PUB_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:node:${RANDOM}:$$:"
 
 wait_http() {
   local name="$1"
   local endpoint="$2"
-  for _ in $(seq 1 300); do
-    if curl -fsS "${endpoint}/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 20); do
+    if curl --connect-timeout 1 --max-time 6 -fsS "${endpoint}/health" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  curl --connect-timeout 1 --max-time 6 -sS "${endpoint}/health" >&2 || true
+  echo >&2
   return 1
 }
 
@@ -135,18 +139,20 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-sample-shoppingmall-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 export SHOPPINGMALL_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 wait_tcp_endpoint redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 
 start_role workflow-a
+start_role workflow-b
 wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP}"
 wait_tcp_endpoint workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
 wait_tcp_endpoint workflow-a-spot "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}"
-start_role workflow-b
+wait_tcp_endpoint workflow-a-spot-pub "${SHOPPINGMALL_WORKFLOW_A_SPOT_PUB_ENDPOINT}"
 wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP}"
 wait_tcp_endpoint workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
 wait_tcp_endpoint workflow-b-spot "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}"
+wait_tcp_endpoint workflow-b-spot-pub "${SHOPPINGMALL_WORKFLOW_B_SPOT_PUB_ENDPOINT}"
 start_role api-a
 wait_http api-a "${SHOPPINGMALL_API_A_HTTP}"
 start_role api-b

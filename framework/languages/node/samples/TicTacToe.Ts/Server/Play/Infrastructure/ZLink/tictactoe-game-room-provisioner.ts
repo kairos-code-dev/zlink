@@ -5,6 +5,7 @@ import {
   RedisRoomRouteStore,
   TICTACTOE_SAMPLE_CONFIG
 } from '../../../Configuration/redis-room-route-store';
+import { SampleNames } from '../../../Configuration/sample-settings';
 import type { ZLinkSpotManager } from '@zlink-systems/framework';
 import type { TicTacToeSampleConfig } from '../../../Configuration/sample-config';
 import type { TicTacToeGameRoomProvisioner } from '../../Application/GameCreation/tictactoe-game-creator';
@@ -18,12 +19,26 @@ class ZLinkTicTacToeGameRoomProvisioner implements TicTacToeGameRoomProvisioner 
 
   async provision(roomId: string): Promise<void> {
     await this.spotManager.getOrCreate(TicTacToeGameSpot, roomId);
-    await this.routes.save({
+    const route = {
       roomId,
-      ownerPlayEndpoint: this.config.playStreamEndpoint,
-      ownerSpotEndpoint: this.config.playSpotEndpoint,
-      ownerSpotNodeRid: this.config.playSpotNodeRid
-    });
+      routeChannelId: SampleNames.playSpotNode,
+      ownerSpotNodeRid: this.config.playSpotNodeRid,
+      spotRid: roomId,
+      spotKind: 'User' as const
+    };
+    await this.routes.save(route);
+    const stored = await this.routes.load(roomId);
+    if (
+      stored.routeChannelId !== route.routeChannelId ||
+      stored.ownerSpotNodeRid !== route.ownerSpotNodeRid ||
+      stored.spotRid !== route.spotRid
+    ) {
+      throw new Error(`Redis room route verification failed. roomId=${roomId}`);
+    }
+    console.log(
+      `room-route=verified roomId=${roomId} routeChannelId=${stored.routeChannelId} ` +
+      `ownerNodeRid=${stored.ownerSpotNodeRid} spotRid=${stored.spotRid} spotKind=${stored.spotKind}`
+    );
   }
 }
 

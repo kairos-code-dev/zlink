@@ -1,35 +1,78 @@
 import { Inject, Injectable } from '@nestjs/common';
-import * as net from 'node:net';
+import { createClient } from 'redis';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import type { TicTacToeSampleConfig } from './sample-config';
+import type { OnModuleDestroy } from '@nestjs/common';
+import type { RedisClientType } from 'redis';
 
 const TICTACTOE_SAMPLE_CONFIG = Symbol.for('TICTACTOE_SAMPLE_CONFIG');
 
 type RoomRoute = {
   roomId: string;
-  ownerPlayEndpoint: string;
-  ownerSpotEndpoint: string;
+  routeChannelId: string;
   ownerSpotNodeRid: string;
+  spotRid: string;
+  spotKind: 'User';
 };
 
 @Injectable()
-class RedisRoomRouteStore {
+class RedisRoomRouteStore implements OnModuleDestroy {
+  private client: RedisClientType | undefined;
+
   constructor(@Inject(TICTACTOE_SAMPLE_CONFIG) private readonly config: TicTacToeSampleConfig) {}
 
   async save(route: RoomRoute): Promise<void> {
-    await redisCommand(this.config.redisEndpoint, [
-      'SET',
-      routeKey(this.config, route.roomId),
-      JSON.stringify(route)
-    ]);
+    await (await this.connectedClient()).hSet(routeKey(this.config, route.roomId), {
+      RouteChannelId: route.routeChannelId,
+      OwnerNodeRid: route.ownerSpotNodeRid,
+      SpotRid: route.spotRid,
+      SpotKind: route.spotKind
+    });
   }
 
   async load(roomId: string): Promise<RoomRoute> {
-    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(this.config, roomId)]);
-    if (value === null) {
+    const value = await (await this.connectedClient()).hGetAll(routeKey(this.config, roomId)) as Partial<{
+      RouteChannelId: string;
+      OwnerNodeRid: string;
+      SpotRid: string;
+      SpotKind: string;
+    }>;
+    if (Object.keys(value).length === 0) {
       throw new Error(`Room route not found. roomId=${roomId}`);
     }
-    return JSON.parse(value) as RoomRoute;
+    if (
+      value.RouteChannelId === undefined ||
+      value.OwnerNodeRid === undefined ||
+      value.SpotRid === undefined ||
+      value.SpotKind !== 'User'
+    ) {
+      throw new Error(`Room route is incomplete. roomId=${roomId}`);
+    }
+    return {
+      roomId,
+      routeChannelId: value.RouteChannelId,
+      ownerSpotNodeRid: value.OwnerNodeRid,
+      spotRid: value.SpotRid,
+      spotKind: value.SpotKind
+    };
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.client?.isOpen === true) {
+      await this.client.quit();
+    }
+    this.client = undefined;
+  }
+
+  private async connectedClient(): Promise<RedisClientType> {
+    if (this.client === undefined) {
+      this.client = createClient({ url: `redis://${this.config.redisEndpoint}` });
+      this.client.on('error', (error) => console.error('Redis room route store error.', error));
+    }
+    if (!this.client.isOpen) {
+      await this.client.connect();
+    }
+    return this.client;
   }
 }
 
@@ -43,64 +86,7 @@ function createTicTacToeLocationStore(
 }
 
 function routeKey(config: TicTacToeSampleConfig, roomId: string): string {
-  return `${config.redisKeyPrefix}${roomId}`;
-}
-
-function redisCommand(endpoint: string, parts: string[]): Promise<string | null> {
-  const { host, port } = parseRedisEndpoint(endpoint);
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host, port });
-    const chunks: Buffer[] = [];
-    socket.once('error', reject);
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.once('connect', () => {
-      socket.end(encodeResp(parts));
-    });
-    socket.once('end', () => {
-      try {
-        resolve(decodeResp(Buffer.concat(chunks)));
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
-}
-
-function encodeResp(parts: string[]): Buffer {
-  const lines = [`*${parts.length}`];
-  for (const part of parts) {
-    const bytes = Buffer.from(part, 'utf8');
-    lines.push(`$${bytes.length}`, part);
-  }
-  return Buffer.from(`${lines.join('\r\n')}\r\n`, 'utf8');
-}
-
-function decodeResp(buffer: Buffer): string | null {
-  const text = buffer.toString('utf8');
-  if (text.startsWith('+')) {
-    return text.slice(1).trimEnd();
-  }
-  if (text.startsWith('$-1')) {
-    return null;
-  }
-  if (text.startsWith('$')) {
-    const firstLineEnd = text.indexOf('\r\n');
-    if (firstLineEnd < 0) {
-      throw new Error('Invalid Redis bulk response.');
-    }
-    const length = Number(text.slice(1, firstLineEnd));
-    const start = firstLineEnd + 2;
-    return text.slice(start, start + length);
-  }
-  if (text.startsWith('-')) {
-    throw new Error(text.slice(1).trimEnd());
-  }
-  throw new Error(`Unsupported Redis response: ${text}`);
-}
-
-function parseRedisEndpoint(endpoint: string): { host: string; port: number } {
-  const [host, port] = endpoint.split(':');
-  return { host, port: Number(port) };
+  return `${config.redisKeyPrefix}tictactoe:rooms:${roomId}`;
 }
 
 export {

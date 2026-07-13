@@ -3,35 +3,40 @@ import { OrderStore } from '../../../Shared/Store/order-store';
 import type {
   ContinueOrderWorkflowRes,
   RebuildOrderProjectionRes,
-  StartOrderReq,
-  StartOrderRes
+  StartOrderWorkflowReq,
+  StartOrderWorkflowRes,
+  VerifyExpectedVersionFenceRes
 } from '../../../../Shared/Contracts/messages';
-import { advanceOrder } from '../../Domain/ShoppingMall/order-domain';
 
 @Injectable()
 class OrderWorkflowService {
   constructor(private readonly store: OrderStore) {}
 
-  start(request: StartOrderReq, role: string): StartOrderRes {
+  start(request: StartOrderWorkflowReq, role: string): StartOrderWorkflowRes {
     const response = this.store.startOrder(request, role);
-    advanceOrder(this.store.getOrder(response.orderId).state);
     return response;
   }
 
-  prepareInventoryReserved(request: StartOrderReq, role: string): StartOrderRes {
-    const response = this.store.createInventoryReserved(request, role);
-    advanceOrder(this.store.getOrder(response.orderId).state);
+  prepareInventoryReserved(request: StartOrderWorkflowReq, role: string): StartOrderWorkflowRes {
+    const response = this.store.prepareInventoryReserved(request, role);
     return response;
+  }
+
+  prepareInventoryEffect(request: StartOrderWorkflowReq, role: string): StartOrderWorkflowRes {
+    return this.store.prepareInventoryEffect(request, role);
   }
 
   continue(request: { orderId: string }, role: string): ContinueOrderWorkflowRes {
     const response = this.store.continueOrder(request.orderId, role);
-    advanceOrder(response.state);
     return response;
   }
 
   rebuild(request: { orderId: string }): RebuildOrderProjectionRes {
     return this.store.rebuildProjection(request.orderId);
+  }
+
+  verifyExpectedVersionFence(request: { orderId: string }, role: string): VerifyExpectedVersionFenceRes {
+    return this.store.verifyExpectedVersionFence(request.orderId, role);
   }
 }
 

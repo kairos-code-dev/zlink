@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
+import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { BingoSessionFactory } from './Sessions/bingo-session';
 import { SampleNames } from '../Configuration/sample-names';
@@ -16,8 +16,6 @@ function createBingoSessionModule(endpoints: {
   sessionSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
-  preferredPlayNodeRid?: string;
-  preferredPlayRouteEndpoint?: string;
 } & Partial<BingoSampleConfig>) {
   class BingoSessionModule {}
 
@@ -35,13 +33,12 @@ function createBingoSessionModule(endpoints: {
           Object.assign(builder.configureLocations(), bingoLocationOptions());
           return builder
           .codecs()
-            .use(zlinkProtobufCodec())
+            .use(bingoFrameworkProtobuf)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
           .addRouteMeshChannel(SampleNames.playChannel)
             .enableRouter(endpoints.sessionRouteEndpoint)
             .routingId(endpoints.sessionSpotNodeRid)
-            .connect(endpoints.preferredPlayRouteEndpoint)
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(endpoints.sessionSpotEndpoint, endpoints.sessionSpotNodeRid)
           .addStreamNode(SampleNames.sessionStream)

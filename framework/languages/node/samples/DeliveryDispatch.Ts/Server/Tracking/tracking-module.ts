@@ -3,23 +3,15 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { EvidenceStore } from '../Configuration/evidence-store';
-import { CustomerActorFactory } from './customer-actor';
-import { CustomerEntrySpot } from './Spots/EntrySpot/customer-entry-spot';
-import { DeliverySpotDirectory } from './Spots/DeliveryTrackingSpot/delivery-spot-directory';
-import { DeliveryTrackingSpot } from './Spots/DeliveryTrackingSpot/delivery-tracking-spot';
 import {
-  DeliveryStatusChangedHandler,
-  DeliveryStatusUpdatedHandler,
-  EnsureCustomerActorHandler,
-  SubscribeCustomerToDeliveryHandler
+  DeliveryStatusChangedHandler
 } from './Handlers/tracking-handlers';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: EvidenceStore) {
   class TrackingModule {}
-  const directory = new DeliverySpotDirectory();
-  DeliveryTrackingSpot.useDirectory(directory);
+  const locationStore = createDeliveryDispatchLocationStore(config);
 
   Module({
     imports: [
@@ -30,33 +22,21 @@ function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: Ev
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-tracking.log`)
             .traceLabel('tracking');
-          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
             .addClientServerChannel(SampleNames.trackingChannel)
               .enableServer(config.trackingEndpoint)
               .addHandlerGroup('tracking')
-            .addFanoutChannel(SampleNames.statusFanoutChannel)
-              .enablePublisher(config.statusFanoutEndpoint)
-            .addSpotMesh(SampleNames.deliverySpotMesh)
-              .enableRouter(config.trackingSpotRouterEndpoint, config.trackingSpotNodeRid)
-              .enablePubSub(config.trackingSpotEndpoint, config.trackingSpotNodeRid)
-              .addEntrySpot(CustomerEntrySpot)
-            .addSpotFactory(DeliveryTrackingSpot)
-            .actorFactory(SampleNames.customerActorType, CustomerActorFactory)
+            .addSpotMesh(SampleNames.customerActorSpotMesh)
+              .enableRouter(config.trackingSpotEndpoint, 'tracking-customer-relay')
             .build();
         }
       })
     ],
     providers: [
       { provide: EvidenceStore, useValue: evidence },
-      CustomerActorFactory,
-      CustomerEntrySpot,
-      { provide: DeliverySpotDirectory, useValue: directory },
-      DeliveryTrackingSpot,
-      EnsureCustomerActorHandler,
-      SubscribeCustomerToDeliveryHandler,
-      DeliveryStatusUpdatedHandler,
+      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
       DeliveryStatusChangedHandler
     ]
   })(TrackingModule);

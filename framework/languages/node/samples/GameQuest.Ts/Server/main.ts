@@ -6,63 +6,37 @@ import { createGameApiModule } from './GameApi/game-api-module';
 import { startGameApiServer } from './GameApi/game-api-server';
 import { createQuestMissionModule } from './QuestMission/gamequest-quest-module';
 import { RegistryModule } from './Registry/registry-module';
-import { QuestProgressStore } from './Shared/Store/quest-progress-store';
+import { QuestEventStore } from './Shared/Store/quest-progress-store';
+import { PlayerQuestSpotProvisioner } from './QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner';
+import { GAMEQUEST_LOCATION_STORE } from './Configuration/tokens';
+import type { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  const role = readOption('--role') ?? process.env.GAMEQUEST_ROLE ?? 'all';
-  const modules = [];
-  if (role === 'all' || role === 'mission-a') {
-    process.env.GAMEQUEST_MISSION_NAME = 'mission-a';
-    modules.push(createQuestMissionModule(config, 'mission-a'));
-  }
-  if (role === 'all' || role === 'mission-b') {
-    process.env.GAMEQUEST_MISSION_NAME = 'mission-b';
-    modules.push(createQuestMissionModule(config, 'mission-b'));
-  }
-  if (role === 'all' || role === 'api-a') {
-    process.env.GAMEQUEST_API_NAME = 'api-a';
-    modules.push(createGameApiModule(config, 'api-a'));
-  }
-  if (role === 'all' || role === 'api-b') {
-    process.env.GAMEQUEST_API_NAME = 'api-b';
-    modules.push(createGameApiModule(config, 'api-b'));
-  }
-  if (modules.length === 0) {
+  const role = readOption('--role') ?? process.env.GAMEQUEST_ROLE ?? 'api-a';
+  if (role !== 'api-a' && role !== 'api-b' && role !== 'mission-a' && role !== 'mission-b') {
     throw new Error(`Unknown GameQuest role '${role}'.`);
   }
   void RegistryModule;
 
-  const apps = [];
-  for (const moduleType of modules) {
-    apps.push(await NestFactory.createApplicationContext(moduleType, {
-      logger: false,
-      abortOnError: true
-    }));
-  }
+  const isApi = role === 'api-a' || role === 'api-b';
+  if (isApi) process.env.GAMEQUEST_API_NAME = role;
+  else process.env.GAMEQUEST_MISSION_NAME = role;
+  const app = await NestFactory.createApplicationContext(
+    isApi ? createGameApiModule(config, role) : createQuestMissionModule(config, role), {
+    logger: false,
+    abortOnError: true
+  });
 
-  const httpServers = [];
-  if (role === 'all' || role === 'api-a') {
-    httpServers.push(await startGameApiServer(apps[apps.length - 1], config, 'api-a'));
-  }
-  if (role === 'all' || role === 'api-b') {
-    httpServers.push(await startGameApiServer(apps[apps.length - 1], config, 'api-b'));
-  }
-  if (role === 'all' || role === 'mission-a') {
-    httpServers.push(await startMissionSelfCheckServer(config, 'mission-a'));
-  }
-  if (role === 'all' || role === 'mission-b') {
-    httpServers.push(await startMissionSelfCheckServer(config, 'mission-b'));
-  }
+  const httpServer = isApi
+    ? await startGameApiServer(app, config, role)
+    : await startMissionSelfCheckServer(config, role, app.get(PlayerQuestSpotProvisioner));
 
   process.stdout.write(`${JSON.stringify({ event: 'ready', role })}\n`);
   await waitForShutdown();
-  for (const server of httpServers) {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-  for (const app of apps.reverse()) {
-    await closeNestRuntime(app);
-  }
+  await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  await closeNestRuntime(app);
+  await app.get<ZLinkRedisLocationStore>(GAMEQUEST_LOCATION_STORE).dispose();
 }
 
 function readOption(name: string): string | undefined {
@@ -94,13 +68,17 @@ function waitForShutdown(): Promise<void> {
   });
 }
 
-function startMissionSelfCheckServer(config: ReturnType<typeof loadSampleConfig>, role: 'mission-a' | 'mission-b'): Promise<http.Server> {
-  const store = new QuestProgressStore(config.workDir);
+function startMissionSelfCheckServer(
+  config: ReturnType<typeof loadSampleConfig>,
+  role: 'mission-a' | 'mission-b',
+  playerQuests: PlayerQuestSpotProvisioner
+): Promise<http.Server> {
+  const store = new QuestEventStore(config.workDir);
   const missionUrl = role === 'mission-a'
     ? process.env.GAMEQUEST_MISSION_A_HTTP ?? 'http://127.0.0.1:31213'
     : process.env.GAMEQUEST_MISSION_B_HTTP ?? 'http://127.0.0.1:31214';
   const url = new URL(missionUrl);
-  const server = http.createServer((request, response) => {
+  const server = http.createServer(async (request, response) => {
     const ownerMatch = request.url?.match(/^\/self-check\/owner\/([^/]+)\/close$/);
     if (request.method === 'GET' && request.url === '/health') {
       sendJson(response, 200, { ready: true, role });
@@ -111,8 +89,10 @@ function startMissionSelfCheckServer(config: ReturnType<typeof loadSampleConfig>
       return;
     }
     if (request.method === 'POST' && ownerMatch !== undefined && ownerMatch !== null) {
-      store.closeOwner(decodeURIComponent(ownerMatch[1]), role);
-      sendJson(response, 200, { closed: true });
+      const playerId = decodeURIComponent(ownerMatch[1]);
+      const closed = await playerQuests.deactivate(playerId);
+      if (closed) store.closeOwner(playerId, role);
+      sendJson(response, 200, { closed });
       return;
     }
     sendJson(response, 404, { error: 'not-found' });

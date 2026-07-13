@@ -2,61 +2,74 @@ import { Injectable } from '@nestjs/common';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { Inject } from '@nestjs/common';
-import { orderWorkflowChannelFor, SampleNames } from '../../../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { OrderWorkflowRouterPort } from '../../Application/order-workflow-router-port';
 import {
   ContinueOrderWorkflowReq,
+  PrepareInventoryEffectReq,
   PrepareInventoryReservedReq,
   RebuildOrderProjectionReq,
-  StartOrderReq
+  StartOrderWorkflowReq,
+  VerifyExpectedVersionFenceReq
 } from '../../../../Shared/Contracts/messages';
 import type {
   ContinueOrderWorkflowRes,
   RebuildOrderProjectionRes,
-  StartOrderRes
+  StartOrderWorkflowRes,
+  VerifyExpectedVersionFenceRes
 } from '../../../../Shared/Contracts/messages';
 
 @Injectable()
 class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
   constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {}
 
-  start(request: StartOrderReq): Promise<StartOrderRes> {
-    return this.request(new StartOrderReq(
-      request.cartId,
-      request.shippingAddressId,
-      request.paymentMethodId,
-      request.idempotencyKey
-    ), request.idempotencyKey);
+  start(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
+    return this.request(request);
   }
 
-  prepareInventory(request: StartOrderReq): Promise<StartOrderRes> {
+  prepareInventory(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
     return this.request(new PrepareInventoryReservedReq(
+      request.orderId,
       request.cartId,
       request.shippingAddressId,
       request.paymentMethodId,
-      request.idempotencyKey
-    ), request.idempotencyKey);
+      request.idempotencyKey,
+      request.lines,
+      request.amount,
+      request.currency
+    ));
+  }
+
+  prepareInventoryEffect(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
+    return this.request(new PrepareInventoryEffectReq(
+      request.orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
+      request.idempotencyKey, request.lines, request.amount, request.currency
+    ));
   }
 
   continue(orderId: string): Promise<ContinueOrderWorkflowRes> {
-    return this.request(new ContinueOrderWorkflowReq(orderId), orderId);
+    return this.request(new ContinueOrderWorkflowReq(orderId));
   }
 
   rebuild(orderId: string): Promise<RebuildOrderProjectionRes> {
-    return this.request(new RebuildOrderProjectionReq(orderId), orderId);
+    return this.request(new RebuildOrderProjectionReq(orderId));
   }
 
-  private request<TResponse>(payload: object, ownerKey: string): Promise<TResponse> {
+  async verifyExpectedVersionFence(orderId: string): Promise<VerifyExpectedVersionFenceRes> {
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const result = await this.request<VerifyExpectedVersionFenceRes>(new VerifyExpectedVersionFenceReq(orderId));
+      if (result.rejected) return result;
+    }
+    throw new Error(`Expected-version fence was not exercised by a second workflow instance for '${orderId}'.`);
+  }
+
+  private request<TResponse>(payload: object): Promise<TResponse> {
     return this.channels
-      .requestToChannel(orderWorkflowChannelFor(this.workflowRouteRid(ownerKey)), payload)
+      .requestToChannel(SampleNames.orderWorkflowChannel, payload)
       .timeout(SampleNames.requestTimeout)
       .submit<TResponse>();
   }
 
-  workflowRouteRid(payload: string): string {
-    const last = payload.charCodeAt(payload.length - 1);
-    return Number.isFinite(last) && last % 2 === 0 ? SampleNames.workflowB : SampleNames.workflowA;
-  }
 }
 
 export { ZLinkOrderWorkflowRouter };

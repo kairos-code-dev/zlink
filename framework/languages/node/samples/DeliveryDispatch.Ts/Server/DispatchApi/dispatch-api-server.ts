@@ -5,7 +5,6 @@ import { SampleNames } from '../../Shared/Configuration/sample-names';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
-  AssignDeliveryRes,
   CreateDeliveryReq,
   CreateDeliveryRes,
   ServerAssertionReq,
@@ -23,23 +22,30 @@ function startDispatchApi(
   const server = http.createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/health') {
-        sendJson(response, 200, { ready: true, role: 'dispatch-api' });
+        sendJson(response, 200, { ready: true, role: 'dispatch' });
         return;
       }
       if (request.method === 'POST' && request.url === '/deliveries') {
         const body = await readJson<CreateDeliveryReq>(request);
-        const assigned = await requestDispatch(channels, body);
-        if (!assigned.accepted) {
-          throw new Error(`Dispatch Center rejected delivery '${assigned.deliveryId}'.`);
-        }
-        console.error(`deliverydispatch api: created delivery=${assigned.deliveryId} courier=${assigned.courierId}`);
-        sendJson(response, 200, { deliveryId: assigned.deliveryId } satisfies CreateDeliveryRes);
+        submitDispatch(channels, body);
+        console.error(`deliverydispatch api: created delivery=${body.deliveryId}`);
+        sendJson(response, 200, { deliveryId: body.deliveryId } satisfies CreateDeliveryRes);
         return;
       }
       if (request.method === 'POST' && request.url === '/self-check/assert') {
         const body = await readJson<ServerAssertionReq>(request);
-        const success = evidence.hasSequence(body.successfulDeliveryId, 'Assigned', 'Accepted', 'PickedUp', 'Delivered');
-        const reassigned = evidence.hasSequence(body.reassignedDeliveryId, 'Assigned', 'Reassigned', 'Accepted', 'PickedUp', 'Delivered');
+        const success = evidence.hasExactSequence(body.successfulDeliveryId, [
+          { status: 'Assigned', courierId: 'courier-a' },
+          { status: 'Accepted', courierId: 'courier-a' },
+          { status: 'PickedUp', courierId: 'courier-a' },
+          { status: 'Delivered', courierId: 'courier-a' }
+        ]);
+        const reassigned = evidence.hasExactSequence(body.reassignedDeliveryId, [
+          { status: 'Assigned', courierId: 'courier-a' },
+          { status: 'Reassigned', courierId: 'courier-b' },
+          { status: 'Accepted', courierId: 'courier-b' },
+          { status: 'Delivered', courierId: 'courier-b' }
+        ]);
         sendJson(response, 200, { passed: success && reassigned, evidence: evidence.readLines() } satisfies ServerAssertionRes);
         return;
       }
@@ -59,15 +65,15 @@ function startDispatchApi(
   });
 }
 
-async function requestDispatch(
+function submitDispatch(
   channels: ZLinkChannelClient,
   request: CreateDeliveryReq
-): Promise<AssignDeliveryRes> {
-  return await channels
-    .requestToChannel(
+): void {
+  channels
+    .sendToChannel(
       SampleNames.dispatchChannel,
       assignDelivery(request.deliveryId, request.customerId, request.pickupAddress, request.dropoffAddress))
-    .submit<AssignDeliveryRes>();
+    .submit();
 }
 
 function readJson<T>(request: http.IncomingMessage): Promise<T> {

@@ -8,7 +8,7 @@ npm run build >/dev/null
 RUN_DIR="${DELIVERYDISPATCH_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
+export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${LOG_DIR}/flow}"
 export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
@@ -50,7 +50,7 @@ cleanup() {
     fi
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
   if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=${RUN_DIR}"
@@ -73,7 +73,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 17:
+    while len(sockets) < 16:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -94,24 +94,22 @@ PY
 
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_CENTER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
-export DELIVERYDISPATCH_COURIER_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
-export DELIVERYDISPATCH_COURIER_STREAM="tcp://127.0.0.1:${PORTS[5]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[7]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_SPOT="tcp://127.0.0.1:${PORTS[8]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_SPOT="tcp://127.0.0.1:${PORTS[9]}"
-export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[10]}"
-export DELIVERYDISPATCH_STATUS_FANOUT="tcp://127.0.0.1:${PORTS[11]}"
-export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
-export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[13]}"
-export DELIVERYDISPATCH_SESSION_STREAM="tcp://127.0.0.1:${PORTS[14]}"
-export DELIVERYDISPATCH_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[15]}"
-export DELIVERYDISPATCH_SESSION_SPOT="tcp://127.0.0.1:${PORTS[16]}"
+export DELIVERYDISPATCH_COURIER_STREAM="ws://127.0.0.1:${PORTS[4]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_SPOT="tcp://127.0.0.1:${PORTS[7]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_SPOT="tcp://127.0.0.1:${PORTS[8]}"
+export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[9]}"
+export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[10]}"
+export DELIVERYDISPATCH_SESSION_STREAM="ws://127.0.0.1:${PORTS[11]}"
+export DELIVERYDISPATCH_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
+export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:node:${RANDOM}:$$:}"
 
 endpoint_host() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   endpoint="${endpoint#http://}"
   echo "${endpoint%:*}"
 }
@@ -119,6 +117,7 @@ endpoint_host() {
 endpoint_port() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   endpoint="${endpoint#http://}"
   echo "${endpoint##*:}"
 }
@@ -160,39 +159,43 @@ start_role() {
   PIDS+=("$!")
 }
 
-start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-deliverydispatch-${RANDOM}-$$" --label "systems.zlink.sample=deliverydispatch-ts" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 export DELIVERYDISPATCH_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
 start_role tracking
 wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
+wait_port tracking-customer-spot "${DELIVERYDISPATCH_TRACKING_SPOT}"
 
-start_role session
+start_role customer-gateway
 wait_port session-stream "${DELIVERYDISPATCH_SESSION_STREAM}"
 
 start_role courier-session
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
+wait_port courier-session-spot "${DELIVERYDISPATCH_COURIER_SESSION_SPOT}"
 
-start_role courier-actor-node1 --mode timeout-reassign
+start_role courier-spot-node1
 wait_port courier-actor-node1 "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE}"
 wait_port courier-actor-node1-spot "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_SPOT}"
 
-start_role courier-actor-node2 --mode accept
+start_role courier-spot-node2
 wait_port courier-actor-node2 "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE}"
 wait_port courier-actor-node2-spot "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_SPOT}"
 
-start_role courier-gateway
-wait_port courier-gateway "${DELIVERYDISPATCH_COURIER_ROUTE}"
-
-start_role dispatch-center
+start_role dispatch
 wait_port dispatch-center "${DELIVERYDISPATCH_CENTER_ROUTE}"
-
-start_role dispatch-api
 wait_http dispatch-api "${DELIVERYDISPATCH_API_HTTP}"
 
 node "${SCRIPT_DIR}/dist/Server/main.js" --role probe --timeout-ms 10000
-node "${SCRIPT_DIR}/dist/Client/main.js"
+node "${SCRIPT_DIR}/../../scripts/browser-e2e/run-sample.mjs" DeliveryDispatch.Ts
 
 grep -q "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
-grep -q "deliverydispatch session: bound customer" "${LOG_DIR}/session.log"
+grep -q "deliverydispatch session: bound customer" "${LOG_DIR}/customer-gateway.log"
+grep -q "deliverydispatch session: found existing customer=customer-1" "${LOG_DIR}/customer-gateway.log"
+grep -q "deliverydispatch courier-session: found existing courier=courier-a" "${LOG_DIR}/courier-session.log"
+grep -q "deliverydispatch courier-session: found existing courier=courier-b" "${LOG_DIR}/courier-session.log"
 grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"
+if grep -Rq "phase=error" "${DELIVERYDISPATCH_LOG_DIR}"; then
+  echo "DeliveryDispatch message flow contains phase=error" >&2
+  exit 1
+fi

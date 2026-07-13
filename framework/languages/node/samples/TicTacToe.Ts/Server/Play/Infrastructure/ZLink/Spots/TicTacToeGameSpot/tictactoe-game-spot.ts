@@ -94,7 +94,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
           if (player.actorId === actor.actorId) {
             continue;
           }
-          player.actor.push(
+          await player.actor.push(
             playerJoinedNotify(
               this.roomId,
               actor.actorId,
@@ -104,7 +104,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
               state
             )
           );
-          player.actor.push(gameStateNotify(state));
+          await player.actor.push(gameStateNotify(state));
         }
       }
     }
@@ -128,7 +128,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       if (joined.actorId === actor.actorId) {
         continue;
       }
-      joined.actor.push(gameStateNotify(state));
+      await joined.actor.push(gameStateNotify(state));
     }
     await this.publishWinMilestone(actor, before, state);
     return placeMarkRes(state);
@@ -139,7 +139,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     const change = match.tick();
     if (change.changed) {
       for (const player of match.players.values()) {
-        player.actor.push(gameStateNotify(change.state));
+        await player.actor.push(gameStateNotify(change.state));
       }
     }
   }

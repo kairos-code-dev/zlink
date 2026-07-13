@@ -3,7 +3,7 @@ import { zlinkSpotSubscriptionHandler } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../../../../../Configuration/sample-names';
 import { BingoRoomSpot } from '../bingo-room-spot';
 import type { ZLinkPublishContext, ZLinkSpotSubscriptionHandler } from '@zlink-systems/framework';
-import type { BingoRewardAcquiredMsg } from '../../../../../../../Shared/Contracts/messages';
+import type { BingoRewardAcquiredEvent } from '../../../../../../../Shared/Contracts/messages';
 
 @Injectable()
 @zlinkSpotSubscriptionHandler({
@@ -11,10 +11,10 @@ import type { BingoRewardAcquiredMsg } from '../../../../../../../Shared/Contrac
   topic: SampleNames.roomRewardTopic
 })
 class BingoRewardAcquiredEventHandler
-  implements ZLinkSpotSubscriptionHandler<BingoRoomSpot, BingoRewardAcquiredMsg> {
+  implements ZLinkSpotSubscriptionHandler<BingoRoomSpot, BingoRewardAcquiredEvent> {
   async handle(
     room: BingoRoomSpot,
-    event: BingoRewardAcquiredMsg,
+    event: BingoRewardAcquiredEvent,
     context: ZLinkPublishContext
   ): Promise<void> {
     void context;

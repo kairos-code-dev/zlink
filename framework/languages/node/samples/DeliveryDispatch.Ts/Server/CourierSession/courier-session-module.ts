@@ -8,6 +8,7 @@ import type { DeliveryDispatchServerConfig } from '../Configuration/sample-confi
 
 function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
   class CourierSessionModule {}
+  const locationStore = createDeliveryDispatchLocationStore(config);
 
   Module({
     imports: [
@@ -18,19 +19,22 @@ function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-courier-session.log`)
             .traceLabel('courier-session');
-          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .addClientServerChannel(SampleNames.courierRouteChannel)
+            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
               .enableClient()
             .addStreamNode(SampleNames.courierStreamNode)
               .bind(config.courierStreamEndpoint)
               .registerSession(CourierSessionFactory)
+            .addSpotMesh(SampleNames.courierActorSpotMesh)
+              .enableRouter(config.courierSessionSpotEndpoint, 'courier-session')
             .build();
         }
       })
     ],
     providers: [
+      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
       CourierSessionFactory
     ]
   })(CourierSessionModule);

@@ -4,21 +4,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-${SCRIPT_DIR}/logs}"
+export TICTACTOE_LOG_DIR="${RUN_DIR}/flow-logs"
 mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
-rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
 source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
-REDIS_KEY_PREFIX="tictactoe:${RANDOM}:$$:room:"
+REDIS_KEY_PREFIX="zlink:sample:tictactoe:${RANDOM}:$$:"
 
 print_logs() {
   local status="$1"
   if [[ "${status}" == "0" ]]; then
     return
   fi
-  for file in "${LOG_DIR}"/*.log; do
+  for file in "${LOG_DIR}"/*.log "${TICTACTOE_LOG_DIR}"/*.log; do
     [[ -f "${file}" ]] || continue
     echo "===== ${file} =====" >&2
     cat "${file}" >&2
@@ -58,7 +57,7 @@ cleanup() {
     wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
   if [[ "${TICTACTOE_TS_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
@@ -76,7 +75,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 15:
+    while len(sockets) < 12:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -101,14 +100,13 @@ API_A_ENDPOINT="${TICTACTOE_API_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
 API_B_ENDPOINT="${TICTACTOE_API_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 PLAY_A_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
 PLAY_B_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-PLAY_A_STREAM_ENDPOINT="${TICTACTOE_PLAY_A_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-PLAY_B_STREAM_ENDPOINT="${TICTACTOE_PLAY_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
+PLAY_A_STREAM_ENDPOINT="${TICTACTOE_PLAY_A_STREAM_ENDPOINT:-ws://127.0.0.1:${PORTS[6]}}"
+PLAY_B_STREAM_ENDPOINT="${TICTACTOE_PLAY_B_STREAM_ENDPOINT:-ws://127.0.0.1:${PORTS[7]}}"
 PLAY_A_SPOT_ENDPOINT="${TICTACTOE_PLAY_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
 PLAY_B_SPOT_ENDPOINT="${TICTACTOE_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-PLAY_A_ROUTE_ENDPOINT="${TICTACTOE_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-PLAY_B_ROUTE_ENDPOINT="${TICTACTOE_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-PLAY_A_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
-PLAY_B_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
+PLAY_A_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
+PLAY_B_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
+export TICTACTOE_API_A_HTTP_ENDPOINT="${API_A_HTTP_ENDPOINT}"
 API_A_CONFIG="${RUN_DIR}/sample.api-a.json"
 API_B_CONFIG="${RUN_DIR}/sample.api-b.json"
 PLAY_A_CONFIG="${RUN_DIR}/sample.play-a.json"
@@ -147,8 +145,6 @@ def sample(instance, api_index, play_index, peer_play_index):
             "playEndpoints": ["${PLAY_A_STREAM_ENDPOINT}", "${PLAY_B_STREAM_ENDPOINT}"],
             "playSpotEndpoint": ["${PLAY_A_SPOT_ENDPOINT}", "${PLAY_B_SPOT_ENDPOINT}"][play_index],
             "playSpotEndpoints": ["${PLAY_A_SPOT_ENDPOINT}", "${PLAY_B_SPOT_ENDPOINT}"],
-            "playRouteEndpoint": ["${PLAY_A_ROUTE_ENDPOINT}", "${PLAY_B_ROUTE_ENDPOINT}"][play_index],
-            "playRouteEndpoints": ["${PLAY_A_ROUTE_ENDPOINT}", "${PLAY_B_ROUTE_ENDPOINT}"],
             "playSpotPubSubEndpoint": ["${PLAY_A_SPOT_PUBSUB_ENDPOINT}", "${PLAY_B_SPOT_PUBSUB_ENDPOINT}"][play_index],
             "playSpotPubSubEndpoints": ["${PLAY_A_SPOT_PUBSUB_ENDPOINT}", "${PLAY_B_SPOT_PUBSUB_ENDPOINT}"],
             "playStreamEndpoint": ["${PLAY_A_STREAM_ENDPOINT}", "${PLAY_B_STREAM_ENDPOINT}"][play_index],
@@ -157,7 +153,6 @@ def sample(instance, api_index, play_index, peer_play_index):
             "playSpotNodeRid": f"play-node-{play_index + 1}",
             "peerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
             "peerPlaySpotEndpoint": ["${PLAY_A_SPOT_ENDPOINT}", "${PLAY_B_SPOT_ENDPOINT}"][peer_play_index],
-            "peerPlayRouteEndpoint": ["${PLAY_A_ROUTE_ENDPOINT}", "${PLAY_B_ROUTE_ENDPOINT}"][peer_play_index],
             "peerPlaySpotPubEndpoint": ["${PLAY_A_SPOT_PUBSUB_ENDPOINT}", "${PLAY_B_SPOT_PUBSUB_ENDPOINT}"][peer_play_index]
         }
     }
@@ -175,6 +170,7 @@ PY
 endpoint_host() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   endpoint="${endpoint#http://}"
   endpoint="${endpoint#redis://}"
   echo "${endpoint%:*}"
@@ -183,6 +179,7 @@ endpoint_host() {
 endpoint_port() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   endpoint="${endpoint#http://}"
   endpoint="${endpoint#redis://}"
   echo "${endpoint##*:}"
@@ -334,12 +331,21 @@ wait_ready_field api-b "${LOG_DIR}/api-b.log" endpoint "${API_B_ENDPOINT}" "${LA
 wait_port api-b-channel "${API_B_ENDPOINT}" "${LAST_STARTED_PID}"
 wait_port api-b-http "${API_B_HTTP_ENDPOINT}" "${LAST_STARTED_PID}"
 
-ZLINK_SAMPLE_CONFIG="${API_A_CONFIG}" node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
+node "${SCRIPT_DIR}/../../scripts/browser-e2e/run-sample.mjs" TicTacToe.Ts >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
+grep -q "stream-inbound sample=TicTacToe client=host" "${LOG_DIR}/client.log"
+grep -q "stream-inbound sample=TicTacToe client=guest" "${LOG_DIR}/client.log"
+grep -q "stream-inbound sample=TicTacToe client=observer" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
 grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-wait_grep "host leave marker" "actor: LeaveGameMsg completed. actor=player-x" "${LOG_DIR}"/play-*.log
-wait_grep "guest leave marker" "actor: LeaveGameMsg completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_grep "host actor destroy marker" "entry spot: actor destroyed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_grep "guest actor destroy marker" "entry spot: actor destroyed. actor=player-o" "${LOG_DIR}"/play-*.log
+if grep -Rq "message flow phase=error" "${TICTACTOE_LOG_DIR}"; then
+  echo "TicTacToe framework dispatch reported an error." >&2
+  exit 1
+fi
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Ts"

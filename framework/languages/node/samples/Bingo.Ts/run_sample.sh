@@ -8,15 +8,21 @@ LOG_DIR="${RUN_DIR}/logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${LOG_DIR}}"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
 rm -f "${BINGO_LOG_DIR}"/*.log
+(cd "${SCRIPT_DIR}" && npm run build >/dev/null)
 
 PIDS=()
 PID_NAMES=()
+LAST_SERVER_PID=""
+PROBE_PID=""
 REDIS_CONTAINER_ID=""
 source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
   local status="$?"
   set +e
+  if [[ -n "${PROBE_PID}" ]] && kill -0 "${PROBE_PID}" 2>/dev/null; then
+    kill -INT "${PROBE_PID}" 2>/dev/null || true
+  fi
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -43,14 +49,10 @@ cleanup() {
     fi
   done
   for pid in "${PIDS[@]}"; do
-    wait "${pid}" 2>/dev/null
-    local wait_status="$?"
-    if [[ "${status}" == "0" && "${wait_status}" != "0" && "${wait_status}" != "130" && "${wait_status}" != "143" ]]; then
-      status="${wait_status}"
-    fi
+    wait "${pid}" 2>/dev/null || true
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
-    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
   if [[ "${BINGO_TS_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
@@ -87,11 +89,11 @@ finally:
 PY
 )"
 
-export BINGO_SESSION_A_ENDPOINT="${BINGO_SESSION_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+export BINGO_SESSION_A_ENDPOINT="${BINGO_SESSION_A_ENDPOINT:-ws://127.0.0.1:${PORTS[2]}}"
 export BINGO_SESSION_A_ROUTE_ENDPOINT="${BINGO_SESSION_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 export BINGO_SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
 export BINGO_SESSION_A_SPOT_NODE_RID="${BINGO_SESSION_A_SPOT_NODE_RID:-bingo-session-node-a}"
-export BINGO_SESSION_B_ENDPOINT="${BINGO_SESSION_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+export BINGO_SESSION_B_ENDPOINT="${BINGO_SESSION_B_ENDPOINT:-ws://127.0.0.1:${PORTS[5]}}"
 export BINGO_SESSION_B_ROUTE_ENDPOINT="${BINGO_SESSION_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
 export BINGO_SESSION_B_SPOT_ENDPOINT="${BINGO_SESSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
 export BINGO_SESSION_B_SPOT_NODE_RID="${BINGO_SESSION_B_SPOT_NODE_RID:-bingo-session-node-b}"
@@ -123,7 +125,7 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-bingo-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 export BINGO_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 
 python3 - \
@@ -153,52 +155,26 @@ write(sys.argv[1], {
 })
 write(sys.argv[2], {
     **base,
-    "apiEndpoint": "${BINGO_API_A_ENDPOINT}",
-    "apiNodeRid": "bingo-api-node-a",
-    "playRouteEndpoints": [
-        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
-        "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
-    ]
+    "apiEndpoint": "${BINGO_API_A_ENDPOINT}"
 })
 write(sys.argv[3], {
     **base,
-    "apiEndpoint": "${BINGO_API_B_ENDPOINT}",
-    "apiNodeRid": "bingo-api-node-b",
-    "playRouteEndpoints": [
-        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
-        "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
-    ]
+    "apiEndpoint": "${BINGO_API_B_ENDPOINT}"
 })
 write(sys.argv[4], {
     **base,
     "playEndpoint": "${BINGO_PLAY_A_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
-    "routePeerEndpoints": [
-        "${BINGO_PLAY_B_ROUTE_ENDPOINT}",
-        "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
-        "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
-    ],
     "playSpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}",
-    "playSpotPubSubPeerEndpoints": [
-        "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}"
-    ],
     "playSpotNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
 })
 write(sys.argv[5], {
     **base,
     "playEndpoint": "${BINGO_PLAY_B_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_B_ROUTE_ENDPOINT}",
-    "routePeerEndpoints": [
-        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
-        "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
-        "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
-    ],
     "playSpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}",
-    "playSpotPubSubPeerEndpoints": [
-        "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}"
-    ],
     "playSpotNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
 })
 write(sys.argv[6], {
@@ -207,8 +183,7 @@ write(sys.argv[6], {
     "sessionRouteEndpoint": "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
     "sessionSpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
     "sessionSpotNodeRid": "${BINGO_SESSION_A_SPOT_NODE_RID}",
-    "preferredPlayNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}",
-    "preferredPlayRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
+    "preferredPlayNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
 })
 write(sys.argv[7], {
     **base,
@@ -216,20 +191,21 @@ write(sys.argv[7], {
     "sessionRouteEndpoint": "${BINGO_SESSION_B_ROUTE_ENDPOINT}",
     "sessionSpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
     "sessionSpotNodeRid": "${BINGO_SESSION_B_SPOT_NODE_RID}",
-    "preferredPlayNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}",
-    "preferredPlayRouteEndpoint": "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
+    "preferredPlayNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
 })
 PY
 
 endpoint_host() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   echo "${endpoint%:*}"
 }
 
 endpoint_port() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#ws://}"
   echo "${endpoint##*:}"
 }
 
@@ -251,6 +227,21 @@ wait_port() {
   return 1
 }
 
+wait_log_marker() {
+  local name="$1"
+  local marker="$2"
+  local log_file="${LOG_DIR}/${name}.log"
+  for _ in $(seq 1 300); do
+    check_servers
+    if grep -Fq "${marker}" "${log_file}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} readiness marker: ${marker}" >&2
+  return 1
+}
+
 wait_location_ready() {
   check_servers
   node "${SCRIPT_DIR}/../../e2e/location-readiness.js" \
@@ -269,7 +260,8 @@ start_server() {
   local entry="$2"
   local config="$3"
   ZLINK_SAMPLE_CONFIG="${config}" node "${SCRIPT_DIR}/${entry}" >"${LOG_DIR}/${name}.log" 2>&1 &
-  PIDS+=("$!")
+  LAST_SERVER_PID="$!"
+  PIDS+=("${LAST_SERVER_PID}")
   PID_NAMES+=("${name}")
 }
 
@@ -292,8 +284,6 @@ check_servers() {
   done
 }
 
-(cd "${SCRIPT_DIR}" && npm run build >/dev/null)
-
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
 start_server api-a dist/Server/Api/main.js "${API_A_CONFIG}"
@@ -303,9 +293,11 @@ start_server api-b dist/Server/Api/main.js "${API_B_CONFIG}"
 wait_port api-b "${BINGO_API_B_ENDPOINT}"
 
 start_server play-a dist/Server/Play/main.js "${PLAY_A_CONFIG}"
+PLAY_A_PID="${LAST_SERVER_PID}"
 wait_port play-a-route "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
 wait_port play-a-spot "${BINGO_PLAY_A_SPOT_ENDPOINT}"
 wait_port play-a-spot-pubsub "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}"
+wait_log_marker play-a '"event":"ready"'
 
 start_server play-b dist/Server/Play/main.js "${PLAY_B_CONFIG}"
 wait_port play-b-route "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
@@ -323,12 +315,97 @@ wait_port session-b-route "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
 wait_port session-b-spot "${BINGO_SESSION_B_SPOT_ENDPOINT}"
 wait_location_ready
 
-ZLINK_SAMPLE_CONFIG="${CLIENT_CONFIG}" node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
+PROBE_GATE="${RUN_DIR}/drain-probe.gate"
+ZLINK_SAMPLE_CONFIG="${CLIENT_CONFIG}" \
+  BINGO_DRAIN_EXCLUDED_NODE_RID="${BINGO_PLAY_A_SPOT_NODE_RID}" \
+  BINGO_DRAIN_GATE_FILE="${PROBE_GATE}" \
+  node "${SCRIPT_DIR}/../../scripts/browser-e2e/run-sample.mjs" Bingo.Ts drain-match-probe.ts >"${LOG_DIR}/drain-probe.log" 2>&1 &
+PROBE_PID="$!"
+for _ in $(seq 1 300); do
+  if grep -q "bingo-drain-probe ready" "${LOG_DIR}/drain-probe.log"; then break; fi
+  kill -0 "${PROBE_PID}" 2>/dev/null
+  sleep 0.05
+done
+grep -q "bingo-drain-probe ready" "${LOG_DIR}/drain-probe.log"
+
+node "${SCRIPT_DIR}/../../scripts/browser-e2e/run-sample.mjs" Bingo.Ts >"${LOG_DIR}/client.log" 2>&1 &
+CLIENT_PID="$!"
+for _ in $(seq 1 300); do
+  check_servers
+  if grep -Rhq "bingo-lifecycle timer-started" "${LOG_DIR}"; then
+    break
+  fi
+  if ! kill -0 "${CLIENT_PID}" 2>/dev/null; then
+    wait "${CLIENT_PID}"
+    echo "Bingo client exited before the drain checkpoint." >&2
+    exit 1
+  fi
+  sleep 0.05
+done
+grep -Rhq "bingo-lifecycle timer-started" "${LOG_DIR}"
+kill -USR2 "${PLAY_A_PID}"
+for _ in $(seq 1 300); do
+  check_servers
+  if grep -q 'zlink metric name=zlink.drain.state value=1 attributes={"state":"draining"}' "${LOG_DIR}/play-a.log"; then
+    break
+  fi
+  sleep 0.05
+done
+grep -q 'zlink metric name=zlink.drain.state value=1 attributes={"state":"draining"}' "${LOG_DIR}/play-a.log"
+touch "${PROBE_GATE}"
+wait "${PROBE_PID}"
+grep -q "bingo-drain-probe .* excluded=${BINGO_PLAY_A_SPOT_NODE_RID}" "${LOG_DIR}/drain-probe.log"
+wait "${CLIENT_PID}"
+
+for _ in $(seq 1 300); do
+  if grep -q "bingo-drain result=drained" "${LOG_DIR}/play-a.log" \
+    && grep -q "zlink metric name=zlink.drain.actors.handed_off" "${LOG_DIR}/play-a.log"; then
+    break
+  fi
+  sleep 0.05
+done
+
+for _ in $(seq 1 100); do
+  check_servers
+  if grep -Rq "bingo-lifecycle session-disconnect actor=observer destroy=false" "${LOG_DIR}" \
+    && grep -Rq "bingo-lifecycle session-disconnect actor=player-1 destroy=false" "${LOG_DIR}" \
+    && grep -Rq "bingo-lifecycle session-disconnect actor=player-2 destroy=false" "${LOG_DIR}" \
+    && grep -Rq "bingo-lifecycle entry-destroy-complete actor=player-1" "${LOG_DIR}" \
+    && grep -Rq "bingo-lifecycle entry-destroy-complete actor=player-2" "${LOG_DIR}"; then
+    break
+  fi
+  sleep 0.05
+done
+
 grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
+grep -q "client=player-1" "${LOG_DIR}/client.log"
+grep -q "client=player-2" "${LOG_DIR}/client.log"
 grep -q "client=observer" "${LOG_DIR}/client.log"
 grep -q "name=BingoRewardAnnouncedNotify" "${LOG_DIR}/client.log"
 grep -Rq "message flow" "${BINGO_LOG_DIR}"
+grep -Rq "origin=Timer" "${BINGO_LOG_DIR}"
+node "${SCRIPT_DIR}/scripts/verify-flow-evidence.js" "${LOG_DIR}"
+grep -Rhq "zlink metric name=zlink.stream.connections.active" "${LOG_DIR}"
+grep -Rhq "zlink metric name=zlink.spot.queue.depth .*attributes=.*\"kind\":\"user\"" "${LOG_DIR}"
+grep -Rhq "zlink metric name=zlink.actor.transfers" "${LOG_DIR}"
+grep -q "bingo-drain result=drained" "${LOG_DIR}/play-a.log"
+grep -q "zlink metric name=zlink.drain.actors.handed_off" "${LOG_DIR}/play-a.log"
+[[ "$(grep -RhF "bingo-lifecycle timer-started" "${LOG_DIR}" | wc -l)" == "1" ]]
+for actor in player-1 player-2; do
+  [[ "$(grep -RhF "bingo-lifecycle room-leave actor=${actor}" "${LOG_DIR}" | wc -l)" == "1" ]]
+  [[ "$(grep -RhF "bingo-lifecycle entry-leave actor=${actor}" "${LOG_DIR}" | wc -l)" == "1" ]]
+  [[ "$(grep -RhF "bingo-lifecycle entry-destroy-complete actor=${actor}" "${LOG_DIR}" | wc -l)" == "1" ]]
+  [[ "$(grep -RhF "bingo-lifecycle session-disconnect actor=${actor} destroy=false" "${LOG_DIR}" | wc -l)" == "1" ]]
+done
+[[ "$(grep -RhF "bingo-lifecycle room-leave actor=observer" "${LOG_DIR}" | wc -l)" == "1" ]]
+grep -Rhq "bingo-lifecycle entry-joined actor=observer destroy=false" "${LOG_DIR}"
+[[ "$(grep -RhF "bingo-lifecycle session-disconnect actor=observer destroy=false" "${LOG_DIR}" | wc -l)" == "1" ]]
+if grep -REq "handlerException|phase=error|dispatch error" "${LOG_DIR}" "${BINGO_LOG_DIR}"; then
+  echo "Bingo emitted a dispatch error." >&2
+  grep -RE "handlerException|phase=error|dispatch error" "${LOG_DIR}" "${BINGO_LOG_DIR}" >&2 || true
+  exit 1
+fi
 echo "bingo=completed"
 echo "PASS Bingo.Ts"

@@ -10,6 +10,7 @@ import type { DeliveryDispatchServerConfig } from '../Configuration/sample-confi
 
 function createDispatchCenterModule(config: DeliveryDispatchServerConfig) {
   class DispatchCenterModule {}
+  const locationStore = createDeliveryDispatchLocationStore(config);
 
   Module({
     imports: [
@@ -20,13 +21,13 @@ function createDispatchCenterModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-dispatch-center.log`)
             .traceLabel('dispatch-center');
-          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
             .addClientServerChannel(SampleNames.dispatchChannel)
               .enableServer(config.dispatchEndpoint)
               .addHandlerGroup('dispatch')
-            .addClientServerChannel(SampleNames.courierRouteChannel)
+            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
               .enableClient()
             .addClientServerChannel(SampleNames.trackingChannel)
               .enableClient()
@@ -35,6 +36,7 @@ function createDispatchCenterModule(config: DeliveryDispatchServerConfig) {
       })
     ],
     providers: [
+      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
       DispatchWorkQueue,
       DispatchWorker,
       AssignDeliveryHandler

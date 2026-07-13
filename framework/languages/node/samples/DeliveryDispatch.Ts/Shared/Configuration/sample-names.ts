@@ -1,12 +1,10 @@
 const SampleNames = {
   dispatchChannel: 'deliverydispatch.dispatch',
-  courierRouteChannel: 'deliverydispatch.courier',
-  courierActorNodeRouteChannel: 'deliverydispatch.courier-actor-node',
+  courierActorNodeRouteChannel: 'delivery-couriers',
   courierActorSpotMesh: 'delivery-couriers',
   courierStreamNode: 'delivery-courier-stream',
   trackingChannel: 'deliverydispatch.tracking',
-  statusFanoutChannel: 'deliverydispatch.status',
-  deliverySpotMesh: 'delivery-spots',
+  customerActorSpotMesh: 'delivery-customers',
   customerStreamNode: 'delivery-customer-stream',
   courierActorType: 'delivery-courier',
   customerActorType: 'delivery-customer'

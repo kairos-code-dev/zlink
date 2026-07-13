@@ -10,11 +10,15 @@ const SampleNames = {
   roomSpotNode: 'bingo.room',
   sessionStream: 'bingo.session.stream',
   sessionSpotNode: 'bingo.session',
-  actorIds: [BingoSamplePlayers.player1, BingoSamplePlayers.player2, BingoSamplePlayers.observer],
+  actorIds: [
+    BingoSamplePlayers.player1,
+    BingoSamplePlayers.player2,
+    BingoSamplePlayers.observer,
+    BingoSamplePlayers.drainProbe
+  ],
   playerJoinedPacket: PacketNames.playerJoinedNotify,
   gameStartedPacket: PacketNames.gameStartedNotify,
   numberDrawnPacket: PacketNames.numberDrawnNotify,
-  statePacket: PacketNames.stateNotify,
   gameEndedPacket: PacketNames.gameEndedNotify
 };
 

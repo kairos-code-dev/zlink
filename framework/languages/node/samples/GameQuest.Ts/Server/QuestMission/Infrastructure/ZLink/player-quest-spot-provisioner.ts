@@ -1,16 +1,52 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import {
+  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
+  ZLINK_SPOT_OUTBOUND
+} from '@zlink-systems/nestjs';
 import { questMissionSpotRid } from '../../../../Shared/Configuration/sample-names';
 import { PlayerQuestSpot } from './Spots/PlayerQuestSpot/player-quest-spot';
-import type { ZLinkSpotManager } from '@zlink-systems/framework';
+import type {
+  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
+  ZLinkSpotOutbound
+} from '@zlink-systems/framework';
 
 class PlayerQuestSpotProvisioner {
-  constructor(@Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager) {}
+  constructor(
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
+    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver
+  ) {}
 
   async ensure(playerId: string): Promise<string> {
     const spotRid = questMissionSpotRid(playerId);
     await this.spots.getOrCreate(PlayerQuestSpot, spotRid, { playerId });
     return spotRid;
+  }
+
+  async request<TResponse>(playerId: string, request: object): Promise<TResponse> {
+    const spotRid = await this.ensure(playerId);
+    const spot = await this.spotHandles.resolveSpotHandle(spotRid);
+    if (spot === undefined) {
+      throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
+    }
+    return this.outbound
+      .requestToSpot(spot, request)
+      .submit<TResponse>();
+  }
+
+  async send(playerId: string, message: object): Promise<void> {
+    const spotRid = await this.ensure(playerId);
+    const spot = await this.spotHandles.resolveSpotHandle(spotRid);
+    if (spot === undefined) {
+      throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
+    }
+    this.outbound.sendToSpot(spot, message).submit();
+  }
+
+  async deactivate(playerId: string): Promise<boolean> {
+    return await this.spots.close(questMissionSpotRid(playerId));
   }
 }
 

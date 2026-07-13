@@ -83,25 +83,11 @@ function expectedPeers(config: DeliveryDispatchServerConfig): readonly ExpectedP
       endpoints: [config.dispatchEndpoint]
     },
     {
-      label: 'courier-router',
-      autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
-      meshName: SampleNames.courierRouteChannel,
-      role: ZLinkLocationRole.Router,
-      endpoints: [config.courierRouteEndpoint]
-    },
-    {
       label: 'tracking-router',
       autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
       meshName: SampleNames.trackingChannel,
       role: ZLinkLocationRole.Router,
       endpoints: [config.trackingEndpoint]
-    },
-    {
-      label: 'status-publisher',
-      autoConnectType: ZLinkLocationAutoConnectType.Fanout,
-      meshName: SampleNames.statusFanoutChannel,
-      role: ZLinkLocationRole.Pub,
-      endpoints: [config.statusFanoutEndpoint]
     },
     {
       label: 'courier-actor-route-router',
@@ -115,19 +101,14 @@ function expectedPeers(config: DeliveryDispatchServerConfig): readonly ExpectedP
       autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
       meshName: SampleNames.courierActorSpotMesh,
       role: ZLinkLocationRole.Spot,
-      endpoints: [config.courierActorNode1SpotEndpoint, config.courierActorNode2SpotEndpoint]
+      endpoints: [config.courierSessionSpotEndpoint, config.courierActorNode1SpotEndpoint, config.courierActorNode2SpotEndpoint]
     },
     {
-      label: 'delivery-spot',
+      label: 'customer-actor-spot',
       autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
-      meshName: SampleNames.deliverySpotMesh,
+      meshName: SampleNames.customerActorSpotMesh,
       role: ZLinkLocationRole.Spot,
-      endpoints: [
-        config.trackingSpotRouterEndpoint,
-        config.trackingSpotEndpoint,
-        config.sessionSpotRouterEndpoint,
-        config.sessionSpotEndpoint
-      ]
+      endpoints: [config.sessionSpotRouterEndpoint, config.trackingSpotEndpoint]
     }
   ];
 }

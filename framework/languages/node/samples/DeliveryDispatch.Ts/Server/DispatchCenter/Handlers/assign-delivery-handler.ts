@@ -1,18 +1,17 @@
-import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { zlinkSendHandler } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../../Shared/Contracts/messages';
 import { DispatchWorkQueue } from '../dispatch-work-queue';
-import type { ZLinkRequestHandler, ZLinkRequestContext } from '@zlink-systems/framework';
-import type { AssignDeliveryReq, AssignDeliveryRes } from '../../../Shared/Contracts/messages';
+import type { ZLinkSendHandler, ZLinkSendContext } from '@zlink-systems/framework';
+import type { AssignDeliveryMsg } from '../../../Shared/Contracts/messages';
 
-@zlinkRequestHandler('dispatch', PacketNames.assignDelivery)
-class AssignDeliveryHandler implements ZLinkRequestHandler<AssignDeliveryReq, AssignDeliveryRes> {
+@zlinkSendHandler('dispatch', PacketNames.assignDelivery)
+class AssignDeliveryHandler implements ZLinkSendHandler<AssignDeliveryMsg> {
   constructor(private readonly queue: DispatchWorkQueue) {}
 
-  async handle(request: AssignDeliveryReq, context: ZLinkRequestContext): Promise<AssignDeliveryRes> {
+  async handle(request: AssignDeliveryMsg, context: ZLinkSendContext): Promise<void> {
     void context;
     this.queue.enqueue(request);
     console.error(`deliverydispatch dispatch: queued delivery=${request.deliveryId} customer=${request.customerId}`);
-    return { deliveryId: request.deliveryId, courierId: 'pending', accepted: true };
   }
 }
 

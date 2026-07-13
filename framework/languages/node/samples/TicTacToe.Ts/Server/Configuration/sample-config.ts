@@ -11,8 +11,6 @@ type TicTacToeSampleConfig = {
   playEndpoints: string[];
   playSpotEndpoint: string;
   playSpotEndpoints: string[];
-  playRouteEndpoint: string;
-  playRouteEndpoints: string[];
   playSpotPubSubEndpoint: string;
   playSpotPubSubEndpoints: string[];
   playStreamEndpoint: string;
@@ -21,7 +19,6 @@ type TicTacToeSampleConfig = {
   playSpotNodeRid: string;
   peerPlaySpotNodeRid: string;
   peerPlaySpotEndpoint: string;
-  peerPlayRouteEndpoint: string;
   peerPlaySpotPubEndpoint: string;
 };
 
@@ -42,8 +39,6 @@ function loadSampleConfig(): TicTacToeSampleConfig {
     playEndpoints: readListEnv('TICTACTOE_PLAY_STREAM_ENDPOINTS', requireEnv('TICTACTOE_PLAY_STREAM_ENDPOINT')),
     playSpotEndpoint: requireEnv('TICTACTOE_PLAY_SPOT_ENDPOINT'),
     playSpotEndpoints: readListEnv('TICTACTOE_PLAY_SPOT_ENDPOINTS', requireEnv('TICTACTOE_PLAY_SPOT_ENDPOINT')),
-    playRouteEndpoint: requireEnv('TICTACTOE_PLAY_ROUTE_ENDPOINT'),
-    playRouteEndpoints: readListEnv('TICTACTOE_PLAY_ROUTE_ENDPOINTS', requireEnv('TICTACTOE_PLAY_ROUTE_ENDPOINT')),
     playSpotPubSubEndpoint: requireEnv('TICTACTOE_PLAY_SPOT_PUBSUB_ENDPOINT'),
     playSpotPubSubEndpoints: readListEnv(
       'TICTACTOE_PLAY_SPOT_PUBSUB_ENDPOINTS',
@@ -51,11 +46,10 @@ function loadSampleConfig(): TicTacToeSampleConfig {
     ),
     playStreamEndpoint: requireEnv('TICTACTOE_PLAY_STREAM_ENDPOINT'),
     redisEndpoint: requireEnv('TICTACTOE_REDIS_ENDPOINT'),
-    redisKeyPrefix: process.env.TICTACTOE_REDIS_KEY_PREFIX ?? 'tictactoe:room:',
+    redisKeyPrefix: process.env.TICTACTOE_REDIS_KEY_PREFIX ?? 'tictactoe:sample:',
     playSpotNodeRid: process.env.TICTACTOE_PLAY_SPOT_NODE_RID ?? 'play-node-1',
     peerPlaySpotNodeRid: process.env.TICTACTOE_PEER_PLAY_SPOT_NODE_RID ?? 'play-node-2',
     peerPlaySpotEndpoint: requireEnv('TICTACTOE_PEER_PLAY_SPOT_ENDPOINT'),
-    peerPlayRouteEndpoint: requireEnv('TICTACTOE_PEER_PLAY_ROUTE_ENDPOINT'),
     peerPlaySpotPubEndpoint: process.env.TICTACTOE_PEER_PLAY_SPOT_PUB_ENDPOINT
       ?? requireEnv('TICTACTOE_PEER_PLAY_SPOT_PUBSUB_ENDPOINT')
   };

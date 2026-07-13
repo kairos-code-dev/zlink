@@ -19,6 +19,12 @@
       "@zlink-systems/framework-codec-protobuf": [
         "../../packages/framework-codec-protobuf/dist"
       ],
+      "@zlink-systems/framework-codec-protobuf/framework": [
+        "../../packages/framework-codec-protobuf/dist/framework"
+      ],
+      "@zlink-systems/stream-wire": [
+        "../../packages/stream-wire/dist"
+      ],
       "@zlink-systems/framework-locations-redis": [
         "../../packages/framework-locations-redis/dist"
       ],
@@ -28,7 +34,6 @@
     }
   },
   "include": [
-    "Client/**/*.ts",
     "Server/**/*.ts",
     "Shared/**/*.ts"
   ]

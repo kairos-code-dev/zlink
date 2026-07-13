@@ -1,31 +1,52 @@
 import { ZLinkPacket } from '@zlink-systems/framework';
 
 const PacketNames = {
-  startOrderReq: 'shoppingmall.start_order.req',
-  continueOrderWorkflowReq: 'shoppingmall.continue_order_workflow.req',
-  prepareInventoryReservedReq: 'shoppingmall.prepare_inventory_reserved.req',
-  rebuildOrderProjectionReq: 'shoppingmall.rebuild_order_projection.req'
+  startOrderWorkflowReq: 'StartOrderWorkflowReq',
+  continueOrderWorkflowReq: 'ContinueOrderWorkflowReq',
+  prepareInventoryReservedReq: 'PrepareInventoryReservedReq',
+  prepareInventoryEffectReq: 'PrepareInventoryEffectReq',
+  verifyExpectedVersionFenceReq: 'VerifyExpectedVersionFenceReq',
+  topologyReadyReq: 'ShoppingMallTopologyReadyReq',
+  rebuildOrderProjectionReq: 'RebuildOrderProjectionReq'
 } as const;
 
-@ZLinkPacket(PacketNames.startOrderReq)
-class StartOrderReq {
+interface OrderLineInput {
+  sku: string;
+  quantity: number;
+}
+
+interface StartOrderReq {
+  cartId: string;
+  shippingAddressId: string;
+  paymentMethodId: string;
+  idempotencyKey: string;
+}
+
+@ZLinkPacket(PacketNames.startOrderWorkflowReq)
+class StartOrderWorkflowReq {
   constructor(
+    readonly orderId: string,
     readonly cartId: string,
     readonly shippingAddressId: string,
     readonly paymentMethodId: string,
-    readonly idempotencyKey: string
+    readonly idempotencyKey: string,
+    readonly lines: readonly OrderLineInput[],
+    readonly amount: number,
+    readonly currency: string
   ) {}
 }
 
 @ZLinkPacket(PacketNames.prepareInventoryReservedReq)
-class PrepareInventoryReservedReq {
-  constructor(
-    readonly cartId: string,
-    readonly shippingAddressId: string,
-    readonly paymentMethodId: string,
-    readonly idempotencyKey: string
-  ) {}
-}
+class PrepareInventoryReservedReq extends StartOrderWorkflowReq {}
+
+@ZLinkPacket(PacketNames.prepareInventoryEffectReq)
+class PrepareInventoryEffectReq extends StartOrderWorkflowReq {}
+
+@ZLinkPacket(PacketNames.verifyExpectedVersionFenceReq)
+class VerifyExpectedVersionFenceReq { constructor(readonly orderId: string) {} }
+
+@ZLinkPacket(PacketNames.topologyReadyReq)
+class ShoppingMallTopologyReadyReq { constructor(readonly probeId: string) {} }
 
 @ZLinkPacket(PacketNames.continueOrderWorkflowReq)
 class ContinueOrderWorkflowReq { constructor(readonly orderId: string) {} }
@@ -38,9 +59,8 @@ interface StartOrderRes {
   status: string;
 }
 
-interface GetOrderStateRes {
-  state: OrderState;
-}
+interface StartOrderWorkflowRes { state: OrderState; }
+interface GetOrderStateRes { state: OrderState; }
 
 interface OrderState {
   orderId: string;
@@ -54,12 +74,14 @@ interface OrderState {
   updatedAtUnixMs: number;
 }
 
-interface ContinueOrderWorkflowRes {
-  state: OrderState;
-}
-
-interface RebuildOrderProjectionRes {
-  state: OrderState;
+interface ContinueOrderWorkflowRes { state: OrderState; }
+interface RebuildOrderProjectionRes { state: OrderState; }
+interface VerifyExpectedVersionFenceRes {
+  rejected: boolean;
+  expectedVersion: number;
+  actualVersion: number;
+  writerInstanceId?: string;
+  ownerInstanceId?: string;
 }
 
 interface ServerAssertionReq {
@@ -67,9 +89,10 @@ interface ServerAssertionReq {
   pendingRecoveredOrderId: string;
   concurrentOrderId: string;
   resumedOrderId: string;
+  interruptedOrderId: string;
   inventoryFailureOrderId: string;
   paymentFailureOrderId: string;
-  scaleOutOrderId: string;
+  scaleOutOrderIds: readonly string[];
 }
 
 interface ServerAssertionRes {
@@ -86,19 +109,26 @@ const OrderStatuses = {
 } as const;
 
 export {
+  ContinueOrderWorkflowReq,
   OrderStatuses,
   PacketNames,
-  StartOrderReq,
+  PrepareInventoryEffectReq,
   PrepareInventoryReservedReq,
-  ContinueOrderWorkflowReq,
-  RebuildOrderProjectionReq
+  RebuildOrderProjectionReq,
+  StartOrderWorkflowReq,
+  ShoppingMallTopologyReadyReq,
+  VerifyExpectedVersionFenceReq
 };
 export type {
   ContinueOrderWorkflowRes,
   GetOrderStateRes,
+  OrderLineInput,
   OrderState,
   RebuildOrderProjectionRes,
   ServerAssertionReq,
   ServerAssertionRes,
-  StartOrderRes
+  StartOrderReq,
+  StartOrderRes,
+  StartOrderWorkflowRes,
+  VerifyExpectedVersionFenceRes
 };

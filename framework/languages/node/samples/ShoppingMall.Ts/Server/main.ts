@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import http from 'node:http';
 import { URL } from 'node:url';
 import { NestFactory } from '@nestjs/core';
+import type { ZLinkLocationRuntimeQuery, ZLinkSpotHandleResolver, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
+import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
 import { loadSampleConfig, type ShoppingMallServerConfig } from './Configuration/sample-config';
 import { createCommerceApiServer } from './CommerceApi/commerce-api-server';
 import { createShoppingMallCommerceApiModule } from './CommerceApi/commerce-api-module';
@@ -10,6 +12,8 @@ import { StartOrderUseCase } from './CommerceApi/Application/start-order-use-cas
 import { createShoppingMallWorkflowModule } from './OrderWorkflow/shoppingmall-workflow-module';
 import { OrderStore } from './Shared/Store/order-store';
 import { SampleNames } from '../Shared/Configuration/sample-names';
+import { ShoppingMallTopologyReadyReq } from '../Shared/Contracts/messages';
+import { OrderWorkflowSpot } from './OrderWorkflow/Infrastructure/ZLink/Spots/OrderWorkflowSpot/order-workflow-spot';
 
 const role = readArg('--role') ?? SampleNames.apiA;
 const config = loadSampleConfig();
@@ -25,7 +29,12 @@ async function main(): Promise<void> {
     abortOnError: false
   });
   const server = isWorkflowRole(role)
-    ? createHealthServer(role)
+    ? createHealthServer(role, {
+        locations: app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }),
+        spots: app.get(ZLINK_SPOT_MANAGER, { strict: false }),
+        spotRefs: app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }),
+        outbound: app.get(ZLINK_SPOT_OUTBOUND, { strict: false })
+      })
     : createCommerceApiServer(
       endpoint,
       role,
@@ -44,12 +53,33 @@ async function main(): Promise<void> {
   });
 }
 
-function createHealthServer(roleName: string): http.Server {
-  return http.createServer((request, response) => {
+function createHealthServer(roleName: string, dependencies: {
+  locations: ZLinkLocationRuntimeQuery;
+  spots: ZLinkSpotManager;
+  spotRefs: ZLinkSpotHandleResolver;
+  outbound: ZLinkSpotOutbound;
+}): http.Server {
+  return http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', endpoint);
     if (request.method === 'GET' && url.pathname === '/health') {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ ok: true, role: roleName }));
+      try {
+        const status = await dependencies.locations.getStatus();
+        const probeId = 'shoppingmall-topology-readiness';
+        if (roleName === SampleNames.workflowA) {
+          await dependencies.spots.getOrCreate(OrderWorkflowSpot, probeId, { orderId: probeId });
+        }
+        const handle = await dependencies.spotRefs.resolveSpotHandle(probeId);
+        if (handle === undefined) throw new Error('Topology readiness spot was not resolved.');
+        const probe = await dependencies.outbound.requestToSpot(handle, new ShoppingMallTopologyReadyReq(probeId))
+          .timeout(SampleNames.requestTimeout)
+          .submit<{ ready: true }>();
+        const ready = status.storeHealthy && probe.ready;
+        response.writeHead(ready ? 200 : 503, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: ready, role: roleName }));
+      } catch (error) {
+        response.writeHead(503, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: false, role: roleName, error: error instanceof Error ? error.message : String(error) }));
+      }
       return;
     }
     response.writeHead(404, { 'content-type': 'application/json' });

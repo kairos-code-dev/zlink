@@ -27,7 +27,7 @@ type SyncQuestProgressRes = { updatedQuests: QuestProgress[] };
 class DeleteQuestProjectionReq { constructor(readonly playerId: string, readonly questId: string) {} }
 type DeleteQuestProjectionRes = { deleted: boolean };
 class RebuildQuestProjectionReq {
-  constructor(readonly playerId: string, readonly questId: string, readonly count: number) {}
+  constructor(readonly playerId: string, readonly questId: string) {}
 }
 type GetGameplaySnapshotReq = { playerId: string };
 type GetGameplaySnapshotRes = {
@@ -42,11 +42,10 @@ type GetGameplaySnapshotRes = {
 type KillCountSnapshot = { monsterId: string; areaId?: string; count: number };
 type ItemCountSnapshot = { itemId: string; count: number };
 class QuestProgressNotify {
-  constructor(readonly playerId: string, readonly progress: QuestProgress, readonly targetConnectionId?: string) {}
+  constructor(readonly playerId: string, readonly progress: QuestProgress) {}
 }
 class QuestCompletedNotify {
-  readonly rewardGranted = true;
-  constructor(readonly playerId: string, readonly progress: QuestProgress, readonly targetConnectionId?: string) {}
+  constructor(readonly playerId: string, readonly progress: QuestProgress, readonly rewardGranted: boolean) {}
 }
 type QuestProgress = {
   playerId: string;
@@ -54,7 +53,8 @@ type QuestProgress = {
   status: string;
   currentCount: number;
   requiredCount: number;
-  lastEventId?: string;
+  lastSourceEventId?: string;
+  version: number;
   updatedAtUnixMs: number;
 };
 type GameplayEventEnvelope = {
@@ -67,10 +67,22 @@ type GameplayEventEnvelope = {
   sourceApi: string;
   createdAtUnixMs: number;
 };
-class ApplyGameplayEventReq { constructor(readonly event: GameplayEventEnvelope) {} }
-type ApplyGameplayEventRes = { applied: boolean; projection: QuestProgress[]; completedQuestId?: string };
+class GameplayMsg {
+  constructor(
+    readonly eventId: string,
+    readonly playerId: string,
+    readonly type: string,
+    readonly payload: number[],
+    readonly occurredAtUnixMs: number
+  ) {}
+}
+type QuestApplyResult = {
+  applied: boolean;
+  projection: QuestProgress[];
+  changedProgress?: QuestProgress;
+  completedQuestId?: string;
+};
 type QuestProgressedEvent = {
-  eventId: string;
   playerId: string;
   questId: string;
   delta: number;
@@ -79,22 +91,18 @@ type QuestProgressedEvent = {
   sourceEventId: string;
 };
 type QuestCompletedEvent = {
-  eventId: string;
   playerId: string;
   questId: string;
   sourceEventId: string;
   completedAtUnixMs: number;
 };
 type QuestRewardGrantedEvent = {
-  eventId: string;
   playerId: string;
   questId: string;
-  sourceEventId: string;
   rewardId: string;
   grantedAtUnixMs: number;
 };
-type QuestProgressReconciledEvent = {
-  eventId: string;
+type QuestReconciledEvent = {
   playerId: string;
   questId: string;
   currentCount: number;
@@ -107,7 +115,7 @@ type StoredQuestEvent = {
   playerId: string;
   questId: string;
   eventType: string;
-  payload: unknown;
+  payload: number[];
   version: number;
   createdAtUnixMs: number;
 };
@@ -122,7 +130,8 @@ const QuestIds = {
 } as const;
 
 const QuestStatuses = {
-  InProgress: 'InProgress',
+  Active: 'Active',
+  Completed: 'Completed',
   RewardGranted: 'RewardGranted'
 } as const;
 
@@ -146,8 +155,7 @@ const PacketNames = {
   deleteQuestProjectionReq: 'DeleteQuestProjectionReq',
   deleteQuestProjectionRes: 'DeleteQuestProjectionRes',
   rebuildQuestProjectionReq: 'RebuildQuestProjectionReq',
-  applyGameplayEventReq: 'ApplyGameplayEventReq',
-  applyGameplayEventRes: 'ApplyGameplayEventRes',
+  gameplayMsg: 'GameplayMsg',
   questProgressNotify: 'QuestProgressNotify',
   questCompletedNotify: 'QuestCompletedNotify'
 } as const;
@@ -188,12 +196,22 @@ function deleteQuestProjectionReq(playerId: string, questId: string): DeleteQues
   return new DeleteQuestProjectionReq(playerId, questId);
 }
 
-function rebuildQuestProjectionReq(playerId: string, questId: string, count = 0): RebuildQuestProjectionReq {
-  return new RebuildQuestProjectionReq(playerId, questId, count);
+function rebuildQuestProjectionReq(playerId: string, questId: string): RebuildQuestProjectionReq {
+  return new RebuildQuestProjectionReq(playerId, questId);
 }
 
-function applyGameplayEventReq(event: GameplayEventEnvelope): ApplyGameplayEventReq {
-  return new ApplyGameplayEventReq(event);
+function gameplayMsg(event: GameplayEventEnvelope): GameplayMsg {
+  return new GameplayMsg(
+    event.eventId,
+    event.playerId,
+    event.eventType,
+    [...new TextEncoder().encode(JSON.stringify(event))],
+    event.createdAtUnixMs
+  );
+}
+
+function decodeGameplayPayload(payload: number[]): GameplayEventEnvelope {
+  return JSON.parse(new TextDecoder().decode(Uint8Array.from(payload))) as GameplayEventEnvelope;
 }
 
 export {
@@ -209,7 +227,7 @@ export {
   SyncQuestProgressReq,
   DeleteQuestProjectionReq,
   RebuildQuestProjectionReq,
-  ApplyGameplayEventReq,
+  GameplayMsg,
   PacketNames,
   QuestIds,
   QuestStatuses,
@@ -223,7 +241,8 @@ export {
   syncQuestProgressReq,
   deleteQuestProjectionReq,
   rebuildQuestProjectionReq,
-  applyGameplayEventReq
+  gameplayMsg,
+  decodeGameplayPayload
 };
 
 export type {
@@ -242,11 +261,11 @@ export type {
   ItemCountSnapshot,
   QuestProgress,
   GameplayEventEnvelope,
-  ApplyGameplayEventRes,
+  QuestApplyResult,
   QuestProgressedEvent,
   QuestCompletedEvent,
   QuestRewardGrantedEvent,
-  QuestProgressReconciledEvent,
+  QuestReconciledEvent,
   StoredQuestEvent,
   GameQuestServerAssertRes
 };

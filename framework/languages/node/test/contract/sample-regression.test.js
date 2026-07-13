@@ -6,6 +6,7 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const samplesRoot = path.join(workspaceRoot, 'samples');
+const commonSampleDocsRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 'common', 'sample');
 const requiredSamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
@@ -23,15 +24,26 @@ const topologySamples = [
   'ShoppingMall.Ts'
 ];
 
-test('node samples define the required sample directories and README files', () => {
+test('node samples define required files and use only common sample documents', () => {
   const missing = [];
+  if (fs.existsSync(path.join(samplesRoot, 'README.ko.md'))) {
+    missing.push('samples/README.ko.md must not duplicate the common sample specification');
+  }
   for (const sample of requiredSamples) {
-    for (const relative of ['package.json', 'README.ko.md', 'sample-porting-inventory.ko.md', 'run_sample.sh', 'run_sample.ps1']) {
+    for (const relative of ['package.json', 'run_sample.sh', 'run_sample.ps1']) {
       const target = path.join(samplesRoot, sample, relative);
       if (!fs.existsSync(target)) {
         missing.push(`${sample}/${relative}`);
       }
     }
+    for (const obsolete of ['README.ko.md', 'sample-porting-inventory.ko.md']) {
+      if (fs.existsSync(path.join(samplesRoot, sample, obsolete))) {
+        missing.push(`${sample}/${obsolete} must not duplicate the common sample specification`);
+      }
+    }
+  }
+  if (!fs.existsSync(path.join(commonSampleDocsRoot, 'README.ko.md'))) {
+    missing.push('framework/doc/framework/common/sample/README.ko.md');
   }
   if (!fs.existsSync(path.join(samplesRoot, 'run_samples.sh'))) {
     missing.push('run_samples.sh');
@@ -43,7 +55,7 @@ test('node samples define the required sample directories and README files', () 
   assert.deepEqual(missing, []);
 });
 
-test('node topology samples mirror dotnet role layout', () => {
+test('node topology samples implement the common sample role layout', () => {
   const expected = {
     'TicTacToe.Ts': [
       'Client/tictactoe-client-scenario.ts',
@@ -105,35 +117,34 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/Configuration/sample-config.ts',
       'Client/Configuration/sample-names.ts',
       'Server/Api/Handlers/open-conversation-handler.ts',
+      'Server/Api/Handlers/authenticate-user-handler.ts',
       'Server/Api/supportchat-api-module.ts',
       'Server/Api/main.ts',
       'Server/Support/Domain/SupportChat/conversation.ts',
       'Server/Support/Domain/SupportChat/conversation-models.ts',
+      'Server/Support/Domain/SupportChat/conversation-events.ts',
+      'Server/Support/Domain/SupportChat/conversation-policy.ts',
       'Server/Support/Application/ConversationAssignment/support-conversation-allocator.ts',
       'Server/Support/Application/ConversationAssignment/agent-availability-directory.ts',
       'Server/Support/Application/ConversationAssignment/agent-assignment-service.ts',
       'Server/Support/Infrastructure/ZLink/Actors/support-user-actor.ts',
       'Server/Support/Infrastructure/ZLink/Actors/support-user-actor-factory.ts',
       'Server/Support/Infrastructure/ZLink/Handlers/allocate-conversation-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/assign-agent-handler.ts',
+      'Server/Support/Infrastructure/ZLink/Handlers/ensure-agent-conversation-handler.ts',
       'Server/Support/Infrastructure/ZLink/Handlers/ensure-support-user-actor-handler.ts',
-      'Server/Support/Infrastructure/ZLink/Handlers/supportchat-notifications-handler.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/conversation-event-mapper.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Notifications/support-notification-publisher.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-create-request.ts',
       'Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support-entry-spot.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.ts',
       'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-idle-timer-handler.ts',
-      'Server/Support/notification-delivery-log.ts',
+      'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-actor-handlers.ts',
+      'Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support-entry-handlers.ts',
       'Server/Support/supportchat-support-module.ts',
       'Server/Support/main.ts',
-      'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
       'Server/Session/Sessions/supportchat-session.ts',
       'Server/Session/supportchat-session-module.ts',
       'Server/Session/main.ts',
-      'Server/Registry/registry-server-host.ts',
-      'Server/Registry/main.ts',
-      'Server/Probe/main.ts',
       'Server/Configuration/sample-config.ts',
       'Server/Configuration/sample-names.ts',
       'Server/runtime-support.ts',
@@ -143,7 +154,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/deliverydispatch-client-scenario.ts',
       'Client/main.ts',
       'Server/main.ts',
-      'Server/Courier/bind-courier-handler.ts',
       'Server/Courier/courier-actor.ts',
       'Server/Courier/courier-entry-spot.ts',
       'Server/Courier/courier-module.ts',
@@ -167,7 +177,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/GameApi/game-api-server.ts',
       'Server/GameApi/Application/gameplay-action-service.ts',
       'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts',
-      'Server/QuestMission/gamequest-quest-module.ts',
       'Server/QuestMission/Application/quest-owner-router.ts',
       'Server/QuestMission/Infrastructure/ZLink/gameplay-event-route-handler.ts',
       'Server/QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner.ts',
@@ -206,7 +215,8 @@ test('GameQuest TypeScript sample registers required sample and provisions playe
 
   const names = readSample('GameQuest.Ts', 'Shared/Configuration/sample-names.ts');
   const publisher = readSample('GameQuest.Ts', 'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts');
-  const missionModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
+  const sessionModule = readSample('GameQuest.Ts', 'Server/GameApi/game-api-module.ts');
+  const questModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
   const provisioner = readSample(
     'GameQuest.Ts',
     'Server/QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner.ts'
@@ -215,17 +225,25 @@ test('GameQuest TypeScript sample registers required sample and provisions playe
     'GameQuest.Ts',
     'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot.ts'
   );
+  const spotHandlers = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot-handlers.ts'
+  );
   const missing = [];
 
   for (const [content, text] of [
     [names, 'questMissionRouteRid(playerId: string)'],
     [names, 'ownerIndex(playerId) === 0 ? \'mission-a\' : \'mission-b\''],
-    [publisher, '.requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(event.playerId), applyGameplayEventReq(event))'],
-    [missionModule, '.addSpotMesh(SampleNames.playerQuestSpotMesh)'],
-    [missionModule, '.addSpotFactory(PlayerQuestSpot)'],
+    [publisher, '.sendToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(event.playerId), message)'],
+    [sessionModule, '.addSpotMesh(SampleNames.playerQuestSpotMesh)'],
+    [questModule, '.addSpotFactory(PlayerQuestSpot)'],
     [provisioner, 'ZLINK_SPOT_MANAGER'],
     [provisioner, 'this.spots.getOrCreate(PlayerQuestSpot, spotRid, { playerId })'],
-    [spot, 'gamequest player quest spot ready']
+    [spot, 'private aggregate: PlayerQuestAggregate | undefined'],
+    [spot, 'ensureAggregate(load: () => PlayerQuestAggregate)'],
+    [spotHandlers, 'this.processor.rehydrate(message.playerId)'],
+    [spotHandlers, 'spot.replaceAggregate(result.aggregate)'],
+    [spotHandlers, 'this.processor.rehydrate(request.playerId)']
   ]) {
     if (!content.includes(text)) {
       missing.push(text);
@@ -337,21 +355,7 @@ test('node samples keep only the maintained canonical variants', () => {
   assert.equal(entries.some((entry) => /SessionGateway|Gateway|StreamingClient/.test(entry)), false);
 });
 
-test('node sample READMEs describe execution topology success condition and regression', () => {
-  const missing = [];
-  for (const sample of requiredSamples) {
-    const readme = fs.readFileSync(path.join(samplesRoot, sample, 'README.ko.md'), 'utf8');
-    for (const heading of ['## 실행', '## Topology', '## Success Condition', '## 회귀 테스트']) {
-      if (!readme.includes(heading)) {
-        missing.push(`${sample}:${heading}`);
-      }
-    }
-  }
-
-  assert.deepEqual(missing, []);
-});
-
-test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
+test('node common-spec samples expose buildable scenario entrypoints', () => {
   const cases = [
     ['DeliveryDispatch.Ts', '@zlink-systems/sample-deliverydispatch-ts', 'deliverydispatch-client-scenario.ts', 'DeliveryDispatchClientScenario', 'PASS DeliveryDispatch.Ts'],
     ['GameQuest.Ts', '@zlink-systems/sample-gamequest-ts', 'gamequest-client-scenario.ts', 'GameQuestClientScenario', 'PASS GameQuest.Ts'],
@@ -397,21 +401,27 @@ test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
 });
 
 test('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
-  const conversationStarter = readSample(
+  const allocator = readSample(
     'SupportChat.Ts',
-    'Server/Support/Infrastructure/ZLink/ConversationStarter.ts'
+    'Server/Support/Application/ConversationAssignment/support-conversation-allocator.ts'
+  );
+  const assignment = readSample(
+    'SupportChat.Ts',
+    'Server/Support/Application/ConversationAssignment/agent-assignment-service.ts'
   );
   const apiHandler = fs.readFileSync(
     path.join(samplesRoot, 'SupportChat.Ts', 'Server', 'Api', 'Handlers', 'open-conversation-handler.ts'),
     'utf8'
   );
 
-  assert.match(conversationStarter, /allocateConversation/);
-  assert.doesNotMatch(conversationStarter, /allocator\.allocate|assignNextAgent|actors\.get/);
+  assert.match(allocator, /new Conversation\(/);
+  assert.doesNotMatch(allocator, /ZLink|requestToChannel|actors\.get/);
+  assert.match(assignment, /assignNextAgent\(\)/);
+  assert.doesNotMatch(assignment, /ZLink|requestToChannel|actors\.get/);
 
   assert.match(apiHandler, /SampleNames\.supportChannel/);
-  assert.match(apiHandler, /allocateConversationReq/);
-  assert.match(apiHandler, /assignAgentReq/);
+  assert.match(apiHandler, /allocateConversation\(/);
+  assert.match(apiHandler, /submit<AllocateConversationRes>/);
 });
 
 test('DeliveryDispatch TypeScript sample uses framework channel topology', () => {
@@ -419,12 +429,16 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   const dispatchApiModule = readSample('DeliveryDispatch.Ts', 'Server/DispatchApi/dispatch-api-module.ts');
   const dispatchCenterModule = readSample('DeliveryDispatch.Ts', 'Server/DispatchCenter/dispatch-center-module.ts');
   const courierModule = readSample('DeliveryDispatch.Ts', 'Server/Courier/courier-module.ts');
+  const courierSessionModule = readSample('DeliveryDispatch.Ts', 'Server/CourierSession/courier-session-module.ts');
+  const courierSession = readSample('DeliveryDispatch.Ts', 'Server/CourierSession/courier-session.ts');
+  const customerSession = readSample('DeliveryDispatch.Ts', 'Server/Session/customer-session.ts');
+  const names = readSample('DeliveryDispatch.Ts', 'Shared/Configuration/sample-names.ts');
   const trackingModule = readSample('DeliveryDispatch.Ts', 'Server/Tracking/tracking-module.ts');
   const sessionModule = readSample('DeliveryDispatch.Ts', 'Server/Session/session-module.ts');
   const serverMain = readSample('DeliveryDispatch.Ts', 'Server/main.ts');
   const runSample = fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'run_sample.sh'), 'utf8');
 
-  assert.match(clientScenario, /ZLinkHttpClient/);
+  assert.match(clientScenario, /BrowserHttpClient/);
   assert.match(clientScenario, /\.fetch<CreateDeliveryRes>\(\)/);
   assert.match(clientScenario, /\.fetch<ServerAssertionRes>\(\)/);
   assert.match(clientScenario, /customer\.request\(subscribeDelivery/);
@@ -432,18 +446,32 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(dispatchApiModule, /\.addClientServerChannel\(SampleNames\.dispatchChannel\)/);
   assert.match(dispatchApiModule, /\.enableClient\(\)/);
   assert.match(dispatchCenterModule, /\.enableServer\(config\.dispatchEndpoint\)/);
-  assert.match(dispatchCenterModule, /\.addClientServerChannel\(SampleNames\.courierRouteChannel\)/);
+  assert.match(dispatchCenterModule, /\.addRouteMeshChannel\(SampleNames\.courierActorNodeRouteChannel\)/);
   assert.match(dispatchCenterModule, /\.addClientServerChannel\(SampleNames\.trackingChannel\)/);
-  assert.match(courierModule, /\.enableServer\(config\.courierRouteEndpoint\)/);
-  assert.match(trackingModule, /\.addFanoutChannel\(SampleNames\.statusFanoutChannel\)/);
-  assert.match(trackingModule, /\.addSpotMesh\(SampleNames\.deliverySpotMesh\)/);
+  assert.match(courierModule, /\.addRouteMeshChannel\(SampleNames\.courierActorNodeRouteChannel\)/);
+  assert.match(courierModule, /\.addSpotMesh\(SampleNames\.courierActorSpotMesh\)/);
+  assert.match(courierSessionModule, /\.addRouteMeshChannel\(SampleNames\.courierActorNodeRouteChannel\)/);
+  assert.match(courierSessionModule, /\.addSpotMesh\(SampleNames\.courierActorSpotMesh\)/);
+  assert.match(trackingModule, /\.addClientServerChannel\(SampleNames\.trackingChannel\)/);
+  assert.match(trackingModule, /\.addSpotMesh\(SampleNames\.customerActorSpotMesh\)/);
   assert.match(sessionModule, /\.addStreamNode\(SampleNames\.customerStreamNode\)/);
-  assert.match(sessionModule, /\.addHandlerGroup\(SampleNames\.statusFanoutChannel\)/);
+  assert.match(sessionModule, /\.addSpotMesh\(SampleNames\.customerActorSpotMesh\)/);
+  assert.match(courierSession, /resolveActor\(\{ actorId: courierId \}\)/);
+  assert.match(courierSession, /bindOrGet\(actorRef\)/);
+  assert.match(customerSession, /resolveActor\(\{ actorId: CustomerId \}\)/);
+  assert.match(names, /courierActorNodeRouteChannel: 'delivery-couriers'/);
+  assert.match(names, /courierActorSpotMesh: 'delivery-couriers'/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  for (const role of ['tracking', 'customer-gateway', 'courier-session', 'courier-spot-node1', 'courier-spot-node2', 'dispatch']) {
+    assert.match(serverMain, new RegExp(`role === '${role}'`));
+  }
   assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE/);
   assert.match(runSample, /DELIVERYDISPATCH_SESSION_STREAM/);
   assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SAMPLE_ENDPOINT|support::request_line/);
+  assert.doesNotMatch(serverMain, /courier-gateway/);
+  assert.doesNotMatch(serverMain, /role === 'dispatch-api'|role === 'dispatch-center'|role === 'session'/);
+  assert.doesNotMatch(names, /deliverydispatch\.courier/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
@@ -451,11 +479,11 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   const clientScenario = readSample('GameQuest.Ts', 'Client/gamequest-client-scenario.ts');
   const clientMain = readSample('GameQuest.Ts', 'Client/main.ts');
   const apiModule = readSample('GameQuest.Ts', 'Server/GameApi/game-api-module.ts');
+  const questModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
   const apiServer = readSample('GameQuest.Ts', 'Server/GameApi/game-api-server.ts');
   const gameplayService = readSample('GameQuest.Ts', 'Server/GameApi/Application/gameplay-action-service.ts');
   const gameplayDomain = readSample('GameQuest.Ts', 'Server/GameApi/Domain/gameplay-domain.ts');
   const gameplayPublisher = readSample('GameQuest.Ts', 'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts');
-  const missionModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
   const questProcessor = readSample('GameQuest.Ts', 'Server/QuestMission/Application/quest-event-processor.ts');
   const questOwnerRouter = readSample('GameQuest.Ts', 'Server/QuestMission/Application/quest-owner-router.ts');
   const questDomain = readSample('GameQuest.Ts', 'Server/QuestMission/Domain/quest-domain.ts');
@@ -467,44 +495,93 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
     'GameQuest.Ts',
     'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot.ts'
   );
+  const playerQuestSpotHandlers = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot-handlers.ts'
+  );
+  const gameplayRouteHandler = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/gameplay-event-route-handler.ts'
+  );
+  const ownerRouteHandlers = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/quest-owner-route-handlers.ts'
+  );
   const questStore = readSample('GameQuest.Ts', 'Server/Shared/Store/quest-progress-store.ts');
   const serverMain = readSample('GameQuest.Ts', 'Server/main.ts');
   const runSample = fs.readFileSync(path.join(samplesRoot, 'GameQuest.Ts', 'run_sample.sh'), 'utf8');
   const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, 'GameQuest.Ts', 'run_sample.ps1'), 'utf8');
 
-  assert.match(clientMain, /ZLinkHttpClient\.create\(config\.apiAHttpUrl\)/);
+  assert.match(clientMain, /BrowserHttpClientFactory\.create\(config\.apiAHttpUrl\)/);
   assert.match(clientMain, /zlinkStreamConnectorFactory\.create/);
   assert.match(clientScenario, /apiAStream\.request\(killMonsterReq/);
-  assert.match(clientScenario, /waitForProjection\(apiB, 'player-alice'/);
+  assert.match(clientScenario, /apiBReconnectStream\.request\(joinSessionReq\('player-alice'\)/);
+  assert.match(clientScenario, /waitForStreamProjection\(apiBReconnectStream, 'player-alice'/);
   assert.match(clientScenario, /apiAStream\.request\(joinSessionReq/);
   assert.match(clientScenario, /waitFor<QuestCompletedNotify>/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.questMissionRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.match(apiModule, /\.addRouteMeshChannel\(SampleNames\.questMissionRouteChannel\)/);
-  assert.match(apiModule, /\.connect\(\[config\.missionAEndpoint, config\.missionBEndpoint\]\)/);
+  assert.doesNotMatch(apiModule, /\.connect\(/);
   assert.match(apiModule, /\.addStreamNode\(SampleNames\.playerStreamNode\)/);
   assert.match(apiServer, /http\.createServer/);
-  assert.match(apiServer, /\/combat\/kill/);
-  assert.match(apiServer, /QuestProgressStore/);
+  assert.doesNotMatch(apiServer, /\/combat\/kill|\/quest\/progress/);
+  assert.match(apiServer, /GameplayStateStore/);
+  assert.match(apiServer, /GameQuestSelfCheckStore/);
   assert.match(gameplayService, /publishAndNotify/);
   assert.match(gameplayDomain, /monsterKilled/);
-  assert.match(gameplayPublisher, /submit<TResponse>/);
-  assert.match(missionModule, /zlinkFramework\(\)/);
-  assert.match(missionModule, /\.enableRouter\(missionEndpoint\)/);
-  assert.match(missionModule, /\.routingId\(missionRid\)/);
-  assert.match(missionModule, /QuestEventProcessor/);
-  assert.match(missionModule, /\.addSpotMesh\(SampleNames\.playerQuestSpotMesh\)/);
-  assert.match(missionModule, /\.addSpotFactory\(PlayerQuestSpot\)/);
-  assert.match(missionModule, /\.addHandlerGroup\('quest-owner'\)/);
-  assert.match(questProcessor, /enterArea\(request: EnterAreaReq\)/);
+  assert.match(gameplayPublisher, /\.sendToNode\(SampleNames\.questMissionRouteChannel/);
+  assert.match(gameplayPublisher, /\.submit\(\)/);
+  assert.match(apiModule, /zlinkFramework\(\)/);
+  assert.match(apiModule, /\.enableRouter\(actorSpotEndpoint, apiRid\)/);
+  assert.match(questModule, /QuestEventProcessor/);
+  assert.match(apiModule, /\.addSpotMesh\(SampleNames\.playerQuestSpotMesh\)/);
+  assert.match(apiModule, /\.addEntrySpot\(GameQuestEntrySpot\)/);
+  assert.match(questModule, /\.addSpotFactory\(PlayerQuestSpot\)/);
+  assert.match(questModule, /\.addHandlerGroup\('quest-owner'\)/);
+  assert.match(questDomain, /decide\(event: GameplayEventEnvelope/);
   assert.match(playerQuestProvisioner, /this\.spots\.getOrCreate\(PlayerQuestSpot/);
-  assert.match(questProcessor, /syncProgress\(request: SyncQuestProgressReq\)/);
+  assert.match(playerQuestProvisioner, /\.requestToSpot\(spot, request\)/);
+  assert.match(gameplayRouteHandler, /@zlinkSendHandler\('quest-owner', PacketNames\.gameplayMsg\)/);
+  assert.match(gameplayRouteHandler, /playerQuests\.send\(/);
+  assert.doesNotMatch(gameplayRouteHandler, /processor\.process/);
+  assert.match(ownerRouteHandlers, /playerQuests\.request/);
+  assert.doesNotMatch(ownerRouteHandlers, /store\.(readProjection|syncProgress|deleteProjection|rebuildProjection)/);
+  assert.match(playerQuestSpotHandlers, /zlinkSpotPacketHandler/);
+  assert.match(playerQuestSpotHandlers, /processor\.process\(decodeGameplayPayload\(message\.payload\), aggregate\)/);
+  assert.match(playerQuestSpotHandlers, /processor\.rehydrate\(request\.playerId\)/);
+  assert.match(playerQuestSpotHandlers, /processor\.syncProgress\(request, aggregate\)/);
+  assert.match(playerQuestSpotHandlers, /store\.rebuildProjection\(request\.playerId, request\.questId, this\.events\.read\(request\.playerId\)\)/);
+  assert.match(questProcessor, /syncProgress\(request: SyncQuestProgressReq, aggregate: PlayerQuestAggregate\)/);
   assert.match(questOwnerRouter, /routeRid\(playerId: string\)/);
   assert.match(playerQuestProvisioner, /questMissionSpotRid\(playerId\)/);
   assert.match(playerQuestProvisioner, /ZLINK_SPOT_MANAGER/);
-  assert.match(playerQuestSpot, /gamequest player quest spot ready/);
-  assert.match(questDomain, /questIdForArea/);
-  assert.match(questStore, /QuestStatuses/);
+  assert.match(playerQuestSpot, /private aggregate: PlayerQuestAggregate \| undefined/);
+  assert.match(playerQuestSpot, /ensureAggregate\(load: \(\) => PlayerQuestAggregate\)/);
+  assert.match(playerQuestSpotHandlers, /processor\.rehydrate\(message\.playerId\)/);
+  assert.match(playerQuestSpotHandlers, /spot\.replaceAggregate\(result\.aggregate\)/);
+  assert.match(questProcessor, /PlayerQuestAggregate\.from\(stored\)/);
+  assert.match(questStore, /recorded: boolean/);
+  assert.match(questDomain, /eventType: 'QuestProgressed'/);
+  assert.match(questDomain, /eventType: 'QuestCompleted'/);
+  assert.match(questDomain, /eventType: 'QuestRewardGranted'/);
+  assert.match(questStore, /encodePayload/);
+  assert.match(clientScenario, /closeOwnerA\.closed \|\| closeOwnerB\.closed/);
+  assert.match(serverMain, /playerQuests\.deactivate\(playerId\)/);
+  assert.match(questDomain, /class PlayerQuestAggregate/);
+  assert.match(questDomain, /conditionDecision/);
+  assert.match(questDomain, /orderedDecision/);
+  assert.match(questDomain, /QuestReconciled/);
+  assert.match(clientScenario, /enter-ruins-too-early/);
+  assert.match(clientScenario, /bobReconcileCompleted/);
+  assert.match(questStore, /class GameplayStateStore/);
+  assert.match(questStore, /class QuestEventStore/);
+  assert.match(questStore, /class QuestReadModelStore/);
+  assert.match(gameplayDomain, /Collected item count must be a positive integer/);
+  assert.match(clientScenario, /invalid-negative-count/);
+  assert.match(questDomain, /QuestStatuses/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  assert.match(serverMain, /role !== 'api-a' && role !== 'api-b' && role !== 'mission-a' && role !== 'mission-b'/);
+  assert.match(serverMain, /createGameApiModule\(config, role\)/);
   assert.match(runSample, /start_role mission-a/);
   assert.match(runSample, /start_role mission-b/);
   assert.match(runSample, /start_role api-a/);
@@ -516,12 +593,16 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(runSample, /GAMEQUEST_API_A_STREAM/);
   assert.match(runSample, /GAMEQUEST_API_B_STREAM/);
   assert.match(runSample, /GAMEQUEST_LOG_DIR/);
-  assert.match(runSample, /grep -Rq "message flow" "\$\{GAMEQUEST_LOG_DIR\}"/);
+  assert.match(runSample, /grep -Rq "packet=GameplayMsg" "\$\{GAMEQUEST_LOG_DIR\}"/);
+  assert.match(runSample, /grep -Rq "surface=spotActor\.\*packet=QuestCompletedNotify" "\$\{GAMEQUEST_LOG_DIR\}"/);
   assert.match(runSamplePs1, /@\("mission-a", "mission-b", "api-a", "api-b"\)/);
   assert.match(runSamplePs1, /ForEach-Object \{ Start-Role \$_/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_A_HTTP/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_B_HTTP/);
+  assert.match(runSamplePs1, /if \(\$LASTEXITCODE -ne 0\) \{ throw "GameQuest client scenario failed" \}/);
   assert.match(runSamplePs1, /GAMEQUEST_LOG_DIR/);
+  assert.match(runSamplePs1, /@\("create"/);
+  assert.match(runSamplePs1, /"redis-cli", "PING"/);
   assert.doesNotMatch(runSamplePs1, /ready\.length >= 2/);
   assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
@@ -558,7 +639,6 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
     'Server/OrderWorkflow/Infrastructure/ZLink/Spots/OrderWorkflowSpot/Handlers/start-order-workflow-handler.ts'
   );
   const orderEvents = readSample('ShoppingMall.Ts', 'Server/Shared/Domain/order-events.ts');
-  const storePorts = readSample('ShoppingMall.Ts', 'Server/Shared/Ports/Outbound/stores.ts');
   const workflowModule = readSample('ShoppingMall.Ts', 'Server/OrderWorkflow/shoppingmall-workflow-module.ts');
   const orderStore = readSample('ShoppingMall.Ts', 'Server/Shared/Store/order-store.ts');
   const serverMain = readSample('ShoppingMall.Ts', 'Server/main.ts');
@@ -573,23 +653,23 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(clientScenario, /\.post\('\/self-check\/assert'\)/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.orderWorkflowRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.match(commerceApiModule, /zlinkFramework\(\)/);
-  assert.match(commerceApiModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(SampleNames\.workflowA\)\)/);
-  assert.match(commerceApiModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(SampleNames\.workflowB\)\)/);
+  assert.match(commerceApiModule, /\.addClientServerChannel\(SampleNames\.orderWorkflowChannel\)/);
+  assert.match(commerceApiModule, /\.enableClient\(\)/);
   for (const file of sampleSourceFiles(path.join(samplesRoot, 'ShoppingMall.Ts', 'Server', 'CommerceApi'))) {
     assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /OrderWorkflow\//);
   }
   assert.match(commerceApiServer, /http\.createServer/);
   assert.match(commerceApiServer, /\/orders\/start/);
   assert.match(commerceApiServer, /StartOrderUseCase/);
-  assert.match(startOrderUseCase, /reserveIdempotency/);
+  assert.match(startOrderUseCase, /store\.reserveOrder\(request\)/);
   assert.doesNotMatch(startOrderUseCase, /PacketNames|\.packetName\(/);
   assert.match(workflowRouter, /private request<TResponse>/);
-  assert.match(workflowRouter, /new StartOrderReq\(/);
+  assert.match(workflowRouter, /start\(request: StartOrderWorkflowReq\)/);
   assert.doesNotMatch(workflowRouter, /\.packetName\(/);
-  assert.match(messageContracts, /@ZLinkPacket\(PacketNames\.startOrderReq\)/);
-  assert.match(workflowRouter, /workflowRouteRid\(payload: string\)/);
+  assert.match(messageContracts, /@ZLinkPacket\(PacketNames\.startOrderWorkflowReq\)/);
+  assert.match(workflowRouter, /requestToChannel\(SampleNames\.orderWorkflowChannel, payload\)/);
   assert.match(workflowModule, /zlinkFramework\(\)/);
-  assert.match(workflowModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(role\)\)/);
+  assert.match(workflowModule, /\.addClientServerChannel\(SampleNames\.orderWorkflowChannel\)/);
   assert.match(workflowModule, /\.enableServer\(workflowChannelEndpointForRole\(role, config\)\)/);
   assert.match(workflowModule, /\.addSpotMesh\(SampleNames\.orderWorkflowSpotMesh\)/);
   assert.match(workflowModule, /\.addSpotFactory\(OrderWorkflowSpot\)/);
@@ -597,15 +677,17 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(workflowModule, /\.addHandlerGroup\('workflow'\)/);
   assert.match(orderWorkflowSpot, /class OrderWorkflowSpot implements ZLinkSpot/);
   assert.match(startOrderSpotHandler, /ZLinkSpotRequestHandler<OrderWorkflowSpot/);
-  assert.match(startOrderSpotHandler, /PacketNames\.startOrderReq/);
-  assert.match(workflowService, /start\(request: StartOrderReq/);
+  assert.match(startOrderSpotHandler, /PacketNames\.startOrderWorkflowReq/);
+  assert.match(workflowService, /start\(request: StartOrderWorkflowReq/);
   assert.match(workflowService, /continue\(request: \{ orderId: string \}/);
-  assert.match(orderDomain, /advanceOrder/);
-  assert.match(orderEvents, /type OrderDomainEvent/);
-  assert.match(storePorts, /interface OrderWorkflowStorePort/);
-  assert.match(storePorts, /interface CommerceOrderStorePort/);
+  assert.match(orderDomain, /class OrderAggregate/);
+  assert.match(orderEvents, /interface StoredOrderEvent/);
+  assert.match(orderEvents, /payload: readonly number\[\]/);
   assert.match(orderStore, /SHOPPINGMALL_WORK_DIR/);
-  assert.match(orderStore, /implements CommerceOrderStorePort, OrderWorkflowStorePort/);
+  assert.match(orderStore, /class ExpectedVersionConflict/);
+  assert.match(orderStore, /interrupted after inventory effect/);
+  assert.match(orderStore, /overlap writer rejected/);
+  assert.match(orderStore, /payload: \[\.\.\.Buffer\.from/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
   assert.match(serverMain, /SampleNames\.workflowA/);
   assert.match(serverMain, /SampleNames\.apiB/);
@@ -627,11 +709,13 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(workflowModule, /SHOPPINGMALL_LOG_DIR/);
   assert.match(runSample, /SHOPPINGMALL_LOG_DIR/);
   assert.match(runSamplePs1, /SHOPPINGMALL_LOG_DIR/);
+  assert.match(runSamplePs1, /"redis-cli", "ping"/);
+  assert.match(runSamplePs1, /@\("create"/);
   assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
-test('dotnet-parity TypeScript clients do not import server modules', () => {
+test('common-spec TypeScript clients do not import server modules', () => {
   const violations = [];
   for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts']) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Client'))) {
@@ -734,7 +818,6 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
   const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'main.ts'), 'utf8');
   const api = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
-  const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'README.ko.md'), 'utf8');
   const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
   const required = [
     [packageJson, '@zlink-systems/sample-tictactoe-ts'],
@@ -745,7 +828,6 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
     [client, 'PASS TicTacToe.Ts'],
     [api, 'TicTacToeApiModule'],
     [play, 'TicTacToePlayModule'],
-    [readme, 'TicTacToe TypeScript Sample'],
     [runSamples, 'TicTacToe.Ts/run_sample.sh'],
     [runSamples, 'run_sample.sh']
   ];
@@ -770,8 +852,7 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
   assert.deepEqual(violations, []);
 });
 
-test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
-  const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'README.ko.md'), 'utf8');
+test('TicTacToe TypeScript sample implements the common game state contract', () => {
   const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-scenario.ts'), 'utf8');
   const board = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-board.ts'), 'utf8');
   const match = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-match.ts'), 'utf8');
@@ -786,14 +867,13 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [match, 'this.status = GameStatus.InProgress'],
     [match, 'this.status = GameStatus.Won'],
     [match, 'this.status = GameStatus.TurnTimedOut'],
-    [joinHandler, 'entrySpot.join(actor, request.player ?? actor, request.roomId)'],
+    [joinHandler, 'entrySpot.join(actor, actor, request.roomId)'],
     [moveHandler, 'spot.placeMark(actor, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
     [playActor, 'this.context.boundSession'],
     [playSession, 'this.context.actors.bindOrGet(actorRef)'],
     [client, 'payload.state.status === GameStatus.InProgress'],
-    [client, 'stateOf(client1FinalMove).status === GameStatus.Won'],
-    [readme, '`Won`']
+    [client, 'stateOf(client1FinalMove).status === GameStatus.Won']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -821,7 +901,6 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
   const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const session = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
-  const readme = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'README.ko.md'), 'utf8');
   const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
   const required = [
     [packageJson, '@zlink-systems/sample-bingo-ts'],
@@ -834,7 +913,6 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     [api, 'async function bootstrap'],
     [session, 'async function bootstrap'],
     [play, 'async function bootstrap'],
-    [readme, 'TypeScript Client/Server/Shared 구조'],
     [runSamples, 'Bingo.Ts/run_sample.sh'],
     [runSamples, 'run_sample.sh']
   ];
@@ -874,15 +952,13 @@ test('Bingo TypeScript sample uses route mesh peers and location store registrat
     [apiModule, '.addLocationStore(createBingoLocationStore(config))'],
     [apiModule, 'bingoLocationOptions()'],
     [apiModule, '.addRouteMeshChannel(SampleNames.playChannel'],
-    [apiModule, '.routingId(config.apiNodeRid'],
-    [apiModule, '.connect(config.playRouteEndpoints)'],
+    [apiModule, '.enableClient()'],
     [apiModule, '.addClientServerChannel(SampleNames.apiChannel'],
     [apiModule, '.enableServer(config.apiEndpoint)'],
     [playModule, '.addLocationStore(createBingoLocationStore(config))'],
     [playModule, 'bingoLocationOptions()'],
     [playModule, '.addRouteMeshChannel(SampleNames.playChannel'],
     [playModule, '.enableRouter(config.playRouteEndpoint)'],
-    [playModule, '.connect(config.routePeerEndpoints)'],
     [sessionModule, '.addLocationStore(createBingoLocationStore(endpoints))'],
     [sessionModule, 'bingoLocationOptions()']
   ];
@@ -931,7 +1007,7 @@ test('Bingo TypeScript sample publishes drawn number before finished notify', ()
     'BingoRoomSpot',
     'bingo-room-spot.ts'
   ), 'utf8');
-  const drawIndex = roomSpot.indexOf('numberDrawnNotify(');
+  const drawIndex = roomSpot.indexOf('new BingoNumberDrawnNotify(');
   const finishedBranchIndex = roomSpot.indexOf('if (drawn.finished)');
   const endedIndex = roomSpot.indexOf('new BingoGameEndedNotify(');
 
@@ -998,10 +1074,10 @@ test('node topology samples do not use stdin command protocol as messaging', () 
 test('node samples do not hide readiness with sleeps or pre-ready pings', () => {
   const violations = [];
   const allowedTimingFiles = new Set([
+    'samples/Bingo.Ts/Client/drain-match-probe.ts',
     'samples/Bingo.Ts/run_sample.ps1',
     'samples/Bingo.Ts/run_sample.sh',
     'samples/DeliveryDispatch.Ts/Client/deliverydispatch-client-scenario.ts',
-    'samples/DeliveryDispatch.Ts/Server/Configuration/timing.ts',
     'samples/DeliveryDispatch.Ts/Server/DispatchCenter/dispatch-worker.ts',
     'samples/DeliveryDispatch.Ts/Server/Probe/probe.ts',
     'samples/GameQuest.Ts/Client/gamequest-client-scenario.ts',
@@ -1108,22 +1184,22 @@ test('node client scenarios follow the common sample document order', () => {
 
   assertOrdered('Bingo.Ts/Client/bingo-client-scenario.ts', bingoApp, [
     "1. Clients connect only to Session streams, authenticate",
-    'client1.request(authenticateReq(BingoSamplePlayers.player1))',
-    'client2.request(authenticateReq(BingoSamplePlayers.player2))',
+    'client1.request(new AuthenticateReq({ accessToken: BingoSamplePlayers.player1 }))',
+    'client2.request(new AuthenticateReq({ accessToken: BingoSamplePlayers.player2 }))',
     '2. player-1 matches first',
-    'client1.request(matchBingoReq())',
+    "client1.request(new MatchBingoReq({ mode: 'two-player' }))",
+    'const client1MatchRes = await client1SelfJoinNotify',
     'client1MatchRes.roomId.length > 0',
-    'await client1SelfJoinNotify',
     '4-6. player-2 joins the same room',
     '.waitFor<PlayerJoinedNotify>',
-    'client2SelfJoinNotify',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
-    'client2.request(matchBingoReq())',
-    'await client2SelfJoinNotify',
+    'client2MatchResTask',
+    "client2.request(new MatchBingoReq({ mode: 'two-player' }))",
+    'await client2MatchResTask',
     '7. Both clients submit deterministic cards',
-    '.request(submitBingoCardReq',
-    '.request(submitBingoCardReq',
+    '.request(new SubmitBingoCardReq',
+    '.request(new SubmitBingoCardReq',
     'stateOf(client1Card).players.length === 2',
     '8. Number drawing is server-driven',
     'requireSameDraw(client1Draw.payload, client2Draw.payload, drawTask.drawSeq)',
@@ -1134,7 +1210,7 @@ test('node client scenarios follow the common sample document order', () => {
 
   assertOrdered('TicTacToe.Ts/Client/tictactoe-client-scenario.ts', ticTacToeClient, [
     '1. Create the room through API',
-    ".body(createGameReq('match-ready'))",
+    ".body(createGameHttpReq('match-ready'))",
     'game.roomId.length > 0',
     'game.ownerPlayEndpoint.length > 0',
     'createPlayerClient(game.ownerPlayEndpoint',
@@ -1171,13 +1247,18 @@ test('node samples use the codecs required by the common specs', () => {
   const bingoRoomSpot = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'BingoRoomSpot', 'bingo-room-spot.ts'), 'utf8');
   const bingoContracts = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
   const bingoCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-codec.ts'), 'utf8');
+  const bingoBrowserCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-browser-codec.ts'), 'utf8');
+  const bingoFrameworkCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-framework-codec.ts'), 'utf8');
   const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
   const required = [
     [ticTacToeClient, 'zlinkStreamConnectorFactory.create'],
     [ticTacToePlay, '.addStreamNode(SampleNames.playStream'],
     [bingoClient, 'bingoProtobuf'],
-    [bingoSessionModule, 'zlinkProtobufCodec'],
+    [bingoSessionModule, '.use(bingoFrameworkProtobuf)'],
     [bingoSessionModule, '.codecs()'],
+    [bingoBrowserCodec, 'createZlinkStreamProtobufEnvelopeCodec'],
+    [bingoFrameworkCodec, 'createZlinkProtobufEnvelopeCodec'],
+    [bingoCodec, 'BingoGeneratedProtobufCodec.encode'],
     [bingoSession, 'payload.decode<AuthenticateReq>'],
     [bingoRoomSpot, 'request.decode<BingoRoomJoinReq>'],
     [bingoProto, 'message AuthenticateReq'],
@@ -1204,11 +1285,12 @@ test('node samples use the codecs required by the common specs', () => {
       if (/bingoChannelHandlerOptions|decodeBingoChannelReply|submit<Buffer>|\.then\(decode/.test(content)) {
         violations.push(relative);
       }
-      if (/payload\.getString\(|Message\.from\(|Buffer\.from\(/.test(content)
+      if (/payload\.getString\(|(?<!ZLink)Message\.from\(|Buffer\.from\(/.test(content)
           && !isAllowedSampleRawBoundaryFile(relative)) {
         violations.push(`${relative}:raw-codec-helper`);
       }
-      if (/writeVarint|readVarint|schemaTable|manualSchema|wireType/.test(content)) {
+      if (/writeVarint|readVarint|schemaTable|manualSchema|wireType/.test(content)
+          && relative !== 'Bingo.Ts/Shared/Contracts/bingo-messages.generated.ts') {
         violations.push(relative);
       }
       if (/addSerializer\s*\(|bingoProtobufSerializer|bingoProtobufContentType/.test(content)) {
@@ -1423,10 +1505,10 @@ test('TicTacToe uses manual handler registration and other samples keep automati
     [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
     [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.addHandlerGroup(\'api\')'],
     [bingoPlayModule, '.addHandlerGroup(\'play\')'],
-    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'session-module.ts'), 'utf8'),
-      '.addHandlerGroup(SampleNames.statusFanoutChannel)'],
-    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'delivery-status-fanout-handler.ts'), 'utf8'),
-      '@zlinkPublishHandler(SampleNames.statusFanoutChannel, PacketNames.deliveryStatusNotify)'],
+    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'customer-status-handler.ts'), 'utf8'),
+      '@zlinkEntrySpotActorSendHandler({'],
+    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'customer-status-handler.ts'), 'utf8'),
+      'packetName: PacketNames.deliveryStatusUpdated'],
     [bingoPlayModule, 'zlinkModule(__dirname'],
     [playModule, '.addStreamNode(SampleNames.playStream']
   ];
@@ -1499,6 +1581,31 @@ test('TicTacToe uses manual handler registration and other samples keep automati
   }
 
   assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('only TicTacToe uses manual server-to-server connections', () => {
+  const ticTacToeServer = sampleSourceFiles(path.join(samplesRoot, 'TicTacToe.Ts', 'Server'))
+    .map((file) => fs.readFileSync(file, 'utf8'))
+    .join('\n');
+  assert.match(ticTacToeServer, /\.addRequestHandler\(/);
+  assert.match(ticTacToeServer, /\.connectRouter\(/);
+
+  const violations = [];
+  for (const sample of requiredSamples.filter((name) => name !== 'TicTacToe.Ts')) {
+    for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Server'))) {
+      const content = fs.readFileSync(file, 'utf8');
+      if (/\.connect\(/.test(content)
+        || /\.connectRouter\(/.test(content)
+        || /\.connectPeerPub\(/.test(content)
+        || /\.enableClient\(\s*[^)]/.test(content)
+        || /\.enableSubscriber\(\s*[^)]/.test(content)
+        || /\.enablePubSub\([^,\n]+,[^,\n]+,[^)]+\)/.test(content)
+        || /ZLinkHttpClient\.create\(/.test(content)) {
+        violations.push(relativePath(samplesRoot, file));
+      }
+    }
+  }
   assert.deepEqual(violations, []);
 });
 
@@ -1684,15 +1791,13 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
       sample: 'Bingo.Ts',
       actor: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Actors', 'player-actor.ts'],
       entrySpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'EntrySpot', 'bingo-entry-spot.ts'],
-      userSpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'BingoRoomSpot', 'bingo-room-spot.ts'],
-      readme: ['README.ko.md']
+      userSpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'BingoRoomSpot', 'bingo-room-spot.ts']
     },
     {
       sample: 'TicTacToe.Ts',
       actor: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Actors', 'play-actor.ts'],
       entrySpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'EntrySpot', 'play-entry-spot.ts'],
-      userSpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'TicTacToeGameSpot', 'tictactoe-game-spot.ts'],
-      readme: ['README.ko.md']
+      userSpot: ['Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'TicTacToeGameSpot', 'tictactoe-game-spot.ts']
     }
   ];
   const missing = [];
@@ -1701,7 +1806,6 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
     const actor = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.actor), 'utf8');
     const entrySpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.entrySpot), 'utf8');
     const userSpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.userSpot), 'utf8');
-    const readme = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.readme), 'utf8');
     const runSample = fs.readFileSync(path.join(samplesRoot, sample.sample, 'run_sample.sh'), 'utf8');
 
     for (const [label, content, text] of [
@@ -1714,11 +1818,7 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
       ['userSpot', userSpot, 'leaveActor'],
       ['userSpot', userSpot, 'markForDestroyAfterRoomLeave'],
       ['userSpot', userSpot, 'onDisconnectActor'],
-      ['readme', readme, '`leaveActor`'],
-      ['readme', readme, '`destroyActor`'],
-      ['readme', readme, '`onDisconnectActor`'],
-      ['readme', readme, 'client self-check'],
-      ['runner', runSample, 'node "${SCRIPT_DIR}/dist/Client/main.js"']
+      ['runner', runSample, 'scripts/browser-e2e/run-sample.mjs']
     ]) {
       if (!content.includes(text)) {
         missing.push(`${sample.sample}:${label}:${text}`);
@@ -1739,24 +1839,35 @@ test('node sample runners own server process orchestration', () => {
     const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
     const client = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'main.ts'), 'utf8');
     const roleRunner = sample === 'DeliveryDispatch.Ts' || sample === 'GameQuest.Ts' || sample === 'ShoppingMall.Ts';
+    const clientCommand = sample === 'ShoppingMall.Ts'
+      ? 'node "${SCRIPT_DIR}/dist/Client/main.js"'
+      : 'scripts/browser-e2e/run-sample.mjs';
     const shellRequired = roleRunner
       ? [
           'start_role',
           sample === 'DeliveryDispatch.Ts' ? 'wait_port' : 'wait_tcp_endpoint',
           'trap cleanup EXIT',
-          'node "${SCRIPT_DIR}/dist/Client/main.js"'
+          clientCommand
         ]
+      : sample === 'SupportChat.Ts'
+        ? [
+            'start_server',
+            'wait_tcp',
+            'trap cleanup EXIT',
+            clientCommand
+          ]
       : [
           'start_server',
           'wait_port',
           'trap cleanup EXIT',
-          'node "${SCRIPT_DIR}/dist/Client/main.js"'
+          clientCommand
         ];
     for (const text of shellRequired) {
       if (!runSample.includes(text)) {
         missing.push(`${sample}:${text}`);
       }
     }
+    const browserPsCommand = 'scripts/browser-e2e/run-sample.mjs';
     const psRequired = sample === 'DeliveryDispatch.Ts'
       ? [
           'Start-Role',
@@ -1764,7 +1875,7 @@ test('node sample runners own server process orchestration', () => {
           'DELIVERYDISPATCH_COURIER_STREAM',
           'DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE',
           'DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE',
-          'dist/Client/main.js'
+          browserPsCommand
         ]
       : sample === 'ShoppingMall.Ts'
       ? [
@@ -1782,15 +1893,20 @@ test('node sample runners own server process orchestration', () => {
             'Wait-Topology',
             'GAMEQUEST_API_A_HTTP',
             'GAMEQUEST_API_B_HTTP',
-            'GAMEQUEST_MISSION_A_ENDPOINT',
-            'GAMEQUEST_MISSION_B_ENDPOINT',
-            'dist/Client/main.js'
+            'GAMEQUEST_MISSION_A_ROUTE',
+            'GAMEQUEST_MISSION_B_ROUTE',
+            browserPsCommand
+          ]
+      : sample === 'SupportChat.Ts'
+        ? [
+            'Start-Server',
+            'Wait-Tcp',
+            browserPsCommand
           ]
       : [
           'Start-Server',
           'Wait-Port',
-          'Start-Process -FilePath "node"',
-          'dist/Client/main.js'
+          browserPsCommand
         ];
     for (const text of psRequired) {
       if (!runSamplePs1.includes(text)) {
@@ -1808,6 +1924,61 @@ test('node sample runners own server process orchestration', () => {
   assert.deepEqual(missing, []);
 });
 
+test('node sample runners isolate Redis and application ports without Docker volumes', () => {
+  const violations = [];
+  for (const sample of topologySamples) {
+    const shell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
+    const powershell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
+
+    for (const [label, content, pattern] of [
+      ['sh:dedicated-redis-helper', shell, /source .*e2e\/redis-container\.sh/],
+      ['sh:dedicated-redis-create', shell, /start_redis_container/],
+      ['sh:redis-cleanup', shell, /docker rm -fv/],
+      ['ps1:dynamic-app-ports', powershell, /TcpListener/],
+      ['ps1:docker-timeout', powershell, /Invoke-Docker|WaitForExit\(/],
+      ['ps1:redis-tmpfs', powershell, /--tmpfs["',\s]+\/data/],
+      ['ps1:dynamic-redis-port', powershell, /127\.0\.0\.1::6379/],
+      ['ps1:redis-running', powershell, /State\.Running/],
+      ['ps1:redis-pong', powershell, /redis-cli[\s\S]*PONG/],
+      ['ps1:redis-cleanup', powershell, /rm["',\s]+-f["',\s]+-v/]
+    ]) {
+      if (!pattern.test(content)) {
+        violations.push(`${sample}:${label}`);
+      }
+    }
+    if (/127\.0\.0\.1:\d{4,5}/.test(powershell)) {
+      violations.push(`${sample}:ps1:fixed-application-port`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test('framework aggregate runners never remove Redis containers or processes owned by another run', () => {
+  const shellRunner = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
+  const powershellRunner = fs.readFileSync(path.join(samplesRoot, 'run_samples.ps1'), 'utf8');
+  const e2eRunner = fs.readFileSync(path.join(workspaceRoot, 'e2e/run_e2e_all.sh'), 'utf8');
+  const redisHelper = fs.readFileSync(path.join(workspaceRoot, 'e2e/redis-container.sh'), 'utf8');
+  const frameworkRoot = path.resolve(workspaceRoot, '..', '..');
+
+  for (const [label, content] of [
+    ['samples:sh', shellRunner],
+    ['samples:ps1', powershellRunner],
+    ['e2e:sh', e2eRunner],
+    ['redis-helper:sh', redisHelper],
+    ['dotnet:samples', fs.readFileSync(path.join(frameworkRoot, 'languages/dotnet/samples/run_samples.sh'), 'utf8')],
+    ['dotnet:e2e', fs.readFileSync(path.join(frameworkRoot, 'languages/dotnet/e2e/run_e2e_all.sh'), 'utf8')],
+    ['java:samples', fs.readFileSync(path.join(frameworkRoot, 'languages/java/samples/run_samples.sh'), 'utf8')],
+    ['java:e2e', fs.readFileSync(path.join(frameworkRoot, 'languages/java/e2e/run_e2e_all.sh'), 'utf8')],
+    ['kotlin:e2e', fs.readFileSync(path.join(frameworkRoot, 'languages/java/e2e-kotlin/run_e2e_all.sh'), 'utf8')],
+    ['cpp:samples', fs.readFileSync(path.join(frameworkRoot, 'languages/cpp/samples/run_samples.sh'), 'utf8')],
+    ['cpp:e2e', fs.readFileSync(path.join(frameworkRoot, 'languages/cpp/e2e/run_e2e_all.sh'), 'utf8')]
+  ]) {
+    assert.doesNotMatch(content, /zlink_redis_cleanup_scope|docker ps -a|pkill\s/,
+      `${label} must only clean resources created by its own sample or E2E run`);
+  }
+});
+
 test('node samples keep only contracts and shared sample configuration under Shared', () => {
   const violations = [];
   for (const sample of requiredSamples) {
@@ -1820,7 +1991,6 @@ test('node samples keep only contracts and shared sample configuration under Sha
       }
     }
   }
-
   assert.deepEqual(violations, []);
 });
 
@@ -1898,15 +2068,21 @@ test('node run_samples.sh executes every sample self-check', () => {
   }
 });
 
-test('node cross-language smoke covers channel send publish and stream connector paths', () => {
+test('node cross-language smoke covers bidirectional channel fanout route stream drain and store paths', () => {
   const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');
   const required = [
     'requestToChannel',
     'sendToChannel',
     ".publish('profiles'",
     'nodePublisherToDotnetFanoutSubscriber',
+    'dotnetPublisherToNodeFanoutSubscriber',
+    'nodeRouteClientToDotnetRouteServer',
+    'dotnetRouteClientToNodeRouteServer',
     'nodeConnectorToDotnetStreamServer',
-    'dotnetConnectorToNodeStreamServer'
+    'dotnetConnectorToNodeStreamServer',
+    'nodeConnectorObservesDotnetSessionClosing',
+    'dotnetConnectorObservesNodeSessionClosing',
+    'nodeDotnetRedisLocationRows'
   ];
   const missing = required.filter((text) => !smoke.includes(text));
 
@@ -1967,6 +2143,8 @@ function findUnreachableSampleTypeScriptFiles() {
       }
     }
   }
+  // The Bingo runner invokes this second public stream client after Play A enters drain.
+  add(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'drain-match-probe.ts'));
 
   while (queue.length > 0) {
     const file = queue.shift();

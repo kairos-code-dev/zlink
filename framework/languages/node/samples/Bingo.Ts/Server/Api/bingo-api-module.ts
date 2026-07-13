@@ -1,6 +1,6 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
+import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { SampleNames } from '../Configuration/sample-names';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
@@ -8,8 +8,6 @@ function createBingoApiModule(config: {
   apiEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
-  apiNodeRid?: string;
-  playRouteEndpoints?: readonly string[];
 }) {
   class BingoApiModule {}
 
@@ -27,13 +25,12 @@ function createBingoApiModule(config: {
           Object.assign(builder.configureLocations(), bingoLocationOptions());
           return builder
             .codecs()
-              .use(zlinkProtobufCodec())
+              .use(bingoFrameworkProtobuf)
             .addClientServerChannel(SampleNames.apiChannel)
               .enableServer(config.apiEndpoint)
               .addHandlerGroup('api')
             .addRouteMeshChannel(SampleNames.playChannel)
-              .routingId(config.apiNodeRid ?? 'bingo-api-node')
-              .connect(config.playRouteEndpoints)
+              .enableClient()
             .build();
         }
       })

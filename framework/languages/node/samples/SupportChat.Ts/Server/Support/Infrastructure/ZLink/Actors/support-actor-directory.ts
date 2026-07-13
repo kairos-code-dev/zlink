@@ -11,6 +11,14 @@ class SupportActorDirectory {
   get(actorId: string): SupportUserActor | undefined {
     return this.actors.get(actorId);
   }
+
+  require(actorId: string): SupportUserActor {
+    const actor = this.get(actorId);
+    if (actor === undefined) {
+      throw new Error(`Support actor '${actorId}' was not created.`);
+    }
+    return actor;
+  }
 }
 
 export { SupportActorDirectory };

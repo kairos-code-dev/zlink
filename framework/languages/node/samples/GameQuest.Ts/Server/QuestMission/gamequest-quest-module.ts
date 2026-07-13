@@ -1,15 +1,27 @@
 import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { questMissionInstanceRid } from '../../Shared/Configuration/sample-names';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
-import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
+import { GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
+import {
+  GameplayStateStore,
+  QuestEventStore,
+  QuestReadModelStore
+} from '../Shared/Store/quest-progress-store';
+import { questMissionInstanceRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import { QuestEventProcessor } from './Application/quest-event-processor';
 import { QuestOwnerRouter } from './Application/quest-owner-router';
 import { GameplayEventRouteHandler } from './Infrastructure/ZLink/gameplay-event-route-handler';
+import { PlayerQuestNotifier } from './Infrastructure/ZLink/player-quest-notifier';
 import { PlayerQuestSpotProvisioner } from './Infrastructure/ZLink/player-quest-spot-provisioner';
 import { PlayerQuestSpot } from './Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot';
+import {
+  ApplyGameplayEventSpotHandler,
+  DeleteQuestProjectionSpotHandler,
+  GetQuestProgressSpotHandler,
+  RebuildQuestProjectionSpotHandler,
+  SyncQuestProgressSpotHandler
+} from './Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot-handlers';
 import {
   DeleteQuestProjectionRouteHandler,
   GetQuestProgressRouteHandler,
@@ -20,10 +32,13 @@ import type { GameQuestServerConfig } from '../Configuration/sample-config';
 
 function createQuestMissionModule(config: GameQuestServerConfig, instanceId: 'mission-a' | 'mission-b') {
   class GameQuestQuestModule {}
-  const missionEndpoint = instanceId === 'mission-a' ? config.missionAEndpoint : config.missionBEndpoint;
-  const missionSpotEndpoint = instanceId === 'mission-a' ? config.missionASpotEndpoint : config.missionBSpotEndpoint;
-  const missionSpotRouterEndpoint = instanceId === 'mission-a' ? config.missionASpotRouterEndpoint : config.missionBSpotRouterEndpoint;
+  const routeEndpoint = instanceId === 'mission-a' ? config.missionAEndpoint : config.missionBEndpoint;
+  const spotEndpoint = instanceId === 'mission-a' ? config.missionASpotEndpoint : config.missionBSpotEndpoint;
+  const spotRouterEndpoint = instanceId === 'mission-a'
+    ? config.missionASpotRouterEndpoint
+    : config.missionBSpotRouterEndpoint;
   const missionRid = questMissionInstanceRid(instanceId);
+  const locationStore = createGameQuestLocationStore(config);
 
   Module({
     imports: [
@@ -34,35 +49,40 @@ function createQuestMissionModule(config: GameQuestServerConfig, instanceId: 'mi
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.GAMEQUEST_LOG_DIR ?? 'logs'}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
-          builder.addLocationStore(createGameQuestLocationStore(config));
+          builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), gameQuestLocationOptions());
-          const frameworkBuilder = builder
+          return builder
             .addRouteMeshChannel(SampleNames.questMissionRouteChannel)
-              .enableRouter(missionEndpoint)
+              .enableRouter(routeEndpoint)
               .routingId(missionRid)
-              .connect([config.apiARouteEndpoint, config.apiBRouteEndpoint])
-              .addHandlerGroup('quest-owner');
-          if (process.env.GAMEQUEST_ENABLE_PLAYER_QUEST_SPOT === '1') {
-            frameworkBuilder.addSpotMesh(SampleNames.playerQuestSpotMesh)
-              .enableRouter(missionSpotRouterEndpoint, missionRid)
-              .enablePubSub(missionSpotEndpoint, missionRid)
-              .addSpotFactory(PlayerQuestSpot);
-          }
-          return frameworkBuilder.build();
+              .addHandlerGroup('quest-owner')
+            .addSpotMesh(SampleNames.playerQuestSpotMesh)
+              .enableRouter(spotRouterEndpoint, missionRid)
+              .enablePubSub(spotEndpoint, missionRid)
+              .addSpotFactory(PlayerQuestSpot)
+            .build();
         }
       })
     ],
     providers: [
-      { provide: QuestProgressStore, useFactory: () => new QuestProgressStore(config.workDir) },
+      { provide: GameplayStateStore, useFactory: () => new GameplayStateStore(config.workDir) },
+      { provide: QuestEventStore, useFactory: () => new QuestEventStore(config.workDir) },
+      { provide: QuestReadModelStore, useFactory: () => new QuestReadModelStore(config.workDir) },
+      { provide: GAMEQUEST_LOCATION_STORE, useValue: locationStore },
       { provide: QuestOwnerRouter, useFactory: () => new QuestOwnerRouter(missionRid) },
       QuestEventProcessor,
-      PlayerQuestSpot,
+      PlayerQuestNotifier,
       PlayerQuestSpotProvisioner,
       GameplayEventRouteHandler,
       GetQuestProgressRouteHandler,
       SyncQuestProgressRouteHandler,
       DeleteQuestProjectionRouteHandler,
-      RebuildQuestProjectionRouteHandler
+      RebuildQuestProjectionRouteHandler,
+      ApplyGameplayEventSpotHandler,
+      GetQuestProgressSpotHandler,
+      SyncQuestProgressSpotHandler,
+      DeleteQuestProjectionSpotHandler,
+      RebuildQuestProjectionSpotHandler
     ]
   })(GameQuestQuestModule);
 

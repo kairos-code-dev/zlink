@@ -1,3 +1,5 @@
+import type { ZLinkActorRefSnapshot } from '@zlink-systems/framework';
+
 type SupportRole = 'Agent' | 'Customer';
 type ConversationStatus = 'WaitingForAgent' | 'Active' | 'WaitingForClose' | 'Closed';
 
@@ -11,6 +13,23 @@ type AuthenticateUserRes = {
   role?: SupportRole;
   reason?: string;
 };
+class EnsureSupportUserActorReq {
+  constructor(
+    readonly actorId: string,
+    readonly displayName: string,
+    readonly role: SupportRole,
+    readonly participantId: string
+  ) {}
+}
+type EnsureSupportUserActorRes = { actor: ZLinkActorRefSnapshot };
+class EnsureAgentConversationReq {
+  constructor(
+    readonly rosterActorId: string,
+    readonly displayName: string,
+    readonly conversationId: string
+  ) {}
+}
+type EnsureAgentConversationRes = { actor: ZLinkActorRefSnapshot; state: ConversationState };
 class OpenConversationApiReq {
   constructor(readonly customerActorId: string, readonly customerDisplayName: string, readonly subject: string) {}
 }
@@ -19,25 +38,29 @@ class AllocateConversationReq {
   constructor(readonly customerActorId: string, readonly customerDisplayName: string, readonly subject: string) {}
 }
 type AllocateConversationRes = { conversationId: string; status: ConversationStatus };
-class AssignAgentReq { constructor(readonly conversationId: string, readonly agentActorId: string) {} }
-type AssignAgentRes = { conversationId: string; assigned: boolean };
 class OpenConversationReq { constructor(readonly subject: string) {} }
 type OpenConversationRes = { conversationId: string; state: ConversationState };
 class SetAgentAvailableReq { constructor(readonly isAvailable: boolean) {} }
 type SetAgentAvailableRes = { isAvailable: boolean };
-class JoinConversationReq { constructor(readonly conversationId: string) {} }
+class JoinConversationReq {
+  constructor(
+    readonly participantId: string,
+    readonly role: SupportRole,
+    readonly displayName: string
+  ) {}
+}
 type JoinConversationRes = { state: ConversationState };
-class SendChatMessageReq { constructor(readonly conversationId: string, readonly text: string) {} }
+class SendChatMessageReq { constructor(readonly text: string) {} }
 type SendChatMessageRes = { message: ChatMessage; state: ConversationState };
-class SetTypingReq { constructor(readonly conversationId: string, readonly isTyping: boolean) {} }
-class CloseConversationReq { constructor(readonly conversationId: string, readonly reason?: string) {} }
+class SetTypingReq { constructor(readonly isTyping: boolean) {} }
+class CloseConversationReq { constructor(readonly reason?: string) {} }
 type CloseConversationRes = { state: ConversationState };
-type ParticipantJoinedNotify = { conversationId: string; actorId: string; role: SupportRole; state: ConversationState };
-type ConversationAssignedNotify = { conversationId: string; state: ConversationState };
-type ChatMessageNotify = { conversationId: string; message: ChatMessage; state: ConversationState };
-type TypingChangedNotify = { conversationId: string; actorId: string; isTyping: boolean; state: ConversationState };
-type ConversationIdleNotify = { conversationId: string; state: ConversationState };
-type ConversationClosedNotify = { conversationId: string; state: ConversationState };
+class ParticipantJoinedNotify { constructor(readonly conversationId: string, readonly actorId: string, readonly role: SupportRole, readonly state: ConversationState) {} }
+class ConversationAssignedNotify { constructor(readonly conversationId: string, readonly state: ConversationState) {} }
+class ChatMessageNotify { constructor(readonly conversationId: string, readonly message: ChatMessage, readonly state: ConversationState) {} }
+class TypingChangedNotify { constructor(readonly conversationId: string, readonly actorId: string, readonly isTyping: boolean, readonly state: ConversationState) {} }
+class ConversationIdleNotify { constructor(readonly conversationId: string, readonly state: ConversationState) {} }
+class ConversationClosedNotify { constructor(readonly conversationId: string, readonly state: ConversationState) {} }
 type ConversationState = {
   conversationId: string;
   subject: string;
@@ -56,11 +79,7 @@ type ChatMessage = {
   sentAtUnixMs: number;
 };
 
-const SupportChatRoles = {
-  Agent: 'Agent',
-  Customer: 'Customer'
-} as const;
-
+const SupportChatRoles = { Agent: 'Agent', Customer: 'Customer' } as const;
 const ConversationStatuses = {
   WaitingForAgent: 'WaitingForAgent',
   Active: 'Active',
@@ -70,26 +89,17 @@ const ConversationStatuses = {
 
 const PacketNames = {
   authenticateReq: 'AuthenticateReq',
-  authenticateRes: 'AuthenticateRes',
   authenticateUserReq: 'AuthenticateUserReq',
-  authenticateUserRes: 'AuthenticateUserRes',
+  ensureSupportUserActorReq: 'EnsureSupportUserActorReq',
+  ensureAgentConversationReq: 'EnsureAgentConversationReq',
   openConversationApiReq: 'OpenConversationApiReq',
-  openConversationApiRes: 'OpenConversationApiRes',
   allocateConversationReq: 'AllocateConversationReq',
-  allocateConversationRes: 'AllocateConversationRes',
-  assignAgentReq: 'AssignAgentReq',
-  assignAgentRes: 'AssignAgentRes',
   openConversationReq: 'OpenConversationReq',
-  openConversationRes: 'OpenConversationRes',
   setAgentAvailableReq: 'SetAgentAvailableReq',
-  setAgentAvailableRes: 'SetAgentAvailableRes',
   joinConversationReq: 'JoinConversationReq',
-  joinConversationRes: 'JoinConversationRes',
   sendChatMessageReq: 'SendChatMessageReq',
-  sendChatMessageRes: 'SendChatMessageRes',
   setTypingReq: 'SetTypingReq',
   closeConversationReq: 'CloseConversationReq',
-  closeConversationRes: 'CloseConversationRes',
   participantJoinedNotify: 'ParticipantJoinedNotify',
   conversationAssignedNotify: 'ConversationAssignedNotify',
   chatMessageNotify: 'ChatMessageNotify',
@@ -98,66 +108,53 @@ const PacketNames = {
   conversationClosedNotify: 'ConversationClosedNotify'
 } as const;
 
-function authenticate(accessToken: string): AuthenticateReq {
-  return new AuthenticateReq(accessToken);
-}
-
-function authenticateUser(accessToken: string): AuthenticateUserReq {
-  return new AuthenticateUserReq(accessToken);
-}
-
-function openConversation(subject: string): OpenConversationReq {
-  return new OpenConversationReq(subject);
-}
-
-function allocateConversation(customerActorId: string, customerDisplayName: string, subject: string): AllocateConversationReq {
-  return new AllocateConversationReq(customerActorId, customerDisplayName, subject);
-}
-
-function assignAgent(conversationId: string, agentActorId: string): AssignAgentReq {
-  return new AssignAgentReq(conversationId, agentActorId);
-}
-
-function setAgentAvailable(isAvailable: boolean): SetAgentAvailableReq {
-  return new SetAgentAvailableReq(isAvailable);
-}
-
-function joinConversation(conversationId: string): JoinConversationReq {
-  return new JoinConversationReq(conversationId);
-}
-
-function sendChatMessage(conversationId: string, text: string): SendChatMessageReq {
-  return new SendChatMessageReq(conversationId, text);
-}
-
-function setTyping(conversationId: string, isTyping: boolean): SetTypingReq {
-  return new SetTypingReq(conversationId, isTyping);
-}
-
-function closeConversation(conversationId: string, reason?: string): CloseConversationReq {
-  return new CloseConversationReq(conversationId, reason);
-}
+const authenticate = (accessToken: string) => new AuthenticateReq(accessToken);
+const authenticateUser = (accessToken: string) => new AuthenticateUserReq(accessToken);
+const ensureSupportUserActor = (actorId: string, displayName: string, role: SupportRole) =>
+  new EnsureSupportUserActorReq(actorId, displayName, role, actorId);
+const ensureAgentConversation = (rosterActorId: string, displayName: string, conversationId: string) =>
+  new EnsureAgentConversationReq(rosterActorId, displayName, conversationId);
+const openConversationApi = (customerActorId: string, customerDisplayName: string, subject: string) =>
+  new OpenConversationApiReq(customerActorId, customerDisplayName, subject);
+const allocateConversation = (customerActorId: string, customerDisplayName: string, subject: string) =>
+  new AllocateConversationReq(customerActorId, customerDisplayName, subject);
+const openConversation = (subject: string) => new OpenConversationReq(subject);
+const setAgentAvailable = (isAvailable: boolean) => new SetAgentAvailableReq(isAvailable);
+const joinConversation = (participantId = '', role: SupportRole = SupportChatRoles.Customer, displayName = '') =>
+  new JoinConversationReq(participantId, role, displayName);
+const sendChatMessage = (text: string) => new SendChatMessageReq(text);
+const setTyping = (isTyping: boolean) => new SetTypingReq(isTyping);
+const closeConversation = (reason?: string) => new CloseConversationReq(reason);
 
 export {
   PacketNames,
   AuthenticateReq,
   AuthenticateUserReq,
+  EnsureSupportUserActorReq,
+  EnsureAgentConversationReq,
   OpenConversationApiReq,
   AllocateConversationReq,
-  AssignAgentReq,
   OpenConversationReq,
   SetAgentAvailableReq,
   JoinConversationReq,
   SendChatMessageReq,
   SetTypingReq,
   CloseConversationReq,
+  ParticipantJoinedNotify,
+  ConversationAssignedNotify,
+  ChatMessageNotify,
+  TypingChangedNotify,
+  ConversationIdleNotify,
+  ConversationClosedNotify,
   SupportChatRoles,
   ConversationStatuses,
   authenticate,
   authenticateUser,
-  openConversation,
+  ensureSupportUserActor,
+  ensureAgentConversation,
+  openConversationApi,
   allocateConversation,
-  assignAgent,
+  openConversation,
   setAgentAvailable,
   joinConversation,
   sendChatMessage,
@@ -170,20 +167,15 @@ export type {
   ConversationStatus,
   AuthenticateRes,
   AuthenticateUserRes,
+  EnsureSupportUserActorRes,
+  EnsureAgentConversationRes,
   OpenConversationApiRes,
   AllocateConversationRes,
-  AssignAgentRes,
   OpenConversationRes,
   SetAgentAvailableRes,
   JoinConversationRes,
   SendChatMessageRes,
   CloseConversationRes,
-  ParticipantJoinedNotify,
-  ConversationAssignedNotify,
-  ChatMessageNotify,
-  TypingChangedNotify,
-  ConversationIdleNotify,
-  ConversationClosedNotify,
   ConversationState,
   ChatMessage
 };

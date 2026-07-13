@@ -1,18 +1,49 @@
 import { OrderStatuses } from '../../../../Shared/Contracts/messages';
 import type { OrderState } from '../../../../Shared/Contracts/messages';
-import type { OrderDomainEvent } from '../../../Shared/Domain/order-events';
+import type { OrderEventType } from '../../../Shared/Domain/order-events';
 
-function advanceOrder(state: OrderState): OrderDomainEvent {
-  if (state.status === OrderStatuses.Failed) {
-    return { type: 'OrderFailed', orderId: state.orderId, reason: state.reason ?? 'unknown' };
+class OrderAggregate {
+  private state?: OrderState;
+  private currentEventType?: OrderEventType;
+
+  apply(orderId: string, eventType: OrderEventType, payload: Record<string, any>, occurredAtUnixMs: number): void {
+    this.currentEventType = eventType;
+    if (eventType === 'OrderStarted') {
+      this.state = {
+        orderId,
+        status: OrderStatuses.Created,
+        shippingAddressId: payload.shippingAddressId,
+        amount: payload.amount,
+        currency: payload.currency,
+        updatedAtUnixMs: occurredAtUnixMs
+      };
+      return;
+    }
+    const current = this.requireState();
+    if (eventType === 'InventoryReserved') {
+      this.state = { ...current, status: OrderStatuses.InventoryReserved, reservationId: payload.reservationId, updatedAtUnixMs: occurredAtUnixMs };
+    } else if (eventType === 'PaymentAuthorized') {
+      this.state = { ...current, status: OrderStatuses.PaymentAuthorized, paymentId: payload.paymentId, updatedAtUnixMs: occurredAtUnixMs };
+    } else if (eventType === 'OrderConfirmed') {
+      this.state = { ...current, status: OrderStatuses.Confirmed, updatedAtUnixMs: occurredAtUnixMs };
+    } else if (eventType === 'InventoryReservationFailed' || eventType === 'PaymentFailed' || eventType === 'OrderFailed') {
+      this.state = { ...current, status: OrderStatuses.Failed, reason: payload.reason, updatedAtUnixMs: occurredAtUnixMs };
+    }
   }
-  if (state.status === OrderStatuses.Confirmed) {
-    return { type: 'OrderConfirmed', orderId: state.orderId };
+
+  snapshot(): OrderState {
+    return { ...this.requireState() };
   }
-  if (state.status === OrderStatuses.InventoryReserved) {
-    return { type: 'InventoryReserved', orderId: state.orderId };
+
+  lastEventType(): OrderEventType {
+    if (this.currentEventType === undefined) throw new Error('Order event stream is empty.');
+    return this.currentEventType;
   }
-  return { type: 'OrderStarted', orderId: state.orderId };
+
+  private requireState(): OrderState {
+    if (this.state === undefined) throw new Error('Order event stream does not start with OrderStarted.');
+    return this.state;
+  }
 }
 
-export { advanceOrder };
+export { OrderAggregate };

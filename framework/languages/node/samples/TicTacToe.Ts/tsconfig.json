@@ -25,7 +25,6 @@
     }
   },
   "include": [
-    "Client/**/*.ts",
     "Server/**/*.ts",
     "Shared/**/*.ts"
   ]

@@ -8,8 +8,8 @@ const SampleNames = {
 
 const SampleTimings = {
   requestTimeout: 2000,
-  idleTimeout: 300,
-  closeGraceTimeout: 200,
+  idleTimeout: 3000,
+  closeGraceTimeout: 1000,
   clientTimeout: 10000
 } as const;
 

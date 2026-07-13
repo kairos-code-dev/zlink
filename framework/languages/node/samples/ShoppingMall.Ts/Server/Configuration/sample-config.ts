@@ -7,6 +7,8 @@ interface ShoppingMallServerConfig {
   readonly workflowBChannelEndpoint: string;
   readonly workflowASpotEndpoint: string;
   readonly workflowBSpotEndpoint: string;
+  readonly workflowASpotPubEndpoint: string;
+  readonly workflowBSpotPubEndpoint: string;
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
 }
@@ -21,6 +23,8 @@ function loadSampleConfig(): ShoppingMallServerConfig {
     workflowBChannelEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT'),
     workflowASpotEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT'),
     workflowBSpotEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT'),
+    workflowASpotPubEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_A_SPOT_PUB_ENDPOINT'),
+    workflowBSpotPubEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_SPOT_PUB_ENDPOINT'),
     redisEndpoint: requireEnv('SHOPPINGMALL_REDIS_ENDPOINT'),
     redisKeyPrefix: process.env.SHOPPINGMALL_REDIS_KEY_PREFIX ?? 'shoppingmall:node:'
   };

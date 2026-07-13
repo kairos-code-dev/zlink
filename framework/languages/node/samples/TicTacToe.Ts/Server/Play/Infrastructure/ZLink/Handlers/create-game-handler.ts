@@ -15,7 +15,7 @@ class CreateGameHandler implements ZLinkRequestHandler<CreateGameReq, CreateGame
   ) {}
 
   async handle(request: CreateGameReq): Promise<CreateGameRes> {
-    return await this.games.create(request.gameName ?? 'match');
+    return await this.games.create(request.gameName);
   }
 }
 

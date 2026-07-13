@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { GameplayDomain } from '../Domain/gameplay-domain';
 import { GameplayEventPublisher } from '../Infrastructure/ZLink/gameplay-event-publisher';
-import { QuestProgressStore } from '../../Shared/Store/quest-progress-store';
+import { GameplayStateStore } from '../../Shared/Store/quest-progress-store';
 import type {
   CollectItemReq,
   CollectItemRes,
@@ -13,7 +13,6 @@ import type {
   KillMonsterReq,
   KillMonsterRes,
   QuestProgress,
-  SyncQuestProgressRes,
   UnlockFeatureReq,
   UnlockFeatureRes
 } from '../../../Shared/Contracts/messages';
@@ -23,7 +22,7 @@ class GameplayActionService {
   private readonly apiName = process.env.GAMEQUEST_API_NAME ?? 'api';
 
   constructor(
-    @Inject(QuestProgressStore) private readonly store: QuestProgressStore,
+    @Inject(GameplayStateStore) private readonly store: GameplayStateStore,
     @Inject(GameplayEventPublisher) private readonly publisher: GameplayEventPublisher
   ) {}
 
@@ -31,6 +30,7 @@ class GameplayActionService {
     return await this.publishAndNotify(GameplayDomain.monsterKilled(
       request.playerId,
       request.monsterId,
+      request.areaId,
       request.idempotencyKey,
       this.apiName
     ));
@@ -73,20 +73,19 @@ class GameplayActionService {
     ));
   }
 
-  async sync(playerId: string): Promise<SyncQuestProgressRes> {
-    return { updatedQuests: this.store.syncProgress(playerId) };
-  }
-
   private async publishAndNotify<TResponse extends { eventId: string }>(
     candidate: GameplayEventEnvelope
   ): Promise<{ response: TResponse; projection: QuestProgress[]; completedQuestId?: string }> {
-    const stored = this.store.recordGameplayEvent(candidate);
-    const applied = await this.publisher.request(stored);
-    console.error(`gamequest api event routed api=${this.apiName} player=${stored.playerId} event=${stored.eventId} owner=${applied.applied}`);
+    const { event: stored, recorded } = this.store.recordGameplayEvent(candidate);
+    await this.publisher.send(stored);
+    if (recorded) {
+      console.error(`gamequest api event routed api=${this.apiName} player=${stored.playerId} event=${stored.eventId}`);
+    } else {
+      console.error(`gamequest api event replayed api=${this.apiName} player=${stored.playerId} event=${stored.eventId}`);
+    }
     return {
       response: { eventId: stored.eventId } as TResponse,
-      projection: applied.projection,
-      completedQuestId: applied.completedQuestId
+      projection: []
     };
   }
 }

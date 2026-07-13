@@ -1,24 +1,20 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import {
-  actorRefFromMessage,
-  ensureCustomerActor,
-  PacketNames,
-  subscribeCustomerToDelivery
+  PacketNames
 } from '../../Shared/Contracts/messages';
-import { CustomerSessionDirectory } from './customer-session-directory';
+import { CustomerActorDirectory } from './customer-actor';
 import type {
-  ZLinkChannelClient,
+  ZLinkActorManager,
   ZLinkMessage,
+  ZLinkLocationStore,
   ZLinkSession,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import type {
-  EnsureCustomerActorRes,
-  SubscribeCustomerToDeliveryRes,
   SubscribeDeliveryReq,
   SubscribeDeliveryRes
 } from '../../Shared/Contracts/messages';
@@ -28,17 +24,11 @@ const CustomerId = 'customer-1';
 class CustomerSession implements ZLinkSession {
   constructor(
     readonly context: ZLinkSessionContext,
-    private readonly channels: ZLinkChannelClient,
-    private readonly sessions: CustomerSessionDirectory
+    private readonly actors: ZLinkActorManager,
+    private readonly directory: CustomerActorDirectory,
+    private readonly spotRid: string,
+    private readonly locations: ZLinkLocationStore
   ) {}
-
-  async onConnected(context: ZLinkSessionContext): Promise<void> {
-    this.sessions.add(context);
-  }
-
-  async onDisconnected(context: ZLinkSessionContext): Promise<void> {
-    this.sessions.remove(context);
-  }
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     console.error(`deliverydispatch session: dispatch packet=${dispatch.packetName}`);
@@ -52,33 +42,37 @@ class CustomerSession implements ZLinkSession {
     }
 
     const request = payload.decode<SubscribeDeliveryReq>(Object as never);
-    console.error(`deliverydispatch session: ensure customer delivery=${request.deliveryId}`);
-    const ensured = await this.channels
-      .requestToChannel(SampleNames.trackingChannel, ensureCustomerActor(CustomerId))
-      .timeout(500)
-      .submit<EnsureCustomerActorRes>();
-    await this.context.actors.bindOrGet(actorRefFromMessage(ensured.actor));
-    console.error(`deliverydispatch session: bound customer actor=${ensured.actor.actorId}`);
-
-    console.error(`deliverydispatch session: subscribe delivery=${request.deliveryId}`);
-    const subscribed = await this.channels
-      .requestToChannel(SampleNames.trackingChannel, subscribeCustomerToDelivery(CustomerId, request.deliveryId))
-      .timeout(500)
-      .submit<SubscribeCustomerToDeliveryRes>();
-    this.sessions.subscribe(this.context, subscribed.deliveryId);
-    console.error(`deliverydispatch session: reply subscribed delivery=${subscribed.deliveryId}`);
-    await this.context.client.reply({ deliveryId: subscribed.deliveryId } satisfies SubscribeDeliveryRes).submit();
+    console.error(`deliverydispatch session: find customer delivery=${request.deliveryId}`);
+    let resolved = await this.locations.resolveActor({ actorId: CustomerId });
+    if (resolved === undefined) {
+      await this.actors.getOrCreate(CustomerId, SampleNames.customerActorType, { customerId: CustomerId });
+      const created = this.directory.require(CustomerId);
+      await created.ensureJoined(this.spotRid, payload);
+      resolved = await this.locations.resolveActor({ actorId: CustomerId });
+    } else {
+      console.error(`deliverydispatch session: found existing customer=${CustomerId}`);
+    }
+    if (resolved?.actorRef === undefined) {
+      throw new Error(`Customer actor '${CustomerId}' was not registered in the location store.`);
+    }
+    const active = this.directory.require(CustomerId);
+    active.subscribe(request.deliveryId);
+    await this.context.actors.bindOrGet(resolved.actorRef);
+    console.error(`deliverydispatch session: bound customer actor=${resolved.actorRef.actorId}`);
+    await this.context.client.reply({ deliveryId: request.deliveryId } satisfies SubscribeDeliveryRes).submit();
   }
 }
 
 class CustomerSessionFactory implements ZLinkSessionFactory<CustomerSession> {
   constructor(
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient,
-    private readonly sessions: CustomerSessionDirectory
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
+    private readonly directory: CustomerActorDirectory,
+    @Inject('DELIVERYDISPATCH_CUSTOMER_SPOT_RID') private readonly spotRid: string,
+    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
   ) {}
 
   async create(context: ZLinkSessionContext): Promise<CustomerSession> {
-    return new CustomerSession(context, this.channels, this.sessions);
+    return new CustomerSession(context, this.actors, this.directory, this.spotRid, this.locations);
   }
 }
 

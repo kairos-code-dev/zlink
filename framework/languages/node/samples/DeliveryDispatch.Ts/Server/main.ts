@@ -4,7 +4,7 @@ import { EvidenceStore } from './Configuration/evidence-store';
 import { loadSampleConfig } from './Configuration/sample-config';
 import { createTrackingModule } from './Tracking/tracking-module';
 import { createSessionModule } from './Session/session-module';
-import { createCourierActorNodeModule, createCourierGatewayModule } from './Courier/courier-module';
+import { createCourierActorNodeModule } from './Courier/courier-module';
 import { createCourierSessionModule } from './CourierSession/courier-session-module';
 import { createDispatchCenterModule } from './DispatchCenter/dispatch-center-module';
 import { createDispatchApiModule } from './DispatchApi/dispatch-api-module';
@@ -26,31 +26,24 @@ async function main(): Promise<void> {
   if (role === 'all' || role === 'tracking') {
     modules.push(createTrackingModule(config, evidence));
   }
-  if (role === 'all' || role === 'session') {
+  if (role === 'all' || role === 'customer-gateway') {
     modules.push(createSessionModule(config));
   }
   if (role === 'all' || role === 'courier-session') {
     modules.push(createCourierSessionModule(config));
   }
-  if (role === 'all' || role === 'courier-actor-node1') {
+  if (role === 'all' || role === 'courier-spot-node1') {
     modules.push(createCourierActorNodeModule(config, {
-      courierId: 'courier-a',
-      mode: readOption('--mode') ?? process.env.DELIVERYDISPATCH_COURIER_MODE ?? 'timeout-reassign'
+      courierId: 'courier-a'
     }));
   }
-  if (role === 'all' || role === 'courier-actor-node2') {
+  if (role === 'all' || role === 'courier-spot-node2') {
     modules.push(createCourierActorNodeModule(config, {
-      courierId: 'courier-b',
-      mode: readOption('--mode') ?? process.env.DELIVERYDISPATCH_COURIER_MODE ?? 'accept'
+      courierId: 'courier-b'
     }));
   }
-  if (role === 'all' || role === 'courier-gateway') {
-    modules.push(createCourierGatewayModule(config));
-  }
-  if (role === 'all' || role === 'dispatch-center') {
+  if (role === 'all' || role === 'dispatch') {
     modules.push(createDispatchCenterModule(config));
-  }
-  if (role === 'all' || role === 'dispatch-api') {
     modules.push(createDispatchApiModule(config));
   }
 
@@ -66,7 +59,7 @@ async function main(): Promise<void> {
     }));
   }
 
-  const httpServer = (role === 'all' || role === 'dispatch-api')
+  const httpServer = (role === 'all' || role === 'dispatch')
     ? await startDispatchApi(apps[apps.length - 1], config, evidence)
     : undefined;
 

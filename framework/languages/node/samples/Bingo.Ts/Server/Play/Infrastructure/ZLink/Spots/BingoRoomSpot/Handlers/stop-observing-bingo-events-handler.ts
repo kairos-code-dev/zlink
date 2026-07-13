@@ -1,7 +1,8 @@
 import { zlinkSpotActorRequestHandler } from '@zlink-systems/nestjs';
 import { BingoRoomSpot } from '../bingo-room-spot';
 import { PlayerActor } from '../../../Actors/player-actor';
-import { PacketNames, stopObservingBingoEventsRes } from '../../../../../../../Shared/Contracts/messages';
+import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
+import { StopObservingBingoEventsRes } from '../../../../../../../Shared/Contracts/bingo-messages.generated';
 import type {
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorRequestContext
@@ -9,8 +10,7 @@ import type {
 import type { BingoRoomSpot as BingoRoomSpotType } from '../bingo-room-spot';
 import type { PlayerActor as PlayerActorType } from '../../../Actors/player-actor';
 import type {
-  StopObservingBingoEventsReq,
-  StopObservingBingoEventsRes
+  StopObservingBingoEventsReq
 } from '../../../../../../../Shared/Contracts/messages';
 
 @zlinkSpotActorRequestHandler({
@@ -28,7 +28,7 @@ class StopObservingBingoEventsHandler
   ): Promise<StopObservingBingoEventsRes> {
     void context;
     const stopped = await room.stopObserving(actor, request);
-    return stopObservingBingoEventsRes(stopped, String(room.context.nodeRid));
+    return new StopObservingBingoEventsRes({ stopped, observerNodeRid: String(room.context.nodeRid) });
   }
 }
 

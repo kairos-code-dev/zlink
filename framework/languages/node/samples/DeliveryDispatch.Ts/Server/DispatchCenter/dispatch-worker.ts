@@ -1,16 +1,18 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
-import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
-import { deliveryStatusChanged, offerDelivery } from '../../Shared/Contracts/messages';
+import { ZLINK_CHANNEL_CLIENT, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import { courierActorNodeRid, SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { actorRefFromMessage, deliveryStatusChanged, ensureCourierActor, offerDelivery } from '../../Shared/Contracts/messages';
 import { DispatchWorkQueue } from './dispatch-work-queue';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { AssignDeliveryReq, DeliveryStatusReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
+import type { ActorRef, ZLinkChannelClient, ZLinkLocationStore, ZLinkRouteClient } from '@zlink-systems/framework';
+import type { AssignDeliveryMsg, DeliveryStatusChangedReq, EnsureCourierActorRes, OfferDeliveryRes } from '../../Shared/Contracts/messages';
 
 @Injectable()
 class DispatchWorker implements OnModuleInit {
   constructor(
     private readonly queue: DispatchWorkQueue,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient,
+    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
   ) {}
 
   onModuleInit(): void {
@@ -28,34 +30,34 @@ class DispatchWorker implements OnModuleInit {
     }
   }
 
-  private async dispatch(request: AssignDeliveryReq): Promise<void> {
+  private async dispatch(request: AssignDeliveryMsg): Promise<void> {
     console.error(`deliverydispatch dispatch: assign delivery=${request.deliveryId} customer=${request.customerId}`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Assigned', 'courier-a'));
-
     const first = await this.tryOffer(request, 'courier-a');
+    await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Assigned', 'courier-a'));
     if (first.accepted) {
       await this.continueAcceptedDelivery(request.deliveryId, request.customerId, first.courierId);
       return;
     }
 
     await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Reassigned', 'courier-b'));
-    const second = await this.requestChannel<OfferDeliveryRes>(
-      SampleNames.courierRouteChannel,
-      offerDelivery('courier-b', request.deliveryId, request.pickupAddress, request.dropoffAddress)
-    );
+    const second = await this.requestOffer(request, 'courier-b');
     if (!second.accepted) {
       await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Failed', second.courierId));
       throw new Error(`Delivery '${request.deliveryId}' was rejected by all couriers.`);
     }
 
-    await this.continueAcceptedDelivery(request.deliveryId, request.customerId, second.courierId);
+    await this.continueAcceptedDelivery(request.deliveryId, request.customerId, second.courierId, false);
   }
 
-  private async tryOffer(request: AssignDeliveryReq, courierId: string): Promise<OfferDeliveryRes> {
+  private async tryOffer(request: AssignDeliveryMsg, courierId: string): Promise<OfferDeliveryRes> {
     try {
-      return await this.channels
-        .requestToChannel(SampleNames.courierRouteChannel, offerDelivery(courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress))
+      await this.findOrEnsureActor(courierId);
+      return await this.routes
+        .requestToNode(
+          SampleNames.courierActorNodeRouteChannel,
+          courierActorNodeRid(courierId),
+          offerDelivery(courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress)
+        )
         .timeout(SampleTimings.dispatchTimeout)
         .submit<OfferDeliveryRes>();
     } catch (error) {
@@ -64,13 +66,41 @@ class DispatchWorker implements OnModuleInit {
     }
   }
 
-  private async continueAcceptedDelivery(deliveryId: string, customerId: string, courierId: string): Promise<void> {
+  private async requestOffer(request: AssignDeliveryMsg, courierId: string): Promise<OfferDeliveryRes> {
+    await this.findOrEnsureActor(courierId);
+    return await this.routes
+      .requestToNode(
+        SampleNames.courierActorNodeRouteChannel,
+        courierActorNodeRid(courierId),
+        offerDelivery(courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress)
+      )
+      .timeout(SampleTimings.requestTimeout)
+      .submit<OfferDeliveryRes>();
+  }
+
+  private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
+    const found = await this.locations.resolveActor({ actorId: courierId });
+    if (found !== undefined) return found.actorRef;
+    const ensured = await this.routes
+      .requestToNode(
+        SampleNames.courierActorNodeRouteChannel,
+        courierActorNodeRid(courierId),
+        ensureCourierActor(courierId)
+      )
+      .timeout(SampleTimings.requestTimeout)
+      .submit<EnsureCourierActorRes>();
+    return actorRefFromMessage(ensured.actor);
+  }
+
+  private async continueAcceptedDelivery(deliveryId: string, customerId: string, courierId: string, includePickedUp = true): Promise<void> {
     await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'Accepted', courierId));
-    await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'PickedUp', courierId));
+    if (includePickedUp) {
+      await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'PickedUp', courierId));
+    }
     await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'Delivered', courierId));
   }
 
-  private async publishStatus(status: DeliveryStatusReq): Promise<void> {
+  private async publishStatus(status: DeliveryStatusChangedReq): Promise<void> {
     await this.requestChannel(SampleNames.trackingChannel, status);
   }
 

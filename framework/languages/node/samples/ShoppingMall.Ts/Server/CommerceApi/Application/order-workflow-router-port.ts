@@ -1,8 +1,10 @@
 abstract class OrderWorkflowRouterPort {
-  abstract start(request: import('../../../Shared/Contracts/messages').StartOrderReq): Promise<import('../../../Shared/Contracts/messages').StartOrderRes>;
-  abstract prepareInventory(request: import('../../../Shared/Contracts/messages').StartOrderReq): Promise<import('../../../Shared/Contracts/messages').StartOrderRes>;
+  abstract start(request: import('../../../Shared/Contracts/messages').StartOrderWorkflowReq): Promise<import('../../../Shared/Contracts/messages').StartOrderWorkflowRes>;
+  abstract prepareInventory(request: import('../../../Shared/Contracts/messages').StartOrderWorkflowReq): Promise<import('../../../Shared/Contracts/messages').StartOrderWorkflowRes>;
+  abstract prepareInventoryEffect(request: import('../../../Shared/Contracts/messages').StartOrderWorkflowReq): Promise<import('../../../Shared/Contracts/messages').StartOrderWorkflowRes>;
   abstract continue(orderId: string): Promise<import('../../../Shared/Contracts/messages').ContinueOrderWorkflowRes>;
   abstract rebuild(orderId: string): Promise<import('../../../Shared/Contracts/messages').RebuildOrderProjectionRes>;
+  abstract verifyExpectedVersionFence(orderId: string): Promise<import('../../../Shared/Contracts/messages').VerifyExpectedVersionFenceRes>;
 }
 
 export { OrderWorkflowRouterPort };

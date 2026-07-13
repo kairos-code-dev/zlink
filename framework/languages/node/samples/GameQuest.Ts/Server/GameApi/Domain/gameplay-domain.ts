@@ -1,20 +1,23 @@
 import type { GameplayEventEnvelope } from '../../../Shared/Contracts/messages';
 
 const GameplayDomain = {
-  monsterKilled(playerId: string, monsterId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
-    return createEvent(playerId, idempotencyKey, 'monsterKilled', monsterId, 1, sourceApi);
+  monsterKilled(playerId: string, monsterId: string, areaId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
+    return createEvent(playerId, idempotencyKey, 'MonsterKilled', `${monsterId}:${areaId}`, 1, sourceApi);
   },
   itemCollected(playerId: string, itemId: string, count: number, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
-    return createEvent(playerId, idempotencyKey, 'itemCollected', itemId, count, sourceApi);
+    if (!Number.isSafeInteger(count) || count <= 0 || count > 100) {
+      throw new Error('Collected item count must be a positive integer no greater than 100.');
+    }
+    return createEvent(playerId, idempotencyKey, 'ItemCollected', itemId, count, sourceApi);
   },
   missionCompleted(playerId: string, missionId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
-    return createEvent(playerId, idempotencyKey, 'missionCompleted', missionId, 1, sourceApi);
+    return createEvent(playerId, idempotencyKey, 'MissionCompleted', missionId, 1, sourceApi);
   },
   areaEntered(playerId: string, areaId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
-    return createEvent(playerId, idempotencyKey, 'areaEntered', areaId, 1, sourceApi);
+    return createEvent(playerId, idempotencyKey, 'AreaEntered', areaId, 1, sourceApi);
   },
   featureUnlocked(playerId: string, featureId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
-    return createEvent(playerId, idempotencyKey, 'featureUnlocked', featureId, 1, sourceApi);
+    return createEvent(playerId, idempotencyKey, 'FeatureUnlocked', featureId, 1, sourceApi);
   }
 };
 

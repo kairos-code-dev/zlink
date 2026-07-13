@@ -4,12 +4,8 @@ type DeliveryDispatchClientConfig = {
   courierStreamEndpoint: string;
 };
 
-function loadSampleConfig(): DeliveryDispatchClientConfig {
-  return {
-    dispatchApiHttpUrl: process.env.DELIVERYDISPATCH_API_HTTP ?? 'http://127.0.0.1:31083',
-    sessionStreamEndpoint: process.env.DELIVERYDISPATCH_SESSION_STREAM ?? 'tcp://127.0.0.1:31093',
-    courierStreamEndpoint: process.env.DELIVERYDISPATCH_COURIER_STREAM ?? 'tcp://127.0.0.1:31086'
-  };
+async function loadSampleConfig(): Promise<DeliveryDispatchClientConfig> {
+  return await loadBrowserConfig<DeliveryDispatchClientConfig>();
 }
 
 export {
@@ -19,3 +15,4 @@ export {
 export type {
   DeliveryDispatchClientConfig
 };
+import { loadBrowserConfig } from '../../../browser-client-runtime';

@@ -1,41 +1,74 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { QuestProgressStore } from '../../Shared/Store/quest-progress-store';
-import { QuestDomain } from '../Domain/quest-domain';
+import {
+  GameplayStateStore,
+  QuestEventStore,
+  QuestReadModelStore
+} from '../../Shared/Store/quest-progress-store';
+import { PlayerQuestAggregate, QuestDomain } from '../Domain/quest-domain';
 import type {
-  ApplyGameplayEventRes,
-  EnterAreaReq,
   GameplayEventEnvelope,
-  GetGameplaySnapshotReq,
-  GetGameplaySnapshotRes,
+  QuestProgress,
   SyncQuestProgressReq,
   SyncQuestProgressRes
 } from '../../../Shared/Contracts/messages';
 
+type QuestProcessingResult = {
+  aggregate: PlayerQuestAggregate;
+  projection: QuestProgress[];
+  changedProgress: QuestProgress[];
+  completedQuestIds: string[];
+};
+
 @Injectable()
 class QuestEventProcessor {
-  constructor(@Inject(QuestProgressStore) private readonly store: QuestProgressStore) {}
+  constructor(
+    @Inject(GameplayStateStore) private readonly gameplay: GameplayStateStore,
+    @Inject(QuestEventStore) private readonly events: QuestEventStore,
+    @Inject(QuestReadModelStore) private readonly readModel: QuestReadModelStore
+  ) {}
 
-  async process(event: GameplayEventEnvelope): Promise<ApplyGameplayEventRes> {
-    const result = this.store.applyGameplayEvent(event);
-    console.error(`gamequest mission processed player=${event.playerId} event=${event.eventId} completed=${result.completedQuestId ?? '-'}`);
+  process(event: GameplayEventEnvelope, aggregate: PlayerQuestAggregate): QuestProcessingResult {
+    const decision = QuestDomain.decide(event, aggregate);
+    return this.commit(event.playerId, decision.events, decision.changedQuestIds, decision.completedQuestIds);
+  }
+
+  rehydrate(playerId: string): PlayerQuestAggregate {
+    const events = this.events.rehydrate(playerId);
+    const aggregate = PlayerQuestAggregate.from(events);
+    this.readModel.project(playerId, events);
+    return aggregate;
+  }
+
+  readProgress(playerId: string): QuestProgress[] {
+    return this.readModel.readProjection(playerId);
+  }
+
+  syncProgress(request: SyncQuestProgressReq, aggregate: PlayerQuestAggregate): QuestProcessingResult & SyncQuestProgressRes {
+    const snapshot = this.gameplay.readGameplaySnapshot(request.playerId);
+    const firstHunt = snapshot.killCounts.find((entry) => entry.monsterId === 'wolf' && entry.areaId === 'forest')?.count ?? 0;
+    const decision = QuestDomain.reconcileFirstHunt(request.playerId, firstHunt, aggregate);
+    const result = this.commit(request.playerId, decision.events, decision.changedQuestIds, decision.completedQuestIds);
+    return { ...result, updatedQuests: result.projection };
+  }
+
+  private commit(
+    playerId: string,
+    proposed: Parameters<QuestEventStore['append']>[1],
+    changedQuestIds: string[],
+    completedQuestIds: string[]
+  ): QuestProcessingResult {
+    this.events.append(playerId, proposed, process.env.GAMEQUEST_MISSION_NAME ?? 'unknown-owner');
+    const stored = this.events.read(playerId);
+    const aggregate = PlayerQuestAggregate.from(stored);
+    const projection = this.readModel.project(playerId, stored);
     return {
-      applied: true,
-      projection: result.projection,
-      completedQuestId: result.completedQuestId
+      aggregate,
+      projection,
+      changedProgress: projection.filter((progress) => changedQuestIds.includes(progress.questId)),
+      completedQuestIds
     };
-  }
-
-  enterArea(request: EnterAreaReq): void {
-    QuestDomain.questIdForArea(request.areaId);
-  }
-
-  syncProgress(request: SyncQuestProgressReq): SyncQuestProgressRes {
-    return { updatedQuests: this.store.syncProgress(request.playerId) };
-  }
-
-  readSnapshot(request: GetGameplaySnapshotReq): GetGameplaySnapshotRes {
-    return this.store.readGameplaySnapshot(request.playerId);
   }
 }
 
 export { QuestEventProcessor };
+export type { QuestProcessingResult };

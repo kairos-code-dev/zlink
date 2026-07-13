@@ -8,7 +8,7 @@ import type { GameStateNotify, PlayerJoinedNotify, WinMilestoneNotify } from '..
 type PlayClient = {
   send(message: unknown): {
     metadata(key: string, value: string): {
-      submit(): void;
+      submit(): Promise<void>;
     };
   };
 };
@@ -63,9 +63,9 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.destroyAfterEntrySpotJoin = true;
   }
 
-  push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): void {
+  async push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): Promise<void> {
     this.nextSeq += 1;
-    void this.context.boundSession
+    await this.context.boundSession
       .send(payload)
       .metadata('seq', String(this.nextSeq))
       .submit();

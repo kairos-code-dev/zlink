@@ -48,6 +48,7 @@ class BingoSession implements ZLinkSession {
   }
 
   async onDisconnected(): Promise<void> {
+    console.error(`bingo-lifecycle session-disconnect actor=${this.actorId ?? '-'} destroy=false`);
     this.actor = null;
     this.actorId = null;
     this.displayName = null;

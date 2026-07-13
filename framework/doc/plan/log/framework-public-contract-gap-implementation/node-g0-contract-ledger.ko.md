@@ -39,15 +39,15 @@ snapshot을 함께 갱신해야 한다.
 | common | `50-runtime-monitoring.ko.md` | `7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94` |
 | common | `51-runtime-metrics.ko.md` | `d808af4314ff9e1a3531275310a2aa2325403c74f362fb637da60c35937653dd` |
 | common | `52-message-flow-tracing.ko.md` | `516df0e441d62169b57ae642d8e9301778c8d8e8ac7a849a9703bd7c02f6731e` |
-| common | `53-flow-correlation.ko.md` | `3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8` |
+| common | `53-flow-correlation.ko.md` | `1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511` |
 | common | `54-graceful-drain-handoff.ko.md` | `4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e` |
-| common | `90-implementation-gap.ko.md` | `2feafa2849cf5a9874bc704408c77620317cf3761d10b98cba147e8e3db7923b` |
+| common | `90-implementation-gap.ko.md` | `46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e` |
 | common | `README.ko.md` | `a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e` |
 | node | `01-system-structure.ko.md` | `5805a37bb89c8b1b9dcb104dc841d30e26126ff44f52620e94ac2f7760c03a60` |
 | node | `02-handler-interfaces.ko.md` | `bd4c9dc272271b265a7447a2bdd951b964268554855d02a4b1c4c3571785b639` |
 | node | `03-stream-connector.ko.md` | `108146aff90ea2d6fe1adc055e25b20ed55a31deb26782aa02a2abd978d0a0cf` |
 
-공통 `25-stage-wrapper-on-spot.ko.md`는 정식 Node.js 언어 interface 3개 분모에서는 제외한다. 다만
+공통 `02-framework-interfaces.ko.md`는 정식 Node.js 언어 interface 3개 분모에서는 제외한다. 다만
 공통 spec 26개 분모에는 포함해 G0 hash를 고정했으며, G7 문서 정합성 검토 대상으로도 유지한다.
 
 bindings 기준은 `@zlink-systems/zlink` 9.0.2이며, package의 public `version()`이 보고하는 core

@@ -25,7 +25,7 @@
 | JV-DOC-002 | `01-system-structure.ko.md` | 패키지 구조·배포, Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring 등록 표면과 startup validation | 검토 완료 |
 | JV-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·annotation·context·options 카탈로그 | 검토 완료 |
 | JV-DOC-004 | `03-stream-connector.ko.md` | client connector의 public 표면 | 검토 완료 |
-| JV-DOC-010 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
+| JV-DOC-010 | `02-framework-interfaces.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
 공통 spec 전체(§6 snapshot이 고정한 목록)는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
@@ -79,12 +79,11 @@ application-visible backend/adapter/handler factory/suspend invoker, obsolete `*
 a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.ko.md
 6b68a42a1ebab714fc7b1cd775e45f4ab4adfdaf536d181fd44fccaa9f50e1fc common/22-actor-model.ko.md
 9c8021112e2f4b1566679afeefaee8013b7dd643d12817260a063ec93cefb804 common/04-async-execution-policy.ko.md
-7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d common/11-channel-messaging.ko.md
 a44902a9f8775cfabe50b946fe1cab7f1a56083ad4a210c13a7d941eaca31c41 common/10-channel-topology.ko.md
-3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8 common/53-flow-correlation.ko.md
+1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511 common/53-flow-correlation.ko.md
 49e0d306d42b1ab9909c9d7a29da44c25a57198168c23936070de6e5fd73cb93 common/05-framework-api.ko.md
 4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e common/54-graceful-drain-handoff.ko.md
-2feafa2849cf5a9874bc704408c77620317cf3761d10b98cba147e8e3db7923b common/90-implementation-gap.ko.md
+46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e common/90-implementation-gap.ko.md
 bbc0dbf64aadd7b03e6b3952b2cfc283d69ce271968926c8fda1ce5a5d491492 common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md
@@ -99,13 +98,14 @@ a4e8e2231abb2ecbb70e3c1938bb5b9bf39233981e329a25f8dc5d8befa407b2 common/23-spot-
 c4cb5fc6f41aea5877062956657668abfe7d228f0dca7b9e785eb0054e3e2353 common/24-spot-address-messaging.ko.md
 34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4 common/20-spot-messaging.ko.md
 03f4e3e114799a62cdd64cc230e11d5e8c024109747714db7306c000404552aa common/21-spot-node.ko.md
-d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md
 01b72e31d4f661c60cf70110e53d2d158b68d5ce18c270f4fdc033adc083da05 common/32-stream-connector.ko.md
 fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd common/30-stream-session.ko.md
 ec90bd78db9467e2d1f0e8a7a78a6b5246927ab5f165f67e65f44a9014813ee2 java/README.ko.md
 9ebc0cc7dda6617507bc635bd6cbbcd67215e15109ca896f9e7efdf4df022a27 java/02-handler-interfaces.ko.md
 1d230aa7234f4ec96d5d49ebb69ec56cacb7692096b9da86df0e68c50d819ce2 java/01-system-structure.ko.md
 2fb381cebcd0990332a37f4d0e872541f85e18492b2930bb9f3a2dc67150e8b3 java/03-stream-connector.ko.md
+d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md
+7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d common/11-channel-messaging.ko.md
 ```
 
 ## 7. G0 완료 조건

@@ -176,7 +176,7 @@ options.add_stream_node ("tictactoe.stream")
 패킷 핸들러 순으로 흐르고, spot이 `bound_session_t`로 보낸 패킷은 역경로로
 클라이언트에 닿는다.
 relay 계약의 세부(메타데이터 전파 정책 등)는 spec
-[actor-gateway-session-relay](../../common/spec/languages/cpp/22-actor-gateway-session-relay.ko.md)가 다룬다.
+[actor-gateway-session-relay](../../common/spec/languages/cpp/02-framework-interfaces.ko.md)가 다룬다.
 
 ## 6. 오류 처리
 

@@ -205,7 +205,7 @@ struct message_flow_event_t {
 [.NET §11](languages/dotnet/01-system-structure.ko.md) ·
 [Java §9](languages/java/01-system-structure.ko.md) ·
 [Node §11](languages/node/01-system-structure.ko.md) ·
-[C++ §9](languages/cpp/50-monitoring.ko.md) · [Kotlin §8](languages/kotlin/02-handler-interfaces.ko.md).
+[C++ §9](languages/cpp/02-framework-interfaces.ko.md) · [Kotlin §8](languages/kotlin/02-handler-interfaces.ko.md).
 두 event 필드도 wire와 같은 optional pair다. `flow_id`가 없으면 `flow_origin`도 없고, `flow_id`가
 있으면 root `flow_origin`도 반드시 있다. 관측 경로는 둘 중 하나만 있는 불완전한 event를 내보내지 않는다.
 로그 토큰 `flow=`·`origin=`은 언어 간 바이트 동일([runtime-metrics §4.0](51-runtime-metrics.ko.md)).

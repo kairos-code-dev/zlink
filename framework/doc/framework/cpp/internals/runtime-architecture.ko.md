@@ -74,3 +74,88 @@ pending request와 submit은 timeout, cancellation 또는 runtime dispose로 반
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
+
+## 공개 계약 문서에서 이관한 내부 dispatch 구조
+
+공개 계약 스펙을 3문서로 압축하면서, 기능별 계약 문서가 서술하던 **내부 런타임 클래스**를
+이 절로 옮겼다. 이 클래스들은 **public header에 없다** — 공개 계약이 아니라 구현 구조다.
+
+## 11-channel-messaging — 4. Dispatch 기준
+
+- 일반 request/send dispatch는 local server 역할 ingress 기준이다.
+- outbound client 역할 수신은 pending request의 reply correlation 경로다.
+- pending request correlation은 `channel_pending_requests_t`가 맡는다. request sequence와
+  pending table은 public call object에 노출하지 않는다.
+- server ingress envelope dispatch는 `channel_packet_dispatcher_t`가 맡는다. request는
+  reply writer를 통해 response/error envelope로 변환하고 command/send는 reply 없이
+  handler dispatch만 수행한다.
+- channel 역할 runtime bundle은 `channel_runtime_bundle_t`가 맡는다. manual
+  connection set, channel pending request owner, receive gate는 한 역할의 내부
+  상태로 묶고 public builder나 call object에 노출하지 않는다.
+- channel 역할 생성과 조회는 `channel_bundle_factory_t`와
+  `channel_runtime_manager_t`가 맡는다. manager는 `.NET`처럼 client/publisher bundle을
+  lazy creation으로 만들고 inbound, client, publisher, route channel 초기화를 runtime
+  state 안에서 정리한다.
+- server ingress는 channel host service가 수신한 envelope parts를
+  `channel_packet_dispatcher_t`로 넘겨 처리한다. receive gate와 connection 상태는
+  `channel_runtime_bundle_t`가 소유하고, 별도 pump 타입을 public 또는 production runtime
+  구조로 노출하지 않는다.
+- route channel은 `route_channel_runtime_t`와 `route_connection_set_t`가 맡는다.
+  route channel id, manual connection snapshot, target node/Spot routing id, outbound
+  envelope parts, request sequence correlation을 runtime 내부에 둔다. public API는 route
+  channel 이름과 typed send/request 표면만 드러내고 native router socket과 receive pump는
+  노출하지 않는다.
+- route channel handler 등록은 `route_channel_registration_t`와
+  `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
+  descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
+  initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
+  `options.add_route_mesh(name)`으로 server endpoint, routing id, client endpoint,
+  handler group을 설정한다. route handler 수신이나 SPOT route ingress가 필요한
+  runtime은 `enable_server(endpoint)`로 local ROUTER endpoint를 열고, 다른 node로만
+  보내는 runtime은 `enable_client()` 또는 `enable_client(endpoint)`만 선언할 수 있다.
+  SPOT route ingress는 같은 프로세스에 RouteMesh와 SpotMesh가 함께 있을 때 자동으로
+  연결된다. 외부에서 Spot으로 들어오는 routed 호출은 RouteMesh만 사용한다.
+  `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
+  내부와 고급 확장용 낮은 수준 표면으로 남긴다.
+- client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
+  channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는
+  channel 선언은 framework options 적용 시점에 실패한다.
+- route receive path는 route channel host service가 받은 routed packet을
+  `route_packet_dispatcher_t`로 넘겨 처리한다. route handler가 있으면
+  `route_handler_registry_t`와 `route_handler_invoker_t`를 통해 typed payload를 호출하고,
+  handler가 없으면 request에 `route_handler_not_found` error envelope를 반환한다.
+  framework 내부 routed packet은 `route_internal_packet_dispatcher_t`와 composite
+  dispatcher가 먼저 처리한다.
+- 같은 역할에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
+  `enable_client()` 또는 `enable_subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
+  manual endpoint를 추가한다.
+- runtime 연결 제어가 필요하면 framework core의 역할 단위 connection manager가
+  담당한다. 사용자는 raw socket이 아니라 channel 역할 표면으로 연결을 다룬다.
+
+등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
+발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, counter,
+`outcome=error` 메시지 흐름 이벤트로도 남긴다.
+
+send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
+counter, publish 는 Debug 로그 또는 counter 와 message-flow event 를 남긴다. observer 가 없더라도
+기본 로그와 counter 는 생략하지 않는다. observer callback 예외는 dispatch 결과를 바꾸지 않는다.
+
+## 30-stream — 4. Dispatch 기준
+
+- framework host가 binding의 `zlink::stream_socket_t` lifecycle을 관리한다.
+- packet callback은 framework가 packet 수신과 header 검증을 마친 뒤 호출한다. 별도
+  실행기로 넘기는 것이 기본은 아니다.
+- CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행 정책을 명시한다.
+- 같은 stream session의 lifecycle callback과 packet callback은 직렬로 처리한다.
+- Header 검증에 실패한 packet은 application handler로 넘기지 않는다.
+- `stream_t::write_packet(...)`과 `reply_packet(...)`은 one-way write로 본다. 반환된
+  `stream_write_call_t`에서 `metadata(...)`, `packet_name(...)`, `compress()`를 설정할 수 있고,
+  실제 제출은 `submit()`에서 시작한다. write 제출은 응답을 기다리지 않는다.
+- `stream_t::close()`는 session을 닫고 이후 write submit을 연결 끊김 경계 오류
+  (`framework_exception_t`, `code() == std::errc::not_connected` — public enum 값이 아니라
+  §8.1의 경계 의미)로 처리하게 한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해
+  cleanup 호출자가 중복 close를 특별히 구분하지 않아도 되게 한다.
+- session actor dispatch는 STREAM session에서 route mesh channel로 직접 packet을 만들지
+  않고, ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
+- session callback 동안 받은 `payload`는 framework가 빌려준 값이므로 relay 호출자가
+  해제하거나 move로 소비하지 않는다.

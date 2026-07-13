@@ -12,18 +12,18 @@
 
 | 문서 | 계약 |
 |------|------|
-| [cpp-application-framework](../common/spec/languages/cpp/01-application-framework.ko.md) | application host, DI, configuration, handler 모델 |
+| [cpp-application-framework](../common/spec/languages/cpp/01-system-structure.ko.md) | application host, DI, configuration, handler 모델 |
 | [cpp-framework-interfaces](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | 공개 인터페이스 표면 |
-| [handler-interfaces](../common/spec/languages/cpp/03-handler-interfaces.ko.md) | 핸들러 계약 |
-| [cpp-channel-messaging](../common/spec/languages/cpp/11-channel-messaging.ko.md) | 채널 메시징 |
-| [cpp-spot](../common/spec/languages/cpp/20-spot.ko.md) | SPOT |
-| [stage-wrapper-on-spot](../common/spec/languages/cpp/25-stage-wrapper-on-spot.ko.md) | stage wrapper |
-| [actor-gateway-session-relay](../common/spec/languages/cpp/22-actor-gateway-session-relay.ko.md) | actor gateway / session relay |
-| [cpp-stream](../common/spec/languages/cpp/30-stream.ko.md) | stream |
+| [handler-interfaces](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | 핸들러 계약 |
+| [cpp-channel-messaging](../common/spec/languages/cpp/01-system-structure.ko.md) | 채널 메시징 |
+| [cpp-spot](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | SPOT |
+| [stage-wrapper-on-spot](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | stage wrapper |
+| [actor-gateway-session-relay](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | actor gateway / session relay |
+| [cpp-stream](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | stream |
 | [cpp-http-hosting](../common/spec/languages/cpp/60-http-hosting.ko.md) | HTTP hosting |
 | [cpp-embedded-http-server](../common/spec/languages/cpp/61-embedded-http-server.ko.md) | embedded HTTP server |
-| [cpp-registry](../common/spec/languages/cpp/40-registry.ko.md) | registry |
-| [cpp-monitoring](../common/spec/languages/cpp/50-monitoring.ko.md) | monitoring |
+| [cpp-registry](../common/spec/languages/cpp/01-system-structure.ko.md) | registry |
+| [cpp-monitoring](../common/spec/languages/cpp/02-framework-interfaces.ko.md) | monitoring |
 
 ## 별도 산출물 문서
 

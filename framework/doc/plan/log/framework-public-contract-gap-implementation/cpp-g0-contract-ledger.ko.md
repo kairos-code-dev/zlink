@@ -12,7 +12,7 @@
   `.artifacts/wsl/install/zlink-cpp/8.6.4`, `libzlink_cpp.a` SHA-256
   `e1ca346857ccf550dd17150a8a08dd7fcf4d31bce72558844bb13da75ebb6a43`)
 - production 분모: framework include/src 163개, connector/core 44개, extensions 5개 파일
-- 정식 언어 문서: 13개 (interface 분모 12 + guide `25-stage-wrapper-on-spot.ko.md` 제외)
+- 정식 언어 문서: 13개 (interface 분모 12 + guide `02-framework-interfaces.ko.md` 제외)
 - 공통 E2E 분모: Config 1~11
 - baseline 명령: plan §13.2의 configure/build/ctest
   (`build-public-contract-gap`, TESTS/SAMPLES/E2E ON)
@@ -34,17 +34,17 @@
 |----|----------------|-----------|------|
 | CPP-DOC-001 | `README.ko.md` | 계약 색인, 취소 인자 정책 | 검토 완료 |
 | CPP-DOC-002 | `02-framework-interfaces.ko.md` | 전체 public surface 권위 | 검토 완료 |
-| CPP-DOC-003 | `03-handler-interfaces.ko.md` | handler 정렬 규칙과 §8.1 gap 표 | 검토 완료 |
-| CPP-DOC-004 | `01-application-framework.ko.md` | host/DI/config/lifecycle | 검토 완료 |
-| CPP-DOC-005 | `11-channel-messaging.ko.md` | channel/route/fanout | 검토 완료 |
-| CPP-DOC-006 | `20-spot.ko.md` | Spot/actor/timer | 검토 완료 |
-| CPP-DOC-007 | `30-stream.ko.md` | STREAM/session/connector 정합 | 검토 완료 |
-| CPP-DOC-008 | `22-actor-gateway-session-relay.ko.md` | session relay/bound session | 검토 완료 |
-| CPP-DOC-009 | `50-monitoring.ko.md` | monitoring/flow/metrics/drain 표면 | 검토 완료 |
-| CPP-DOC-010 | `40-registry.ko.md` | Registry 표면 제거 선언 | 검토 완료 (규범 위반 없음) |
+| CPP-DOC-003 | `02-framework-interfaces.ko.md` | handler 정렬 규칙과 §8.1 gap 표 | 검토 완료 |
+| CPP-DOC-004 | `01-system-structure.ko.md` | host/DI/config/lifecycle | 검토 완료 |
+| CPP-DOC-005 | `01-system-structure.ko.md` | channel/route/fanout | 검토 완료 |
+| CPP-DOC-006 | `02-framework-interfaces.ko.md` | Spot/actor/timer | 검토 완료 |
+| CPP-DOC-007 | `02-framework-interfaces.ko.md` | STREAM/session/connector 정합 | 검토 완료 |
+| CPP-DOC-008 | `02-framework-interfaces.ko.md` | session relay/bound session | 검토 완료 |
+| CPP-DOC-009 | `02-framework-interfaces.ko.md` | monitoring/flow/metrics/drain 표면 | 검토 완료 |
+| CPP-DOC-010 | `01-system-structure.ko.md` | Registry 표면 제거 선언 | 검토 완료 (규범 위반 없음) |
 | CPP-DOC-011 | `60-http-hosting.ko.md` | HTTP hosting | 검토 완료 |
 | CPP-DOC-012 | `61-embedded-http-server.ko.md` | embedded HTTP server | 검토 완료 |
-| CPP-DOC-013 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
+| CPP-DOC-013 | `02-framework-interfaces.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
 공통 spec 19개는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
@@ -53,10 +53,10 @@
 
 | ID | 위치 | 내용 | 처리 |
 |----|------|------|------|
-| CPP-SPECDRIFT-001 | `20-spot.ko.md` §5 | `destroyActor(actor_ref, actor)` 표기. interface 권위 문서 2개는 `entry_spot_context_t::destroy_actor(TActor &)`로 고정 | interface 문서가 우선. 구현은 `destroy_actor(TActor &)`로 정렬하고 cpp-spot 문구는 G7 문서 정합에서 갱신 |
-| CPP-SPECDRIFT-002 | `02-framework-interfaces.ko.md` §11 본문 | `onLeaveActor` 표기 2곳 잔존. `03-handler-interfaces.ko.md` §8.1은 snake_case(`on_leave_actor`)를 목표로 고정 | §8.1이 우선. 본문 표기는 G7 문서 정합에서 갱신 |
-| CPP-SPECDRIFT-003 | `50-monitoring.ko.md` §2/§5 예시 | `add_discovery_events`/`add_registry_events`/`add_registry_check` 예시가 남아 있으나 `40-registry.ko.md`는 Registry 표면 제거를 선언, 구현은 `add_location_events`/`add_location_check` | registry 제거 선언이 우선. monitoring 예시는 location 계열로 갱신(G7). 구현에 registry 표면을 새로 만들지 않는다 |
-| CPP-SPECDRIFT-004 | `02-framework-interfaces.ko.md` §3.1, `30-stream.ko.md` §5 | 매핑 표의 error kind `timeout` 행과 write-after-close의 `disconnected` 예외 문구가 §8 enum 목록·§8.1 삭제 표·.NET 기준 enum(0~21)과 상충 | §8.1과 .NET 정합이 우선. timeout/disconnected는 public enum 값이 아니라 경계 의미(표준 관례/내부 상태)로 구현하고 두 문구는 G7에서 갱신 |
+| CPP-SPECDRIFT-001 | `02-framework-interfaces.ko.md` §5 | `destroyActor(actor_ref, actor)` 표기. interface 권위 문서 2개는 `entry_spot_context_t::destroy_actor(TActor &)`로 고정 | interface 문서가 우선. 구현은 `destroy_actor(TActor &)`로 정렬하고 cpp-spot 문구는 G7 문서 정합에서 갱신 |
+| CPP-SPECDRIFT-002 | `02-framework-interfaces.ko.md` §11 본문 | `onLeaveActor` 표기 2곳 잔존. `02-framework-interfaces.ko.md` §8.1은 snake_case(`on_leave_actor`)를 목표로 고정 | §8.1이 우선. 본문 표기는 G7 문서 정합에서 갱신 |
+| CPP-SPECDRIFT-003 | `02-framework-interfaces.ko.md` §2/§5 예시 | `add_discovery_events`/`add_registry_events`/`add_registry_check` 예시가 남아 있으나 `01-system-structure.ko.md`는 Registry 표면 제거를 선언, 구현은 `add_location_events`/`add_location_check` | registry 제거 선언이 우선. monitoring 예시는 location 계열로 갱신(G7). 구현에 registry 표면을 새로 만들지 않는다 |
+| CPP-SPECDRIFT-004 | `02-framework-interfaces.ko.md` §3.1, `02-framework-interfaces.ko.md` §5 | 매핑 표의 error kind `timeout` 행과 write-after-close의 `disconnected` 예외 문구가 §8 enum 목록·§8.1 삭제 표·.NET 기준 enum(0~21)과 상충 | §8.1과 .NET 정합이 우선. timeout/disconnected는 public enum 값이 아니라 경계 의미(표준 관례/내부 상태)로 구현하고 두 문구는 G7에서 갱신 |
 | CPP-SPECDRIFT-005 | `04-async-execution-policy.ko.md` §1 vs `config-8-automatic-turn-dispatch.ko.md` ATD-A2 | 정책 문구 "같은 Spot의 보호 상태는 callback 완료까지 무관 callback 접근 금지"와 ATD-A2의 "같은 spot rid 독립 probe가 await 중 완료" 요구가 표면상 상충 | E2E 계약(ATD-A2/B2/C2)과 .NET 구현(AutomaticTurn_Allows_Later_Work)이 기준: 재진입 금지 보호 단위는 actor/timer mailbox이고 spot serial line은 await 지점에서 양보한다. C++ 구현은 이 해석을 따름. 정책 문구의 보호 단위 명시는 G7 문서 정합 검토로 |
 | CPP-SPECDRIFT-006 | `cpp-stream` §2의 `stream_t` 코드 블록(abstract pure virtual + `message_t` 값 전달)이 `handler-interfaces` §8 stream 행(concrete 핸들 + `const zlink::message_t &`)과 상충. handler-interfaces가 목표 선언 정본이므로 cpp-stream 블록을 G7 정합에서 concrete 선언으로 갱신 |
 
@@ -162,10 +162,10 @@ a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.k
 6b68a42a1ebab714fc7b1cd775e45f4ab4adfdaf536d181fd44fccaa9f50e1fc common/22-actor-model.ko.md
 9c8021112e2f4b1566679afeefaee8013b7dd643d12817260a063ec93cefb804 common/04-async-execution-policy.ko.md
 a44902a9f8775cfabe50b946fe1cab7f1a56083ad4a210c13a7d941eaca31c41 common/10-channel-topology.ko.md
-3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8 common/53-flow-correlation.ko.md
+1622ba04984576c56281f403b975b67e9d8e52e4298af392c6a543ff283d2511 common/53-flow-correlation.ko.md
 49e0d306d42b1ab9909c9d7a29da44c25a57198168c23936070de6e5fd73cb93 common/05-framework-api.ko.md
 4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e common/54-graceful-drain-handoff.ko.md
-2feafa2849cf5a9874bc704408c77620317cf3761d10b98cba147e8e3db7923b common/90-implementation-gap.ko.md
+46c99b8b66e35950f34a40fafd81c4fa16bbfdf756d64a694cff18a3c8dcf01e common/90-implementation-gap.ko.md
 bbc0dbf64aadd7b03e6b3952b2cfc283d69ce271968926c8fda1ce5a5d491492 common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md
@@ -177,25 +177,25 @@ d808af4314ff9e1a3531275310a2aa2325403c74f362fb637da60c35937653dd common/51-runti
 4dac9b99fd195db97cf3f9bc375749311b7bbfac69e31749fbb203ad79a2ea8a common/31-session-actor-dispatch.ko.md
 a4e8e2231abb2ecbb70e3c1938bb5b9bf39233981e329a25f8dc5d8befa407b2 common/23-spot-actor.ko.md
 c4cb5fc6f41aea5877062956657668abfe7d228f0dca7b9e785eb0054e3e2353 common/24-spot-address-messaging.ko.md
-8893c85fe710d643b5c75d95e2c9310cb9bf9b652f46ec0ed955e0f6d37f3b4e cpp/README.ko.md
-8fc75b19f7d4c26e4ff86bc35cbdf6d59d5fce670319dbfa08c8500d95226ab7 cpp/22-actor-gateway-session-relay.ko.md
-be24e272a44fa9ee4bd8a1498f724242a96b8502c2dda2e55793c279ce693234 cpp/03-handler-interfaces.ko.md
-9ffb2183610621eb38c75e3a9ce408cb0b8c1cae9ccd82e626457598e819379b cpp/25-stage-wrapper-on-spot.ko.md
-3b9d3b721e55b06d4a8e175480031d5e88213a9175a33960ddc29b31724b41a3 cpp/61-embedded-http-server.ko.md
-64f4239e15e4bb4a35b19d5807c9693951218bcefce962156874cd01fd5b1272 cpp/60-http-hosting.ko.md
-da256c787bed6c5b1e0c7b7c0c2f85adadd5bb0f14e8e267f66b3a1f9acddf73 cpp/50-monitoring.ko.md
-785690fc5c9b0764546ef5a56145a7eb9670d61c69b11f3cf0d5f53d7a2831be cpp/40-registry.ko.md
-704feb2ff9951360bd58d0206de984cb7ae40477557aa2d008d3572531bb7aeb cpp/30-stream.ko.md
-cf9561785109a49ca6b4dc862c085c06438c9acce4569f93527f33aff87d4799 cpp/20-spot.ko.md
-45320fc8ab103f64414df3be26bef59912952127d6bc5d30b38472e4947e2e8a cpp/11-channel-messaging.ko.md
-2523ae67b7bd763b27004ae5b4912f285bb513b0659658197ae57f0dd787f865 cpp/02-framework-interfaces.ko.md
-16ffa1f7555a7cd6cc2227123b4585ea9d72a177ab330c98745f6c9c645ab54d cpp/01-application-framework.ko.md
+1ab0e2e16c8c9a12df5f81b060833846957140a606171e1a79ead836539c79c0 cpp/README.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+ffadfa1ee89cd88d411e2d4ceacd4817308ad6ce0124b58f545a14282414a77f cpp/61-embedded-http-server.ko.md
+6c51153275e88e915d39c60c94b0b4ddd94c48535fa4792e4ffc24f05119b838 cpp/60-http-hosting.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+eecd4b444a170e1e460cb812386f3a1969757be11f38aa0e682360c7087b0e26 cpp/01-system-structure.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+eecd4b444a170e1e460cb812386f3a1969757be11f38aa0e682360c7087b0e26 cpp/01-system-structure.ko.md
+b813ae9368de7fe28d33b9f60255ab905ac6fe3399758b41537d89df821d6d29 cpp/02-framework-interfaces.ko.md
+eecd4b444a170e1e460cb812386f3a1969757be11f38aa0e682360c7087b0e26 cpp/01-system-structure.ko.md
 7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94 common/50-runtime-monitoring.ko.md
 01b72e31d4f661c60cf70110e53d2d158b68d5ce18c270f4fdc033adc083da05 common/32-stream-connector.ko.md
 fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd common/30-stream-session.ko.md
-d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md
 03f4e3e114799a62cdd64cc230e11d5e8c024109747714db7306c000404552aa common/21-spot-node.ko.md
 34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4 common/20-spot-messaging.ko.md
+d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md
 7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d common/11-channel-messaging.ko.md
 ```
 

@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](11-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](01-system-structure.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-application-framework.ko.md) | [channel](11-channel-messaging.ko.md) | [SPOT](20-spot.ko.md) | [STREAM](30-stream.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md) | [HTTP Hosting](60-http-hosting.ko.md)
+[C++ 묶음](../../../../cpp/README.ko.md) | [Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [Application Framework](01-system-structure.ko.md) | [channel](01-system-structure.ko.md) | [SPOT](02-framework-interfaces.ko.md) | [STREAM](02-framework-interfaces.ko.md) | [HTTP Client](../../../../../http-client/cpp/README.ko.md) | [HTTP Hosting](60-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Interface Design
 
@@ -2126,7 +2126,224 @@ int main(int argc, char **argv)
 `zlink::service::spot_node_t`를 직접 만들지 않는다. framework host가 C++ binding
 타입을 생성하고 lifecycle을 관리한다.
 
-## 15. C++ 문서와 sample 일관성 요구
+
+## 15. C++ 고유 계약
+
+### 15.1 Backpressure
+
+**SPOT과 STREAM의 send-ready callback과 pending queue는 runtime 내부 구현이다.** public 표면은
+**call object, timeout, result error kind**로만 backpressure를 보여 준다.
+
+- **application handler가 pending queue를 직접 resume하거나 poller readiness를 다루는 API를 두지
+  않는다.**
+- **기본 정책은 무한 queue가 아니다.** queue 상한·submit timeout·overflow 정책은 framework runtime
+  설정으로 닫고, **한도 초과는 실패 result로 돌려준다**(`request_rejected` 등).
+
+### 15.2 Handler filter
+
+**filter는 `handler_invocation_context_t`로 descriptor·dispatch context·immutable message payload를
+읽는다.** **payload를 바꾸려면 `next()` 결과 대신 새 `message_t`를 반환한다.**
+
+filter의 등록 순서·`next` 의미·scope는 [framework API §2.6](../../05-framework-api.ko.md)이
+소유한다.
+
+### 15.3 Public surface 경계
+
+- **public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.**
+- **handler public contract는 `contracts/handlers/*`가 소유한다.** handler descriptor map, DI
+  resolve, serializer 호출 순서, dispatch lookup **구현**은 `src/runtime/handlers/*`에 둔다.
+- **handler template 코드는 handler shape 검사와 type-erased 호출로 제한한다.** pending queue,
+  recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
+
+
+## 16. Public 타입 카탈로그
+
+**이 절은 위 절들이 다루지 않은 public 타입을 채운다.** 여기 없는 `*_state_t`·`*_snapshot_t`는
+**runtime 내부 상태**이며 공개 계약이 아니다.
+
+### 16.1 Dispatch 오류 계약
+
+**언어 중립 의미는 [framework API §2.4.3](../../05-framework-api.ko.md)이 소유한다.** C++은 다음
+enum과 event로 표현한다.
+
+```cpp
+enum class dispatch_error_surface_t
+{ channel, route_mesh_channel, spot_route, spot_subscription, spot_actor, stream_session };
+
+enum class dispatch_message_kind_t
+{ request, send, publish, response, error, actor_request, actor_send };
+
+enum class dispatch_error_reason_t
+{ handler_missing, payload_decode_failed, handler_exception,
+  invalid_frame, reply_path_missing, unexpected_reply };
+
+enum class dispatch_error_action_t { reply_error, drop };
+
+struct message_dispatch_error_event_t
+{
+    dispatch_error_surface_t surface;
+    dispatch_message_kind_t  message_kind;
+    dispatch_error_reason_t  reason;
+    dispatch_error_action_t  action;
+    std::optional<std::string> packet_name, channel_name, topic;
+    std::optional<std::string> spot_rid, actor_id, source_rid, correlation_id;
+    std::exception_ptr exception;
+    std::optional<std::string>    flow_id;      // flow_origin과 함께 있거나 함께 없다
+    std::optional<flow_origin_t>  flow_origin;
+};
+
+enum class flow_origin_t : std::uint8_t
+{ inbound = 1, timer = 2, application = 3, lifecycle = 4 };  // wire 값 고정
+```
+
+> **미충족.** 공통 스펙은 `action`에 **`fail_caller`** 를 요구한다(reply frame이 없는 경로에서
+> caller를 오류로 완료). C++ `dispatch_error_action_t`에는 **`reply_error`와 `drop` 두 값뿐**이다.
+> [구현 차이 §10.7b](../../90-implementation-gap.ko.md)이 이 gap을 소유한다.
+
+### 16.2 Dispatch 실행 정책
+
+```cpp
+enum class handler_execution_t;         // handler 실행 방식
+enum class unhandled_dispatch_action_t; // 처리되지 않은 dispatch의 처리
+struct unhandled_dispatch_options_t;
+class  dispatch_diagnostics_options_t;  // read-only 진단 옵션
+struct dispatch_options_t;
+```
+
+### 16.3 메시지 흐름 관측
+
+```cpp
+enum class message_flow_log_mode_t;   // off, errors_only(기본), key_transitions, verbose, diagnostic
+enum class message_flow_outcome_t;    // received, dispatched, replied, dropped, sent, reply_received, error
+struct message_flow_event_t;
+class  message_flow_observer_t;       // on_message_flow(...)
+```
+
+의미는 [메시지 흐름 추적](../../52-message-flow-tracing.ko.md)과
+[흐름 상관관계](../../53-flow-correlation.ko.md)가 소유한다.
+
+### 16.4 Health
+
+```cpp
+enum class health_status_t;             // healthy, degraded, unhealthy
+enum class health_check_scope_t { readiness, liveness, readiness_and_liveness };
+
+struct health_check_result_t
+{
+    std::string name, component;
+    health_status_t     status = health_status_t::healthy;
+    health_check_scope_t scope = health_check_scope_t::readiness_and_liveness;
+    std::string message;
+};
+
+struct health_report_t
+{
+    health_status_t status, readiness, liveness;
+    std::vector<health_check_result_t> checks;
+    bool ready () const noexcept;   // readiness != unhealthy
+    bool live  () const noexcept;   // liveness  != unhealthy
+};
+
+class health_builder_t;   // health check 등록
+```
+
+**`readiness`와 `liveness`를 분리한다.** 트래픽을 받을 준비(readiness)와 프로세스 생존(liveness)은
+다른 질문이다. **`degraded`는 `ready()`·`live()`를 막지 않는다.**
+
+### 16.5 HTTP route와 middleware
+
+**HTTP hosting 시나리오는 [60](60-http-hosting.ko.md)·[61](61-embedded-http-server.ko.md)이
+소유한다.** 여기서는 public 타입만 고정한다.
+
+```cpp
+enum class http_method_t { get, post, put, delete_ };
+
+struct http_context_t;    // 요청 처리 문맥
+struct http_request_t;
+struct http_response_t;
+
+class http_route_t
+{
+public:
+    http_method_t method;
+    std::string   path;
+    std::string   handler_name;
+    bool context_response_precedence = false;  // context가 만든 response를 우선한다
+    bool validates_json_content_type = true;   // JSON content type을 검증한다
+    // 실제 invoker는 private. builder만 설정한다
+};
+
+struct http_middleware_t
+{
+    std::string name;
+    std::function<std::shared_ptr<void> ()> create_instance;
+    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)> before;
+    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)> after;
+};
+
+struct http_endpoint_t { std::string uri; std::optional<http_tls_options_t> tls; };
+struct http_server_options_t;
+struct http_tls_options_t;
+class  http_tls_options_builder_t;
+```
+
+- **middleware는 `before`/`after` 쌍이다.** `next` delegate 방식이 아니다 —
+  [handler filter](../../05-framework-api.ko.md)와 모양이 다르다.
+- **middleware 인스턴스는 `create_instance`로 만들고 DI provider를 함께 받는다.**
+
+### 16.6 Location store
+
+```cpp
+class peer_location_store_t;
+class spot_location_store_t;
+class actor_location_store_t;
+class route_location_store_t;
+class location_change_stamp_store_t;
+```
+
+**store 계약과 owner lease 의미는 [location runtime §3](../../40-location-runtime.ko.md)이
+소유한다.** Redis 구현의 key 규약은 [41](../../41-location-store-redis.ko.md)이 소유한다.
+
+```cpp
+enum class location_write_status_t;
+struct location_write_intent_t;
+struct location_write_result_t;
+struct location_owner_token_t;
+struct owner_lease_renewal_t;
+enum class location_auto_connect_type_t;
+enum class location_change_type_t;
+```
+
+### 16.7 Worker
+
+```cpp
+enum class worker_completion_mode_t;
+class worker_scheduler_t;
+```
+
+**worker는 spot·session 실행 문맥 밖에서 도는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
+규칙은 [비동기 실행 정책](../../04-async-execution-policy.ko.md)이 소유한다.
+
+### 16.8 Timer
+
+```cpp
+struct timer_failure_event_t;   // handler 실패. 계속 실행 / timer 중단을 구분한다
+```
+
+timer 등록 검증은 [stage-wrapper §4.1](../../25-stage-wrapper-on-spot.ko.md)이 소유한다.
+
+### 16.9 오류 경계
+
+```cpp
+namespace detail { class boundary_error_t; }   // 내부 상태. public 아님
+class framework_exception_t;                    // code() -> std::error_code
+template <typename T> class result_t;
+```
+
+**공개 계약층은 `result_t`로 실패를 돌려준다.** 예외는 경계에서만 쓰고, 의미는
+`framework_exception_t::code()`의 `std::error_code` 파셋으로 노출한다.
+
+## 17. C++ 문서와 sample 일관성 요구
 
 C++ framework의 public 문서와 sample은 다음 표면만 사용해야 한다.
 
@@ -2149,5 +2366,5 @@ C++ framework의 public 문서와 sample은 다음 표면만 사용해야 한다
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](11-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](01-system-structure.ko.md) | [다음: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

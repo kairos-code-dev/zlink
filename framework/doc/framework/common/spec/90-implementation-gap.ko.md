@@ -49,7 +49,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | ? | O | O |
 | 03 | [메시지 모델](03-message-model.ko.md) | O | O | ? | O | O |
 | 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | O |
-| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | O |
+| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | **△** `FailCaller` 없음 [§10.7b](#107b-failcaller-action-c) |
 
 ### 2.2 Channel (1x)
 
@@ -101,6 +101,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | gap | 언어 | 내용 |
 |---|---|---|
 | [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | **Node** | 브라우저 진입점에는 `AsyncLocalStorage`에 해당하는 표준이 없어 **handler가 `await`하는 동안 관련 없는 callback에 inbound flow가 노출될 수 있다.** `MFLOW-EXT-014` 미충족 |
+| [§10.7b](#107b-failcaller-action-c) | **C++** | dispatch error event의 `action`에 **`FailCaller`가 없다.** reply frame 없는 경로의 실패를 **관측할 수 없다** |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
 | 전 영역 | **Kotlin** | Kotlin 고유 표면(`suspend`·`Flow`·DSL)이 각 스펙을 만족하는지 **이 문서가 검증하지 않았다** |
@@ -496,6 +497,15 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 
 10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
 회귀 검사로 같은 계약에 맞췄다.
+
+### 10.7b `FailCaller` action (C++)
+
+**미충족(C++).** [framework API §2.4.3](05-framework-api.ko.md)은 dispatch error event의 `action`에
+**`FailCaller`**(reply frame이 없는 경로에서 caller를 framework 오류로 완료)를 요구한다.
+
+C++ `dispatch_error_action_t`에는 **`reply_error`와 `drop` 두 값뿐**이다. `reply_path_missing`
+reason은 enum에 있으나 이를 표현할 action이 없어, **이 경로의 dispatch 실패를 관측할 수 없다.**
+`.NET`은 §10.7에서 해소했다.
 
 ### 10.8 dispatch 실패의 로그 수준
 

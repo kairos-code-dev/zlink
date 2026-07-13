@@ -3,59 +3,25 @@
 이 디렉토리는 C++ framework가 제공해야 하는 **정식 public contract**를 소유한다. public header와
 contract test는 이 계약을 따라야 한다.
 
-> **C++는 다른 언어와 달리 기능별 스펙을 유지한다.** 다른 언어는 framework를 **사용**하지만 C++는
-> **framework 자체를 구현**하기 때문이다. 파일 번호는 [공통 스펙](../../README.ko.md)의 주제
-> 그룹과 맞춘다.
+> **C++는 다른 언어와 다르다.** `.NET`은 ASP.NET Core를, Node는 NestJS를, Java는 Spring Boot를
+> **빌려 쓴다.** C++에는 그런 host가 없으므로 **framework가 host·DI·configuration·logging·HTTP를
+> 직접 제공한다.** 그래서 HTTP 문서를 따로 유지한다.
 
-## 0x 기반
-
-| 문서 | 범위 |
-|------|------|
-| [01 application framework](01-application-framework.ko.md) | host 부트스트랩, 등록, lifecycle |
-| [02 framework interfaces](02-framework-interfaces.ko.md) | 전체 public surface의 기준 |
-| [03 handler interfaces](03-handler-interfaces.ko.md) | handler 정렬 규칙 |
-
-## 1x Channel
-
-| 문서 | 범위 |
-|------|------|
-| [11 channel messaging](11-channel-messaging.ko.md) | channel 등록, outbound, dispatch |
-
-## 2x SPOT · Actor
-
-| 문서 | 범위 |
-|------|------|
-| [20 spot](20-spot.ko.md) | SPOT lifecycle, publish/subscribe, timer |
-| [22 actor gateway session relay](22-actor-gateway-session-relay.ko.md) | session에서 actor로의 relay |
-| [25 stage wrapper on spot](25-stage-wrapper-on-spot.ko.md) | SPOT 위의 상위 모델 패턴 |
-
-## 3x STREAM
-
-| 문서 | 범위 |
-|------|------|
-| [30 stream](30-stream.ko.md) | STREAM 서버 session 표면 |
-
-## 4x Location
-
-| 문서 | 범위 |
-|------|------|
-| [40 registry](40-registry.ko.md) | 옛 Registry-backed lookup 계약의 현재 상태 |
-
-## 5x 관측
-
-| 문서 | 범위 |
-|------|------|
-| [50 monitoring](50-monitoring.ko.md) | runtime event와 snapshot |
-
-## 6x HTTP
-
-| 문서 | 범위 |
-|------|------|
-| [60 http hosting](60-http-hosting.ko.md) | HTTP 호스팅 계약 |
-| [61 embedded http server](61-embedded-http-server.ko.md) | 내장 HTTP 서버 |
+| 번호 | 문서 | 범위 |
+|---|------|------|
+| `01` | [시스템 구조](01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, **configuration**, **logging**, lifecycle, 등록 표면 |
+| `02` | [framework 인터페이스](02-framework-interfaces.ko.md) | 전체 public 타입·시그니처 카탈로그 — App/Host, DI, builder, handler registry, messaging, SPOT, dispatch 오류, health, HTTP 타입, location store |
+| `60` | [HTTP hosting](60-http-hosting.ko.md) | HTTP 호스팅 계약 |
+| `61` | [내장 HTTP 서버](61-embedded-http-server.ko.md) | 내장 서버 |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../../README.ko.md)이 소유한다.** 이 디렉토리는 그 의미가
 C++에서 갖는 **정확한 public 표면**을 고정한다.
+
+**내부 runtime 구조는 공개 계약이 아니다** —
+[internals/runtime-architecture](../../../../cpp/internals/runtime-architecture.ko.md)가 소유한다.
+
+client connector는 [C++ Stream Connector 가이드](../../../../../stream-connector/cpp/guide/INDEX.ko.md)와
+[Stream Connector 공통 스펙](../../32-stream-connector.ko.md)이 소유한다.
 
 ## 취소 인자
 

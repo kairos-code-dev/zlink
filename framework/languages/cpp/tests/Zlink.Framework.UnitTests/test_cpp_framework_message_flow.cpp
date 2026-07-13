@@ -307,9 +307,42 @@ int main ()
             || enum_name (dispatch_error_reason_t::unexpected_reply) != "unexpected_reply") {
             return 24;
         }
+        /* framework API §2.4.3: reply frame이 없는 local 경로의 실패는 fail_caller로 관측한다. */
         if (enum_name (dispatch_error_action_t::drop) != "drop"
-            || enum_name (dispatch_error_action_t::reply_error) != "reply_error") {
+            || enum_name (dispatch_error_action_t::reply_error) != "reply_error"
+            || enum_name (dispatch_error_action_t::fail_caller) != "fail_caller") {
             return 25;
+        }
+
+        /* channel 메시징 §3.1: handler 예외는 one-way라도 Error, handler 없음·decode 실패·
+         * invalid frame은 send=Warning / publish=Debug로 낮춘다(request는 error reply). */
+        auto log_level_for = [] (dispatch_error_reason_t reason, dispatch_message_kind_t kind) {
+            auto event = error_event ();
+            event.reason = reason;
+            event.message_kind = kind;
+            return detail::dispatch_error_reporter_t::default_log_level (event);
+        };
+        if (log_level_for (dispatch_error_reason_t::handler_exception,
+                           dispatch_message_kind_t::publish)
+              != log_level_t::error
+            || log_level_for (dispatch_error_reason_t::handler_exception,
+                              dispatch_message_kind_t::send)
+                 != log_level_t::error) {
+            return 26;
+        }
+        if (log_level_for (dispatch_error_reason_t::handler_missing,
+                           dispatch_message_kind_t::publish)
+              != log_level_t::debug
+            || log_level_for (dispatch_error_reason_t::payload_decode_failed,
+                              dispatch_message_kind_t::send)
+                 != log_level_t::warn
+            || log_level_for (dispatch_error_reason_t::invalid_frame,
+                              dispatch_message_kind_t::actor_send)
+                 != log_level_t::warn
+            || log_level_for (dispatch_error_reason_t::handler_missing,
+                              dispatch_message_kind_t::request)
+                 != log_level_t::error) {
+            return 27;
         }
         if (enum_name (message_flow_outcome_t::received) != "received"
             || enum_name (message_flow_outcome_t::dispatched) != "dispatched"

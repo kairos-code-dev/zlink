@@ -77,6 +77,8 @@ inline std::string_view enum_name (dispatch_error_action_t value) noexcept
             return "drop";
         case dispatch_error_action_t::reply_error:
             return "reply_error";
+        case dispatch_error_action_t::fail_caller:
+            return "fail_caller";
     }
     return "unknown";
 }

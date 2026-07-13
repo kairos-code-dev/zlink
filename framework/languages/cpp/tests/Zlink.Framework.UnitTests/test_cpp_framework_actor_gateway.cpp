@@ -744,6 +744,64 @@ int main ()
         return 88;
     }
 
+    /* framework API §2.4.3: local relay request가 reply 없이 끝나면 caller의 task를 framework
+     * 오류로 완료하고, 그 실패를 action=fail_caller / reason=reply_path_missing으로 관측한다. */
+    std::mutex fail_caller_mutex;
+    std::vector<zlink::framework::message_flow_event_t> fail_caller_events;
+    zlink::framework::dispatch_options_t fail_caller_dispatch;
+    fail_caller_dispatch.message_flow (zlink::framework::message_flow_log_mode_t::errors_only);
+    fail_caller_dispatch.set_message_flow_observer (
+      [&] (const zlink::framework::message_flow_event_t &event) {
+          const std::lock_guard lock (fail_caller_mutex);
+          fail_caller_events.push_back (event);
+      });
+    gateway.set_dispatch (fail_caller_dispatch);
+    gateway.on_relay ([&] (const zlink::framework::actor_ref_t &,
+                           zlink::framework::actor_context_t,
+                           const zlink::framework::detail::stream_header_t &,
+                           const zlink::message_t &) {
+        return zlink::framework::result_t<std::optional<zlink::message_t>>::success (std::nullopt);
+    });
+    auto relay_request_without_reply = relay_request_with_header (bound.value (), payload);
+    if (relay_request_without_reply
+        || relay_request_without_reply.error_kind ()
+             != framework_error_kind_t::request_protocol_error) {
+        return 89;
+    }
+    {
+        /* observer 전달은 비동기다: 이벤트가 도착할 때까지 짧게 기다린다. */
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (2);
+        for (;;) {
+            {
+                const std::lock_guard lock (fail_caller_mutex);
+                if (!fail_caller_events.empty ()) {
+                    break;
+                }
+            }
+            if (std::chrono::steady_clock::now () >= deadline) {
+                return 91;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+        const std::lock_guard lock (fail_caller_mutex);
+        const auto found = std::find_if (
+          fail_caller_events.begin (), fail_caller_events.end (),
+          [] (const zlink::framework::message_flow_event_t &event) {
+              return event.outcome == zlink::framework::message_flow_outcome_t::error
+                     && event.error_action
+                          == std::optional<zlink::framework::dispatch_error_action_t> (
+                            zlink::framework::dispatch_error_action_t::fail_caller)
+                     && event.error_reason
+                          == std::optional<zlink::framework::dispatch_error_reason_t> (
+                            zlink::framework::dispatch_error_reason_t::reply_path_missing)
+                     && event.surface == zlink::framework::dispatch_error_surface_t::spot_actor
+                     && event.actor_id == std::optional<std::string> ("bob");
+          });
+        if (found == fail_caller_events.end ()) {
+            return 90;
+        }
+    }
+
     zlink::framework::session_actor_t unbound;
     auto unbound_relay_request = unbound.relay_request ("move", payload).async ().result ();
     if (unbound_relay_request

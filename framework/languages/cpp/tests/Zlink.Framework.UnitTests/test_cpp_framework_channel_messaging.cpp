@@ -423,6 +423,8 @@ class recording_dispatch_observer_t : public zlink::framework::message_flow_obse
                 return "reply_error";
             case zlink::framework::dispatch_error_action_t::drop:
                 return "drop";
+            case zlink::framework::dispatch_error_action_t::fail_caller:
+                return "fail_caller";
             default:
                 return "unknown";
         }

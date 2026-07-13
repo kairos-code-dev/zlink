@@ -2,6 +2,7 @@
 
 #include "actor_gateway_runtime.hpp"
 
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
@@ -539,8 +540,19 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
         return relay_request_call_t (detail::propagate_failure<zlink::message_t> (dispatched, "actor relay failed"));
     }
     if (!dispatched.value ()) {
-        return relay_request_call_t (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_protocol_error, "actor relay request has no reply"));
+        /* framework API §2.4.3: reply frame이 없는 local 경로다. caller의 task를 framework
+         * 오류로 완료하고, 그 실패를 fail_caller 액션으로 관측할 수 있게 남긴다. */
+        const framework_exception_t missing_reply (framework_error_kind_t::request_protocol_error,
+                                                   "actor relay request has no reply");
+        detail::dispatch_error_reporter_t (_state->dispatch)
+          .report (message_dispatch_error_event_t{
+            dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
+            dispatch_error_reason_t::reply_path_missing, dispatch_error_action_t::fail_caller,
+            std::string (header->packet_name ()), std::nullopt, std::nullopt, std::nullopt,
+            std::string (_ref.actor_id ()), std::nullopt, std::nullopt,
+            std::make_exception_ptr (missing_reply)});
+        return relay_request_call_t (
+          detail::result_access_t::failure<zlink::message_t> (missing_reply));
     }
     return relay_request_call_t (
       result_t<zlink::message_t>::success (std::move (*dispatched.value ())));

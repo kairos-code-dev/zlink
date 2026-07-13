@@ -136,10 +136,14 @@ enum class dispatch_error_reason_t
     unexpected_reply = 5
 };
 
+/* framework API §2.4.3: reply frame이 있는 request는 error reply로 끝나고(reply_error),
+ * one-way는 drop한다. reply frame이 없는 경로(같은 process 안의 local actor 호출 등)는
+ * caller의 task를 framework 오류로 완료하며 그 실패를 fail_caller로 관측한다. */
 enum class dispatch_error_action_t
 {
     reply_error = 0,
-    drop = 1
+    drop = 1,
+    fail_caller = 2
 };
 
 /* Root origin of a message flow (flow-correlation §4.2). Wire values are

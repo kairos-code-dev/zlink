@@ -67,6 +67,25 @@ class dispatch_error_reporter_t
         return message_flow_tracer_t::observer_dropped ();
     }
 
+    /* channel 메시징 §3.1: drop 여부와 오류 분류는 별개다. application 코드가 던진 handler
+     * 예외는 one-way라도 Error로 남기고, handler 없음·decode 실패·invalid frame은 send를
+     * Warning, publish를 Debug로 낮춘다. request는 error reply로 끝나므로 Error를 유지한다. */
+    static log_level_t default_log_level (const message_dispatch_error_event_t &event) noexcept
+    {
+        if (event.reason == dispatch_error_reason_t::handler_exception) {
+            return log_level_t::error;
+        }
+        switch (event.message_kind) {
+            case dispatch_message_kind_t::publish:
+                return log_level_t::debug;
+            case dispatch_message_kind_t::send:
+            case dispatch_message_kind_t::actor_send:
+                return log_level_t::warn;
+            default:
+                return log_level_t::error;
+        }
+    }
+
   private:
     void log_default (const message_dispatch_error_event_t &event) const noexcept
     {
@@ -121,7 +140,7 @@ class dispatch_error_reporter_t
             // Structured fields through the framework logger (collector-friendly);
             // flat clog line when no logger is wired (tests, no-app usage).
             diagnostic_event_sink_t::log_or_clog (
-              _options.diagnostics_logger, log_level_t::error, "dispatch error",
+              _options.diagnostics_logger, default_log_level (event), "dispatch error",
               "zlink framework dispatch error:", std::move (fields));
         }
         catch (...) {

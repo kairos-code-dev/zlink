@@ -38,17 +38,17 @@ class ZLinkRedisLocationStoreTest {
             .setConnectionString(endpoint)
             .setKeyPrefix("zlink:test:" + UUID.randomUUID()));
 
-        store.renewOwnerLeaseAsync("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
-        var first = store.updatePeerAsync(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        var first = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        var conflict = store.updatePeerAsync(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var conflict = store.updatePeer(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
-        var staleRemove = store.removePeerAsync(peerKey(NODE_A), new ZLinkLocationOwnerToken("owner-b", first.generation()))
+        var staleRemove = store.removePeer(peerKey(NODE_A), new ZLinkLocationOwnerToken("owner-b", first.generation()))
             .toCompletableFuture()
             .get();
-        var remove = store.removePeerAsync(peerKey(NODE_A), new ZLinkLocationOwnerToken("owner-a", first.generation()))
+        var remove = store.removePeer(peerKey(NODE_A), new ZLinkLocationOwnerToken("owner-a", first.generation()))
             .toCompletableFuture()
             .get();
 
@@ -57,12 +57,12 @@ class ZLinkRedisLocationStoreTest {
         assertEquals(ZLinkLocationWriteStatus.REJECTED_CONFLICT, conflict.status());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRemove.status());
         assertEquals(ZLinkLocationWriteStatus.STORED, remove.status());
-        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
-        assertEquals(2, store.getChangeStampAsync(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
+        assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(2, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
             .toCompletableFuture()
             .get());
 
-        store.closeAsync().toCompletableFuture().get();
+        store.close();
     }
 
     @Test
@@ -74,14 +74,14 @@ class ZLinkRedisLocationStoreTest {
             .setConnectionString(endpoint)
             .setKeyPrefix("zlink:test:" + UUID.randomUUID()));
 
-        store.renewOwnerLeaseAsync("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
-        store.updateSpotAsync(spot("alpha"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
-        store.updateSpotAsync(spot("beta"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
+        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        store.updateSpot(spot("alpha"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
+        store.updateSpot(spot("beta"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
 
         List<String> spotTypes = new java.util.ArrayList<>();
         String token = null;
         for (int attempt = 0; attempt < 8; attempt++) {
-            var page = store.listSpotLocationsAsync(
+            var page = store.listSpotLocations(
                     ZLinkSpotLocationFilter.all(),
                     new ZLinkPageRequest(1, token))
                 .toCompletableFuture()
@@ -95,7 +95,7 @@ class ZLinkRedisLocationStoreTest {
 
         assertEquals(List.of("alpha", "beta"), spotTypes.stream().sorted().toList());
 
-        store.closeAsync().toCompletableFuture().get();
+        store.close();
     }
 
     private static ZLinkPeerLocation peer(String ownerId, RoutingId nodeRid, long generation) {

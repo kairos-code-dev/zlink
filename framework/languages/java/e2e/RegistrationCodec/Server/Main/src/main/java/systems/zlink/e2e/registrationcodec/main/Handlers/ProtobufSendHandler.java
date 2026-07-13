@@ -14,8 +14,11 @@ public final class ProtobufSendHandler
     }
 
     @Override
-    public void handle(StringValue message, ZLinkSendContext context) {
+    public java.util.concurrent.CompletionStage<Void> handle(
+        StringValue message,
+        ZLinkSendContext context) {
         state.record("Send", "ProtobufEcho", message.getValue());
         state.record("ContentType", "ProtobufEcho", context.contentType().orElse(""));
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

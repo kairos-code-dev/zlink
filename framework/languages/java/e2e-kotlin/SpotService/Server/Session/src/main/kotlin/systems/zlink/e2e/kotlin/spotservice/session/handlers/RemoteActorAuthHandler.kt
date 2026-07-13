@@ -7,17 +7,18 @@ import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
-import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 
 class RemoteActorAuthHandler(
     private val routes: ZLinkRouteClient,
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorRemoteAuthReq> {
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorRemoteAuthReq> {
     override fun packetName(): String = "ActorRemoteAuthReq"
 
     override fun messageType(): Class<Contracts.ActorRemoteAuthReq> = Contracts.ActorRemoteAuthReq::class.java
 
-    override fun handle(
+    override suspend fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
         request: Contracts.ActorRemoteAuthReq
@@ -27,28 +28,27 @@ class RemoteActorAuthHandler(
             RoutingId.from(request.nodeRid),
             Contracts.EnsureActorReq(request.actorId, request.profile)
         )
-            .packetName("EnsureActorReq")
-            .await(Contracts.EnsureActorRes::class.java)
-        context.actors()
-            .bind(ActorRef(RoutingId.from(ensured.nodeRid), ensured.actorId, ensured.generation))
-            .whenComplete { bound, error ->
-                if (error != null) {
-                    evidence.record("RemoteActorSessionBindFailed", "session", error.javaClass.simpleName)
-                    return@whenComplete
-                }
-                evidence.record("RemoteActorSessionBound", "session", request.actorId + "/" + ensured.nodeRid)
-                context.client()
-                    .reply(
-                        Contracts.ActorAuthRes(
-                            bound.actorId(),
-                            bound.ref().nodeRid().toString(),
-                            context.actors().bound().size,
-                            request.profile.displayName,
-                            request.profile.level,
-                            request.profile.tags
-                        )
-                    )
-                    .await()
-            }
+            .submit(Contracts.EnsureActorRes::class.java).await()
+        val bound = try {
+            context.actors()
+                .bind(ActorRef(RoutingId.from(ensured.nodeRid), ensured.actorId, ensured.generation))
+                .await()
+        } catch (error: Throwable) {
+            evidence.record("RemoteActorSessionBindFailed", "session", error.javaClass.simpleName)
+            throw error
+        }
+        evidence.record("RemoteActorSessionBound", "session", request.actorId + "/" + ensured.nodeRid)
+        context.client()
+            .reply(
+                Contracts.ActorAuthRes(
+                    bound.actorId(),
+                    bound.ref().nodeRid().toString(),
+                    context.actors().bound().size,
+                    request.profile.displayName,
+                    request.profile.level,
+                    request.profile.tags
+                )
+            )
+            .submit()
     }
 }

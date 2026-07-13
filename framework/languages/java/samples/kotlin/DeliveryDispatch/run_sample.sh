@@ -76,14 +76,9 @@ common_java_options+=" -Dzlink.samples.deliverydispatch.courierSessionSpotRouter
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")"
 
 deliverydispatch_redis_key_prefix="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:kotlin:${RANDOM}:$$:}"
-if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-  DELIVERYDISPATCH_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-kotlin-sample-deliverydispatch" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+DELIVERYDISPATCH_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port "${DELIVERYDISPATCH_REDIS_ENDPOINT%:*}" "${DELIVERYDISPATCH_REDIS_ENDPOINT##*:}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.redisEndpoint=${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.redisKeyPrefix=${deliverydispatch_redis_key_prefix}"
@@ -131,7 +126,6 @@ JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Dispatch Dispatch)"
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
 
-sleep 3
 echo "topology=ready"
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" --stream-runtime >"${log_dir}/client.log" 2>&1
 cat "${log_dir}/client.log"

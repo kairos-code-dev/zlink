@@ -5,17 +5,18 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
-import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 
 class MultiBindHandler(
     private val actors: ZLinkActorManager,
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.MultiBindReq> {
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, Contracts.MultiBindReq> {
     override fun packetName(): String = "MultiBindReq"
 
     override fun messageType(): Class<Contracts.MultiBindReq> = Contracts.MultiBindReq::class.java
 
-    override fun handle(
+    override suspend fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
         request: Contracts.MultiBindReq
@@ -25,12 +26,12 @@ class MultiBindHandler(
                 actorId,
                 "scenario",
                 Contracts.ActorAuthReq(actorId, request.profile)
-            ).toCompletableFuture().join()
-            context.actors().bind(actor).toCompletableFuture().join()
+            ).await()
+            context.actors().bind(actor).await()
             evidence.record("ActorSessionBound", "session", actorId)
         }
         context.client()
             .reply(Contracts.MultiBindRes(context.actors().bound().size))
-            .await()
+            .submit()
     }
 }

@@ -48,8 +48,8 @@ class KotlinLocationExtensionsTest {
     @Test
     fun `suspend store extensions await CompletionStage without blocking caller code`() = runBlocking {
         val store = ZLinkInMemoryLocationStore()
-        val stored = store.updatePeer(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
-        val rows = store.listPeerLocations(ZLinkPeerLocationFilter.all())
+        val stored = store.updatePeer(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM).await()
+        val rows = store.listPeerLocations(ZLinkPeerLocationFilter.all()).await()
 
         assertEquals(1, stored.generation())
         assertEquals(listOf("owner-a"), rows.map { it.ownerId() })
@@ -96,8 +96,8 @@ class KotlinLocationExtensionsTest {
     @Test
     fun `suspending location store bridge returns CompletionStage to Java callers`() = runBlocking {
         val store = SuspendingStore()
-        val result = store.updatePeerAsync(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get()
-        val rows = store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get()
+        val result = store.updatePeer(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get()
+        val rows = store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get()
 
         assertEquals(42, result.generation())
         assertEquals(listOf("owner-a"), rows.map { it.ownerId() })
@@ -109,11 +109,11 @@ class KotlinLocationExtensionsTest {
         store.failNextUpdate()
 
         assertThrows(ExecutionException::class.java) {
-            store.updatePeerAsync(peer("failed"), ZLinkLocationWriteIntent.NEW_CLAIM)
+            store.updatePeer(peer("failed"), ZLinkLocationWriteIntent.NEW_CLAIM)
                 .toCompletableFuture()
                 .get()
         }
-        val recovered = store.updatePeerAsync(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
+        val recovered = store.updatePeer(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get()
 
@@ -145,7 +145,7 @@ class KotlinLocationExtensionsTest {
             failNextUpdate = true
         }
 
-        override suspend fun updatePeer(
+        override suspend fun updatePeerSuspending(
             peer: ZLinkPeerLocation,
             intent: ZLinkLocationWriteIntent,
         ): ZLinkLocationWriteResult {
@@ -158,75 +158,75 @@ class KotlinLocationExtensionsTest {
             return ZLinkLocationWriteResult.stored(42, NOW)
         }
 
-        override suspend fun removePeer(
+        override suspend fun removePeerSuspending(
             key: ZLinkPeerLocationKey,
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> = peers.toList()
+        override suspend fun listPeerLocationsSuspending(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> = peers.toList()
 
-        override suspend fun updateSpot(
+        override suspend fun updateSpotSuspending(
             spot: ZLinkSpotLocation,
             intent: ZLinkLocationWriteIntent,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(1, NOW)
 
-        override suspend fun removeSpot(
+        override suspend fun removeSpotSuspending(
             key: ZLinkSpotLocationKey,
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun resolveSpot(key: ZLinkSpotLocationKey): ZLinkSpotLocation? = null
+        override suspend fun resolveSpotSuspending(key: ZLinkSpotLocationKey): ZLinkSpotLocation? = null
 
-        override suspend fun listSpotLocations(
+        override suspend fun listSpotLocationsSuspending(
             filter: ZLinkSpotLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkSpotLocation> = ZLinkLocationPage(listOf(), null)
 
-        override suspend fun updateActor(
+        override suspend fun updateActorSuspending(
             actor: ZLinkActorLocation,
             intent: ZLinkLocationWriteIntent,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(1, NOW)
 
-        override suspend fun removeActor(
+        override suspend fun removeActorSuspending(
             key: ZLinkActorLocationKey,
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun resolveActor(key: ZLinkActorLocationKey): ZLinkActorLocation? = null
+        override suspend fun resolveActorSuspending(key: ZLinkActorLocationKey): ZLinkActorLocation? = null
 
-        override suspend fun listActorLocations(
+        override suspend fun listActorLocationsSuspending(
             filter: ZLinkActorLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkActorLocation> = ZLinkLocationPage(listOf(), null)
 
-        override suspend fun updateRoute(
+        override suspend fun updateRouteSuspending(
             route: ZLinkRouteLocation,
             intent: ZLinkLocationWriteIntent,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(1, NOW)
 
-        override suspend fun removeRoute(
+        override suspend fun removeRouteSuspending(
             key: ZLinkRouteLocationKey,
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation? = null
+        override suspend fun resolveRouteSuspending(key: ZLinkRouteLocationKey): ZLinkRouteLocation? = null
 
-        override suspend fun listRouteLocations(
+        override suspend fun listRouteLocationsSuspending(
             filter: ZLinkRouteLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkRouteLocation> = ZLinkLocationPage(listOf(), null)
 
-        override suspend fun renewOwnerLease(
+        override suspend fun renewOwnerLeaseSuspending(
             ownerId: String,
             nodeRid: RoutingId,
             leaseTtl: Duration,
         ): ZLinkOwnerLeaseRenewal = ZLinkOwnerLeaseRenewal(NOW.plus(leaseTtl), NOW)
 
-        override suspend fun removeOwnerLease(ownerId: String): Boolean = true
+        override suspend fun removeOwnerLeaseSuspending(ownerId: String): Boolean = true
 
-        override suspend fun removeAllByOwner(ownerId: String): Long = 0
+        override suspend fun removeAllByOwnerSuspending(ownerId: String): Long = 0
 
-        override suspend fun listOwnerLeases(): ZLinkOwnerLeaseSnapshot =
+        override suspend fun listOwnerLeasesSuspending(): ZLinkOwnerLeaseSnapshot =
             ZLinkOwnerLeaseSnapshot(listOf(), NOW)
     }
 
@@ -242,6 +242,7 @@ class KotlinLocationExtensionsTest {
                 ZLinkLocationRole.ROUTER,
                 "tcp://127.0.0.1:6000",
                 1,
+                false,
                 0,
                 mapOf(),
                 listOf(),

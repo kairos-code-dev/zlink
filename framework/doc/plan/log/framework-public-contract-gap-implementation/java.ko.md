@@ -15,3 +15,4 @@
 | 2026-07-13 19:15 KST | G5 공통 sample | working tree | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` | 0 | 공통 spec 6종 client self-check와 server evidence 전체 통과 | `All Java/Kotlin samples passed` |
 | 2026-07-13 19:17 KST | G7 package evidence | working tree | `./scripts/verify_packaged_contract.sh java` | 0 | 임시 Maven 저장소에서 새 consumer compile/실행 통과 | `java packaged contract verification passed` |
 | 2026-07-13 19:18 KST | bindings local package | working tree | `./scripts/local-package/build-wsl.sh java` | 0 | core 9.0.1 native와 multipart request binding을 포함한 Maven package 재배포 | `.artifacts/wsl/maven/systems/zlink/zlink/9.0.1/` |
+| 2026-07-14 02:51 KST | G5 공통 sample 재검증 | working tree | `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh` | 0 | Redis 격리 runner를 사용하는 공통 spec 6종 전체 통과 | `All Java/Kotlin samples passed` |

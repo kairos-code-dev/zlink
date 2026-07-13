@@ -11,7 +11,6 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
-import systems.zlink.e2e.kotlin.spotservice.SpotRouteResolver
 import systems.zlink.e2e.kotlin.spotservice.session.endpoints.SessionEvidenceHttpServer
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.ActorAuthHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.MultiBindHandler
@@ -58,7 +57,6 @@ class SessionApplication {
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.addSpotRemoteRefResolver(SpotRouteResolver::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")

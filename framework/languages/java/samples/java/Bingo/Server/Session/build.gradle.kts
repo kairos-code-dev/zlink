@@ -24,6 +24,7 @@ dependencies {
     implementation(zlinkLibs.zlink.bindings)
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
+    implementation("org.springframework.boot:spring-boot-starter-actuator:3.5.14")
     implementation("io.netty:netty-buffer:4.1.100.Final")
 }
 

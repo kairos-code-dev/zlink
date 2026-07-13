@@ -15,9 +15,10 @@ public final class WorkMsgHandler implements ZLinkSendHandler<Contracts.WorkMsg>
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.WorkMsg message,
         ZLinkSendContext context) {
         state.record("WorkMsg", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

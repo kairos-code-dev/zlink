@@ -83,14 +83,9 @@ common_java_options+=" -Dzlink.samples.gamequest.missionAHttpEndpoint=http://$(e
 common_java_options+=" -Dzlink.samples.gamequest.missionBHttpEndpoint=http://$(endpoint_host "${mission_b_http}"):$(endpoint_port "${mission_b_http}")"
 
 gamequest_redis_key_prefix="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:java:${RANDOM}:$$:}"
-if [[ -z "${GAMEQUEST_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when GAMEQUEST_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-  GAMEQUEST_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-java-sample-gamequest" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+GAMEQUEST_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port "${GAMEQUEST_REDIS_ENDPOINT%:*}" "${GAMEQUEST_REDIS_ENDPOINT##*:}"
 common_java_options+=" -Dzlink.samples.gamequest.redisEndpoint=${GAMEQUEST_REDIS_ENDPOINT}"
 common_java_options+=" -Dzlink.samples.gamequest.redisKeyPrefix=${gamequest_redis_key_prefix}"
@@ -119,7 +114,6 @@ wait_port "$(endpoint_host "${api_b_stream}")" "$(endpoint_port "${api_b_stream}
 wait_port "$(endpoint_host "${api_a_http}")" "$(endpoint_port "${api_a_http}")"
 wait_port "$(endpoint_host "${api_b_http}")" "$(endpoint_port "${api_b_http}")"
 
-sleep 3
 echo "topology=ready"
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 cat "${log_dir}/client.log"

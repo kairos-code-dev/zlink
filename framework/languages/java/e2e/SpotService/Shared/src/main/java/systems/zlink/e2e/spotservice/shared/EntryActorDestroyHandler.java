@@ -1,22 +1,22 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorDestroyHandler {
     @ZLinkSpotActorRequest(packetName = "ActorDestroyReq")
-    public Contracts.ActorDestroyRes handle(
+    public CompletionStage<Contracts.ActorDestroyRes> handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorDestroyReq request,
-        CancellationToken cancellationToken) {
+        Contracts.ActorDestroyReq request) {
         if (!request.actorId().equals(actor.actorId())) {
             throw new IllegalStateException("destroy request actor does not match dispatched actor");
         }
-        spot.context().destroyActor(actor).toCompletableFuture().join();
-        spot.record("ActorDestroyed", actor.actorId());
-        return new Contracts.ActorDestroyRes(actor.actorId(), true);
+        return spot.context().destroyActor(actor).thenApply(ignored -> {
+            spot.record("ActorDestroyed", actor.actorId());
+            return new Contracts.ActorDestroyRes(actor.actorId(), true);
+        });
     }
 }

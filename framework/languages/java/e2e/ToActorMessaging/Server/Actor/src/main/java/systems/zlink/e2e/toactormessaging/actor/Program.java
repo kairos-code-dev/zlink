@@ -10,7 +10,8 @@ import systems.zlink.e2e.toactormessaging.shared.Contracts;
 import systems.zlink.e2e.toactormessaging.shared.Env;
 import systems.zlink.e2e.toactormessaging.shared.EvidenceStore;
 import systems.zlink.e2e.toactormessaging.shared.JsonHttp;
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -61,18 +62,14 @@ public final class Program {
         boot("http route evidence");
         http.get("/evidence", evidence::all);
         boot("http route ensure");
-        http.post("/ensure", Contracts.ActorCallRequest.class, request -> {
+        http.postAsync("/ensure", Contracts.ActorCallRequest.class, request ->
             actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
-                .toCompletableFuture()
-                .join();
-            return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "ensured");
-        });
-        http.post("/ensure-ref", Contracts.ActorCallRequest.class, request -> {
-            var actor = actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
-                .toCompletableFuture()
-                .join();
-            return new Contracts.ActorRefWire(actor.nodeRid().toHex(), actor.actorId(), actor.generation());
-        });
+                .thenApply(ignored -> Contracts.ActorCallResponse.ok(
+                    request.scenario(), request.actorId(), "ensured")));
+        http.postAsync("/ensure-ref", Contracts.ActorCallRequest.class, request ->
+            actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
+                .thenApply(actor -> new Contracts.ActorRefWire(
+                    actor.nodeRid().toHex(), actor.actorId(), actor.generation())));
         boot("http start");
         http.start();
         boot("http start done");
@@ -116,14 +113,21 @@ public final class Program {
     ApplicationRunner createBaselineActors(ZLinkActorManager actors) {
         return ignored -> {
             boot("baselineActors start");
+            CompletionStage<Void> sequence = CompletableFuture.completedFuture(null);
             for (String actorId : java.util.List.of("ta-a1", "ta-a2", "ta-a3", "ta-a4", "ta-b2", "ta-b3")) {
-                boot("baselineActors getOrCreate actorId=" + actorId);
-                actors.getOrCreate(actorId, Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
-                    .toCompletableFuture()
-                    .join();
-                boot("baselineActors getOrCreate done actorId=" + actorId);
+                sequence = sequence.thenCompose(ignoredResult -> {
+                    boot("baselineActors getOrCreate actorId=" + actorId);
+                    return actors.getOrCreate(actorId, Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
+                        .thenAccept(actor -> boot("baselineActors getOrCreate done actorId=" + actorId));
+                });
             }
-            boot("baselineActors done");
+            sequence.whenComplete((ignoredResult, failure) -> {
+                if (failure != null) {
+                    boot("baselineActors failed=" + failure);
+                    return;
+                }
+                boot("baselineActors done");
+            });
         };
     }
 
@@ -146,8 +150,8 @@ public final class Program {
 
     public static final class TestActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
-            return new TestActor(actorId, context);
+        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new TestActor(actorId, context));
         }
     }
 
@@ -169,27 +173,29 @@ public final class Program {
         }
 
         @Override
-        public void onCreateActor(TestActor actor, ZLinkMessage createRequest, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onCreateActor(TestActor actor, ZLinkMessage createRequest) {
             evidence.append(new Contracts.ActorEvidence("create", actor.actorId(), "create", "created"));
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             evidence.append(new Contracts.ActorEvidence("admission", actorId, "join", "accepted"));
-            return ZLinkSpotActorJoinResponse.accept();
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
         }
 
         @Override
-        public void onJoinedActor(TestActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(TestActor actor) {
             evidence.append(new Contracts.ActorEvidence("join", actor.actorId(), "join", "joined"));
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(TestActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(TestActor actor) {
             evidence.append(new Contracts.ActorEvidence("leave", actor.actorId(), "join", "left"));
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -202,13 +208,13 @@ public final class Program {
         }
 
         @Override
-        public void handle(
+        public CompletionStage<Void> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
             ZLinkSpotActorSendContext context,
-            Contracts.ActorNotify message,
-            CancellationToken cancellationToken) {
+            Contracts.ActorNotify message) {
             evidence.append(new Contracts.ActorEvidence(message.scenario(), actor.actorId(), "send", message.value()));
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -225,14 +231,14 @@ public final class Program {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public CompletionStage<Contracts.ActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorAsk request,
-            CancellationToken cancellationToken) {
+            Contracts.ActorAsk request) {
             evidence.append(new Contracts.ActorEvidence(request.scenario(), actor.actorId(), "request", request.value()));
-            return new Contracts.ActorReply(request.scenario(), actor.actorId(), "reply:" + request.value());
+            return CompletableFuture.completedFuture(new Contracts.ActorReply(
+                request.scenario(), actor.actorId(), "reply:" + request.value()));
         }
     }
 }

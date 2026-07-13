@@ -16,9 +16,10 @@ public final class AutoSendHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.EchoAutoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "EchoAuto", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

@@ -25,6 +25,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
+    implementation("org.springframework.boot:spring-boot-starter-actuator:3.5.14")
     implementation("io.netty:netty-buffer:4.1.100.Final")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

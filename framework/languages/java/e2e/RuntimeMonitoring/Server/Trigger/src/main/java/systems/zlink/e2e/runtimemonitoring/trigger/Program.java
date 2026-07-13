@@ -15,6 +15,9 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -119,7 +122,19 @@ public final class Program {
                 server.createContext("/scenario/", exchange -> {
                     String name = exchange.getRequestURI().getPath().substring("/scenario/".length());
                     try {
-                        write(exchange, 200, scenario.run(name));
+                        scenario.run(name).whenComplete((result, failure) -> {
+                            try {
+                                if (failure == null) {
+                                    write(exchange, 200, result);
+                                } else {
+                                    Throwable cause = failure instanceof CompletionException
+                                        && failure.getCause() != null ? failure.getCause() : failure;
+                                    write(exchange, 500, cause.getMessage() + "\n");
+                                }
+                            } catch (IOException writeFailure) {
+                                exchange.close();
+                            }
+                        });
                     } catch (Throwable error) {
                         write(exchange, 500, error.getMessage() + "\n");
                     }
@@ -175,14 +190,14 @@ public final class Program {
             this.evidence = evidence;
         }
 
-        public String run(String name) {
+        public CompletionStage<String> run(String name) {
             return switch (name) {
                 case "mon-a1" -> monA1();
-                case "mon-a2" -> monA2();
-                case "mon-a3" -> monA3();
-                case "mon-a5" -> monA5();
-                case "mon-b1" -> monB1();
-                case "mon-b2" -> monB2();
+                case "mon-a2" -> CompletableFuture.completedFuture(monA2());
+                case "mon-a3" -> CompletableFuture.completedFuture(monA3());
+                case "mon-a5" -> CompletableFuture.completedFuture(monA5());
+                case "mon-b1" -> CompletableFuture.completedFuture(monB1());
+                case "mon-b2" -> CompletableFuture.completedFuture(monB2());
                 case "mon-c1" -> monC1();
                 case "mon-a4" -> monA4();
                 case "mon-d1" -> monD1();
@@ -190,12 +205,13 @@ public final class Program {
             };
         }
 
-        private String monA1() {
-            request("a1-0");
-            waitForAnyEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket", Set.of(
-                "CONNECTED",
-                "CONNECTION_READY"));
-            return "scenario MON-A1 passed\n";
+        private CompletionStage<String> monA1() {
+            return request("a1-0").thenApply(ignored -> {
+                waitForAnyEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket", Set.of(
+                    "CONNECTED",
+                    "CONNECTION_READY"));
+                return "scenario MON-A1 passed\n";
+            });
         }
 
         private String monA2() {
@@ -248,37 +264,38 @@ public final class Program {
             return "scenario MON-B2 passed\n";
         }
 
-        private String monC1() {
+        private CompletionStage<String> monC1() {
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "monitoring", Set.of(
                 "HandlerFailureInjected"));
-            Contracts.WorkRes reply = request("c1-after-handler-failure");
-            ensure(reply.value().equals("work:c1-after-handler-failure"),
-                "MON-C1 follow-up reply mismatch");
-            return "scenario MON-C1 passed\n";
+            return request("c1-after-handler-failure").thenApply(reply -> {
+                ensure(reply.value().equals("work:c1-after-handler-failure"),
+                    "MON-C1 follow-up reply mismatch");
+                return "scenario MON-C1 passed\n";
+            });
         }
 
-        private String monA4() {
+        private CompletionStage<String> monA4() {
             String serviceA = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
             String serviceB = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
             if (!serviceB.isBlank()) {
                 post(serviceB + "/admin/drain");
             }
             post(serviceA + "/admin/restore");
-            Contracts.WorkRes before = requestFromProvider("mon-a4-before-drain", "svc-a");
-            ensure(before.providerRid().equals("svc-a"), "MON-A4 direct trigger did not hit svc-a");
-
-            post(serviceA + "/admin/drain");
-            waitForTriggerEvent("socket", Set.of("PEER_ADMISSION_CHANGED"));
-            waitForEvent(serviceA, "admin", Set.of("drain"));
-            waitForEvent(serviceA, "location", Set.of("TOPOLOGY_CHANGED"));
-            post(serviceA + "/admin/restore");
-            if (!serviceB.isBlank()) {
-                post(serviceB + "/admin/restore");
-            }
-            return "scenario MON-A4 passed\n";
+            return requestFromProvider("mon-a4-before-drain", "svc-a").thenApply(before -> {
+                ensure(before.providerRid().equals("svc-a"), "MON-A4 direct trigger did not hit svc-a");
+                post(serviceA + "/admin/drain");
+                waitForTriggerEvent("socket", Set.of("PEER_ADMISSION_CHANGED"));
+                waitForEvent(serviceA, "admin", Set.of("drain"));
+                waitForEvent(serviceA, "location", Set.of("TOPOLOGY_CHANGED"));
+                post(serviceA + "/admin/restore");
+                if (!serviceB.isBlank()) {
+                    post(serviceB + "/admin/restore");
+                }
+                return "scenario MON-A4 passed\n";
+            });
         }
 
-        private String monD1() {
+        private CompletionStage<String> monD1() {
             String serviceA = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
             String serviceB = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
             ensure(!serviceB.isBlank(), "MON-D1 requires ZLINK_JAVA_E2E_SERVICE_B_HTTP");
@@ -286,45 +303,55 @@ public final class Program {
             waitForPort(serviceB, false, "MON-D1 expected service-b to stop");
 
             Process restarted = startServiceB();
-            try {
-                waitForPort(serviceB, true, "MON-D1 expected service-b to restart");
-                post(serviceA + "/admin/drain");
-                Contracts.WorkRes reply = requestFromProvider("mon-d1-request", "svc-b");
+            waitForPort(serviceB, true, "MON-D1 expected service-b to restart");
+            post(serviceA + "/admin/drain");
+            return requestFromProvider("mon-d1-request", "svc-b").thenApply(reply -> {
                 ensure(reply.providerRid().equals("svc-b")
                         && reply.value().equals("work:mon-d1-request"),
                     "MON-D1 restarted service did not handle request");
                 waitForEvent(serviceB, "work", Set.of("WorkReq"));
                 waitForLocationEventCount(serviceA, 3);
                 return "scenario MON-D1 passed\n";
-            } finally {
+            }).whenComplete((ignored, failure) -> {
                 postBestEffort(serviceA + "/admin/restore");
                 postBestEffort(serviceB + "/shutdown");
                 waitForExit(restarted);
-            }
+            });
         }
 
-        private Contracts.WorkRes request(String value) {
-            Contracts.WorkRes reply = client.requestToChannel(
+        private CompletionStage<Contracts.WorkRes> request(String value) {
+            return client.requestToChannel(
                     Contracts.CHANNEL,
                     new Contracts.WorkReq(value))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
-            ensure(reply.value().equals("work:" + value), "reply mismatch for " + value);
-            return reply;
+                .submit(Contracts.WorkRes.class)
+                .thenApply(reply -> {
+                    ensure(reply.value().equals("work:" + value), "reply mismatch for " + value);
+                    return reply;
+                });
         }
 
-        private Contracts.WorkRes requestFromProvider(String value, String providerRid) {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-            Contracts.WorkRes last = null;
-            while (System.nanoTime() < deadline) {
-                last = request(value);
-                if (providerRid.equals(last.providerRid())) {
-                    return last;
-                }
-                sleep(200);
+        private CompletionStage<Contracts.WorkRes> requestFromProvider(String value, String providerRid) {
+            return requestFromProvider(value, providerRid,
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(20), null);
+        }
+
+        private CompletionStage<Contracts.WorkRes> requestFromProvider(
+            String value,
+            String providerRid,
+            long deadline,
+            Contracts.WorkRes last) {
+            if (System.nanoTime() >= deadline) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                    "request did not reach " + providerRid + "; last=" + last));
             }
-            throw new IllegalStateException(
-                "request did not reach " + providerRid + "; last=" + last);
+            return request(value).thenCompose(reply -> providerRid.equals(reply.providerRid())
+                ? CompletableFuture.completedFuture(reply)
+                : CompletableFuture.supplyAsync(
+                        () -> reply,
+                        CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored -> requestFromProvider(
+                        value, providerRid, deadline, reply)));
         }
 
         private Process startServiceB() {

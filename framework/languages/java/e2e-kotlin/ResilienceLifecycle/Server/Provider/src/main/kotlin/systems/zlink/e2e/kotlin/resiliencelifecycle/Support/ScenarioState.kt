@@ -1,12 +1,12 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.future.await
+import kotlinx.coroutines.withTimeout
 
 class ScenarioState(private val providerRid: String) {
     private val entries = mutableListOf<Contracts.EvidenceEntry>()
-    private val slowStarted = CountDownLatch(1)
-    private val slowRelease = CountDownLatch(1)
+    private val slowRelease = CompletableFuture<Void>()
     private var weight = 100
     private var grayFailure = false
     private var observerThrows = false
@@ -38,19 +38,11 @@ class ScenarioState(private val providerRid: String) {
     fun observerThrows(): Boolean = observerThrows
 
     fun releaseSlow() {
-        slowRelease.countDown()
+        slowRelease.complete(null)
     }
 
-    fun awaitSlowRelease() {
-        slowStarted.countDown()
-        try {
-            if (!slowRelease.await(20, TimeUnit.SECONDS)) {
-                throw IllegalStateException("slow request was not released")
-            }
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("interrupted", error)
-        }
+    suspend fun awaitSlowRelease() {
+        withTimeout(20_000) { slowRelease.await() }
     }
 
     @Synchronized

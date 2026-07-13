@@ -65,11 +65,27 @@ final class ZLinkAutoConnectPlanner {
         return desired;
     }
 
+    static Target trackableTarget(Local local, ZLinkPeerLocation peer) {
+        PeerDecision decision = validate(local, peer);
+        return decision.skipReason() == null ? targetOf(peer) : null;
+    }
+
     static List<PeerDecision> decideAll(Local local, List<ZLinkPeerLocation> peers) {
         return peers.stream().map(peer -> decide(local, peer)).toList();
     }
 
     private static PeerDecision decide(Local local, ZLinkPeerLocation peer) {
+        PeerDecision validated = validate(local, peer);
+        if (validated.skipReason() != null) {
+            return validated;
+        }
+        if (!shouldDial(local, peer)) {
+            return skip(peer, "not-initiator");
+        }
+        return new PeerDecision(peer, targetOf(peer), null);
+    }
+
+    private static PeerDecision validate(Local local, ZLinkPeerLocation peer) {
         if (peer.autoConnectType() != local.type()) {
             return skip(peer, "type-mismatch");
         }
@@ -85,17 +101,17 @@ final class ZLinkAutoConnectPlanner {
         if (isSelf(local, peer)) {
             return skip(peer, "self");
         }
-        if (!shouldDial(local, peer)) {
-            return skip(peer, "not-initiator");
-        }
-        Target target = new Target(
+        return new PeerDecision(peer, null, null);
+    }
+
+    private static Target targetOf(ZLinkPeerLocation peer) {
+        return new Target(
             targetKeyOf(peer),
             peer.nodeRid(),
             peer.role(),
             peer.endpoint(),
             peer.metadata(),
             peer.ownerId());
-        return new PeerDecision(peer, target, null);
     }
 
     private static PeerDecision skip(ZLinkPeerLocation peer, String reason) {

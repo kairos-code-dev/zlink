@@ -6,7 +6,9 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 
 public final class PlayerActorFactory implements ZLinkActorFactory {
     @Override
-    public ZLinkActor create(String actorId, ZLinkActorContext context) {
-        return new PlayerActor(actorId, context);
+    public java.util.concurrent.CompletionStage<ZLinkActor> create(
+        String actorId,
+        ZLinkActorContext context) {
+        return java.util.concurrent.CompletableFuture.completedFuture(new PlayerActor(actorId, context));
     }
 }

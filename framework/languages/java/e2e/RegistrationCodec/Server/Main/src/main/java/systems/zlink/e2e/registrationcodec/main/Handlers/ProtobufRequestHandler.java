@@ -14,9 +14,12 @@ public final class ProtobufRequestHandler
     }
 
     @Override
-    public StringValue handle(StringValue request, ZLinkRequestContext context) {
+    public java.util.concurrent.CompletionStage<StringValue> handle(
+        StringValue request,
+        ZLinkRequestContext context) {
         state.record("Request", "ProtobufEcho", request.getValue());
         state.record("ContentType", "ProtobufEcho", context.contentType().orElse(""));
-        return StringValue.of("echo:" + request.getValue());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            StringValue.of("echo:" + request.getValue()));
     }
 }

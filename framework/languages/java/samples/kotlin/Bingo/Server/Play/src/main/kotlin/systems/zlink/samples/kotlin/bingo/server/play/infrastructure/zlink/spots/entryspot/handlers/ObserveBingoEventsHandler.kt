@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
@@ -19,7 +18,6 @@ class ObserveBingoEventsHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,
         request: ObserveBingoEventsReq,
-        cancellationToken: CancellationToken,
     ): ObserveBingoEventsRes =
         entrySpot.observeEvents(actor, request)
 }

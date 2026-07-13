@@ -134,7 +134,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                     + actorId));
     }
 
-    private static CompletionStage<Void> bindActorWithRetry(
+    static CompletionStage<Void> bindActorWithRetry(
         ZLinkBackendStreamSocket stream,
         RoutingId sessionRid,
         ZLinkBackendActorRef targetActor,
@@ -147,7 +147,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             ZLinkActorSubmitFaults::retryableBoundSessionBindFailure);
     }
 
-    private static CompletionStage<Void> ignoreMissingBinding(CompletionStage<Void> stage) {
+    static CompletionStage<Void> ignoreMissingBinding(CompletionStage<Void> stage) {
         return stage.handle((ignored, error) -> {
             if (error == null || ZLinkActorSubmitFaults.requestNotFound(error)) {
                 return CompletableFuture.<Void>completedFuture(null);

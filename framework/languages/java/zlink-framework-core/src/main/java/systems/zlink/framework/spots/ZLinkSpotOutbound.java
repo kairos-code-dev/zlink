@@ -2,14 +2,14 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 
 public interface ZLinkSpotOutbound {
     ZLinkSendCall sendToSpot(
         SpotHandle spot,
         Object message);
 
-    ZLinkYieldRequestCall requestToSpot(
+    ZLinkRequestCall requestToSpot(
         SpotHandle spot,
         Object request);
 
@@ -21,7 +21,7 @@ public interface ZLinkSpotOutbound {
         String channelName,
         Object message);
 
-    ZLinkYieldRequestCall requestToChannel(
+    ZLinkRequestCall requestToChannel(
         String channelName,
         Object request);
 }

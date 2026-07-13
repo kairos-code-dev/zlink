@@ -53,7 +53,8 @@ public final class Program {
         systems.zlink.framework.spots.ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         ZLinkActorManager actors,
-        ZLinkActorClient actorClient) {
+        ZLinkActorClient actorClient,
+        systems.zlink.framework.spots.SpotHandleResolver spotHandles) {
         return new MultiNodeHttpServer(
             state,
             json,
@@ -61,7 +62,8 @@ public final class Program {
             spots,
             routes,
             actors,
-            actorClient);
+            actorClient,
+            spotHandles);
     }
 
     @Bean

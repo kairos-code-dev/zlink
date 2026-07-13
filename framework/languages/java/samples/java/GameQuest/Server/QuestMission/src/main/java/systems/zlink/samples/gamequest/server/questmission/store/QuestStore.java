@@ -20,7 +20,7 @@ public final class QuestStore implements AutoCloseable {
     private final List<Messages.StoredQuestEvent> events = new ArrayList<>();
     private final Map<String, Integer> rehydrates = new HashMap<>();
 
-    public synchronized Messages.QuestProcessingRes apply(Messages.GameplayEventEnvelope event) {
+    public synchronized Messages.QuestProcessingRes apply(Messages.GameplayMsg event) {
         String key = event.playerId() + ":" + event.idempotencyKey();
         if (eventIdsByIdempotency.containsKey(key)) {
             return new Messages.QuestProcessingRes(

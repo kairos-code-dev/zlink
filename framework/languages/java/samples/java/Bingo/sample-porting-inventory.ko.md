@@ -73,8 +73,8 @@
 | common: Spot pub/sub reward fan-out | `BingoRoomSpot.java`, `BingoWinnerMsgHandler.java` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.java` | external-adapter | done | Redis를 application port 뒤에 둔다. |
 | common: Redis-backed location store | `SampleLocationStore.java`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
-| common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
-| common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
+| common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
+| common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | 애플리케이션은 runner가 만든 endpoint만 받고, runner는 자신이 만든 container id만 정리한다. |
 | common: Protobuf schema와 생성 message 사용 | `Shared/src/main/proto/bingo_messages.proto`, generated `Messages` | shared-contract | done | `Shared` project가 Protobuf plugin과 checked-in schema로 message class를 생성한다. |
 | common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.java`, role application classes, generated `Messages` payloads | codec | done | Client와 server role은 `ZLinkProtobufCodec.defaultCodec()`을 등록하고 generated Protobuf message type을 stream/channel/Spot payload로 사용한다. |
 | common: connector wait API로 push 대기 | `BingoClientScenario.java` | validation | done | `waitFor(...).where(...).submit(...)`과 `await(...)`를 사용한다. |

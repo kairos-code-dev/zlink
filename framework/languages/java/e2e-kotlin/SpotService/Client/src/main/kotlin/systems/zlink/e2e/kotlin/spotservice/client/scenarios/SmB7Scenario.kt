@@ -4,7 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioC
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmB7Scenario {
-    fun run(context: ActorSessionScenarioContext) {
+    suspend fun run(context: ActorSessionScenarioContext) {
         context.requestOrderedUserEchoes()
 
         ensure(context.userReply2.requestSeq == 3, "SM-B7 second packet request sequence mismatch")

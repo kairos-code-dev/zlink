@@ -9,7 +9,7 @@ import java.util.Set;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSessionPacketHandlerDiscovery {
     private ZLinkSessionPacketHandlerDiscovery() {
@@ -70,7 +70,7 @@ final class ZLinkSessionPacketHandlerDiscovery {
         Set<Class<?>> handlers = new LinkedHashSet<>();
         for (Class<?> type : ZLinkClasspathTypeScanner.findCandidateTypes(
             packageName,
-            ZLinkSessionPacketHandler.class)) {
+            ZLinkTypedSessionPacketHandler.class)) {
             if (sessionPacketHandlerContextType(type) == contextType) {
                 handlers.add(type);
             }
@@ -92,7 +92,7 @@ final class ZLinkSessionPacketHandlerDiscovery {
     private static Class<?> sessionPacketHandlerContextType(Type type) {
         if (!(type instanceof ParameterizedType parameterized)
             || !(parameterized.getRawType() instanceof Class<?> rawType)
-            || (!ZLinkSessionPacketHandler.class.isAssignableFrom(rawType)
+            || (!ZLinkTypedSessionPacketHandler.class.isAssignableFrom(rawType)
                 && !KOTLIN_SESSION_PACKET_HANDLER.equals(rawType.getName()))) {
             return null;
         }

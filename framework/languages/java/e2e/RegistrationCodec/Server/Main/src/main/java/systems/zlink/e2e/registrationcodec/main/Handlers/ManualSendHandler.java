@@ -14,9 +14,10 @@ public final class ManualSendHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.EchoManualMsg message,
         ZLinkSendContext context) {
         state.record("Send", context.packetName().orElse("EchoManual"), message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

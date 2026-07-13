@@ -4,9 +4,9 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 
 public final class StageProbeReqHandler {
     @ZLinkSpotRequest
-    public Contracts.StateRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.StateRes> handle(
         UserSpot spot,
         Contracts.StageProbeReq request) {
-        return spot.stage().apply(request);
+        return java.util.concurrent.CompletableFuture.completedFuture(spot.stage().apply(request));
     }
 }

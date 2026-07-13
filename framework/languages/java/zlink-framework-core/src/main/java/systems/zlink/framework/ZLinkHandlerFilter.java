@@ -3,7 +3,7 @@ package systems.zlink.framework;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkHandlerFilter {
-    <T> CompletionStage<T> invokeAsync(
+    <T> CompletionStage<T> invoke(
         ZLinkInvocationContext context,
         ZLinkNext<T> next);
 }

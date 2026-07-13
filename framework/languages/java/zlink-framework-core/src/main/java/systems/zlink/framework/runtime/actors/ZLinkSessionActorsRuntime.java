@@ -24,6 +24,7 @@ import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Logger LOGGER = Logger.getLogger(ZLinkSessionActorsRuntime.class.getName());
@@ -40,7 +41,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private final LocalActorDispatcher localActorDispatcher;
     private final boolean nativeSessionRelayAttached;
     private final ZLinkStreamCodec defaultCodec;
+    private final ZLinkMessageFlowTracer flow;
     private final List<ZLinkSessionActor> bound = new ArrayList<>();
+    private systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory;
+
+    public ZLinkSessionActorsRuntime actorDirectory(
+        systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
+        this.actorDirectory = actorDirectory;
+        return this;
+    }
 
     @FunctionalInterface
     public interface LocalActorDispatcher {
@@ -74,6 +83,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkActorRuntime actors,
         ZLinkMessageSerializer serializer) {
         this(
+            null,
             stream,
             sessionRid,
             actors,
@@ -81,7 +91,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             ignored -> true,
             null,
             true,
-            ZLinkStreamCodec.JSON);
+            ZLinkStreamCodec.JSON,
+            null);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -91,6 +102,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkMessageSerializer serializer,
         Predicate<RoutingId> routeReady) {
         this(
+            null,
             stream,
             sessionRid,
             actors,
@@ -98,7 +110,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             routeReady,
             null,
             true,
-            ZLinkStreamCodec.JSON);
+            ZLinkStreamCodec.JSON,
+            null);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -111,7 +124,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         boolean nativeSessionRelayAttached,
         ZLinkStreamCodec defaultCodec) {
         this(null, stream, sessionRid, actors, serializer, routeReady,
-            localActorDispatcher, nativeSessionRelayAttached, defaultCodec);
+            localActorDispatcher, nativeSessionRelayAttached, defaultCodec, null);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -124,6 +137,21 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         LocalActorDispatcher localActorDispatcher,
         boolean nativeSessionRelayAttached,
         ZLinkStreamCodec defaultCodec) {
+        this(spotNode, stream, sessionRid, actors, serializer, routeReady,
+            localActorDispatcher, nativeSessionRelayAttached, defaultCodec, null);
+    }
+
+    public ZLinkSessionActorsRuntime(
+        ZLinkInternalSpotNode spotNode,
+        ZLinkBackendStreamSocket stream,
+        RoutingId sessionRid,
+        ZLinkActorRuntime actors,
+        ZLinkMessageSerializer serializer,
+        Predicate<RoutingId> routeReady,
+        LocalActorDispatcher localActorDispatcher,
+        boolean nativeSessionRelayAttached,
+        ZLinkStreamCodec defaultCodec,
+        ZLinkMessageFlowTracer flow) {
         this.spotNode = spotNode;
         this.stream = stream;
         this.sessionRid = sessionRid;
@@ -133,6 +161,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         this.localActorDispatcher = localActorDispatcher;
         this.nativeSessionRelayAttached = nativeSessionRelayAttached;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
+        this.flow = flow;
     }
 
     @Override
@@ -183,6 +212,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             .whenComplete((ignored, error) -> bound.removeAll(current));
     }
 
+
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
         ZLinkBackendActorRef ref) {
         trace("session-actor bind-start sessionRid=" + sessionRid
@@ -230,7 +260,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     null,
                     true,
                     defaultCodec,
-                    RELAY_HEADERS);
+                    RELAY_HEADERS,
+                    flow,
+                    actorDirectory);
                 bound.add(actor);
                 return actor;
             })
@@ -306,7 +338,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     localActorDispatcher,
                     nativeSessionRelayAttached,
                     defaultCodec,
-                    RELAY_HEADERS);
+                    RELAY_HEADERS,
+                    flow,
+                    actorDirectory);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 boundSession.setRebindListener(boundActor::rebindNativeActor);
                 bound.add(boundActor);

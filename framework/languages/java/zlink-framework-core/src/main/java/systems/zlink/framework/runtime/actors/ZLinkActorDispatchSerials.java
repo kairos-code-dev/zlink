@@ -12,10 +12,10 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 final class ZLinkActorDispatchSerials {
     private final Map<String, ZLinkAsyncSerialQueue> queues = new HashMap<>();
     private final Set<String> activeActorIds = new HashSet<>();
-    private final ThreadLocal<String> currentActorId = new ThreadLocal<>();
 
     boolean isCurrent(String actorId) {
-        return actorId.equals(currentActorId.get());
+        return actorId.equals(systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentActorDispatch());
     }
 
     synchronized boolean isActive(String actorId) {
@@ -52,18 +52,13 @@ final class ZLinkActorDispatchSerials {
     <T> CompletionStage<T> runTurn(
         String actorId,
         Supplier<CompletionStage<T>> operation) {
-        String previous = currentActorId.get();
-        currentActorId.set(actorId);
-        try {
+        try (systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.Scope ignored =
+                 systems.zlink.framework.runtime.internal.handlers
+                     .ZLinkSuspendInvocationContext.enterActorDispatch(actorId)) {
             return operation.get();
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
-        } finally {
-            if (previous == null) {
-                currentActorId.remove();
-            } else {
-                currentActorId.set(previous);
-            }
         }
     }
 

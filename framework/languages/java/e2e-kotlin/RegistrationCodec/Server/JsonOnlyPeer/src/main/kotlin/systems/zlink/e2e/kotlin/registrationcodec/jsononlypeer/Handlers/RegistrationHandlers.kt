@@ -17,18 +17,18 @@ import systems.zlink.e2e.kotlin.registrationcodec.jsononlypeer.infrastructure.Di
 import systems.zlink.e2e.kotlin.registrationcodec.jsononlypeer.infrastructure.DiSingletonDependency
 import systems.zlink.e2e.kotlin.registrationcodec.jsononlypeer.infrastructure.ScenarioState
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.channels.ZLinkSendContext
-import systems.zlink.framework.channels.ZLinkSendHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.framework.handlers.ZLinkSend
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler
 
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 class AutoRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<EchoAutoReq, EchoAutoRes> {
-    override fun handle(request: EchoAutoReq, context: ZLinkRequestContext): EchoAutoRes {
+) : ZLinkSuspendingRequestHandler<EchoAutoReq, EchoAutoRes> {
+    override suspend fun handle(request: EchoAutoReq, context: ZLinkRequestContext): EchoAutoRes {
         state.record("Request", "EchoAutoReq", request.value)
         return EchoAutoRes("echo:${request.value}", "auto")
     }
@@ -37,8 +37,8 @@ class AutoRequestHandler(
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 class AutoSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<EchoAutoMsg> {
-    override fun handle(message: EchoAutoMsg, context: ZLinkSendContext) {
+) : ZLinkSuspendingSendHandler<EchoAutoMsg> {
+    override suspend fun handle(message: EchoAutoMsg, context: ZLinkSendContext) {
         state.record("Send", "EchoAutoMsg", message.value)
     }
 }
@@ -48,21 +48,21 @@ class AttrEchoHandler(
     private val state: ScenarioState,
 ) {
     @ZLinkRequest(packetName = "EchoAttrReq")
-    fun request(request: EchoAttrReq, context: ZLinkRequestContext): EchoAttrRes {
+    suspend fun request(request: EchoAttrReq, context: ZLinkRequestContext): EchoAttrRes {
         state.record("Request", "EchoAttrReq", request.value)
         return EchoAttrRes("echo:${request.value}", "attr")
     }
 
     @ZLinkSend(packetName = "EchoAttrMsg")
-    fun send(message: EchoAttrMsg, context: ZLinkSendContext) {
+    suspend fun send(message: EchoAttrMsg, context: ZLinkSendContext) {
         state.record("Send", "EchoAttrMsg", message.value)
     }
 }
 
 class ManualRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<EchoManualReq, EchoManualRes> {
-    override fun handle(request: EchoManualReq, context: ZLinkRequestContext): EchoManualRes {
+) : ZLinkSuspendingRequestHandler<EchoManualReq, EchoManualRes> {
+    override suspend fun handle(request: EchoManualReq, context: ZLinkRequestContext): EchoManualRes {
         state.record("Request", context.packetName().orElse("EchoManualReq"), request.value)
         return EchoManualRes("echo:${request.value}", "manual")
     }
@@ -70,8 +70,8 @@ class ManualRequestHandler(
 
 class ManualSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<EchoManualMsg> {
-    override fun handle(message: EchoManualMsg, context: ZLinkSendContext) {
+) : ZLinkSuspendingSendHandler<EchoManualMsg> {
+    override suspend fun handle(message: EchoManualMsg, context: ZLinkSendContext) {
         state.record("Send", context.packetName().orElse("EchoManualMsg"), message.value)
     }
 }
@@ -80,8 +80,8 @@ class DiLifecycleRequestHandler(
     private val scoped: ObjectProvider<DiScopedDependency>,
     private val singleton: DiSingletonDependency,
     private val state: ScenarioState,
-) : ZLinkRequestHandler<DiLifecycleReq, DiLifecycleRes> {
-    override fun handle(request: DiLifecycleReq, context: ZLinkRequestContext): DiLifecycleRes {
+) : ZLinkSuspendingRequestHandler<DiLifecycleReq, DiLifecycleRes> {
+    override suspend fun handle(request: DiLifecycleReq, context: ZLinkRequestContext): DiLifecycleRes {
         val scopedId = scoped.getObject().use { dependency ->
             state.record(
                 "DI",

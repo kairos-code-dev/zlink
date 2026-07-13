@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -59,7 +60,7 @@ function Cleanup {
         Stop-TrackedProcessTree -Process $Processes[$i]
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer *> $null
+        Remove-ZlinkSampleRedis $RedisContainer
     }
 }
 
@@ -153,20 +154,9 @@ try {
     $workflowARouter = Split-Endpoint $endpoints[6]
     $workflowBRouter = Split-Endpoint $endpoints[7]
 
-    if ($env:SHOPPINGMALL_REDIS_ENDPOINT) {
-        $redisEndpoint = $env:SHOPPINGMALL_REDIS_ENDPOINT
-    } else {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required when SHOPPINGMALL_REDIS_ENDPOINT is not set."
-        }
-        $RedisContainer = "shoppingmall-java-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis Docker container."
-        }
-        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
-    }
+    $redis = Start-ZlinkSampleRedis "zlink-redis-java-sample-shoppingmall"
+    $RedisContainer = $redis.ContainerId
+    $redisEndpoint = $redis.Endpoint
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
 
@@ -195,7 +185,6 @@ try {
     Wait-Port $apiAHttp.Host $apiAHttp.Port
     Wait-Port $apiBHttp.Host $apiBHttp.Port
 
-    Start-Sleep -Seconds 3
     Write-Host "topology=ready"
     $clientLog = Join-Path $LogDir "client.log"
     $env:JAVA_TOOL_OPTIONS = $commonJavaOptions

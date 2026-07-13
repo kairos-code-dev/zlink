@@ -9,16 +9,13 @@ import java.util.concurrent.Executor;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 
@@ -46,31 +43,13 @@ final class ZLinkSpotDirectOutbound {
             this, spot, targetNodeRid, spotRid, payload, packetName);
     }
 
-    ZLinkYieldRequestCall request(
+    ZLinkRequestCall request(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
-        return request(
-            spot,
-            targetNodeRid,
-            spotRid,
-            payload,
-            packetName,
-            timeout,
-            ZLinkFrameworkTurns.captureCurrent());
-    }
-
-    ZLinkYieldRequestCall request(
-        ZLinkBackendSpot spot,
-        RoutingId targetNodeRid,
-        RoutingId spotRid,
-        Message payload,
-        Optional<String> packetName,
-        Duration timeout,
-        ZLinkYieldTurn turn) {
         return new ZLinkSpotDirectRequestCall(
             this,
             spot,
@@ -78,8 +57,7 @@ final class ZLinkSpotDirectOutbound {
             spotRid,
             payload,
             packetName,
-            timeout,
-            turn);
+            timeout);
     }
 
     ZLinkPublishCall publish(
@@ -255,7 +233,7 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
     }
 }
 
-final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
+final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
     private final ZLinkSpotDirectOutbound outbound;
     private final ZLinkBackendSpot spot;
     private final RoutingId targetNodeRid;
@@ -263,7 +241,6 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
-    private final ZLinkYieldTurn turn;
 
     ZLinkSpotDirectRequestCall(
         ZLinkSpotDirectOutbound outbound,
@@ -272,8 +249,7 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
         RoutingId spotRid,
         Message payload,
         Optional<String> packetName,
-        Duration timeout,
-        ZLinkYieldTurn turn) {
+        Duration timeout) {
         this.outbound = outbound;
         this.spot = spot;
         this.targetNodeRid = targetNodeRid;
@@ -281,10 +257,9 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
-        this.turn = turn;
     }
 
-    public ZLinkYieldRequestCall packetName(String packetName) {
+    public ZLinkRequestCall packetName(String packetName) {
         return new ZLinkSpotDirectRequestCall(
             outbound,
             spot,
@@ -292,17 +267,16 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
             spotRid,
             payload,
             Optional.of(packetName),
-            timeout,
-            turn);
+            timeout);
     }
 
     @Override
-    public ZLinkYieldRequestCall metadata(String key, String value) {
+    public ZLinkRequestCall metadata(String key, String value) {
         return this;
     }
 
     @Override
-    public ZLinkYieldRequestCall timeout(Duration timeout) {
+    public ZLinkRequestCall timeout(Duration timeout) {
         return new ZLinkSpotDirectRequestCall(
             outbound,
             spot,
@@ -310,39 +284,22 @@ final class ZLinkSpotDirectRequestCall implements ZLinkYieldRequestCall {
             spotRid,
             payload,
             packetName,
-            timeout,
-            turn);
+            timeout);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-        return outbound.submitRequest(
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
+            outbound.submitRequest(
             spot,
             targetNodeRid,
             spotRid,
             payload,
             packetName,
             timeout,
-            replyType);
+            replyType));
     }
 
-    @Override
-    public <TReply> TReply yield(Class<TReply> replyType) {
-        return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
-    }
-
-    private ZLinkYieldTurn requireTurn() {
-        if (turn != null) {
-            return turn;
-        }
-        ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-        if (current != null) {
-            return current;
-        }
-        throw new IllegalStateException(
-            "yield requires a framework Spot handler turn captured when the call object was created");
-    }
 }
 
 final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {

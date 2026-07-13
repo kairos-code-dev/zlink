@@ -20,6 +20,7 @@ final class ZLinkStreamReceiveDispatcher {
     private final ZLinkStreamConnectorPayloadCodec payloadCodec;
     private final Consumer<ZLinkStreamError> errorPublisher;
     private final Function<String, CompletionStage<Void>> controlSender;
+    private final Consumer<ZLinkStreamCloseReason> closeReasonReceived;
 
     ZLinkStreamReceiveDispatcher(
         ZLinkStreamConnectorConfiguration configuration,
@@ -29,7 +30,8 @@ final class ZLinkStreamReceiveDispatcher {
         ZLinkStreamInboundObserverDispatcher inboundObservers,
         ZLinkStreamConnectorPayloadCodec payloadCodec,
         Consumer<ZLinkStreamError> errorPublisher,
-        Function<String, CompletionStage<Void>> controlSender) {
+        Function<String, CompletionStage<Void>> controlSender,
+        Consumer<ZLinkStreamCloseReason> closeReasonReceived) {
         this.configuration = configuration;
         this.handlers = handlers;
         this.dispatchQueue = dispatchQueue;
@@ -38,6 +40,7 @@ final class ZLinkStreamReceiveDispatcher {
         this.payloadCodec = payloadCodec;
         this.errorPublisher = errorPublisher;
         this.controlSender = controlSender;
+        this.closeReasonReceived = closeReasonReceived;
     }
 
     void dispatch(byte[] encodedHeader, byte[] payload) {
@@ -48,7 +51,9 @@ final class ZLinkStreamReceiveDispatcher {
             + " name=" + header.name()
             + " requestSeq=" + header.requestSeq()
             + " bytes=" + decodedPayload.length
-            + " correlation=" + header.correlationId());
+            + " correlation=" + header.correlationId()
+            + " flow=" + header.flowId()
+            + " origin=" + flowOriginName(header.flowOrigin()));
         inboundObservers.enqueue(header, payload);
         if (header.kind() == ZLinkStreamWireProtocol.KIND_CONTROL) {
             dispatchControl(header, decodedPayload);
@@ -68,9 +73,33 @@ final class ZLinkStreamReceiveDispatcher {
         }
     }
 
+    private static String flowOriginName(int origin) {
+        return switch (origin) {
+            case 1 -> "inbound";
+            case 2 -> "timer";
+            case 3 -> "application";
+            case 4 -> "lifecycle";
+            default -> null;
+        };
+    }
+
     private void dispatchControl(ZLinkStreamWireProtocol.Header header, byte[] payload) {
+        if (ZLinkSessionClosingControl.NAME.equals(header.name())) {
+            try {
+                ZLinkStreamCloseReason reason = ZLinkSessionClosingControl.decode(payload);
+                DefaultZLinkStreamConnector.trace(
+                    "connector session-closing version=" + ZLinkSessionClosingControl.VERSION
+                        + " reason=" + reason.name().toLowerCase());
+                closeReasonReceived.accept(reason);
+            } catch (IllegalArgumentException invalidControl) {
+                closeReasonReceived.accept(ZLinkStreamCloseReason.PROTOCOL_ERROR);
+                throw invalidControl;
+            }
+            return;
+        }
         if (payload.length != 0) {
-            throw new IllegalArgumentException("control packet payload must be empty");
+            closeReasonReceived.accept(ZLinkStreamCloseReason.PROTOCOL_ERROR);
+            throw new IllegalArgumentException("heartbeat control packet payload must be empty");
         }
         if (HEARTBEAT_PING_NAME.equals(header.name())) {
             controlSender.apply(HEARTBEAT_PONG_NAME);
@@ -79,6 +108,7 @@ final class ZLinkStreamReceiveDispatcher {
         if (HEARTBEAT_PONG_NAME.equals(header.name())) {
             return;
         }
+        closeReasonReceived.accept(ZLinkStreamCloseReason.PROTOCOL_ERROR);
         throw new IllegalArgumentException("unknown control packet");
     }
 

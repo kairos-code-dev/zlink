@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.session.sessions;
 
-import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -27,27 +26,30 @@ public final class BingoSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public java.util.concurrent.CompletionStage<Void> onConnected() {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnected() {
-        context.actors().bound()
-            .forEach(actor -> await(actor.notifyDisconnected()));
+    public java.util.concurrent.CompletionStage<Void> onDisconnected() {
+        return java.util.concurrent.CompletableFuture.allOf(context.actors().bound().stream()
+            .map(actor -> actor.notifyDisconnected().toCompletableFuture())
+            .toArray(java.util.concurrent.CompletableFuture[]::new));
     }
 
     @Override
-    public void onError(ZLinkStreamError error) {
+    public java.util.concurrent.CompletionStage<Void> onError(ZLinkStreamError error) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        boolean handled = await(handlers.tryHandleAsync(context, dispatch, payload));
-        if (handled) {
-            return;
-        }
-        ZLinkSessionActor actor = requireSingleBoundActor(dispatch.packetName());
-        await(actor.relay(payload));
+    public java.util.concurrent.CompletionStage<Void> onDispatch(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload) {
+        return handlers.tryHandle(context, dispatch, payload).thenCompose(handled ->
+            handled
+                ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                : requireSingleBoundActor(dispatch.packetName()).relay(payload));
     }
 
     private ZLinkSessionActor requireSingleBoundActor(String packetName) {

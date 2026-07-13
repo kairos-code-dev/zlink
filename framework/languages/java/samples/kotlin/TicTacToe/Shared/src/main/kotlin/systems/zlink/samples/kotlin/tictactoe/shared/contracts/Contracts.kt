@@ -81,7 +81,7 @@ class ObserveMilestoneReq
 
 data class ObserveMilestoneRes(val subscribed: Boolean)
 
-data class LeaveGameMsg(val roomId: String)
+data class LeaveGameReq(val roomId: String)
 
 data class PlayerWinMilestoneMsg(
     val roomId: String,

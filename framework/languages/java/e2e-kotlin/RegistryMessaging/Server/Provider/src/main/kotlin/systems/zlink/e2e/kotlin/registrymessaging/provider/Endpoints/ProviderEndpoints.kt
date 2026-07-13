@@ -8,6 +8,10 @@ import java.net.InetSocketAddress
 import java.net.URI
 import java.time.Duration
 import java.util.concurrent.Executors
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.TimeUnit
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Configuration.ServerOptions
@@ -63,7 +67,7 @@ class ProviderEndpoints(
         }
         server.createContext("/profile/command") { exchange ->
             val command = exchange.readJson<ProfileMsg>()
-            sendProfile(Contracts.PROFILE_CHANNEL, command, Contracts.PROFILE_COMMAND_PACKET)
+            sendProfile(Contracts.PROFILE_CHANNEL, command)
             exchange.writeJson(mapOf("status" to "sent"))
         }
         server.createContext("/profile/route/request") { exchange ->
@@ -72,16 +76,12 @@ class ProviderEndpoints(
         }
         server.createContext("/profile/route/missing") { exchange ->
             val request = exchange.readJson<ScenarioRoutePingReq>()
-            var failed = false
-            try {
+            exchange.writeJson(
                 routes.requestToNode(Contracts.PROFILE_ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
-                    .packetName(Contracts.ROUTE_PACKET)
                     .timeout(Duration.ofMillis(300))
-                    .await(ScenarioRoutePingRes::class.java)
-            } catch (_: RuntimeException) {
-                failed = true
-            }
-            exchange.writeJson(RouteMissingRes(failed))
+                    .submit(ScenarioRoutePingRes::class.java)
+                    .handle { _, error -> RouteMissingRes(error != null) },
+            )
         }
         server.createContext("/shutdown") { exchange ->
             exchange.writeJson(mapOf("status" to "stopping"))
@@ -94,44 +94,51 @@ class ProviderEndpoints(
         return server
     }
 
-    private fun requestProfile(channelName: String, request: ProfileReq, timeout: Duration): ProfileRes {
-        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
-        var last: RuntimeException? = null
-        while (System.nanoTime() < deadline) {
-            try {
-                return channels.requestToChannel(channelName, request)
-                    .packetName(Contracts.PROFILE_REQUEST_PACKET)
-                    .timeout(timeout)
-                    .await(ProfileRes::class.java)
-            } catch (error: RuntimeException) {
-                last = error
-                Thread.sleep(100)
-            }
-        }
-        throw IllegalStateException("Timed out waiting for profile request channel route.", last)
+    private fun requestProfile(channelName: String, request: ProfileReq, timeout: Duration): CompletionStage<ProfileRes> =
+        requestProfile(channelName, request, timeout, System.nanoTime() + Duration.ofSeconds(30).toNanos())
+
+    private fun requestProfile(
+        channelName: String,
+        request: ProfileReq,
+        timeout: Duration,
+        deadline: Long,
+    ): CompletionStage<ProfileRes> = channels.requestToChannel(channelName, request)
+        .timeout(timeout)
+        .submit(ProfileRes::class.java)
+        .handle { reply, error -> retryOrComplete(reply, error, deadline) {
+            requestProfile(channelName, request, timeout, deadline)
+        } }
+        .thenCompose { it }
+
+    private fun sendProfile(channelName: String, command: ProfileMsg) {
+        channels.sendToChannel(channelName, command).submit()
     }
 
-    private fun sendProfile(channelName: String, command: ProfileMsg, packetName: String) {
-        channels.sendToChannel(channelName, command)
-            .packetName(packetName)
-            .submit()
-    }
+    private fun requestRoute(target: RoutingId, request: ScenarioRoutePingReq): CompletionStage<ScenarioRoutePingRes> =
+        requestRoute(target, request, System.nanoTime() + Duration.ofSeconds(30).toNanos())
 
-    private fun requestRoute(target: RoutingId, request: ScenarioRoutePingReq): ScenarioRoutePingRes {
-        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
-        var last: RuntimeException? = null
-        while (System.nanoTime() < deadline) {
-            try {
-                return routes.requestToNode(Contracts.PROFILE_ROUTE_CHANNEL, target, request)
-                    .packetName(Contracts.ROUTE_PACKET)
-                    .timeout(Duration.ofSeconds(5))
-                    .await(ScenarioRoutePingRes::class.java)
-            } catch (error: RuntimeException) {
-                last = error
-                Thread.sleep(100)
-            }
-        }
-        throw IllegalStateException("Timed out waiting for route mesh target.", last)
+    private fun requestRoute(
+        target: RoutingId,
+        request: ScenarioRoutePingReq,
+        deadline: Long,
+    ): CompletionStage<ScenarioRoutePingRes> = routes.requestToNode(Contracts.PROFILE_ROUTE_CHANNEL, target, request)
+        .timeout(Duration.ofSeconds(5))
+        .submit(ScenarioRoutePingRes::class.java)
+        .handle { reply, error -> retryOrComplete(reply, error, deadline) {
+            requestRoute(target, request, deadline)
+        } }
+        .thenCompose { it }
+
+    private fun <T> retryOrComplete(
+        value: T?,
+        error: Throwable?,
+        deadline: Long,
+        next: () -> CompletionStage<T>,
+    ): CompletionStage<T> {
+        if (error == null) return CompletableFuture.completedFuture(value!!)
+        if (System.nanoTime() >= deadline) return CompletableFuture.failedFuture(error)
+        return CompletableFuture.runAsync({}, CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS))
+            .thenCompose { next() }
     }
 
     private inline fun <reified T> HttpExchange.readJson(): T =
@@ -149,4 +156,14 @@ class ProviderEndpoints(
             responseBody.use { it.write(bytes) }
         }
     }
+
+    private fun HttpExchange.writeJson(value: CompletionStage<*>) {
+        value.whenComplete { result, error ->
+            if (error == null) writeJson(result ?: mapOf<String, String>())
+            else writeJson(mapOf("error" to (unwrap(error).message ?: unwrap(error).javaClass.name)))
+        }
+    }
+
+    private fun unwrap(error: Throwable): Throwable =
+        if (error is CompletionException && error.cause != null) error.cause!! else error
 }

@@ -17,17 +17,19 @@ public final class AttrEchoHandler {
     }
 
     @ZLinkRequest(packetName = "EchoAttr")
-    public Contracts.EchoRes request(
+    public java.util.concurrent.CompletionStage<Contracts.EchoRes> request(
         Contracts.EchoAttrReq request,
         ZLinkRequestContext context) {
         state.record("Request", "EchoAttr", request.value());
-        return new Contracts.EchoRes("echo:" + request.value(), "attr");
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.EchoRes("echo:" + request.value(), "attr"));
     }
 
     @ZLinkSend(packetName = "EchoAttr")
-    public void send(
+    public java.util.concurrent.CompletionStage<Void> send(
         Contracts.EchoAttrMsg message,
         ZLinkSendContext context) {
         state.record("Send", "EchoAttr", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

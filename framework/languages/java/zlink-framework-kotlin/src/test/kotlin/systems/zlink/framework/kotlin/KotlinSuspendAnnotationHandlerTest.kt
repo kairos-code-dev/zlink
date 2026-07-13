@@ -22,7 +22,6 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.channels.ZLinkPublishContext
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkSendContext
@@ -37,19 +36,18 @@ import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.framework.handlers.ZLinkSend
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.handlers.ZLinkSpotActorSend
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue
-import systems.zlink.framework.execution.ZLinkYieldTurnTestSupport
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
@@ -160,7 +158,7 @@ final class KotlinSuspendAnnotationHandlerTest {
             "handle",
             arrayOf(ProfileRequest("Ada"), requestContext("profile")),
         )
-        val unsupportedInvoker = object : ZLinkSuspendHandlerInvoker {
+        val unsupportedInvoker = object : ZLinkSuspendInvocationAdapter {
             override fun supports(method: java.lang.reflect.Method): Boolean = false
 
             override fun invoke(
@@ -183,7 +181,7 @@ final class KotlinSuspendAnnotationHandlerTest {
         }
 
         assertTrue(failure.cause is ZLinkConfigurationException)
-        assertTrue(failure.cause!!.message!!.contains("registered ZLinkSuspendHandlerInvoker"))
+        assertTrue(failure.cause!!.message!!.contains("registered ZLinkSuspendInvocationAdapter"))
     }
 
     @Test
@@ -419,7 +417,7 @@ final class KotlinSuspendAnnotationHandlerTest {
         val lifecycle = ZLinkFrameworkLifecycle(
             options,
             FakeZLinkBackendAdapterFactory(),
-            ZLinkHandlerFactory.reflection(),
+            ZLinkHandlerActivator.reflection(),
         )
         val failure = assertThrows<ZLinkConfigurationException> {
             lifecycle.start()
@@ -440,7 +438,7 @@ final class KotlinSuspendAnnotationHandlerTest {
         val lifecycle = ZLinkFrameworkLifecycle(
             options,
             FakeZLinkBackendAdapterFactory(),
-            ZLinkHandlerFactory.reflection(),
+            ZLinkHandlerActivator.reflection(),
         )
         try {
             lifecycle.start()
@@ -454,7 +452,7 @@ final class KotlinSuspendAnnotationHandlerTest {
         AnnotationConfigApplicationContext().use { context ->
             val backendFactory = FakeZLinkBackendAdapterFactory()
             context.registerBean(
-                ZLinkBackendAdapterFactory::class.java,
+                ZLinkBackendAdapterProvider::class.java,
                 java.util.function.Supplier { backendFactory },
             )
             context.register(
@@ -475,7 +473,6 @@ final class KotlinSuspendAnnotationHandlerTest {
             override fun channelName() = java.util.Optional.of(channelName)
             override fun packetName() = java.util.Optional.of("ProfileRequest")
             override fun contentType() = java.util.Optional.empty<String>()
-            override fun cancellationToken() = systems.zlink.framework.CancellationToken { false }
         }
 }
 
@@ -513,7 +510,7 @@ class KotlinYieldAfterDispatcherSwitchHandler(
     suspend fun request(request: ProfileRequest): ProfileReply {
         delay(1)
         return withContext(dispatcher) {
-            ZLinkYieldTurnTestSupport.awaitInCurrentTurn(replyStage)
+            replyStage.await()
         }
     }
 }
@@ -580,15 +577,14 @@ class JavaProfileRequestHandler : systems.zlink.framework.channels.ZLinkRequestH
     override fun handle(
         request: ProfileRequest,
         context: ZLinkRequestContext,
-    ) = ProfileReply(request.name)
+    ) = CompletableFuture.completedFuture(ProfileReply(request.name))
 }
 
 class PlayerActorFactory : ZLinkActorFactory {
     override fun create(
         actorId: String,
         context: ZLinkActorContext,
-    ): ZLinkActor =
-        PlayerActor(actorId)
+    ) = CompletableFuture.completedFuture<ZLinkActor>(PlayerActor(actorId))
 }
 
 @ZLinkHandlerGroup("kotlin-interface-spot")
@@ -599,7 +595,6 @@ class KotlinSuspendingSpotActorInterfaceHandler :
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,
         request: InterfacePlayerCommand,
-        cancellationToken: CancellationToken,
     ): InterfacePlayerReply =
         InterfacePlayerReply("${actor.actorId()}:${request.value}")
 }
@@ -617,7 +612,6 @@ class SecondKotlinSuspendingSpotActorInterfaceHandler :
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,
         request: SecondInterfacePlayerCommand,
-        cancellationToken: CancellationToken,
     ): SecondInterfacePlayerReply =
         SecondInterfacePlayerReply("${actor.actorId()}:${request.value}")
 }
@@ -680,11 +674,13 @@ class PlayerActor(private val id: String) : ZLinkActor {
     override fun actorId(): String = id
     override fun context(): ZLinkActorContext = object : ZLinkActorContext {
         override fun spotRid() = java.util.Optional.empty<RoutingId>()
-        override fun isJoined() = false
         override fun boundSession() = null
-        override fun getSpot(): ZLinkSpot<*>? = null
-        override fun <TSpot : ZLinkSpot<*>?> getSpot(spotType: Class<TSpot>): TSpot? = null
+        override fun joinSpot(spotRid: RoutingId, request: Any) = unsupportedJoinCall()
+        override fun joinEntrySpot(spotNodeRid: RoutingId, request: Any) = unsupportedJoinCall()
     }
+
+    private fun unsupportedJoinCall(): systems.zlink.framework.actors.ZLinkActorJoinCall =
+        throw UnsupportedOperationException("test actor does not join spots")
 }
 
 data class JoinRequest(val value: String)
@@ -710,7 +706,7 @@ data class SecondInterfacePlayerReply(val value: String)
 class InterfaceSpot(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
     override fun context(): ZLinkSpotContext = spotContext
 
-    override fun onJoinedActor(actor: PlayerActor, cancellationToken: CancellationToken) = Unit
+    override fun onJoinedActor(actor: PlayerActor) = CompletableFuture.completedFuture<Void>(null)
 
-    override fun onLeaveActor(actor: PlayerActor, cancellationToken: CancellationToken) = Unit
+    override fun onLeaveActor(actor: PlayerActor) = CompletableFuture.completedFuture<Void>(null)
 }

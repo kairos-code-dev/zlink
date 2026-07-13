@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 
 final class ZLinkJsonMessageSerializerTest {
     @Test
@@ -27,6 +29,21 @@ final class ZLinkJsonMessageSerializerTest {
 
         assertEquals("courier-a", reply.courierId());
         assertNull(reply.actor());
+    }
+
+    @Test
+    void preservesFrameworkActorReferences() {
+        ZLinkJsonMessageSerializer serializer = new ZLinkJsonMessageSerializer();
+        ActorRefSnapshot expected = new ActorRefSnapshot(
+            RoutingId.from(new byte[] {0, 65, 66}),
+            "courier-a",
+            7L);
+
+        ActorRefSnapshot actual = serializer.deserialize(
+            serializer.serialize(expected),
+            ActorRefSnapshot.class);
+
+        assertEquals(expected, actual);
     }
 
     record ProfileReply(String value) {

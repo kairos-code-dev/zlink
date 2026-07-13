@@ -1,6 +1,7 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -43,10 +44,9 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     }
 
     @Override
-    public void onCreateActor(
+    public CompletionStage<Void> onCreateActor(
         ScenarioActor actor,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken) {
+        ZLinkMessage createRequest) {
         if (!createRequest.isEmpty()) {
             Contracts.ActorAuthReq request = createRequest.decode(Contracts.ActorAuthReq.class);
             actor.applyProfile(request.profile());
@@ -56,27 +56,25 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
                     + String.join(",", request.profile().tags()));
         }
         evidence.record("ActorCreated", "entry", actor.actorId() + "#" + actor.nextSequence());
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
+        ZLinkMessage request) {
         evidence.record("ActorEntryJoinRequested", "entry", actorId);
-        return ZLinkSpotActorJoinResponse.accept();
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(
-        ScenarioActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(ScenarioActor actor) {
         evidence.record("ActorEntryJoined", "entry", actor.actorId() + "#" + actor.nextSequence());
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(
-        ScenarioActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(ScenarioActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 }

@@ -4,11 +4,13 @@ import java.time.Instant
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.spots.SpotHandle
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryMsg
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatus
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
@@ -22,8 +24,9 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAsse
 class DispatchWorker(
     private val channels: ZLinkClient,
     private val routes: ZLinkRouteClient,
+    private val spots: SpotHandleResolver,
 ) {
-    fun dispatch(request: AssignDelivery) {
+    suspend fun dispatch(request: AssignDeliveryMsg) {
         if (request.deliveryId == "delivery-reassign") {
             dispatchReassigned(request)
             return
@@ -31,12 +34,12 @@ class DispatchWorker(
         dispatchSuccessful(request)
     }
 
-    fun assertServerEvidence(request: ServerAssertionReq): ServerAssertionRes =
+    suspend fun assertServerEvidence(request: ServerAssertionReq): ServerAssertionRes =
         channels
             .requestToChannel(SampleNames.TrackingChannel, request)
-            .await(ServerAssertionRes::class.java)
+            .submit(ServerAssertionRes::class.java).await()
 
-    private fun dispatchSuccessful(request: AssignDelivery) {
+    private suspend fun dispatchSuccessful(request: AssignDeliveryMsg) {
         publishStatus(request.deliveryId, DeliveryStatus.Assigned, "courier-a")
         val offered = offer(request, "courier-a")
         if (!offered.accepted) {
@@ -48,7 +51,7 @@ class DispatchWorker(
         publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-a")
     }
 
-    private fun dispatchReassigned(request: AssignDelivery) {
+    private suspend fun dispatchReassigned(request: AssignDeliveryMsg) {
         publishStatus(request.deliveryId, DeliveryStatus.Assigned, "courier-a")
         val first = offer(request, "courier-a")
         if (first.accepted) {
@@ -66,12 +69,12 @@ class DispatchWorker(
         publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-b")
     }
 
-    private fun offer(request: AssignDelivery, courierId: String): OfferDeliveryRes {
+    private suspend fun offer(request: AssignDeliveryMsg, courierId: String): OfferDeliveryRes {
         val address = courierAddress(courierId)
         val found = routes
             .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
-            .await(FindCourierActorRes::class.java)
+            .submit(FindCourierActorRes::class.java).await()
         if (found.actor == null) {
             return OfferDeliveryRes(
                 deliveryId = request.deliveryId,
@@ -92,15 +95,16 @@ class DispatchWorker(
                 ),
             )
             .timeout(SampleTimings.OfferRequestTimeout)
-            .await(OfferDeliveryRes::class.java)
+            .submit(OfferDeliveryRes::class.java).await()
     }
 
-    private fun courierAddress(courierId: String): SpotRef {
+    private suspend fun courierAddress(courierId: String): SpotHandle {
         val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
-        return SpotRef(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        return spots.resolveSpotHandle(nodeRid).await()
+            .orElseThrow { IllegalStateException("spot not found: $nodeRid") }
     }
 
-    private fun publishStatus(
+    private suspend fun publishStatus(
         deliveryId: String,
         status: DeliveryStatus,
         courierId: String,
@@ -115,6 +119,6 @@ class DispatchWorker(
                     occurredAt = Instant.now(),
                 ),
             )
-            .await(DeliveryStatusChangedRes::class.java)
+            .submit(DeliveryStatusChangedRes::class.java).await()
     }
 }

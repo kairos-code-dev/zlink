@@ -18,18 +18,18 @@ public final class OpenConversationHandler
     }
 
     @Override
-    public Messages.OpenConversationApiRes handle(
+    public java.util.concurrent.CompletionStage<Messages.OpenConversationApiRes> handle(
         Messages.OpenConversationApiReq request,
         ZLinkRequestContext context) {
-        Messages.AllocateConversationRes allocated = channels
-            .requestToChannel(
+        return channels.requestToChannel(
                 SampleNames.SupportChannel,
                 new Messages.AllocateConversationReq(
                     request.customerActorId(),
                     request.customerDisplayName(),
                     request.subject()))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.AllocateConversationRes.class);
-        return new Messages.OpenConversationApiRes(allocated.conversationId(), allocated.status());
+            .submit(Messages.AllocateConversationRes.class)
+            .thenApply(allocated -> new Messages.OpenConversationApiRes(
+                allocated.conversationId(), allocated.status()));
     }
 }

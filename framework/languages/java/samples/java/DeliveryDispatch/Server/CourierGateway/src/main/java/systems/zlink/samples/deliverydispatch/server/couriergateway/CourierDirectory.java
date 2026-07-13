@@ -13,7 +13,7 @@ public final class CourierDirectory {
         return SampleTopology.courierPlacement(courierId);
     }
 
-    public CourierBinding remember(Messages.CourierActorEnsured ensured, String sessionRoute) {
+    public CourierBinding remember(Messages.EnsureCourierActorRes ensured, String sessionRoute) {
         CourierBinding binding = new CourierBinding(ensured.courierId(), ensured.actor(), sessionRoute);
         synchronized (gate) {
             actors.put(ensured.courierId(), binding);

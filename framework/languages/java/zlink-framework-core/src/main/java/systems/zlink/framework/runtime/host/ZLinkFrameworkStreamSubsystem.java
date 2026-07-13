@@ -25,7 +25,8 @@ final class ZLinkFrameworkStreamSubsystem {
         ZLinkHandlerActivator.MutableServices runtimeHandlers,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         ZLinkSpotRuntime spots,
-        ZLinkActorRuntime actors) {
+        ZLinkActorRuntime actors,
+        systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
         ZLinkStreamRuntime streams = options.registration().streamNodes().isEmpty()
             ? null
             : new ZLinkStreamRuntime(
@@ -39,6 +40,9 @@ final class ZLinkFrameworkStreamSubsystem {
                 spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
                 spots,
                 eventDispatcher);
+        if (streams != null) {
+            streams.setActorDirectory(actorDirectory);
+        }
         return new ZLinkFrameworkStreamSubsystem(streams);
     }
 

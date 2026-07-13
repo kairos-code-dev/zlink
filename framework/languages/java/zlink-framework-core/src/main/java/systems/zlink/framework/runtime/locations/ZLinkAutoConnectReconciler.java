@@ -24,9 +24,11 @@ final class ZLinkAutoConnectReconciler {
     private final ZLinkAutoConnectExecutor executor;
     private final ZLinkLocationOptions options;
     private final Map<String, ZLinkAutoConnectPlanner.Target> active = new HashMap<>();
+    private final Map<String, ZLinkAutoConnectPlanner.Target> observedManual = new HashMap<>();
     private long localGeneration;
     private boolean localPublished;
     private boolean storeFailed;
+    private boolean draining;
     private long recoveryDeferUntilNanos;
 
     ZLinkAutoConnectReconciler(
@@ -77,6 +79,24 @@ final class ZLinkAutoConnectReconciler {
         });
     }
 
+    CompletionStage<Void> markDraining() {
+        draining = true;
+        if (localRow == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return publishLocal().thenCompose(ignored -> {
+            if (!localPublished) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException("local peer row is not published"));
+            }
+            return runtime.writePeer(withCurrentState(localGeneration), ZLinkLocationWriteIntent.RENEW)
+                .thenCompose(result -> result.status() == ZLinkLocationWriteStatus.STORED
+                    ? CompletableFuture.completedFuture(null)
+                    : CompletableFuture.failedFuture(
+                        new IllegalStateException("failed to publish draining peer row")));
+        });
+    }
+
     private void reconcile(List<ZLinkPeerLocation> rows) {
         if (storeFailed) {
             storeFailed = false;
@@ -85,6 +105,22 @@ final class ZLinkAutoConnectReconciler {
 
         Map<String, ZLinkAutoConnectPlanner.Target> desired =
             ZLinkAutoConnectPlanner.computeDesired(local, rows);
+        Map<String, ZLinkAutoConnectPlanner.Target> manualSnapshot = new HashMap<>();
+        for (ZLinkPeerLocation row : rows) {
+            ZLinkAutoConnectPlanner.Target target =
+                ZLinkAutoConnectPlanner.trackableTarget(local, row);
+            if (target == null || !executor.isManual(target) || desired.containsKey(target.key())) {
+                continue;
+            }
+            manualSnapshot.put(target.key(), target);
+            ZLinkAutoConnectPlanner.Target previous = observedManual.get(target.key());
+            if (previous != null
+                && (!previous.endpoint().equals(target.endpoint())
+                    || !Objects.equals(previous.ownerId(), target.ownerId()))) {
+                executor.replace(previous, target);
+            }
+        }
+        observedManual.putAll(manualSnapshot);
         List<String> toRemove = new ArrayList<>();
         for (Map.Entry<String, ZLinkAutoConnectPlanner.Target> entry : desired.entrySet()) {
             ZLinkAutoConnectPlanner.Target current = active.get(entry.getKey());
@@ -96,8 +132,7 @@ final class ZLinkAutoConnectReconciler {
             }
             if (!current.endpoint().equals(target.endpoint())
                 || !Objects.equals(current.ownerId(), target.ownerId())) {
-                executor.disconnect(current);
-                executor.connect(target);
+                executor.replace(current, target);
                 active.put(entry.getKey(), target);
             }
         }
@@ -118,7 +153,7 @@ final class ZLinkAutoConnectReconciler {
         if (localRow == null || localPublished) {
             return CompletableFuture.completedFuture(null);
         }
-        return runtime.writePeer(localRow, ZLinkLocationWriteIntent.NEW_CLAIM)
+        return runtime.writePeer(withCurrentState(localGeneration), ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenCompose(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
                     localGeneration = result.generation();
@@ -127,11 +162,7 @@ final class ZLinkAutoConnectReconciler {
                 }
                 if (result.status() == ZLinkLocationWriteStatus.REJECTED_CONFLICT
                     && localGeneration > 0) {
-                    ZLinkPeerLocation renewed = new ZLinkPeerLocation(
-                        localRow.autoConnectType(), localRow.meshName(), localRow.nodeRid(),
-                        localRow.role(), localRow.endpoint(), localRow.weight(), localRow.draining(), localRow.value(),
-                        localRow.metadata(), localRow.capabilities(), localRow.ownerId(),
-                        localGeneration, Instant.EPOCH);
+                    ZLinkPeerLocation renewed = withCurrentState(localGeneration);
                     return runtime.writePeer(renewed, ZLinkLocationWriteIntent.RENEW)
                         .thenAccept(renewedResult -> {
                             localPublished = renewedResult.status() == ZLinkLocationWriteStatus.STORED;
@@ -139,6 +170,13 @@ final class ZLinkAutoConnectReconciler {
                 }
                 return CompletableFuture.<Void>completedFuture(null);
             });
+    }
+
+    private ZLinkPeerLocation withCurrentState(long generation) {
+        return new ZLinkPeerLocation(
+            localRow.autoConnectType(), localRow.meshName(), localRow.nodeRid(),
+            localRow.role(), localRow.endpoint(), localRow.weight(), draining, localRow.value(),
+            localRow.metadata(), localRow.capabilities(), localRow.ownerId(), generation, Instant.EPOCH);
     }
 
     private ZLinkPeerLocationKey localKey() {

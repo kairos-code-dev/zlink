@@ -1,6 +1,5 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import java.util.List;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
@@ -19,34 +18,25 @@ public final class MultiBindHandler
     }
 
     @Override
-    public String packetName() {
-        return "MultiBindReq";
-    }
-
-    @Override
     public Class<Contracts.MultiBindReq> messageType() {
         return Contracts.MultiBindReq.class;
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Contracts.MultiBindReq request) {
-        for (String actorId : List.of(request.firstActorId(), request.secondActorId())) {
-            var actor = actors.getOrCreate(
-                    actorId,
-                    "scenario",
-                    new Contracts.ActorAuthReq(actorId, request.profile()))
-                .toCompletableFuture()
-                .join();
-            context.actors().bind(actor)
-                .toCompletableFuture()
-                .join();
-            evidence.record("ActorSessionBound", "session", actorId);
-        }
-        context.client()
-            .reply(new Contracts.MultiBindRes(context.actors().bound().size()))
-            .await();
+        return bind(context, request.firstActorId(), request)
+            .thenCompose(ignored -> bind(context, request.secondActorId(), request))
+            .thenRun(() -> context.client()
+                .reply(new Contracts.MultiBindRes(context.actors().bound().size())).submit());
+    }
+
+    private java.util.concurrent.CompletionStage<Void> bind(
+        ZLinkSessionContext context, String actorId, Contracts.MultiBindReq request) {
+        return actors.getOrCreate(actorId, "scenario", new Contracts.ActorAuthReq(actorId, request.profile()))
+            .thenCompose(context.actors()::bind)
+            .thenAccept(ignored -> evidence.record("ActorSessionBound", "session", actorId));
     }
 }

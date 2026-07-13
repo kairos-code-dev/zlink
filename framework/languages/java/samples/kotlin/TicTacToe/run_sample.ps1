@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -33,7 +34,7 @@ function Cleanup {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer *> $null
+        Remove-ZlinkSampleRedis $RedisContainer
     }
     if ($env:TICTACTOE_KOTLIN_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
@@ -139,20 +140,9 @@ try {
     $PlayAPubPort = $ports[12]
     $PlayBPubPort = $ports[13]
 
-    if ($env:TICTACTOE_REDIS_ENDPOINT) {
-        $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
-    } else {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
-        }
-        $RedisContainer = "zlink-tictactoe-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --tmpfs /data --name $RedisContainer --label "systems.zlink.sample=tictactoe-kotlin" -p "127.0.0.1::6379" redis:7-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis Docker container."
-        }
-        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
-    }
+    $redis = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-tictactoe" "redis:7-alpine"
+    $RedisContainer = $redis.ContainerId
+    $redisEndpoint = $redis.Endpoint
     Wait-Endpoint "redis" $redisEndpoint
     $redisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) { $env:TICTACTOE_REDIS_KEY_PREFIX } else { "zlink:tictactoe-kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):room:" }
 

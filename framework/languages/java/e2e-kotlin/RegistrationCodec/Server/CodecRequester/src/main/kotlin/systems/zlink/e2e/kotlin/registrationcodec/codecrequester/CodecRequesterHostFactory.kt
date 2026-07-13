@@ -2,6 +2,7 @@ package systems.zlink.e2e.kotlin.registrationcodec.codecrequester
 
 import com.google.protobuf.StringValue
 import java.time.Duration
+import java.util.concurrent.CompletionStage
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
 import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoRes
@@ -10,22 +11,19 @@ import systems.zlink.framework.channels.ZLinkClient
 class CodecRequesterProbe(
     private val client: ZLinkClient,
 ) {
-    fun requestJson(): JsonEchoRes =
+    fun requestJson(): CompletionStage<JsonEchoRes> =
         client.requestToChannel(Contracts.CHANNEL, JsonEchoReq("json-from-requester"))
-            .packetName("JsonEchoReq")
             .timeout(Duration.ofSeconds(5))
-            .await(JsonEchoRes::class.java)
+            .submit(JsonEchoRes::class.java)
 
-    fun requestProtobuf(): CodecMismatchProbeRes =
-        try {
-            val reply = client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-mismatch"))
-                .packetName("ProtobufEcho")
+    fun requestProtobuf(): CompletionStage<CodecMismatchProbeRes> =
+        client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-mismatch"))
                 .timeout(Duration.ofSeconds(2))
-                .await(StringValue::class.java)
-            CodecMismatchProbeRes(error = false, errorType = null, value = reply.value)
-        } catch (error: RuntimeException) {
-            CodecMismatchProbeRes(error = true, errorType = error.javaClass.simpleName, value = null)
-        }
+                .submit(StringValue::class.java)
+            .handle { reply, error ->
+                if (error == null) CodecMismatchProbeRes(false, null, reply.value)
+                else CodecMismatchProbeRes(true, error.javaClass.simpleName, null)
+            }
 }
 
 data class CodecMismatchProbeRes(

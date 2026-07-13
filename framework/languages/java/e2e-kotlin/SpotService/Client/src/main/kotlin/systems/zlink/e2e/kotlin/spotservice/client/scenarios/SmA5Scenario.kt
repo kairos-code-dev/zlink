@@ -8,7 +8,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postAdmin
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmA5Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         val spotRid = "spot-sm-a5-${System.nanoTime()}"
         val created = postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),

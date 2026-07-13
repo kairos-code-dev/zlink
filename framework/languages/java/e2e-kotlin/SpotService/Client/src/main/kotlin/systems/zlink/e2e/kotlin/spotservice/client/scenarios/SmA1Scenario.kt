@@ -5,7 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmA1Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         val first = eventually {
             spots.requestState("room-a", "a1")
         }

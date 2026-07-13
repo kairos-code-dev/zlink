@@ -28,32 +28,31 @@ public final class ScenarioSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public java.util.concurrent.CompletionStage<Void> onConnected() {
         evidence.record("StreamConnected", "session", context.sessionId());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnected() {
+    public java.util.concurrent.CompletionStage<Void> onDisconnected() {
         evidence.record("StreamDisconnected", "session", context.sessionId());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onError(ZLinkStreamError error) {
+    public java.util.concurrent.CompletionStage<Void> onError(ZLinkStreamError error) {
         evidence.record("StreamError", "session", error.error().name());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(
+    public java.util.concurrent.CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         evidence.record("StreamInbound", "session", dispatch.packetName());
-        boolean handled = handlers.tryHandleAsync(context, dispatch, payload)
-            .toCompletableFuture()
-            .join();
-        if (handled) {
-            return;
-        }
-        requireActor(dispatch).relay(dispatch, payload).toCompletableFuture().join();
+        return handlers.tryHandle(context, dispatch, payload).thenCompose(handled ->
+            handled ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                : requireActor(dispatch).relay(dispatch, payload));
     }
 
     private ZLinkSessionActor requireActor(ZLinkSessionDispatchContext dispatch) {

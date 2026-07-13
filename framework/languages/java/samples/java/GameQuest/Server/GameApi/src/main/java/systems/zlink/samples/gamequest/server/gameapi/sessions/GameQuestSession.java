@@ -1,7 +1,5 @@
 package systems.zlink.samples.gamequest.server.gameapi.sessions;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
 import java.time.Instant;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -35,23 +33,28 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public java.util.concurrent.CompletionStage<Void> onConnected() {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnected() {
+    public java.util.concurrent.CompletionStage<Void> onDisconnected() {
         if (playerId != null) {
             store.unbind(playerId);
         }
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onError(ZLinkStreamError error) {
+    public java.util.concurrent.CompletionStage<Void> onError(ZLinkStreamError error) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        switch (dispatch.packetName()) {
+    public java.util.concurrent.CompletionStage<Void> onDispatch(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload) {
+        return switch (dispatch.packetName()) {
             case "JoinSessionReq" -> handleJoin(payload.decode(Messages.JoinSessionReq.class));
             case "GetQuestProgressReq" -> handleGetProgress(payload.decode(Messages.GetQuestProgressReq.class));
             case "SyncQuestProgressReq" -> handleSync(payload.decode(Messages.SyncQuestProgressReq.class));
@@ -61,47 +64,49 @@ public final class GameQuestSession implements ZLinkSession {
             case "EnterAreaReq" -> handleArea(payload.decode(Messages.EnterAreaReq.class));
             case "UnlockFeatureReq" -> handleFeature(payload.decode(Messages.UnlockFeatureReq.class));
             default -> throw new IllegalStateException("Unknown GameQuest packet: " + dispatch.packetName());
-        }
+        };
     }
 
-    private void handleJoin(Messages.JoinSessionReq request) {
+    private java.util.concurrent.CompletionStage<Void> handleJoin(Messages.JoinSessionReq request) {
         playerId = request.playerId();
         store.bind(request.playerId(), SampleTopology.apiName());
-        Messages.GetQuestProgressRes ownerProjection = channels
+        return channels
             .requestToChannel(
                 ownerChannel(request.playerId()),
                 new Messages.GetQuestProgressReq(request.playerId()))
-            .await(Messages.GetQuestProgressRes.class);
-        store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
-        context.client()
-            .reply(new Messages.JoinSessionRes(ownerProjection.activeQuests()))
-            .submit();
+            .submit(Messages.GetQuestProgressRes.class)
+            .thenAccept(ownerProjection -> {
+                store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
+                context.client().reply(new Messages.JoinSessionRes(ownerProjection.activeQuests())).submit();
+            });
     }
 
-    private void handleGetProgress(Messages.GetQuestProgressReq request) {
-        Messages.GetQuestProgressRes ownerProjection = channels
+    private java.util.concurrent.CompletionStage<Void> handleGetProgress(Messages.GetQuestProgressReq request) {
+        return channels
             .requestToChannel(
                 ownerChannel(request.playerId()),
                 request)
-            .await(Messages.GetQuestProgressRes.class);
-        store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
-        context.client()
-            .reply(ownerProjection)
-            .submit();
+            .submit(Messages.GetQuestProgressRes.class)
+            .thenAccept(ownerProjection -> {
+                store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
+                context.client().reply(ownerProjection).submit();
+            });
     }
 
-    private void handleSync(Messages.SyncQuestProgressReq request) {
-        Messages.SyncQuestProgressRes response = channels
+    private java.util.concurrent.CompletionStage<Void> handleSync(Messages.SyncQuestProgressReq request) {
+        return channels
             .requestToChannel(
                 ownerChannel(request.playerId()),
                 request)
-            .await(Messages.SyncQuestProgressRes.class);
-        store.mergeProjection(request.playerId(), response.updatedQuests());
-        context.client().reply(response).submit();
+            .submit(Messages.SyncQuestProgressRes.class)
+            .thenAccept(response -> {
+                store.mergeProjection(request.playerId(), response.updatedQuests());
+                context.client().reply(response).submit();
+            });
     }
 
-    private void handleKill(Messages.KillMonsterReq request) {
-        Messages.GameplayEventEnvelope event = event(
+    private java.util.concurrent.CompletionStage<Void> handleKill(Messages.KillMonsterReq request) {
+        Messages.GameplayMsg event = event(
             request.playerId(),
             request.idempotencyKey(),
             "kill",
@@ -109,12 +114,12 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        Messages.QuestProcessingRes processed = process(event);
-        context.client().reply(new Messages.KillMonsterRes(processed.eventId())).submit();
+        return process(event).thenAccept(processed ->
+            context.client().reply(new Messages.KillMonsterRes(processed.eventId())).submit());
     }
 
-    private void handleCollect(Messages.CollectItemReq request) {
-        Messages.GameplayEventEnvelope event = event(
+    private java.util.concurrent.CompletionStage<Void> handleCollect(Messages.CollectItemReq request) {
+        Messages.GameplayMsg event = event(
             request.playerId(),
             request.idempotencyKey(),
             "collect",
@@ -122,12 +127,12 @@ public final class GameQuestSession implements ZLinkSession {
             request.count(),
             true);
         store.recordGameplay(event);
-        Messages.QuestProcessingRes processed = process(event);
-        context.client().reply(new Messages.CollectItemRes(processed.eventId())).submit();
+        return process(event).thenAccept(processed ->
+            context.client().reply(new Messages.CollectItemRes(processed.eventId())).submit());
     }
 
-    private void handleMission(Messages.CompleteMissionReq request) {
-        Messages.GameplayEventEnvelope event = event(
+    private java.util.concurrent.CompletionStage<Void> handleMission(Messages.CompleteMissionReq request) {
+        Messages.GameplayMsg event = event(
             request.playerId(),
             request.idempotencyKey(),
             "mission",
@@ -135,12 +140,12 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        Messages.QuestProcessingRes processed = process(event);
-        context.client().reply(new Messages.CompleteMissionRes(processed.eventId())).submit();
+        return process(event).thenAccept(processed ->
+            context.client().reply(new Messages.CompleteMissionRes(processed.eventId())).submit());
     }
 
-    private void handleArea(Messages.EnterAreaReq request) {
-        Messages.GameplayEventEnvelope event = event(
+    private java.util.concurrent.CompletionStage<Void> handleArea(Messages.EnterAreaReq request) {
+        Messages.GameplayMsg event = event(
             request.playerId(),
             request.idempotencyKey(),
             "area",
@@ -148,12 +153,12 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        Messages.QuestProcessingRes processed = process(event);
-        context.client().reply(new Messages.EnterAreaRes(processed.eventId())).submit();
+        return process(event).thenAccept(processed ->
+            context.client().reply(new Messages.EnterAreaRes(processed.eventId())).submit());
     }
 
-    private void handleFeature(Messages.UnlockFeatureReq request) {
-        Messages.GameplayEventEnvelope event = event(
+    private java.util.concurrent.CompletionStage<Void> handleFeature(Messages.UnlockFeatureReq request) {
+        Messages.GameplayMsg event = event(
             request.playerId(),
             request.idempotencyKey(),
             "feature",
@@ -161,38 +166,43 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        Messages.QuestProcessingRes processed = process(event);
-        context.client().reply(new Messages.UnlockFeatureRes(processed.eventId())).submit();
+        return process(event).thenAccept(processed ->
+            context.client().reply(new Messages.UnlockFeatureRes(processed.eventId())).submit());
     }
 
-    private Messages.QuestProcessingRes process(Messages.GameplayEventEnvelope event) {
-        Messages.QuestProcessingRes processed = channels
+    private java.util.concurrent.CompletionStage<Messages.QuestProcessingRes> process(
+        Messages.GameplayMsg event) {
+        return channels
             .requestToChannel(
                 ownerChannel(event.playerId()),
                 event)
-            .await(Messages.QuestProcessingRes.class);
-        store.mergeProjection(event.playerId(), processed.projection());
-        processed.progressNotifications().forEach(notification -> context.client().send(notification).submit());
-        processed.completedNotifications().forEach(notification -> context.client().send(notification).submit());
-        return processed;
+            .submit(Messages.QuestProcessingRes.class)
+            .thenApply(processed -> {
+                store.mergeProjection(event.playerId(), processed.projection());
+                processed.progressNotifications().forEach(
+                    notification -> context.client().send(notification).submit());
+                processed.completedNotifications().forEach(
+                    notification -> context.client().send(notification).submit());
+                return processed;
+            });
     }
 
     private static String ownerChannel(String playerId) {
         return SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId));
     }
 
-    private static Messages.GameplayEventEnvelope event(
+    private static Messages.GameplayMsg event(
         String playerId,
         String idempotencyKey,
         String eventType,
         String value,
         int count,
         boolean publish) {
-        return new Messages.GameplayEventEnvelope(
+        return Messages.GameplayMsg.create(
             playerId + "-" + idempotencyKey,
             playerId,
-            idempotencyKey,
             eventType,
+            idempotencyKey,
             value,
             count,
             SampleTopology.apiName(),

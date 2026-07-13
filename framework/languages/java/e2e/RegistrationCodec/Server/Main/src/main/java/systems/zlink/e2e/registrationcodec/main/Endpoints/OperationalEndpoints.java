@@ -7,6 +7,11 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkClient;
 import org.springframework.context.SmartLifecycle;
@@ -75,99 +80,113 @@ public final class OperationalEndpoints implements SmartLifecycle {
         return running;
     }
 
-    private Contracts.EchoRes registrationAuto() {
-        Contracts.EchoRes reply = client.requestToChannel(
+    private CompletionStage<Contracts.EchoRes> registrationAuto() {
+        return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.EchoAutoReq("auto-request"))
-            .packetName("EchoAuto")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
-        client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoAutoMsg("auto-send"))
-            .packetName("EchoAuto")
-            .await();
-        return reply;
+            .submit(Contracts.EchoRes.class)
+            .thenApply(reply -> {
+                client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoAutoMsg("auto-send")).submit();
+                return reply;
+            });
     }
 
-    private Contracts.EchoRes registrationAttribute() {
-        Contracts.EchoRes reply = client.requestToChannel(
+    private CompletionStage<Contracts.EchoRes> registrationAttribute() {
+        return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.EchoAttrReq("attr-request"))
-            .packetName("EchoAttr")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
-        client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoAttrMsg("attr-send"))
-            .packetName("EchoAttr")
-            .await();
-        return reply;
+            .submit(Contracts.EchoRes.class)
+            .thenApply(reply -> {
+                client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoAttrMsg("attr-send")).submit();
+                return reply;
+            });
     }
 
-    private Contracts.EchoRes registrationManual() {
-        Contracts.EchoRes reply = client.requestToChannel(
+    private CompletionStage<Contracts.EchoRes> registrationManual() {
+        return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.EchoManualReq("manual-request"))
-            .packetName("EchoManual")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
-        client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoManualMsg("manual-send"))
-            .packetName("EchoManual")
-            .await();
-        return reply;
+            .submit(Contracts.EchoRes.class)
+            .thenApply(reply -> {
+                client.sendToChannel(Contracts.CHANNEL, new Contracts.EchoManualMsg("manual-send")).submit();
+                return reply;
+            });
     }
 
-    private java.util.List<Contracts.DiLifecycleRes> registrationDi() {
-        java.util.List<Contracts.DiLifecycleRes> replies = new java.util.ArrayList<>();
+    private CompletionStage<List<Contracts.DiLifecycleRes>> registrationDi() {
+        List<Contracts.DiLifecycleRes> replies = new ArrayList<>();
+        CompletionStage<Void> sequence = CompletableFuture.completedFuture(null);
         for (int index = 0; index < 3; index++) {
-            replies.add(client.requestToChannel(
+            int requestIndex = index;
+            sequence = sequence.thenCompose(ignored -> client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.DiLifecycleReq("di-" + index))
-                .packetName("DiLifecycle")
+                    new Contracts.DiLifecycleReq("di-" + requestIndex))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DiLifecycleRes.class));
+                .submit(Contracts.DiLifecycleRes.class)
+                .thenAccept(replies::add));
         }
-        return replies;
+        return sequence.thenApply(ignored -> List.copyOf(replies));
     }
 
-    private Contracts.EchoRes registrationFilterOrder() {
+    private CompletionStage<Contracts.EchoRes> registrationFilterOrder() {
         return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.EchoManualReq("filter-order-request"))
-            .packetName("EchoManual")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
+            .submit(Contracts.EchoRes.class);
     }
 
-    private Contracts.CodecScenarioRes codecRoundtrip() {
-        Contracts.EchoRes jsonReply = client.requestToChannel(
+    private CompletionStage<Contracts.CodecScenarioRes> codecRoundtrip() {
+        return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.JsonEchoReq("json-request"))
-            .packetName("JsonEcho")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
-        client.sendToChannel(Contracts.CHANNEL, new Contracts.JsonEchoMsg("json-send"))
-            .packetName("JsonEcho")
-            .await();
+            .submit(Contracts.EchoRes.class)
+            .thenCompose(jsonReply -> {
+                client.sendToChannel(Contracts.CHANNEL, new Contracts.JsonEchoMsg("json-send")).submit();
+                return client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-request"))
+                    .timeout(Duration.ofSeconds(5))
+                    .submit(StringValue.class)
+                    .thenApply(protobufReply -> new Object[] {jsonReply, protobufReply});
+            })
+            .thenCompose(replies -> {
+                client.sendToChannel(Contracts.CHANNEL, StringValue.of("protobuf-send")).submit();
+                return client.requestToChannel(
+                        Contracts.CHANNEL,
+                        new Contracts.PackedEchoReq("msgpack-request"))
+                    .timeout(Duration.ofSeconds(5))
+                    .submit(Contracts.PackedEchoRes.class)
+                    .thenApply(packedReply -> new Contracts.CodecScenarioRes(
+                        (Contracts.EchoRes) replies[0],
+                        ((StringValue) replies[1]).getValue(),
+                        packedReply.value()));
+            })
+            .thenApply(reply -> {
+                client.sendToChannel(Contracts.CHANNEL, new Contracts.PackedEchoMsg("msgpack-send")).submit();
+                return reply;
+            });
+    }
 
-        StringValue protobufReply = client.requestToChannel(
-                Contracts.CHANNEL,
-                StringValue.of("protobuf-request"))
-            .packetName("ProtobufEcho")
-            .timeout(Duration.ofSeconds(5))
-            .await(StringValue.class);
-        client.sendToChannel(Contracts.CHANNEL, StringValue.of("protobuf-send"))
-            .packetName("ProtobufEcho")
-            .await();
-
-        Contracts.PackedEchoRes packedReply = client.requestToChannel(
-                Contracts.CHANNEL,
-                new Contracts.PackedEchoReq("msgpack-request"))
-            .packetName("MsgpackEcho")
-            .timeout(Duration.ofSeconds(5))
-            .await(Contracts.PackedEchoRes.class);
-        client.sendToChannel(Contracts.CHANNEL, new Contracts.PackedEchoMsg("msgpack-send"))
-            .packetName("MsgpackEcho")
-            .await();
-
-        return new Contracts.CodecScenarioRes(jsonReply, protobufReply.getValue(), packedReply.value());
+    private void writeJson(
+        com.sun.net.httpserver.HttpExchange exchange,
+        CompletionStage<?> response) {
+        response.whenComplete((value, error) -> {
+            try {
+                if (error == null) {
+                    writeJson(exchange, value);
+                    return;
+                }
+                Throwable cause = error instanceof CompletionException && error.getCause() != null
+                    ? error.getCause()
+                    : error;
+                writeError(exchange, cause);
+            } catch (java.io.IOException writeFailure) {
+                exchange.close();
+            }
+        });
     }
 
     private void writeJson(com.sun.net.httpserver.HttpExchange exchange, Object value) throws java.io.IOException {
@@ -184,11 +203,17 @@ public final class OperationalEndpoints implements SmartLifecycle {
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
         } catch (RuntimeException error) {
-            byte[] body = error.toString().getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(500, body.length);
-            exchange.getResponseBody().write(body);
+            writeError(exchange, error);
         } finally {
             exchange.close();
         }
+    }
+
+    private static void writeError(
+        com.sun.net.httpserver.HttpExchange exchange,
+        Throwable error) throws java.io.IOException {
+        byte[] body = error.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(500, body.length);
+        exchange.getResponseBody().write(body);
     }
 }

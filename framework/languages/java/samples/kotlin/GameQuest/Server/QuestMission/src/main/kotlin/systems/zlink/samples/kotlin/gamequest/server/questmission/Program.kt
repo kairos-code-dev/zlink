@@ -26,7 +26,7 @@ import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.DeleteQuestProjectionReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.DeleteQuestProjectionRes
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetQuestProgressReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetQuestProgressRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestCompletedEvent
@@ -120,10 +120,10 @@ private fun writeJson(exchange: HttpExchange, status: Int, body: Any) {
 }
 
 @ZLinkHandlerGroup("quest-owner")
-class GameplayEventRouteHandler(
+class GameplayMsgRouteHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRequestHandler<GameplayEventEnvelope, QuestProcessingRes> {
-    override suspend fun handle(request: GameplayEventEnvelope, context: ZLinkRequestContext): QuestProcessingRes {
+) : ZLinkSuspendingRequestHandler<GameplayMsg, QuestProcessingRes> {
+    override suspend fun handle(request: GameplayMsg, context: ZLinkRequestContext): QuestProcessingRes {
         store.markRehydrated(request.playerId)
         return store.apply(request)
     }
@@ -173,8 +173,8 @@ class QuestStore : AutoCloseable {
     private val rehydrates = mutableMapOf<String, Int>()
 
     @Synchronized
-    fun apply(event: GameplayEventEnvelope): QuestProcessingRes {
-        val key = "${event.playerId}:${event.idempotencyKey}"
+    fun apply(event: GameplayMsg): QuestProcessingRes {
+        val key = "${event.playerId}:${event.decodePayload().idempotencyKey}"
         eventIdsByIdempotency[key]?.let {
             return QuestProcessingRes(it, copyProjection(event.playerId), emptyList(), emptyList(), true)
         }
@@ -283,25 +283,25 @@ class QuestStore : AutoCloseable {
 }
 
 private class QuestDomain {
-    fun apply(event: GameplayEventEnvelope, current: List<QuestProgress>, nextVersion: Long): QuestDecision {
+    fun apply(event: GameplayMsg, current: List<QuestProgress>, nextVersion: Long): QuestDecision {
         val now = Instant.now().toEpochMilli()
         val stored = mutableListOf<StoredQuestEvent>()
         val progress = mutableListOf<QuestProgressNotify>()
         val completed = mutableListOf<QuestCompletedNotify>()
         val updated = current.toMutableList()
         when {
-            event.eventType == "kill" && event.value == "wolf" ->
-                applyCounter(event, updated, stored, progress, completed, QuestIds.FirstHunt, 3, event.count, now, nextVersion)
-            event.eventType == "collect" && event.value == "healing-herb" ->
-                applyCounter(event, updated, stored, progress, completed, QuestIds.HerbGathering, 5, event.count, now, nextVersion)
-            event.eventType == "feature" && event.value == "auction" ->
+            event.type == "kill" && event.decodePayload().value == "wolf" ->
+                applyCounter(event, updated, stored, progress, completed, QuestIds.FirstHunt, 3, event.decodePayload().count, now, nextVersion)
+            event.type == "collect" && event.decodePayload().value == "healing-herb" ->
+                applyCounter(event, updated, stored, progress, completed, QuestIds.HerbGathering, 5, event.decodePayload().count, now, nextVersion)
+            event.type == "feature" && event.decodePayload().value == "auction" ->
                 completeOnce(event, updated, stored, completed, QuestIds.OpenAuction, 1, now, nextVersion)
         }
         return QuestDecision(updated, stored, progress, completed)
     }
 
     private fun applyCounter(
-        event: GameplayEventEnvelope,
+        event: GameplayMsg,
         projection: MutableList<QuestProgress>,
         stored: MutableList<StoredQuestEvent>,
         progressNotifications: MutableList<QuestProgressNotify>,
@@ -331,7 +331,7 @@ private class QuestDomain {
                 nextVersion,
                 now,
             )
-            if (event.publish) {
+            if (event.decodePayload().publish) {
                 progressNotifications += QuestProgressNotify(event.playerId, null, next)
             }
         }
@@ -360,14 +360,14 @@ private class QuestDomain {
                 nextVersion + 2,
                 now,
             )
-            if (event.publish) {
+            if (event.decodePayload().publish) {
                 completedNotifications += QuestCompletedNotify(event.playerId, null, next, true)
             }
         }
     }
 
     private fun completeOnce(
-        event: GameplayEventEnvelope,
+        event: GameplayMsg,
         projection: MutableList<QuestProgress>,
         stored: MutableList<StoredQuestEvent>,
         completedNotifications: MutableList<QuestCompletedNotify>,
@@ -407,7 +407,7 @@ private class QuestDomain {
             nextVersion + 1,
             now,
         )
-        if (event.publish) {
+        if (event.decodePayload().publish) {
             completedNotifications += QuestCompletedNotify(event.playerId, null, next, true)
         }
     }

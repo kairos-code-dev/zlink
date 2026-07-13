@@ -20,7 +20,8 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -39,16 +40,19 @@ public final class ClientScenario {
     private final ZLinkRouteClient routes;
     private final ZLinkActorClient actors;
     private final ZLinkActorDirectory actorRefs;
+    private final SpotHandleResolver spotHandles;
 
     public ClientScenario(
         ZLinkSpotOutbound outbound,
         ZLinkRouteClient routes,
         ZLinkActorClient actors,
-        ZLinkActorDirectory actorRefs) {
+        ZLinkActorDirectory actorRefs,
+        SpotHandleResolver spotHandles) {
         this.outbound = outbound;
         this.routes = routes;
         this.actors = actors;
         this.actorRefs = actorRefs;
+        this.spotHandles = spotHandles;
     }
 
     public void runMode(String mode) {
@@ -100,7 +104,7 @@ public final class ClientScenario {
         Contracts.StateRes first = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("a1"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure("room-a".equals(first.spotRid()), "SM-A1 wrong spot rid");
         ensure("play-a".equals(first.nodeRid()), "SM-A1 wrong owner node");
         System.out.println("scenario SM-A1 passed");
@@ -110,7 +114,7 @@ public final class ClientScenario {
         Contracts.StateRes second = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("a2"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure(second.value().contains("a1") && second.value().contains("a2"),
             "SM-A2 state did not accumulate");
         System.out.println("scenario SM-A2 passed");
@@ -118,7 +122,7 @@ public final class ClientScenario {
 
     private void runSend() {
         outbound.sendToSpot(spotRef("room-a"), new Contracts.StateMsg("cmd-c1"))
-            .await();
+            .submit();
         System.out.println("scenario SM-C1-send passed");
     }
 
@@ -126,7 +130,7 @@ public final class ClientScenario {
         expectFailure(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.SlowReq("late"))
             .timeout(Duration.ofMillis(100))
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         System.out.println("scenario SM-C1-timeout passed");
     }
 
@@ -134,35 +138,43 @@ public final class ClientScenario {
         Contracts.StateRes after = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("after-timeout"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure(after.value().contains("after-timeout"), "SM-C1 post-timeout request failed");
         System.out.println("scenario SM-C1 passed");
         System.out.println("scenario SM-C1-normal passed");
     }
 
     private void runMissingPacket() {
+        String ownerEndpoint = Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT");
         String spotRid = "spot-sm-e1-" + java.util.UUID.randomUUID().toString().replace("-", "");
         Contracts.CreateSpotRes created = postJson(
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            ownerEndpoint,
             "/spot/create",
             new Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes.class);
         ensure(spotRid.equals(created.spotRid()) && "play-a".equals(created.nodeRid()),
             "SM-E1 spot was not created on play-a");
+        Contracts.StateRes ready = postJson(
+            ownerEndpoint,
+            "/spot/state/request",
+            new Contracts.SpotStateRouteReq(spotRid, "sm-e1-ready", 0),
+            Contracts.StateRes.class);
+        ensure(spotRid.equals(ready.spotRid()) && "play-a".equals(ready.nodeRid()),
+            "SM-E1 spot route was not ready on play-a");
         Contracts.SpotMissingHandlerRes missingRequest = postJson(
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            ownerEndpoint,
             "/spot/missing-handler/request",
             new Contracts.SpotMissingHandlerReq(spotRid),
             Contracts.SpotMissingHandlerRes.class);
         ensure(missingRequest.failed(), "SM-E1 missing handler request did not fail");
         Contracts.SpotMissingCommandRes missingCommand = postJson(
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            ownerEndpoint,
             "/spot/missing-handler/command",
             new Contracts.SpotMissingCommandReq(spotRid, "missing-command"),
             Contracts.SpotMissingCommandRes.class);
         ensure(missingCommand.sent(), "SM-E1 missing handler command was not sent");
         waitForEvidence(
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            ownerEndpoint,
             List.of(
                 "DispatchError|play-a|" + spotRid + "|HANDLER_MISSING/REPLY_ERROR/MissingSpotReq",
                 "DispatchError|play-a|" + spotRid + "|HANDLER_MISSING/DROP/MissingSpotMsg"));
@@ -174,11 +186,11 @@ public final class ClientScenario {
         Contracts.StateRes roomA = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("owner-a"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         Contracts.StateRes roomB = eventually(() -> outbound.requestToSpot(spotRef("room-b"),
                 new Contracts.StateReq("owner-b"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure("play-a".equals(roomA.nodeRid()), "SM-A3 room-a owner mismatch");
         ensure("play-b".equals(roomB.nodeRid()), "SM-A3 room-b owner mismatch");
         System.out.println("scenario SM-A3 passed");
@@ -286,9 +298,8 @@ public final class ClientScenario {
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from("play-a"),
                 new Contracts.RouteReq("route-mesh-normal"))
-            .packetName(Contracts.ROUTE_PACKET)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RouteRes.class);
+            .submit(Contracts.RouteRes.class).toCompletableFuture().join();
         ensure("play-a".equals(routeReply.nodeRid()), "SM-F3 route-channel target node mismatch");
         ensure("client-route-mesh".equals(routeReply.routeRid()), "SM-F3 route-channel source routing id mismatch");
         ensure("route:route-mesh-normal".equals(routeReply.value()), "SM-F3 route-channel reply mismatch");
@@ -296,17 +307,17 @@ public final class ClientScenario {
         Contracts.StateRes reply = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("route-mesh"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure("play-a".equals(reply.nodeRid()), "SM-F2 route mesh target mismatch");
         outbound.sendToSpot(spotRef("room-a"), new Contracts.StateMsg("mixed-route-send"))
-            .await();
+            .submit();
         System.out.println("scenario SM-F1 passed");
         System.out.println("scenario SM-F2 passed");
         System.out.println("scenario SM-F3 passed");
         expectFailure(() -> outbound.requestToSpot(spotRef("missing-route"),
                 new Contracts.StateReq("missing-route"))
             .timeout(Duration.ofMillis(300))
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         System.out.println("scenario SM-F4-missing-route passed");
     }
 
@@ -315,9 +326,8 @@ public final class ClientScenario {
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from("play-a"),
                 new Contracts.RouteReq("sm-f5-before"))
-            .packetName(Contracts.ROUTE_PACKET)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RouteRes.class);
+            .submit(Contracts.RouteRes.class).toCompletableFuture().join();
         ensure("play-a".equals(before.nodeRid()), "SM-F5 pre-close route-channel target node mismatch");
         ensure("client-route-mesh".equals(before.routeRid()), "SM-F5 pre-close source routing id mismatch");
         ensure("route:sm-f5-before".equals(before.value()), "SM-F5 pre-close route-channel reply mismatch");
@@ -325,7 +335,7 @@ public final class ClientScenario {
         Contracts.StateRes routed = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("sm-f5-route"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure("room-a".equals(routed.spotRid()), "SM-F5 routed spot rid mismatch");
         ensure("play-a".equals(routed.nodeRid()), "SM-F5 routed spot owner mismatch");
 
@@ -335,9 +345,8 @@ public final class ClientScenario {
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from("play-a"),
                 new Contracts.RouteReq("sm-f5-after"))
-            .packetName(Contracts.ROUTE_PACKET)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RouteRes.class);
+            .submit(Contracts.RouteRes.class).toCompletableFuture().join();
         ensure("play-a".equals(after.nodeRid()), "SM-F5 post-close route-channel target node mismatch");
         ensure("client-route-mesh".equals(after.routeRid()), "SM-F5 post-close source routing id mismatch");
         ensure("route:sm-f5-after".equals(after.value()), "SM-F5 post-close route-channel reply mismatch");
@@ -359,11 +368,11 @@ public final class ClientScenario {
                 "Player One",
                 7,
                 List.of("alpha", "beta"));
-            connector.connect().await();
-            unbound.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
+            unbound.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq("actor-local-1", profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure("actor-local-1".equals(auth.actorId()), "SM-D1 auth actor mismatch");
             ensure(auth.boundCount() == 1, "SM-D1 bound actor count mismatch");
             ensure(profile.displayName().equals(auth.displayName()), "SM-B3 create profile display name mismatch");
@@ -375,8 +384,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes entryReply = connector
                 .request(new Contracts.ActorEchoReq("entry-echo", 1, profile))
                 .metadata("actor-id", "actor-local-1")
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify entry = connector.await(entryPush).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify entry = entryPush.toCompletableFuture().join().payload();
             ensure("entry:entry-echo".equals(entryReply.value()), "SM-B1 entry actor request mismatch");
             ensure("entry".equals(entryReply.spotRid()), "SM-D3 entry bind spot mismatch");
             ensure("entry".equals(entry.spotRid()), "SM-D3 entry push spot mismatch");
@@ -392,7 +401,7 @@ public final class ClientScenario {
             Contracts.ActorJoinRes joined = connector
                 .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                 .metadata("actor-id", "actor-local-1")
-                .await(Contracts.ActorJoinRes.class);
+                .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
             ensure("room-a".equals(joined.spotRid()), "SM-B1 joined spot mismatch");
             ensure(profile.tags().equals(joined.tags()), "SM-B3 join payload tags mismatch");
             ensure(profile.displayName().equals(joined.displayName()), "SM-B3 join payload display name mismatch");
@@ -406,8 +415,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes userReply1 = connector
                 .request(new Contracts.ActorEchoReq("user-echo-1", 2, profile))
                 .metadata("actor-id", "actor-local-1")
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify user1 = connector.await(userPush1).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify user1 = userPush1.toCompletableFuture().join().payload();
             ensure("room-a".equals(userReply1.spotRid()), "SM-B1 user actor spot mismatch");
             ensure("room-a".equals(joined.spotRid()), "SM-D3 user bind spot mismatch");
             ensure("room-a".equals(user1.spotRid()), "SM-D3 user push spot mismatch");
@@ -427,8 +436,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes userReply2 = connector
                 .request(new Contracts.ActorEchoReq("user-echo-2", 3, profile))
                 .metadata("actor-id", "actor-local-1")
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify user2 = connector.await(userPush2).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify user2 = userPush2.toCompletableFuture().join().payload();
             ensure(userReply2.requestSeq() == 3, "SM-B7 second packet request sequence mismatch");
             ensure(user2.requestSeq() == 3, "SM-B7 second push request sequence mismatch");
 
@@ -437,8 +446,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes userReply3 = connector
                 .request(new Contracts.ActorEchoReq("user-echo-3", 4, profile))
                 .metadata("actor-id", "actor-local-1")
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify user3 = connector.await(userPush3).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify user3 = userPush3.toCompletableFuture().join().payload();
             ensure(userReply3.requestSeq() == 4, "SM-B7 third packet request sequence mismatch");
             ensure(user3.requestSeq() == 4, "SM-B7 third push request sequence mismatch");
             ensure(userReply1.handlerSeq() < userReply2.handlerSeq()
@@ -459,11 +468,11 @@ public final class ClientScenario {
             throw new IllegalStateException("actor/session scenario failed", error);
         } finally {
             try {
-                connector.close().await();
+                connector.close().submit().toCompletableFuture().join();
             } catch (Exception ignored) {
             }
             try {
-                unbound.close().await();
+                unbound.close().submit().toCompletableFuture().join();
             } catch (Exception ignored) {
             }
         }
@@ -474,17 +483,17 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Destroy", 8, List.of("destroy"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-B8 auth actor mismatch");
 
             Contracts.ActorDestroyRes destroy = connector
                 .request(new Contracts.ActorDestroyReq(actorId))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorDestroyRes.class);
+                .submit(Contracts.ActorDestroyRes.class).toCompletableFuture().join();
             ensure(actorId.equals(destroy.actorId()), "SM-B8 destroy actor mismatch");
             ensure(destroy.destroyed(), "SM-B8 destroy was not accepted");
 
@@ -494,7 +503,7 @@ public final class ClientScenario {
                         .request(new Contracts.ActorEchoReq("after-destroy", 1, profile))
                         .metadata("actor-id", actorId)
                         .timeout(Duration.ofMillis(500))
-                        .await(Contracts.ActorEchoRes.class);
+                        .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 } catch (Exception error) {
                     throw new RuntimeException(error);
                 }
@@ -547,10 +556,10 @@ public final class ClientScenario {
 
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             connector
                 .request(new Contracts.ActorAuthReq(actorId, allowedProfile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             Contracts.JoinAdmittedUserSpotActorRes allowed = connector
                 .request(new Contracts.JoinAdmittedUserSpotActorReq(
                     spotRid,
@@ -559,8 +568,7 @@ public final class ClientScenario {
                     true,
                     "allowed"))
                 .metadata("actor-id", actorId)
-                .packetName("JoinAdmittedUserSpotActorReq")
-                .await(Contracts.JoinAdmittedUserSpotActorRes.class);
+                .submit(Contracts.JoinAdmittedUserSpotActorRes.class).toCompletableFuture().join();
             ensure(allowed.accepted(), "SM-B9 allowed join was rejected");
             ensure(actorId.equals(allowed.actorId()), "SM-B9 allowed actor mismatch");
             ensure(spotRid.equals(allowed.spotRid()), "SM-B9 allowed spot mismatch");
@@ -569,7 +577,7 @@ public final class ClientScenario {
             connector
                 .request(new Contracts.ActorAuthReq(rejectedActorId, rejectedProfile))
                 .metadata("actor-id", rejectedActorId)
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             Contracts.JoinAdmittedUserSpotActorRes rejected = connector
                 .request(new Contracts.JoinAdmittedUserSpotActorReq(
                     spotRid,
@@ -578,8 +586,7 @@ public final class ClientScenario {
                     false,
                     "capacity"))
                 .metadata("actor-id", rejectedActorId)
-                .packetName("JoinAdmittedUserSpotActorReq")
-                .await(Contracts.JoinAdmittedUserSpotActorRes.class);
+                .submit(Contracts.JoinAdmittedUserSpotActorRes.class).toCompletableFuture().join();
             ensure(!rejected.accepted(), "SM-B9 rejected join was accepted");
             ensure("ActorJoinRejected".equals(rejected.errorKind()), "SM-B9 rejection was not classified");
 
@@ -605,16 +612,16 @@ public final class ClientScenario {
         try {
             Contracts.ActorProfile profile =
                 new Contracts.ActorProfile("Push Chain", 15, List.of("gateway", "push"));
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D15 auth actor mismatch");
 
             Contracts.ActorPingRes probe = connector
                 .request(new Contracts.ActorPingReq("sm-d15-bind-probe"))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorPingRes.class);
+                .submit(Contracts.ActorPingRes.class).toCompletableFuture().join();
             ensure(actorId.equals(probe.actorId()), "SM-D15 bind probe actor mismatch");
             ensure("play-a".equals(probe.nodeRid()), "SM-D15 bind probe node mismatch");
 
@@ -625,10 +632,9 @@ public final class ClientScenario {
                 .submit(Contracts.ActorPushNotify.class);
             Contracts.ActorPingRes reply = actors
                 .requestToActor(actorRef(actorId), new Contracts.ActorPushReq(marker))
-                .packetName("ActorPushReq")
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.ActorPingRes.class);
-            Contracts.ActorPushNotify notify = connector.await(pushed).payload();
+                .submit(Contracts.ActorPingRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify notify = pushed.toCompletableFuture().join().payload();
 
             ensure(actorId.equals(reply.actorId()), "SM-D15 actor client reply actor mismatch");
             ensure("entry".equals(reply.spotRid()), "SM-D15 actor client reply spot mismatch");
@@ -654,10 +660,10 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Remote Player", 24, List.of("remote", "relay"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-B2 remote auth actor mismatch");
             ensure("play-b".equals(auth.nodeRid()), "SM-B2 remote actor was not created on play-b");
 
@@ -665,7 +671,7 @@ public final class ClientScenario {
                 .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorJoinRes.class);
+                .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
             ensure(actorId.equals(joined.actorId()), "SM-B2 remote join actor mismatch");
             ensure("room-a".equals(joined.spotRid()), "SM-B2 remote join spot mismatch");
             ensure("play-a".equals(joined.nodeRid()), "SM-B2 remote join did not cross to play-a");
@@ -676,8 +682,8 @@ public final class ClientScenario {
                 .request(new Contracts.ActorEchoReq("remote-user-echo", 42, profile))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify push = connector.await(userPush).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify push = userPush.toCompletableFuture().join().payload();
             ensure("user:remote-user-echo".equals(userReply.value()), "SM-B4 remote actor reply mismatch");
             ensure("room-a".equals(userReply.spotRid()), "SM-B4 remote actor reply spot mismatch");
             ensure("play-a".equals(userReply.nodeRid()), "SM-B4 remote actor reply node mismatch");
@@ -704,20 +710,19 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Missing", 5, List.of("missing"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-B5 auth actor mismatch");
 
             expectFailure(() -> {
                 try {
                     connector
-                        .request(new Contracts.ActorEchoReq("missing-handler", 1, profile))
-                        .packetName("MissingActorReq")
+                        .request(new Contracts.MissingActorReq("missing-handler"))
                         .metadata("actor-id", actorId)
                         .timeout(Duration.ofSeconds(2))
-                        .await(Contracts.ActorEchoRes.class);
+                        .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 } catch (Exception error) {
                     throw new RuntimeException(error);
                 }
@@ -748,22 +753,20 @@ public final class ClientScenario {
                 ZLinkStreamConnector leaveClient = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
                 Contracts.ActorProfile profile = new Contracts.ActorProfile("Leave", 6, List.of("leave"));
                 try {
-                    leaveClient.connect().await();
+                    leaveClient.connect().submit().toCompletableFuture().join();
                     Contracts.ActorAuthRes auth = leaveClient
                         .request(new Contracts.ActorAuthReq(leaveActorId, profile))
-                        .await(Contracts.ActorAuthRes.class);
+                        .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
                     ensure(leaveActorId.equals(auth.actorId()), "SM-B6 leave auth actor mismatch");
                     Contracts.ActorJoinRes joined = leaveClient
                         .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                         .metadata("actor-id", leaveActorId)
-                        .await(Contracts.ActorJoinRes.class);
+                        .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
                     ensure(leaveActorId.equals(joined.actorId()), "SM-B6 leave join actor mismatch");
                     leaveClient
                         .send(new Contracts.LeaveActorReq(leaveActorId))
                         .metadata("actor-id", leaveActorId)
-                        .submit()
-                        .toCompletableFuture()
-                        .join();
+                        .submit();
                 } finally {
                     closeQuietly(leaveClient);
                 }
@@ -783,15 +786,15 @@ public final class ClientScenario {
                 try {
                     Contracts.ActorProfile disconnectProfile =
                         new Contracts.ActorProfile("Disconnect", 6, List.of("disconnect"));
-                    disconnectClient.connect().await();
+                    disconnectClient.connect().submit().toCompletableFuture().join();
                     Contracts.ActorAuthRes auth = disconnectClient
                         .request(new Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
-                        .await(Contracts.ActorAuthRes.class);
+                        .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
                     ensure(disconnectActorId.equals(auth.actorId()), "SM-B6 disconnect auth actor mismatch");
                     Contracts.ActorJoinRes joined = disconnectClient
                         .request(new Contracts.ActorJoinReq("room-a", disconnectProfile, disconnectProfile.tags()))
                         .metadata("actor-id", disconnectActorId)
-                        .await(Contracts.ActorJoinRes.class);
+                        .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
                     ensure(disconnectActorId.equals(joined.actorId()), "SM-B6 disconnect join actor mismatch");
                 } finally {
                     closeQuietly(disconnectClient);
@@ -818,15 +821,15 @@ public final class ClientScenario {
             ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
             Contracts.ActorProfile profile = new Contracts.ActorProfile("Disconnect", 5, List.of("disconnect"));
             try {
-                connector.connect().await();
+                connector.connect().submit().toCompletableFuture().join();
                 Contracts.ActorAuthRes auth = connector
                     .request(new Contracts.ActorAuthReq(actorId, profile))
-                    .await(Contracts.ActorAuthRes.class);
+                    .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
                 ensure(actorId.equals(auth.actorId()), "SM-D5 auth actor mismatch");
                 Contracts.ActorJoinRes joined = connector
                     .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                     .metadata("actor-id", actorId)
-                    .await(Contracts.ActorJoinRes.class);
+                    .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
                 ensure(actorId.equals(joined.actorId()), "SM-D5 join actor mismatch");
             } finally {
                 closeQuietly(connector);
@@ -849,25 +852,24 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Mixed", 11, List.of("stream", "channel"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D11 auth actor mismatch");
 
             Contracts.ActorEchoRes streamReply = connector
                 .request(new Contracts.ActorEchoReq("mixed-stream", 11, profile))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure("entry:mixed-stream".equals(streamReply.value()), "SM-D11 stream actor reply mismatch");
 
             Contracts.RouteRes channelReply = routes.requestToNode(
                     Contracts.ROUTE_CHANNEL,
                     RoutingId.from("play-a"),
                     new Contracts.RouteReq("mixed-channel"))
-                .packetName(Contracts.ROUTE_PACKET)
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.RouteRes.class);
+                .submit(Contracts.RouteRes.class).toCompletableFuture().join();
             ensure("route:mixed-channel".equals(channelReply.value()), "SM-D11 route-channel reply mismatch");
             ensure("play-a".equals(channelReply.nodeRid()), "SM-D11 route-channel node mismatch");
 
@@ -888,20 +890,20 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Multi Bind", 9, List.of("multi", "bind"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.MultiBindRes bound = connector
                 .request(new Contracts.MultiBindReq(firstActorId, secondActorId, profile))
-                .await(Contracts.MultiBindRes.class);
+                .submit(Contracts.MultiBindRes.class).toCompletableFuture().join();
             ensure(bound.boundCount() == 2, "SM-D4 expected two bound actors");
 
             Contracts.ActorEchoRes first = connector
                 .request(new Contracts.ActorEchoReq("to-x", 10, profile))
                 .metadata("actor-id", firstActorId)
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             Contracts.ActorEchoRes second = connector
                 .request(new Contracts.ActorEchoReq("to-y", 11, profile))
                 .metadata("actor-id", secondActorId)
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure(firstActorId.equals(first.actorId()) && "entry:to-x".equals(first.value()),
                 "SM-D4 first actor relay mismatch");
             ensure(secondActorId.equals(second.actorId()) && "entry:to-y".equals(second.value()),
@@ -913,8 +915,8 @@ public final class ClientScenario {
             connector
                 .request(new Contracts.ActorEchoReq("push-x", 12, profile))
                 .metadata("actor-id", firstActorId)
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify firstPush = connector.await(firstPushed).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify firstPush = firstPushed.toCompletableFuture().join().payload();
             ensure(firstActorId.equals(firstPush.actorId()) && "push:push-x".equals(firstPush.value()),
                 "SM-D4 first actor push mismatch");
 
@@ -924,8 +926,8 @@ public final class ClientScenario {
             connector
                 .request(new Contracts.ActorEchoReq("push-y", 13, profile))
                 .metadata("actor-id", secondActorId)
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify secondPush = connector.await(secondPushed).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify secondPush = secondPushed.toCompletableFuture().join().payload();
             ensure(secondActorId.equals(secondPush.actorId()) && "push:push-y".equals(secondPush.value()),
                 "SM-D4 second actor push mismatch");
 
@@ -934,7 +936,7 @@ public final class ClientScenario {
                     connector
                         .request(new Contracts.ActorEchoReq("missing-actor-id", 14, profile))
                         .timeout(Duration.ofSeconds(2))
-                        .await(Contracts.ActorEchoRes.class);
+                        .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 } catch (Exception error) {
                     throw new RuntimeException(error);
                 }
@@ -959,16 +961,16 @@ public final class ClientScenario {
         Contracts.ActorProfile boundProfile = new Contracts.ActorProfile("Bound", 6, List.of("bound"));
         Contracts.ActorProfile shadowProfile = new Contracts.ActorProfile("Shadow", 6, List.of("shadow"));
         try {
-            bound.connect().await();
+            bound.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes boundAuth = bound
                 .request(new Contracts.ActorAuthReq(boundActorId, boundProfile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(boundActorId.equals(boundAuth.actorId()), "SM-D6 bound auth actor mismatch");
 
-            shadow.connect().await();
+            shadow.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes shadowAuth = shadow
                 .request(new Contracts.ActorAuthReq(shadowActorId, shadowProfile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(shadowActorId.equals(shadowAuth.actorId()), "SM-D6 shadow auth actor mismatch");
 
             var shadowPush = shadow.waitFor(Contracts.ActorPushNotify.class)
@@ -979,8 +981,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes reply = bound
                 .request(new Contracts.ActorEchoReq("push-bound-only", 20, boundProfile))
                 .metadata("actor-id", boundActorId)
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify notify = bound.await(boundPush).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify notify = boundPush.toCompletableFuture().join().payload();
 
             ensure(boundActorId.equals(reply.actorId()), "SM-D6 reply actor mismatch");
             ensure(boundActorId.equals(notify.actorId()), "SM-D6 push actor mismatch");
@@ -1003,13 +1005,13 @@ public final class ClientScenario {
         Contracts.ActorProfile preAuthProfile =
             new Contracts.ActorProfile("PreAuth", 7, List.of("pre-auth"));
         try {
-            preAuth.connect().await();
+            preAuth.connect().submit().toCompletableFuture().join();
             expectFailure(() -> {
                 try {
                     preAuth
                         .request(new Contracts.ActorEchoReq("pre-auth-dispatch", 7, preAuthProfile))
                         .timeout(Duration.ofMillis(500))
-                        .await(Contracts.ActorEchoRes.class);
+                        .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 } catch (Exception error) {
                     throw new RuntimeException(error);
                 }
@@ -1024,18 +1026,18 @@ public final class ClientScenario {
         ZLinkStreamConnector authenticated = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Auth Ok", 7, List.of("auth"));
         try {
-            authenticated.connect().await();
+            authenticated.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = authenticated
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D7 auth actor mismatch");
 
             var push = authenticated.waitFor(Contracts.ActorPushNotify.class)
                 .submit(Contracts.ActorPushNotify.class);
             Contracts.ActorEchoRes reply = authenticated
                 .request(new Contracts.ActorEchoReq("auth-ok", 7, profile))
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify notify = authenticated.await(push).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify notify = push.toCompletableFuture().join().payload();
 
             ensure(actorId.equals(reply.actorId()), "SM-D7 relay actor mismatch");
             ensure("entry:auth-ok".equals(reply.value()), "SM-D7 relay value mismatch");
@@ -1056,10 +1058,10 @@ public final class ClientScenario {
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Reconnect", 8, List.of("reconnect"));
         ZLinkStreamConnector first = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            first.connect().await();
+            first.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = first
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D8 initial auth actor mismatch");
 
             var pending = first
@@ -1067,11 +1069,11 @@ public final class ClientScenario {
                 .timeout(Duration.ofSeconds(10))
                 .submit(Contracts.SlowSessionRes.class);
             Thread.sleep(100);
-            first.close().await();
+            first.close().submit().toCompletableFuture().join();
 
             boolean pendingFailed = false;
             try {
-                first.await(pending);
+                pending.toCompletableFuture().join();
             } catch (Exception ignored) {
                 pendingFailed = true;
             }
@@ -1089,15 +1091,15 @@ public final class ClientScenario {
 
         ZLinkStreamConnector second = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            second.connect().await();
+            second.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = second
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D8 reauth actor mismatch");
 
             Contracts.ActorEchoRes reply = second
                 .request(new Contracts.ActorEchoReq("after-reconnect", 8, profile))
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure(actorId.equals(reply.actorId()), "SM-D8 reconnected actor mismatch");
             ensure("play-a".equals(reply.nodeRid()), "SM-D8 reconnected node mismatch");
             ensure("entry:after-reconnect".equals(reply.value()), "SM-D8 reconnected value mismatch");
@@ -1116,21 +1118,21 @@ public final class ClientScenario {
         ZLinkStreamConnector first = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         int firstSeen;
         try {
-            first.connect().await();
+            first.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = first
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D12 first auth actor mismatch");
             ensure("play-a".equals(auth.nodeRid()), "SM-D12 first auth node mismatch");
 
             Contracts.ActorPingRes firstReply = first
                 .request(new Contracts.ActorPingReq("before-transfer"))
-                .await(Contracts.ActorPingRes.class);
+                .submit(Contracts.ActorPingRes.class).toCompletableFuture().join();
             ensure(actorId.equals(firstReply.actorId()), "SM-D12 first reply actor mismatch");
             ensure("play-a".equals(firstReply.nodeRid()), "SM-D12 first reply node mismatch");
             ensure("before-transfer".equals(firstReply.value()), "SM-D12 first reply value mismatch");
             firstSeen = firstReply.seen();
-            first.close().await();
+            first.close().submit().toCompletableFuture().join();
         } catch (Exception error) {
             throw new IllegalStateException("stream rebind transfer first phase failed", error);
         } finally {
@@ -1141,18 +1143,18 @@ public final class ClientScenario {
 
         ZLinkStreamConnector second = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
         try {
-            second.connect().await();
+            second.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = second
                 .request(new Contracts.ActorAuthReq(actorId, profile))
                 .timeout(Duration.ofSeconds(45))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D12 second auth actor mismatch");
             ensure("play-a".equals(auth.nodeRid()), "SM-D12 second auth did not rebind existing actor");
 
             Contracts.SnapshotRes snapshot = second
                 .request(new Contracts.SnapshotReq(actorId))
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.SnapshotRes.class);
+                .submit(Contracts.SnapshotRes.class).toCompletableFuture().join();
             ensure(actorId.equals(snapshot.actorId()), "SM-D12 snapshot actor mismatch");
             ensure(snapshot.seen() == firstSeen,
                 "SM-D12 actor state was not preserved across stream servers");
@@ -1162,8 +1164,8 @@ public final class ClientScenario {
             Contracts.ActorPingRes resumed = second
                 .request(new Contracts.ActorPushReq("after-transfer"))
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorPingRes.class);
-            Contracts.ActorPushNotify notify = second.await(pushed).payload();
+                .submit(Contracts.ActorPingRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify notify = pushed.toCompletableFuture().join().payload();
 
             ensure(actorId.equals(resumed.actorId()), "SM-D12 resumed actor mismatch");
             ensure("play-a".equals(resumed.nodeRid()), "SM-D12 resumed node mismatch");
@@ -1196,16 +1198,16 @@ public final class ClientScenario {
             1);
         ZLinkStreamConnector isolated = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
         try {
-            congested.connect().await();
+            congested.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes congestedAuth = congested
                 .request(new Contracts.ActorAuthReq(congestedActorId, congestedProfile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(congestedActorId.equals(congestedAuth.actorId()), "SM-D10 congested auth actor mismatch");
 
-            isolated.connect().await();
+            isolated.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes isolatedAuth = isolated
                 .request(new Contracts.ActorAuthReq(isolatedActorId, isolatedProfile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(isolatedActorId.equals(isolatedAuth.actorId()), "SM-D10 isolated auth actor mismatch");
 
             var retainedPush = congested.waitFor(Contracts.ActorPushNotify.class)
@@ -1213,31 +1215,31 @@ public final class ClientScenario {
             for (int index = 0; index < 8; index++) {
                 Contracts.ActorEchoRes reply = congested
                     .request(new Contracts.ActorEchoReq("burst-" + index, 10, congestedProfile))
-                    .await(Contracts.ActorEchoRes.class);
+                    .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 ensure(congestedActorId.equals(reply.actorId()), "SM-D10 congested reply actor mismatch");
             }
             ensure(congested.receivedCount("ActorPushNotify") <= 1,
                 "SM-D10 congested queue retained too many pushes");
-            congested.dispatch().await();
-            Contracts.ActorPushNotify retained = congested.await(retainedPush).payload();
+            congested.dispatch().submit().toCompletableFuture().join();
+            Contracts.ActorPushNotify retained = retainedPush.toCompletableFuture().join().payload();
             ensure(congestedActorId.equals(retained.actorId()), "SM-D10 retained push actor mismatch");
             ensure("push:burst-7".equals(retained.value()),
                 "SM-D10 expected newest congested push to be retained");
 
             Contracts.ActorEchoRes stillAlive = congested
                 .request(new Contracts.ActorEchoReq("after-backpressure", 10, congestedProfile))
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure(congestedActorId.equals(stillAlive.actorId()), "SM-D10 congested session stopped routing");
             ensure("entry:after-backpressure".equals(stillAlive.value()),
                 "SM-D10 congested session reply mismatch");
-            congested.dispatch().await();
+            congested.dispatch().submit().toCompletableFuture().join();
 
             var isolatedPush = isolated.waitFor(Contracts.ActorPushNotify.class)
                 .submit(Contracts.ActorPushNotify.class);
             Contracts.ActorEchoRes isolatedReply = isolated
                 .request(new Contracts.ActorEchoReq("isolated-push", 10, isolatedProfile))
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify isolatedNotify = isolated.await(isolatedPush).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify isolatedNotify = isolatedPush.toCompletableFuture().join().payload();
             ensure(isolatedActorId.equals(isolatedReply.actorId()), "SM-D10 isolated reply actor mismatch");
             ensure(isolatedActorId.equals(isolatedNotify.actorId()), "SM-D10 isolated push actor mismatch");
             ensure("push:isolated-push".equals(isolatedNotify.value()),
@@ -1257,10 +1259,10 @@ public final class ClientScenario {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Heartbeat", 13, List.of("heartbeat"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D13 auth actor mismatch");
 
             Thread.sleep(1_500);
@@ -1269,7 +1271,7 @@ public final class ClientScenario {
             Contracts.ActorEchoRes reply = connector
                 .request(new Contracts.ActorEchoReq("after-heartbeat", 13, profile))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure(actorId.equals(reply.actorId()), "SM-D13 actor reply mismatch");
             ensure("play-a".equals(reply.nodeRid()), "SM-D13 actor node mismatch");
             ensure("entry:after-heartbeat".equals(reply.value()), "SM-D13 actor value mismatch");
@@ -1295,7 +1297,7 @@ public final class ClientScenario {
             false);
         boolean strictTlsRejected = false;
         try {
-            strict.connect().await();
+            strict.connect().submit().toCompletableFuture().join();
         } catch (Exception error) {
             strictTlsRejected = true;
         } finally {
@@ -1311,10 +1313,10 @@ public final class ClientScenario {
             Integer.MAX_VALUE,
             true);
         try {
-            tls.connect().await();
+            tls.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = tls
                 .request(new Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D14 TLS auth actor mismatch");
             ensure("play-a".equals(auth.nodeRid()), "SM-D14 TLS auth node mismatch");
 
@@ -1323,8 +1325,8 @@ public final class ClientScenario {
             Contracts.ActorEchoRes reply = tls
                 .request(new Contracts.ActorEchoReq("tls-push", 14, profile))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorEchoRes.class);
-            Contracts.ActorPushNotify notify = tls.await(pushed).payload();
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
+            Contracts.ActorPushNotify notify = pushed.toCompletableFuture().join().payload();
             ensure(actorId.equals(reply.actorId()), "SM-D14 TLS actor reply mismatch");
             ensure("play-a".equals(reply.nodeRid()), "SM-D14 TLS actor node mismatch");
             ensure(actorId.equals(notify.actorId()), "SM-D14 TLS push actor mismatch");
@@ -1489,10 +1491,10 @@ public final class ClientScenario {
                 connectors.add(connector);
                 actorIds.add(actorId);
                 values.add("push-" + index);
-                connector.connect().await();
+                connector.connect().submit().toCompletableFuture().join();
                 Contracts.ActorAuthRes auth = connector
                     .request(new Contracts.ActorAuthReq(actorId, profile))
-                    .await(Contracts.ActorAuthRes.class);
+                    .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
                 ensure(actorId.equals(auth.actorId()), "SM-G4 auth actor mismatch");
             }
 
@@ -1511,7 +1513,7 @@ public final class ClientScenario {
                     try {
                         return connector
                             .request(new Contracts.ActorEchoReq(value, 14, profile))
-                            .await(Contracts.ActorEchoRes.class);
+                            .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                     } catch (Exception error) {
                         throw new RuntimeException(error);
                     }
@@ -1522,7 +1524,7 @@ public final class ClientScenario {
                 String actorId = actorIds.get(index);
                 String value = values.get(index);
                 Contracts.ActorEchoRes reply = replies.get(index).join();
-                Contracts.ActorPushNotify notify = connectors.get(index).await(pushes.get(index)).payload();
+                Contracts.ActorPushNotify notify = pushes.get(index).toCompletableFuture().join().payload();
                 ensure(actorId.equals(reply.actorId()), "SM-G4 push reply actor mismatch");
                 ensure(("entry:" + value).equals(reply.value()), "SM-G4 push reply value mismatch");
                 ensure(actorId.equals(notify.actorId()), "SM-G4 push notify actor mismatch");
@@ -1556,15 +1558,15 @@ public final class ClientScenario {
             for (int index = 0; index < actorCount; index++) {
                 String actorId = "actor-sm-g3-" + key + "-" + index;
                 ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
-                connector.connect().await();
+                connector.connect().submit().toCompletableFuture().join();
                 Contracts.ActorAuthRes auth = connector
                     .request(new Contracts.ActorAuthReq(actorId, profile))
-                    .await(Contracts.ActorAuthRes.class);
+                    .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
                 ensure(actorId.equals(auth.actorId()), "SM-G3 auth actor mismatch");
                 Contracts.ActorJoinRes joined = connector
                     .request(new Contracts.ActorJoinReq(spotRid, profile, profile.tags()))
                     .metadata("actor-id", actorId)
-                    .await(Contracts.ActorJoinRes.class);
+                    .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
                 ensure(actorId.equals(joined.actorId()), "SM-G3 join actor mismatch");
                 ensure("play-a".equals(joined.nodeRid()), "SM-G3 join node mismatch");
                 actorIds.add(actorId);
@@ -1580,15 +1582,13 @@ public final class ClientScenario {
                         Contracts.ActorEchoRes ping = connector
                             .request(new Contracts.ActorEchoReq(actorId, 3, profile))
                             .metadata("actor-id", actorId)
-                            .await(Contracts.ActorEchoRes.class);
+                            .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                         ensure(actorId.equals(ping.actorId()), "SM-G3 actor request target mismatch");
                         ensure("play-a".equals(ping.nodeRid()), "SM-G3 actor request node mismatch");
                         connector
                             .send(new Contracts.LeaveActorReq(actorId))
                             .metadata("actor-id", actorId)
-                            .submit()
-                            .toCompletableFuture()
-                            .join();
+                            .submit();
                     } catch (Exception error) {
                         throw new RuntimeException(error);
                     }
@@ -1629,7 +1629,7 @@ public final class ClientScenario {
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Crash Recovery", 1, List.of("sm-g1"));
         ZLinkStreamConnector crashedConnector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            crashedConnector.connect().await();
+            crashedConnector.connect().submit().toCompletableFuture().join();
             authenticateJoinAndEcho(crashedConnector, actorId, profile, "before-crash", 1);
             signalFile("ZLINK_JAVA_E2E_SM_G1_READY_FILE");
             waitForSignalFile("ZLINK_JAVA_E2E_SM_G1_CRASHED_FILE");
@@ -1640,7 +1640,7 @@ public final class ClientScenario {
                         .request(new Contracts.ActorEchoReq("during-crash", 2, profile))
                         .metadata("actor-id", actorId)
                         .timeout(Duration.ofSeconds(2))
-                        .await(Contracts.ActorEchoRes.class);
+                        .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
                 } catch (Exception error) {
                     throw new RuntimeException(error);
                 }
@@ -1649,7 +1649,7 @@ public final class ClientScenario {
             Contracts.StateRes survivor = eventually(() -> outbound.requestToSpot(spotRef("room-b"),
                     new Contracts.StateReq("sm-g1-survivor"))
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes.class));
+                .submit(Contracts.StateRes.class).toCompletableFuture().join());
             ensure("play-b".equals(survivor.nodeRid()), "SM-G1 play-b survivor request node mismatch");
             signalFile("ZLINK_JAVA_E2E_SM_G1_FAILED_FILE");
             waitForSignalFile("ZLINK_JAVA_E2E_SM_G1_RESTARTED_FILE");
@@ -1661,7 +1661,7 @@ public final class ClientScenario {
 
         ZLinkStreamConnector recoveredConnector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            recoveredConnector.connect().await();
+            recoveredConnector.connect().submit().toCompletableFuture().join();
             authenticateJoinAndEcho(recoveredConnector, actorId, profile, "after-restart", 3);
         } catch (Exception error) {
             throw new IllegalStateException("play crash recovery scenario failed after restart", error);
@@ -1682,21 +1682,21 @@ public final class ClientScenario {
             Contracts.ActorAuthRes auth = connector
                 .request(new Contracts.ActorAuthReq(actorId, profile))
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorAuthRes.class);
+                .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-G1 auth actor mismatch");
 
             Contracts.ActorJoinRes joined = connector
                 .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorJoinRes.class);
+                .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
             ensure("room-a".equals(joined.spotRid()), "SM-G1 joined spot mismatch");
 
             Contracts.ActorEchoRes echo = connector
                 .request(new Contracts.ActorEchoReq(value, requestSeq, profile))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
-                .await(Contracts.ActorEchoRes.class);
+                .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             ensure("room-a".equals(echo.spotRid()), "SM-G1 actor spot mismatch");
             ensure(("user:" + value).equals(echo.value()), "SM-G1 actor echo mismatch");
         } catch (Exception error) {
@@ -1765,7 +1765,7 @@ public final class ClientScenario {
         ZLinkStreamConnector connector,
         java.util.concurrent.CompletionStage<T> stage) {
         try {
-            connector.await(stage);
+            stage.toCompletableFuture().join();
         } catch (Exception error) {
             throw new RuntimeException(error);
         }
@@ -1811,7 +1811,7 @@ public final class ClientScenario {
 
     private static void closeQuietly(ZLinkStreamConnector connector) {
         try {
-            connector.close().await();
+            connector.close().submit().toCompletableFuture().join();
         } catch (Exception ignored) {
         }
     }
@@ -1894,11 +1894,11 @@ public final class ClientScenario {
         eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("worker-start"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         Contracts.StateRes followUp = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("worker-follow-up"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure(followUp.value().contains("worker-follow-up"),
             "SM-A8 follow-up state was not applied");
         System.out.println("scenario SM-A8 passed");
@@ -1908,7 +1908,7 @@ public final class ClientScenario {
         Contracts.OutboundRes reply = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.OutboundReq("c2"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.OutboundRes.class));
+            .submit(Contracts.OutboundRes.class).toCompletableFuture().join());
         ensure("room-a".equals(reply.spotRid()), "SM-C2 wrong source spot");
         ensure("play-a".equals(reply.nodeRid()), "SM-C2 wrong source node");
         ensure("c2".equals(reply.channelReply()), "SM-C2 channel request reply mismatch");
@@ -1919,15 +1919,14 @@ public final class ClientScenario {
         Contracts.StateRes requestReply = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.StateReq("c3-source"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateRes.class));
+            .submit(Contracts.StateRes.class).toCompletableFuture().join());
         ensure("play-a".equals(requestReply.nodeRid()), "SM-C3 source spot owner mismatch");
         outbound.sendToSpot(spotRef("room-b"), new Contracts.OutboundMsg("c3-send"))
-            .packetName("OutboundMsg")
-            .await();
+            .submit();
         Contracts.OutboundRes reply = eventually(() -> outbound.requestToSpot(spotRef("room-b"),
                 new Contracts.OutboundReq("c3-request"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.OutboundRes.class));
+            .submit(Contracts.OutboundRes.class).toCompletableFuture().join());
         ensure("room-b".equals(reply.spotRid()), "SM-C3 wrong target spot");
         ensure("play-b".equals(reply.nodeRid()), "SM-C3 wrong target node");
         System.out.println("scenario SM-C3 passed");
@@ -1937,7 +1936,7 @@ public final class ClientScenario {
         Contracts.OutboundRes reply = eventually(() -> outbound.requestToSpot(spotRef("room-a"),
                 new Contracts.OutboundReq("c5-cross-node"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.OutboundRes.class));
+            .submit(Contracts.OutboundRes.class).toCompletableFuture().join());
         ensure("room-a".equals(reply.spotRid()), "SM-C5 wrong publisher spot");
         ensure("play-a".equals(reply.nodeRid()), "SM-C5 wrong publisher node");
         waitForPlayBEvidence(List.of("SpotMeshMsg|play-b|room-b|publish:c5-cross-node"));
@@ -1990,13 +1989,9 @@ public final class ClientScenario {
             .join();
     }
 
-    private static SpotRef spotRef(String spotRid) {
-        RoutingId targetNode = switch (spotRid) {
-            case "room-a" -> RoutingId.from("play-a");
-            case "room-b" -> RoutingId.from("play-b");
-            default -> RoutingId.from(spotRid);
-        };
-        return new SpotRef(Contracts.SPOT_MESH, targetNode, RoutingId.from(spotRid));
+    private SpotHandle spotRef(String spotRid) {
+        return spotHandles.resolveSpotHandle(RoutingId.from(spotRid)).toCompletableFuture().join()
+            .orElseThrow(() -> new IllegalStateException("spot not found: " + spotRid));
     }
 
     private static void sleep(long millis) {

@@ -18,9 +18,9 @@ On Windows:
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 ```
 
-The runner uses `BINGO_REDIS_ENDPOINT` when it is set. If it is not set, the
-runner provisions a dedicated Redis Docker container on a Docker-assigned
-loopback port, derives `BINGO_REDIS_ENDPOINT` from it, and removes that
-container on success or failure. The runner also supplies a unique
+The runner always provisions a dedicated Redis Docker container on a
+Docker-assigned loopback port, derives `BINGO_REDIS_ENDPOINT` from it, and
+removes that container on success or failure. It does not reuse an external
+Redis endpoint. The runner also supplies a unique
 `BINGO_REDIS_KEY_PREFIX` for each execution so parallel sample runs do not share
 Redis match queue keys.

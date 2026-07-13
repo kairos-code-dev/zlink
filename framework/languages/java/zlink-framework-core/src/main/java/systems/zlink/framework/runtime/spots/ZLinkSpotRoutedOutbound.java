@@ -7,15 +7,12 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
@@ -55,7 +52,7 @@ final class ZLinkSpotRoutedOutbound {
             packetName);
     }
 
-    ZLinkYieldRequestCall request(
+    ZLinkRequestCall request(
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
@@ -69,8 +66,7 @@ final class ZLinkSpotRoutedOutbound {
             spotRid,
             payload,
             packetName,
-            timeout,
-            ZLinkFrameworkTurns.captureCurrent());
+            timeout);
     }
 
     void submitSend(
@@ -121,7 +117,6 @@ final class ZLinkSpotRoutedOutbound {
         Message payload,
         Optional<String> packetName,
         Duration timeout,
-        ZLinkYieldTurn turn,
         Class<TReply> replyType) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
@@ -137,8 +132,7 @@ final class ZLinkSpotRoutedOutbound {
                 spotRid,
                 payload,
                 packetName,
-                timeout,
-                turn).submit(replyType);
+                timeout).submit(replyType);
         }
         List<Message> parts = messages.encode(packetName, payload);
         try {
@@ -235,7 +229,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
     }
 }
 
-final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
+final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
     private final ZLinkSpotRoutedOutbound outbound;
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
@@ -243,7 +237,6 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
-    private final ZLinkYieldTurn turn;
 
     ZLinkSpotRoutedRequestCall(
         ZLinkSpotRoutedOutbound outbound,
@@ -252,8 +245,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
         RoutingId spotRid,
         Message payload,
         Optional<String> packetName,
-        Duration timeout,
-        ZLinkYieldTurn turn) {
+        Duration timeout) {
         this.outbound = outbound;
         this.routerChannelId = routerChannelId;
         this.targetNodeRid = targetNodeRid;
@@ -261,10 +253,9 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
-        this.turn = turn;
     }
 
-    public ZLinkYieldRequestCall packetName(String packetName) {
+    public ZLinkRequestCall packetName(String packetName) {
         return new ZLinkSpotRoutedRequestCall(
             outbound,
             routerChannelId,
@@ -272,17 +263,16 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
             spotRid,
             payload,
             Optional.of(packetName),
-            timeout,
-            turn);
+            timeout);
     }
 
     @Override
-    public ZLinkYieldRequestCall metadata(String key, String value) {
+    public ZLinkRequestCall metadata(String key, String value) {
         return this;
     }
 
     @Override
-    public ZLinkYieldRequestCall timeout(Duration timeout) {
+    public ZLinkRequestCall timeout(Duration timeout) {
         return new ZLinkSpotRoutedRequestCall(
             outbound,
             routerChannelId,
@@ -290,38 +280,20 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkYieldRequestCall {
             spotRid,
             payload,
             packetName,
-            timeout,
-            turn);
+            timeout);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-        return outbound.submitRequest(
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
+            outbound.submitRequest(
             routerChannelId,
             targetNodeRid,
             spotRid,
             payload,
             packetName,
             timeout,
-            turn,
-            replyType);
+            replyType));
     }
 
-    @Override
-    public <TReply> TReply yield(Class<TReply> replyType) {
-        return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
-    }
-
-    private ZLinkYieldTurn requireTurn() {
-        if (turn != null) {
-            return turn;
-        }
-        ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-        if (current != null) {
-            return current;
-        }
-        throw new IllegalStateException(
-            "yield requires a framework Spot handler turn captured when the call object was created");
-    }
 }

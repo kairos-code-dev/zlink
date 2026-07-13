@@ -6,15 +6,15 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Infrastructure.EvidenceStore
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 
 class WorkflowRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<WorkflowReq, WorkflowRes> {
-    override fun handle(request: WorkflowReq, context: ZLinkRequestContext): WorkflowRes {
+) : ZLinkSuspendingRequestHandler<WorkflowReq, WorkflowRes> {
+    override suspend fun handle(request: WorkflowReq, context: ZLinkRequestContext): WorkflowRes {
         evidence.add("workflow-request|rid=${evidence.rid}|value=${request.value}|packet=${context.packetName()}")
         return WorkflowRes("workflow:${request.value}", evidence.rid)
     }

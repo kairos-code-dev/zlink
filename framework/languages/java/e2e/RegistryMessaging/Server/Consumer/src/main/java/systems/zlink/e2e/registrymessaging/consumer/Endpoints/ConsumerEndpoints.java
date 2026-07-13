@@ -3,6 +3,8 @@ package systems.zlink.e2e.registrymessaging.consumer.Endpoints;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,79 +34,77 @@ public final class ConsumerEndpoints {
     }
 
     @GetMapping("/locations/peers")
-    public List<java.util.Map<String, Object>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocationsAsync(new ZLinkPeerLocationFilter(
+    public CompletionStage<List<java.util.Map<String, Object>>> peers() {
+        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocations(new ZLinkPeerLocationFilter(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
                 Contracts.API_CHANNEL,
                 ZLinkLocationRole.ROUTER,
                 null,
                 null))
-            .toCompletableFuture()
-            .join()
-            .stream()
+            .thenApply(peers -> peers.stream()
             .map(peer -> java.util.Map.<String, Object>of(
                 "meshName", peer.meshName(),
                 "role", peer.role().name(),
                 "nodeRid", peer.nodeRid().toString(),
                 "endpoint", peer.endpoint(),
                 "ownerId", peer.ownerId()))
-            .toList();
+            .toList());
     }
 
     @PostMapping("/profile/request")
-    public Contracts.ProfileRes profileRequest(@RequestBody Contracts.ProfileReq request) {
+    public CompletionStage<Contracts.ProfileRes> profileRequest(@RequestBody Contracts.ProfileReq request) {
         return requestProfile(request, Duration.ofSeconds(5));
     }
 
     @PostMapping("/workflow/request")
-    public Contracts.WorkflowRes workflowRequest(@RequestBody Contracts.WorkflowReq request) {
+    public CompletionStage<Contracts.WorkflowRes> workflowRequest(@RequestBody Contracts.WorkflowReq request) {
         return client.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
-            .packetName("WorkflowReq")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.WorkflowRes.class);
+            .submit(Contracts.WorkflowRes.class);
     }
 
     @PostMapping("/profile/batch-request")
-    public List<Contracts.ProfileRes> profileBatch(@RequestBody List<Contracts.ProfileReq> requests) {
+    public CompletionStage<List<Contracts.ProfileRes>> profileBatch(
+        @RequestBody List<Contracts.ProfileReq> requests) {
         List<Contracts.ProfileRes> replies = new ArrayList<>(requests.size());
+        CompletionStage<Void> sequence = CompletableFuture.completedFuture(null);
         for (Contracts.ProfileReq request : requests) {
-            replies.add(requestProfile(request, Duration.ofSeconds(5)));
+            sequence = sequence.thenCompose(ignored -> requestProfile(request, Duration.ofSeconds(5))
+                .thenAccept(replies::add));
         }
-        return replies;
+        return sequence.thenApply(ignored -> List.copyOf(replies));
     }
 
     @PostMapping("/profile/slow-request")
-    public Contracts.RequestFailureRes slowRequest(@RequestBody Contracts.ProfileReq request) {
+    public CompletionStage<Contracts.RequestFailureRes> slowRequest(@RequestBody Contracts.ProfileReq request) {
         return requestFailure(request, Duration.ofMillis(100));
     }
 
     @PostMapping("/profile/missing-request")
-    public Contracts.RequestFailureRes missingRequest(@RequestBody Contracts.ProfileReq request) {
-        try {
-            client.requestToChannel(Contracts.API_CHANNEL, request)
-                .packetName("MissingProfileReq")
+    public CompletionStage<Contracts.RequestFailureRes> missingRequest(
+        @RequestBody Contracts.ProfileReq request) {
+        return client.requestToChannel(
+                Contracts.API_CHANNEL,
+                new Contracts.MissingProfileReq(request.value()))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.ProfileRes.class);
-            return new Contracts.RequestFailureRes(false, "");
-        } catch (RuntimeException error) {
-            return new Contracts.RequestFailureRes(true, error.getClass().getSimpleName());
-        }
+                .submit(Contracts.ProfileRes.class)
+            .handle((ignored, error) -> new Contracts.RequestFailureRes(
+                error != null, error == null ? "" : error.getClass().getSimpleName()));
     }
 
     @PostMapping("/profile/missing-command")
     public java.util.Map<String, String> missingCommand(@RequestBody Contracts.ProfileMsg command) {
-        client.sendToChannel(Contracts.API_CHANNEL, command)
-            .packetName("MissingProfileMsg")
-            .submit();
+        client.sendToChannel(
+            Contracts.API_CHANNEL,
+            new Contracts.MissingProfileMsg(command.commandId())).submit();
         return java.util.Map.of("status", "sent");
     }
 
     @PostMapping("/profile/payload")
-    public Contracts.PayloadRes payload(@RequestBody Contracts.PayloadReq request) {
+    public CompletionStage<Contracts.PayloadRes> payload(@RequestBody Contracts.PayloadReq request) {
         return client.requestToChannel(Contracts.API_CHANNEL, request)
-            .packetName("PayloadReq")
             .timeout(Duration.ofSeconds(10))
-            .await(Contracts.PayloadRes.class);
+            .submit(Contracts.PayloadRes.class);
     }
 
     @PostMapping("/profile/backpressure/reset")
@@ -115,28 +115,23 @@ public final class ConsumerEndpoints {
     @PostMapping("/profile/backpressure/send")
     public Contracts.BackpressureRes backpressureSend(@RequestBody Contracts.ProfileMsg command) {
         client.sendToChannel(Contracts.API_CHANNEL, command)
-            .packetName("ProfileMsg")
             .submit();
         return new Contracts.BackpressureRes("Submitted");
     }
 
-    private Contracts.ProfileRes requestProfile(
+    private CompletionStage<Contracts.ProfileRes> requestProfile(
         Contracts.ProfileReq request,
         Duration timeout) {
         return client.requestToChannel(Contracts.API_CHANNEL, request)
-            .packetName("ProfileReq")
             .timeout(timeout)
-            .await(Contracts.ProfileRes.class);
+            .submit(Contracts.ProfileRes.class);
     }
 
-    private Contracts.RequestFailureRes requestFailure(
+    private CompletionStage<Contracts.RequestFailureRes> requestFailure(
         Contracts.ProfileReq request,
         Duration timeout) {
-        try {
-            requestProfile(request, timeout);
-            return new Contracts.RequestFailureRes(false, "");
-        } catch (RuntimeException error) {
-            return new Contracts.RequestFailureRes(true, error.getClass().getSimpleName());
-        }
+        return requestProfile(request, timeout).handle((ignored, error) ->
+            new Contracts.RequestFailureRes(
+                error != null, error == null ? "" : error.getClass().getSimpleName()));
     }
 }

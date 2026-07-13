@@ -20,6 +20,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
+import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 
 final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     private final ZLinkMessageSerializer serializer;
@@ -27,6 +28,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     private final ZLinkMessageFlowTracer flow;
     private final Map<String, ZLinkInternalSpotNode> nodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> spotsByChannel = new HashMap<>();
+    private volatile boolean closed;
 
     ZLinkSpotPublisherRuntime(
         ZLinkMessageSerializer serializer,
@@ -93,6 +95,9 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
                 parts.forEach(Message::close);
             }
         }).exceptionally(error -> {
+            if (closed) {
+                return null;
+            }
             java.util.logging.Logger.getLogger(ZLinkSpotPublisherRuntime.class.getName())
                 .log(java.util.logging.Level.SEVERE, "one-way SPOT publish failed", error);
             return null;
@@ -100,7 +105,8 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        closed = true;
         RuntimeException firstFailure = null;
         for (ZLinkBackendSpot spot : spotsByChannel.values()) {
             try {
@@ -121,6 +127,9 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     }
 
     private synchronized ZLinkBackendSpot publisherSpot(String channelName) {
+        if (closed) {
+            throw new ZLinkConfigurationException("SPOT publisher runtime is closed");
+        }
         ZLinkInternalSpotNode node = requireChannel(channelName);
         return spotsByChannel.computeIfAbsent(channelName, ignored -> node.createSpot());
     }
@@ -138,6 +147,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
         String channelName,
         String topic,
         Optional<String> packetName) {
+        ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
         if (!flow.enabled(ZLinkMessageFlowOutcome.SENT)) {
             return;
         }

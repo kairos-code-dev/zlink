@@ -18,6 +18,9 @@ final class ZLinkActorContextState {
     private long sessionBindingToken;
     private RoutingId boundSessionSourceNodeRid;
     private RoutingId boundSessionSourceSessionRid;
+    private RoutingId entrySpotNodeRid;
+    private RoutingId entrySpotRid;
+    private String entryRouterChannelId;
     private RoutingId spotRid;
     private ZLinkSpot<?> spot;
     private boolean joined;
@@ -25,9 +28,11 @@ final class ZLinkActorContextState {
     private boolean moving;
     private CompletableFuture<Void> moveCompletion = CompletableFuture.completedFuture(null);
 
-    ZLinkActorContextState(ZLinkBackendActorRef actorRef) {
+    ZLinkActorContextState(ZLinkBackendActorRef actorRef, RoutingId entrySpotRid) {
         this.actorId = actorRef.actorId();
         this.actorRef = actorRef;
+        this.entrySpotNodeRid = actorRef.nodeRid();
+        this.entrySpotRid = entrySpotRid;
     }
 
     ZLinkActor actor() {
@@ -60,6 +65,38 @@ final class ZLinkActorContextState {
 
     RoutingId spotRid() {
         return spotRid;
+    }
+
+    RoutingId entrySpotNodeRid() {
+        return entrySpotNodeRid;
+    }
+
+    RoutingId entrySpotRid() {
+        return entrySpotRid;
+    }
+
+    String entryRouterChannelId() {
+        return entryRouterChannelId;
+    }
+
+    void setEntrySpotNodeRid(RoutingId entrySpotNodeRid) {
+        if (entrySpotNodeRid == null) {
+            throw new ZLinkConfigurationException("entrySpotNodeRid is required");
+        }
+        this.entrySpotNodeRid = entrySpotNodeRid;
+    }
+
+    void setEntrySpotRid(RoutingId entrySpotRid) {
+        if (entrySpotRid == null) {
+            throw new ZLinkConfigurationException("entrySpotRid is required");
+        }
+        this.entrySpotRid = entrySpotRid;
+    }
+
+    void setEntryRouterChannelId(String entryRouterChannelId) {
+        if (entryRouterChannelId != null && !entryRouterChannelId.isBlank()) {
+            this.entryRouterChannelId = entryRouterChannelId;
+        }
     }
 
     boolean joined() {
@@ -102,6 +139,10 @@ final class ZLinkActorContextState {
         if (spot == null) {
             throw new ZLinkConfigurationException("actor has not joined a user Spot");
         }
+        return spot;
+    }
+
+    ZLinkSpot<?> spot() {
         return spot;
     }
 
@@ -216,6 +257,9 @@ final class ZLinkActorContextState {
         boundSession = null;
         boundSessionSourceNodeRid = null;
         boundSessionSourceSessionRid = null;
+        entrySpotNodeRid = null;
+        entrySpotRid = null;
+        entryRouterChannelId = null;
         sessionBindingToken++;
         spotRid = null;
         spot = null;

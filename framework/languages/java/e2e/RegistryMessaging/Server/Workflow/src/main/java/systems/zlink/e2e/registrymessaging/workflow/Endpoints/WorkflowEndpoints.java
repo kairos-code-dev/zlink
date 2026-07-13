@@ -2,6 +2,7 @@ package systems.zlink.e2e.registrymessaging.workflow.Endpoints;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletionStage;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,10 +44,9 @@ public final class WorkflowEndpoints {
     }
 
     @PostMapping("/workflow/request")
-    public Contracts.WorkflowRes workflowRequest(@RequestBody Contracts.WorkflowReq request) {
+    public CompletionStage<Contracts.WorkflowRes> workflowRequest(@RequestBody Contracts.WorkflowReq request) {
         return client.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
-            .packetName("WorkflowReq")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.WorkflowRes.class);
+            .submit(Contracts.WorkflowRes.class);
     }
 }

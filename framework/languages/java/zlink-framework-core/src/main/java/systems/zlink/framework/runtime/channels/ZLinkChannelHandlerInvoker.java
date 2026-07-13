@@ -35,7 +35,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -53,7 +52,6 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -65,8 +63,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -112,23 +108,22 @@ final class ZLinkChannelHandlerInvoker {
     <T> CompletionStage<T> executeHandler(
         java.util.function.Supplier<CompletionStage<T>> operation) {
         CompletableFuture<T> result = new CompletableFuture<>();
-        ZLinkYieldTurn turn = ZLinkFrameworkTurns.captureCurrent();
+        var flow = systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.current();
         try {
             handlerExecutor.execute(() -> {
-                ZLinkFrameworkTurns.runWithTurn(turn, () -> {
-                    try {
-                        operation.get().whenComplete((value, error) -> {
+                try {
+                    operation.get().whenComplete((value, error) -> {
+                        systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.run(flow, () -> {
                             if (error != null) {
                                 result.completeExceptionally(error);
                             } else {
                                 result.complete(value);
                             }
                         });
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    }
-                    return null;
-                });
+                    });
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                }
             });
         } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
@@ -433,7 +428,7 @@ final class ZLinkChannelHandlerInvoker {
         if (filterTypes.isEmpty()) {
             return terminal.get();
         }
-        return ZLinkFilterPipeline.invokeAsync(
+        return ZLinkFilterPipeline.invoke(
             filterTypes,
             handlerFactory,
             context,

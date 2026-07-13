@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.session.sessions
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
@@ -24,12 +23,12 @@ class BingoSession(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
-        val handled = ZLinkAwait.await(handlers.tryHandleAsync(context, dispatch, payload))
+        val handled = handlers.tryHandle(context, dispatch, payload).await()
         if (handled) {
             return
         }
         val actor = requireSingleBoundActor(dispatch.packetName())
-        ZLinkAwait.await(actor.relay(payload))
+        actor.relay(dispatch, payload).await()
     }
 
     private fun requireSingleBoundActor(packetName: String): ZLinkSessionActor =

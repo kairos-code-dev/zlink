@@ -51,9 +51,7 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.clientEnabled()) {
             ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
             dealer.setChannelName(channel.name());
-            for (String endpoint : channel.clientManualEndpoints()) {
-                dealer.connect(endpoint);
-            }
+            channel.clientConnections().attach(dealer);
             sockets.registerClient(channel.name(), dealer);
         }
         if (channel.serverBinds().isEmpty()) {
@@ -92,9 +90,7 @@ final class ZLinkChannelRuntimeConfigurator {
         }
         ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
         subscriber.setChannelName(channel.name());
-        for (String endpoint : channel.subscriberManualEndpoints()) {
-            subscriber.connect(endpoint);
-        }
+        channel.subscriberConnections().attach(subscriber);
         subscriber.setSubscription("");
         sockets.registerSubscriber(channel.name(), subscriber);
         dispatchRegistry.registerFanout(
@@ -109,9 +105,7 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.routeRoutingId() != null) {
             router.setRoutingId(channel.routeRoutingId());
         }
-        for (String endpoint : channel.routeManualEndpoints()) {
-            router.connect(endpoint);
-        }
+        channel.routeConnections().attach(router);
         for (String endpoint : channel.routeBinds()) {
             router.bind(endpoint);
         }

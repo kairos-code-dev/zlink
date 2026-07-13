@@ -88,20 +88,9 @@ if [[ "${SCENARIO}" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; 
   exit 0
 fi
 
-if [[ -z "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" && -z "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when no Redis location endpoint is provided." >&2
-    exit 1
-  fi
-  REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${REDIS_CONTAINER}"
-  )"
-else
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT}}"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:spot-service:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS="${LOCAL_READINESS_TIMEOUT_SECONDS:-30}"
 LOCAL_READINESS_POLL_SECONDS="${LOCAL_READINESS_POLL_SECONDS:-0.1}"
@@ -158,12 +147,14 @@ cleanup() {
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 reserve_ports() {
   python3 - <<'PY'

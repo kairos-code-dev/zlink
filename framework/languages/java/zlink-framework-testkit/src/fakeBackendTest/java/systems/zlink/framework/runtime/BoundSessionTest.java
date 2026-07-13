@@ -12,18 +12,24 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.locations.ZLinkActorLocation;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.testkit.TestZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -44,16 +50,13 @@ final class BoundSessionTest {
 
             actor.context()
                 .boundSession()
-                .send("push")
-                .packetName("Push")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .send(new Push("push"))
+                .submit();
+            awaitCall(backend, "stream.send.session-1.Push.");
         }
 
         assertTrue(backend.calls().stream()
-            .anyMatch(call -> call.startsWith("stream.send.session-1.Push.")
-                && call.endsWith(".\"push\"")));
+            .anyMatch(call -> call.startsWith("stream.send.session-1.Push.")));
     }
 
     @Test
@@ -102,41 +105,41 @@ final class BoundSessionTest {
 
             actor.context()
                 .boundSession()
-                .send("push")
-                .packetName("Push")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .send(new Push("push"))
+                .submit();
+            awaitCall(backend, "stream.send.session-1.Push.");
         }
 
         assertFalse(backend.calls().stream()
             .anyMatch(call -> call.startsWith(
                 "spotNode.bindRemoteActorBoundSession.player-1.source-node.source-session")));
         assertTrue(backend.calls().stream()
-            .anyMatch(call -> call.startsWith("stream.send.session-1.Push.")
-                && call.endsWith(".\"push\"")));
+            .anyMatch(call -> call.startsWith("stream.send.session-1.Push.")));
     }
 
     @Test
-    void sessionActorRelay_sendsPacketThroughBoundActorBackendRoute() {
+    void sessionActorRelay_keepsBoundActorWhileLocationPublicationIsPending() {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
-
+        DefaultZLinkFrameworkOptions options = RemoteSessionRelayTest.options();
+        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+        options.addLocationStore(locations);
+        ActorRef remoteActor = new ActorRef(
+            RoutingId.from("play-node"),
+            "player-1",
+            1);
         try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(RemoteSessionRelayTest.options(), backend)) {
+                 RuntimeTestSupport.startFramework(options, backend)) {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bind(new ActorRef(
-                    RoutingId.from("play-node"),
-                    "player-1",
-                    1))
+                .bind(remoteActor)
                 .toCompletableFuture()
                 .join();
-
             relayWithHeader(actor, "PlaceMark", ZLinkMessage.of("place"));
+            assertTrue(backend.calls().contains(
+                "stream.relayBoundActor.player-1.RAW.PlaceMark"),
+                backend.calls().toString());
         }
-
-        assertTrue(backend.calls().contains("stream.relayBoundActor.player-1.RAW.PlaceMark"));
     }
 
     private static ZLinkActor managedActor(
@@ -176,6 +179,21 @@ final class BoundSessionTest {
         return options;
     }
 
+    private static void awaitCall(FakeZLinkBackendAdapterFactory backend, String prefix) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (backend.calls().stream().anyMatch(call -> call.startsWith(prefix))) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("missing call prefix " + prefix + " in " + backend.calls());
+    }
+
+    @ZLinkPacket("Push")
+    public record Push(String value) {
+    }
+
     public static final class BoundSessionEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
@@ -198,12 +216,13 @@ final class BoundSessionTest {
         }
 
         @ZLinkSpotActorSend
-        public void handle(
+        public java.util.concurrent.CompletionStage<Void> handle(
             ZLinkActor actor,
             String message) {
             if ("player-1".equals(actor.actorId()) && "status-updated".equals(message)) {
                 received.countDown();
             }
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }
 }

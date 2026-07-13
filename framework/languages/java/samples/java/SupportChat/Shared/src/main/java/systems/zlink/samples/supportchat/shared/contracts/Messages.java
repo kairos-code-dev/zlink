@@ -1,5 +1,7 @@
 package systems.zlink.samples.supportchat.shared.contracts;
 
+import systems.zlink.framework.actors.ActorRefSnapshot;
+
 public final class Messages {
     private Messages() {
     }
@@ -36,16 +38,26 @@ public final class Messages {
         String subject) {
     }
 
-    public record AllocateConversationRes(String conversationId, String status, ConversationState state) {
+    public record AllocateConversationRes(String conversationId, String status) {
     }
 
-    public record ActorRefWire(String nodeRid, String actorId, long generation) {
+    public record EnsureSupportUserActorReq(
+        String actorId,
+        String displayName,
+        String role,
+        String participantId) {
     }
 
-    public record EnsureSupportUserActorReq(String actorId, String displayName, String role) {
+    public record EnsureSupportUserActorRes(ActorRefSnapshot actor) {
     }
 
-    public record EnsureSupportUserActorRes(String actorId, ActorRefWire actor) {
+    public record EnsureAgentConversationReq(
+        String rosterActorId,
+        String displayName,
+        String conversationId) {
+    }
+
+    public record EnsureAgentConversationRes(ActorRefSnapshot actor, ConversationState state) {
     }
 
     public record OpenConversationReq(String subject) {
@@ -60,22 +72,25 @@ public final class Messages {
     public record SetAgentAvailableRes(boolean isAvailable) {
     }
 
-    public record JoinConversationReq(String conversationId) {
+    public record JoinConversationReq(String participantId, String role, String displayName) {
+        public JoinConversationReq() {
+            this("", "", "");
+        }
     }
 
     public record JoinConversationRes(ConversationState state) {
     }
 
-    public record SendChatMessageReq(String conversationId, String text) {
+    public record SendChatMessageReq(String text) {
     }
 
     public record SendChatMessageRes(ChatMessage message, ConversationState state) {
     }
 
-    public record SetTypingReq(String conversationId, boolean isTyping) {
+    public record SetTypingReq(boolean isTyping) {
     }
 
-    public record CloseConversationReq(String conversationId, String reason) {
+    public record CloseConversationReq(String reason) {
     }
 
     public record CloseConversationRes(ConversationState state) {
@@ -129,21 +144,4 @@ public final class Messages {
         long sentAtUnixMs) {
     }
 
-    public record JoinConversationSupportReq(String conversationId, String actorId, String displayName, String role) {
-    }
-
-    public record SendChatMessageSupportReq(String conversationId, String actorId, String text) {
-    }
-
-    public record SetTypingSupportReq(String conversationId, String actorId, boolean isTyping) {
-    }
-
-    public record CloseConversationSupportReq(String conversationId, String actorId, String reason) {
-    }
-
-    public record ServerAssertionRequest(String conversationId) {
-    }
-
-    public record ServerAssertionResponse(boolean passed, String reason) {
-    }
 }

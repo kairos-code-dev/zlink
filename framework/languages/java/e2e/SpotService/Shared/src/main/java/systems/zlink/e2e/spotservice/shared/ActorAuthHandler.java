@@ -18,38 +18,25 @@ public final class ActorAuthHandler
     }
 
     @Override
-    public String packetName() {
-        return "ActorAuthReq";
-    }
-
-    @Override
     public Class<Contracts.ActorAuthReq> messageType() {
         return Contracts.ActorAuthReq.class;
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Contracts.ActorAuthReq request) {
-        var existing = actors.find(request.actorId())
-            .toCompletableFuture()
-            .join();
-        var actor = existing.orElseGet(() -> actors.create(request.actorId(), "scenario", request)
-            .toCompletableFuture()
-            .join());
-        var bound = context.actors().bind(actor)
-            .toCompletableFuture()
-            .join();
-        evidence.record("ActorSessionBound", "session", request.actorId());
-        context.client()
-            .reply(new Contracts.ActorAuthRes(
-                bound.actorId(),
-                bound.ref().nodeRid().toString(),
-                context.actors().bound().size(),
-                request.profile().displayName(),
-                request.profile().level(),
-                request.profile().tags()))
-            .await();
+        return actors.find(request.actorId())
+            .thenCompose(existing -> existing.<java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef>>map(
+                java.util.concurrent.CompletableFuture::completedFuture)
+                .orElseGet(() -> actors.create(request.actorId(), "scenario", request)))
+            .thenCompose(actor -> context.actors().bind(actor))
+            .thenAccept(bound -> {
+                evidence.record("ActorSessionBound", "session", request.actorId());
+                context.client().reply(new Contracts.ActorAuthRes(
+                    bound.actorId(), bound.ref().nodeRid().toString(), context.actors().bound().size(),
+                    request.profile().displayName(), request.profile().level(), request.profile().tags())).submit();
+            });
     }
 }

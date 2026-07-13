@@ -28,21 +28,21 @@
 
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
-| `CreateDeliveryRequest` | `Messages.CreateDeliveryRequest` | shared-contract | done | `deliveryId`, `customerId`, `pickupAddress`, `dropoffAddress`를 가진다. |
-| `CreateDeliveryResponse` | `Messages.CreateDeliveryResponse` | shared-contract | done | `deliveryId`, `status`를 가진다. |
-| `SubscribeDelivery` | `Messages.SubscribeDelivery` | shared-contract | done | customer stream subscription 요청이다. |
-| `SubscribeDeliveryAccepted` | `Messages.SubscribeDeliveryAccepted` | shared-contract | done | subscription 수락 응답이다. |
+| `CreateDeliveryReq` | `Messages.CreateDeliveryReq` | shared-contract | done | `deliveryId`, `customerId`, `pickupAddress`, `dropoffAddress`를 가진다. |
+| `CreateDeliveryRes` | `Messages.CreateDeliveryRes` | shared-contract | done | 공통 spec과 같이 `deliveryId`만 반환한다. |
+| `SubscribeDeliveryReq` | `Messages.SubscribeDeliveryReq` | shared-contract | done | customer stream subscription 요청이다. |
+| `SubscribeDeliveryRes` | `Messages.SubscribeDeliveryRes` | shared-contract | done | subscription 수락 응답이다. |
 | `DeliveryStatusNotify` | `Messages.DeliveryStatusNotify` | shared-contract | done | customer stream push payload다. |
-| `AssignDelivery` | `Messages.AssignDelivery` | shared-contract | done | dispatch worker 입력 메시지다. |
-| `BindCourierSession` | `Messages.BindCourierSession` | shared-contract | done | courier stream session과 courier actor bind 요청이다. |
-| `BindCourierSessionAccepted` | `Messages.BindCourierSessionAccepted` | shared-contract | done | courier session bind 응답이다. |
-| `BindCourier` / `CourierBound` | `Messages.BindCourier`, `Messages.CourierBound` | shared-contract | done | CourierGateway가 actor 위치와 session route를 돌려준다. |
-| `EnsureCourierActor` / `CourierActorEnsured` | `Messages.EnsureCourierActor`, `Messages.CourierActorEnsured` | shared-contract | done | target courier spot node의 actor를 보장한다. |
-| `OfferDelivery` / `OfferDeliveryResult` | `Messages.OfferDelivery`, `Messages.OfferDeliveryResult` | shared-contract | done | dispatch worker가 courier에게 배송 제안을 보내고 결과를 받는다. |
+| `AssignDeliveryMsg` | `Messages.AssignDeliveryMsg` | shared-contract | done | dispatch worker 입력 one-way send 메시지다. |
+| `BindCourierSessionReq` | `Messages.BindCourierSessionReq` | shared-contract | done | courier stream session과 courier actor bind 요청이다. |
+| `BindCourierSessionRes` | `Messages.BindCourierSessionRes` | shared-contract | done | courier session bind 응답이다. |
+| `BindCourierReq` / `BindCourierRes` | `Messages.BindCourierReq`, `Messages.BindCourierRes` | shared-contract | done | CourierGateway가 actor 위치와 session route를 돌려준다. |
+| `EnsureCourierActorReq` / `EnsureCourierActorRes` | `Messages.EnsureCourierActorReq`, `Messages.EnsureCourierActorRes` | shared-contract | done | target courier spot node의 actor를 보장한다. |
+| `OfferDeliveryReq` / `OfferDeliveryRes` | `Messages.OfferDeliveryReq`, `Messages.OfferDeliveryRes` | shared-contract | done | dispatch worker가 courier에게 배송 제안을 보내고 결과를 받는다. |
 | `OfferDeliveryNotify` / `CourierDecision` | `Messages.OfferDeliveryNotify`, `Messages.CourierDecision` | shared-contract | done | courier stream push와 courier client decision이다. |
 | `ReassignDelivery` | `Messages.ReassignDelivery` | shared-contract | done | timeout 재배정 의미를 드러내는 shared message다. |
-| `DeliveryStatusChanged` / `DeliveryStatusAck` | `Messages.DeliveryStatusChanged`, `Messages.DeliveryStatusAck` | shared-contract | done | Tracking server 기록 요청과 응답이다. |
-| `EnsureCustomerActor` / `CustomerActorEnsured` | `Messages.EnsureCustomerActor`, `Messages.CustomerActorEnsured` | shared-contract | done | CustomerGateway actor 생성과 조회를 처리한다. |
+| `DeliveryStatusChangedReq` / `DeliveryStatusChangedRes` | `Messages.DeliveryStatusChangedReq`, `Messages.DeliveryStatusChangedRes` | shared-contract | done | Tracking server 기록 요청과 응답이다. |
+| `EnsureCustomerActorReq` / `EnsureCustomerActorRes` | `Messages.EnsureCustomerActorReq`, `Messages.EnsureCustomerActorRes` | shared-contract | partial | actor 생성은 구현됐지만 공통 spec의 기존 actor 위치 조회 흐름은 추가 구현이 필요하다. |
 | `ServerAssertionRequest` / `ServerAssertionResponse` | `Messages.ServerAssertionRequest`, `Messages.ServerAssertionResponse` | shared-contract | done | server-side evidence self-check 계약이다. |
 | courier actor ref wire | `Messages.ActorRefWire` | shared-contract | done | courier actor node rid, actor id, generation을 wire-safe DTO로 전달한 뒤 session bind 직전에 framework actor ref로 재구성한다. |
 | `DeliveryStatus` | `Messages.DeliveryStatus` | shared-contract | done | `Created`, `Assigned`, `Accepted`, `Reassigned`, `PickedUp`, `Delivered`, `Failed` 값을 가진다. |
@@ -53,7 +53,7 @@
 |------|-----------|------|------|------|
 | Redis location store is ready first | `run_sample.sh` | validation | done | role 시작 전에 Redis endpoint readiness를 확인하고 실행별 key prefix를 전달한다. |
 | Tracking starts before gateway/dispatch | `run_sample.sh` | validation | done | tracking channel endpoint readiness를 확인한다. |
-| CustomerGateway stream session | `CustomerSession`, `DeliveryDispatchClientScenario` | validation | done | `SubscribeDeliveryAccepted`와 status notify를 검증한다. |
+| CustomerGateway stream session | `CustomerSession`, `DeliveryDispatchClientScenario` | validation | done | `SubscribeDeliveryRes`와 status notify를 검증한다. |
 | CourierSession stream session | `CourierSession`, `DeliveryDispatchClientScenario` | validation | done | courier-a/b가 독립 stream session으로 bind된다. |
 | Courier spot node 1/2 | `CourierSpotNode` processes | validation | done | courier-a는 node-1, courier-b는 node-2 actor로 배치된다. |
 | CourierGateway directory | `CourierDirectory` | validation | done | courier id를 actor node rid와 session route로 해석한다. |
@@ -68,10 +68,20 @@
 
 ## 현재 결론
 
-Java `DeliveryDispatch`는 `.NET` 기준의 Shared, Client, Server role 책임과 공통 DeliveryDispatch
-문서의 검증 흐름을 같은 의미로 대응한다. public framework API만 사용했고, framework runtime
-package나 private bridge, 테스트 전용 adapter로 우회하지 않았다.
+Java `DeliveryDispatch`의 메시지 이름과 `CreateDeliveryRes` 필드는 공통 spec에 맞췄다. 다만
+CustomerGateway 재연결에서 기존 customer actor 위치를 먼저 조회하고 없을 때만 생성하는 흐름은
+아직 닫히지 않았으므로 이 샘플의 공통 spec 대조는 진행 중이다. public framework API가 부족하면
+sample helper로 우회하지 않고 public contract gap으로 분리한다.
 
 ## 검증
 
+- `./gradlew -p samples/java/DeliveryDispatch test` 통과: 전체 13개 module compile, test task 성공.
+- Java source에서 `CancellationToken`, `SpotRef`, `ZLinkAwait`, blocking `.await()`/`.join()`,
+  typed packet-name override가 없음을 확인했다.
+- `timeout 300s ./run_sample.sh` 통과: `deliverydispatch-reassignment=completed`,
+  `deliverydispatch-server-evidence=completed`, `deliverydispatch=completed`,
+  `deliverydispatch full client/server self-check completed` marker를 확인했다.
+- runner cleanup은 각 server role의 종료 코드를 검사하며 정상 종료 또는 SIGTERM 종료 외의
+  SIGABRT, SIGKILL과 timeout을 실패로 판정한다. 30초 bounded grace의 clean 재실행에서 모든 role이
+  허용 종료 코드로 끝났다.
 - `nice -n 15 timeout 600s ./run_sample.sh` 통과: `deliverydispatch full client/server self-check completed`

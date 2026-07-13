@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime;
 
 import systems.zlink.framework.spots.SpotHandleResolver;
+import systems.zlink.framework.spots.SpotHandle;
 
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -923,9 +924,11 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         String sourceSpotEndpoint = tcpEndpoint();
         String targetSpotEndpoint = tcpEndpoint();
         RoutingId targetSpotRid = RoutingId.from("spot-egress-target");
+        ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
         OutboundChannelSpot.CONTEXT.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.addLocationStore(locations);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
         { var channel = sourceOptions.addRouteMeshChannel("route");
@@ -938,6 +941,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
                     .setRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        targetOptions.addLocationStore(locations);
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Noop"); };
@@ -967,11 +971,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
             SpotEgressReply reply = context.outbound()
                 .requestToSpot(
-                    OutboundChannelSpot.HANDLES.get()
-                        .resolveSpotHandle(targetSpotRid)
-                        .toCompletableFuture()
-                        .join()
-                        .orElseThrow(),
+                    awaitSpotHandle(OutboundChannelSpot.HANDLES.get(), targetSpotRid),
                     new SpotEgressRequest("ping"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(SpotEgressReply.class)
@@ -1511,6 +1511,20 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         throw new AssertionError("scanned route mesh request did not succeed", lastFailure);
     }
 
+    private static SpotHandle awaitSpotHandle(
+        SpotHandleResolver resolver,
+        RoutingId spotRid) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline) {
+            var handle = resolver.resolveSpotHandle(spotRid).toCompletableFuture().join();
+            if (handle.isPresent()) {
+                return handle.get();
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("spot handle was not published: " + spotRid);
+    }
+
     private static String awaitSharedRouteReply(
         ZLinkFrameworkRuntime source,
         RoutingId targetRid,
@@ -1703,13 +1717,13 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class RemoteStateHandler {
         @ZLinkSpotRequest
-        public SpotEgressReply handle(
+        public CompletionStage<SpotEgressReply> handle(
             RemoteStateSpot spot,
             SpotEgressRequest request) {
-            return new SpotEgressReply(
+            return CompletableFuture.completedFuture(new SpotEgressReply(
                 spot.context().spotRid().toString(),
                 spot.context().nodeRid().toString(),
-                "pong:" + request.value());
+                "pong:" + request.value()));
         }
     }
 
@@ -1836,13 +1850,14 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class ReplyDecoratingFilter implements ZLinkHandlerFilter {
         @Override
-        public <T> CompletionStage<T> invokeAsync(
+        public <T> CompletionStage<T> invoke(
             ZLinkInvocationContext context,
             ZLinkNext<T> next) {
-            FILTER_REQUEST.set((String) context.request().orElse(""));
+            Object request = context.request().orElse("");
+            FILTER_REQUEST.set(request instanceof EchoRequest echo ? echo.value() : request.toString());
             FILTER_PACKET.set(context.packetName().orElse(""));
             FILTER_CHANNEL.set(context.channelName().orElse(""));
-            return next.invokeAsync().thenApply(reply -> {
+            return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
                 T decorated = (T) ("filtered:" + reply);
                 return decorated;
@@ -1872,15 +1887,16 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     @ZLinkHandlerGroup("annotated-profile")
     public static final class AnnotatedProfileHandlers {
         @ZLinkRequest(packetName = "AnnotatedEcho")
-        public String echo(AnnotatedEcho request) {
-            return "annotated:" + request.value();
+        public CompletionStage<String> echo(AnnotatedEcho request) {
+            return CompletableFuture.completedFuture("annotated:" + request.value());
         }
 
         @ZLinkSend(packetName = "ProfileChanged")
-        public void profileChanged(ProfileChanged message) {
+        public CompletionStage<Void> profileChanged(ProfileChanged message) {
             SEND_MESSAGE.set(message.value());
             SEND_PACKET.set("ProfileChanged");
             SEND_LATCH.get().countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1922,10 +1938,11 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     @ZLinkHandlerGroup("annotated-events")
     public static final class AnnotatedEventHandlers {
         @ZLinkPublish(packetName = "ScoreChanged")
-        public void scoreChanged(String message) {
-            FANOUT_MESSAGE.set(message);
+        public CompletionStage<Void> scoreChanged(ScoreChanged message) {
+            FANOUT_MESSAGE.set(message.value());
             FANOUT_TOPIC.set("score");
             FANOUT_LATCH.get().countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1953,10 +1970,13 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     }
 
     @ZLinkHandlerGroup("route-shared")
-    public static final class ScannedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
+    public static final class ScannedRouteEchoHandler
+        implements ZLinkRouteRequestHandler<StringPacket, String> {
         @Override
-        public CompletionStage<String> handle(String request, ZLinkRouteRequestContext context) {
-            return CompletableFuture.completedFuture("scanned-route:" + request);
+        public CompletionStage<String> handle(
+            StringPacket request,
+            ZLinkRouteRequestContext context) {
+            return CompletableFuture.completedFuture("scanned-route:" + request.value());
         }
     }
 

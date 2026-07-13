@@ -24,8 +24,9 @@
 ## Kotlin public surface 사용
 
 Caller role은 Java 공용 framework의 `ZLinkActorClient`를 Spring bean으로 받고,
-Kotlin public coroutine extension인 `awaitSend`와 `awaitReply`를 사용한다. Packet 이름과 timeout은
-기존 public call builder에서 지정한 뒤 coroutine await로 완료를 기다린다. Java internal package,
+one-way send는 public call builder의 `submit()`으로 제출하고 request는 Kotlin public coroutine
+extension인 `awaitReply`로 응답을 기다린다. Packet 이름과 timeout은 기존 public call builder에서
+지정한다. Java internal package,
 raw frame 조작, test-only adapter는 사용하지 않는다.
 
 ## fault 검증 방식

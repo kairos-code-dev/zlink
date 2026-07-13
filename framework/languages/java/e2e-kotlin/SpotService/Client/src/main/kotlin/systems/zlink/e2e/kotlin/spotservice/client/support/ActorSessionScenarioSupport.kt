@@ -1,14 +1,19 @@
 package systems.zlink.e2e.kotlin.spotservice.client.support
 
+import systems.zlink.framework.kotlin.*
+
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
-import systems.zlink.stream.connector.ZLinkStreamConnector
 
-internal class ActorSessionScenarioContext : AutoCloseable {
+internal class ActorSessionScenarioContext {
     private val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
     private val unbound = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
     private val inboundNames = CopyOnWriteArrayList<String>()
@@ -46,61 +51,67 @@ internal class ActorSessionScenarioContext : AutoCloseable {
 
     fun observedInboundNames(): List<String> = inboundNames.toList()
 
-    fun connectAndAuthenticate() {
+    suspend fun connectAndAuthenticate() {
         connector.connect().await()
         unbound.connect().await()
         auth = connector
             .request(Contracts.ActorAuthReq(actorId, profile))
-            .await(Contracts.ActorAuthRes::class.java)
+            .await<Contracts.ActorAuthRes>()
     }
 
-    fun requestEntryEcho() {
-        val push = connector.waitFor(Contracts.ActorPushNotify::class.java)
-            .submit(Contracts.ActorPushNotify::class.java)
+    suspend fun requestEntryEcho() = coroutineScope {
+        val push = async(start = CoroutineStart.UNDISPATCHED) {
+            connector.waitFor<Contracts.ActorPushNotify>().await()
+        }
         entryReply = connector
             .request(Contracts.ActorEchoReq("entry-echo", 1, profile))
             .metadata("actor-id", actorId)
-            .await(Contracts.ActorEchoRes::class.java)
-        entryPush = connector.await(push).payload()
+            .await<Contracts.ActorEchoRes>()
+        entryPush = push.await().payload()
     }
 
-    fun joinRoom() {
+    suspend fun joinRoom() {
         joined = connector
             .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
             .metadata("actor-id", actorId)
-            .await(Contracts.ActorJoinRes::class.java)
+            .await<Contracts.ActorJoinRes>()
     }
 
-    fun requestFirstUserEchoAndCheckUnboundIsolation() {
-        val unboundPush = unbound.waitFor(Contracts.ActorPushNotify::class.java)
-            .timeout(Duration.ofMillis(400))
-            .submit(Contracts.ActorPushNotify::class.java)
-        val push = connector.waitFor(Contracts.ActorPushNotify::class.java)
-            .submit(Contracts.ActorPushNotify::class.java)
+    suspend fun requestFirstUserEchoAndCheckUnboundIsolation() = supervisorScope {
+        val unboundPush = async(start = CoroutineStart.UNDISPATCHED) {
+            unbound.waitFor<Contracts.ActorPushNotify>()
+                .timeout(Duration.ofMillis(400))
+                .await()
+        }
+        val push = async(start = CoroutineStart.UNDISPATCHED) {
+            connector.waitFor<Contracts.ActorPushNotify>().await()
+        }
         userReply1 = requestUserEcho("user-echo-1", 2)
-        userPush1 = connector.await(push).payload()
-        expectFailure { awaitUnchecked(unbound, unboundPush) }
+        userPush1 = push.await().payload()
+        expectFailure { unboundPush.await() }
     }
 
-    fun requestOrderedUserEchoes() {
-        val secondPush = connector.waitFor(Contracts.ActorPushNotify::class.java)
-            .submit(Contracts.ActorPushNotify::class.java)
+    suspend fun requestOrderedUserEchoes() = coroutineScope {
+        val secondPush = async(start = CoroutineStart.UNDISPATCHED) {
+            connector.waitFor<Contracts.ActorPushNotify>().await()
+        }
         userReply2 = requestUserEcho("user-echo-2", 3)
-        userPush2 = connector.await(secondPush).payload()
+        userPush2 = secondPush.await().payload()
 
-        val thirdPush = connector.waitFor(Contracts.ActorPushNotify::class.java)
-            .submit(Contracts.ActorPushNotify::class.java)
+        val thirdPush = async(start = CoroutineStart.UNDISPATCHED) {
+            connector.waitFor<Contracts.ActorPushNotify>().await()
+        }
         userReply3 = requestUserEcho("user-echo-3", 4)
-        userPush3 = connector.await(thirdPush).payload()
+        userPush3 = thirdPush.await().payload()
     }
 
-    private fun requestUserEcho(value: String, seq: Int): Contracts.ActorEchoRes =
+    private suspend fun requestUserEcho(value: String, seq: Int): Contracts.ActorEchoRes =
         connector
             .request(Contracts.ActorEchoReq(value, seq, profile))
             .metadata("actor-id", actorId)
-            .await(Contracts.ActorEchoRes::class.java)
+            .await<Contracts.ActorEchoRes>()
 
-    override fun close() {
+    suspend fun close() {
         closeQuietly(inboundObserver)
         closeQuietly(connector)
         closeQuietly(unbound)
@@ -113,7 +124,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
         }
     }
 
-    private fun closeQuietly(stream: ZLinkStreamConnector) {
+    private suspend fun closeQuietly(stream: ZLinkKotlinStreamConnector) {
         try {
             stream.close().await()
         } catch (_: Exception) {
@@ -122,14 +133,15 @@ internal class ActorSessionScenarioContext : AutoCloseable {
 }
 
 internal object ActorSessionScenarioSupport {
-    fun run(block: (ActorSessionScenarioContext) -> Unit) {
-        ActorSessionScenarioContext().use { context ->
-            try {
-                block(context)
-                waitForSessionEvidence()
-            } catch (error: Exception) {
-                throw IllegalStateException("actor/session scenario failed", error)
-            }
+    suspend fun run(block: suspend (ActorSessionScenarioContext) -> Unit) {
+        val context = ActorSessionScenarioContext()
+        try {
+            block(context)
+            waitForSessionEvidence()
+        } catch (error: Exception) {
+            throw IllegalStateException("actor/session scenario failed", error)
+        } finally {
+            context.close()
         }
     }
 

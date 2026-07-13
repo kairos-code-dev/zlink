@@ -30,8 +30,9 @@ Windows PowerShell에서는 아래 명령을 사용한다.
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 ```
 
-runner는 사용 가능한 local port를 예약하고, 실행별 Redis key prefix를 만든 뒤 전용 Redis container를
-띄운다. `SHOPPINGMALL_REDIS_ENDPOINT`를 미리 지정하면 외부 Redis endpoint를 사용할 수 있다.
+runner는 실행마다 Docker가 할당한 loopback port에 전용 Redis container를 만들고, 실행별 Redis key
+prefix를 설정한다. 외부 Redis endpoint는 재사용하지 않으며, 성공하거나 실패하면 자신이 만든
+container를 제거한다.
 
 ## 성공 조건
 

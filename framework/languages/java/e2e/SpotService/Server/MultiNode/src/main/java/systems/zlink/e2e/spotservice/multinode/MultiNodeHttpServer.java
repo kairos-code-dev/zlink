@@ -13,7 +13,7 @@ import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
@@ -25,6 +25,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
     private final ZLinkRouteClient routes;
     private final ZLinkActorManager actors;
     private final ZLinkActorClient actorClient;
+    private final SpotHandleResolver spotHandles;
     private HttpServer server;
     private boolean running;
 
@@ -35,7 +36,8 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         ZLinkSpotManager spots,
         ZLinkRouteClient routes,
         ZLinkActorManager actors,
-        ZLinkActorClient actorClient) {
+        ZLinkActorClient actorClient,
+        SpotHandleResolver spotHandles) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
@@ -43,6 +45,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         this.routes = routes;
         this.actors = actors;
         this.actorClient = actorClient;
+        this.spotHandles = spotHandles;
     }
 
     @Override
@@ -115,9 +118,8 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                     .get(5, java.util.concurrent.TimeUnit.SECONDS);
                 Contracts.SpotOnlyJoinRes result = actorClient
                     .requestToActor(actor, request)
-                    .packetName("SpotOnlyJoinReq")
                     .timeout(java.time.Duration.ofSeconds(10))
-                    .await(Contracts.SpotOnlyJoinRes.class);
+                    .submit(Contracts.SpotOnlyJoinRes.class).toCompletableFuture().join();
                 state.waitFor(
                     java.util.List.of(
                         "SpotOnlyActorJoin|" + state.nodeRid() + "|entry|" + request.actorId()
@@ -180,14 +182,12 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
             try {
                 return routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        new SpotRef(
-                            Contracts.SPOT_MESH,
-                            RoutingId.from(state.nodeRid()),
-                            RoutingId.from(request.spotRid())),
+                        spotHandles.resolveSpotHandle(RoutingId.from(request.spotRid()))
+                            .toCompletableFuture().join()
+                            .orElseThrow(() -> new IllegalStateException("spot not found: " + request.spotRid())),
                         new Contracts.MultiNodeStateReq(request.delta()))
-                    .packetName("MultiNodeStateReq")
                     .timeout(java.time.Duration.ofSeconds(2))
-                    .await(Contracts.MultiNodeStateRes.class);
+                    .submit(Contracts.MultiNodeStateRes.class).toCompletableFuture().join();
             } catch (RuntimeException error) {
                 lastFailure = error;
                 try {

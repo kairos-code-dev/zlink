@@ -1,22 +1,22 @@
 package systems.zlink.e2e.kotlin.runtimemonitoring.service
 
 import systems.zlink.framework.actors.ZLinkActor
-import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
-import systems.zlink.framework.spots.ZLinkSpotTimerHandler
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.framework.spots.ZLinkTimerTick
 import java.time.Duration
 
 class MonitoringSpot(
     private val context: ZLinkSpotContext,
-) : ZLinkSpot<ZLinkActor> {
+) : ZLinkSuspendingSpot<ZLinkActor>() {
     override fun context(): ZLinkSpotContext = context
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         val options = ZLinkTimerOptions()
         options.setStopOnUnhandledException(false)
         context.addTimer(
@@ -34,12 +34,15 @@ class MonitoringSpot(
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override fun onJoinedActor(actor: ZLinkActor, cancellationToken: CancellationToken) = Unit
+    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) =
+        ZLinkSpotActorJoinResponse.reject("actors are not supported")
 
-    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) = Unit
+    override suspend fun onJoinedActorSuspending(actor: ZLinkActor) = Unit
 
-    class FailingTimerHandler : ZLinkSpotTimerHandler<MonitoringSpot> {
-        override fun handle(spot: MonitoringSpot, tick: ZLinkTimerTick) {
+    override suspend fun onLeaveActorSuspending(actor: ZLinkActor) = Unit
+
+    class FailingTimerHandler : ZLinkSuspendingSpotTimerHandler<MonitoringSpot> {
+        override suspend fun handle(spot: MonitoringSpot, tick: ZLinkTimerTick) {
             throw IllegalStateException("monitoring timer boom")
         }
     }

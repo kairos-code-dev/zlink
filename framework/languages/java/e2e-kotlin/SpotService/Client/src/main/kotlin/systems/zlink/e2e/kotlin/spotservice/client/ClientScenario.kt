@@ -53,7 +53,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 internal class ClientScenario(
     private val spots: SpotHttpDriver = SpotHttpDriver(),
 ) {
-    fun runMode(mode: String) {
+    suspend fun runMode(mode: String) {
         when (mode) {
             "state1" -> SmA1Scenario.run(spots)
             "state2" -> SmA2Scenario.run(spots)

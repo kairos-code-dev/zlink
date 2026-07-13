@@ -2,6 +2,8 @@ package systems.zlink.samples.shoppingmall.server.commerceapi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleNames;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleTimings;
@@ -21,7 +23,7 @@ public final class CommerceApiService {
         this.channels = channels;
     }
 
-    public Messages.StartOrderRes startOrder(Messages.StartOrderReq request) {
+    public CompletionStage<Messages.StartOrderRes> startOrder(Messages.StartOrderReq request) {
         validate(request);
         Messages.CartSeed cart = store.getCart(request.cartId());
         store.validateShippingAddress(request.shippingAddressId());
@@ -32,47 +34,51 @@ public final class CommerceApiService {
         store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
         Messages.OrderState existing = store.findProjection(mapping.orderId());
         if (existing != null) {
-            return new Messages.StartOrderRes(mapping.orderId(), existing.status());
+            return CompletableFuture.completedFuture(
+                new Messages.StartOrderRes(mapping.orderId(), existing.status()));
         }
 
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
-        Messages.StartOrderWorkflowRes started = channels.requestToChannel(
+        return channels.requestToChannel(
                 SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
                 workflowRequest)
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.StartOrderWorkflowRes.class);
-        store.markIdempotencyStarted(request.idempotencyKey());
-        return new Messages.StartOrderRes(mapping.orderId(), started.state().status());
+            .submit(Messages.StartOrderWorkflowRes.class)
+            .thenApply(started -> {
+                store.markIdempotencyStarted(request.idempotencyKey());
+                return new Messages.StartOrderRes(mapping.orderId(), started.state().status());
+            });
     }
 
-    public Messages.GetOrderStateRes getOrder(String orderId) {
+    public CompletionStage<Messages.GetOrderStateRes> getOrder(String orderId) {
         Messages.OrderState state = store.findProjection(orderId);
-        if (state == null) {
-            state = rebuildProjection(orderId).state();
-        }
-        return new Messages.GetOrderStateRes(state);
+        return state != null
+            ? CompletableFuture.completedFuture(new Messages.GetOrderStateRes(state))
+            : rebuildProjection(orderId)
+                .thenApply(rebuilt -> new Messages.GetOrderStateRes(rebuilt.state()));
     }
 
     public void deleteProjection(String orderId) {
         store.deleteProjection(orderId);
     }
 
-    public Messages.RebuildOrderProjectionRes rebuildProjection(String orderId) {
+    public CompletionStage<Messages.RebuildOrderProjectionRes> rebuildProjection(String orderId) {
         return channels.requestToChannel(
                 SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
                 new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.RebuildOrderProjectionRes.class);
+            .submit(Messages.RebuildOrderProjectionRes.class);
     }
 
-    public Messages.StartOrderRes createPendingThenStart(Messages.StartOrderReq request) {
-        OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
+    public CompletionStage<Messages.StartOrderRes> createPendingThenStart(Messages.StartOrderReq request) {
+        store.reserveIdempotency(
             request.idempotencyKey(),
             SampleTopology.apiName());
         return startOrder(request);
     }
 
-    public Messages.ContinueOrderWorkflowRes prepareInventoryReserved(Messages.StartOrderReq request) {
+    public CompletionStage<Messages.ContinueOrderWorkflowRes> prepareInventoryReserved(
+        Messages.StartOrderReq request) {
         validate(request);
         OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
             request.idempotencyKey(),
@@ -84,15 +90,15 @@ public final class CommerceApiService {
                 SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
                 new Messages.PrepareInventoryReservedCheckpointReq(workflowRequest))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.ContinueOrderWorkflowRes.class);
+            .submit(Messages.ContinueOrderWorkflowRes.class);
     }
 
-    public Messages.ContinueOrderWorkflowRes continueOrder(String orderId) {
+    public CompletionStage<Messages.ContinueOrderWorkflowRes> continueOrder(String orderId) {
         return channels.requestToChannel(
                 SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
                 new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.ContinueOrderWorkflowRes.class);
+            .submit(Messages.ContinueOrderWorkflowRes.class);
     }
 
     public Messages.ServerAssertionRes assertEvidence(Messages.ServerAssertionReq request) {

@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.handlers
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor
@@ -19,6 +18,5 @@ class CloseConversationHandler : ZLinkSuspendingSpotActorRequestHandler<
         actor: SupportUserActor,
         context: ZLinkSpotActorRequestContext,
         request: CloseConversationReq,
-        cancellationToken: CancellationToken,
     ): CloseConversationRes = spot.close(actor, request)
 }

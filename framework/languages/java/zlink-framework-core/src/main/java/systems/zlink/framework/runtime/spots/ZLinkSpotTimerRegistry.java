@@ -218,7 +218,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> cancelAsync() {
+        public CompletionStage<Void> cancel() {
             close();
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }

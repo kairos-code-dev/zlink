@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers;
 
-import static systems.zlink.framework.ZLinkAwait.await;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
@@ -36,27 +35,27 @@ public final class AllocateBingoRoomHandler
     }
 
     @Override
-    public Messages.AllocateBingoRoomRes handle(
+    public java.util.concurrent.CompletionStage<Messages.AllocateBingoRoomRes> handle(
         Messages.AllocateBingoRoomReq request,
         ZLinkRequestContext context) {
         BingoRoomAllocation allocation = rooms.allocate(
             request.getActorId(),
             request.getMode(),
             request.getPreferredOwnerNodeRid());
-        ensureLocalRoom(allocation);
-        return BingoMessages.allocateBingoRoomRes(
-            allocation.roomId(),
-            allocation.ownerPlayNodeRid());
+        return ensureLocalRoom(allocation).thenApply(ignored ->
+            BingoMessages.allocateBingoRoomRes(
+                allocation.roomId(),
+                allocation.ownerPlayNodeRid()));
     }
 
-    private void ensureLocalRoom(BingoRoomAllocation allocation) {
+    private java.util.concurrent.CompletionStage<Void> ensureLocalRoom(BingoRoomAllocation allocation) {
         if (!allocation.ownerPlayNodeRid().equals(SampleTopology.selectedPlayNodeRid())) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
-        await(spots.getOrCreate(
+        return spots.getOrCreate(
             BingoRoomSpot.class,
             RoutingId.from(allocation.roomId()),
-            ZLinkMessage.of(allocation.settings())));
+            ZLinkMessage.of(allocation.settings())).thenApply(ignored -> null);
     }
 }

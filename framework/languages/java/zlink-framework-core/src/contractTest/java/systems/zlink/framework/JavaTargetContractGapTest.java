@@ -33,8 +33,15 @@ final class JavaTargetContractGapTest {
     @Test
     void oneWayCallsDoNotExportCompletionOrLegacyTerminators() throws Exception {
         assertClassAbsent("systems.zlink.framework.ZLinkSubmitStage");
+        assertClassAbsent("systems.zlink.framework.ZLinkAwait");
+        assertClassAbsent("systems.zlink.framework.channels.ZLinkYieldRequestCall");
         assertPublicMethodReturnsVoid("systems.zlink.framework.channels.ZLinkSendCall", "submit");
+        assertPublicMethodReturnsVoid("systems.zlink.framework.actors.ZLinkActorSendCall", "submit");
         assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkSendCall", "await");
+        assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkRequestCall", "await");
+        assertNoPublicMethodNamed("systems.zlink.framework.actors.ZLinkActorSendCall", "await");
+        assertNoPublicMethodNamed("systems.zlink.framework.actors.ZLinkActorRequestCall", "await");
+        assertNoPublicMethodNamed("systems.zlink.framework.spots.ZLinkWorkerCall", "yield");
         assertClassAbsent("systems.zlink.framework.actors.ZLinkActorJoinSpotCall");
     }
 
@@ -101,8 +108,7 @@ final class JavaTargetContractGapTest {
     @Test
     void typedSessionHandlerDoesNotInheritRawApplicationHandler() throws Exception {
         Class<?> typed = Class.forName("systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler");
-        Class<?> raw = Class.forName("systems.zlink.framework.streams.ZLinkSessionPacketHandler");
-        assertFalse(raw.isAssignableFrom(typed));
+        assertClassAbsent("systems.zlink.framework.streams.ZLinkSessionPacketHandler");
         assertNamedMethodsReturnStage(typed.getName(), "handle");
     }
 

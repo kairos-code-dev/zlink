@@ -1,24 +1,23 @@
 package systems.zlink.e2e.spotservice.shared;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorJoinHandler {
     @ZLinkSpotActorRequest(packetName = "ActorJoinReq")
-    public Contracts.ActorJoinRes handle(
+    public CompletionStage<Contracts.ActorJoinRes> handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorJoinReq request,
-        CancellationToken cancellationToken) {
+        Contracts.ActorJoinReq request) {
         actor.applyProfile(request.profile());
         spot.record("ActorJoinPayload", payloadEvidence(request));
         return actor.context()
             .joinSpot(RoutingId.from(request.spotRid()), request)
-            .await(Contracts.ActorJoinRes.class)
-            .reply();
+            .submit(Contracts.ActorJoinRes.class)
+            .thenApply(response -> response.reply());
     }
 
     private static String payloadEvidence(Contracts.ActorJoinReq request) {

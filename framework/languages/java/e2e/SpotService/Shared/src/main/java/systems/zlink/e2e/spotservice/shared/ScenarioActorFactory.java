@@ -6,9 +6,9 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 
 public final class ScenarioActorFactory implements ZLinkActorFactory {
     @Override
-    public ZLinkActor create(
+    public java.util.concurrent.CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context) {
-        return new ScenarioActor(actorId, context);
+        return java.util.concurrent.CompletableFuture.completedFuture(new ScenarioActor(actorId, context));
     }
 }

@@ -19,9 +19,11 @@ final class ZLinkSpotRouteMessages {
     }
 
     List<Message> encode(Optional<String> packetName, Message payload) {
-        return packetName
-            .map(name -> List.of(Message.from(name.getBytes(StandardCharsets.UTF_8)), payload))
-            .orElseGet(() -> List.of(payload));
+        if (packetName.isEmpty()) return List.of(payload);
+        Message flow = ZLinkSpotFlowFrame.current();
+        return flow == null
+            ? List.of(Message.from(packetName.orElseThrow().getBytes(StandardCharsets.UTF_8)), payload)
+            : List.of(Message.from(packetName.orElseThrow().getBytes(StandardCharsets.UTF_8)), payload, flow);
     }
 
     <TReply> TReply decodeReply(List<Message> replyParts, Class<TReply> replyType) {

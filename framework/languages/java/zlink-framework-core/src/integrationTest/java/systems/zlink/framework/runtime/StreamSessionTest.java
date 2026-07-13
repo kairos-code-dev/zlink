@@ -21,6 +21,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
@@ -28,6 +29,9 @@ import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -79,8 +83,9 @@ final class StreamSessionTest {
             byte[] body = readExact(client.getInputStream(), bodySize);
 
             assertTrue(header.length > 0);
-            assertEquals(3, Byte.toUnsignedInt(header[0]));
-            assertEquals(7L, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
+            assertEquals(0xF2, Byte.toUnsignedInt(header[0]));
+            assertEquals(3, Byte.toUnsignedInt(header[1]));
+            assertEquals(7L, ByteBuffer.wrap(header, 4, Long.BYTES).getLong());
             assertEquals("\"pong\"", new String(body, StandardCharsets.UTF_8));
             assertTrue(EchoSession.dispatchedOnVirtualThread.get());
         }
@@ -164,7 +169,10 @@ final class StreamSessionTest {
 
             client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEchoWithPush"), bytes("\"hello\"")));
             client.getOutputStream().flush();
-            assertSend(client.getInputStream(), "StreamActorPush", "\"push:hello\"");
+            assertSend(
+                client.getInputStream(),
+                "StreamActorPush",
+                "{\"value\":\"push:hello\"}");
             assertReply(client.getInputStream(), 2L, "\"player-1:hello\"");
 
             client.getOutputStream().write(frame(requestHeader(3L, "JoinUserSpot"), bytes("\"join\"")));
@@ -235,6 +243,13 @@ final class StreamSessionTest {
         @Override
         public ZLinkEntrySpotContext context() {
             return context;
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
         }
 
         @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) { return CompletableFuture.completedFuture(null); }
@@ -312,10 +327,14 @@ final class StreamSessionTest {
         public CompletionStage<String> handleWithPush(PlayerActor actor, String request) {
             actor.context()
                 .boundSession()
-                .send("push:" + request)
+                .send(new StreamActorPush("push:" + request))
                 .submit();
             return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
         }
+    }
+
+    @ZLinkPacket("StreamActorPush")
+    public record StreamActorPush(String value) {
     }
 
     public static final class JoinUserSpotHandler {
@@ -346,16 +365,19 @@ final class StreamSessionTest {
         }
 
         @Override
-        public void onConnected() {
-                    }
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDisconnected() {
-                    }
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onError(ZLinkStreamError error) {
-                    }
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class EchoSession implements ZLinkSession {
@@ -376,19 +398,22 @@ final class StreamSessionTest {
         }
 
         @Override
-        public void onConnected() {
-                    }
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDisconnected() {
-                    }
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onError(ZLinkStreamError error) {
-                    }
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDispatch(
+        public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
@@ -396,6 +421,7 @@ final class StreamSessionTest {
                 throw new IllegalArgumentException("unexpected packet: " + dispatch.packetName());
             }
             context.client().reply("pong").submit();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -417,19 +443,22 @@ final class StreamSessionTest {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDispatch(
+        public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             if ("MustFail".equals(dispatch.packetName())) {
@@ -439,6 +468,7 @@ final class StreamSessionTest {
             context.client()
                 .reply("pong")
                 .submit();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -459,31 +489,31 @@ final class StreamSessionTest {
         }
 
         @Override
-        public void onConnected() {
-                    }
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDisconnected() {
-                    }
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onError(ZLinkStreamError error) {
-                    }
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDispatch(
+        public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             if ("Bind".equals(dispatch.packetName())) {
                 String actorId = payload.decode(String.class);
-                actors.getOrCreate(actorId, "player")
+                return actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> context.actors().bind(actor))
-                    .thenRun(() -> context.client().reply("bound").submit())
-                    .toCompletableFuture()
-                    .join();
-                return;
+                    .thenRun(() -> context.client().reply("bound").submit());
             }
-            context.actors().bound().get(0).relay(payload).toCompletableFuture().join();
+            return context.actors().bound().get(0).relay(payload);
         }
     }
 
@@ -494,15 +524,14 @@ final class StreamSessionTest {
     }
 
     private static byte[] requestHeader(long requestSeq, String packetName) {
-        byte[] name = bytes(packetName);
-        ByteBuffer buffer = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-        buffer.put((byte) 2);
-        buffer.put((byte) 0);
-        buffer.put((byte) 1);
-        buffer.putLong(requestSeq);
-        buffer.put((byte) name.length);
-        buffer.put(name);
-        return buffer.array();
+        return ZLinkStreamHeaderCodec.encode(new ZLinkStreamHeader(
+            systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST,
+            systems.zlink.framework.streams.ZLinkStreamCodec.RAW,
+            java.util.EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            java.util.Optional.of(requestSeq),
+            packetName,
+            java.util.Map.of(),
+            java.util.Optional.empty()));
     }
 
     private static byte[] frame(byte[] header, byte[] body) {
@@ -532,9 +561,10 @@ final class StreamSessionTest {
 
         assertEquals(
             3,
-            Byte.toUnsignedInt(header[0]),
+            Byte.toUnsignedInt(header[1]),
             () -> "unexpected frame kind body=" + new String(body, StandardCharsets.UTF_8));
-        assertEquals(requestSeq, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
+        assertEquals(0xF2, Byte.toUnsignedInt(header[0]));
+        assertEquals(requestSeq, ByteBuffer.wrap(header, 4, Long.BYTES).getLong());
         assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
     }
 
@@ -548,8 +578,13 @@ final class StreamSessionTest {
         byte[] header = readExact(input, headerSize);
         byte[] body = readExact(input, bodySize);
 
-        assertEquals(4, Byte.toUnsignedInt(header[0]));
-        assertEquals(requestSeq, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
+        if (Byte.toUnsignedInt(header[1]) == 5) {
+            assertErrorReply(input, requestSeq, expectedBody);
+            return;
+        }
+        assertEquals(0xF2, Byte.toUnsignedInt(header[0]));
+        assertEquals(4, Byte.toUnsignedInt(header[1]));
+        assertEquals(requestSeq, ByteBuffer.wrap(header, 4, Long.BYTES).getLong());
         assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
     }
 
@@ -563,8 +598,9 @@ final class StreamSessionTest {
         byte[] header = readExact(input, headerSize);
         byte[] body = readExact(input, bodySize);
 
-        assertEquals(1, Byte.toUnsignedInt(header[0]));
-        int nameLengthOffset = 3;
+        assertEquals(0xF2, Byte.toUnsignedInt(header[0]));
+        assertEquals(1, Byte.toUnsignedInt(header[1]));
+        int nameLengthOffset = 4;
         int nameLength = Byte.toUnsignedInt(header[nameLengthOffset]);
         String packetName = new String(
             header,

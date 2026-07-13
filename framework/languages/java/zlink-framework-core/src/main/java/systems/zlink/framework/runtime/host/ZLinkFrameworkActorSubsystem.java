@@ -7,6 +7,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorClientRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkActorEntryTransferEnvelope;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkStoreActorDirectory;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
@@ -143,5 +144,8 @@ final class ZLinkFrameworkActorSubsystem {
         channels.registerRouteInternalRequestHandler(
             ZLinkActorEntrySpotRoutePackets.JOIN_ENTRY_SPOT_PACKET_NAME,
             actors::handleEntrySpotRouteJoin);
+        channels.registerRouteInternalRequestHandler(
+            ZLinkActorEntryTransferEnvelope.PACKET_NAME,
+            spots::handleEntryActorTransferRoute);
     }
 }

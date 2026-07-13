@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -12,10 +14,10 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
 import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 import systems.zlink.e2e.kotlin.spotservice.client.support.sleep
-import systems.zlink.stream.connector.ZLinkStreamConnector
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 
 internal object SmG1Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         val actorId = "actor-sm-g1-" + UUID.randomUUID().toString().replace("-", "")
         val profile = Contracts.ActorProfile("Crash Recovery", 1, listOf("sm-g1"))
         val crashedConnector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -30,7 +32,7 @@ internal object SmG1Scenario {
                     .request(Contracts.ActorEchoReq("during-crash", 2, profile))
                     .metadata("actor-id", actorId)
                     .timeout(Duration.ofSeconds(2))
-                    .await(Contracts.ActorEchoRes::class.java)
+                    .await<Contracts.ActorEchoRes>()
             }
 
             val survivor = eventually {
@@ -54,8 +56,8 @@ internal object SmG1Scenario {
         println("scenario SM-G1 passed")
     }
 
-    private fun authenticateJoinAndEcho(
-        connector: ZLinkStreamConnector,
+    private suspend fun authenticateJoinAndEcho(
+        connector: ZLinkKotlinStreamConnector,
         actorId: String,
         profile: Contracts.ActorProfile,
         value: String,
@@ -64,21 +66,21 @@ internal object SmG1Scenario {
         val auth = connector
             .request(Contracts.ActorAuthReq(actorId, profile))
             .timeout(Duration.ofSeconds(15))
-            .await(Contracts.ActorAuthRes::class.java)
+            .await<Contracts.ActorAuthRes>()
         ensure(auth.actorId == actorId, "SM-G1 auth actor mismatch")
 
         val joined = connector
             .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
             .metadata("actor-id", actorId)
             .timeout(Duration.ofSeconds(15))
-            .await(Contracts.ActorJoinRes::class.java)
+            .await<Contracts.ActorJoinRes>()
         ensure(joined.spotRid == "room-a", "SM-G1 joined spot mismatch")
 
         val echo = connector
             .request(Contracts.ActorEchoReq(value, requestSeq, profile))
             .metadata("actor-id", actorId)
             .timeout(Duration.ofSeconds(15))
-            .await(Contracts.ActorEchoRes::class.java)
+            .await<Contracts.ActorEchoRes>()
         ensure(echo.spotRid == "room-a", "SM-G1 actor spot mismatch")
         ensure(echo.value == "user:$value", "SM-G1 actor echo mismatch")
     }
@@ -89,7 +91,7 @@ internal object SmG1Scenario {
         Files.writeString(Path.of(path), "ready\n")
     }
 
-    private fun waitForSignalFile(envName: String) {
+    private suspend fun waitForSignalFile(envName: String) {
         val path = Env.get(envName)
         ensure(path.isNotBlank(), "$envName is required")
         val signal = Path.of(path)
@@ -103,7 +105,7 @@ internal object SmG1Scenario {
         throw IllegalStateException("timed out waiting for signal file $path")
     }
 
-    private fun closeQuietly(connector: ZLinkStreamConnector) {
+    private suspend fun closeQuietly(connector: ZLinkKotlinStreamConnector) {
         try {
             connector.close().await()
         } catch (_: Exception) {

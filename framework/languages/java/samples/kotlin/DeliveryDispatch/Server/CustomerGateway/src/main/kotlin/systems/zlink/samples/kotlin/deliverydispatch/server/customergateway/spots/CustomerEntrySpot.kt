@@ -1,8 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots
 
-import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActor
@@ -13,34 +12,26 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeD
 class CustomerEntrySpot(
     private val entryContext: ZLinkEntrySpotContext,
     private val customers: CustomerActorDirectory,
-) : ZLinkEntrySpot<CustomerActor> {
+) : ZLinkSuspendingEntrySpot<CustomerActor>() {
     override fun context(): ZLinkEntrySpotContext = entryContext
 
-    override fun onCreateActor(
+    override suspend fun onCreateActorSuspending(
         actor: CustomerActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ) {
         customers.register(actor)
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept()
 
-    override fun onJoinedActor(
-        actor: CustomerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: CustomerActor) {
         customers.register(actor)
     }
 
-    override fun onLeaveActor(
-        actor: CustomerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: CustomerActor) {
         customers.remove(actor.actorId())
     }
 

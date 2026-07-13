@@ -11,6 +11,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -91,17 +92,14 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return dispatchQueue.enqueue(() -> host.runEntryDispatch(this, operation));
+        return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "entry",
+            () -> host.runEntryDispatch(this, operation));
     }
 
     @Override
     public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
-        return new DefaultZLinkWorkerCall<>(
-            workerPool,
-            work,
-            operation -> enqueueDispatch(() -> host.runWithOutbound(outbound, operation)),
-            false);
+        return new DefaultZLinkWorkerCall<>(workerPool, work);
     }
 
     void closeRegistration() {
@@ -197,17 +195,13 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return dispatchQueue.enqueue(operation);
+        return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "user", operation);
     }
 
     @Override
     public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
-        return new DefaultZLinkWorkerCall<>(
-            workerPool,
-            work,
-            operation -> enqueueDispatch(() -> host.runWithOutbound(outbound, operation)),
-            true);
+        return new DefaultZLinkWorkerCall<>(workerPool, work);
     }
 
     void closeRegistration() {

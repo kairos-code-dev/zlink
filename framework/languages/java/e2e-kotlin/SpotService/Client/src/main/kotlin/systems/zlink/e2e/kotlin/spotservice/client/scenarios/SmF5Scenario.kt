@@ -5,7 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
 
 internal object SmF5Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         val before = spots.routePing("play-a", "sm-f5-before")
         ensure(before.nodeRid == "play-a", "SM-F5 pre-routing channel target mismatch")
         ensure(before.value == "route:sm-f5-before", "SM-F5 pre-routing channel reply mismatch")

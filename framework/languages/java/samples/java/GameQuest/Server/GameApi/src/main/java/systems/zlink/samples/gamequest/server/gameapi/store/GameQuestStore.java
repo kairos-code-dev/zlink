@@ -28,7 +28,7 @@ public final class GameQuestStore implements AutoCloseable {
         shared.unbind(playerId);
     }
 
-    public synchronized void recordGameplay(Messages.GameplayEventEnvelope event) {
+    public synchronized void recordGameplay(Messages.GameplayMsg event) {
         switch (event.eventType()) {
             case "kill" -> kills.computeIfAbsent(event.playerId(), ignored -> new HashMap<>())
                 .merge(event.value(), event.count(), Integer::sum);

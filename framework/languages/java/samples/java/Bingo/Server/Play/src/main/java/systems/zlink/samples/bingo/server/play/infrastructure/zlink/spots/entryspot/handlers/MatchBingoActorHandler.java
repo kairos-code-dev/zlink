@@ -1,7 +1,6 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -20,13 +19,12 @@ public final class MatchBingoActorHandler
         Messages.MatchBingoReq,
         Messages.MatchBingoRes> {
     @Override
-    public Messages.MatchBingoRes handle(
+    public java.util.concurrent.CompletionStage<Messages.MatchBingoRes> handle(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
-        Messages.MatchBingoReq request,
-        CancellationToken cancellationToken) {
-        Messages.MatchBingoApiRes matched = entrySpot.context().outbound().requestToChannel(
+        Messages.MatchBingoReq request) {
+        return entrySpot.context().outbound().requestToChannel(
                 SampleNames.ApiChannel,
                 BingoMessages.matchBingoApiReq(
                     actor.actorId(),
@@ -34,27 +32,19 @@ public final class MatchBingoActorHandler
                     request.getMode(),
                     SampleTopology.selectedPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.MatchBingoApiRes.class);
-
-        if (cancellationToken.isCancellationRequested()) {
-            throw new IllegalStateException("MatchBingoReq was cancelled");
-        }
-        ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined = actor.context()
-            .joinSpot(
-                RoutingId.from(matched.getRoomId()),
-                BingoMessages.bingoRoomJoinReq(
+            .submit(Messages.MatchBingoApiRes.class)
+            .thenCompose(matched -> actor.context().joinSpot(
+                    RoutingId.from(matched.getRoomId()),
+                    BingoMessages.bingoRoomJoinReq(
+                        matched.getRoomId(),
+                        actor.actorId(),
+                        actor.displayName(),
+                        false))
+                .timeout(SampleTimings.RequestTimeout)
+                .submit(Messages.BingoRoomJoinRes.class)
+                .thenApply(joined -> BingoMessages.matchBingoRes(
                     matched.getRoomId(),
-                    actor.actorId(),
-                    actor.displayName(),
-                    false))
-            .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.BingoRoomJoinRes.class);
-        if (cancellationToken.isCancellationRequested()) {
-            throw new IllegalStateException("MatchBingoReq was cancelled");
-        }
-        return BingoMessages.matchBingoRes(
-            matched.getRoomId(),
-            joined.reply().getState(),
-            matched.getRoomOwnerNodeRid());
+                    joined.reply().getState(),
+                    matched.getRoomOwnerNodeRid())));
     }
 }

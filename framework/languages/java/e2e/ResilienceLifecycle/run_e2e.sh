@@ -59,7 +59,7 @@ cleanup() {
     kill "${pid}" >/dev/null 2>&1 || true
   done
   if [[ -n "${redis_container_name}" ]]; then
-    docker rm -f "${redis_container_name}" >/dev/null 2>&1 || true
+    docker rm -fv "${redis_container_name}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${redis_proxy_pid}" ]]; then
     kill -CONT "${redis_proxy_pid}" >/dev/null 2>&1 || true
@@ -232,15 +232,10 @@ EOF
   chmod +x "${store_pause_command}" "${store_resume_command}"
 }
 
-explicit_redis_endpoint="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
-if [[ -z "${explicit_redis_endpoint}" && ( "${SCENARIO}" == "all" || "${SCENARIO}" == "RL-C4" || "${SCENARIO}" == "rl-c4" ) ]]; then
-  redis_container_name="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-  )"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(zlink_redis_endpoint "${redis_container_name}")"
-else
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${explicit_redis_endpoint:-127.0.0.1:16379}"
-fi
+explicit_redis_endpoint=""
+zlink_redis_start_scoped_assign redis_container_name redis_port \
+  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
 start_redis_proxy
 create_store_outage_commands
 

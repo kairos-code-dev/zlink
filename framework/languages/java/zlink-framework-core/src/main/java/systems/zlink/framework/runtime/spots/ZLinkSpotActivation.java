@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import systems.zlink.framework.ZLinkAwait;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
@@ -39,13 +38,10 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -144,9 +140,12 @@ final class SpotActivation
                 actorRef,
                 actor,
                 context.spotRid());
-                return transition == null
-                    ? java.util.concurrent.CompletableFuture.completedFuture(null)
-                    : host.actorSessions().dispatch(actor, transition);
+            if (transition == null) {
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            return host.shouldRunActorLifecycleInSpotDispatch(event, actor)
+                ? transition.get()
+                : host.actorSessions().dispatch(actor, transition);
         });
     }
 
@@ -156,6 +155,10 @@ final class SpotActivation
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
             drainRoutesForDispatch();
+            return;
+        }
+        if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE) {
+            drainActorLifecycleEvents();
             return;
         }
         context.enqueueDispatch(() -> dispatchEventAsync(info)
@@ -202,7 +205,9 @@ final class SpotActivation
         if (routes.isEmpty()) {
             return;
         }
-        context.enqueueDispatch(() -> dispatchRoutesAsync(routes));
+        for (ZLinkBackendReceived received : routes) {
+            context.enqueueDispatch(() -> dispatchRouteAsync(received));
+        }
     }
 
     private CompletionStage<Void> dispatchRoutesAsync(List<ZLinkBackendReceived> routes) {
@@ -237,6 +242,10 @@ final class SpotActivation
     }
 
     private CompletionStage<Void> dispatchRouteAsync(ZLinkBackendReceived received) {
+        var incomingFlow = ZLinkSpotFlowFrame.decode(received.parts());
+        var flowScope = incomingFlow == null ? null
+            : systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(incomingFlow);
+        try {
         trackRouteReceived(received);
         if (ZLinkSpotRuntime.isProbeFrame(received.parts())) {
             closeRouteReceived(received);
@@ -282,6 +291,9 @@ final class SpotActivation
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
         }
         return dispatchSpotRouteHandler(received, packet);
+        } finally {
+            if (flowScope != null) flowScope.close();
+        }
     }
 
     private CompletionStage<Void> drainSubscriptionsAsync() {

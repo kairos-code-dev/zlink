@@ -97,18 +97,9 @@ workflow_a_host="${workflow_a%:*}"; workflow_a_port="${workflow_a##*:}"
 workflow_b_host="${workflow_b%:*}"; workflow_b_port="${workflow_b##*:}"
 
 shoppingmall_redis_key_prefix="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:kotlin:${RANDOM}:$$:}"
-if [[ -z "${SHOPPINGMALL_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  if ! timeout 5s docker info >/dev/null 2>&1; then
-    echo "Docker daemon access is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-  SHOPPINGMALL_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-kotlin-sample-shoppingmall" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+SHOPPINGMALL_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port "${SHOPPINGMALL_REDIS_ENDPOINT%:*}" "${SHOPPINGMALL_REDIS_ENDPOINT##*:}"
 
 prefix="zlink.samples.shoppingmall"

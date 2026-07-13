@@ -20,6 +20,8 @@ final class ZLinkTraceFormat {
         append(builder, "channel", flow.channelName());
         append(builder, "topic", flow.topic());
         append(builder, "corr", flow.correlationId());
+        append(builder, "flow", flow.flowId());
+        append(builder, "origin", enumName(flow.flowOrigin()));
         append(builder, "src", flow.sourceRid());
         append(builder, "spot", flow.spotRid());
         append(builder, "actor", flow.actorId());

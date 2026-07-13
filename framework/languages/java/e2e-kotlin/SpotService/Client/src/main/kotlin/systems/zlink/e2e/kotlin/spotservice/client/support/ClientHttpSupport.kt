@@ -57,7 +57,7 @@ internal fun postJsonArray(
     return values.toList()
 }
 
-internal fun waitForEvidence(endpoint: String, expected: String) {
+internal suspend fun waitForEvidence(endpoint: String, expected: String) {
     val deadline = System.nanoTime() + java.time.Duration.ofSeconds(30).toNanos()
     var lastBody = ""
     while (System.nanoTime() < deadline) {

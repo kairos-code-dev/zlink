@@ -5,6 +5,17 @@ interface ZLinkAutoConnectExecutor {
 
     void disconnect(ZLinkAutoConnectPlanner.Target target);
 
+    default boolean isManual(ZLinkAutoConnectPlanner.Target target) {
+        return false;
+    }
+
+    default void replace(
+        ZLinkAutoConnectPlanner.Target current,
+        ZLinkAutoConnectPlanner.Target replacement) {
+        disconnect(current);
+        connect(replacement);
+    }
+
     ZLinkAutoConnectExecutor NONE = new ZLinkAutoConnectExecutor() {
         @Override
         public void connect(ZLinkAutoConnectPlanner.Target target) {

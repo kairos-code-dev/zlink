@@ -16,7 +16,7 @@ public final class ProfileReqHandler
     }
 
     @Override
-    public Contracts.ProfileRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.ProfileRes> handle(
         Contracts.ProfileReq request,
         ZLinkRequestContext context) {
         if (request.value().startsWith("slow")) {
@@ -28,9 +28,9 @@ public final class ProfileReqHandler
             }
         }
         state.record("ProfileReq", request.value());
-        return new Contracts.ProfileRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.ProfileRes(
             "profile:" + request.value(),
             state.providerRid(),
-            state.instanceId());
+            state.instanceId()));
     }
 }

@@ -14,10 +14,11 @@ public final class JsonSendHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.JsonEchoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "JsonEcho", message.value());
         state.record("ContentType", "JsonEcho", context.contentType().orElse("missing"));
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

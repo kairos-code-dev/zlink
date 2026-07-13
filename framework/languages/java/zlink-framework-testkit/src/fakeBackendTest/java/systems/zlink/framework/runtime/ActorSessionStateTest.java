@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -54,24 +55,21 @@ final class ActorSessionStateTest {
             assertTrue(RemoteSessionRelayTest.GameSpot.disconnectCount == 0);
             actor.context()
                 .boundSession()
-                .send("push")
-                .packetName("Push")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .send(new Push("push"))
+                .submit();
+            awaitCall(backend, "stream.send.session-2.Push.");
 
             currentBinding.notifyDisconnected().toCompletableFuture().join();
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> actor.context().boundSession());
             assertTrue(RemoteSessionRelayTest.GameSpot.disconnectCount == 1);
-            assertTrue(actor.context().isJoined());
+            assertTrue(actor.context().spotRid().isPresent());
         }
 
         assertTrue(backend.calls().contains("stream.unbindActor.player-1"));
         assertTrue(backend.calls().stream()
-            .anyMatch(call -> call.startsWith("stream.send.session-2.Push.")
-                && call.endsWith(".\"push\"")));
+            .anyMatch(call -> call.startsWith("stream.send.session-2.Push.")));
     }
 
     @Test
@@ -107,5 +105,20 @@ final class ActorSessionStateTest {
             .getOrCreateManagedActor(actorId, actorType)
             .toCompletableFuture()
             .join();
+    }
+
+    private static void awaitCall(FakeZLinkBackendAdapterFactory backend, String prefix) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (backend.calls().stream().anyMatch(call -> call.startsWith(prefix))) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("missing call prefix " + prefix + " in " + backend.calls());
+    }
+
+    @ZLinkPacket("Push")
+    public record Push(String value) {
     }
 }

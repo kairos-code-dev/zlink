@@ -23,6 +23,8 @@ import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 
 public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
+    public static final String ACTOR_HOST_CAPABILITY_METADATA_KEY =
+        "zlink.framework.actor-host";
     public static final String SPOT_PUB_ENDPOINT_METADATA_KEY = "pub-endpoint";
 
     private final ZLinkLocationRuntime runtime;
@@ -57,9 +59,15 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             if (node == null || !spot.routerEnabled()) {
                 continue;
             }
-            Map<String, String> metadata = spot.pubBind() == null
-                ? null
-                : Map.of(SPOT_PUB_ENDPOINT_METADATA_KEY, spot.pubBind());
+            Map<String, String> metadata = new java.util.LinkedHashMap<>();
+            if (spot.pubBind() != null) {
+                metadata.put(SPOT_PUB_ENDPOINT_METADATA_KEY, spot.pubBind());
+            }
+            if (!spot.actorFactories().isEmpty()
+                && !spot.entrySpots().isEmpty()
+                && registration.streamNodes().isEmpty()) {
+                metadata.put(ACTOR_HOST_CAPABILITY_METADATA_KEY, "true");
+            }
             Set<String> manual = spot.routerManualConnections().stream()
                 .map(SpotNodeRegistration.RouterManualConnection::endpoint)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -71,7 +79,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 spot.routerBind() == null ? "" : spot.routerBind(),
                 100,
                 new SpotNodeExecutor(node, manual, spots),
-                metadata);
+                metadata.isEmpty() ? null : Map.copyOf(metadata));
         }
 
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -87,6 +95,14 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             chain = chain.thenCompose(ignored -> loop.stop());
         }
         return chain.whenComplete((ignored, failure) -> loops.clear());
+    }
+
+    public CompletionStage<Void> markDraining() {
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (ZLinkAutoConnectLoop loop : loops) {
+            chain = chain.thenCompose(ignored -> loop.markDraining());
+        }
+        return chain;
     }
 
     private void addChannelLoop(ZLinkChannelRuntime.AutoConnectSurface surface) {
@@ -141,7 +157,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
     @Override
     public void close() {
-        stop().toCompletableFuture().join();
+        stop();
     }
 
     private static final class ConnectableSocketExecutor implements ZLinkAutoConnectExecutor {
@@ -168,6 +184,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 socket.disconnect(target.endpoint());
             }
         }
+
     }
 
     private static final class RouteSocketExecutor implements ZLinkAutoConnectExecutor {
@@ -180,6 +197,11 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             Set<String> manualEndpoints) {
             this.socket = socket;
             this.manualEndpoints = manualEndpoints;
+        }
+
+        @Override
+        public boolean isManual(ZLinkAutoConnectPlanner.Target target) {
+            return manualEndpoints.contains(target.endpoint());
         }
 
         @Override
@@ -203,6 +225,26 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             if (!manualEndpoints.contains(target.endpoint())) {
                 socket.disconnect(target.endpoint());
             }
+        }
+
+        @Override
+        public void replace(
+            ZLinkAutoConnectPlanner.Target current,
+            ZLinkAutoConnectPlanner.Target replacement) {
+            socket.disconnect(current.endpoint());
+            connectReplacement(replacement);
+        }
+
+        private void connectReplacement(ZLinkAutoConnectPlanner.Target target) {
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                synchronized (connectGate) {
+                    socket.setConnectRoutingId(target.nodeRid());
+                    socket.setProbe(true);
+                    socket.connect(target.endpoint());
+                }
+                return;
+            }
+            socket.connect(target.endpoint());
         }
     }
 

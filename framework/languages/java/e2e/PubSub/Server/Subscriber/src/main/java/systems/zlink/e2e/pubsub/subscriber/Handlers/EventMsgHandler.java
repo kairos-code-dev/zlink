@@ -16,11 +16,11 @@ public final class EventMsgHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.EventMsg message,
         ZLinkPublishContext context) {
         if (!evidence.accepts(context.topic())) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         evidence.delayIfConfigured(message.scenario());
         evidence.record(
@@ -29,5 +29,6 @@ public final class EventMsgHandler
             message.scenario(),
             message.sequence(),
             message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

@@ -22,7 +22,9 @@ final class ZLinkJavaChannelBackendAdapter implements ZLinkChannelBackendAdapter
 
     @Override
     public ZLinkBackendRouterSocket createRouterSocket(ZLinkBackendContext context) {
-        return new ZLinkJavaRouterSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createRouterSocket()));
+        return new ZLinkJavaRouterSocket(
+            ZLinkJavaSocketOptions.configureFrameworkRouterSocket(
+                nativeContext(context).createRouterSocket()));
     }
 
     @Override

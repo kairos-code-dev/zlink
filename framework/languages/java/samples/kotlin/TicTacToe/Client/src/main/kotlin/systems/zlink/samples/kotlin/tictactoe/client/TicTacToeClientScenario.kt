@@ -4,7 +4,6 @@ import java.time.Duration
 import java.net.URI
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
@@ -18,7 +17,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.LeaveGameMsg
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.LeaveGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
@@ -179,10 +178,8 @@ class TicTacToeClientScenario {
                     "wins=${milestone.wins} receivingSpotNodeRid=${milestone.receivingSpotNodeRid}",
             )
 
-            hostStream.send(LeaveGameMsg(game.roomId)).submit()
-            delay(500)
-            guestStream.send(LeaveGameMsg(game.roomId)).submit()
-            delay(500)
+            hostStream.send(LeaveGameReq(game.roomId)).submit()
+            guestStream.send(LeaveGameReq(game.roomId)).submit()
             println("tictactoe completed")
         } finally {
             hostStream.close().await()

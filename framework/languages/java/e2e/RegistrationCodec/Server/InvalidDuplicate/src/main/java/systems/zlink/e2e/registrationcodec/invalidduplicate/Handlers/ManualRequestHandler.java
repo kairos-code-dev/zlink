@@ -7,9 +7,10 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 public final class ManualRequestHandler
     implements ZLinkRequestHandler<Contracts.EchoManualReq, Contracts.EchoRes> {
     @Override
-    public Contracts.EchoRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.EchoManualReq request,
         ZLinkRequestContext context) {
-        return new Contracts.EchoRes("echo:" + request.value(), "manual");
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.EchoRes("echo:" + request.value(), "manual"));
     }
 }

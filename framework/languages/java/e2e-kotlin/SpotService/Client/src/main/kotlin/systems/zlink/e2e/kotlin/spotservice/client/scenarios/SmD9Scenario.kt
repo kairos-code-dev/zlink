@@ -5,7 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
 
 internal object SmD9Scenario {
-    fun run(context: ActorSessionScenarioContext) {
+    suspend fun run(context: ActorSessionScenarioContext) {
         val observed = eventually {
             val names = context.observedInboundNames()
             ensure(names.size >= 4, "SM-D9 inbound observer did not observe stream replies")

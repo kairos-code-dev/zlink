@@ -1,11 +1,10 @@
 package systems.zlink.samples.deliverydispatch.server.couriersession.sessions;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -16,19 +15,24 @@ import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public final class CourierSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
     private final ZLinkRouteClient routes;
+    private final SpotHandleResolver spotHandles;
 
     public CourierSession(
         ZLinkSessionContext context,
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
-        ZLinkRouteClient routes) {
+        ZLinkRouteClient routes,
+        SpotHandleResolver spotHandles) {
         this.context = context;
         this.handlers = handlers;
         this.routes = routes;
+        this.spotHandles = spotHandles;
     }
 
     @Override
@@ -37,68 +41,80 @@ public final class CourierSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public CompletionStage<Void> onConnected() {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnected() {
-        context.actors().bound()
-            .forEach(actor -> await(actor.notifyDisconnected()));
+    public CompletionStage<Void> onDisconnected() {
+        CompletableFuture<?>[] notifications = context.actors().bound().stream()
+            .map(actor -> actor.notifyDisconnected().toCompletableFuture())
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(notifications);
     }
 
     @Override
-    public void onError(ZLinkStreamError error) {
+    public CompletionStage<Void> onError(ZLinkStreamError error) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        if ("BindCourierSession".equals(dispatch.packetName())) {
-            handleBindCourierSession(payload);
-            return;
+    public CompletionStage<Void> onDispatch(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload) {
+        if ("BindCourierSessionReq".equals(dispatch.packetName())) {
+            return handleBindCourierSessionReq(payload);
         }
-        boolean handled = await(handlers.tryHandleAsync(context, dispatch, payload));
-        if (handled) {
-            return;
-        }
-        Messages.CourierDecision decision = payload.decode(Messages.CourierDecision.class);
-        ZLinkSessionActor actor = context.actors().find(decision.courierId())
-            .orElseThrow(() -> new IllegalStateException(
-                "Courier actor is not bound: " + decision.courierId()));
-        await(actor.relay(payload));
+        return handlers.tryHandle(context, dispatch, payload).thenCompose(handled -> {
+            if (handled) {
+                return CompletableFuture.completedFuture(null);
+            }
+            Messages.CourierDecision decision = payload.decode(Messages.CourierDecision.class);
+            ZLinkSessionActor actor = context.actors().find(decision.courierId())
+                .orElseThrow(() -> new IllegalStateException(
+                    "Courier actor is not bound: " + decision.courierId()));
+            return actor.relay(payload);
+        });
     }
 
-    private void handleBindCourierSession(ZLinkMessage payload) {
-        Messages.BindCourierSession request = payload.decode(Messages.BindCourierSession.class);
-        var actorRef = findOrEnsureActor(request.courierId());
-        ZLinkSessionActor actor = context.actors().find(actorRef.actorId())
-            .orElseGet(() -> await(context.actors().bind(actorRef.toActorRef())));
-        await(actor.relay(ZLinkMessage.of(new Messages.BindCourierSession(
-            request.courierId(),
-            actorRef,
-            context.sessionId()))));
-        context.client()
-            .reply(new Messages.BindCourierSessionAccepted(
-                request.courierId(),
-                actorRef.nodeRid(),
-                context.sessionId()))
-            .submit();
+    private CompletionStage<Void> handleBindCourierSessionReq(ZLinkMessage payload) {
+        Messages.BindCourierSessionReq request = payload.decode(Messages.BindCourierSessionReq.class);
+        return findOrEnsureActor(request.courierId()).thenCompose(actorRef -> {
+            ZLinkSessionActor bound = context.actors().find(actorRef.actorId()).orElse(null);
+            CompletionStage<ZLinkSessionActor> actorStage = bound == null
+                ? context.actors().bind(actorRef.toActorRef())
+                : CompletableFuture.completedFuture(bound);
+            return actorStage.thenRun(() -> context.client()
+                    .reply(new Messages.BindCourierSessionRes(
+                        request.courierId(), actorRef, context.sessionId()))
+                    .submit());
+        });
     }
 
-    private Messages.ActorRefWire findOrEnsureActor(String courierId) {
+    private CompletionStage<systems.zlink.framework.actors.ActorRefSnapshot> findOrEnsureActor(
+        String courierId) {
         String placement = SampleTopology.courierPlacement(courierId);
-        RoutingId nodeRid = RoutingId.from(placement);
-        SpotRef address = new SpotRef(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
-        Messages.CourierActorFound found = routes
-            .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(courierId))
-            .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.CourierActorFound.class);
-        if (found.actor() != null) {
-            return found.actor();
-        }
-        return routes
-            .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.EnsureCourierActor(courierId))
-            .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.CourierActorEnsured.class)
-            .actor();
+        return resolveSpot(placement).thenCompose(address -> routes
+                .requestToSpot(
+                    SampleNames.CourierSpotDiscovery,
+                    address,
+                    new Messages.FindCourierActorReq(courierId))
+                .timeout(SampleTimings.RequestTimeout)
+                .submit(Messages.FindCourierActorRes.class)
+                .thenCompose(found -> found.actor() != null
+                    ? CompletableFuture.completedFuture(found.actor())
+                    : routes.requestToSpot(
+                            SampleNames.CourierSpotDiscovery,
+                            address,
+                            new Messages.EnsureCourierActorReq(courierId))
+                        .timeout(SampleTimings.RequestTimeout)
+                        .submit(Messages.EnsureCourierActorRes.class)
+                        .thenApply(Messages.EnsureCourierActorRes::actor)));
+    }
+
+    private CompletionStage<SpotHandle> resolveSpot(String placement) {
+        return spotHandles.resolveSpotHandle(RoutingId.from(placement))
+            .thenApply(found -> found.orElseThrow(() ->
+                new IllegalStateException("courier Spot is not registered: " + placement)));
     }
 }

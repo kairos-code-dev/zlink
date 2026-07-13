@@ -52,8 +52,8 @@
 | common: 자동 discovery 없이 수동 endpoint 연결 | `run_sample.sh`, `run_sample.ps1`, `SampleSettings.kt` | topology | done | runner가 API/Play endpoint 목록을 properties로 전달한다. |
 | common: Api 2개, Play 2개 실행 | `run_sample.sh`, `run_sample.ps1` | runner | done | 실제 process 경계로 role을 실행한다. |
 | common: Redis-backed location store | `SampleLocationStore.kt`, `PlayServerApplication.kt` | runtime-config | done | Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework 기본 resolver가 spot 위치를 조회한다. |
-| common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `TICTACTOE_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
-| common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
+| common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
+| common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | 애플리케이션은 runner가 만든 endpoint만 받고, runner는 자신이 만든 container id만 정리한다. |
 | common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `TICTACTOE_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만들고 location store key에 적용한다. |
 | common: Redis client dependency는 framework extension 안에 둠 | `zlink-framework-locations-redis`, `SampleLocationStore.kt` | design | done | handler, actor, Spot, Domain에 Redis client 타입을 노출하지 않는다. |
 | common: actor가 public Spot API로 room에 join | `PlayEntrySpot.kt`, `PlayActorJoinGameHandler.kt` | spot-flow | done | internal runtime 우회 없이 Spot handler 경로를 사용한다. |
@@ -77,5 +77,5 @@
 - runner 출력에서 `PASS TicTacToe.Kotlin`을 확인했다.
 - runner는 Gradle 호출에 `--no-parallel --max-workers=1`을 사용한다.
 - 증거 파일은 `logs/flow-api-50479.log`, `logs/flow-play-node-1.log`, `logs/flow-play-node-2.log`이다.
-- flow log에서 `PlayerWinMilestoneMsg` pub/sub fan-out과 양쪽 stream의 `LeaveGameMsg` dispatch를 확인했다.
+- flow log에서 `PlayerWinMilestoneMsg` pub/sub fan-out과 양쪽 stream의 `LeaveGameReq` dispatch를 확인했다.
 - `rg -n "HANDLER_MISSING|ERROR" framework/languages/java/samples/kotlin/TicTacToe/logs -g '*.log'`는 no-hit이다.

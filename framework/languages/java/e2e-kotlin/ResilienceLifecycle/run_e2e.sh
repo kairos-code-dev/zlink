@@ -64,7 +64,7 @@ cleanup() {
   if [[ -n "${redis_container}" ]]; then
     docker unpause "${redis_container}" >/dev/null 2>&1 || true
     if [[ "${redis_container_owned}" == "1" ]]; then
-      docker rm -f "${redis_container}" >/dev/null 2>&1 || true
+      docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
     fi
   fi
   wait >/dev/null 2>&1 || true
@@ -88,6 +88,15 @@ try:
 finally:
     for sock in sockets:
         sock.close()
+PY
+}
+
+reserve_http_endpoint() {
+  python3 - <<'PY'
+import socket
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(f"http://127.0.0.1:{sock.getsockname()[1]}")
 PY
 }
 
@@ -164,23 +173,10 @@ wait_file() {
   return 1
 }
 
-if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
-  if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_CONTAINER:-}" ]]; then
-    redis_container="${ZLINK_KOTLIN_E2E_REDIS_CONTAINER}"
-    redis_container_owned=0
-  fi
-elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
-else
-  redis_container_owned=1
-  redis_container="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-  )"
-  redis_endpoint="$(zlink_redis_endpoint "${redis_container}")"
-fi
+redis_container_owned=1
+zlink_redis_start_scoped_assign redis_container redis_port \
+  "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+redis_endpoint="127.0.0.1:${redis_port}"
 export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
@@ -489,13 +485,23 @@ fi
 if should_run RL-A3 || should_run RL-D1; then
 for wave in 1 2; do
   storm_pids=()
+  storm_consumer_pids=()
   for index in $(seq 1 6); do
     storm_log_dir="${log_dir}/storm-${wave}-${index}"
     mkdir -p "${storm_log_dir}"
+    storm_consumer_http="$(reserve_http_endpoint)"
+    ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${storm_consumer_http}" \
+    ZLINK_KOTLIN_E2E_LOG_DIR="${storm_log_dir}" \
+      "$(consumer_bin)" >"${storm_log_dir}/consumer.stdout.log" 2>"${storm_log_dir}/consumer.stderr.log" &
+    storm_consumer_pids+=("$!")
+    pids+=("$!")
+    wait_port "storm-${wave}-${index}-consumer" "${storm_consumer_http}"
     ZLINK_KOTLIN_E2E_CLIENT_MODE=storm \
     ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
     ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
-    ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+    ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${storm_consumer_http}" \
     ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
     ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
@@ -506,6 +512,9 @@ for wave in 1 2; do
   done
   for pid in "${storm_pids[@]}"; do
     wait "${pid}"
+  done
+  for pid in "${storm_consumer_pids[@]}"; do
+    stop_pid "${pid}"
   done
 done
 fi

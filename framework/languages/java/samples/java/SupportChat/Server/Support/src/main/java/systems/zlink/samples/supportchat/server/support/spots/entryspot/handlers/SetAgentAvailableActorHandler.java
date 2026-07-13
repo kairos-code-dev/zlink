@@ -1,11 +1,11 @@
 package systems.zlink.samples.supportchat.server.support.spots.entryspot.handlers;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
-import systems.zlink.samples.supportchat.server.support.domain.ConversationStore;
+import systems.zlink.samples.supportchat.server.support.application.AgentAssignmentService;
 import systems.zlink.samples.supportchat.server.support.spots.entryspot.SupportEntrySpot;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
@@ -15,24 +15,28 @@ public final class SetAgentAvailableActorHandler
         SupportUserActor,
         Messages.SetAgentAvailableReq,
         Messages.SetAgentAvailableRes> {
-    private final ConversationStore store;
+    private final AgentAssignmentService assignment;
     private final SupportActorDirectory directory;
 
-    public SetAgentAvailableActorHandler(ConversationStore store, SupportActorDirectory directory) {
-        this.store = store;
+    public SetAgentAvailableActorHandler(
+        AgentAssignmentService assignment,
+        SupportActorDirectory directory) {
+        this.assignment = assignment;
         this.directory = directory;
     }
 
     @Override
-    public Messages.SetAgentAvailableRes handle(
+    public java.util.concurrent.CompletionStage<Messages.SetAgentAvailableRes> handle(
         SupportEntrySpot spot,
         SupportUserActor actor,
         ZLinkSpotActorRequestContext context,
-        Messages.SetAgentAvailableReq request,
-        CancellationToken cancellationToken) {
-        requireRole(actor, "agent");
+        Messages.SetAgentAvailableReq request) {
+        requireRole(actor, SampleNames.Roles.Agent);
         directory.remember(actor);
-        return store.setAgentAvailable(request.isAvailable());
+        assignment.setAvailable(
+            actor.participantId(), actor.displayName(), request.isAvailable());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Messages.SetAgentAvailableRes(request.isAvailable()));
     }
 
     private static void requireRole(SupportUserActor actor, String expectedRole) {

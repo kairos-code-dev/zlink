@@ -2,6 +2,7 @@ package systems.zlink.samples.deliverydispatch.server.dispatch;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public final class DispatchWorkQueue implements AutoCloseable {
@@ -12,16 +13,23 @@ public final class DispatchWorkQueue implements AutoCloseable {
         this.worker = worker;
     }
 
-    public void enqueue(Messages.CreateDeliveryRequest request) {
+    public void enqueue(Messages.CreateDeliveryReq request) {
         executor.submit(() -> {
             try {
                 System.out.println("deliverydispatch-dispatch-start=" + request.deliveryId());
-                worker.dispatch(new Messages.AssignDelivery(
+                worker.dispatch(new Messages.AssignDeliveryMsg(
                     request.deliveryId(),
                     request.customerId(),
                     request.pickupAddress(),
-                    request.dropoffAddress()));
-                System.out.println("deliverydispatch-dispatch-finished=" + request.deliveryId());
+                    request.dropoffAddress())).whenComplete((ignored, error) -> {
+                        if (error == null) {
+                            System.out.println("deliverydispatch-dispatch-finished=" + request.deliveryId());
+                        } else {
+                            System.err.println("deliverydispatch-dispatch-failed=" + request.deliveryId()
+                                + ": " + error.getMessage());
+                            error.printStackTrace(System.err);
+                        }
+                    });
             } catch (RuntimeException ex) {
                 System.err.println("deliverydispatch-dispatch-failed=" + request.deliveryId() + ": "
                     + ex.getMessage());
@@ -30,7 +38,8 @@ public final class DispatchWorkQueue implements AutoCloseable {
         });
     }
 
-    public Messages.ServerAssertionResponse assertServerEvidence(Messages.ServerAssertionRequest request) {
+    public CompletionStage<Messages.ServerAssertionResponse> assertServerEvidence(
+        Messages.ServerAssertionRequest request) {
         return worker.assertServerEvidence(request);
     }
 

@@ -6,7 +6,7 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingor
 
 public final class BingoRoomTimerHandler implements ZLinkSpotTimerHandler<BingoRoomSpot> {
     @Override
-    public void handle(BingoRoomSpot spot, ZLinkTimerTick tick) {
-        spot.tick();
+    public java.util.concurrent.CompletionStage<Void> handle(BingoRoomSpot spot, ZLinkTimerTick tick) {
+        return spot.tick();
     }
 }

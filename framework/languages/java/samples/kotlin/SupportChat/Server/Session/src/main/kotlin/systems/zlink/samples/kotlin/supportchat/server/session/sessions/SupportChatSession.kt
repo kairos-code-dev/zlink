@@ -2,8 +2,6 @@ package systems.zlink.samples.kotlin.supportchat.server.session.sessions
 
 import kotlinx.coroutines.future.await
 import org.slf4j.LoggerFactory
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.kotlin.bindOrGetActor
@@ -15,7 +13,6 @@ import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
-import systems.zlink.samples.kotlin.supportchat.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateUserReq
@@ -92,7 +89,7 @@ class SupportChatSession(
             .submit(EnsureSupportUserActorRes::class.java)
             .await()
 
-        identityActor = context.actors().bindOrGetActor(ensured.actor.actorRef())
+        identityActor = context.actors().bindOrGetActor(ensured.actor.toActorRef())
         identityActorId = actorId
         identityDisplayName = displayName
         identityRole = role
@@ -126,7 +123,7 @@ class SupportChatSession(
             .submit(EnsureAgentConversationRes::class.java)
             .await()
 
-        conversationActors[conversationId] = context.actors().bindOrGetActor(ensured.actor.actorRef())
+        conversationActors[conversationId] = context.actors().bindOrGetActor(ensured.actor.toActorRef())
         logger.info(
             "session: agent joined conversation. roster={}, conversation={}",
             identityActorId,
@@ -157,6 +154,3 @@ class SupportChatSession(
         private val logger = LoggerFactory.getLogger(SupportChatSession::class.java)
     }
 }
-
-private fun ActorRefWire.actorRef(): ActorRef =
-    ActorRef(RoutingId.from(nodeRid), actorId, generation)

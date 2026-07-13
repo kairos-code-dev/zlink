@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.entryspot.handlers
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
@@ -29,7 +28,6 @@ class SetAgentAvailableHandler(
         actor: SupportUserActor,
         context: ZLinkSpotActorRequestContext,
         request: SetAgentAvailableReq,
-        cancellationToken: CancellationToken,
     ): SetAgentAvailableRes {
         if (actor.role != SupportChatRoles.Agent) {
             throw IllegalStateException("Only agent actors can set availability.")

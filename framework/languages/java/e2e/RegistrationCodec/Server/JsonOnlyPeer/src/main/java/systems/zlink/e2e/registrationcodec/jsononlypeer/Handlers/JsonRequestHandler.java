@@ -14,11 +14,12 @@ public final class JsonRequestHandler
     }
 
     @Override
-    public Contracts.EchoRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.JsonEchoReq request,
         ZLinkRequestContext context) {
         state.record("Request", "JsonEcho", request.value());
         state.record("ContentType", "JsonEcho", context.contentType().orElse("missing"));
-        return new Contracts.EchoRes("echo:" + request.value(), "json");
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.EchoRes("echo:" + request.value(), "json"));
     }
 }

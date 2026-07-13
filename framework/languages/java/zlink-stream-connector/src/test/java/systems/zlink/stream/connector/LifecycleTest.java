@@ -19,12 +19,26 @@ import systems.zlink.contracts.messaging.Message;
 
 final class LifecycleTest {
     @Test
+    void connectorStartsInCreatedStateBeforeFirstConnectAttempt() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL));
+            try {
+                assertEquals(ZLinkStreamConnectionState.CREATED, connector.state());
+                assertFalse(connector.isConnected());
+            } finally {
+                ConnectorTestAwait.await(connector.close());
+            }
+        }
+    }
+
+    @Test
     void requestTimeoutFailsPendingRequestsWithTimeoutCause() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             CompletionException ex = assertThrows(CompletionException.class, () ->
                 connector.request(payload("MissingReply", "hello"))
@@ -36,7 +50,7 @@ final class LifecycleTest {
             assertTrue(ex.getCause() instanceof java.util.concurrent.TimeoutException);
             assertEquals(0, connector.pendingDispatchCount());
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -53,20 +67,21 @@ final class LifecycleTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
-            connector.disconnect().await();
+            ConnectorTestAwait.await(connector.connect());
+            ConnectorTestAwait.await(connector.disconnect());
             assertFalse(connector.isConnected());
 
-            connector.reconnect().await();
+            ConnectorTestAwait.await(connector.reconnect());
 
             assertTrue(connector.isConnected());
             assertEquals(List.of(
+                ZLinkStreamConnectionState.CONNECTING,
                 ZLinkStreamConnectionState.CONNECTED,
                 ZLinkStreamConnectionState.DISCONNECTED,
                 ZLinkStreamConnectionState.RECONNECTING,
                 ZLinkStreamConnectionState.CONNECTED), states);
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -83,7 +98,7 @@ final class LifecycleTest {
                  Duration.ofMillis(500),
                  Duration.ofMillis(10)));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             TcpStreamConnectorTestServer.ReceivedFrame frame =
                 server.readFrameAsync().get(1, TimeUnit.SECONDS);
@@ -92,7 +107,7 @@ final class LifecycleTest {
             assertEquals("$zlink.heartbeat.ping", frame.header().name());
             assertEquals(0, frame.payload().length);
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -109,7 +124,7 @@ final class LifecycleTest {
                  Duration.ofMillis(500),
                  Duration.ofMillis(10)));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(control("$zlink.heartbeat.ping"), new byte[0]).join();
 
             TcpStreamConnectorTestServer.ReceivedFrame frame =
@@ -119,7 +134,7 @@ final class LifecycleTest {
             assertEquals("$zlink.heartbeat.pong", frame.header().name());
             assertEquals(0, frame.payload().length);
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -136,7 +151,7 @@ final class LifecycleTest {
                  Duration.ofMillis(60),
                  Duration.ofMillis(10)));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             CompletionException ex = assertThrows(CompletionException.class, () ->
                 connector.request(payload("MissingReply", "hello"))
@@ -147,7 +162,7 @@ final class LifecycleTest {
             assertTrue(ex.getCause() instanceof java.util.concurrent.TimeoutException);
             assertTrue(ex.getCause().getMessage().contains("Heartbeat"));
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -177,13 +192,13 @@ final class LifecycleTest {
             });
 
             assertThrows(Exception.class, () ->
-                connector.reconnect().await());
+                ConnectorTestAwait.await(connector.reconnect()));
 
             assertEquals(List.of(
                 ZLinkStreamConnectionState.RECONNECTING,
                 ZLinkStreamConnectionState.DISCONNECTED), states);
         } finally {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
         }
     }
 
@@ -227,7 +242,7 @@ final class LifecycleTest {
 
             assertTrue(connector.isConnected());
         } finally {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
             release.complete(null);
             server.get(5, TimeUnit.SECONDS);
         }
@@ -274,14 +289,14 @@ final class LifecycleTest {
         try {
             var reconnect = connector.reconnect().submit().toCompletableFuture();
 
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
 
             CompletionException ex = assertThrows(CompletionException.class, reconnect::join);
             assertTrue(ex.getCause() instanceof IllegalStateException);
             assertEquals(ZLinkStreamConnectionState.CLOSED, connector.state());
             assertFalse(connector.isConnected());
         } finally {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
         }
     }
 

@@ -1,12 +1,13 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.handlers
 
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.ZLinkAwait.await
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.spots.SpotHandle
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.CourierDirectory
@@ -21,8 +22,9 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourie
 class BindCourierHandler(
     private val directory: CourierDirectory,
     private val routes: ZLinkRouteClient,
-) : ZLinkRequestHandler<BindCourierReq, BindCourierRes> {
-    override fun handle(
+    private val spots: SpotHandleResolver,
+) : ZLinkSuspendingRequestHandler<BindCourierReq, BindCourierRes> {
+    override suspend fun handle(
         request: BindCourierReq,
         context: ZLinkRequestContext,
     ): BindCourierRes {
@@ -31,18 +33,21 @@ class BindCourierHandler(
         val found = routes
             .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(request.courierId))
             .timeout(SampleTimings.RequestTimeout)
-            .await(FindCourierActorRes::class.java)
+            .submit(FindCourierActorRes::class.java)
+            .await()
         val ensured = found.actor?.let { EnsureCourierActorRes(request.courierId, it) }
             ?: routes
                 .requestToSpot(SampleNames.CourierSpotMesh, address, EnsureCourierActorReq(request.courierId))
                 .timeout(SampleTimings.RequestTimeout)
-                .await(EnsureCourierActorRes::class.java)
+                .submit(EnsureCourierActorRes::class.java)
+                .await()
         val binding = directory.remember(ensured, request.sessionRoute)
         return BindCourierRes(request.courierId, binding.actor, binding.sessionRoute)
     }
 
-    private fun address(placement: String): SpotRef {
+    private suspend fun address(placement: String): SpotHandle {
         val nodeRid = RoutingId.from(placement)
-        return SpotRef(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        return spots.resolveSpotHandle(nodeRid).await()
+            .orElseThrow { IllegalStateException("spot not found: $nodeRid") }
     }
 }

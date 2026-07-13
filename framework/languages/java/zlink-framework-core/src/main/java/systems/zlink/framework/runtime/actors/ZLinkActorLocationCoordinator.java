@@ -125,6 +125,12 @@ final class ZLinkActorLocationCoordinator {
         return lifecycle.releaseActor(actorType == null ? "" : actorType, actorId);
     }
 
+    void abandonActor(String actorId) {
+        if (lifecycle != null) {
+            lifecycle.abandonActor(actorId);
+        }
+    }
+
     void bindSessionRoute(RoutingId routeSessionRid, String actorId, RoutingId sourceNodeRid) {
         if (lifecycle == null || routeSessionRid == null || sourceNodeRid == null) {
             return;

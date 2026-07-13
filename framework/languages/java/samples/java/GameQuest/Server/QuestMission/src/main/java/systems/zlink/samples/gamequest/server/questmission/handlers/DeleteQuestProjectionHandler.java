@@ -16,9 +16,10 @@ public final class DeleteQuestProjectionHandler
     }
 
     @Override
-    public Messages.DeleteQuestProjectionRes handle(
+    public java.util.concurrent.CompletionStage<Messages.DeleteQuestProjectionRes> handle(
         Messages.DeleteQuestProjectionReq request,
         ZLinkRequestContext context) {
-        return store.deleteProjection(request.playerId(), request.questId());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            store.deleteProjection(request.playerId(), request.questId()));
     }
 }

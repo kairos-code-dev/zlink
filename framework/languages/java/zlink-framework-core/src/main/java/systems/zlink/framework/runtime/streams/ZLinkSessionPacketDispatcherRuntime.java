@@ -17,7 +17,6 @@ import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSessionContext>
@@ -40,7 +39,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     }
 
     @Override
-    public CompletionStage<Boolean> tryHandleAsync(
+    public CompletionStage<Boolean> tryHandle(
         TSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
@@ -132,9 +131,6 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private static String packetName(Object handler) {
         if (handler instanceof ZLinkTypedSessionPacketHandler<?, ?> typedHandler) {
             return ZLinkPacketNames.resolve(typedHandler.messageType());
-        }
-        if (handler instanceof ZLinkSessionPacketHandler<?> packetHandler) {
-            return packetHandler.packetName();
         }
         try {
             Object value = handler.getClass().getMethod("packetName").invoke(handler);

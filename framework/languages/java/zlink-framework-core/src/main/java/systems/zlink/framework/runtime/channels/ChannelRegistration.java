@@ -19,6 +19,9 @@ public final class ChannelRegistration {
     private final ClientServerState clientServer = new ClientServerState();
     private final FanoutState fanout = new FanoutState();
     private final RouteMeshState routeMesh = new RouteMeshState();
+    private final RuntimeEndpointConnections clientConnections;
+    private final RuntimeEndpointConnections subscriberConnections;
+    private final RuntimeEndpointConnections routeConnections;
     private final Set<String> handlerGroups = new LinkedHashSet<>();
     private RoutingId routingId;
     private RoutingId routeRoutingId;
@@ -27,6 +30,9 @@ public final class ChannelRegistration {
     public ChannelRegistration(String name, ChannelKind kind) {
         this.name = name;
         this.kind = kind;
+        clientConnections = new RuntimeEndpointConnections(this::enableClient, clientServer.manualEndpoints);
+        subscriberConnections = new RuntimeEndpointConnections(this::enableSubscriber, fanout.subscriberManualEndpoints);
+        routeConnections = new RuntimeEndpointConnections(this::enableClient, routeMesh.manualEndpoints);
     }
 
     public String name() {
@@ -42,7 +48,7 @@ public final class ChannelRegistration {
     }
 
     List<String> clientManualEndpoints() {
-        return clientServer.manualEndpoints;
+        return clientConnections.listConnections();
     }
 
     List<ChannelRequestHandlerRegistration> requestHandlers() {
@@ -58,7 +64,7 @@ public final class ChannelRegistration {
     }
 
     List<String> subscriberManualEndpoints() {
-        return fanout.subscriberManualEndpoints;
+        return subscriberConnections.listConnections();
     }
 
     List<ChannelPublishHandlerRegistration> publishHandlers() {
@@ -70,7 +76,19 @@ public final class ChannelRegistration {
     }
 
     List<String> routeManualEndpoints() {
-        return routeMesh.manualEndpoints;
+        return routeConnections.listConnections();
+    }
+
+    RuntimeEndpointConnections clientConnections() { return clientConnections; }
+
+    RuntimeEndpointConnections subscriberConnections() { return subscriberConnections; }
+
+    RuntimeEndpointConnections routeConnections() { return routeConnections; }
+
+    void detachRuntimeConnections() {
+        clientConnections.detach();
+        subscriberConnections.detach();
+        routeConnections.detach();
     }
 
     List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers() {
@@ -171,11 +189,11 @@ public final class ChannelRegistration {
     }
 
     void addClientManualEndpoint(String endpoint) {
-        clientServer.manualEndpoints.add(requireEndpoint(endpoint));
+        clientConnections.connect(endpoint);
     }
 
     void removeClientManualEndpoint(String endpoint) {
-        clientServer.manualEndpoints.remove(requireEndpoint(endpoint));
+        clientConnections.disconnect(endpoint);
     }
 
     void addPublisherBind(String endpoint) {
@@ -183,11 +201,11 @@ public final class ChannelRegistration {
     }
 
     void addSubscriberManualEndpoint(String endpoint) {
-        fanout.subscriberManualEndpoints.add(requireEndpoint(endpoint));
+        subscriberConnections.connect(endpoint);
     }
 
     void removeSubscriberManualEndpoint(String endpoint) {
-        fanout.subscriberManualEndpoints.remove(requireEndpoint(endpoint));
+        subscriberConnections.disconnect(endpoint);
     }
 
     void setRouteRoutingId(RoutingId routingId) {
@@ -199,11 +217,11 @@ public final class ChannelRegistration {
     }
 
     void addRouteManualEndpoint(String endpoint) {
-        routeMesh.manualEndpoints.add(requireEndpoint(endpoint));
+        routeConnections.connect(endpoint);
     }
 
     void removeRouteManualEndpoint(String endpoint) {
-        routeMesh.manualEndpoints.remove(requireEndpoint(endpoint));
+        routeConnections.disconnect(endpoint);
     }
 
     void addHandlerGroup(String groupName) {
@@ -395,11 +413,15 @@ public final class ChannelRegistration {
         }
     }
 
-    private static String requireEndpoint(String endpoint) {
+    static String requireEndpointValue(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
             throw new ZLinkConfigurationException("endpoint is required");
         }
         return endpoint;
+    }
+
+    private static String requireEndpoint(String endpoint) {
+        return requireEndpointValue(endpoint);
     }
 
     private void requireNonBlankPacketName(String packetName, String label) {

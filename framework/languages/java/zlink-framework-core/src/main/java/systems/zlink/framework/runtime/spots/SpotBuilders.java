@@ -10,6 +10,7 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy;
 
 public final class SpotBuilders {
     private SpotBuilders() {
@@ -28,6 +29,12 @@ public final class SpotBuilders {
         SpotNodeRegistration node,
         ZLinkFrameworkRegistration registration,
         Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotMeshBuilder {
+        @Override
+        public ZLinkSpotMeshBuilder useDrainPolicy(ZLinkSpotDrainPolicy policy) {
+            node.setDrainPolicy(policy);
+            return this;
+        }
+
         @Override
         public ZLinkSpotNodeBuilder setRoutingId(RoutingId routingId) {
             node.setRoutingId(routingId);

@@ -15,6 +15,8 @@ import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.configuration.BingoMetricsReporter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 
 
@@ -61,5 +63,10 @@ public final class SessionServerApplication {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return SampleLocationStore.create();
+    }
+
+    @Bean(destroyMethod = "close")
+    BingoMetricsReporter bingoMetricsReporter(MeterRegistry registry) {
+        return new BingoMetricsReporter(registry, "session");
     }
 }

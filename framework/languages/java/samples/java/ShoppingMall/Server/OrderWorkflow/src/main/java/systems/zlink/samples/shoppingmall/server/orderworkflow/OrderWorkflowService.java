@@ -1,11 +1,11 @@
 package systems.zlink.samples.shoppingmall.server.orderworkflow;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
 import java.util.List;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.OrderWorkflowSpot;
 import systems.zlink.samples.shoppingmall.server.configuration.SampleNames;
@@ -20,64 +20,64 @@ public final class OrderWorkflowService {
     private final RedisCommerceStore store;
     private final ZLinkSpotManager spots;
     private final ZLinkRouteClient routes;
+    private final SpotHandleResolver spotHandles;
 
     public OrderWorkflowService(
         RedisCommerceStore store,
         ZLinkSpotManager spots,
-        ZLinkRouteClient routes) {
+        ZLinkRouteClient routes,
+        SpotHandleResolver spotHandles) {
         this.store = store;
         this.spots = spots;
         this.routes = routes;
+        this.spotHandles = spotHandles;
     }
 
-    public Messages.OrderState start(Messages.StartOrderWorkflowReq request) {
-        ensureOrderSpot(request.orderId());
-        return routes.requestToSpot(SampleNames.OrderSpotDiscovery, address(request.orderId()), request)
+    public CompletionStage<Messages.OrderState> start(Messages.StartOrderWorkflowReq request) {
+        return orderSpot(request.orderId()).thenCompose(address -> routes
+            .requestToSpot(SampleNames.OrderSpotDiscovery, address, request)
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.StartOrderWorkflowRes.class)
-            .state();
+            .submit(Messages.StartOrderWorkflowRes.class))
+            .thenApply(Messages.StartOrderWorkflowRes::state);
     }
 
-    public Messages.OrderState continueOrder(String orderId) {
-        ensureOrderSpot(orderId);
-        return routes.requestToSpot(
+    public CompletionStage<Messages.OrderState> continueOrder(String orderId) {
+        return orderSpot(orderId).thenCompose(address -> routes.requestToSpot(
                 SampleNames.OrderSpotDiscovery,
-                address(orderId),
+                address,
                 new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.ContinueOrderWorkflowRes.class)
-            .state();
+            .submit(Messages.ContinueOrderWorkflowRes.class))
+            .thenApply(Messages.ContinueOrderWorkflowRes::state);
     }
 
-    public Messages.OrderState prepareInventoryReserved(Messages.StartOrderWorkflowReq request) {
-        ensureOrderSpot(request.orderId());
-        return routes.requestToSpot(
+    public CompletionStage<Messages.OrderState> prepareInventoryReserved(Messages.StartOrderWorkflowReq request) {
+        return orderSpot(request.orderId()).thenCompose(address -> routes.requestToSpot(
                 SampleNames.OrderSpotDiscovery,
-                address(request.orderId()),
+                address,
                 new Messages.PrepareInventoryReservedCheckpointReq(request))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.ContinueOrderWorkflowRes.class)
-            .state();
+            .submit(Messages.ContinueOrderWorkflowRes.class))
+            .thenApply(Messages.ContinueOrderWorkflowRes::state);
     }
 
-    public Messages.OrderState rebuildProjection(String orderId) {
-        ensureOrderSpot(orderId);
-        return routes.requestToSpot(
+    public CompletionStage<Messages.OrderState> rebuildProjection(String orderId) {
+        return orderSpot(orderId).thenCompose(address -> routes.requestToSpot(
                 SampleNames.OrderSpotDiscovery,
-                address(orderId),
+                address,
                 new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
-            .await(Messages.RebuildOrderProjectionRes.class)
-            .state();
+            .submit(Messages.RebuildOrderProjectionRes.class))
+            .thenApply(Messages.RebuildOrderProjectionRes::state);
     }
 
-    public Messages.OrderState startInSpot(
+    public CompletionStage<Messages.OrderState> startInSpot(
         OrderWorkflowSpot spot,
         Messages.StartOrderWorkflowReq request) {
         List<OrderDomain.StoredOrderEvent> existing = store.readEvents(request.orderId());
         Messages.OrderState current = store.findProjection(request.orderId());
         if (current != null) {
-            return current;
+            return java.util.concurrent.CompletableFuture.completedFuture(current);
         }
         if (existing.isEmpty()) {
             append(
@@ -96,14 +96,15 @@ public final class OrderWorkflowService {
         } else {
             saveProjection(request.orderId());
         }
-        spot.context().outbound().sendToSpot(
-                new SpotRef(
-                    SampleNames.OrderSpotDiscovery,
-                    spot.context().nodeRid(),
-                    spot.context().spotRid()),
-                new Messages.RunOrderWorkflowCommand(request.orderId()))
-            .await();
-        return store.findProjection(request.orderId());
+        return spotHandles.resolveSpotHandle(spot.context().spotRid())
+            .thenApply(found -> {
+                SpotHandle handle = found.orElseThrow(() -> new IllegalStateException(
+                    "order Spot is not registered: " + spot.context().spotRid()));
+                spot.context().outbound().sendToSpot(
+                    handle,
+                    new Messages.RunOrderWorkflowCommand(request.orderId())).submit();
+                return store.findProjection(request.orderId());
+            });
     }
 
     public Messages.OrderState continueOrderInSpot(String orderId) {
@@ -262,15 +263,12 @@ public final class OrderWorkflowService {
         return state;
     }
 
-    private void ensureOrderSpot(String orderId) {
-        await(spots.getOrCreate(OrderWorkflowSpot.class, RoutingId.from(orderId)));
-    }
-
-    private static SpotRef address(String orderId) {
-        return new SpotRef(
-            SampleNames.OrderSpotDiscovery,
-            SampleTopology.selectedWorkflowRoutingId(),
-            RoutingId.from(orderId));
+    private CompletionStage<SpotHandle> orderSpot(String orderId) {
+        RoutingId spotRid = RoutingId.from(orderId);
+        return spots.getOrCreate(OrderWorkflowSpot.class, spotRid)
+            .thenCompose(ignored -> spotHandles.resolveSpotHandle(spotRid))
+            .thenApply(found -> found.orElseThrow(() ->
+                new IllegalStateException("order Spot is not registered: " + spotRid)));
     }
 
     private static OrderDomain.OrderStartedEvent started(List<OrderDomain.StoredOrderEvent> events) {

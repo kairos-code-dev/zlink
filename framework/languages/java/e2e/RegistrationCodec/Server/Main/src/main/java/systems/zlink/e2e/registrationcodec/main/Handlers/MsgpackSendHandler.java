@@ -14,10 +14,11 @@ public final class MsgpackSendHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.PackedEchoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "MsgpackEcho", message.value());
         state.record("ContentType", "MsgpackEcho", context.contentType().orElse(""));
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

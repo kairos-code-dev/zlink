@@ -39,7 +39,7 @@ class ConsumerHttpServer(
                 val timeoutMillis = exchange.query("timeoutMillis")?.toLongOrNull() ?: 3000L
                 val reply = client.requestToChannel(Contracts.CHANNEL, request)
                     .timeout(Duration.ofMillis(timeoutMillis))
-                    .await(Contracts.WorkRes::class.java)
+                    .submit(Contracts.WorkRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
                 exchange.writeJson(reply)
             } catch (error: Exception) {
                 exchange.writeError(error)
@@ -47,7 +47,7 @@ class ConsumerHttpServer(
         }
         httpServer.createContext("/profile/send") { exchange ->
             val request = exchange.readJson(Contracts.WorkMsg::class.java)
-            client.sendToChannel(Contracts.CHANNEL, request).await()
+            client.sendToChannel(Contracts.CHANNEL, request).submit()
             exchange.writeJson(mapOf("status" to "sent"))
         }
         httpServer.createContext("/profile/unhandled") { exchange ->
@@ -55,7 +55,7 @@ class ConsumerHttpServer(
                 val request = exchange.readJson(Contracts.UnhandledReq::class.java)
                 val reply = client.requestToChannel(Contracts.CHANNEL, request)
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkRes::class.java)
+                    .submit(Contracts.WorkRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
                 exchange.writeJson(reply)
             } catch (error: Exception) {
                 exchange.writeError(error)
@@ -81,7 +81,7 @@ class ConsumerHttpServer(
         while (System.nanoTime() < deadline) {
             val matches = try {
                 lifecycle.monitoringLocationRuntimeQuery()
-                    .listPeerLocationsAsync(
+                    .listPeerLocations(
                         ZLinkPeerLocationFilter(
                             ZLinkLocationAutoConnectType.CLIENT_SERVER,
                             Contracts.CHANNEL,
@@ -113,7 +113,7 @@ class ConsumerHttpServer(
     private fun readTopology(): Contracts.TopologyReadRes {
         return try {
             val matches = lifecycle.monitoringLocationRuntimeQuery()
-                .listPeerLocationsAsync(
+                .listPeerLocations(
                     ZLinkPeerLocationFilter(
                         ZLinkLocationAutoConnectType.CLIENT_SERVER,
                         Contracts.CHANNEL,

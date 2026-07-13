@@ -9,6 +9,9 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.locks.LockSupport
+import kotlinx.coroutines.runBlocking
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
@@ -31,14 +34,16 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamMessage
 
 fun main(args: Array<String>) {
-    DeliveryDispatchClientScenario().run(DeliveryDispatchClientOptions.parse(args))
+    runBlocking {
+        DeliveryDispatchClientScenario().run(DeliveryDispatchClientOptions.parse(args))
+    }
 }
 
 class DeliveryDispatchClientScenario {
     private val json = ObjectMapper().registerModule(KotlinModule.Builder().build())
     private val http = HttpClient.newHttpClient()
 
-    fun run(options: DeliveryDispatchClientOptions) {
+    suspend fun run(options: DeliveryDispatchClientOptions) {
         if (!options.streamRuntime) {
             options.roleUrls.forEach { (role, url) -> requireHealthy(role, url) }
         }
@@ -102,25 +107,25 @@ class DeliveryDispatchClientScenario {
         println(SampleNames.CompletedMarker)
     }
 
-    private fun runStreamRuntime() {
+    private suspend fun runStreamRuntime() {
         val customer = createClient(SampleTopology.CustomerStreamEndpoint)
         val courierA = createClient(SampleTopology.CourierStreamEndpoint)
         val courierB = createClient(SampleTopology.CourierStreamEndpoint)
         try {
-            customer.connect().await()
-            courierA.connect().await()
-            courierB.connect().await()
+            customer.connect().submit().await()
+            courierA.connect().submit().await()
+            courierB.connect().submit().await()
 
             val courierABound = courierA
                 .request(BindCourierSessionReq("courier-a"))
-                .await(BindCourierSessionRes::class.java)
+                .submit(BindCourierSessionRes::class.java).await()
             check(courierABound.courierId == "courier-a")
             println("deliverydispatch-bind=courier-a")
             val courierBBound = courierB
                 .request(BindCourierSessionReq("courier-b"))
-                .await(BindCourierSessionRes::class.java)
+                .submit(BindCourierSessionRes::class.java).await()
             check(courierBBound.courierId == "courier-b")
-            check(courierABound.nodeRid != courierBBound.nodeRid)
+            check(courierABound.actor.nodeRid != courierBBound.actor.nodeRid)
             println("deliverydispatch-bind=courier-b")
 
             runSuccessfulDelivery(customer, courierA)
@@ -128,13 +133,13 @@ class DeliveryDispatchClientScenario {
             assertServerEvidence()
             println(SampleNames.CompletedMarker)
         } finally {
-            customer.close().await()
-            courierA.close().await()
-            courierB.close().await()
+            customer.close().submit().await()
+            courierA.close().submit().await()
+            courierB.close().submit().await()
         }
     }
 
-    private fun runSuccessfulDelivery(
+    private suspend fun runSuccessfulDelivery(
         customer: ZLinkStreamConnector,
         courier: ZLinkStreamConnector,
     ) {
@@ -150,7 +155,7 @@ class DeliveryDispatchClientScenario {
 
         val subscribed = customer
             .request(SubscribeDeliveryReq(deliveryId))
-            .await(SubscribeDeliveryRes::class.java)
+            .submit(SubscribeDeliveryRes::class.java).await()
         check(subscribed.deliveryId == deliveryId)
         println("deliverydispatch-subscribe=$deliveryId")
 
@@ -167,19 +172,19 @@ class DeliveryDispatchClientScenario {
         check(created.deliveryId == deliveryId)
         println("deliverydispatch-create=$deliveryId")
 
-        val courierOffer = courier.await(offer).payload()
+        val courierOffer = offer.await().payload()
         println("deliverydispatch-offer=$deliveryId:${courierOffer.courierId}")
         courier
             .send(CourierDecisionMsg(courierOffer.deliveryId, courierOffer.courierId, true, null))
             .submit()
 
-        check(customer.await(assigned).payload().courierId == "courier-a")
-        check(customer.await(accepted).payload().courierId == "courier-a")
-        check(customer.await(pickedUp).payload().courierId == "courier-a")
-        check(customer.await(delivered).payload().courierId == "courier-a")
+        check(assigned.await().payload().courierId == "courier-a")
+        check(accepted.await().payload().courierId == "courier-a")
+        check(pickedUp.await().payload().courierId == "courier-a")
+        check(delivered.await().payload().courierId == "courier-a")
     }
 
-    private fun runReassignedDelivery(
+    private suspend fun runReassignedDelivery(
         customer: ZLinkStreamConnector,
         courierA: ZLinkStreamConnector,
         courierB: ZLinkStreamConnector,
@@ -204,7 +209,7 @@ class DeliveryDispatchClientScenario {
 
         val subscribed = customer
             .request(SubscribeDeliveryReq(deliveryId))
-            .await(SubscribeDeliveryRes::class.java)
+            .submit(SubscribeDeliveryRes::class.java).await()
         check(subscribed.deliveryId == deliveryId)
         println("deliverydispatch-subscribe=$deliveryId")
 
@@ -221,22 +226,22 @@ class DeliveryDispatchClientScenario {
         check(created.deliveryId == deliveryId)
         println("deliverydispatch-create=$deliveryId")
 
-        courierA.await(firstOffer)
+        firstOffer.await()
         println("deliverydispatch-offer=$deliveryId:courier-a")
-        val acceptedOffer = courierB.await(secondOffer).payload()
+        val acceptedOffer = secondOffer.await().payload()
         println("deliverydispatch-offer=$deliveryId:${acceptedOffer.courierId}")
         courierB
             .send(CourierDecisionMsg(acceptedOffer.deliveryId, acceptedOffer.courierId, true, null))
             .submit()
 
-        check(customer.await(assigned).payload().courierId == "courier-a")
-        check(customer.await(reassigned).payload().courierId == "courier-b")
-        check(customer.await(accepted).payload().courierId == "courier-b")
-        check(customer.await(delivered).payload().courierId == "courier-b")
+        check(assigned.await().payload().courierId == "courier-a")
+        check(reassigned.await().payload().courierId == "courier-b")
+        check(accepted.await().payload().courierId == "courier-b")
+        check(delivered.await().payload().courierId == "courier-b")
         println(SampleNames.ReassignmentMarker)
     }
 
-    private fun waitStatus(
+    private suspend fun waitStatus(
         customer: ZLinkStreamConnector,
         deliveryId: String,
         status: DeliveryStatus,

@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.handlers
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor
@@ -17,7 +16,6 @@ class SetTypingHandler : ZLinkSuspendingSpotActorSendHandler<
         actor: SupportUserActor,
         context: ZLinkSpotActorSendContext,
         message: SetTypingReq,
-        cancellationToken: CancellationToken,
     ) {
         spot.setTyping(actor, message)
     }

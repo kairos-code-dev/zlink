@@ -19,6 +19,10 @@ final class ZLinkActorJoinResults {
         Class<TReply> replyType) {
         Message emptyReply = null;
         try {
+            if (joinResultCode != 0
+                && (replyParts.isEmpty() || replyParts.get(0).size() == 0)) {
+                return new ZLinkActorJoinResult.Rejected<>(null);
+            }
             Message firstReply = replyParts.isEmpty()
                 ? (emptyReply = Message.from(new byte[0]))
                 : replyParts.get(0);

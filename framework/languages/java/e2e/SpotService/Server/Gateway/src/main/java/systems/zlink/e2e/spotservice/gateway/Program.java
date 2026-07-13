@@ -10,7 +10,6 @@ import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.e2e.spotservice.shared.GatewayScenarioHttpServer;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
-import systems.zlink.e2e.spotservice.shared.SpotRouteResolver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
@@ -48,7 +47,6 @@ public final class Program {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             String gatewayRid = Env.get("ZLINK_JAVA_E2E_GATEWAY_RID", "client-route-mesh");
-            options.addSpotRemoteRefResolver(SpotRouteResolver.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/gateway-flow.log")

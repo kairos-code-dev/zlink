@@ -28,7 +28,7 @@ public final class CustomerActorDirectory {
         }
     }
 
-    public void push(Messages.DeliveryStatusChanged status) {
+    public void push(Messages.DeliveryStatusChangedReq status) {
         CustomerActor actor;
         synchronized (gate) {
             String customerId = deliveryCustomers.get(status.deliveryId());

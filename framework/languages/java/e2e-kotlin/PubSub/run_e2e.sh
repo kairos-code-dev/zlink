@@ -19,9 +19,7 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/PubSub}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/PubSub-gradle-cache}"
-EXPLICIT_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
-ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${EXPLICIT_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}"
-ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT=""
 export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin:pubsub:${run_id}}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=200
@@ -54,7 +52,7 @@ cleanup() {
     kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -116,22 +114,14 @@ wait_marker() {
 }
 
 start_redis_container() {
-  if [[ -n "${EXPLICIT_REDIS_LOCATION_ENDPOINT}" ]]; then
-    return
-  fi
-  if [[ "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" != "${ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
-    return
-  fi
+  local redis_port
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
     exit 1
   fi
-  REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${REDIS_CONTAINER}"
-  )"
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
   export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
 }
 

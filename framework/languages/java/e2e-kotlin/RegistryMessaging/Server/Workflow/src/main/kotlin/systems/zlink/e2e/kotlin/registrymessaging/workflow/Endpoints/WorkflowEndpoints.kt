@@ -8,6 +8,10 @@ import java.net.InetSocketAddress
 import java.net.URI
 import java.time.Duration
 import java.util.concurrent.Executors
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.TimeUnit
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
 import systems.zlink.e2e.kotlin.registrymessaging.shared.EvidenceWaitReq
@@ -61,22 +65,24 @@ class WorkflowEndpoints(
         return server
     }
 
-    private fun requestWorkflow(request: WorkflowReq): WorkflowRes {
-        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
-        var last: RuntimeException? = null
-        while (System.nanoTime() < deadline) {
-            try {
-                return channels.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
-                    .packetName(Contracts.WORKFLOW_REQUEST_PACKET)
-                    .timeout(Duration.ofSeconds(5))
-                    .await(WorkflowRes::class.java)
-            } catch (error: RuntimeException) {
-                last = error
-                Thread.sleep(100)
+    private fun requestWorkflow(request: WorkflowReq): CompletionStage<WorkflowRes> =
+        requestWorkflow(request, System.nanoTime() + Duration.ofSeconds(30).toNanos())
+
+    private fun requestWorkflow(request: WorkflowReq, deadline: Long): CompletionStage<WorkflowRes> =
+        channels.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
+            .timeout(Duration.ofSeconds(5))
+            .submit(WorkflowRes::class.java)
+            .handle { reply, error ->
+                if (error == null) {
+                    CompletableFuture.completedFuture(reply)
+                } else if (System.nanoTime() >= deadline) {
+                    CompletableFuture.failedFuture(error)
+                } else {
+                    CompletableFuture.runAsync({}, CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS))
+                        .thenCompose { requestWorkflow(request, deadline) }
+                }
             }
-        }
-        throw IllegalStateException("Timed out waiting for workflow request channel route.", last)
-    }
+            .thenCompose { it }
 
     private inline fun <reified T> HttpExchange.readJson(): T =
         requestBody.use { mapper.readValue(it) }
@@ -93,4 +99,14 @@ class WorkflowEndpoints(
             responseBody.use { it.write(bytes) }
         }
     }
+
+    private fun HttpExchange.writeJson(value: CompletionStage<*>) {
+        value.whenComplete { result, error ->
+            if (error == null) writeJson(result ?: mapOf<String, String>())
+            else writeJson(mapOf("error" to (unwrap(error).message ?: unwrap(error).javaClass.name)))
+        }
+    }
+
+    private fun unwrap(error: Throwable): Throwable =
+        if (error is CompletionException && error.cause != null) error.cause!! else error
 }

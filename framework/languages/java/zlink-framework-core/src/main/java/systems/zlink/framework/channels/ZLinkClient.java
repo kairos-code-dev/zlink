@@ -5,7 +5,7 @@ public interface ZLinkClient {
         String channelName,
         Object message);
 
-    ZLinkYieldRequestCall requestToChannel(
+    ZLinkRequestCall requestToChannel(
         String channelName,
         Object message);
 }

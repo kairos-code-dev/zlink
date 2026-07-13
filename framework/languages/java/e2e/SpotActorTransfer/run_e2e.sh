@@ -46,7 +46,7 @@ cleanup() {
     wait "${pid}" >/dev/null 2>&1 || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -66,14 +66,12 @@ for s in sockets:
 PY
 )"
 
-if [[ -z "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  zlink_redis_start_scoped_assign \
-    REDIS_CONTAINER REDIS_PORT \
-    "zlink-java-spot-transfer" \
-    "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
-    "127.0.0.1::6379"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
-fi
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER REDIS_PORT \
+  "zlink-redis-java-e2e-spot-transfer" \
+  "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
+  "127.0.0.1::6379"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
 
 LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
 NODE_BIN="${ZLINK_JAVA_E2E_NODE_BIN:-${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node}"

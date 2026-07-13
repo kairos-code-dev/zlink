@@ -23,7 +23,13 @@ import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorFactory;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorTransferAdapter;
-import systems.zlink.samples.supportchat.server.support.domain.ConversationStore;
+import systems.zlink.samples.supportchat.server.support.application.AgentAssignmentService;
+import systems.zlink.samples.supportchat.server.support.application.ConversationAllocator;
+import systems.zlink.samples.supportchat.server.support.application.ConversationSpotFactory;
+import systems.zlink.samples.supportchat.server.support.infrastructure.FrameworkConversationSpotFactory;
+import systems.zlink.samples.supportchat.server.support.infrastructure.ConversationNotificationPublisher;
+import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.samples.supportchat.server.support.spots.conversationspot.ConversationSpot;
 import systems.zlink.samples.supportchat.server.support.spots.entryspot.SupportEntrySpot;
 
 @EnableZLinkFramework
@@ -34,7 +40,7 @@ public final class Program {
 
     public static void main(String[] args) throws Exception {
         AutoCloseable app = run(args);
-        HttpServer http = startHttp(ApplicationContextHolder.store);
+        HttpServer http = startHttp();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             http.stop(0);
             try {
@@ -78,6 +84,7 @@ public final class Program {
             node.addActorTransferAdapter(
                 SampleNames.SupportActorType,
                 SupportUserActorTransferAdapter.class);
+            node.addSpotFactory(ConversationSpot.class);
         };
     }
 
@@ -87,10 +94,23 @@ public final class Program {
     }
 
     @Bean
-    ConversationStore conversationStore() {
-        ConversationStore store = new ConversationStore();
-        ApplicationContextHolder.store = store;
-        return store;
+    AgentAssignmentService agentAssignmentService() {
+        return new AgentAssignmentService(SampleNames.AgentCapacity);
+    }
+
+    @Bean
+    ConversationSpotFactory conversationSpotFactory(ZLinkSpotManager spots) {
+        return new FrameworkConversationSpotFactory(spots);
+    }
+
+    @Bean
+    ConversationAllocator conversationAllocator(ConversationSpotFactory spots) {
+        return new ConversationAllocator(spots);
+    }
+
+    @Bean
+    ConversationNotificationPublisher conversationNotificationPublisher() {
+        return new ConversationNotificationPublisher();
     }
 
     @Bean
@@ -98,7 +118,7 @@ public final class Program {
         return new SupportActorDirectory();
     }
 
-    private static HttpServer startHttp(ConversationStore store) throws IOException {
+    private static HttpServer startHttp() throws IOException {
         ObjectMapper json = new ObjectMapper();
         URI uri = URI.create(SampleTopology.SupportHttpEndpoint);
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
@@ -109,24 +129,10 @@ public final class Program {
             exchange.getResponseBody().write(bytes);
             exchange.close();
         });
-        server.createContext("/self-check/assert/", exchange -> {
-            String conversationId = exchange.getRequestURI().getPath().substring("/self-check/assert/".length());
-            byte[] bytes = json.writeValueAsString(store.assertConversation(
-                    new systems.zlink.samples.supportchat.shared.contracts.Messages.ServerAssertionRequest(conversationId)))
-                .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("content-type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.close();
-        });
         server.start();
         return server;
     }
 
     private record Health(String status) {
-    }
-
-    private static final class ApplicationContextHolder {
-        private static ConversationStore store;
     }
 }

@@ -130,7 +130,9 @@ final class EntrySpotAdmissionBurstBenchmark {
         }
 
         @ZLinkSpotActorSend(packetName = "BenchSend")
-        public void send(SpotRuntimeFakeBackendTest.PlayerActor actor, String message) {
+        public java.util.concurrent.CompletionStage<Void> send(
+            SpotRuntimeFakeBackendTest.PlayerActor actor,
+            String message) {
             long now = System.nanoTime();
             long sentAt = Long.parseLong(message);
             int slot = index.getAndIncrement();
@@ -139,6 +141,7 @@ final class EntrySpotAdmissionBurstBenchmark {
                 sink[slot] = now - sentAt;
             }
             latch.countDown();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }
 }

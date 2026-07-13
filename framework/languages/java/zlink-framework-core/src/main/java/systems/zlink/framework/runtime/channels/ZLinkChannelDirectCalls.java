@@ -33,9 +33,9 @@ import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -53,7 +53,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -65,8 +65,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -125,6 +123,7 @@ final class PublishCall implements ZLinkPublishCall {
 
     @Override
     public void submit() {
+        ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
             if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,
@@ -132,8 +131,8 @@ final class PublishCall implements ZLinkPublishCall {
                 ZLinkDispatchMessageKind.PUBLISH,
                 packetName.orElse(null), null, topic, null, null, null, null, null));
         }
+        List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
         runtime.submitOneWay(() -> {
-            List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             try {
                 publisher.publish(topic, publishParts, SendFlags.NONE);
             } finally {
@@ -192,13 +191,12 @@ final class SendCall implements ZLinkSendCall {
     }
 }
 
-final class RequestCall implements ZLinkYieldRequestCall {
+final class RequestCall implements ZLinkRequestCall {
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendDealerSocket client;
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
-    private final ZLinkYieldTurn turn;
 
     RequestCall(
         ZLinkChannelCallRuntime runtime,
@@ -206,41 +204,43 @@ final class RequestCall implements ZLinkYieldRequestCall {
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
-        this(runtime, client, payload, packetName, timeout, ZLinkFrameworkTurns.captureCurrent());
-    }
-
-    private RequestCall(
-        ZLinkChannelCallRuntime runtime,
-        ZLinkBackendDealerSocket client,
-        Message payload,
-        Optional<String> packetName,
-        Duration timeout,
-        ZLinkYieldTurn turn) {
         this.runtime = runtime;
         this.client = client;
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
-        this.turn = turn;
     }
 
-    public ZLinkYieldRequestCall packetName(String packetName) {
-        return new RequestCall(runtime, client, payload, Optional.of(packetName), timeout, turn);
+    public ZLinkRequestCall packetName(String packetName) {
+        return new RequestCall(runtime, client, payload, Optional.of(packetName), timeout);
     }
 
     @Override
-    public ZLinkYieldRequestCall metadata(String key, String value) {
+    public ZLinkRequestCall metadata(String key, String value) {
         return this;
     }
 
     @Override
-    public ZLinkYieldRequestCall timeout(Duration timeout) {
-        return new RequestCall(runtime, client, payload, packetName, timeout, turn);
+    public ZLinkRequestCall timeout(Duration timeout) {
+        return new RequestCall(runtime, client, payload, packetName, timeout);
     }
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
+        long started = ZLinkRuntimeMetrics.enabled() ? System.nanoTime() : 0L;
+        ZLinkRuntimeMetrics.add("zlink.channel.request.inflight", 1, Map.of());
+        result.whenComplete((ignored, error) -> {
+            ZLinkRuntimeMetrics.add("zlink.channel.request.inflight", -1, Map.of());
+            if (started != 0L) {
+                ZLinkRuntimeMetrics.record("zlink.channel.request.duration",
+                    Duration.ofNanos(System.nanoTime() - started), Map.of());
+            }
+            if (error instanceof TimeoutException
+                || (error != null && error.getCause() instanceof TimeoutException)) {
+                ZLinkRuntimeMetrics.increment("zlink.channel.request.timeouts", Map.of());
+            }
+        });
         runtime.track(result, timeout);
         List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
         result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
@@ -273,24 +273,7 @@ final class RequestCall implements ZLinkYieldRequestCall {
                 }
             },
             result);
-        return result;
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
-    @Override
-    public <TReply> TReply yield(Class<TReply> replyType) {
-        return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
-    }
-
-    private ZLinkYieldTurn requireTurn() {
-        if (turn == null) {
-            ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-            if (current != null) {
-                return current;
-            }
-            throw new IllegalStateException(
-                "yield requires a framework Spot handler turn captured when the call object was created");
-        }
-        return turn;
-    }
 }

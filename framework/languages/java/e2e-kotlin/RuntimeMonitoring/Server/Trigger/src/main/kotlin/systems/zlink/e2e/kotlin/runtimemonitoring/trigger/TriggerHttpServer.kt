@@ -8,11 +8,9 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.Env
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.EvidenceState
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory
-import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.builder.SpringApplicationBuilder
+import systems.zlink.e2e.kotlin.runtimemonitoring.trigger.transient.TransientTriggerApplication
 import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -87,7 +85,7 @@ class TriggerHttpServer(
             Contracts.WorkReq("mon-a4-trigger"),
         )
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes::class.java)
+            .submit(Contracts.WorkRes::class.java).toCompletableFuture().get()
         return "{\"providerRid\":\"${reply.providerRid}\",\"value\":\"${reply.value}\"}\n"
     }
 
@@ -100,30 +98,19 @@ class TriggerHttpServer(
     }
 
     private fun requestTransient(endpoint: String, value: String): String {
-        val options = DefaultZLinkFrameworkOptions()
-        options.configureDispatch()
-            .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-            .traceLogFile("${Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")}/trigger-service-b-flow.log")
-            .traceLabel("kotlin-mon-trigger-service-b")
-        options.addClientServerChannel(Contracts.CHANNEL)
-            .enableClient(endpoint)
-
-        val lifecycle = ZLinkFrameworkLifecycle(
-            options,
-            ZLinkJavaBackendAdapterFactory(),
-            ZLinkHandlerFactory.reflection(),
-        )
-        lifecycle.start()
-        try {
-            val reply = lifecycle.requestToChannel(
+        val context = SpringApplicationBuilder(TransientTriggerApplication::class.java)
+            .web(WebApplicationType.NONE)
+            .properties(mapOf("zlink.e2e.transient-endpoint" to endpoint))
+            .run()
+        return context.use {
+            val transientClient = context.getBean(ZLinkClient::class.java)
+            val reply = transientClient.requestToChannel(
                 Contracts.CHANNEL,
                 Contracts.WorkReq(value),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
-            return "{\"providerRid\":\"${reply.providerRid}\",\"value\":\"${reply.value}\"}\n"
-        } finally {
-            lifecycle.stop()
+                .submit(Contracts.WorkRes::class.java).toCompletableFuture().get()
+            "{\"providerRid\":\"${reply.providerRid}\",\"value\":\"${reply.value}\"}\n"
         }
     }
 

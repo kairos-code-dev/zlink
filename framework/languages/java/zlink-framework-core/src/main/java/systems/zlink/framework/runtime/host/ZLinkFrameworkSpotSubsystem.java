@@ -16,12 +16,15 @@ import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolv
 final class ZLinkFrameworkSpotSubsystem {
     private final ZLinkSpotRuntime spots;
     private final SpotTransportAddressResolver remoteAddressResolver;
+    private final java.util.concurrent.CompletionStage<Void> startup;
 
     private ZLinkFrameworkSpotSubsystem(
         ZLinkSpotRuntime spots,
-        SpotTransportAddressResolver remoteAddressResolver) {
+        SpotTransportAddressResolver remoteAddressResolver,
+        java.util.concurrent.CompletionStage<Void> startup) {
         this.spots = spots;
         this.remoteAddressResolver = remoteAddressResolver;
+        this.startup = startup;
     }
 
     static ZLinkFrameworkSpotSubsystem create(
@@ -37,7 +40,9 @@ final class ZLinkFrameworkSpotSubsystem {
         SpotTransportAddressResolver locationTransportResolver) {
         SpotTransportAddressResolver remoteAddressResolver = locationTransportResolver;
         if (options.registration().spotNodes().isEmpty()) {
-            return new ZLinkFrameworkSpotSubsystem(null, remoteAddressResolver);
+            return new ZLinkFrameworkSpotSubsystem(
+                null, remoteAddressResolver,
+                java.util.concurrent.CompletableFuture.completedFuture(null));
         }
 
         ZLinkSpotRuntime spots = new ZLinkSpotRuntime(
@@ -50,13 +55,11 @@ final class ZLinkFrameworkSpotSubsystem {
             runtimeHandlers,
             eventDispatcher);
         spots.setLocationLifecycle(locationLifecycle);
-        spots.claimEntrySpotLocationsAsync()
-            .toCompletableFuture()
-            .join();
+        java.util.concurrent.CompletionStage<Void> startup = spots.claimEntrySpotLocations();
         runtimeHandlers.add(ZLinkSpotManager.class, spots);
         channels.registerSpotRouteBridgeOwner(spots::primaryNode);
         channels.registerSpotRouteBridgeDispatchDrainer(spots::drainRoutedDispatchQueues);
-        return new ZLinkFrameworkSpotSubsystem(spots, remoteAddressResolver);
+        return new ZLinkFrameworkSpotSubsystem(spots, remoteAddressResolver, startup);
     }
 
     ZLinkSpotRuntime spots() {
@@ -65,6 +68,10 @@ final class ZLinkFrameworkSpotSubsystem {
 
     SpotTransportAddressResolver remoteAddressResolver() {
         return remoteAddressResolver;
+    }
+
+    java.util.concurrent.CompletionStage<Void> startup() {
+        return startup;
     }
 
 }

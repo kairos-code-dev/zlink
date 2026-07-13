@@ -53,6 +53,23 @@ class ZLinkOwnerLeaseTrackerTest {
         assertEquals(3, removedVersion);
     }
 
+    @Test
+    void newlyStartedOwnerIsVisibleBeforePollingIntervalExpires() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
+        ManualTicker ticker = new ManualTicker();
+        ZLinkOwnerLeaseTracker tracker = new ZLinkOwnerLeaseTracker(
+            store,
+            Duration.ofSeconds(30),
+            ticker::nanos);
+
+        assertFalse(tracker.isOwnerLive("owner-new").toCompletableFuture().get());
+
+        store.renewOwnerLease("owner-new", NODE_A, Duration.ofSeconds(30))
+            .toCompletableFuture().get();
+
+        assertTrue(tracker.isOwnerLive("owner-new").toCompletableFuture().get());
+    }
+
     private static final class ManualTicker {
         private final AtomicLong nanos = new AtomicLong();
 

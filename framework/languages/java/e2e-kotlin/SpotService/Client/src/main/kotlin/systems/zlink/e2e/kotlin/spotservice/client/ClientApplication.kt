@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client
 
+import systems.zlink.framework.kotlin.*
+
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -10,7 +12,6 @@ import java.util.UUID
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
-import systems.zlink.e2e.kotlin.spotservice.SpotRouteResolver
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -29,7 +30,6 @@ class ClientApplication {
         ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
             val clientRid = Env.get("ZLINK_KOTLIN_E2E_CLIENT_RID", "client-route-mesh")
-            options.addSpotRemoteRefResolver(SpotRouteResolver::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/client-flow.log")
@@ -60,15 +60,17 @@ class ClientApplication {
     ): ApplicationRunner =
         ApplicationRunner {
             val mode = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "route-mesh")
-            ClientDriverSpot.configure(mode)
+            val result = ClientDriverSpot.configure(mode)
+            result.whenComplete { _, error ->
+                if (error != null) error.printStackTrace()
+                Thread { context.close() }.start()
+            }
             spots.create(
                 ClientDriverSpot::class.java,
                 RoutingId.from("client-driver-$mode-${UUID.randomUUID().toString().replace("-", "")}"),
-            )
-                .toCompletableFuture()
-                .join()
-            ClientDriverSpot.awaitResult()
-            Thread { context.close() }.start()
+            ).whenComplete { _, error ->
+                if (error != null) result.completeExceptionally(error)
+            }
         }
 
     companion object {

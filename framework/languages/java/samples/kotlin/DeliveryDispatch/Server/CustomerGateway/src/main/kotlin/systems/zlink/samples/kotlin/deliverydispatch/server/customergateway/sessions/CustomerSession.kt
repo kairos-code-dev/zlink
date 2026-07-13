@@ -1,8 +1,8 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions
 
-import systems.zlink.framework.ZLinkAwait
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
@@ -11,22 +11,21 @@ import systems.zlink.framework.streams.ZLinkStreamError
 class CustomerSession(
     private val sessionContext: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
-) : ZLinkSession {
+) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = sessionContext
 
-    override fun onConnected() {
+    override suspend fun onConnectedSuspending() {
     }
 
-    override fun onDisconnected() {
-        sessionContext.actors().bound()
-            .forEach { actor -> ZLinkAwait.await(actor.notifyDisconnected()) }
+    override suspend fun onDisconnectedSuspending() {
+        for (actor in sessionContext.actors().bound()) actor.notifyDisconnected().await()
     }
 
-    override fun onError(error: ZLinkStreamError) {
+    override suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    override fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        val handled = ZLinkAwait.await(handlers.tryHandleAsync(sessionContext, dispatch, payload))
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+        val handled = handlers.tryHandle(sessionContext, dispatch, payload).await()
         if (handled) {
             return
         }
@@ -35,6 +34,6 @@ class CustomerSession(
             0 -> error("Client must subscribe before relaying packet '${dispatch.packetName()}'")
             else -> error("Exactly one customer actor must be bound before relaying packet '${dispatch.packetName()}'")
         }
-        ZLinkAwait.await(actor.relay(payload))
+        actor.relay(dispatch, payload).await()
     }
 }

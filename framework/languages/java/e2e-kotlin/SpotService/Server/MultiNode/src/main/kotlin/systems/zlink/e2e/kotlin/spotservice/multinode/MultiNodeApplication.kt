@@ -28,12 +28,12 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpot
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -63,9 +63,10 @@ class MultiNodeApplication {
         actors: ZLinkActorManager,
         actorClient: ZLinkActorClient,
         evidence: MultiNodeEvidenceStore,
-        context: ConfigurableApplicationContext
+        context: ConfigurableApplicationContext,
+        handles: SpotHandleResolver,
     ): MultiNodeHttpServer =
-        MultiNodeHttpServer(options, json, spots, routes, actors, actorClient, evidence, context)
+        MultiNodeHttpServer(options, json, spots, routes, actors, actorClient, evidence, context, handles)
 
     @Bean
     fun multiNodeFramework(options: MultiNodeOptions): ZLinkFrameworkConfigurer =
@@ -125,7 +126,8 @@ class MultiNodeHttpServer(
     private val actors: ZLinkActorManager,
     private val actorClient: ZLinkActorClient,
     private val evidence: MultiNodeEvidenceStore,
-    private val context: ConfigurableApplicationContext
+    private val context: ConfigurableApplicationContext,
+    private val handles: SpotHandleResolver,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var running = false
@@ -222,12 +224,12 @@ class MultiNodeHttpServer(
         val node = MultiNodeKind.fromRid(options.rid)
         return routes.requestToSpot(
             node.routeChannel,
-            SpotRef(Contracts.SPOT_MESH, RoutingId.from(node.rid), RoutingId.from(request.spotRid)),
+            handles.resolveSpotHandle(RoutingId.from(request.spotRid)).toCompletableFuture().get(5, TimeUnit.SECONDS)
+                .orElseThrow { IllegalStateException("spot handle was not found: ${request.spotRid}") },
             Contracts.MultiNodeStateReq("add", request.delta)
         )
-            .packetName("StateReq")
             .timeout(Duration.ofSeconds(2))
-            .await(Contracts.MultiNodeStateRes::class.java)
+            .submit(Contracts.MultiNodeStateRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
     }
 
     private fun requestSendSpotOnly(request: Contracts.SpotOnlyMeshReq): Contracts.SpotOnlyMeshRes {
@@ -257,9 +259,8 @@ class MultiNodeHttpServer(
             actor,
             request
         )
-            .packetName("SpotOnlyJoinReq")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.SpotOnlyJoinRes::class.java)
+            .submit(Contracts.SpotOnlyJoinRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
     }
 
     private fun <T> readJson(exchange: HttpExchange, type: Class<T>): T =

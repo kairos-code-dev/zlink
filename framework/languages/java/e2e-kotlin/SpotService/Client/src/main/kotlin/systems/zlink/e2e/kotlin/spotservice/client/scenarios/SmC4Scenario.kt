@@ -5,7 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmC4Scenario {
-    fun run() {
+    suspend fun run() {
         val gateway = Env.get("ZLINK_KOTLIN_E2E_GATEWAY_HTTP_ENDPOINT")
         val suffix = System.nanoTime().toString()
         val spotRid = "spot-sm-c4-$suffix"

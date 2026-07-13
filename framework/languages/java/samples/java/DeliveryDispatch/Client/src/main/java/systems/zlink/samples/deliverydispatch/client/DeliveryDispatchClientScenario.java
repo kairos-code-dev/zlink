@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -16,32 +17,35 @@ public final class DeliveryDispatchClientScenario {
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newHttpClient();
 
-    public void run(
+    public CompletionStage<Void> run(
         ZLinkStreamConnector customer,
         ZLinkStreamConnector courierA,
-        ZLinkStreamConnector courierB) throws Exception {
-        customer.connect().await();
-        courierA.connect().await();
-        courierB.connect().await();
-
-        Messages.BindCourierSessionAccepted courierABound =
-            courierA.request(new Messages.BindCourierSession("courier-a"))
-                .await(Messages.BindCourierSessionAccepted.class);
-        ensure(courierABound.courierId().equals("courier-a"));
-        Messages.BindCourierSessionAccepted courierBBound =
-            courierB.request(new Messages.BindCourierSession("courier-b"))
-                .await(Messages.BindCourierSessionAccepted.class);
-        ensure(courierBBound.courierId().equals("courier-b"));
-        ensure(!courierABound.nodeRid().equals(courierBBound.nodeRid()));
-
-        runSuccessfulDelivery(customer, courierA);
-        runReassignedDelivery(customer, courierA, courierB);
-        assertServerEvidence();
+        ZLinkStreamConnector courierB) {
+        return CompletableFuture.allOf(
+                customer.connect().submit().toCompletableFuture(),
+                courierA.connect().submit().toCompletableFuture(),
+                courierB.connect().submit().toCompletableFuture())
+            .thenCompose(ignored -> courierA.request(new Messages.BindCourierSessionReq("courier-a"))
+                .submit(Messages.BindCourierSessionRes.class))
+            .thenCompose(courierABound -> {
+                ensure(courierABound.courierId().equals("courier-a"));
+                return courierB.request(new Messages.BindCourierSessionReq("courier-b"))
+                    .submit(Messages.BindCourierSessionRes.class)
+                    .thenApply(courierBBound -> {
+                        ensure(courierBBound.courierId().equals("courier-b"));
+                        ensure(!courierABound.actor().nodeRid().equals(
+                            courierBBound.actor().nodeRid()));
+                        return null;
+                    });
+            })
+            .thenCompose(ignored -> runSuccessfulDelivery(customer, courierA))
+            .thenCompose(ignored -> runReassignedDelivery(customer, courierA, courierB))
+            .thenCompose(ignored -> assertServerEvidence());
     }
 
-    private void runSuccessfulDelivery(
+    private CompletionStage<Void> runSuccessfulDelivery(
         ZLinkStreamConnector customer,
-        ZLinkStreamConnector courier) throws Exception {
+        ZLinkStreamConnector courier) {
         String deliveryId = "delivery-success";
         CompletionStage<ZLinkStreamMessage<Messages.OfferDeliveryNotify>> offer =
             courier.waitFor(Messages.OfferDeliveryNotify.class)
@@ -56,39 +60,38 @@ public final class DeliveryDispatchClientScenario {
         CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> delivered =
             waitStatus(customer, deliveryId, Messages.DeliveryStatus.Delivered);
 
-        Messages.SubscribeDeliveryAccepted subscribed =
-            customer.request(new Messages.SubscribeDelivery(deliveryId))
-                .await(Messages.SubscribeDeliveryAccepted.class);
-        ensure(subscribed.deliveryId().equals(deliveryId));
-
-        Messages.CreateDeliveryResponse created = post(
-            "/deliveries",
-            new Messages.CreateDeliveryRequest(
-                deliveryId,
-                "customer-1",
-                "Kitchen 12",
-                "Customer Lobby"),
-            Messages.CreateDeliveryResponse.class);
-        ensure(created.deliveryId().equals(deliveryId));
-
-        Messages.OfferDeliveryNotify courierOffer = courier.await(offer).payload();
-        courier.send(new Messages.CourierDecision(
-                courierOffer.deliveryId(),
-                courierOffer.courierId(),
-                true,
-                null))
-            .submit();
-
-        ensure(customer.await(assigned).payload().courierId().equals("courier-a"));
-        ensure(customer.await(accepted).payload().courierId().equals("courier-a"));
-        ensure(customer.await(pickedUp).payload().courierId().equals("courier-a"));
-        ensure(customer.await(delivered).payload().courierId().equals("courier-a"));
+        return customer.request(new Messages.SubscribeDeliveryReq(deliveryId))
+            .submit(Messages.SubscribeDeliveryRes.class)
+            .thenCompose(subscribed -> {
+                ensure(subscribed.deliveryId().equals(deliveryId));
+                return post("/deliveries", new Messages.CreateDeliveryReq(
+                    deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"),
+                    Messages.CreateDeliveryRes.class);
+            })
+            .thenCompose(created -> {
+                ensure(created.deliveryId().equals(deliveryId));
+                return offer;
+            })
+            .thenCompose(message -> {
+                Messages.OfferDeliveryNotify courierOffer = message.payload();
+                courier.send(new Messages.CourierDecision(
+                    courierOffer.deliveryId(), courierOffer.courierId(), true, null)).submit();
+                return CompletableFuture.allOf(
+                    assigned.toCompletableFuture(), accepted.toCompletableFuture(),
+                    pickedUp.toCompletableFuture(), delivered.toCompletableFuture());
+            })
+            .thenRun(() -> {
+                ensure(assigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
+                ensure(accepted.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
+                ensure(pickedUp.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
+                ensure(delivered.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
+            });
     }
 
-    private void runReassignedDelivery(
+    private CompletionStage<Void> runReassignedDelivery(
         ZLinkStreamConnector customer,
         ZLinkStreamConnector courierA,
-        ZLinkStreamConnector courierB) throws Exception {
+        ZLinkStreamConnector courierB) {
         String deliveryId = "delivery-reassign";
         CompletionStage<ZLinkStreamMessage<Messages.OfferDeliveryNotify>> firstOffer =
             courierA.waitFor(Messages.OfferDeliveryNotify.class)
@@ -111,35 +114,34 @@ public final class DeliveryDispatchClientScenario {
         CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> delivered =
             waitStatus(customer, deliveryId, Messages.DeliveryStatus.Delivered);
 
-        Messages.SubscribeDeliveryAccepted subscribed =
-            customer.request(new Messages.SubscribeDelivery(deliveryId))
-                .await(Messages.SubscribeDeliveryAccepted.class);
-        ensure(subscribed.deliveryId().equals(deliveryId));
-
-        Messages.CreateDeliveryResponse created = post(
-            "/deliveries",
-            new Messages.CreateDeliveryRequest(
-                deliveryId,
-                "customer-1",
-                "Kitchen 12",
-                "Customer Lobby"),
-            Messages.CreateDeliveryResponse.class);
-        ensure(created.deliveryId().equals(deliveryId));
-
-        courierA.await(firstOffer);
-        Messages.OfferDeliveryNotify acceptedOffer = courierB.await(secondOffer).payload();
-        courierB.send(new Messages.CourierDecision(
-                acceptedOffer.deliveryId(),
-                acceptedOffer.courierId(),
-                true,
-                null))
-            .submit();
-
-        ensure(customer.await(assigned).payload().courierId().equals("courier-a"));
-        ensure(customer.await(reassigned).payload().courierId().equals("courier-b"));
-        ensure(customer.await(accepted).payload().courierId().equals("courier-b"));
-        ensure(customer.await(delivered).payload().courierId().equals("courier-b"));
-        System.out.println(SampleNames.ReassignmentMarker);
+        return customer.request(new Messages.SubscribeDeliveryReq(deliveryId))
+            .submit(Messages.SubscribeDeliveryRes.class)
+            .thenCompose(subscribed -> {
+                ensure(subscribed.deliveryId().equals(deliveryId));
+                return post("/deliveries", new Messages.CreateDeliveryReq(
+                    deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"),
+                    Messages.CreateDeliveryRes.class);
+            })
+            .thenCompose(created -> {
+                ensure(created.deliveryId().equals(deliveryId));
+                return firstOffer;
+            })
+            .thenCompose(ignored -> secondOffer)
+            .thenCompose(message -> {
+                Messages.OfferDeliveryNotify acceptedOffer = message.payload();
+                courierB.send(new Messages.CourierDecision(
+                    acceptedOffer.deliveryId(), acceptedOffer.courierId(), true, null)).submit();
+                return CompletableFuture.allOf(
+                    assigned.toCompletableFuture(), reassigned.toCompletableFuture(),
+                    accepted.toCompletableFuture(), delivered.toCompletableFuture());
+            })
+            .thenRun(() -> {
+                ensure(assigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
+                ensure(reassigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
+                ensure(accepted.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
+                ensure(delivered.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
+                System.out.println(SampleNames.ReassignmentMarker);
+            });
     }
 
     private CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> waitStatus(
@@ -153,30 +155,41 @@ public final class DeliveryDispatchClientScenario {
             .submit(Messages.DeliveryStatusNotify.class);
     }
 
-    private void assertServerEvidence() throws Exception {
-        Messages.ServerAssertionResponse response = post(
+    private CompletionStage<Void> assertServerEvidence() {
+        return post(
             "/self-check/assert",
             new Messages.ServerAssertionRequest("delivery-success", "delivery-reassign"),
-            Messages.ServerAssertionResponse.class);
-        ensure(response.passed());
-        System.out.println(SampleNames.ServerEvidenceMarker);
+            Messages.ServerAssertionResponse.class).thenAccept(response -> {
+                ensure(response.passed());
+                System.out.println(SampleNames.ServerEvidenceMarker);
+            });
     }
 
-    private <TResponse> TResponse post(
+    private <TResponse> CompletionStage<TResponse> post(
         String path,
         Object body,
-        Class<TResponse> responseType) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(SampleTopology.DispatchHttpEndpoint + path))
-            .header("content-type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
-            .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("HTTP " + response.statusCode() + " for " + path + ": "
-                + response.body());
+        Class<TResponse> responseType) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(SampleTopology.DispatchHttpEndpoint + path))
+                .header("content-type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+                .build();
+            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        throw new IllegalStateException("HTTP " + response.statusCode() + " for "
+                            + path + ": " + response.body());
+                    }
+                    try {
+                        return json.readValue(response.body(), responseType);
+                    } catch (java.io.IOException error) {
+                        throw new java.io.UncheckedIOException(error);
+                    }
+                });
+        } catch (java.io.IOException error) {
+            return CompletableFuture.failedFuture(error);
         }
-        return json.readValue(response.body(), responseType);
     }
 
     private static void ensure(boolean condition) {

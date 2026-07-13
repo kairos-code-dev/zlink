@@ -13,6 +13,19 @@ public final class SupportActorDirectory {
         actors.put(actor.actorId(), actor);
     }
 
+    public synchronized SupportUserActor require(String actorId) {
+        SupportUserActor actor = actors.get(actorId);
+        if (actor == null) {
+            throw new IllegalStateException("support actor not found: " + actorId);
+        }
+        return actor;
+    }
+
+    public synchronized void remove(String actorId) {
+        actors.remove(actorId);
+        conversations.values().forEach(actorIds -> actorIds.remove(actorId));
+    }
+
     public synchronized void join(String conversationId, SupportUserActor actor) {
         remember(actor);
         conversations.computeIfAbsent(conversationId, ignored -> new ArrayList<>());

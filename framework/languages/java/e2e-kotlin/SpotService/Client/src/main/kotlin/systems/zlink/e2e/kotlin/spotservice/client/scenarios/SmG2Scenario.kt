@@ -7,7 +7,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmG2Scenario {
-    fun run() {
+    suspend fun run() {
         val playA = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT")
         val playB = Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT")
         val key = "key-sm-g2-${UUID.randomUUID().toString().replace("-", "")}"

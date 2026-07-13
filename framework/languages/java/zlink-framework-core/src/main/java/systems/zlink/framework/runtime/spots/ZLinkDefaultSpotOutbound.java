@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
@@ -62,7 +62,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToSpot(SpotHandle spot, Object request) {
+    public ZLinkRequestCall requestToSpot(SpotHandle spot, Object request) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, request);
         return new DeferredSpotRequestCall(
@@ -94,7 +94,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToChannel(String channelName, Object request) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object request) {
         requireChannels(channelName);
         return channels.requestToChannel(channelName, request);
     }
@@ -153,7 +153,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         }
     }
 
-    private final class DeferredSpotRequestCall implements ZLinkYieldRequestCall {
+    private final class DeferredSpotRequestCall implements ZLinkRequestCall {
         private final SpotHandle target;
         private final systems.zlink.contracts.messaging.Message payload;
         private final Optional<String> packetName;
@@ -167,21 +167,18 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             this.timeout = timeout;
         }
 
-        @Override public ZLinkYieldRequestCall metadata(String key, String value) { return this; }
-        @Override public ZLinkYieldRequestCall timeout(Duration value) {
+        @Override public ZLinkRequestCall metadata(String key, String value) { return this; }
+        @Override public ZLinkRequestCall timeout(Duration value) {
             return new DeferredSpotRequestCall(target, payload, packetName, value);
         }
         @Override public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            return resolve(target).thenCompose(address -> {
-                ZLinkYieldRequestCall call = routeMeshEnabled
+            CompletionStage<TReply> stage = resolve(target).thenCompose(address -> {
+                ZLinkRequestCall call = routeMeshEnabled
                     ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotRid(), payload, packetName, timeout)
                     : direct.request(backendSpot, address.targetNodeRid(), address.spotRid(), payload, packetName, timeout);
                 return call.submit(replyType);
             });
+            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
         }
-        @Override public <TReply> TReply await(Class<TReply> replyType) {
-            return systems.zlink.framework.ZLinkAwait.await(submit(replyType));
-        }
-        @Override public <TReply> TReply yield(Class<TReply> replyType) { return await(replyType); }
     }
 }

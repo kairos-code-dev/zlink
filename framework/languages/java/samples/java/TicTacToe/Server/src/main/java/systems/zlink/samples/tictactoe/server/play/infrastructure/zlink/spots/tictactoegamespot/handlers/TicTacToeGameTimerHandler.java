@@ -6,9 +6,9 @@ import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.ti
 
 public final class TicTacToeGameTimerHandler implements ZLinkSpotTimerHandler<TicTacToeGame> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         TicTacToeGame spot,
         ZLinkTimerTick tick) {
-        spot.tick();
+        return spot.tick();
     }
 }

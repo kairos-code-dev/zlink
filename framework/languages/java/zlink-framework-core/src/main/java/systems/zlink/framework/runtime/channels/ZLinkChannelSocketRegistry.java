@@ -140,6 +140,9 @@ final class ZLinkChannelSocketRegistry {
     }
 
     void closeAll() {
+        for (ChannelRegistration registration : registrations.values()) {
+            registration.detachRuntimeConnections();
+        }
         closeAll(ownedSockets, java.util.Collections.newSetFromMap(new IdentityHashMap<>()));
         ownedSockets.clear();
     }

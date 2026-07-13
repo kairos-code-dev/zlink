@@ -1,6 +1,5 @@
 package systems.zlink.e2e.kotlin.spotservice.play.spots
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
@@ -8,8 +7,8 @@ import java.time.Duration
 import java.time.Instant
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.addHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
@@ -19,11 +18,12 @@ import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy
 class TimerScenarioSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
-) : ZLinkSpot<ZLinkActor> {
-    override fun onJoinedActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+) : ZLinkSuspendingSpot<ZLinkActor>() {
+    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.reject("unsupported")
+    override suspend fun onJoinedActorSuspending(actor: ZLinkActor) {
     }
 
-    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    override suspend fun onLeaveActorSuspending(actor: ZLinkActor) {
     }
     private var lastActivity = Instant.now()
     private var tickCount = 0
@@ -39,7 +39,7 @@ class TimerScenarioSpot(
         context.handlers().addHandler<TimerStatusHandler>()
     }
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         val rid = context.spotRid().toString()
         if (rid.startsWith("timer-overrun-")) {
             val options = ZLinkTimerOptions()
@@ -62,7 +62,7 @@ class TimerScenarioSpot(
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override fun onClosing() {
+    override suspend fun onClosingSuspending() {
         status = "closed"
         evidence.record("IdleClosed", context.spotRid().toString(), "closed")
     }

@@ -4,7 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmE1Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         expectFailure {
             spots.requestState("room-a", "missing", packetName = "MissingSpotPacket")
         }

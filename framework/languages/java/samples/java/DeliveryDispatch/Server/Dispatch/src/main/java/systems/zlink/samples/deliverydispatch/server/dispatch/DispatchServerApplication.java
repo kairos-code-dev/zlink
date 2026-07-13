@@ -70,8 +70,9 @@ public final class DispatchServerApplication {
     @Bean
     DispatchWorker dispatchWorker(
         systems.zlink.framework.channels.ZLinkClient channels,
-        systems.zlink.framework.channels.ZLinkRouteClient routes) {
-        return new DispatchWorker(channels, routes);
+        systems.zlink.framework.channels.ZLinkRouteClient routes,
+        systems.zlink.framework.spots.SpotHandleResolver spotHandles) {
+        return new DispatchWorker(channels, routes, spotHandles);
     }
 
     @Bean

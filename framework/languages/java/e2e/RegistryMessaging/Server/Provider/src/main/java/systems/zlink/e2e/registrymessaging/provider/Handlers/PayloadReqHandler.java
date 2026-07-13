@@ -20,14 +20,14 @@ public final class PayloadReqHandler
     }
 
     @Override
-    public Contracts.PayloadRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.PayloadRes> handle(
         Contracts.PayloadReq request,
         ZLinkRequestContext context) {
         state.record("payload-request", request.marker());
-        return new Contracts.PayloadRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.PayloadRes(
             request.marker(),
             request.payload().length(),
-            sha256(request.payload()));
+            sha256(request.payload())));
     }
 
     private static String sha256(String payload) {

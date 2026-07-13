@@ -48,6 +48,9 @@ final class ZLinkChannelRouteDispatcher {
         String channelName,
         ZLinkBackendRouterSocket router,
         ZLinkBackendReceived received) {
+        var incomingFlow = ZLinkChannelFlowFrame.decode(received.parts());
+        var flowScope = incomingFlow == null ? null
+            : systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(incomingFlow);
         try {
             if (isProbeFrame(received.parts())) {
                 return;
@@ -131,6 +134,7 @@ final class ZLinkChannelRouteDispatcher {
                 packet,
                 registration);
         } finally {
+            if (flowScope != null) flowScope.close();
             received.parts().forEach(Message::close);
         }
     }

@@ -4,6 +4,8 @@ import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.OrderWorkflowService;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.spots.OrderWorkflowSpot;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public final class PrepareInventoryReservedCheckpointSpotHandler
     implements ZLinkSpotRequestHandler<OrderWorkflowSpot, Messages.PrepareInventoryReservedCheckpointReq, Messages.ContinueOrderWorkflowRes> {
@@ -14,9 +16,10 @@ public final class PrepareInventoryReservedCheckpointSpotHandler
     }
 
     @Override
-    public Messages.ContinueOrderWorkflowRes handle(
+    public CompletionStage<Messages.ContinueOrderWorkflowRes> handle(
         OrderWorkflowSpot spot,
         Messages.PrepareInventoryReservedCheckpointReq request) {
-        return new Messages.ContinueOrderWorkflowRes(workflow.prepareInventoryReservedInSpot(request.request()));
+        return CompletableFuture.completedFuture(new Messages.ContinueOrderWorkflowRes(
+            workflow.prepareInventoryReservedInSpot(request.request())));
     }
 }

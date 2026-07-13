@@ -36,9 +36,20 @@ final class ZLinkOwnerLeaseTracker {
     }
 
     CompletionStage<Boolean> isOwnerLive(String ownerId) {
-        return getSnapshot().thenApply(current -> {
+        return getSnapshot().thenCompose(current -> {
             ZLinkOwnerLease lease = current.leases().get(ownerId);
-            return lease != null && remaining(current, lease).compareTo(Duration.ZERO) > 0;
+            if (lease != null) {
+                return CompletableFuture.completedFuture(
+                    remaining(current, lease).compareTo(Duration.ZERO) > 0);
+            }
+
+            // A runtime can create its lease after this snapshot. Do not turn the
+            // polling interval into a reconnect delay for rows owned by that runtime.
+            return refreshSnapshot().thenApply(refreshed -> {
+                ZLinkOwnerLease refreshedLease = refreshed.leases().get(ownerId);
+                return refreshedLease != null
+                    && remaining(refreshed, refreshedLease).compareTo(Duration.ZERO) > 0;
+            });
         });
     }
 
@@ -72,15 +83,28 @@ final class ZLinkOwnerLeaseTracker {
             if (current != null && Duration.ofNanos(now - current.fetchedAtNanos()).compareTo(pollingInterval) < 0) {
                 return CompletableFuture.completedFuture(current);
             }
-            long fetchedAt = now;
-            return store.listOwnerLeases().thenApply(listed -> {
-                Map<String, ZLinkOwnerLease> leases = listed.leases().stream()
-                    .collect(Collectors.toUnmodifiableMap(ZLinkOwnerLease::ownerId, lease -> lease, (left, right) -> right));
-                Snapshot refreshed = new Snapshot(leases, listed.storeNow(), fetchedAt);
-                snapshot = refreshed;
-                return refreshed;
-            });
+            return refreshSnapshot();
         }
+    }
+
+    private CompletionStage<Snapshot> refreshSnapshot() {
+        long fetchedAt = nanoTime.getAsLong();
+        return store.listOwnerLeases().thenApply(listed -> {
+            Map<String, ZLinkOwnerLease> leases = listed.leases().stream()
+                .collect(Collectors.toUnmodifiableMap(
+                    ZLinkOwnerLease::ownerId,
+                    lease -> lease,
+                    (left, right) -> right));
+            Snapshot refreshed = new Snapshot(leases, listed.storeNow(), fetchedAt);
+            synchronized (refreshGate) {
+                Snapshot current = snapshot;
+                if (current == null || refreshed.fetchedAtNanos() >= current.fetchedAtNanos()) {
+                    snapshot = refreshed;
+                    return refreshed;
+                }
+                return current;
+            }
+        });
     }
 
     private Duration remaining(Snapshot current, ZLinkOwnerLease lease) {

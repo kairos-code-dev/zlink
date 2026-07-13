@@ -1,10 +1,18 @@
 package systems.zlink.framework.runtime.messaging;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import java.io.IOException;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -17,6 +25,7 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
             .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
             .findAndAddModules()
+            .addModule(routingIdModule())
             .build());
     }
 
@@ -72,5 +81,27 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
+    }
+
+    private static SimpleModule routingIdModule() {
+        SimpleModule module = new SimpleModule("zlink-routing-id");
+        module.addSerializer(RoutingId.class, new JsonSerializer<>() {
+            @Override
+            public void serialize(
+                RoutingId value,
+                JsonGenerator generator,
+                SerializerProvider serializers) throws IOException {
+                generator.writeString(value.toHex());
+            }
+        });
+        module.addDeserializer(RoutingId.class, new JsonDeserializer<>() {
+            @Override
+            public RoutingId deserialize(
+                JsonParser parser,
+                DeserializationContext context) throws IOException {
+                return RoutingId.fromHex(parser.getValueAsString());
+            }
+        });
+        return module;
     }
 }

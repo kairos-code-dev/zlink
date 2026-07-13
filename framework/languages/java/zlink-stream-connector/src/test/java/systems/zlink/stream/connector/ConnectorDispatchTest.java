@@ -28,7 +28,7 @@ final class ConnectorDispatchTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -44,13 +44,13 @@ final class ConnectorDispatchTest {
             assertEquals(1, connector.pendingDispatchCount());
             assertEquals(0, handled.get());
 
-            connector.dispatch().await();
+            ConnectorTestAwait.await(connector.dispatch());
 
             TcpStreamConnectorTestServer.awaitCondition(
                 () -> connector.pendingDispatchCount() == 0 && handled.get() == 1);
             assertEquals(1, handled.get());
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }

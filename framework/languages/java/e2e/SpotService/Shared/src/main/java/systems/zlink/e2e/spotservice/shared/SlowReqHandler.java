@@ -4,7 +4,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 
 public final class SlowReqHandler {
     @ZLinkSpotRequest
-    public Contracts.StateRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.StateRes> handle(
         UserSpot spot,
         Contracts.SlowReq request) {
         try {
@@ -13,9 +13,9 @@ public final class SlowReqHandler {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("interrupted", error);
         }
-        return new Contracts.StateRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.StateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
-            spot.apply("slow:" + request.value()));
+            spot.apply("slow:" + request.value())));
     }
 }

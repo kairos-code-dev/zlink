@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.time.Duration
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
@@ -9,7 +11,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmB5Scenario {
-    fun run() {
+    suspend fun run() {
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
         try {
             val actorId = "actor-sm-b5-missing"
@@ -17,16 +19,15 @@ internal object SmB5Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-B5 auth actor mismatch")
 
             expectFailure {
                 connector
-                    .request(Contracts.ActorEchoReq("missing-handler", 5, profile))
+                    .request(Contracts.MissingActorReq("missing-handler", 5, profile))
                     .metadata("actor-id", actorId)
-                    .packetName("MissingActorReq")
                     .timeout(Duration.ofSeconds(2))
-                    .await(Contracts.ActorEchoRes::class.java)
+                    .await<Contracts.ActorEchoRes>()
             }
 
             postJson(

@@ -24,7 +24,7 @@ public final class DiLifecycleReqHandler
     }
 
     @Override
-    public Contracts.DiLifecycleRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.DiLifecycleRes> handle(
         Contracts.DiLifecycleReq request,
         ZLinkRequestContext context) {
         int scopedId;
@@ -35,10 +35,10 @@ public final class DiLifecycleReqHandler
                 context.packetName().orElse("DiLifecycle"),
                 scopedId + ":" + singleton.id() + ":" + request.value());
         }
-        return new Contracts.DiLifecycleRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.DiLifecycleRes(
             "echo:" + request.value(),
             scopedId,
             singleton.id(),
-            state.diDisposeCount());
+            state.diDisposeCount()));
     }
 }

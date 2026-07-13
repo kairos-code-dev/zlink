@@ -17,7 +17,6 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
 import systems.zlink.framework.kotlin.awaitReply
-import systems.zlink.framework.kotlin.awaitSend
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -55,8 +54,7 @@ class Program {
                         actorRef,
                         Contracts.ActorNotify(request.scenario(), request.actorId(), request.value()),
                     )
-                        .packetName("ActorNotify")
-                        .awaitSend()
+                        .submit()
                     Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "sent")
                 } catch (ex: RuntimeException) {
                     failed(request, ex)
@@ -72,7 +70,6 @@ class Program {
                         actorRef,
                         Contracts.ActorAsk(request.scenario(), request.actorId(), request.value()),
                     )
-                        .packetName("ActorAsk")
                         .timeout(Duration.ofSeconds(5))
                         .awaitReply(Contracts.ActorReply::class.java)
                     Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), reply.value())

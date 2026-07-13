@@ -1,20 +1,30 @@
 package systems.zlink.framework.kotlin
 
 import java.util.concurrent.CompletionStage
-import kotlinx.coroutines.future.await
-import systems.zlink.framework.execution.ZLinkFrameworkTurns
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 public suspend fun <T> CompletionStage<T>.await(): T =
     awaitFrameworkStage(this)
 
 @PublishedApi
 internal suspend fun <T> awaitFrameworkStage(stage: CompletionStage<T>): T {
-    val turn = ZLinkFrameworkTurns.captureCurrent()
-    return if (turn == null) {
-        stage.await()
-    } else {
-        ZLinkFrameworkTurns.awaitManagedCompletion(turn, stage)
-            .toCompletableFuture()
-            .join()
+    return suspendCancellableCoroutine { continuation ->
+        stage.whenComplete { value, error ->
+            if (error == null) {
+                continuation.resume(value)
+            } else {
+                continuation.resumeWithException(unwrapCompletionError(error))
+            }
+        }
     }
 }
+
+private fun unwrapCompletionError(error: Throwable): Throwable =
+    when (error) {
+        is java.util.concurrent.CompletionException,
+        is java.util.concurrent.ExecutionException,
+        -> error.cause ?: error
+        else -> error
+    }

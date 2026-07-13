@@ -304,21 +304,17 @@ final class LocationContractTest {
         assertEquals(ZLinkActorRequestCall.class, ZLinkActorClient.class
             .getMethod("requestToActor", ActorRef.class, Object.class)
             .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkActorSendCall.class
+        assertEquals(void.class, ZLinkActorSendCall.class
             .getMethod("submit")
             .getReturnType());
-        assertEquals(void.class, ZLinkActorSendCall.class
-            .getMethod("await")
-            .getReturnType());
+        assertNoPublicMethod(ZLinkActorSendCall.class, "await");
         assertEquals(ZLinkActorRequestCall.class, ZLinkActorRequestCall.class
             .getMethod("timeout", java.time.Duration.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkActorRequestCall.class
             .getMethod("submit", Class.class)
             .getReturnType());
-        assertEquals(Object.class, ZLinkActorRequestCall.class
-            .getMethod("await", Class.class)
-            .getReturnType());
+        assertNoPublicMethod(ZLinkActorRequestCall.class, "await", Class.class);
         assertNoPublicMethod(ZLinkActorSendCall.class, "submit", Class.class);
         assertNoPublicMethod(ZLinkActorRequestCall.class, "submit");
     }

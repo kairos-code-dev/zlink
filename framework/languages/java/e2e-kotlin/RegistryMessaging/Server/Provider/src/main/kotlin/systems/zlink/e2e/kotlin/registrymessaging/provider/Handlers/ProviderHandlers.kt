@@ -13,21 +13,22 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
-import systems.zlink.framework.channels.ZLinkRouteRequestHandler
 import systems.zlink.framework.channels.ZLinkSendContext
-import systems.zlink.framework.channels.ZLinkSendHandler
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler
+import kotlinx.coroutines.delay
 
 class ProfileRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<ProfileReq, ProfileRes> {
-    override fun handle(request: ProfileReq, context: ZLinkRequestContext): ProfileRes {
+) : ZLinkSuspendingRequestHandler<ProfileReq, ProfileRes> {
+    override suspend fun handle(request: ProfileReq, context: ZLinkRequestContext): ProfileRes {
         if (request.value == "slow") {
-            Thread.sleep(1000)
+            delay(1000)
         }
         evidence.add(
             "profile-request|rid=${evidence.rid}|instance=${evidence.instanceId}" +
@@ -39,10 +40,10 @@ class ProfileRequestHandler(
 
 class ProfileCommandHandler(
     private val evidence: EvidenceStore,
-) : ZLinkSendHandler<ProfileMsg> {
-    override fun handle(message: ProfileMsg, context: ZLinkSendContext) {
+) : ZLinkSuspendingSendHandler<ProfileMsg> {
+    override suspend fun handle(message: ProfileMsg, context: ZLinkSendContext) {
         if (message.commandId.startsWith("slow")) {
-            Thread.sleep(1000)
+            delay(1000)
         }
         evidence.add("profile-command|rid=${evidence.rid}|command=${message.commandId}|packet=${context.packetName()}")
     }
@@ -50,8 +51,8 @@ class ProfileCommandHandler(
 
 class PayloadRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<PayloadReq, PayloadRes> {
-    override fun handle(request: PayloadReq, context: ZLinkRequestContext): PayloadRes {
+) : ZLinkSuspendingRequestHandler<PayloadReq, PayloadRes> {
+    override suspend fun handle(request: PayloadReq, context: ZLinkRequestContext): PayloadRes {
         val digest = MessageDigest.getInstance("SHA-256").digest(request.payload.toByteArray(Charsets.UTF_8))
         val hash = HexFormat.of().formatHex(digest).uppercase()
         evidence.add(
@@ -64,8 +65,8 @@ class PayloadRequestHandler(
 
 class RoutePingHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRouteRequestHandler<ScenarioRoutePingReq, ScenarioRoutePingRes> {
-    override fun handle(request: ScenarioRoutePingReq, context: ZLinkRouteRequestContext): ScenarioRoutePingRes {
+) : ZLinkSuspendingRouteRequestHandler<ScenarioRoutePingReq, ScenarioRoutePingRes> {
+    override suspend fun handle(request: ScenarioRoutePingReq, context: ZLinkRouteRequestContext): ScenarioRoutePingRes {
         val source = context.routingId().toString()
         evidence.add("route-request|rid=${evidence.rid}|source=$source|value=${request.value}")
         return ScenarioRoutePingRes("route:${request.value}", evidence.rid, source)

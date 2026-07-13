@@ -7,12 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import systems.zlink.framework.ZLinkAwait;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 final class ZLinkAsyncSerialQueueTest {
     @Test
-    void enqueue_startsNextOperationOnlyAfterPreviousStageCompletes() throws Exception {
+    void releasesWaitingTurnAndReentersContinuationInQueueOrder() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
         CompletableFuture<Void> firstGate = new CompletableFuture<>();
         CompletableFuture<Void> firstStarted = new CompletableFuture<>();
@@ -21,7 +22,8 @@ final class ZLinkAsyncSerialQueueTest {
         CompletableFuture<Void> first = queue.enqueue(() -> {
             events.add("first-start");
             firstStarted.complete(null);
-            return firstGate;
+            return ZLinkAsyncSerialQueue.manageCurrent(firstGate)
+                .thenRun(() -> events.add("first-complete"));
         }).toCompletableFuture();
         CompletableFuture<Void> second = queue.enqueue(() -> {
             events.add("second-start");
@@ -29,20 +31,18 @@ final class ZLinkAsyncSerialQueueTest {
         }).toCompletableFuture();
 
         firstStarted.get(3, TimeUnit.SECONDS);
-        assertEquals(List.of("first-start"), events);
+        second.get(3, TimeUnit.SECONDS);
+        assertEquals(List.of("first-start", "second-start"), events);
         assertFalse(first.isDone());
-        assertFalse(second.isDone());
 
         firstGate.complete(null);
 
-        second.get(3, TimeUnit.SECONDS);
-        assertEquals(List.of("first-start", "second-start"), events);
-        assertEquals(null, first.join());
-        assertEquals(null, second.join());
+        first.get(3, TimeUnit.SECONDS);
+        assertEquals(List.of("first-start", "second-start", "first-complete"), events);
     }
 
     @Test
-    void enqueue_continuesAfterPreviousFailure() {
+    void continuesAfterPreviousFailure() {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
         List<String> events = new ArrayList<>();
 
@@ -59,188 +59,40 @@ final class ZLinkAsyncSerialQueueTest {
     }
 
     @Test
-    void yield_releasesGateUntilOperationCompletes() throws Exception {
+    void reentersManagedContinuationWithItsCapturedFlow() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
-        CompletableFuture<String> io = new CompletableFuture<>();
-        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
-        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
-        CompletableFuture<Void> releaseFirstResume = new CompletableFuture<>();
-        List<String> events = new ArrayList<>();
+        CompletableFuture<Void> gate = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+        CompletableFuture<String> observed = new CompletableFuture<>();
+        ZLinkFlowContext.State flow = ZLinkFlowContext.create(ZLinkFlowOrigin.INBOUND);
 
-        CompletableFuture<Void> first = queue.enqueue(() -> {
-            events.add("first-start");
-            firstStarted.complete(null);
-            String result = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(io);
-            events.add("first-resumed:" + result);
-            firstResumed.complete(null);
-            ZLinkAwait.awaitVoid(releaseFirstResume);
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-
-        firstStarted.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> second = queue.enqueue(() -> {
-            events.add("second-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-        second.get(3, TimeUnit.SECONDS);
-
-        assertEquals(List.of("first-start", "second-start"), events);
-
-        io.complete("ok");
-        firstResumed.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> third = queue.enqueue(() -> {
-            events.add("third-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-
-        assertFalse(third.isDone());
-
-        releaseFirstResume.complete(null);
-        third.get(3, TimeUnit.SECONDS);
-        assertEquals(List.of(
-            "first-start",
-            "second-start",
-            "first-resumed:ok",
-            "third-start"), events);
-        assertEquals(null, first.join());
-    }
-
-    @Test
-    void yield_reentersQueueWhenOperationFails() throws Exception {
-        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
-        CompletableFuture<String> io = new CompletableFuture<>();
-        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
-        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
-        CompletableFuture<Void> releaseFirstResume = new CompletableFuture<>();
-        List<String> events = new ArrayList<>();
-
-        CompletableFuture<Void> first = queue.enqueue(() -> {
-            events.add("first-start");
-            firstStarted.complete(null);
-            try {
-                ZLinkYieldTurn.current().awaitFrameworkCallBlocking(io);
-                events.add("first-unexpected-success");
-            } catch (RuntimeException error) {
-                events.add("first-failed:" + error.getCause().getClass().getSimpleName());
+        queue.enqueue(() -> {
+            try (ZLinkFlowContext.Scope ignored = ZLinkFlowContext.enter(flow)) {
+                started.complete(null);
+                return ZLinkAsyncSerialQueue.manageCurrent(gate)
+                    .thenRun(() -> observed.complete(ZLinkFlowContext.current().flowId()));
             }
-            firstResumed.complete(null);
-            ZLinkAwait.awaitVoid(releaseFirstResume);
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
+        });
 
-        firstStarted.get(3, TimeUnit.SECONDS);
+        started.get(3, TimeUnit.SECONDS);
+        gate.complete(null);
 
-        CompletableFuture<Void> second = queue.enqueue(() -> {
-            events.add("second-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-        second.get(3, TimeUnit.SECONDS);
-
-        assertEquals(List.of("first-start", "second-start"), events);
-
-        io.completeExceptionally(new IllegalStateException("boom"));
-        firstResumed.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> third = queue.enqueue(() -> {
-            events.add("third-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-
-        assertFalse(third.isDone());
-
-        releaseFirstResume.complete(null);
-        third.get(3, TimeUnit.SECONDS);
-        first.get(3, TimeUnit.SECONDS);
-        assertEquals(List.of(
-            "first-start",
-            "second-start",
-            "first-failed:IllegalStateException",
-            "third-start"), events);
+        assertEquals(flow.flowId(), observed.get(3, TimeUnit.SECONDS));
     }
 
     @Test
-    void yield_releasesGateAgainWhenResumedTurnSuspendsAgain() throws Exception {
+    void startsQueuedOperationWithFlowCapturedAtEnqueue() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
-        CompletableFuture<String> firstIo = new CompletableFuture<>();
-        CompletableFuture<String> secondIo = new CompletableFuture<>();
-        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
-        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
-        List<String> events = new ArrayList<>();
+        CompletableFuture<String> observed = new CompletableFuture<>();
+        ZLinkFlowContext.State flow = ZLinkFlowContext.create(ZLinkFlowOrigin.INBOUND);
 
-        CompletableFuture<Void> first = queue.enqueue(() -> {
-            events.add("first-start");
-            firstStarted.complete(null);
-            String firstResult = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(firstIo);
-            events.add("first-resumed:" + firstResult);
-            firstResumed.complete(null);
-            String secondResult = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(secondIo);
-            events.add("first-resumed-again:" + secondResult);
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
+        try (ZLinkFlowContext.Scope ignored = ZLinkFlowContext.enter(flow)) {
+            queue.enqueue(() -> {
+                observed.complete(ZLinkFlowContext.current().flowId());
+                return CompletableFuture.completedFuture(null);
+            });
+        }
 
-        firstStarted.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> second = queue.enqueue(() -> {
-            events.add("second-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-        second.get(3, TimeUnit.SECONDS);
-
-        firstIo.complete("one");
-        firstResumed.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> third = queue.enqueue(() -> {
-            events.add("third-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-        third.get(3, TimeUnit.SECONDS);
-
-        secondIo.complete("two");
-        first.get(3, TimeUnit.SECONDS);
-
-        assertEquals(List.of(
-            "first-start",
-            "second-start",
-            "first-resumed:one",
-            "third-start",
-            "first-resumed-again:two"), events);
-    }
-
-    @Test
-    void nonReentrantYieldKeepsNextDispatchQueuedUntilOperationCompletes() throws Exception {
-        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(false);
-        CompletableFuture<String> io = new CompletableFuture<>();
-        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
-        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
-        List<String> events = new ArrayList<>();
-
-        CompletableFuture<Void> first = queue.enqueue(() -> {
-            events.add("first-start");
-            firstStarted.complete(null);
-            String result = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(io);
-            events.add("first-resumed:" + result);
-            firstResumed.complete(null);
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-
-        firstStarted.get(3, TimeUnit.SECONDS);
-
-        CompletableFuture<Void> second = queue.enqueue(() -> {
-            events.add("second-start");
-            return CompletableFuture.completedFuture(null);
-        }).toCompletableFuture();
-
-        TimeUnit.MILLISECONDS.sleep(100);
-        assertFalse(second.isDone());
-        assertEquals(List.of("first-start"), events);
-
-        io.complete("ok");
-        firstResumed.get(3, TimeUnit.SECONDS);
-        second.get(3, TimeUnit.SECONDS);
-
-        assertEquals(List.of("first-start", "first-resumed:ok", "second-start"), events);
-        assertEquals(null, first.join());
+        assertEquals(flow.flowId(), observed.get(3, TimeUnit.SECONDS));
     }
 }

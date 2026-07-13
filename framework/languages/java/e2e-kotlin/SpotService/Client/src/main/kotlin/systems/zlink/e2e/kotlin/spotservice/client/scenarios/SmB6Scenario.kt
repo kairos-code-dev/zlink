@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.util.UUID
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
@@ -8,7 +10,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmB6Scenario {
-    fun run() {
+    suspend fun run() {
         val suffix = UUID.randomUUID().toString().replace("-", "")
         val leaveActorId = "actor-sm-b6-left-$suffix"
         val disconnectActorId = "actor-sm-b6-disconnected-$suffix"
@@ -19,19 +21,19 @@ internal object SmB6Scenario {
             leaveClient.connect().await()
             val auth = leaveClient
                 .request(Contracts.ActorAuthReq(leaveActorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == leaveActorId, "SM-B6 leave auth actor mismatch")
 
             val joined = leaveClient
                 .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", leaveActorId)
-                .await(Contracts.ActorJoinRes::class.java)
+                .await<Contracts.ActorJoinRes>()
             ensure(joined.actorId == leaveActorId, "SM-B6 leave join actor mismatch")
 
             val left = leaveClient
                 .request(Contracts.LeaveActorReq(leaveActorId))
                 .metadata("actor-id", leaveActorId)
-                .await(Contracts.LeaveActorRes::class.java)
+                .await<Contracts.LeaveActorRes>()
             ensure(left.accepted && left.actorId == leaveActorId, "SM-B6 leave reply mismatch")
         } finally {
             try {
@@ -64,12 +66,12 @@ internal object SmB6Scenario {
             disconnectClient.connect().await()
             val auth = disconnectClient
                 .request(Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == disconnectActorId, "SM-B6 disconnect auth actor mismatch")
             val joined = disconnectClient
                 .request(Contracts.ActorJoinReq("actor-room-a", disconnectProfile, disconnectProfile.tags))
                 .metadata("actor-id", disconnectActorId)
-                .await(Contracts.ActorJoinRes::class.java)
+                .await<Contracts.ActorJoinRes>()
             ensure(joined.actorId == disconnectActorId, "SM-B6 disconnect join actor mismatch")
             disconnectClient.close().await()
         } finally {

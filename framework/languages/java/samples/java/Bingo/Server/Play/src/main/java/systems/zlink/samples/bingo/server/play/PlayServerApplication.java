@@ -9,7 +9,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
@@ -26,6 +26,9 @@ import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.configuration.BingoMetricsReporter;
+import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
 
 
 
@@ -61,7 +64,8 @@ public final class PlayServerApplication {
                 .enableClient()
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
                 .addHandlerGroup("play-route");
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
+            ZLinkSpotMeshBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
+            node.useDrainPolicy(ZLinkSpotDrainPolicy.DRAIN_NATURAL);
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint());
@@ -103,5 +107,10 @@ public final class PlayServerApplication {
             .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
             .findAndAddModules()
             .build();
+    }
+
+    @Bean(destroyMethod = "close")
+    BingoMetricsReporter bingoMetricsReporter(MeterRegistry registry) {
+        return new BingoMetricsReporter(registry, "play");
     }
 }

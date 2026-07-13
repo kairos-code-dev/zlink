@@ -9,7 +9,7 @@
 |------|-------------|------|------|------|
 | `.NET: GameQuest.csproj` | `build.gradle.kts` | build | done | Kotlin 루트는 하위 role project를 묶는다. |
 | `.NET: README.ko.md` | `README.md` | docs | done | Kotlin 역할, Redis 준비 방식, 성공 marker를 설명한다. |
-| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | GameApi 2개, QuestMission 2개, Client, 전용 Redis 또는 외부 Redis endpoint를 실행한다. |
+| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | GameApi 2개, QuestMission 2개, Client와 실행별 전용 Docker Redis를 실행한다. |
 | `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Windows runner도 같은 role 구성과 Redis endpoint/key prefix 계약을 사용한다. |
 | `.NET: Client/GameQuest.Client.csproj` | `Client/build.gradle.kts` | build | done | Client role project. |
 | `.NET: Client/Program.cs` | `Client/src/main/kotlin/.../client/Program.kt` | client-entry | done | 두 stream connector를 만들고 self-check scenario를 실행한다. |
@@ -45,8 +45,8 @@
 | common: client reconnect 후 조회 복원 | player-b offline event 뒤 join | validation | done | offline herb event 뒤 player-b join이 active quest progress를 복원하는지 확인한다. |
 | common: bound session push | `QuestProgressNotify`, `QuestCompletedNotify` waits | validation | done | client가 stream connector wait API로 progress/completion push를 기다린다. |
 | common: Redis-backed location store | `SampleLocationStore.create()` | runtime-config | done | GameApi와 QuestMission role이 `ZLinkRedisLocationStore` bean을 등록한다. |
-| common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh` | runner | done | `GAMEQUEST_REDIS_ENDPOINT`가 있으면 Docker Redis를 만들지 않는다. |
-| common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
+| common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
+| common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | 애플리케이션은 runner가 만든 endpoint만 받고, runner는 자신이 만든 container id만 정리한다. |
 | common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `Configuration.kt` | runner | done | `GAMEQUEST_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만든다. |
 | common: server evidence check | `GameQuestClientScenario.waitForServerAssertion()` | validation | done | server assertion이 통과하면 `gamequest-server-evidence=completed` marker를 출력한다. |
 | common: Domain은 framework 타입을 모름 | `QuestDomain` | design | done | quest 조건 평가와 progress event 생성은 framework context 없이 동작한다. |

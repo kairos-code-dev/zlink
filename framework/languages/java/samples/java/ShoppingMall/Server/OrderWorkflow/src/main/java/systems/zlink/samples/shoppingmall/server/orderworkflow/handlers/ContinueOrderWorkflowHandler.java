@@ -5,6 +5,7 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.OrderWorkflowService;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
+import java.util.concurrent.CompletionStage;
 
 @ZLinkHandlerGroup("order-workflow")
 public final class ContinueOrderWorkflowHandler
@@ -16,9 +17,10 @@ public final class ContinueOrderWorkflowHandler
     }
 
     @Override
-    public Messages.ContinueOrderWorkflowRes handle(
+    public CompletionStage<Messages.ContinueOrderWorkflowRes> handle(
         Messages.ContinueOrderWorkflowReq request,
         ZLinkRequestContext context) {
-        return new Messages.ContinueOrderWorkflowRes(workflow.continueOrder(request.orderId()));
+        return workflow.continueOrder(request.orderId())
+            .thenApply(Messages.ContinueOrderWorkflowRes::new);
     }
 }

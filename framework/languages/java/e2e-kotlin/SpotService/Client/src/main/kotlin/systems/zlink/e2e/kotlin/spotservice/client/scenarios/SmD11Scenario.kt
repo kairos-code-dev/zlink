@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
@@ -7,7 +9,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmD11Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         val actorId = "actor-sm-d11-mixed"
         val profile = Contracts.ActorProfile("Mixed", 11, listOf("stream", "channel"))
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -15,12 +17,12 @@ internal object SmD11Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D11 auth actor mismatch")
 
             val streamReply = connector
                 .request(Contracts.ActorEchoReq("stream-side", 11, profile))
-                .await(Contracts.ActorEchoRes::class.java)
+                .await<Contracts.ActorEchoRes>()
             ensure(streamReply.actorId == actorId, "SM-D11 stream request actor mismatch")
             ensure(streamReply.value == "entry:stream-side", "SM-D11 stream reply value mismatch")
         } finally {

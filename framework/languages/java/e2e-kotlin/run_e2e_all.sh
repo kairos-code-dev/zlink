@@ -2,10 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../e2e-redis-common.sh"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
-
-zlink_redis_cleanup_scope "zlink-redis-kotlin-e2e"
 
 DEFAULT_SCENARIOS=(
   DiscoveryRegistryHa
@@ -15,7 +12,8 @@ DEFAULT_SCENARIOS=(
   SpotService
   RuntimeMonitoring
   ResilienceLifecycle
-  YieldDispatch
+  AutomaticTurnDispatch
+  ObservabilityOps
   ToActorMessaging
   SpotActorTransfer
 )

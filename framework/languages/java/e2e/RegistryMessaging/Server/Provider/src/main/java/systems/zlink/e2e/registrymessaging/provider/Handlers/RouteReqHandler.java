@@ -14,13 +14,13 @@ public final class RouteReqHandler
     }
 
     @Override
-    public Contracts.RouteRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.RouteRes> handle(
         Contracts.RouteReq request,
         ZLinkRouteRequestContext context) {
         state.record("ScenarioRouteReq", request.value());
-        return new Contracts.RouteRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.RouteRes(
             "route:" + request.value(),
             state.providerRid(),
-            context.routingId().toString());
+            context.routingId().toString()));
     }
 }

@@ -12,15 +12,12 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.ZLinkSubmitStage
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
-import systems.zlink.framework.actors.ZLinkActorJoinSpotCall
 import systems.zlink.framework.actors.ZLinkActorPlacement
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorSendCall
@@ -30,7 +27,6 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
-import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -63,51 +59,21 @@ class KotlinFrameworkExtensionsContractTest {
 
     @Test
     fun `join await extension awaits submit without calling blocking Java await`() = runBlocking {
-        val call = RecordingJoinCall(ZLinkActorJoinResult(1, ACTOR_REF, "joined"))
+        val call = RecordingJoinCall(ZLinkActorJoinResult.Accepted(ACTOR_REF, "joined"))
 
-        val result = call.awaitJoin<String>()
+        val result = call.awaitJoinReply<String>()
 
         assertEquals("joined", result.reply())
         assertEquals(String::class.java, call.replyType)
     }
 
     @Test
-    fun `yield join extension keeps existing Java yield path`() = runBlocking {
-        val call = RecordingYieldJoinCall(ZLinkActorJoinResult(1, ACTOR_REF, "yielded"))
-
-        val result = yield<String>(call)
-
-        assertEquals("yielded", result.reply())
-        assertEquals(String::class.java, call.replyType)
-    }
-
-    @Test
-    fun `route spot ref extensions delegate to Java spot ref surface`() = runBlocking {
-        val route = RecordingRouteClient("reply")
-        val message = Message.from("request")
-
-        route.send("route-channel", SPOT_ADDRESS, message)
-        val reply = route.request<String>("route-channel", SPOT_ADDRESS, message)
-
-        assertEquals("reply", reply)
-        assertEquals("route-channel", route.sendChannel)
-        assertEquals(SPOT_ADDRESS, route.sendAddress)
-        assertSame(message, route.sendMessage)
-        assertEquals("route-channel", route.requestChannel)
-        assertEquals(SPOT_ADDRESS, route.requestAddress)
-        assertSame(message, route.requestMessage)
-    }
-
-    @Test
-    fun `actor client suspend extensions delegate to Java actor ref client calls`() = runBlocking {
+    fun `actor request extension delegates to Java actor ref client call`() = runBlocking {
         val actorClient = RecordingActorClient(ActorReply("reply"))
 
-        actorClient.sendToActorAwait(ACTOR_REF, ActorMessage("send"))
         val reply = actorClient.requestToActorAwait<ActorReply>(ACTOR_REF, ActorMessage("request"))
 
         assertEquals(ActorReply("reply"), reply)
-        assertEquals(ACTOR_REF, actorClient.sentActorRef)
-        assertEquals(ActorMessage("send"), actorClient.sentMessage)
         assertEquals(ACTOR_REF, actorClient.requestedActorRef)
         assertEquals(ActorMessage("request"), actorClient.requestedMessage)
     }
@@ -191,95 +157,27 @@ class KotlinFrameworkExtensionsContractTest {
     ) : ZLinkActorJoinCall {
         var replyType: Class<*>? = null
 
+        override fun timeout(timeout: Duration): ZLinkActorJoinCall = this
+
         override fun submit(): CompletionStage<ZLinkActorJoinResult<Void>> =
-            CompletableFuture.completedFuture(ZLinkActorJoinResult(1, ACTOR_REF, null))
+            CompletableFuture.completedFuture(ZLinkActorJoinResult.Accepted(ACTOR_REF, null))
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<ZLinkActorJoinResult<T>> {
             this.replyType = replyType
             @Suppress("UNCHECKED_CAST")
             return CompletableFuture.completedFuture(result as ZLinkActorJoinResult<T>)
-        }
-    }
-
-    private class RecordingYieldJoinCall<TReply>(
-        private val result: ZLinkActorJoinResult<TReply>,
-    ) : ZLinkActorJoinSpotCall {
-        var replyType: Class<*>? = null
-
-        override fun timeout(timeout: Duration): ZLinkActorJoinSpotCall = this
-
-        override fun submit(): CompletionStage<ZLinkActorJoinResult<Void>> =
-            CompletableFuture.completedFuture(ZLinkActorJoinResult(1, ACTOR_REF, null))
-
-        override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<ZLinkActorJoinResult<T>> {
-            this.replyType = replyType
-            @Suppress("UNCHECKED_CAST")
-            return CompletableFuture.completedFuture(result as ZLinkActorJoinResult<T>)
-        }
-
-        override fun yield(): ZLinkActorJoinResult<Void> =
-            ZLinkActorJoinResult(1, ACTOR_REF, null)
-
-        override fun yield(cancellationToken: CancellationToken): ZLinkActorJoinResult<Void> =
-            yield()
-
-        override fun <T : Any?> yield(replyType: Class<T>): ZLinkActorJoinResult<T> {
-            this.replyType = replyType
-            @Suppress("UNCHECKED_CAST")
-            return result as ZLinkActorJoinResult<T>
-        }
-
-        override fun <T : Any?> yield(
-            replyType: Class<T>,
-            cancellationToken: CancellationToken,
-        ): ZLinkActorJoinResult<T> =
-            yield(replyType)
-    }
-
-    private class RecordingRouteClient<TReply>(
-        private val reply: TReply,
-    ) : ZLinkRouteClient {
-        var sendChannel: String? = null
-        var sendAddress: SpotRef? = null
-        var sendMessage: Any? = null
-        var requestChannel: String? = null
-        var requestAddress: SpotRef? = null
-        var requestMessage: Any? = null
-
-        override fun sendToNode(channelName: String, target: RoutingId, message: Any): ZLinkSendCall =
-            RecordingSendCall()
-
-        override fun sendToSpot(channelName: String, address: SpotRef, message: Any): ZLinkSendCall {
-            sendChannel = channelName
-            sendAddress = address
-            sendMessage = message
-            return RecordingSendCall()
-        }
-
-        override fun requestToNode(channelName: String, target: RoutingId, message: Any): ZLinkRequestCall =
-            RecordingRequestCall(reply)
-
-        override fun requestToSpot(channelName: String, address: SpotRef, message: Any): ZLinkRequestCall {
-            requestChannel = channelName
-            requestAddress = address
-            requestMessage = message
-            return RecordingRequestCall(reply)
         }
     }
 
     private class RecordingSendCall : ZLinkSendCall {
-        override fun packetName(packetName: String): ZLinkSendCall = this
-
         override fun metadata(key: String, value: String): ZLinkSendCall = this
 
-        override fun submit(): ZLinkSubmitStage = ZLinkSubmitStage.completed()
+        override fun submit() = Unit
     }
 
     private class RecordingRequestCall<TReply>(
         private val reply: TReply,
     ) : ZLinkRequestCall {
-        override fun packetName(packetName: String): ZLinkRequestCall = this
-
         override fun metadata(key: String, value: String): ZLinkRequestCall = this
 
         override fun timeout(timeout: Duration): ZLinkRequestCall = this
@@ -310,17 +208,12 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class RecordingActorSendCall : ZLinkActorSendCall {
-        override fun packetName(packetName: String): ZLinkActorSendCall = this
-
-        override fun submit(): CompletionStage<Void> =
-            CompletableFuture.completedFuture(null)
+        override fun submit() = Unit
     }
 
     private class RecordingActorRequestCall<TReply>(
         private val reply: TReply,
     ) : ZLinkActorRequestCall {
-        override fun packetName(packetName: String): ZLinkActorRequestCall = this
-
         override fun timeout(timeout: Duration): ZLinkActorRequestCall = this
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
@@ -330,8 +223,6 @@ class KotlinFrameworkExtensionsContractTest {
     private class FailingRequestCall(
         private val error: Throwable,
     ) : ZLinkRequestCall {
-        override fun packetName(packetName: String): ZLinkRequestCall = this
-
         override fun metadata(key: String, value: String): ZLinkRequestCall = this
 
         override fun timeout(timeout: Duration): ZLinkRequestCall = this
@@ -410,15 +301,16 @@ class KotlinFrameworkExtensionsContractTest {
         override fun context(): ZLinkSpotContext =
             throw UnsupportedOperationException("test spot has no runtime context")
 
-        override fun onJoinedActor(actor: TestActor, cancellationToken: CancellationToken) = Unit
+        override fun onJoinedActor(actor: TestActor): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
 
-        override fun onLeaveActor(actor: TestActor, cancellationToken: CancellationToken) = Unit
+        override fun onLeaveActor(actor: TestActor): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
     }
 
     companion object {
         private val NODE_RID: RoutingId = RoutingId.from(byteArrayOf(0x01))
         private val SPOT_RID: RoutingId = RoutingId.from(byteArrayOf(0x02))
         private val ACTOR_REF = ActorRef(NODE_RID, "actor-a", 7)
-        private val SPOT_ADDRESS = SpotRef("mesh", NODE_RID, SPOT_RID)
     }
 }

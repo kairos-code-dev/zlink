@@ -43,6 +43,21 @@ final class RuntimeTestSupport {
         });
     }
 
+    static void awaitClosed(FakeZLinkBackendAdapterFactory backendFactory) {
+        awaitClosed(backendFactory, 1);
+    }
+
+    static void awaitClosed(FakeZLinkBackendAdapterFactory backendFactory, long contextCount) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (backendFactory.calls().stream().filter("close.context"::equals).count() >= contextCount) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("runtime close did not complete: " + backendFactory.calls());
+    }
+
     private static <T> T invoke(ReflectiveCall<T> call) {
         try {
             return call.invoke();

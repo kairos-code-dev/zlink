@@ -15,12 +15,14 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -41,7 +43,10 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     private final boolean nativeSessionRelayAttached;
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkSessionRelayHeaders relayHeaders;
+    private final ZLinkMessageFlowTracer flow;
+    private final ZLinkActorDirectory actorDirectory;
     private volatile boolean nativeRebound;
+    private CompletionStage<Void> bindingRefresh = CompletableFuture.completedFuture(null);
 
     ZLinkBoundActor(
         ZLinkBackendStreamSocket stream,
@@ -55,7 +60,9 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         ZLinkSessionActorsRuntime.LocalActorDispatcher localActorDispatcher,
         boolean nativeSessionRelayAttached,
         ZLinkStreamCodec defaultCodec,
-        ZLinkSessionRelayHeaders relayHeaders) {
+        ZLinkSessionRelayHeaders relayHeaders,
+        ZLinkMessageFlowTracer flow,
+        ZLinkActorDirectory actorDirectory) {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.ref = ref;
@@ -68,6 +75,8 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         this.nativeSessionRelayAttached = nativeSessionRelayAttached;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
         this.relayHeaders = relayHeaders;
+        this.flow = flow;
+        this.actorDirectory = actorDirectory;
     }
 
     @Override
@@ -114,14 +123,82 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
                 "Session actor relay requires an active stream dispatch."));
         }
         ZLinkStreamHeader header = currentHeader.get();
+        traceRelay(header);
         Message message = ZLinkMessagePayloads.message(payload, serializer);
         byte[] payloadBytes = message.toByteArray();
         message.close();
         if (managedActor.isPresent() && localActorDispatcher != null && !nativeRebound) {
             return relayLocal(header, payloadBytes);
         }
-        return ensureNativeBinding()
+        return refreshNativeBinding()
+            .thenCompose(ignored -> ensureNativeBinding())
             .thenCompose(ignored -> relayWithRetry(header, payloadBytes));
+    }
+
+    private synchronized CompletionStage<Void> refreshNativeBinding() {
+        if (actorDirectory == null || !nativeSessionRelayAttached) {
+            return CompletableFuture.completedFuture(null);
+        }
+        bindingRefresh = bindingRefresh.handle((ignored, error) -> null)
+            .thenCompose(ignored -> actorDirectory.find(ref.actorId()))
+            .thenCompose(current -> {
+                if (current.isEmpty()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                ActorRef located = current.get();
+                ZLinkBackendActorRef target = new ZLinkBackendActorRef(
+                    located.nodeRid(), located.actorId(), located.generation());
+                ZLinkBackendActorRef previous = ref;
+                if (previous.nodeRid().equals(target.nodeRid())
+                    && previous.generation() == target.generation()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return ZLinkBoundSessionRuntime.ignoreMissingBinding(
+                        stream.unbindActor(sessionRid, previous.actorId())
+                            .submit(ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT))
+                    .thenCompose(unbound -> awaitRouteReady(target))
+                    .thenCompose(ready -> ZLinkBoundSessionRuntime.bindActorWithRetry(
+                        stream,
+                        sessionRid,
+                        target,
+                        ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT))
+                    .thenRun(() -> rebindNativeActor(target));
+            });
+        return bindingRefresh;
+    }
+
+    private CompletionStage<Void> awaitRouteReady(ZLinkBackendActorRef target) {
+        return ZLinkActorRetryScheduler.waitUntilRelay(
+            ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT,
+            () -> routeReady.test(target.nodeRid()),
+            () -> {},
+            () -> new TimeoutException(
+                "remote bound session route was not ready before timeout: "
+                    + target.actorId()));
+    }
+
+    private void traceRelay(ZLinkStreamHeader header) {
+        if (flow == null
+            || !flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.SENT)) {
+            return;
+        }
+        flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+            systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.SENT,
+            systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.SPOT_ACTOR,
+            header.requestSequence().isPresent()
+                ? systems.zlink.framework.configuration.ZLinkDispatchMessageKind.ACTOR_REQUEST
+                : systems.zlink.framework.configuration.ZLinkDispatchMessageKind.ACTOR_SEND,
+            header.packetName(),
+            null,
+            null,
+            header.correlationId().orElse(null),
+            null,
+            null,
+            ref.actorId(),
+            null,
+            null, null, null, null,
+            header.flowId().orElse(null),
+            header.flowOrigin().orElse(null)));
     }
 
     private CompletionStage<Void> relayLocal(

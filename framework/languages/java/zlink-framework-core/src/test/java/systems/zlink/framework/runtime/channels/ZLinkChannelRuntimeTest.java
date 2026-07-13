@@ -32,6 +32,7 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
@@ -52,6 +53,33 @@ final class ZLinkChannelRuntimeTest {
                     systems.zlink.framework.spots.ZLinkSpotKind.USER)));
         return ZLinkHandlerActivator.services()
             .add(SpotTransportAddressResolver.class, resolver);
+    }
+
+    @Test
+    void endpointConnectionsControlTheLiveClientSocketAndRetainRestartState() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var channel = options.addClientServerChannel("work").enableClient();
+        ZLinkEndpointConnections connections = channel.clientConnections();
+        connections.connect("inproc://first");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+
+        try (ZLinkChannelRuntime ignored = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(), handlers())) {
+            assertEquals(List.of("inproc://first"), backend.dealer.connected);
+
+            connections.disconnect("inproc://first");
+            connections.connect("inproc://second");
+
+            assertEquals(List.of("inproc://first"), backend.dealer.disconnected);
+            assertEquals(List.of("inproc://first", "inproc://second"), backend.dealer.connected);
+            assertEquals(List.of("inproc://second"), connections.listConnections());
+        }
+
+        connections.connect("inproc://restart");
+        assertEquals(List.of("inproc://second", "inproc://restart"), connections.listConnections());
+        assertEquals(List.of("inproc://first", "inproc://second"), backend.dealer.connected);
     }
 
     @Test
@@ -126,7 +154,7 @@ final class ZLinkChannelRuntimeTest {
                     SpotHandles.create(RoutingId.from("room-spot")),
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
-                .await(TestReply.class);
+                .submit(TestReply.class).toCompletableFuture().join();
 
             assertEquals("reply", reply.value());
             assertEquals("play.route", backend.bridge.lastChannelName);
@@ -200,7 +228,7 @@ final class ZLinkChannelRuntimeTest {
             new ZLinkJsonMessageSerializer(), handlers())) {
             TestReply reply = runtime.requestToChannel("profile", new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
-                .await(TestReply.class);
+                .submit(TestReply.class).toCompletableFuture().join();
 
             assertEquals("reply", reply.value());
             assertEquals(2, backend.dealer.requestAttempts);
@@ -226,7 +254,7 @@ final class ZLinkChannelRuntimeTest {
                     RoutingId.from("play-node"),
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
-                .await(TestReply.class);
+                .submit(TestReply.class).toCompletableFuture().join();
 
             assertEquals("reply", reply.value());
             assertEquals(2, backend.router.requestAttempts);
@@ -254,7 +282,7 @@ final class ZLinkChannelRuntimeTest {
                         SpotHandles.create(RoutingId.from("room-spot")),
                         new TestRequest("hello"))
                     .timeout(Duration.ofMillis(300))
-                    .await(TestReply.class));
+                    .submit(TestReply.class).toCompletableFuture().join());
 
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
             assertEquals(1, backend.spotNode.entrySpot.requestAttempts);
@@ -281,7 +309,7 @@ final class ZLinkChannelRuntimeTest {
                         SpotHandles.create(RoutingId.from("room-spot")),
                         new TestRequest("hello"))
                     .timeout(Duration.ofMillis(300))
-                    .await(TestReply.class));
+                    .submit(TestReply.class).toCompletableFuture().join());
 
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("NOT_FOUND"));
@@ -885,6 +913,8 @@ final class ZLinkChannelRuntimeTest {
     }
 
     private static final class FakeDealerSocket implements ZLinkBackendDealerSocket {
+        final List<String> connected = new ArrayList<>();
+        final List<String> disconnected = new ArrayList<>();
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
         int requestAttempts;
         int requestFailuresRemaining;
@@ -892,8 +922,8 @@ final class ZLinkChannelRuntimeTest {
 
         @Override public void setChannelName(String channelName) { }
         @Override public void bind(String endpoint) { }
-        @Override public void connect(String endpoint) { }
-        @Override public void disconnect(String endpoint) { }
+        @Override public void connect(String endpoint) { connected.add(endpoint); }
+        @Override public void disconnect(String endpoint) { disconnected.add(endpoint); }
         @Override public boolean send(List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             requestAttempts++;

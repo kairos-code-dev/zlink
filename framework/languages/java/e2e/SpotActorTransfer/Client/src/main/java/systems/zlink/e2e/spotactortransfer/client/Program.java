@@ -182,9 +182,9 @@ public final class Program {
         createActor(nodeA, actorId, Contracts.STATEFUL, 93);
         ZLinkStreamConnector connector = connector(Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-F3", actorId))
-                .await(Contracts.BindSessionRes.class);
+                .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
             CompletableFuture<Contracts.JoinTargetRes> join = joinAsync(
                 nodeA, actorId, "ST-F3", spotRid, "accept");
             waitFor(actorId, "joined_wait", Duration.ofSeconds(8));
@@ -195,7 +195,7 @@ public final class Program {
                         return connector
                             .request(new Contracts.BoundPushReq("ST-F3", marker))
                             .metadata("actor-id", actorId)
-                            .await(Contracts.BoundPushRes.class);
+                            .submit(Contracts.BoundPushRes.class).toCompletableFuture().join();
                     } catch (Exception error) {
                         throw new java.util.concurrent.CompletionException(error);
                     }
@@ -211,7 +211,7 @@ public final class Program {
             }
             assertMarkerOrder(actorId, "bound_push", List.of("S1", "S2", "S3", "S4"));
         } finally {
-            connector.close().await();
+            connector.close().submit().toCompletableFuture().join();
         }
     }
 
@@ -394,17 +394,17 @@ public final class Program {
         ZLinkStreamConnector connector = connector(
             Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             Contracts.BindSessionRes bound = connector
                 .request(new Contracts.BindSessionReq("ST-E1", actorId))
-                .await(Contracts.BindSessionRes.class);
+                .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
             require("actor-a".equals(bound.nodeRid()), "ST-E1 session did not bind source actor");
             assertBoundPush(connector, actorId, "ST-E1", "before-transfer", "actor-a");
             require(join(nodeA, actorId, "ST-E1", spotRid, "accept").accepted(),
                 "ST-E1 remote transfer failed");
             assertBoundPush(connector, actorId, "ST-E1", "after-transfer", "actor-b");
         } finally {
-            connector.close().await();
+            connector.close().submit().toCompletableFuture().join();
         }
     }
 
@@ -416,14 +416,14 @@ public final class Program {
         ZLinkStreamConnector connector = connector(
             Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-E2", actorId))
-                .await(Contracts.BindSessionRes.class);
+                .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
             require(!join(nodeA, actorId, "ST-E2", spotRid, "accept").accepted(),
                 "ST-E2 injected transfer failure returned success");
             assertBoundPush(connector, actorId, "ST-E2", "after-failed-transfer", "actor-a");
         } finally {
-            connector.close().await();
+            connector.close().submit().toCompletableFuture().join();
         }
     }
 
@@ -439,8 +439,8 @@ public final class Program {
         Contracts.BoundPushRes reply = connector
             .request(new Contracts.BoundPushReq(scenario, marker))
             .metadata("actor-id", actorId)
-            .await(Contracts.BoundPushRes.class);
-        Contracts.BoundPushNotify notify = connector.await(waiting).payload();
+            .submit(Contracts.BoundPushRes.class).toCompletableFuture().join();
+        Contracts.BoundPushNotify notify = waiting.toCompletableFuture().join().payload();
         require(expectedNode.equals(reply.nodeRid()), "bound push reply used the wrong node");
         require(expectedNode.equals(notify.nodeRid()), "bound push notify used the wrong node");
         require(marker.equals(notify.marker()), "bound push notify marker mismatch");

@@ -23,19 +23,15 @@ public final class CreateGameHttpHandler {
     }
 
     @PostMapping("/games")
-    public CreateGameHttpRes handle(@RequestBody CreateGameHttpReq request) {
-        CreateGameRes game = client.requestToChannel(
+    public java.util.concurrent.CompletionStage<CreateGameHttpRes> handle(@RequestBody CreateGameHttpReq request) {
+        return client.requestToChannel(
                     SampleNames.playChannel(selectOwner(settings.playChannelEndpoints().size())),
                     new CreateGameReq(gameName(request)))
                 .timeout(SampleNames.RequestTimeout)
-            .await(CreateGameRes.class);
-        return new CreateGameHttpRes(
-            game.roomId(),
-            game.gameName(),
-            game.ownerPlayEndpoint(),
-            game.playEndpoints(),
-            game.playNodes(),
-            game.requiredLevel());
+            .submit(CreateGameRes.class)
+            .thenApply(game -> new CreateGameHttpRes(
+                game.roomId(), game.gameName(), game.ownerPlayEndpoint(), game.playEndpoints(),
+                game.playNodes(), game.requiredLevel()));
     }
 
     private static String gameName(CreateGameHttpReq request) {

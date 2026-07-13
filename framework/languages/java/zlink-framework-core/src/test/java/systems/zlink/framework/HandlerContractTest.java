@@ -14,7 +14,6 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRequestCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -31,7 +30,6 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -49,7 +47,6 @@ import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class HandlerContractTest {
@@ -79,7 +76,7 @@ final class HandlerContractTest {
     @Test
     void handlerFilterUsesInvocationContextAndTypedNext() throws NoSuchMethodException {
         Method method = ZLinkHandlerFilter.class.getMethod(
-            "invokeAsync",
+            "invoke",
             ZLinkInvocationContext.class,
             ZLinkNext.class);
 
@@ -87,9 +84,9 @@ final class HandlerContractTest {
     }
 
     @Test
-    void routeRequestCallDoesNotExposeYieldTerminator() throws NoSuchMethodException {
+    void requestCallDoesNotExposeBlockingTerminators() {
         assertFalse(hasMethod(ZLinkRequestCall.class, "yield"));
-        ZLinkYieldRequestCall.class.getMethod("yield", Class.class);
+        assertFalse(hasMethod(ZLinkRequestCall.class, "await"));
     }
 
     @Test
@@ -162,11 +159,7 @@ final class HandlerContractTest {
     @Test
     void sessionDispatchContractsUseFrameworkMessages() throws NoSuchMethodException {
         ZLinkSession.class.getMethod("onDispatch", ZLinkSessionDispatchContext.class, ZLinkMessage.class);
-        ZLinkSessionPacketHandler.class.getMethod(
-            "handle",
-            ZLinkSessionContext.class,
-            ZLinkSessionDispatchContext.class,
-            ZLinkMessage.class);
+        assertClassMissing("systems.zlink.framework.streams.ZLinkSessionPacketHandler");
         ZLinkTypedSessionPacketHandler.class.getMethod(
             "handle",
             ZLinkSessionContext.class,
@@ -179,7 +172,7 @@ final class HandlerContractTest {
                 ZLinkSessionDispatchContext.class,
                 Object.class).getReturnType());
         ZLinkSessionPacketDispatcher.class.getMethod(
-            "tryHandleAsync",
+            "tryHandle",
             ZLinkSessionContext.class,
             ZLinkSessionDispatchContext.class,
             ZLinkMessage.class);
@@ -197,19 +190,6 @@ final class HandlerContractTest {
         assertFalse(hasMethod(ZLinkActorContext.class, "getSpot"));
         assertFalse(hasMethod(ZLinkActorJoinCall.class, "await"));
         assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
-    }
-
-    @Test
-    void frameworkTurnBridgeRejectsUserCreatedCompletionStage() {
-        assertThrows(
-            IllegalStateException.class,
-            () -> ZLinkFrameworkTurns.captureCurrent());
-
-        assertThrows(
-            IllegalStateException.class,
-            () -> ZLinkFrameworkTurns.awaitManagedCompletion(
-                null,
-                CompletableFuture.completedFuture("user-stage")));
     }
 
     @Test

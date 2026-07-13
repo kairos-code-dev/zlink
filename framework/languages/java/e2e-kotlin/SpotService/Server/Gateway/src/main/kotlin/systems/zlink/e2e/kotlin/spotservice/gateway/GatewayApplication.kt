@@ -128,8 +128,7 @@ class GatewayHttpServer(
                 "spot.events",
                 Contracts.MeshMsg(request.marker)
             )
-                .packetName("MeshMsg")
-                .await()
+                .submit()
             evidence.add("spot-publish|rid=${options.rid}|spot=${request.spotRid}|marker=${request.marker}")
             writeJson(
                 exchange,

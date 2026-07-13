@@ -8,7 +8,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJsonArray
 
 internal object SmQ9Scenario {
-    fun run() {
+    suspend fun run() {
         val multiA = Env.get("ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT")
         val multiB = Env.get("ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT")
         val suffix = UUID.randomUUID().toString().replace("-", "")

@@ -321,7 +321,6 @@ final class SessionActorsRuntimeIntegrationTest {
         public CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
             ZLinkMessage request) {
-            System.err.println("ENTRY ADMISSION " + actorId);
             return CompletableFuture.completedFuture(
                 systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept());
         }
@@ -350,7 +349,6 @@ final class SessionActorsRuntimeIntegrationTest {
         public CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
             ZLinkMessage request) {
-            System.err.println("ENTRY SPOT ADMISSION " + actorId);
             return CompletableFuture.completedFuture(
                 systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept());
         }
@@ -482,15 +480,18 @@ final class SessionActorsRuntimeIntegrationTest {
         }
 
         @Override
-        public void onConnected() {
-                    }
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onDisconnected() {
-                    }
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onError(ZLinkStreamError error) {
-                    }
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 }

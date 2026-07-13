@@ -97,18 +97,9 @@ PY
 
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_pub_port play_b_pub_port unused_port1 unused_port2 unused_port3 < <(reserve_ports)
 
-if [[ -n "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
-  redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
-else
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  redis_endpoint="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-kotlin-sample-tictactoe" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+redis_endpoint="127.0.0.1:${redis_port}"
 
 wait_endpoint redis "${redis_endpoint}"
 
@@ -193,5 +184,7 @@ grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${
 grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
 grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
 grep -Eq "tictactoe completed" "${log_dir}/client.log"
+wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
+wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Kotlin"

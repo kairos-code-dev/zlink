@@ -20,20 +20,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/StoreFailure}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/StoreFailure-gradle-cache}"
-if [[ -z "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" && -z "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when no Redis location endpoint is provided." >&2
-    exit 1
-  fi
-  BASE_REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${BASE_REDIS_CONTAINER}"
-  )"
-else
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT}}"
-fi
+zlink_redis_start_scoped_assign BASE_REDIS_CONTAINER redis_port \
+  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
 ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
 export ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS:-500}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:store-failure:${run_id}}"
@@ -98,13 +87,13 @@ cleanup() {
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${REDIS_PROXY_PID}" ]]; then
     kill "${REDIS_PROXY_PID}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${BASE_REDIS_CONTAINER}" ]]; then
-    docker rm -f "${BASE_REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${BASE_REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -202,17 +191,8 @@ PY
     wait_port redis-proxy "127.0.0.1:${proxy_port}"
     return
   fi
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
-    exit 1
-  fi
-  REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${REDIS_CONTAINER}"
-  )"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+  echo "StoreFailure requires the Redis container created by this runner." >&2
+  return 1
 }
 
 pause_redis_container() {
@@ -234,7 +214,7 @@ unpause_redis_container() {
 stop_redis_container() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
     REDIS_CONTAINER=""
   fi
   if [[ -n "${REDIS_PROXY_PID}" ]]; then

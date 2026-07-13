@@ -22,9 +22,9 @@ public final class Program {
         try {
             new BingoClientScenario().run(client1, client2, observer);
         } finally {
-            client1.close().await();
-            client2.close().await();
-            observer.close().await();
+            client1.close().submit().toCompletableFuture().join();
+            client2.close().submit().toCompletableFuture().join();
+            observer.close().submit().toCompletableFuture().join();
         }
         System.out.println("bingo=completed");
     }

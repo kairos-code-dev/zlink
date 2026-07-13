@@ -12,10 +12,11 @@ public final class AuthenticatePlayerHandler
         Messages.AuthenticatePlayerReq,
         Messages.AuthenticatePlayerRes> {
     @Override
-    public Messages.AuthenticatePlayerRes handle(
+    public java.util.concurrent.CompletionStage<Messages.AuthenticatePlayerRes> handle(
         Messages.AuthenticatePlayerReq request,
         ZLinkRequestContext context) {
         String actorId = request.getAccessToken();
-        return BingoMessages.authenticatePlayerRes(true, actorId, actorId, null);
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            BingoMessages.authenticatePlayerRes(true, actorId, actorId, null));
     }
 }

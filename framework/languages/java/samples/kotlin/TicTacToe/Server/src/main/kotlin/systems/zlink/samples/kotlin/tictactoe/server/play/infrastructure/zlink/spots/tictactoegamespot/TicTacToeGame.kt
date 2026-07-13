@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -50,7 +48,6 @@ class TicTacToeGame(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val joinRequest = request.decode(TicTacToeGameJoinReq::class.java)
         require(joinRequest.player.actorId == actorId) {
@@ -62,26 +59,17 @@ class TicTacToeGame(
         return ZLinkSpotActorJoinResponse.accept(TicTacToeGameJoinRes(preview.state))
     }
 
-    override suspend fun onJoinedActorSuspending(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: PlayActor) {
         val joinRequest = pendingJoins.remove(actor.actorId)
             ?: error("joined actor does not have a pending admission")
         join(actor, joinRequest.roomId, joinRequest.player)
     }
 
-    override suspend fun onLeaveActorSuspending(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: PlayActor) {
         players.removeIf { it.actor.actorId == actor.actorId }
     }
 
-    override fun onDisconnectActor(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: PlayActor) {
         actor.markDisconnected()
     }
 
@@ -95,7 +83,7 @@ class TicTacToeGame(
     }
 
     override suspend fun onClosingSuspending() {
-        gameTick?.cancelAsync()?.await()
+        gameTick?.cancel()?.await()
     }
 
     fun markCreated(request: ZLinkMessage) {
@@ -170,9 +158,9 @@ class TicTacToeGame(
             .map { it.actor }
             .filter { excludedActorId == null || it.actorId != excludedActorId }
             .forEach { actor ->
-                ZLinkAwait.await(actor.context().boundSession()
+                actor.context().boundSession()
                     .send(GameStateNotify(state))
-                    .submit())
+                    .submit()
             }
     }
 
@@ -195,18 +183,18 @@ class TicTacToeGame(
             .map { it.actor }
             .filter { it.actorId != joinedActor.actorId }
             .forEach { actor ->
-                ZLinkAwait.await(actor.context().boundSession()
+                actor.context().boundSession()
                     .send(message)
-                    .submit())
+                    .submit()
             }
     }
 
     private data class PlayerSlot(var actor: PlayActor, val mark: String)
 
-    fun leaveGame(actor: PlayActor, roomId: String) {
+    suspend fun leaveGame(actor: PlayActor, roomId: String) {
         check(this.roomId == roomId) { "leave request room id does not match game room" }
         actor.markForDestroyAfterRoomLeave()
-        ZLinkAwait.await(context.leaveActor(actor))
+        context.leaveActor(actor).await()
     }
 
     private suspend fun publishWinMilestone(
@@ -232,6 +220,6 @@ class TicTacToeGame(
                     wins = wins,
                 ),
             )
-            .await()
+            .submit()
     }
 }

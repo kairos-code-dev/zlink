@@ -5,9 +5,6 @@ package systems.zlink.framework.kotlin
 
 import java.time.Duration
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.locations.ActorSpotRefResolver
-import systems.zlink.framework.locations.SpotRef
-import systems.zlink.framework.locations.SpotRefResolver
 import systems.zlink.framework.locations.ZLinkActorLocation
 import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkActorLocationKey
@@ -39,146 +36,144 @@ import systems.zlink.framework.locations.ZLinkSpotLocation
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 import systems.zlink.framework.locations.ZLinkSpotLocationKey
 import systems.zlink.framework.locations.ZLinkSpotLocationStore
+import systems.zlink.framework.spots.ActorSpotHandleResolver
+import systems.zlink.framework.spots.SpotHandle
+import systems.zlink.framework.spots.SpotHandleResolver
 
 suspend fun ZLinkPeerLocationStore.updatePeer(
     peer: ZLinkPeerLocation,
     intent: ZLinkLocationWriteIntent,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(updatePeerAsync(peer, intent))
+    awaitFrameworkStage(this.updatePeer(peer, intent))
 
 suspend fun ZLinkPeerLocationStore.removePeer(
     key: ZLinkPeerLocationKey,
     owner: ZLinkLocationOwnerToken,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(removePeerAsync(key, owner))
+    awaitFrameworkStage(this.removePeer(key, owner))
 
 suspend fun ZLinkPeerLocationStore.listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    awaitFrameworkStage(listPeerLocationsAsync(filter))
+    awaitFrameworkStage(this.listPeerLocations(filter))
 
 suspend fun ZLinkSpotLocationStore.updateSpot(
     spot: ZLinkSpotLocation,
     intent: ZLinkLocationWriteIntent,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(updateSpotAsync(spot, intent))
+    awaitFrameworkStage(this.updateSpot(spot, intent))
 
 suspend fun ZLinkSpotLocationStore.removeSpot(
     key: ZLinkSpotLocationKey,
     owner: ZLinkLocationOwnerToken,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(removeSpotAsync(key, owner))
+    awaitFrameworkStage(this.removeSpot(key, owner))
 
 suspend fun ZLinkSpotLocationStore.resolveSpot(key: ZLinkSpotLocationKey): ZLinkSpotLocation? =
-    awaitFrameworkStage(resolveSpotAsync(key))
+    awaitFrameworkStage(this.resolveSpot(key))
 
 suspend fun ZLinkSpotLocationStore.listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkSpotLocation> =
-    awaitFrameworkStage(listSpotLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listSpotLocations(filter, page))
 
 suspend fun ZLinkActorLocationStore.updateActor(
     actor: ZLinkActorLocation,
     intent: ZLinkLocationWriteIntent,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(updateActorAsync(actor, intent))
+    awaitFrameworkStage(this.updateActor(actor, intent))
 
 suspend fun ZLinkActorLocationStore.removeActor(
     key: ZLinkActorLocationKey,
     owner: ZLinkLocationOwnerToken,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(removeActorAsync(key, owner))
+    awaitFrameworkStage(this.removeActor(key, owner))
 
 suspend fun ZLinkActorLocationStore.resolveActor(key: ZLinkActorLocationKey): ZLinkActorLocation? =
-    awaitFrameworkStage(resolveActorAsync(key))
+    awaitFrameworkStage(this.resolveActor(key))
 
 suspend fun ZLinkActorLocationStore.listActorLocations(
     filter: ZLinkActorLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkActorLocation> =
-    awaitFrameworkStage(listActorLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listActorLocations(filter, page))
 
 suspend fun ZLinkRouteLocationStore.updateRoute(
     route: ZLinkRouteLocation,
     intent: ZLinkLocationWriteIntent,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(updateRouteAsync(route, intent))
+    awaitFrameworkStage(this.updateRoute(route, intent))
 
 suspend fun ZLinkRouteLocationStore.removeRoute(
     key: ZLinkRouteLocationKey,
     owner: ZLinkLocationOwnerToken,
 ): ZLinkLocationWriteResult =
-    awaitFrameworkStage(removeRouteAsync(key, owner))
+    awaitFrameworkStage(this.removeRoute(key, owner))
 
 suspend fun ZLinkRouteLocationStore.resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation? =
-    awaitFrameworkStage(resolveRouteAsync(key))
+    awaitFrameworkStage(this.resolveRoute(key))
 
 suspend fun ZLinkRouteLocationStore.listRouteLocations(
     filter: ZLinkRouteLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkRouteLocation> =
-    awaitFrameworkStage(listRouteLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listRouteLocations(filter, page))
 
 suspend fun ZLinkLocationStore.renewOwnerLease(
     ownerId: String,
     nodeRid: RoutingId,
     leaseTtl: Duration,
 ): ZLinkOwnerLeaseRenewal =
-    awaitFrameworkStage(renewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl))
+    awaitFrameworkStage(this.renewOwnerLease(ownerId, nodeRid, leaseTtl))
 
 suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): Boolean =
-    awaitFrameworkStage(removeOwnerLeaseAsync(ownerId))
+    awaitFrameworkStage(this.removeOwnerLease(ownerId))
 
 suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long =
-    awaitFrameworkStage(removeAllByOwnerAsync(ownerId))
+    awaitFrameworkStage(this.removeAllByOwner(ownerId))
 
-suspend fun ZLinkLocationStore.listOwnerLeases(): ZLinkOwnerLeaseSnapshot =
-    awaitFrameworkStage(listOwnerLeasesAsync())
+suspend fun ZLinkLocationStore.awaitOwnerLeases(): ZLinkOwnerLeaseSnapshot =
+    awaitFrameworkStage(this.listOwnerLeases())
 
 suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    awaitFrameworkStage(listLivePeersAsync(filter))
+    awaitFrameworkStage(this.listLivePeers(filter))
 
-suspend fun SpotRefResolver.resolveSpotRef(
-    meshName: String,
-    spotRid: RoutingId,
-): SpotRef? =
-    awaitFrameworkStage(resolveSpotRefAsync(meshName, spotRid))
+suspend fun SpotHandleResolver.resolveSpotHandle(spotRid: RoutingId): SpotHandle? =
+    awaitFrameworkStage(this.resolveSpotHandle(spotRid)).orElse(null)
 
-suspend fun ActorSpotRefResolver.resolveActorSpotRef(
-    actorId: String,
-): SpotRef? =
-    awaitFrameworkStage(resolveActorSpotRefAsync(actorId))
+suspend fun ActorSpotHandleResolver.resolveActorSpotHandle(actorId: String): SpotHandle? =
+    awaitFrameworkStage(this.resolveActorSpotHandle(actorId)).orElse(null)
 
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus =
-    awaitFrameworkStage(getStatusAsync())
+    awaitFrameworkStage(getStatus())
 
 suspend fun ZLinkLocationRuntimeQuery.listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    awaitFrameworkStage(listPeerLocationsAsync(filter))
+    awaitFrameworkStage(this.listPeerLocations(filter))
 
 suspend fun ZLinkLocationRuntimeQuery.listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkSpotLocation> =
-    awaitFrameworkStage(listSpotLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listSpotLocations(filter, page))
 
 suspend fun ZLinkLocationRuntimeQuery.listActorLocations(
     filter: ZLinkActorLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkActorLocation> =
-    awaitFrameworkStage(listActorLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listActorLocations(filter, page))
 
 suspend fun ZLinkLocationRuntimeQuery.listRouteLocations(
     filter: ZLinkRouteLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkRouteLocation> =
-    awaitFrameworkStage(listRouteLocationsAsync(filter, page))
+    awaitFrameworkStage(this.listRouteLocations(filter, page))
 
 suspend fun ZLinkLocationRuntimeQuery.listTopology(
     filter: ZLinkLocationTopologyFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkLocationTopologyEntry> =
-    awaitFrameworkStage(listTopologyAsync(filter, page))
+    awaitFrameworkStage(this.listTopology(filter, page))
 
 suspend fun ZLinkLocationRuntimeQuery.listServiceSummaries(
     filter: ZLinkLocationServiceSummaryFilter,
 ): List<ZLinkLocationServiceSummary> =
-    awaitFrameworkStage(listServiceSummariesAsync(filter))
+    awaitFrameworkStage(this.listServiceSummaries(filter))

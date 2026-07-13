@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -31,7 +32,7 @@ function Cleanup {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer *> $null
+        Remove-ZlinkSampleRedis $RedisContainer
     }
 }
 
@@ -105,15 +106,9 @@ try {
     $PlayStreamPort = $ports[2]
     $PlayChannelPort = $ports[3]
     $SpotPort = $ports[4]
-    $RedisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
-    if (-not $RedisEndpoint) {
-        $RedisContainer = "zlink-tictactoe-java-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7-alpine *> $null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
-        }
-        $RedisEndpoint = (& docker port $RedisContainer 6379/tcp) -replace '.*:([0-9]+)$', '127.0.0.1:$1'
-    }
+    $redis = Start-ZlinkSampleRedis "zlink-redis-java-sample-tictactoe" "redis:7-alpine"
+    $RedisContainer = $redis.ContainerId
+    $RedisEndpoint = $redis.Endpoint
     $RedisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) {
         $env:TICTACTOE_REDIS_KEY_PREFIX
     } else {

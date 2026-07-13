@@ -3,13 +3,12 @@ package systems.zlink.framework.runtime.spots;
 import java.util.function.Supplier;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 final class ZLinkSpotOutboundScope {
-    private final ThreadLocal<DefaultSpotOutbound> current = new ThreadLocal<>();
     private final ZLinkSpotOutbound ambient = new ZLinkAmbientSpotOutbound(this);
 
     ZLinkSpotOutbound ambient() {
@@ -17,21 +16,17 @@ final class ZLinkSpotOutboundScope {
     }
 
     <T> T run(DefaultSpotOutbound outbound, Supplier<T> action) {
-        DefaultSpotOutbound previous = current.get();
-        current.set(outbound);
-        try {
+        try (systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.Scope ignored =
+                 systems.zlink.framework.runtime.internal.handlers
+                     .ZLinkSuspendInvocationContext.enterSpotOutbound(outbound)) {
             return action.get();
-        } finally {
-            if (previous == null) {
-                current.remove();
-            } else {
-                current.set(previous);
-            }
         }
     }
 
     DefaultSpotOutbound requireCurrent() {
-        DefaultSpotOutbound outbound = current.get();
+        DefaultSpotOutbound outbound = (DefaultSpotOutbound) systems.zlink.framework.runtime
+            .internal.handlers.ZLinkSuspendInvocationContext.currentSpotOutbound();
         if (outbound == null) {
             throw new ZLinkConfigurationException(
                 "ZLinkSpotOutbound can only be used inside an active Spot callback");
@@ -54,7 +49,7 @@ final class ZLinkAmbientSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToSpot(SpotHandle spot, Object request) {
+    public ZLinkRequestCall requestToSpot(SpotHandle spot, Object request) {
         return scope.requireCurrent().requestToSpot(spot, request);
     }
 
@@ -69,7 +64,7 @@ final class ZLinkAmbientSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToChannel(String channelName, Object request) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object request) {
         return scope.requireCurrent().requestToChannel(channelName, request);
     }
 }

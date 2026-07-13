@@ -9,9 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,12 +34,15 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
+import systems.zlink.framework.spots.SpotHandleResolver;
 
 final class SpotActorTransferContractTest {
     private static final RoutingId SOURCE_NODE = RoutingId.from("contract-source-node");
@@ -52,6 +57,10 @@ final class SpotActorTransferContractTest {
         EVENTS.clear();
         ACTORS.clear();
         ContractTargetSpot.joinRelease = CompletableFuture.completedFuture(null);
+        ContractEntrySpot.joinRelease = CompletableFuture.completedFuture(null);
+        ContractSourceSpot.handles.set(null);
+        ContractSourceSpot.contexts.set(null);
+        ContractTargetSpot.handles.set(null);
     }
 
     @Test
@@ -88,10 +97,11 @@ final class SpotActorTransferContractTest {
             actor.context().joinSpot(sourceRoom, "source").submit().toCompletableFuture().join();
             EVENTS.clear();
 
-            assertThrows(
-                CompletionException.class,
-                () -> actor.context().joinSpot(RoutingId.from("local-target"), "reject")
-                    .submit(String.class).toCompletableFuture().join());
+            var rejected = actor.context().joinSpot(RoutingId.from("local-target"), "reject")
+                .submit(String.class).toCompletableFuture().join();
+            assertInstanceOf(
+                systems.zlink.framework.actors.ZLinkActorJoinResult.Rejected.class,
+                rejected);
 
             assertEquals(Optional.of(sourceRoom), actor.context().spotRid());
             assertEquals(List.of("target-admission"), EVENTS);
@@ -177,6 +187,72 @@ final class SpotActorTransferContractTest {
     }
 
     @Test
+    void routedLeaveReturnsToCurrentNodeEntryAndWaitsForJoinedCallback() throws Exception {
+        try (Harness harness = Harness.start(true)) {
+            RoutingId sourceRoom = RoutingId.from("source-room");
+            harness.createSourceSpot(ContractSourceSpot.class, sourceRoom);
+            harness.createTargetSpot(RoutingId.from("target-room"));
+            ContractActor actor = harness.createTargetActor("remote-leave", "stateful", 29);
+            harness.awaitSourceSpotLocation(sourceRoom);
+            actor.context().joinSpot(sourceRoom, "source")
+                .timeout(Duration.ofSeconds(3))
+                .submit(String.class)
+                .toCompletableFuture()
+                .get(4, TimeUnit.SECONDS);
+            ContractActor sourceActor = harness.currentActor("remote-leave");
+            EVENTS.clear();
+            ContractEntrySpot.joinRelease = new CompletableFuture<>();
+
+            CompletableFuture<Void> leaving = ContractSourceSpot.contexts.get()
+                .leaveActor(sourceActor)
+                .toCompletableFuture();
+            awaitEventWhilePending("target-entry-admission", leaving);
+            assertFalse(leaving.isDone());
+
+            ContractEntrySpot.joinRelease.complete(null);
+            try {
+                leaving.get(4, TimeUnit.SECONDS);
+            } catch (java.util.concurrent.TimeoutException error) {
+                throw new AssertionError("leave did not complete; events=" + EVENTS, error);
+            }
+            assertOrder(
+                "target-entry-admission",
+                "source-leave",
+                "target-entry-joined");
+        }
+    }
+
+    @Test
+    void nativeLeaveReturnsToLocalEntryAndWaitsForJoinedCallback() throws Exception {
+        try (Harness harness = Harness.start(false)) {
+            RoutingId sourceRoom = RoutingId.from("source-room");
+            ContractActor actor = harness.createSourceActor("native-leave", "stateful", 31);
+            harness.createSourceSpot(ContractSourceSpot.class, sourceRoom);
+            actor.context().joinSpot(sourceRoom, "source")
+                .submit(String.class).toCompletableFuture().get(4, TimeUnit.SECONDS);
+            EVENTS.clear();
+            ContractEntrySpot.joinRelease = new CompletableFuture<>();
+
+            CompletableFuture<Void> leaving = ContractSourceSpot.contexts.get()
+                .leaveActor(actor)
+                .toCompletableFuture();
+            awaitEventWhilePending("target-entry-admission", leaving);
+            assertFalse(leaving.isDone());
+
+            ContractEntrySpot.joinRelease.complete(null);
+            try {
+                leaving.get(4, TimeUnit.SECONDS);
+            } catch (java.util.concurrent.TimeoutException error) {
+                throw new AssertionError("native leave did not complete; events=" + EVENTS, error);
+            }
+            assertOrder(
+                "source-leave",
+                "target-entry-admission",
+                "target-entry-joined");
+        }
+    }
+
+    @Test
     void remoteMissingAdapterUsesFactoryAndEmptyState() throws Exception {
         try (Harness harness = Harness.start(true)) {
             ContractActor transferred = harness.remoteJoin("remote-default", "stateless", 0);
@@ -218,10 +294,66 @@ final class SpotActorTransferContractTest {
         }
     }
 
+    @Test
+    void drainSelectsServingTargetAndTransfersActorState() throws Exception {
+        try (Harness harness = Harness.start(true)) {
+            ContractActor actor = harness.createSourceActor("drain-handoff", "stateful", 73);
+            RoutingId sourceRoom = RoutingId.from("drain-source-room");
+            harness.createSourceSpot(ContractSourceSpot.class, sourceRoom);
+            harness.awaitSpotLocation(TARGET_NODE);
+            actor.context().joinSpot(sourceRoom, "source").submit().toCompletableFuture().join();
+            EVENTS.clear();
+
+            systems.zlink.framework.monitoring.ZLinkDrainResult result = harness.source
+                .drain(Duration.ofSeconds(12))
+                .toCompletableFuture()
+                .get(13, TimeUnit.SECONDS);
+
+            assertInstanceOf(
+                systems.zlink.framework.monitoring.Drained.class,
+                result,
+                () -> "result=" + result + ", events=" + EVENTS + ", actors=" + ACTORS.keySet());
+            assertEquals(73, harness.targetActor("drain-handoff").stateVersion);
+            assertOrder("transfer-out", "source-leave", "transfer-in", "target-entry-joined");
+        }
+    }
+
+    @Test
+    void drainWithoutServingTargetKeepsActorUntilDeadline() throws Exception {
+        try (Harness harness = Harness.start(false)) {
+            ContractActor actor = harness.createSourceActor("drain-zero-target", "stateful", 91);
+
+            systems.zlink.framework.monitoring.ZLinkDrainResult result = harness.source
+                .drain(Duration.ofMillis(100))
+                .toCompletableFuture()
+                .get(3, TimeUnit.SECONDS);
+
+            systems.zlink.framework.monitoring.ForceStopped forced = assertInstanceOf(
+                systems.zlink.framework.monitoring.ForceStopped.class, result);
+            assertEquals(
+                systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED,
+                forced.reason());
+            assertEquals(91, actor.stateVersion);
+        }
+    }
+
     private static void awaitEvent(String event) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (!EVENTS.contains(event) && System.nanoTime() < deadline) {
             Thread.onSpinWait();
+        }
+        assertTrue(EVENTS.contains(event), () -> "missing event " + event + " in " + EVENTS);
+    }
+
+    private static void awaitEventWhilePending(
+        String event,
+        CompletableFuture<?> operation) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (!EVENTS.contains(event) && !operation.isDone() && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        if (operation.isDone() && !EVENTS.contains(event)) {
+            operation.get(1, TimeUnit.SECONDS);
         }
         assertTrue(EVENTS.contains(event), () -> "missing event " + event + " in " + EVENTS);
     }
@@ -303,8 +435,16 @@ final class SpotActorTransferContractTest {
     }
 
     public static final class ContractSourceSpot implements ZLinkSpot<ContractActor> {
+        static final java.util.concurrent.atomic.AtomicReference<SpotHandleResolver> handles =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        static final java.util.concurrent.atomic.AtomicReference<ZLinkSpotContext> contexts =
+            new java.util.concurrent.atomic.AtomicReference<>();
         private final ZLinkSpotContext context;
-        public ContractSourceSpot(ZLinkSpotContext context) { this.context = context; }
+        public ContractSourceSpot(ZLinkSpotContext context, SpotHandleResolver handleResolver) {
+            this.context = context;
+            handles.set(handleResolver);
+            contexts.set(context);
+        }
         @Override public ZLinkSpotContext context() { return context; }
         @Override public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId, ZLinkMessage request) {
@@ -321,8 +461,13 @@ final class SpotActorTransferContractTest {
 
     public static final class ContractTargetSpot implements ZLinkSpot<ContractActor> {
         static CompletableFuture<Void> joinRelease = CompletableFuture.completedFuture(null);
+        static final java.util.concurrent.atomic.AtomicReference<SpotHandleResolver> handles =
+            new java.util.concurrent.atomic.AtomicReference<>();
         private final ZLinkSpotContext context;
-        public ContractTargetSpot(ZLinkSpotContext context) { this.context = context; }
+        public ContractTargetSpot(ZLinkSpotContext context, SpotHandleResolver handleResolver) {
+            this.context = context;
+            handles.set(handleResolver);
+        }
         @Override public ZLinkSpotContext context() { return context; }
         @Override public void configure() {
             context.handlers().addHandler(ProbeHandler.class);
@@ -351,6 +496,35 @@ final class SpotActorTransferContractTest {
         }
     }
 
+    public static final class ContractEntrySpot implements ZLinkEntrySpot<ContractActor> {
+        static CompletableFuture<Void> joinRelease = CompletableFuture.completedFuture(null);
+        private final ZLinkEntrySpotContext context;
+
+        public ContractEntrySpot(ZLinkEntrySpotContext context) {
+            this.context = context;
+        }
+
+        @Override public ZLinkEntrySpotContext context() { return context; }
+
+        @Override
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            EVENTS.add("target-entry-admission");
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        }
+
+        @Override
+        public CompletionStage<Void> onJoinedActor(ContractActor actor) {
+            return joinRelease.thenRun(() -> EVENTS.add("target-entry-joined"));
+        }
+
+        @Override
+        public CompletionStage<Void> onLeaveActor(ContractActor actor) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     public record ProbeRequest(String marker) { }
     public record ProbeReply(String marker, String spotRid) { }
 
@@ -360,13 +534,14 @@ final class SpotActorTransferContractTest {
         ProbeRequest,
         ProbeReply> {
         @Override
-        public ProbeReply handle(
+        public CompletionStage<ProbeReply> handle(
             ContractTargetSpot spot,
             ContractActor actor,
             ZLinkSpotActorRequestContext context,
             ProbeRequest request) {
             EVENTS.add("target-packet");
-            return new ProbeReply(request.marker(), spot.context().spotRid().toString());
+            return CompletableFuture.completedFuture(
+                new ProbeReply(request.marker(), spot.context().spotRid().toString()));
         }
     }
 
@@ -374,37 +549,45 @@ final class SpotActorTransferContractTest {
     private static final class Harness implements AutoCloseable {
         private ZLinkFrameworkRuntime source;
         private final ZLinkFrameworkRuntime target;
+        private final ZLinkInMemoryLocationStore locations;
 
-        private Harness(ZLinkFrameworkRuntime source, ZLinkFrameworkRuntime target) {
+        private Harness(
+            ZLinkFrameworkRuntime source,
+            ZLinkFrameworkRuntime target,
+            ZLinkInMemoryLocationStore locations) {
             this.source = source;
             this.target = target;
+            this.locations = locations;
         }
 
         static Harness start(boolean remote) throws IOException {
-            String sourceSpotEndpoint = tcpEndpoint();
+            ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+            List<String> endpoints = tcpEndpoints(remote ? 4 : 1);
+            String sourceSpotEndpoint = endpoints.get(0);
             DefaultZLinkFrameworkOptions sourceOptions = options(
-                SOURCE_NODE, sourceSpotEndpoint, true);
+                SOURCE_NODE, sourceSpotEndpoint, true, locations);
             if (!remote) {
                 return new Harness(
                     RuntimeTestSupport.startFramework(
                         sourceOptions,
                         new ZLinkJavaBackendAdapterFactory()),
-                    null);
+                    null,
+                    locations);
             }
-            String targetSpotEndpoint = tcpEndpoint();
-            String sourceRouteEndpoint = tcpEndpoint();
-            String targetRouteEndpoint = tcpEndpoint();
-            var sourceRoute = sourceOptions.addRouteMeshChannel("contract-route");
+            String targetSpotEndpoint = endpoints.get(1);
+            String sourceRouteEndpoint = endpoints.get(2);
+            String targetRouteEndpoint = endpoints.get(3);
+            var sourceRoute = sourceOptions.addRouteMeshChannel("contract-mesh");
             sourceRoute.enableServer(sourceRouteEndpoint);
             sourceRoute.enableClient(targetRouteEndpoint);
-            sourceRoute.setRoutingId(RoutingId.from("contract-source-route"));
+            sourceRoute.setRoutingId(SOURCE_NODE);
 
             DefaultZLinkFrameworkOptions targetOptions = options(
-                TARGET_NODE, targetSpotEndpoint, false);
-            var targetRoute = targetOptions.addRouteMeshChannel("contract-route");
+                TARGET_NODE, targetSpotEndpoint, false, locations);
+            var targetRoute = targetOptions.addRouteMeshChannel("contract-mesh");
             targetRoute.enableServer(targetRouteEndpoint);
             targetRoute.enableClient(sourceRouteEndpoint);
-            targetRoute.setRoutingId(TARGET_ROUTE);
+            targetRoute.setRoutingId(TARGET_NODE);
 
             ZLinkFrameworkRuntime source = RuntimeTestSupport.startFramework(
                 sourceOptions,
@@ -413,7 +596,10 @@ final class SpotActorTransferContractTest {
                 ZLinkFrameworkRuntime target = RuntimeTestSupport.startFramework(
                     targetOptions,
                     new ZLinkJavaBackendAdapterFactory());
-                return new Harness(source, target);
+                Harness harness = new Harness(source, target, locations);
+                harness.awaitTargetPeer();
+                harness.awaitSpotRow(TARGET_NODE);
+                return harness;
             } catch (RuntimeException error) {
                 source.close();
                 throw error;
@@ -423,9 +609,12 @@ final class SpotActorTransferContractTest {
         private static DefaultZLinkFrameworkOptions options(
             RoutingId nodeRid,
             String spotEndpoint,
-            boolean sourceNode) {
+            boolean sourceNode,
+            ZLinkInMemoryLocationStore locations) {
             DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-            options.addLocationStore(new ZLinkInMemoryLocationStore());
+            options.addLocationStore(locations);
+            options.configureLocations().setSpotRouterChannel(
+                "contract-mesh", "contract-mesh");
             var node = options.addSpotMesh("contract-mesh");
             node.enableRouter(spotEndpoint).setRoutingId(nodeRid);
             node.addActorFactory("stateful", ContractActorFactory.class);
@@ -433,8 +622,11 @@ final class SpotActorTransferContractTest {
             node.addActorFactory("empty", ContractActorFactory.class);
             node.addActorTransferAdapter("empty", EmptyAdapter.class);
             node.addActorFactory("stateless", ContractActorFactory.class);
+            node.addEntrySpot(ContractEntrySpot.class);
             node.addSpotFactory(ContractTargetSpot.class);
             if (sourceNode) {
+                node.useDrainPolicy(
+                    systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE);
                 node.addSpotFactory(ContractSourceSpot.class);
             }
             return options;
@@ -448,12 +640,90 @@ final class SpotActorTransferContractTest {
             return actor;
         }
 
+        ContractActor createTargetActor(String actorId, String actorType, int state) {
+            ContractActor actor = (ContractActor) ((ZLinkActorRuntime) target.actorManager())
+                .getOrCreateManagedActor(actorId, actorType)
+                .toCompletableFuture().join();
+            actor.stateVersion = state;
+            return actor;
+        }
+
+        ContractActor currentActor(String actorId) {
+            return Optional.ofNullable(ACTORS.get(actorId)).orElseThrow();
+        }
+
         void createSourceSpot(Class<? extends ZLinkSpot<?>> type, RoutingId rid) {
             source.spotManager().create(type, rid).toCompletableFuture().join();
         }
 
         void createTargetSpot(RoutingId rid) {
             target.spotManager().create(ContractTargetSpot.class, rid).toCompletableFuture().join();
+            awaitSpotLocation(rid);
+        }
+
+        private void awaitSpotLocation(RoutingId spotRid) {
+            var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
+                "contract-mesh",
+                spotRid);
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (System.nanoTime() < deadline) {
+                if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
+                    SpotHandleResolver resolver = ContractSourceSpot.handles.get();
+                    if (resolver != null && resolver.resolveSpotHandle(spotRid)
+                        .toCompletableFuture().join().isPresent()) {
+                        return;
+                    }
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("spot location was not published: " + spotRid);
+        }
+
+        private void awaitSourceSpotLocation(RoutingId spotRid) {
+            var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
+                "contract-mesh", spotRid);
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (System.nanoTime() < deadline) {
+                if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
+                    SpotHandleResolver resolver = ContractTargetSpot.handles.get();
+                    if (resolver != null && resolver.resolveSpotHandle(spotRid)
+                        .toCompletableFuture().join().isPresent()) {
+                        return;
+                    }
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("source spot location was not published: " + spotRid);
+        }
+
+        private void awaitSpotRow(RoutingId spotRid) {
+            var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
+                "contract-mesh", spotRid);
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (System.nanoTime() < deadline) {
+                if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
+                    return;
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("spot location was not published: " + spotRid);
+        }
+
+        private void awaitTargetPeer() {
+            var filter = new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
+                systems.zlink.framework.locations.ZLinkLocationAutoConnectType.SPOT_MESH,
+                "contract-mesh",
+                systems.zlink.framework.locations.ZLinkLocationRole.SPOT,
+                TARGET_NODE,
+                null);
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (System.nanoTime() < deadline) {
+                if (!locations.listPeerLocations(filter).toCompletableFuture().join().isEmpty()) {
+                    return;
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("target peer location was not published");
         }
 
         ContractActor prepareRemote(String actorId, String actorType, int state) {
@@ -497,9 +767,19 @@ final class SpotActorTransferContractTest {
         }
     }
 
-    private static String tcpEndpoint() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return "tcp://127.0.0.1:" + socket.getLocalPort();
+    private static List<String> tcpEndpoints(int count) throws IOException {
+        List<ServerSocket> sockets = new ArrayList<>(count);
+        try {
+            for (int index = 0; index < count; index++) {
+                sockets.add(new ServerSocket(0));
+            }
+            return sockets.stream()
+                .map(socket -> "tcp://127.0.0.1:" + socket.getLocalPort())
+                .toList();
+        } finally {
+            for (ServerSocket socket : sockets) {
+                socket.close();
+            }
         }
     }
 }

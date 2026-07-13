@@ -2,7 +2,8 @@ package systems.zlink.e2e.kotlin.spotservice.session.handlers
 
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.streams.ZLinkSession
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
@@ -13,33 +14,31 @@ class ScenarioSession(
     private val context: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
     private val evidence: ScenarioState
-) : ZLinkSession {
+) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
-    override fun onConnected() {
+    override suspend fun onConnectedSuspending() {
         evidence.record("StreamConnected", "session", context.sessionId())
     }
 
-    override fun onDisconnected() {
+    override suspend fun onDisconnectedSuspending() {
         evidence.record("StreamDisconnected", "session", context.sessionId())
     }
 
-    override fun onError(error: ZLinkStreamError) {
+    override suspend fun onErrorSuspending(error: ZLinkStreamError) {
         evidence.record("StreamError", "session", error.error().name)
     }
 
-    override fun onDispatch(
+    override suspend fun onDispatchSuspending(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage
     ) {
         evidence.record("StreamInbound", "session", dispatch.packetName())
-        val handled = handlers.tryHandleAsync(context, dispatch, payload)
-            .toCompletableFuture()
-            .join()
+        val handled = handlers.tryHandle(context, dispatch, payload).await()
         if (handled) {
             return
         }
-        requireActor(dispatch).relay(payload).toCompletableFuture().join()
+        requireActor(dispatch).relay(dispatch, payload).await()
     }
 
     private fun requireActor(dispatch: ZLinkSessionDispatchContext): ZLinkSessionActor {

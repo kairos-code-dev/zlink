@@ -20,12 +20,12 @@ private object FilterOrderValues {
 class FirstOrderFilter(
     private val state: ScenarioState,
 ) : ZLinkHandlerFilter {
-    override fun <T : Any?> invokeAsync(
+    override fun <T : Any?> invoke(
         context: ZLinkInvocationContext,
         next: ZLinkNext<T>,
     ): CompletionStage<T> {
         record(context, "first-before")
-        return next.invokeAsync().whenComplete { _, _ -> record(context, "first-after") }
+        return next.invoke().whenComplete { _, _ -> record(context, "first-after") }
     }
 
     private fun record(context: ZLinkInvocationContext, step: String) {
@@ -38,12 +38,12 @@ class FirstOrderFilter(
 class SecondOrderFilter(
     private val state: ScenarioState,
 ) : ZLinkHandlerFilter {
-    override fun <T : Any?> invokeAsync(
+    override fun <T : Any?> invoke(
         context: ZLinkInvocationContext,
         next: ZLinkNext<T>,
     ): CompletionStage<T> {
         record(context, "second-before")
-        return next.invokeAsync().whenComplete { _, _ -> record(context, "second-after") }
+        return next.invoke().whenComplete { _, _ -> record(context, "second-after") }
     }
 
     private fun record(context: ZLinkInvocationContext, step: String) {

@@ -11,7 +11,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpRes;
 import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
-import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameMsg;
+import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneReq;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
@@ -37,9 +37,9 @@ public final class TicTacToeClientScenario {
         ZLinkStreamConnector observer = playerConnector(observerEndpoint);
 
         try {
-            host.connect().await();
-            guest.connect().await();
-            observer.connect().await();
+            host.connect().submit().toCompletableFuture().join();
+            guest.connect().submit().toCompletableFuture().join();
+            observer.connect().submit().toCompletableFuture().join();
 
             ensure(game.roomId() != null && !game.roomId().isBlank());
             ensure(game.ownerPlayEndpoint() != null && !game.ownerPlayEndpoint().isBlank());
@@ -48,30 +48,30 @@ public final class TicTacToeClientScenario {
 
             AuthenticateRes hostAuth = host
                 .request(new AuthenticateReq(options.xActorId()))
-                .await(AuthenticateRes.class);
+                .submit(AuthenticateRes.class).toCompletableFuture().join();
             ensure(options.xActorId().equals(hostAuth.player().actorId()));
             ensure(hostAuth.player().wins() == 99);
 
             AuthenticateRes guestAuth = guest
                 .request(new AuthenticateReq(options.oActorId()))
-                .await(AuthenticateRes.class);
+                .submit(AuthenticateRes.class).toCompletableFuture().join();
             ensure(options.oActorId().equals(guestAuth.player().actorId()));
             ensure(!guestAuth.player().actorId().equals(hostAuth.player().actorId()));
 
             AuthenticateRes observerAuth = observer
                 .request(new AuthenticateReq(options.observerActorId()))
-                .await(AuthenticateRes.class);
+                .submit(AuthenticateRes.class).toCompletableFuture().join();
             ensure(options.observerActorId().equals(observerAuth.player().actorId()));
             ObserveMilestoneRes subscribed = observer
                 .request(new ObserveMilestoneReq())
-                .await(ObserveMilestoneRes.class);
+                .submit(ObserveMilestoneRes.class).toCompletableFuture().join();
             ensure(subscribed.subscribed());
             System.out.println("observer-connected endpoint=" + observerEndpoint);
             System.out.println("observer-subscription=verified subscribed=" + subscribed.subscribed());
 
             JoinGameRes hostJoin = host
                 .request(new JoinGameReq(game.roomId()))
-                .await(JoinGameRes.class);
+                .submit(JoinGameRes.class).toCompletableFuture().join();
             ensure(hostJoin.state().roomId().equals(game.roomId()));
             ensure("WaitingForPlayers".equals(hostJoin.state().status()));
             ensure(options.xActorId().equals(hostJoin.state().xActorId()));
@@ -91,17 +91,17 @@ public final class TicTacToeClientScenario {
 
             JoinGameRes guestJoin = guest
                 .request(new JoinGameReq(game.roomId()))
-                .await(JoinGameRes.class);
+                .submit(JoinGameRes.class).toCompletableFuture().join();
             ensure(guestJoin.state().roomId().equals(game.roomId()));
             ensure("InProgress".equals(guestJoin.state().status()));
             ensure(options.oActorId().equals(guestJoin.state().oActorId()));
 
-            PlayerJoinedNotify guestJoinNotify = host.await(hostSawGuestJoin).payload();
+            PlayerJoinedNotify guestJoinNotify = hostSawGuestJoin.toCompletableFuture().join().payload();
             ensure("O".equals(guestJoinNotify.mark()));
             ensure("InProgress".equals(guestJoinNotify.state().status()));
             ensure(guest.receivedCount("PlayerJoinedNotify") == 0);
 
-            GameStateNotify gameStart = host.await(hostSawGameStart).payload();
+            GameStateNotify gameStart = hostSawGameStart.toCompletableFuture().join().payload();
             ensure("X".equals(gameStart.state().nextTurn()));
 
             var guestSawHostMove1 = guest
@@ -112,13 +112,13 @@ public final class TicTacToeClientScenario {
                 .submit(GameStateNotify.class);
             PlaceMarkRes hostMove1 = host
                 .request(new PlaceMarkReq(0))
-                .await(PlaceMarkRes.class);
+                .submit(PlaceMarkRes.class).toCompletableFuture().join();
             ensure("X........".equals(hostMove1.state().board()));
             ensure("O".equals(hostMove1.state().nextTurn()));
             ensure(options.xActorId().equals(hostMove1.state().lastMoveActorId()));
             ensure(Integer.valueOf(0).equals(hostMove1.state().lastMoveCell()));
 
-            GameStateNotify hostMove1Notify = guest.await(guestSawHostMove1).payload();
+            GameStateNotify hostMove1Notify = guestSawHostMove1.toCompletableFuture().join().payload();
             ensure(hostMove1Notify.state().board().equals(hostMove1.state().board()));
             ensure("O".equals(hostMove1Notify.state().nextTurn()));
             ensure(options.xActorId().equals(hostMove1Notify.state().lastMoveActorId()));
@@ -132,13 +132,13 @@ public final class TicTacToeClientScenario {
                 .submit(GameStateNotify.class);
             PlaceMarkRes guestMove1 = guest
                 .request(new PlaceMarkReq(3))
-                .await(PlaceMarkRes.class);
+                .submit(PlaceMarkRes.class).toCompletableFuture().join();
             ensure("X..O.....".equals(guestMove1.state().board()));
             ensure("X".equals(guestMove1.state().nextTurn()));
             ensure(options.oActorId().equals(guestMove1.state().lastMoveActorId()));
             ensure(Integer.valueOf(3).equals(guestMove1.state().lastMoveCell()));
 
-            GameStateNotify guestMove1Notify = host.await(hostSawGuestMove1).payload();
+            GameStateNotify guestMove1Notify = hostSawGuestMove1.toCompletableFuture().join().payload();
             ensure(guestMove1Notify.state().board().equals(guestMove1.state().board()));
             ensure("X".equals(guestMove1Notify.state().nextTurn()));
             ensure(options.oActorId().equals(guestMove1Notify.state().lastMoveActorId()));
@@ -152,13 +152,13 @@ public final class TicTacToeClientScenario {
                 .submit(GameStateNotify.class);
             PlaceMarkRes hostMove2 = host
                 .request(new PlaceMarkReq(1))
-                .await(PlaceMarkRes.class);
+                .submit(PlaceMarkRes.class).toCompletableFuture().join();
             ensure("XX.O.....".equals(hostMove2.state().board()));
             ensure("O".equals(hostMove2.state().nextTurn()));
             ensure(options.xActorId().equals(hostMove2.state().lastMoveActorId()));
             ensure(Integer.valueOf(1).equals(hostMove2.state().lastMoveCell()));
 
-            GameStateNotify hostMove2Notify = guest.await(guestSawHostMove2).payload();
+            GameStateNotify hostMove2Notify = guestSawHostMove2.toCompletableFuture().join().payload();
             ensure(hostMove2Notify.state().board().equals(hostMove2.state().board()));
             ensure("O".equals(hostMove2Notify.state().nextTurn()));
             ensure(options.xActorId().equals(hostMove2Notify.state().lastMoveActorId()));
@@ -172,13 +172,13 @@ public final class TicTacToeClientScenario {
                 .submit(GameStateNotify.class);
             PlaceMarkRes guestMove2 = guest
                 .request(new PlaceMarkReq(4))
-                .await(PlaceMarkRes.class);
+                .submit(PlaceMarkRes.class).toCompletableFuture().join();
             ensure("XX.OO....".equals(guestMove2.state().board()));
             ensure("X".equals(guestMove2.state().nextTurn()));
             ensure(options.oActorId().equals(guestMove2.state().lastMoveActorId()));
             ensure(Integer.valueOf(4).equals(guestMove2.state().lastMoveCell()));
 
-            GameStateNotify guestMove2Notify = host.await(hostSawGuestMove2).payload();
+            GameStateNotify guestMove2Notify = hostSawGuestMove2.toCompletableFuture().join().payload();
             ensure(guestMove2Notify.state().board().equals(guestMove2.state().board()));
             ensure("X".equals(guestMove2Notify.state().nextTurn()));
             ensure(options.oActorId().equals(guestMove2Notify.state().lastMoveActorId()));
@@ -198,17 +198,17 @@ public final class TicTacToeClientScenario {
                 .submit(WinMilestoneNotify.class);
             PlaceMarkRes hostWin = host
                 .request(new PlaceMarkReq(2))
-                .await(PlaceMarkRes.class);
+                .submit(PlaceMarkRes.class).toCompletableFuture().join();
             ensure("XXXOO....".equals(hostWin.state().board()));
             ensure("Won".equals(hostWin.state().status()));
             ensure(options.xActorId().equals(hostWin.state().winner()));
 
-            GameStateNotify hostWinNotify = guest.await(guestSawHostWin).payload();
+            GameStateNotify hostWinNotify = guestSawHostWin.toCompletableFuture().join().payload();
             ensure(hostWinNotify.state().board().equals(hostWin.state().board()));
             ensure("Won".equals(hostWinNotify.state().status()));
             ensure(options.xActorId().equals(hostWinNotify.state().winner()));
 
-            WinMilestoneNotify milestone = observer.await(observerSawMilestone).payload();
+            WinMilestoneNotify milestone = observerSawMilestone.toCompletableFuture().join().payload();
             String expectedRid = game.playNodes().stream()
                 .filter(node -> observerEndpoint.equals(node.streamEndpoint()))
                 .findFirst()
@@ -221,13 +221,13 @@ public final class TicTacToeClientScenario {
                 + " wins=" + milestone.wins()
                 + " receivingSpotNodeRid=" + milestone.receivingSpotNodeRid());
 
-            host.send(new LeaveGameMsg(game.roomId())).submit();
-            guest.send(new LeaveGameMsg(game.roomId())).submit();
+            host.send(new LeaveGameReq(game.roomId())).submit();
+            guest.send(new LeaveGameReq(game.roomId())).submit();
             System.out.println("tictactoe completed");
         } finally {
-            host.close().await();
-            guest.close().await();
-            observer.close().await();
+            host.close().submit().toCompletableFuture().join();
+            guest.close().submit().toCompletableFuture().join();
+            observer.close().submit().toCompletableFuture().join();
         }
     }
 

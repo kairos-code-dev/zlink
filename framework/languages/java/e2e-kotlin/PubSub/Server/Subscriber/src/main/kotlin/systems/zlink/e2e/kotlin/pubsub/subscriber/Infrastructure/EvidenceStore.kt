@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.pubsub.subscriber
 
+import kotlinx.coroutines.delay
 import systems.zlink.e2e.kotlin.pubsub.shared.EvidenceEntry
 import systems.zlink.e2e.kotlin.pubsub.shared.EvidenceSnapshot
 
@@ -13,17 +14,12 @@ class EvidenceStore(
 
     fun accepts(topic: String): Boolean = topics.contains(topic)
 
-    fun delayIfConfigured(scenario: String) {
-        val delay = handlerDelayMillis
-        if (delay == null || scenario != "ps-b1") {
+    suspend fun delayIfConfigured(scenario: String) {
+        val configuredDelay = handlerDelayMillis
+        if (configuredDelay == null || scenario != "ps-b1") {
             return
         }
-        try {
-            Thread.sleep(delay)
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("subscriber delay interrupted", error)
-        }
+        delay(configuredDelay)
     }
 
     fun record(

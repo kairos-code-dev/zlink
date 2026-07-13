@@ -7,16 +7,11 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest
 
 class SlowRequestHandler {
     @ZLinkSpotRequest
-    fun handle(
+    suspend fun handle(
         spot: UserSpot,
         request: Contracts.SlowReq,
     ): Contracts.StateRes {
-        try {
-            Thread.sleep(1000)
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("interrupted", error)
-        }
+        kotlinx.coroutines.delay(1000)
         return Contracts.StateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),

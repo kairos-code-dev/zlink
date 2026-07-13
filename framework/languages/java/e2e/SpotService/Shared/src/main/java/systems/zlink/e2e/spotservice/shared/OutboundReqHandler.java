@@ -5,31 +5,22 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 
 public final class OutboundReqHandler {
     @ZLinkSpotRequest
-    public Contracts.OutboundRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.OutboundRes> handle(
         UserSpot spot,
         Contracts.OutboundReq request) {
-        String channelReply = spot.context()
+        return spot.context()
             .outbound()
-            .requestToChannel(Contracts.INGRESS_CHANNEL, request.value())
-            .packetName("Noop")
+            .requestToChannel(Contracts.INGRESS_CHANNEL, new Contracts.StateReq(request.value()))
             .timeout(Duration.ofSeconds(5))
-            .await(String.class);
-        spot.context()
-            .outbound()
-            .sendToChannel(
-                Contracts.INGRESS_CHANNEL,
-                new Contracts.OutboundMsg("send:" + request.value()))
-            .packetName("OutboundMsg")
-            .await();
-        spot.context()
-            .outbound()
-            .publish("spot.events", new Contracts.MeshMsg("publish:" + request.value()))
-            .packetName("MeshMsg")
-            .await();
-        spot.record("SpotOutbound", request.value() + "/" + channelReply);
-        return new Contracts.OutboundRes(
-            spot.context().spotRid().toString(),
-            spot.context().nodeRid().toString(),
-            channelReply);
+            .submit(String.class)
+            .thenApply(channelReply -> {
+                spot.context().outbound().sendToChannel(Contracts.INGRESS_CHANNEL,
+                    new Contracts.OutboundMsg("send:" + request.value())).submit();
+                spot.context().outbound().publish("spot.events",
+                    new Contracts.MeshMsg("publish:" + request.value())).submit();
+                spot.record("SpotOutbound", request.value() + "/" + channelReply);
+                return new Contracts.OutboundRes(spot.context().spotRid().toString(),
+                    spot.context().nodeRid().toString(), channelReply);
+            });
     }
 }

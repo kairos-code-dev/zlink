@@ -74,6 +74,16 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         }
     }
 
+    int pendingCount(String actorId) {
+        List<ZLinkActorHandoffPacket> backlog = backlogs.get(actorId);
+        if (backlog == null) {
+            return 0;
+        }
+        synchronized (backlog) {
+            return backlog.size();
+        }
+    }
+
     List<ZLinkActorHandoffPacket> finish(String actorId) {
         List<ZLinkActorHandoffPacket> backlog = backlogs.remove(actorId);
         if (backlog == null) {
@@ -119,6 +129,25 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
 
     Optional<ForwardingSource> forwardingSource(String actorId) {
         return Optional.ofNullable(forwardingSources.get(actorId));
+    }
+
+    synchronized Optional<ForwardingSource> takeForwardingSource(String actorId) {
+        ForwardingSource source = forwardingSources.remove(actorId);
+        if (source == null) {
+            return Optional.empty();
+        }
+        Retention retained = retirements.stream()
+            .filter(candidate -> candidate.actorId().equals(actorId)
+                && candidate.source().equals(source))
+            .findFirst()
+            .orElse(null);
+        if (retained != null && retirements.remove(retained)) {
+            ScheduledFuture<?> future = retained.future();
+            if (future != null) {
+                future.cancel(false);
+            }
+        }
+        return Optional.of(source);
     }
 
     int forwardingSourceCount() {

@@ -1,14 +1,19 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
-import systems.zlink.stream.connector.ZLinkStreamConnector
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
 internal object SmD14Scenario {
-    fun run() {
+    suspend fun run() {
         val endpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_A_ENDPOINT")
         val strict = createStreamConnector(
             endpoint,
@@ -38,17 +43,20 @@ internal object SmD14Scenario {
             tls.connect().await()
             val auth = tls
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D14 TLS auth actor mismatch")
             ensure(auth.nodeRid == "play-a", "SM-D14 TLS auth node mismatch")
 
-            val pushed = tls.waitFor(Contracts.ActorPushNotify::class.java)
-                .submit(Contracts.ActorPushNotify::class.java)
-            val reply = tls
-                .request(Contracts.ActorEchoReq("tls-push", 14, profile))
-                .metadata("actor-id", actorId)
-                .await(Contracts.ActorEchoRes::class.java)
-            val notify = tls.await(pushed).payload()
+            val (reply, notify) = coroutineScope {
+                val pushed = async(start = CoroutineStart.UNDISPATCHED) {
+                    tls.waitFor<Contracts.ActorPushNotify>().await()
+                }
+                val reply = tls
+                    .request(Contracts.ActorEchoReq("tls-push", 14, profile))
+                    .metadata("actor-id", actorId)
+                    .await<Contracts.ActorEchoRes>()
+                reply to pushed.await().payload()
+            }
             ensure(reply.actorId == actorId, "SM-D14 TLS actor reply mismatch")
             ensure(reply.nodeRid == "play-a", "SM-D14 TLS actor node mismatch")
             ensure(notify.actorId == actorId, "SM-D14 TLS push actor mismatch")
@@ -60,7 +68,7 @@ internal object SmD14Scenario {
         }
     }
 
-    private fun closeQuietly(connector: ZLinkStreamConnector) {
+    private suspend fun closeQuietly(connector: ZLinkKotlinStreamConnector) {
         try {
             connector.close().await()
         } catch (_: Exception) {

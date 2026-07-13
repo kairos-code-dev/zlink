@@ -76,7 +76,7 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `common/.NET: SubscribeDeliveryReq` | `SubscribeDeliveryReq` | shared-contract | done | `deliveryId` 대응 |
 | `common/.NET: SubscribeDeliveryRes` | `SubscribeDeliveryRes` | shared-contract | done | `deliveryId` 대응 |
 | `common/.NET: DeliveryStatusNotify` | `DeliveryStatusNotify` | shared-contract | done | `deliveryId`, `status`, `courierId`, `occurredAt` 대응 |
-| `common/.NET: AssignDelivery` | `AssignDelivery` | shared-contract | done | `deliveryId`, `customerId`, `pickupAddress`, `dropoffAddress` 대응 |
+| `common: AssignDeliveryMsg` | `AssignDeliveryMsg` | shared-contract | done | one-way send 이름과 `deliveryId`, `customerId`, `pickupAddress`, `dropoffAddress`를 공통 spec에 맞춘다. |
 | `common/.NET: BindCourierSessionReq` | `BindCourierSessionReq` | shared-contract | done | client 요청은 `courierId`, actor relay는 `actor`, `sessionRoute`를 채운다. |
 | `common/.NET: BindCourierSessionRes` | `BindCourierSessionRes` | shared-contract | done | `courierId`, `actor`, `sessionRoute` 대응 |
 | `common/.NET: BindCourierReq` | `BindCourierReq` | shared-contract | done | `courierId`, `sessionRoute` 대응 |

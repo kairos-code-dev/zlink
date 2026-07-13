@@ -31,10 +31,11 @@ final class ZLinkStreamConnectionLifecycle {
     private final ZLinkStreamReceiveDispatcher receiveDispatcher;
     private final Consumer<ZLinkStreamError> errorPublisher;
     private final Runnable disconnectedNotifier;
+    private final Consumer<ZLinkStreamCloseReason> closeReasonRecorder;
     private final Function<String, CompletionStage<Void>> controlSender;
     private final List<ZLinkStreamConnectionStateHandler> stateHandlers = new CopyOnWriteArrayList<>();
 
-    private volatile ZLinkStreamConnectionState state = ZLinkStreamConnectionState.DISCONNECTED;
+    private volatile ZLinkStreamConnectionState state = ZLinkStreamConnectionState.CREATED;
     private volatile ZLinkStreamTransportConnection connection;
     private volatile ScheduledFuture<?> heartbeatTask;
     private volatile long lastInboundNanos = System.nanoTime();
@@ -49,6 +50,7 @@ final class ZLinkStreamConnectionLifecycle {
         ZLinkStreamReceiveDispatcher receiveDispatcher,
         Consumer<ZLinkStreamError> errorPublisher,
         Runnable disconnectedNotifier,
+        Consumer<ZLinkStreamCloseReason> closeReasonRecorder,
         Function<String, CompletionStage<Void>> controlSender) {
         this.configuration = configuration;
         this.timeouts = timeouts;
@@ -58,6 +60,7 @@ final class ZLinkStreamConnectionLifecycle {
         this.receiveDispatcher = receiveDispatcher;
         this.errorPublisher = errorPublisher;
         this.disconnectedNotifier = disconnectedNotifier;
+        this.closeReasonRecorder = closeReasonRecorder;
         this.controlSender = controlSender;
     }
 
@@ -79,7 +82,12 @@ final class ZLinkStreamConnectionLifecycle {
             return CompletableFuture.completedFuture(null);
         }
         connectStarted = true;
-        return connectOnceStage();
+        transitionTo(ZLinkStreamConnectionState.CONNECTING);
+        return connectOnceStage().whenComplete((ignored, error) -> {
+            if (error != null && state != ZLinkStreamConnectionState.CLOSED) {
+                transitionTo(ZLinkStreamConnectionState.DISCONNECTED);
+            }
+        });
     }
 
     CompletionStage<Void> disconnect() {
@@ -129,6 +137,24 @@ final class ZLinkStreamConnectionLifecycle {
             disconnectedNotifier.run();
         }
         return CompletableFuture.completedFuture(null);
+    }
+
+    void serverClosing() {
+        ZLinkStreamTransportConnection current = connection;
+        if (current == null || state != ZLinkStreamConnectionState.CONNECTED) {
+            return;
+        }
+        connection = null;
+        stopHeartbeat();
+        closeQuietly(current);
+        pendingRequests.failAll(new IOException("server closed the session"));
+        transitionTo(configuration.reconnect().enabled()
+            ? ZLinkStreamConnectionState.RECONNECTING
+            : ZLinkStreamConnectionState.DISCONNECTED);
+        disconnectedNotifier.run();
+        if (state == ZLinkStreamConnectionState.RECONNECTING) {
+            reconnectAttemptStage(1, configuration.reconnect().initialDelay());
+        }
     }
 
     CompletionStage<Void> writeAsync(byte[] frame) {
@@ -296,6 +322,7 @@ final class ZLinkStreamConnectionLifecycle {
                 result.completeExceptionally(new IllegalStateException("connector is closed"));
                 return;
             }
+            ZLinkConnectorMetrics.reconnectAttempt();
             connectOnceStage().whenComplete((ignored, ex) -> {
                 if (ex == null) {
                     result.complete(null);
@@ -362,6 +389,7 @@ final class ZLinkStreamConnectionLifecycle {
         }
         long idleNanos = System.nanoTime() - lastInboundNanos;
         if (idleNanos > configuration.heartbeat().timeout().toNanos()) {
+            closeReasonRecorder.accept(ZLinkStreamCloseReason.HEARTBEAT_TIMEOUT);
             handleReceiveFailure(current, new TimeoutException("Heartbeat timed out"));
             return;
         }

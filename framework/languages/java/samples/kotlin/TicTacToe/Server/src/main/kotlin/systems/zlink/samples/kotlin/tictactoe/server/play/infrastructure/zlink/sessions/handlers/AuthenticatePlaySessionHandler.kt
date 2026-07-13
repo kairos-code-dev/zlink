@@ -40,6 +40,5 @@ class AuthenticatePlaySessionHandler(
         context.client()
             .reply(AuthenticateRes(authenticated.player))
             .submit()
-            .await()
     }
 }

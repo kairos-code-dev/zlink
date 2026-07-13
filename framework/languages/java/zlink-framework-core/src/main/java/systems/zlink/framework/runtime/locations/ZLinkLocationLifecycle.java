@@ -59,6 +59,10 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         return actors.setActorRef(actorType, actorId, actorRef);
     }
 
+    public void abandonActor(String actorId) {
+        actors.abandon(actorId);
+    }
+
     public CompletionStage<Void> notifyActorJoinedSpot(
         String actorType,
         String actorId,

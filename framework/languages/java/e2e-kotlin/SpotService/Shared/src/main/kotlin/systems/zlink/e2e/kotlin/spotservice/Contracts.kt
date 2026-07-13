@@ -120,6 +120,12 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
+    data class MissingSpotReq(val value: String)
+
+    @JvmRecord
+    data class MissingSpotMsg(val value: String)
+
+    @JvmRecord
     data class CreateSpotReq(
         val spotRid: String
     )
@@ -332,6 +338,12 @@ class Contracts private constructor() {
         val value: String,
         val seq: Int,
         val profile: ActorProfile
+    )
+
+    data class MissingActorReq(
+        val value: String,
+        val seq: Int,
+        val profile: ActorProfile,
     )
 
     @JvmRecord

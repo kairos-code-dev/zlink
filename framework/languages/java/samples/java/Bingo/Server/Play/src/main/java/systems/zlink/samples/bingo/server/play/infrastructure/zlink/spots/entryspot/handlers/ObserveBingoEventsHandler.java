@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
@@ -14,12 +13,11 @@ public final class ObserveBingoEventsHandler
         Messages.ObserveBingoEventsReq,
         Messages.ObserveBingoEventsRes> {
     @Override
-    public Messages.ObserveBingoEventsRes handle(
+    public java.util.concurrent.CompletionStage<Messages.ObserveBingoEventsRes> handle(
         BingoEntrySpot spot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
-        Messages.ObserveBingoEventsReq request,
-        CancellationToken cancellationToken) {
+        Messages.ObserveBingoEventsReq request) {
         return spot.observeEvents(actor, request);
     }
 }

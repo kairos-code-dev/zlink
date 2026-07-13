@@ -35,7 +35,7 @@ import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.streams.ZLinkSession;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSpringHandlerFactory implements ZLinkHandlerActivator {
     private final AutowireCapableBeanFactory beanFactory;
@@ -79,7 +79,7 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerActivator {
             || ZLinkSpotActorSendHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorRequestHandler.class.isAssignableFrom(type)
             || ZLinkSession.class.isAssignableFrom(type)
-            || ZLinkSessionPacketHandler.class.isAssignableFrom(type)
+            || ZLinkTypedSessionPacketHandler.class.isAssignableFrom(type)
             || hasZLinkHandlerAnnotation(type);
     }
 

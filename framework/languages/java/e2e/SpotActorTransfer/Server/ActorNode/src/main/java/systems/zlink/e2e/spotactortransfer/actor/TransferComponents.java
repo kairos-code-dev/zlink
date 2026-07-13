@@ -1,9 +1,10 @@
 package systems.zlink.e2e.spotactortransfer.actor;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -78,11 +79,11 @@ public final class TransferComponents {
         }
 
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
             if ("actor-b".equals(evidence.nodeRid()) && actorId.startsWith("actor-no-adapter-")) {
                 evidence.add("transfer", actorId, "transfer_in_empty_default", "actor-factory");
             }
-            return new TransferActor(actorId, context);
+            return CompletableFuture.completedFuture(new TransferActor(actorId, context));
         }
     }
 
@@ -97,53 +98,57 @@ public final class TransferComponents {
         }
 
         @Override
-        public ZLinkMessage transferOut(
-            TransferActor actor,
-            CancellationToken cancellationToken) {
+        public CompletionStage<ZLinkMessage> transferOut(TransferActor actor) {
             if (Contracts.FAIL_OUT.equals(actor.actorType())) {
                 evidence.add("ST-C3", actor.actorId(), "transfer_out_failed",
                     Integer.toString(actor.stateVersion()));
-                throw new IllegalStateException("injected transfer out failure");
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException("injected transfer out failure"));
             }
             if (Contracts.EMPTY_STATE.equals(actor.actorType())) {
                 evidence.add("transfer", actor.actorId(), "transfer_out_empty", "custom-adapter");
-                return ZLinkMessage.empty();
+                return CompletableFuture.completedFuture(ZLinkMessage.empty());
             }
             evidence.add("transfer", actor.actorId(), "transfer_out",
                 Integer.toString(actor.stateVersion()));
             if (actor.actorId().startsWith("actor-source-down-before-commit-")) {
                 evidence.add("ST-C1", actor.actorId(), "before_commit_gate",
                     Integer.toString(actor.stateVersion()));
-                transferGates.waitFor(actor.actorId()).join();
+                return transferGates.waitFor(actor.actorId()).thenApply(ignored ->
+                    transferState(actor));
             }
+            return CompletableFuture.completedFuture(transferState(actor));
+        }
+
+        private static ZLinkMessage transferState(TransferActor actor) {
             return ZLinkMessage.of(new Contracts.TransferState(
                 actor.actorId(), actor.stateVersion(), actor.actorType()));
         }
 
         @Override
-        public TransferActor transferIn(
+        public CompletionStage<TransferActor> transferIn(
             String actorId,
             ZLinkActorContext context,
-            ZLinkMessage state,
-            CancellationToken cancellationToken) {
+            ZLinkMessage state) {
             if (state.isEmpty()) {
                 evidence.add("transfer", actorId, "transfer_in_empty", "custom-adapter");
                 TransferActor actor = new TransferActor(actorId, context);
                 actor.setActorType(Contracts.EMPTY_STATE);
-                return actor;
+                return CompletableFuture.completedFuture(actor);
             }
             Contracts.TransferState transferred = state.decode(Contracts.TransferState.class);
             if (actorId.startsWith("actor-fail-transfer-in-")) {
                 evidence.add("ST-C3", actorId, "transfer_in_failed",
                     Integer.toString(transferred.stateVersion()));
-                throw new IllegalStateException("injected transfer in failure");
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException("injected transfer in failure"));
             }
             TransferActor actor = new TransferActor(actorId, context);
             actor.setActorType(transferred.actorType());
             actor.setStateVersion(transferred.stateVersion());
             evidence.add("transfer", actorId, "transfer_in",
                 Integer.toString(actor.stateVersion()));
-            return actor;
+            return CompletableFuture.completedFuture(actor);
         }
     }
 
@@ -174,10 +179,9 @@ public final class TransferComponents {
         }
 
         @Override
-        public void onCreateActor(
+        public CompletionStage<Void> onCreateActor(
             TransferActor actor,
-            ZLinkMessage createRequest,
-            CancellationToken cancellationToken) {
+            ZLinkMessage createRequest) {
             if (!createRequest.isEmpty()) {
                 Contracts.ActorCreateReq request = createRequest.decode(Contracts.ActorCreateReq.class);
                 actor.setActorType(request.actorType());
@@ -188,35 +192,38 @@ public final class TransferComponents {
             }
             evidence.add("create", actor.actorId(), "create",
                 actor.actorType() + ":" + actor.stateVersion());
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             evidence.add("local", actorId, "admission", "actor-id-only");
-            return ZLinkSpotActorJoinResponse.accept(request);
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(request));
         }
 
         @Override
-        public void onJoinedActor(TransferActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(TransferActor actor) {
             evidence.add("local", actor.actorId(), "entry_joined",
                 Integer.toString(actor.stateVersion()));
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(TransferActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(TransferActor actor) {
             if (Contracts.NO_ADAPTER.equals(actor.actorType())) {
                 evidence.add("transfer", actor.actorId(), "transfer_out_empty_default", "no-adapter");
             }
             if (Contracts.FAIL_LEAVE.equals(actor.actorType())) {
                 evidence.add("ST-C3", actor.actorId(), "leave_failed",
                     Integer.toString(actor.stateVersion()));
-                throw new IllegalStateException("injected source leave failure");
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException("injected source leave failure"));
             }
             evidence.add("transfer", actor.actorId(), "leave",
                 Integer.toString(actor.stateVersion()));
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -253,20 +260,19 @@ public final class TransferComponents {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             if (!request.isEmpty()) {
                 String requested = request.decode(Contracts.CreateSpotReq.class).mode();
                 mode = requested == null || requested.isBlank() ? "accept" : requested;
             }
             evidence.add("create_spot", context.spotRid().toString(), "spot_created", mode);
-            return ZLinkSpotCreateResponse.accept();
+            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             Contracts.JoinTargetReq join = request.decode(Contracts.JoinTargetReq.class);
             scenarios.put(actorId, join.scenario());
             evidence.add(join.scenario(), actorId, "admission",
@@ -274,22 +280,30 @@ public final class TransferComponents {
             boolean reject = "reject".equals(mode) || "reject".equals(join.expectedMode());
             Contracts.JoinTargetRes response = new Contracts.JoinTargetRes(
                 join.scenario(), actorId, !reject, "", context.spotRid().toString(), 0);
-            return reject
+            return CompletableFuture.completedFuture(reject
                 ? ZLinkSpotActorJoinResponse.reject(response)
-                : ZLinkSpotActorJoinResponse.accept(response);
+                : ZLinkSpotActorJoinResponse.accept(response));
         }
 
         @Override
-        public void onJoinedActor(TransferActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(TransferActor actor) {
             String scenario = scenarios.getOrDefault(actor.actorId(), "transfer");
             if ("delay-joined".equals(mode)) {
                 evidence.add(scenario, actor.actorId(), "joined_wait", context.spotRid().toString());
-                joinedGates.waitFor(context.spotRid().toString()).join();
-                evidence.add(scenario, actor.actorId(), "joined_released", context.spotRid().toString());
+                return joinedGates.waitFor(context.spotRid().toString()).thenCompose(ignored -> {
+                    evidence.add(scenario, actor.actorId(), "joined_released", context.spotRid().toString());
+                    return completeJoined(actor);
+                });
             }
+            return completeJoined(actor);
+        }
+
+        private CompletionStage<Void> completeJoined(TransferActor actor) {
             if ("fail-joined".equals(mode)) {
+                String scenario = scenarios.getOrDefault(actor.actorId(), "transfer");
                 evidence.add(scenario, actor.actorId(), "joined_failed", context.spotRid().toString());
-                throw new IllegalStateException("injected joined failure");
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException("injected joined failure"));
             }
             evidence.add("transfer", actor.actorId(), "joined",
                 context.spotRid() + ":" + actor.stateVersion());
@@ -298,11 +312,13 @@ public final class TransferComponents {
                 evidence.add("transfer", actor.actorId(), "domain_state_loaded",
                     Integer.toString(actor.stateVersion()));
             }
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(TransferActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(TransferActor actor) {
             evidence.add("transfer", actor.actorId(), "target_leave", context.spotRid().toString());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -318,12 +334,11 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.JoinTargetRes handle(
+        public CompletionStage<Contracts.JoinTargetRes> handle(
             TransferEntrySpot entrySpot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.JoinTargetReq request,
-            CancellationToken cancellationToken) {
+            Contracts.JoinTargetReq request) {
             return joinTarget(actor, request, evidence);
         }
     }
@@ -340,32 +355,30 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.JoinTargetRes handle(
+        public CompletionStage<Contracts.JoinTargetRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.JoinTargetReq request,
-            CancellationToken cancellationToken) {
+            Contracts.JoinTargetReq request) {
             return joinTarget(actor, request, evidence);
         }
     }
 
-    private static Contracts.JoinTargetRes joinTarget(
+    private static CompletionStage<Contracts.JoinTargetRes> joinTarget(
         TransferActor actor,
         Contracts.JoinTargetReq request,
         EvidenceStore evidence) {
-        ZLinkActorJoinResult<Contracts.JoinTargetRes> joined = actor.context()
+        return actor.context()
             .joinSpot(RoutingId.from(request.targetSpotRid()), request)
             .timeout(Duration.ofSeconds(10))
-            .await(Contracts.JoinTargetRes.class);
-        evidence.add(request.scenario(), actor.actorId(), "commit_ack", request.targetSpotRid());
-        return new Contracts.JoinTargetRes(
-            request.scenario(),
-            actor.actorId(),
-            joined.accepted(),
-            evidence.nodeRid(),
-            request.targetSpotRid(),
-            actor.stateVersion());
+            .submit(Contracts.JoinTargetRes.class)
+            .thenApply(joined -> {
+                evidence.add(request.scenario(), actor.actorId(), "commit_ack", request.targetSpotRid());
+                return new Contracts.JoinTargetRes(
+                    request.scenario(), actor.actorId(),
+                    joined instanceof ZLinkActorJoinResult.Accepted<?>, evidence.nodeRid(),
+                    request.targetSpotRid(), actor.stateVersion());
+            });
     }
 
     public static final class EntryProbeHandler implements ZLinkEntrySpotActorRequestHandler<
@@ -380,16 +393,15 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.ProbeRes handle(
+        public CompletionStage<Contracts.ProbeRes> handle(
             TransferEntrySpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ProbeReq request,
-            CancellationToken cancellationToken) {
+            Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "entry_packet_handler", request.marker());
-            return new Contracts.ProbeRes(
+            return CompletableFuture.completedFuture(new Contracts.ProbeRes(
                 request.scenario(), actor.actorId(), spot.context().spotRid().toString(),
-                evidence.nodeRid(), actor.stateVersion(), request.marker());
+                evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
     }
 
@@ -405,16 +417,15 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.ProbeRes handle(
+        public CompletionStage<Contracts.ProbeRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ProbeReq request,
-            CancellationToken cancellationToken) {
+            Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "packet_handler", request.marker());
-            return new Contracts.ProbeRes(
+            return CompletableFuture.completedFuture(new Contracts.ProbeRes(
                 request.scenario(), actor.actorId(), spot.context().spotRid().toString(),
-                evidence.nodeRid(), actor.stateVersion(), request.marker());
+                evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
     }
 
@@ -429,13 +440,13 @@ public final class TransferComponents {
         }
 
         @Override
-        public void handle(
+        public CompletionStage<Void> handle(
             TransferUserSpot spot,
             TransferActor actor,
             systems.zlink.framework.spots.ZLinkSpotActorSendContext context,
-            Contracts.StragglerSendReq request,
-            CancellationToken cancellationToken) {
+            Contracts.StragglerSendReq request) {
             evidence.add(request.scenario(), actor.actorId(), "straggler_send", request.marker());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -459,30 +470,35 @@ public final class TransferComponents {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
             evidence.add("session", context.sessionId(), "connected", "");
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
             evidence.add("session", context.sessionId(), "disconnected", "");
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
             evidence.add("session", context.sessionId(), "error", error.toString());
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-            if (handlers.tryHandleAsync(context, dispatch, payload).toCompletableFuture().join()) {
-                return;
-            }
-            ZLinkSessionActor actor = context.actors().bound().size() == 1
-                ? context.actors().bound().get(0)
-                : context.actors().find(dispatch.metadata().get("actor-id"))
-                    .orElseThrow(() -> new IllegalStateException("actor is not bound"));
-            actor.relay(dispatch, payload).toCompletableFuture().join();
+        public CompletionStage<Void> onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
+            return handlers.tryHandle(context, dispatch, payload).thenCompose(handled -> {
+                if (handled) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                ZLinkSessionActor actor = context.actors().bound().size() == 1
+                    ? context.actors().bound().get(0)
+                    : context.actors().find(dispatch.metadata().get("actor-id"))
+                        .orElseThrow(() -> new IllegalStateException("actor is not bound"));
+                return actor.relay(dispatch, payload);
+            });
         }
     }
 
@@ -500,29 +516,26 @@ public final class TransferComponents {
         }
 
         @Override
-        public String packetName() {
-            return "BindSessionReq";
-        }
-
-        @Override
         public Class<Contracts.BindSessionReq> messageType() {
             return Contracts.BindSessionReq.class;
         }
 
         @Override
-        public void handle(
+        public CompletionStage<Void> handle(
             ZLinkSessionContext context,
             ZLinkSessionDispatchContext dispatch,
             Contracts.BindSessionReq request) {
-            systems.zlink.framework.actors.ActorRef actor = actors.find(request.actorId())
-                .toCompletableFuture()
-                .join()
-                .orElseThrow(() -> new IllegalStateException("actor was not found: " + request.actorId()));
-            var bound = context.actors().bind(actor).toCompletableFuture().join();
-            evidence.add(request.scenario(), request.actorId(), "session_bound", context.sessionId());
-            context.client().reply(new Contracts.BindSessionRes(
-                request.scenario(), request.actorId(), bound.ref().nodeRid().toString(),
-                bound.ref().generation())).await();
+            return actors.find(request.actorId()).thenCompose(found -> {
+                var actor = found.orElseThrow(
+                    () -> new IllegalStateException("actor was not found: " + request.actorId()));
+                return context.actors().bind(actor);
+            }).thenApply(bound -> {
+                evidence.add(request.scenario(), request.actorId(), "session_bound", context.sessionId());
+                context.client().reply(new Contracts.BindSessionRes(
+                    request.scenario(), request.actorId(), bound.ref().nodeRid().toString(),
+                    bound.ref().generation())).submit();
+                return null;
+            });
         }
     }
 
@@ -538,12 +551,11 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.BoundPushRes handle(
+        public CompletionStage<Contracts.BoundPushRes> handle(
             TransferEntrySpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.BoundPushReq request,
-            CancellationToken cancellationToken) {
+            Contracts.BoundPushReq request) {
             return push(actor, spot.context().spotRid().toString(), request, evidence);
         }
     }
@@ -560,17 +572,16 @@ public final class TransferComponents {
         }
 
         @Override
-        public Contracts.BoundPushRes handle(
+        public CompletionStage<Contracts.BoundPushRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.BoundPushReq request,
-            CancellationToken cancellationToken) {
+            Contracts.BoundPushReq request) {
             return push(actor, spot.context().spotRid().toString(), request, evidence);
         }
     }
 
-    private static Contracts.BoundPushRes push(
+    private static CompletionStage<Contracts.BoundPushRes> push(
         TransferActor actor,
         String spotRid,
         Contracts.BoundPushReq request,
@@ -580,11 +591,10 @@ public final class TransferComponents {
             request.marker(), actor.stateVersion());
         actor.context().boundSession()
             .send(notify)
-            .packetName("BoundPushNotify")
             .submit();
         evidence.add(request.scenario(), actor.actorId(), "bound_push", request.marker());
-        return new Contracts.BoundPushRes(
+        return CompletableFuture.completedFuture(new Contracts.BoundPushRes(
             request.scenario(), actor.actorId(), spotRid, evidence.nodeRid(),
-            request.marker(), actor.stateVersion());
+            request.marker(), actor.stateVersion()));
     }
 }

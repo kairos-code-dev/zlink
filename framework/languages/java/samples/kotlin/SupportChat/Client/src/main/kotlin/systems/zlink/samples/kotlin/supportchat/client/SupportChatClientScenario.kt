@@ -173,13 +173,10 @@ class SupportChatClientScenario {
         expectFailure("Closed conversation must reject follow-up messages.") {
             customerRoom1.sendChat("are you there?")
         }
-        val closedTypingForAgent = async {
-            reconnectingAgent.waitFor(TypingChangedNotify::class.java)
-                .where(TypingChangedNotify::class.java) { it.payload().conversationId == cid1 }
-                .timeout(Duration.ofMillis(500))
-                .submit(TypingChangedNotify::class.java)
-                .await()
-        }
+        val closedTypingForAgent = reconnectingAgent.waitFor(TypingChangedNotify::class.java)
+            .where(TypingChangedNotify::class.java) { it.payload().conversationId == cid1 }
+            .timeout(Duration.ofMillis(500))
+            .submit(TypingChangedNotify::class.java)
         customerRoom1.sendTyping(true)
         expectTimeout("Closed conversation must ignore typing sends without notifying participants.") {
             closedTypingForAgent.await()

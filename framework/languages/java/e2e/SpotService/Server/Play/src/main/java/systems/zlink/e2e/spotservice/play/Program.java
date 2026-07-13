@@ -20,7 +20,6 @@ import systems.zlink.e2e.spotservice.shared.ScenarioEntrySpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioSession;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.e2e.spotservice.shared.SlowSessionHandler;
-import systems.zlink.e2e.spotservice.shared.SpotRouteResolver;
 import systems.zlink.e2e.spotservice.shared.TimerScenarioSpot;
 import systems.zlink.e2e.spotservice.shared.UserSpot;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -64,13 +63,15 @@ public final class Program {
         ScenarioState state,
         com.fasterxml.jackson.databind.ObjectMapper json,
         ZLinkSpotManager spots,
-        systems.zlink.framework.channels.ZLinkRouteClient routes) {
+        systems.zlink.framework.channels.ZLinkRouteClient routes,
+        systems.zlink.framework.spots.SpotHandleResolver spotHandles) {
         return new EvidenceHttpServer(
             state,
             json,
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
             spots,
-            routes);
+            routes,
+            spotHandles);
     }
 
     @Bean
@@ -79,7 +80,6 @@ public final class Program {
             String nodeRid = state.nodeRid();
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             options.addHandlersFromPackageOf(ActorAuthHandler.class);
-            options.addSpotRemoteRefResolver(SpotRouteResolver.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
@@ -115,7 +115,11 @@ public final class Program {
                 IngressMsgHandler.class,
                 Contracts.OutboundMsg.class,
                 "OutboundMsg");
-            ingress.addRequestHandler(NoopIngressHandler.class, String.class, String.class, "Noop");
+            ingress.addRequestHandler(
+                NoopIngressHandler.class,
+                Contracts.StateReq.class,
+                String.class,
+                "StateReq");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"))

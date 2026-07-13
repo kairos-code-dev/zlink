@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -39,7 +41,6 @@ public final class Program {
             http.stop(0);
             app.close();
         }));
-        Thread.currentThread().join();
     }
 
     public static ConfigurableApplicationContext run(String... args) {
@@ -101,11 +102,11 @@ public final class Program {
             String path = exchange.getRequestURI().getPath();
             if ("POST".equals(method) && "/orders/start".equals(path)) {
                 Messages.StartOrderReq request = read(exchange, json, Messages.StartOrderReq.class);
-                writeJson(exchange, json, 200, api.startOrder(request));
+                writeJson(exchange, json, api.startOrder(request));
                 return;
             }
             if ("GET".equals(method) && path.startsWith("/orders/")) {
-                writeJson(exchange, json, 200, api.getOrder(last(path)));
+                writeJson(exchange, json, api.getOrder(last(path)));
                 return;
             }
             if ("POST".equals(method) && path.startsWith("/self-check/projection/")
@@ -116,22 +117,22 @@ public final class Program {
             }
             if ("POST".equals(method) && path.startsWith("/self-check/projection/")
                 && path.endsWith("/rebuild")) {
-                writeJson(exchange, json, 200, api.rebuildProjection(segment(path, 3)));
+                writeJson(exchange, json, api.rebuildProjection(segment(path, 3)));
                 return;
             }
             if ("POST".equals(method) && "/self-check/idempotency/pending".equals(path)) {
                 Messages.StartOrderReq request = read(exchange, json, Messages.StartOrderReq.class);
-                writeJson(exchange, json, 200, api.createPendingThenStart(request));
+                writeJson(exchange, json, api.createPendingThenStart(request));
                 return;
             }
             if ("POST".equals(method) && "/self-check/workflow/inventory-reserved".equals(path)) {
                 Messages.StartOrderReq request = read(exchange, json, Messages.StartOrderReq.class);
-                writeJson(exchange, json, 200, api.prepareInventoryReserved(request));
+                writeJson(exchange, json, api.prepareInventoryReserved(request));
                 return;
             }
             if ("POST".equals(method) && path.startsWith("/self-check/workflow/")
                 && path.endsWith("/continue")) {
-                writeJson(exchange, json, 200, api.continueOrder(segment(path, 3)));
+                writeJson(exchange, json, api.continueOrder(segment(path, 3)));
                 return;
             }
             if ("POST".equals(method) && "/self-check/assert".equals(path)) {
@@ -143,6 +144,26 @@ public final class Program {
         } catch (Exception ex) {
             writeJson(exchange, json, 500, new ErrorBody(ex.getMessage()));
         }
+    }
+
+    private static void writeJson(
+        HttpExchange exchange,
+        ObjectMapper json,
+        CompletionStage<?> response) {
+        response.whenComplete((body, failure) -> {
+            try {
+                if (failure == null) {
+                    writeJson(exchange, json, 200, body);
+                    return;
+                }
+                Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+                    ? failure.getCause()
+                    : failure;
+                writeJson(exchange, json, 500, new ErrorBody(cause.getMessage()));
+            } catch (IOException writeFailure) {
+                exchange.close();
+            }
+        });
     }
 
     private static <T> T read(

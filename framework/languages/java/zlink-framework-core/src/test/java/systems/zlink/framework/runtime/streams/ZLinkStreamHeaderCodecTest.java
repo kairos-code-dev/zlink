@@ -49,7 +49,7 @@ final class ZLinkStreamHeaderCodecTest {
         byte[] encoded = ZLinkStreamHeaderCodec.encode(header);
 
         assertArrayEquals(hex(
-                "02 01 03 00 00 00 00 00 00 00 07 04 4a 6f 69 6e "
+                "f2 02 01 03 00 00 00 00 00 00 00 07 04 4a 6f 69 6e "
                     + "00 0c 01 05 74 72 61 63 65 00 03 61 62 63"),
             encoded);
         assertEquals(header, ZLinkStreamHeaderCodec.decodeOrPlain(encoded));
@@ -163,9 +163,9 @@ final class ZLinkStreamHeaderCodecTest {
     @Test
     void decodeRejectsHeadersThatViolateWireRules() {
         assertThrows(IllegalArgumentException.class, () ->
-            ZLinkStreamHeaderCodec.decodeOrPlain(hex("02 01 00 04 4a 6f 69 6e")));
+            ZLinkStreamHeaderCodec.decodeOrPlain(hex("f2 02 01 00 04 4a 6f 69 6e")));
         assertThrows(IllegalArgumentException.class, () ->
-            ZLinkStreamHeaderCodec.decodeOrPlain(hex("04 00 01 00 00 00 00 00 00 00 07 05 45 72 72 6f 72")));
+            ZLinkStreamHeaderCodec.decodeOrPlain(hex("f2 04 00 01 00 00 00 00 00 00 00 07 05 45 72 72 6f 72")));
     }
 
     private static byte[] hex(String value) {

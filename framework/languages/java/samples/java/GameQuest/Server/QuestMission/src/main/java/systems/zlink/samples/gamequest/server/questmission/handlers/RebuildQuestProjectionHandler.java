@@ -16,9 +16,10 @@ public final class RebuildQuestProjectionHandler
     }
 
     @Override
-    public Messages.QuestProgress handle(
+    public java.util.concurrent.CompletionStage<Messages.QuestProgress> handle(
         Messages.RebuildQuestProjectionReq request,
         ZLinkRequestContext context) {
-        return store.rebuildProjection(request.playerId(), request.questId(), request.count());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            store.rebuildProjection(request.playerId(), request.questId(), request.count()));
     }
 }

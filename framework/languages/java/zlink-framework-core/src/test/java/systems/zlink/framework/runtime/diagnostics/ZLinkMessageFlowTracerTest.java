@@ -7,7 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
@@ -90,5 +93,44 @@ class ZLinkMessageFlowTracerTest {
         assertTrue(content.contains("label=api"), content);
         Files.deleteIfExists(file);
         assertEquals(2L, tracer.tracedCount());
+    }
+
+    @Test
+    void dispatchErrorsUseContractLogLevels() {
+        ZLinkMessageFlowTracer tracer = tracer(options(ZLinkMessageFlowLogMode.ERRORS_ONLY));
+
+        assertEquals(Level.SEVERE, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.SEND, ZLinkDispatchErrorReason.HANDLER_EXCEPTION)));
+        assertEquals(Level.SEVERE, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.PUBLISH, ZLinkDispatchErrorReason.HANDLER_EXCEPTION)));
+        assertEquals(Level.WARNING, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.SEND, ZLinkDispatchErrorReason.PAYLOAD_DECODE_FAILED)));
+        assertEquals(Level.WARNING, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.ACTOR_SEND, ZLinkDispatchErrorReason.INVALID_FRAME)));
+        assertEquals(Level.FINE, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.PUBLISH, ZLinkDispatchErrorReason.HANDLER_MISSING)));
+        assertEquals(Level.SEVERE, tracer.logLevel(error(
+            ZLinkDispatchMessageKind.REQUEST, ZLinkDispatchErrorReason.HANDLER_MISSING)));
+    }
+
+    private static ZLinkMessageFlowEvent error(
+        ZLinkDispatchMessageKind kind,
+        ZLinkDispatchErrorReason reason) {
+        return new ZLinkMessageFlowEvent(
+            ZLinkMessageFlowOutcome.ERROR,
+            ZLinkDispatchErrorSurface.CHANNEL,
+            kind,
+            "PlaceOrder",
+            "orders",
+            null,
+            "corr-1",
+            null,
+            null,
+            null,
+            null,
+            reason,
+            ZLinkDispatchErrorAction.DROP,
+            null,
+            null);
     }
 }

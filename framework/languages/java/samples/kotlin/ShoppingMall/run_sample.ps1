@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -39,7 +40,7 @@ function Cleanup {
         }
     }
     if ($RedisContainerId) {
-        & docker rm -f $RedisContainerId 2>$null | Out-Null
+        Remove-ZlinkSampleRedis $RedisContainerId
     }
 }
 
@@ -147,14 +148,9 @@ try {
     $workflowA = Split-Endpoint $endpoints[2]
     $workflowB = Split-Endpoint $endpoints[3]
 
-    $redisEndpoint = $env:SHOPPINGMALL_REDIS_ENDPOINT
-    if (-not $redisEndpoint) {
-        & docker info *> $null
-        if ($LASTEXITCODE -ne 0) { throw "Docker daemon access is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." }
-        $RedisContainerId = (& docker run -d --rm --tmpfs /data --name "shoppingmall-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
-        if ($LASTEXITCODE -ne 0) { throw "Docker is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." }
-        $redisEndpoint = (& docker port $RedisContainerId 6379/tcp).Trim() -replace ".*:([0-9]+)$", "127.0.0.1:`$1"
-    }
+    $redisInstance = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-shoppingmall"
+    $RedisContainerId = $redisInstance.ContainerId
+    $redisEndpoint = $redisInstance.Endpoint
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
 

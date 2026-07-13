@@ -442,8 +442,12 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
-            return sendAsync(actorRef, packetName, message);
+        public void submit() {
+            sendAsync(actorRef, packetName, message).exceptionally(error -> {
+                java.util.logging.Logger.getLogger(ZLinkActorClientRuntime.class.getName())
+                    .log(java.util.logging.Level.SEVERE, "one-way actor submission failed", error);
+                return null;
+            });
         }
     }
 
@@ -472,7 +476,8 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
 
         @Override
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            return requestAsync(actorRef, packetName, request, timeout, replyType);
+            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
+                requestAsync(actorRef, packetName, request, timeout, replyType));
         }
     }
 }

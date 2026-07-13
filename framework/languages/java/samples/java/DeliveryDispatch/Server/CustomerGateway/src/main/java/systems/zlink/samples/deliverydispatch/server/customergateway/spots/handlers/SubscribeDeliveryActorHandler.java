@@ -1,25 +1,25 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway.spots.handlers;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.spots.CustomerEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public final class SubscribeDeliveryActorHandler
     implements ZLinkEntrySpotActorRequestHandler<
         CustomerEntrySpot,
         CustomerActor,
-        Messages.SubscribeDelivery,
-        Messages.SubscribeDeliveryAccepted> {
+        Messages.SubscribeDeliveryReq,
+        Messages.SubscribeDeliveryRes> {
     @Override
-    public Messages.SubscribeDeliveryAccepted handle(
+    public CompletionStage<Messages.SubscribeDeliveryRes> handle(
         CustomerEntrySpot entrySpot,
         CustomerActor actor,
         ZLinkSpotActorRequestContext context,
-        Messages.SubscribeDelivery request,
-        CancellationToken cancellationToken) {
-        return entrySpot.subscribe(actor, request);
+        Messages.SubscribeDeliveryReq request) {
+        return CompletableFuture.completedFuture(entrySpot.subscribe(actor, request));
     }
 }

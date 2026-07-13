@@ -1,6 +1,10 @@
 package systems.zlink.framework.kotlin
 
-import systems.zlink.framework.CancellationToken
+import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.future.future
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
@@ -23,7 +27,6 @@ import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
-import kotlinx.coroutines.runBlocking
 
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
     suspend fun handle(request: TRequest, context: ZLinkRequestContext): TReply
@@ -53,7 +56,7 @@ interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(spot: TSpot, request: TRequest): TReply
 }
 
-interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : ZLinkSpot<*>, TEvent> {
+interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(spot: TSpot, event: TEvent)
 }
 
@@ -71,7 +74,6 @@ interface ZLinkSuspendingEntrySpotActorSendHandler<
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
-        cancellationToken: CancellationToken,
     )
 }
 
@@ -86,7 +88,6 @@ interface ZLinkSuspendingEntrySpotActorRequestHandler<
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
-        cancellationToken: CancellationToken,
     ): TReply
 }
 
@@ -100,7 +101,6 @@ interface ZLinkSuspendingSpotActorSendHandler<
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
-        cancellationToken: CancellationToken,
     )
 }
 
@@ -115,7 +115,6 @@ interface ZLinkSuspendingSpotActorRequestHandler<
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
-        cancellationToken: CancellationToken,
     ): TReply
 }
 
@@ -131,8 +130,8 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
 }
 
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
-    final override fun create(actorId: String, context: ZLinkActorContext): ZLinkActor =
-        blocking {
+    final override fun create(actorId: String, context: ZLinkActorContext): CompletionStage<ZLinkActor> =
+        coroutineStage {
             createActor(actorId, context)
         }
 
@@ -143,79 +142,52 @@ abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
     ZLinkActorTransferAdapter<TActor> {
     final override fun transferOut(
         actor: TActor,
-        cancellationToken: CancellationToken,
-    ): ZLinkMessage = blocking {
-        transferOutSuspending(actor, cancellationToken)
+    ): CompletionStage<ZLinkMessage> = coroutineStage {
+        transferOutSuspending(actor)
     }
 
     final override fun transferIn(
         actorId: String,
         context: ZLinkActorContext,
         state: ZLinkMessage,
-        cancellationToken: CancellationToken,
-    ): TActor = blocking {
-        transferInSuspending(actorId, context, state, cancellationToken)
+    ): CompletionStage<TActor> = coroutineStage {
+        transferInSuspending(actorId, context, state)
     }
 
     protected abstract suspend fun transferOutSuspending(
         actor: TActor,
-        cancellationToken: CancellationToken,
     ): ZLinkMessage
 
     protected abstract suspend fun transferInSuspending(
         actorId: String,
         context: ZLinkActorContext,
         state: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): TActor
 }
 
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     abstract override fun context(): ZLinkSpotContext
 
-    final override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse =
-        blocking {
-            onCreateSuspending(request)
-        }
+    final override fun onCreate(request: ZLinkMessage): CompletionStage<ZLinkSpotCreateResponse> =
+        coroutineStage { onCreateSuspending(request) }
 
-    final override fun onInitialize() {
-        blocking {
-            onInitializeSuspending()
-        }
-    }
+    final override fun onInitialize(): CompletionStage<Void> =
+        coroutineVoidStage { onInitializeSuspending() }
 
-    final override fun onClosing() {
-        blocking {
-            onClosingSuspending()
-        }
-    }
+    final override fun onClosing(): CompletionStage<Void> =
+        coroutineVoidStage { onClosingSuspending() }
 
-    final override fun onActorJoin(
-        actorId: String,
-        request: ZLinkMessage,
-        cancellationToken: CancellationToken,
-    ): ZLinkSpotActorJoinResponse =
-        blocking {
-            onActorJoinSuspending(actorId, request, cancellationToken)
-        }
+    final override fun onActorJoin(actorId: String, request: ZLinkMessage): CompletionStage<ZLinkSpotActorJoinResponse> =
+        coroutineStage { onActorJoinSuspending(actorId, request) }
 
-    final override fun onJoinedActor(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    ) {
-        blocking {
-            onJoinedActorSuspending(actor, cancellationToken)
-        }
-    }
+    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onJoinedActorSuspending(actor) }
 
-    final override fun onLeaveActor(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    ) {
-        blocking {
-            onLeaveActorSuspending(actor, cancellationToken)
-        }
-    }
+    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onLeaveActorSuspending(actor) }
+
+    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onDisconnectActorSuspending(actor) }
 
     protected open suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse =
         ZLinkSpotCreateResponse.accept()
@@ -229,54 +201,41 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse
 
-    protected abstract suspend fun onJoinedActorSuspending(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    )
+    protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 
-    protected abstract suspend fun onLeaveActorSuspending(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    )
+    protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
+
+    protected open suspend fun onDisconnectActorSuspending(actor: TActor) {
+    }
 }
 
 abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> : ZLinkEntrySpot<TActor> {
     abstract override fun context(): systems.zlink.framework.spots.ZLinkEntrySpotContext
 
-    final override fun onInitialize() {
-        blocking { onInitializeSuspending() }
-    }
+    final override fun onInitialize(): CompletionStage<Void> = coroutineVoidStage { onInitializeSuspending() }
 
-    final override fun onClosing() {
-        blocking { onClosingSuspending() }
-    }
+    final override fun onClosing(): CompletionStage<Void> = coroutineVoidStage { onClosingSuspending() }
 
     final override fun onCreateActor(
         actor: TActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken,
-    ) {
-        blocking { onCreateActorSuspending(actor, createRequest, cancellationToken) }
-    }
+    ): CompletionStage<Void> = coroutineVoidStage { onCreateActorSuspending(actor, createRequest) }
 
     final override fun onActorJoin(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
-    ): ZLinkSpotActorJoinResponse = blocking {
-        onActorJoinSuspending(actorId, request, cancellationToken)
-    }
+    ): CompletionStage<ZLinkSpotActorJoinResponse> = coroutineStage { onActorJoinSuspending(actorId, request) }
 
-    final override fun onJoinedActor(actor: TActor, cancellationToken: CancellationToken) {
-        blocking { onJoinedActorSuspending(actor, cancellationToken) }
-    }
+    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onJoinedActorSuspending(actor) }
 
-    final override fun onLeaveActor(actor: TActor, cancellationToken: CancellationToken) {
-        blocking { onLeaveActorSuspending(actor, cancellationToken) }
-    }
+    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onLeaveActorSuspending(actor) }
+
+    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
+        coroutineVoidStage { onDisconnectActorSuspending(actor) }
 
     protected open suspend fun onInitializeSuspending() {
     }
@@ -287,52 +246,35 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> : ZLinkEntrySpot<TA
     protected abstract suspend fun onCreateActorSuspending(
         actor: TActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken,
     )
 
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse
 
-    protected abstract suspend fun onJoinedActorSuspending(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    )
+    protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 
-    protected abstract suspend fun onLeaveActorSuspending(
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    )
+    protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
+
+    protected open suspend fun onDisconnectActorSuspending(actor: TActor) {
+    }
 }
 
 abstract class ZLinkSuspendingSession : ZLinkSession {
     abstract override fun context(): ZLinkSessionContext
 
-    final override fun onConnected() {
-        blocking {
-            onConnectedSuspending()
-        }
-    }
+    final override fun onConnected(): CompletionStage<Void> = coroutineVoidStage { onConnectedSuspending() }
 
-    final override fun onDisconnected() {
-        blocking {
-            onDisconnectedSuspending()
-        }
-    }
+    final override fun onDisconnected(): CompletionStage<Void> = coroutineVoidStage { onDisconnectedSuspending() }
 
-    final override fun onError(error: ZLinkStreamError) {
-        blocking {
-            onErrorSuspending(error)
-        }
-    }
+    final override fun onError(error: ZLinkStreamError): CompletionStage<Void> =
+        coroutineVoidStage { onErrorSuspending(error) }
 
-    final override fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        blocking {
-            onDispatchSuspending(dispatch, payload)
-        }
-    }
+    final override fun onDispatch(
+        dispatch: ZLinkSessionDispatchContext,
+        payload: ZLinkMessage,
+    ): CompletionStage<Void> = coroutineVoidStage { onDispatchSuspending(dispatch, payload) }
 
     protected open suspend fun onConnectedSuspending() {
     }
@@ -347,7 +289,13 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
     }
 }
 
-private fun <T> blocking(block: suspend () -> T): T =
-    runBlocking {
+private val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+private fun <T> coroutineStage(block: suspend () -> T): CompletionStage<T> =
+    bridgeScope.future(ZLinkCoroutineInvocationContext.capture(Dispatchers.Default)) { block() }
+
+private fun coroutineVoidStage(block: suspend () -> Unit): CompletionStage<Void> =
+    bridgeScope.future(ZLinkCoroutineInvocationContext.capture(Dispatchers.Default)) {
         block()
+        null
     }

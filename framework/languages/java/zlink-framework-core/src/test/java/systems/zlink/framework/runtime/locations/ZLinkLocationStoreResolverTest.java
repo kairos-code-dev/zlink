@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -102,7 +104,26 @@ class ZLinkLocationStoreResolverTest {
         assertSame(stores.peerStore(), stores.unifiedStore());
     }
 
-    public static final class CountingLocationStore implements ZLinkLocationStore {
+    @Test
+    void ownerLeaseRefreshTimeDoesNotMoveBackwardWhenStoreClockRegresses() {
+        DescendingLeaseClockStore store = new DescendingLeaseClockStore(
+            Instant.parse("2026-07-13T14:04:23.422Z"),
+            Instant.parse("2026-07-13T14:04:23.231Z"));
+        try (ZLinkLocationRuntime runtime = new ZLinkLocationRuntime(
+                store,
+                "owner-a",
+                Duration.ofMinutes(1),
+                Duration.ofDays(1))) {
+            runtime.start(RoutingId.from("node-a")).toCompletableFuture().join();
+            Instant before = runtime.ownerLeaseRenewedAt();
+
+            runtime.renewOwnerLeaseOnce().toCompletableFuture().join();
+
+            assertTrue(runtime.ownerLeaseRenewedAt().isAfter(before));
+        }
+    }
+
+    public static class CountingLocationStore implements ZLinkLocationStore {
         static final AtomicInteger created = new AtomicInteger();
 
         public CountingLocationStore() {
@@ -231,6 +252,24 @@ class ZLinkLocationStoreResolverTest {
 
         private CompletionStage<ZLinkLocationWriteResult> unsupportedWrite() {
             return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
+        }
+    }
+
+    private static final class DescendingLeaseClockStore extends CountingLocationStore {
+        private final ArrayDeque<Instant> storeTimes;
+
+        private DescendingLeaseClockStore(Instant... storeTimes) {
+            this.storeTimes = new ArrayDeque<>(List.of(storeTimes));
+        }
+
+        @Override
+        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
+            String ownerId,
+            RoutingId nodeRid,
+            Duration leaseTtl) {
+            Instant storeNow = storeTimes.removeFirst();
+            return CompletableFuture.completedFuture(
+                new ZLinkOwnerLeaseRenewal(storeNow.plus(leaseTtl), storeNow));
         }
     }
 }

@@ -2,21 +2,24 @@ package systems.zlink.e2e.kotlin.spotservice.play.handlers
 
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.framework.locations.SpotRef
+import kotlinx.coroutines.future.await
 import systems.zlink.e2e.kotlin.spotservice.play.spots.UserSpot
-import systems.zlink.framework.spots.ZLinkSpotPacketHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler
+import systems.zlink.framework.spots.SpotHandleResolver
 
-class SpotToSpotCommandHandler : ZLinkSpotPacketHandler<UserSpot, Contracts.SpotToSpotCommandReq> {
-    override fun handle(spot: UserSpot, message: Contracts.SpotToSpotCommandReq) {
+class SpotToSpotCommandHandler(
+    private val handles: SpotHandleResolver,
+) : ZLinkSuspendingSpotPacketHandler<UserSpot, Contracts.SpotToSpotCommandReq> {
+    override suspend fun handle(spot: UserSpot, message: Contracts.SpotToSpotCommandReq) {
         val targetSpotRid = RoutingId.from(message.targetSpotRid)
-        val targetNode = if (message.targetSpotRid.contains("b")) "play-b" else "play-a"
+        val target = handles.resolveSpotHandle(targetSpotRid).await()
+            .orElseThrow { IllegalStateException("spot handle was not found: $targetSpotRid") }
         spot.context()
             .outbound()
             .sendToSpot(
-                SpotRef(Contracts.ROUTE_CHANNEL, RoutingId.from(targetNode), targetSpotRid),
+                target,
                 Contracts.OutboundMsg(message.value),
             )
-            .packetName("OutboundMsg")
-            .await()
+            .submit()
     }
 }

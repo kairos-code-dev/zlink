@@ -8,15 +8,10 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
 import systems.zlink.framework.errors.ZLinkWorkerTimeoutException;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
 import systems.zlink.framework.spots.ZLinkWorkerTask;
@@ -30,29 +25,14 @@ import systems.zlink.framework.spots.ZLinkWorkerTask;
 final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     private final ZLinkWorkerPool pool;
     private final ZLinkWorkerTask<T> work;
-    private final Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue;
-    private final boolean captureCurrentTurn;
-    private final ZLinkYieldTurn turn;
     private final AtomicBoolean terminated = new AtomicBoolean();
     private Duration timeout;
 
     DefaultZLinkWorkerCall(
         ZLinkWorkerPool pool,
-        ZLinkWorkerTask<T> work,
-        Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue) {
-        this(pool, work, postToSpotQueue, true);
-    }
-
-    DefaultZLinkWorkerCall(
-        ZLinkWorkerPool pool,
-        ZLinkWorkerTask<T> work,
-        Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue,
-        boolean captureCurrentTurn) {
+        ZLinkWorkerTask<T> work) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.work = Objects.requireNonNull(work, "work");
-        this.postToSpotQueue = Objects.requireNonNull(postToSpotQueue, "postToSpotQueue");
-        this.captureCurrentTurn = captureCurrentTurn;
-        this.turn = captureCurrentTurn ? ZLinkFrameworkTurns.captureCurrent() : null;
     }
 
     @Override
@@ -69,14 +49,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
         ensureSingleTerminator();
         CompletableFuture<T> result = new CompletableFuture<>();
         start(result::complete, result::completeExceptionally);
-        return result;
-    }
-
-    @Override
-    public T yield() {
-        ZLinkYieldTurn capturedTurn = requireTurn();
-        return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit()));
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
     private void start(
@@ -123,20 +96,6 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
             throw new IllegalStateException(
                 "runWorker call already has a terminator; call submit once");
         }
-    }
-
-    private ZLinkYieldTurn requireTurn() {
-        if (turn == null) {
-            if (captureCurrentTurn) {
-                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-                if (current != null) {
-                    return current;
-                }
-            }
-            throw new IllegalStateException(
-                "yield requires a framework Spot handler turn captured when the call object was created");
-        }
-        return turn;
     }
 
     private static void cancelTimeout(ScheduledFuture<?> timeoutFuture) {

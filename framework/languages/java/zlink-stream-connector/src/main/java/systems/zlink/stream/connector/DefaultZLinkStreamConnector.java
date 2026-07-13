@@ -46,6 +46,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final ZLinkStreamConnectionLifecycle lifecycle;
 
     private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
+    private volatile ZLinkStreamCloseReason closeReason = ZLinkStreamCloseReason.TRANSPORT_ERROR;
 
     DefaultZLinkStreamConnector(ZLinkStreamConnectorOptions options) {
         this.configuration = ZLinkStreamConnectorConfiguration.from(options);
@@ -61,7 +62,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             inboundObservers,
             payloadCodec,
             this::publishError,
-            this::sendControl);
+            this::sendControl,
+            this::onSessionClosing);
         this.lifecycle = new ZLinkStreamConnectionLifecycle(
             this.configuration,
             timeouts,
@@ -71,6 +73,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             receiveDispatcher,
             this::publishError,
             this::notifyDisconnected,
+            reason -> closeReason = reason,
             this::sendControl);
     }
 
@@ -107,7 +110,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall disconnect() {
-        return new DefaultZLinkStreamLifecycleCall(lifecycle::disconnect);
+        return new DefaultZLinkStreamLifecycleCall(() -> {
+            closeReason = ZLinkStreamCloseReason.CLIENT_CLOSE;
+            return lifecycle.disconnect();
+        });
     }
 
     @Override
@@ -121,6 +127,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     private CompletionStage<Void> closeInternal() {
+        closeReason = ZLinkStreamCloseReason.CLIENT_CLOSE;
         try {
             return lifecycle.close().whenComplete((ignored, failure) -> timeouts.shutdown());
         } catch (RuntimeException error) {
@@ -201,7 +208,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             null,
             payload.packetName(),
             payload.metadata(),
-            nextCorrelationId());
+            nextCorrelationId(),
+            ZLinkConnectorFlowIds.next(),
+            3);
         return sendFrame(header, body);
     }
 
@@ -224,7 +233,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             requestSeq,
             payload.packetName(),
             payload.metadata(),
-            nextCorrelationId());
+            nextCorrelationId(),
+            ZLinkConnectorFlowIds.next(),
+            3);
 
         sendFrame(header, body).whenComplete((ignored, ex) -> {
             if (ex != null) {
@@ -247,7 +258,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             + " name=" + header.name()
             + " requestSeq=" + header.requestSeq()
             + " bytes=" + payload.length
-            + " correlation=" + header.correlationId());
+            + " correlation=" + header.correlationId()
+            + " flow=" + header.flowId()
+            + " origin=" + flowOriginName(header.flowOrigin()));
         synchronized (this) {
             sendChain = sendChain.thenCompose(ignored -> writeFrame(frame));
             return sendChain.whenComplete((ignored, ex) -> {
@@ -269,6 +282,16 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
     }
 
+    private static String flowOriginName(int origin) {
+        return switch (origin) {
+            case 1 -> "inbound";
+            case 2 -> "timer";
+            case 3 -> "application";
+            case 4 -> "lifecycle";
+            default -> null;
+        };
+    }
+
     private CompletionStage<Void> writeFrame(byte[] frame) {
         return lifecycle.writeAsync(frame);
     }
@@ -281,7 +304,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             null,
             name,
             Map.of(),
-            null);
+            null,
+            null,
+            0);
         return sendFrame(header, new byte[0]);
     }
 
@@ -292,9 +317,16 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     private void notifyDisconnected() {
+        ZLinkStreamDisconnected event = new ZLinkStreamDisconnected(closeReason);
         for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
-            invokeUserCallback(handler::handleAsync);
+            invokeUserCallback(() -> handler.handle(event));
         }
+        closeReason = ZLinkStreamCloseReason.TRANSPORT_ERROR;
+    }
+
+    private void onSessionClosing(ZLinkStreamCloseReason reason) {
+        closeReason = reason;
+        lifecycle.serverClosing();
     }
 
     private void publishError(ZLinkStreamError error) {

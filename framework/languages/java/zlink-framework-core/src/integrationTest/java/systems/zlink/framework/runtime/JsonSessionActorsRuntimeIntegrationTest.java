@@ -70,12 +70,13 @@ final class JsonSessionActorsRuntimeIntegrationTest {
 
     public static final class DefaultJsonActorSendHandler {
         @ZLinkSpotActorSend
-        public void handle(
+        public java.util.concurrent.CompletionStage<Void> handle(
             SessionActorsRuntimeIntegrationTest.PlayerActor actor,
             JsonRelaySend request) {
             SessionActorsRuntimeIntegrationTest.actorRelayRequests.offer(
                 actor.actorId() + ":" + request.value());
-                    }
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
     }
 
     private static String awaitActorRelay(

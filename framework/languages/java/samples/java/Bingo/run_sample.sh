@@ -82,14 +82,9 @@ stream_a_port="${session_a_stream##*:}"
 stream_b_host="${session_b_stream%:*}"
 stream_b_port="${session_b_stream##*:}"
 bingo_redis_key_prefix="${BINGO_REDIS_KEY_PREFIX:-bingo:java:${RANDOM}:$$:}"
-if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-  BINGO_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-java-sample-bingo" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
 wait_port "${redis_host}" "${redis_port}"
@@ -129,12 +124,13 @@ wait_port "${play_a_spot_host}" "${play_a_spot_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
-sleep 5
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 
 grep -q "bingo=completed" "${log_dir}/client.log"
 grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${log_dir}/client.log"
 grep -Rq "message flow" "${BINGO_LOG_DIR}"
+grep -Eq "zlink metric .*name=zlink\.stream\.connections\.active" "${log_dir}"/session-*.log
+grep -Eq "zlink metric .*name=zlink\.spot\.queue\.depth" "${log_dir}"/play-*.log
 
 echo "bingo full client/server self-check completed"

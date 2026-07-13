@@ -116,12 +116,10 @@ public final class RegistrationCodecServerApplication {
             channel.addRequestHandler(
                 ProtobufRequestHandler.class,
                 StringValue.class,
-                StringValue.class,
-                "ProtobufEcho");
+                StringValue.class);
             channel.addSendHandler(
                 ProtobufSendHandler.class,
-                StringValue.class,
-                "ProtobufEcho");
+                StringValue.class);
             channel.addRequestHandler(
                 MsgpackRequestHandler.class,
                 Contracts.PackedEchoReq.class,

@@ -6,7 +6,7 @@
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
 축소하지 않고, 구현과 contract test를 정식 스펙에 맞춘다.
 
-검토 기준일은 2026-07-13이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
+검토 기준일은 2026-07-14이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
 ## 1. 판정 기준
 
@@ -38,7 +38,8 @@
 | **—** | 구현 대상이 아니다(규약·서술 문서) |
 
 **Kotlin은 Java 런타임을 공유한다.** 표의 Kotlin 칸은 **Kotlin 고유 표면**(`suspend`, `Flow`,
-DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 하지 않았다.
+DSL)이 그 스펙을 만족하는지를 뜻한다. Kotlin contract/unit/integration test와 Kotlin E2E가
+Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도로 검증했다.
 
 ### 2.1 기반 (0x)
 
@@ -46,53 +47,53 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 00 | [공개 계약 관리](00-public-contract-governance.ko.md) | — | — | — | — | — |
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
-| 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | ? | O | O |
-| 03 | [메시지 모델](03-message-model.ko.md) | O | O | ? | O | O |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | **△** Config 8 ATD-C3B 미통과 [§5.1](#51-c-비동기-실행-정책-미해결-항목) |
-| 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | O |
+| 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | O | O | O |
+| 03 | [메시지 모델](03-message-model.ko.md) | O | O | O | O | O |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | O | O | **△** Config 8 ATD-C3B 미통과 [§5.1](#51-c-비동기-실행-정책-미해결-항목) |
+| 05 | [framework API](05-framework-api.ko.md) | O | O | O | O | O |
 
 ### 2.2 Channel (1x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 10 | [channel topology](10-channel-topology.ko.md) | O | O | ? | O | O |
-| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | ? 로그 수준 미대조 | ? | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
+| 10 | [channel topology](10-channel-topology.ko.md) | O | O | O | O | O |
+| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | O | O | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
 
 ### 2.3 SPOT · Actor (2x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | ? | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
-| 21 | [SpotNode](21-spot-node.ko.md) | O | O | ? | O | O |
-| 22 | [Actor 모델](22-actor-model.ko.md) | O | O | ? | O | O |
-| 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | O | ? | O | O |
-| 24 | [Spot 주소 메시징](24-spot-address-messaging.ko.md) | O | O | ? | O | O |
-| 25 | [Stage Wrapper](25-stage-wrapper-on-spot.ko.md) | O | O | ? | O | O |
+| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
+| 21 | [SpotNode](21-spot-node.ko.md) | O | O | O | O | O |
+| 22 | [Actor 모델](22-actor-model.ko.md) | O | O | O | O | O |
+| 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | O | O | O | O |
+| 24 | [Spot 주소 메시징](24-spot-address-messaging.ko.md) | O | O | O | O | O |
+| 25 | [Stage Wrapper](25-stage-wrapper-on-spot.ko.md) | O | O | O | O | O |
 
 ### 2.4 STREAM (3x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 30 | [STREAM 서버 세션](30-stream-session.ko.md) | O | O | ? | O | O |
-| 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | ? | O | O |
-| 32 | [Stream Connector](32-stream-connector.ko.md) | O | O | ? | **△** 브라우저 flow 문맥 [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | O |
+| 30 | [STREAM 서버 세션](30-stream-session.ko.md) | O | O | O | O | O |
+| 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | O | O | O |
+| 32 | [Stream Connector](32-stream-connector.ko.md) | O | O | O | O | O |
 
 ### 2.5 Location (4x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 40 | [location runtime](40-location-runtime.ko.md) | O | O | ? | O | O |
-| 41 | [Redis location store](41-location-store-redis.ko.md) | O | O | ? | O | O |
+| 40 | [location runtime](40-location-runtime.ko.md) | O | O | O | O | O |
+| 41 | [Redis location store](41-location-store-redis.ko.md) | O | O | O | O | O |
 
 ### 2.6 관측 · 운영 (5x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | O | ? | O | O |
-| 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | O | **△** Config 6·8만 검증 | ? | O | O |
-| 52 | [메시지 흐름 추적](52-message-flow-tracing.ko.md) | O | **△** Config 6·8만 검증 | ? | **△** 브라우저 `MFLOW-EXT-014` [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | O |
-| 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | ? | ? | O | O |
-| 54 | [Graceful Drain](54-graceful-drain-handoff.ko.md) | O | **△** Config 6·8만 검증 | ? | O | O |
+| 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | O | O | O | O |
+| 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | O | O | O | O | O |
+| 52 | [메시지 흐름 추적](52-message-flow-tracing.ko.md) | O | O | O | O | O |
+| 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | O | O | O | O |
+| 54 | [Graceful Drain](54-graceful-drain-handoff.ko.md) | O | O | O | O | O |
 
 ### 2.7 열려 있는 gap 요약
 
@@ -100,13 +101,11 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 
 | gap | 언어 | 내용 |
 |---|---|---|
-| [§4.10](#410-stream-connector-브라우저-진입점과-비동기-flow-문맥) | **Node** | 브라우저 진입점에는 `AsyncLocalStorage`에 해당하는 표준이 없어 **handler가 `await`하는 동안 관련 없는 callback에 inbound flow가 노출될 수 있다.** `MFLOW-EXT-014` 미충족 |
+| [§4.10](#410-stream-connector-browser-only-package와-검증) | **TypeScript** | **해소.** browser-only package, 명시적 flow, 실제 Chromium과 package consumer gate가 모두 통과했다. |
 | [§4.13](#413-startup-validation-누락) | **Node** | channel과 SPOT의 일부 잘못된 구성을 startup에서 거부하지 않는다 |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
 | [§5.1](#51-c-비동기-실행-정책-미해결-항목) | **C++** | Config 8 `AutomaticTurnDispatch`의 **ATD-C3B가 통과하지 못한다.** spot timer 핸들러가 outbound channel 응답을 await하는 동안 route-channel 디스패치가 멈춘다 |
-| 전 영역 | **Kotlin** | Kotlin 고유 표면(`suspend`·`Flow`·DSL)이 각 스펙을 만족하는지 **이 문서가 검증하지 않았다** |
-| §51·§52·§54 | **Java** | 관측·운영 계약을 **Config 6·8에서만 검증했다.** 나머지 Config는 미검증 |
 
 **connector wire 계약(§10.1~§10.7)은 2026-07-13에 3개 구현 모두 해소했다**(§10).
 
@@ -123,9 +122,11 @@ handler의 시작 순서를 보장하며, 반환된 incomplete stage의 완료�
 - `JavaTargetContractGapTest.handlersFactoriesAndLifecycleExposeCompletionStages`
 - Config 8 `AutomaticTurnDispatch` 전체 selector
 
-Kotlin adapter는 여러 lifecycle과 actor callback을 `runBlocking`으로 Java 동기
-callback에 연결한다. `CompletionStage.await()`도 내부에서 `join()`을 사용한다. 이
-구현은 callback 안에서 blocking wait를 사용하지 않는다는 공통 실행 계약과 다르다.
+Kotlin adapter는 lifecycle과 actor callback의 coroutine을 `CoroutineScope.future`로
+`CompletionStage`에 연결한다. `CompletionStage.await()`는
+`suspendCancellableCoroutine`과 stage 완료 callback으로 coroutine을 재개하므로 callback
+실행 줄을 blocking wait로 점유하지 않는다. waiter cancellation은 공유 framework stage를
+취소하지 않고, stage의 완료 오류는 원래 원인으로 풀어서 전달한다.
 
 현재 확인 위치:
 
@@ -200,9 +201,12 @@ ZLinkKotlinStreamConnector
 ZLinkStreamTypedWaitCall
 ZLinkSuspendingLocationStore
 await
-awaitReply
+awaitJoinReply
+awaitOwnerLeases
 send
 publishToTopic
+resolveActorSpotHandle
+resolveSpotHandle
 useCoroutineHandlers
 messages
 errors
@@ -222,12 +226,21 @@ location store/query, compression과 connector에 선언된 Kotlin public extens
 문서의 전체 function inventory를 기준으로 별도 검증한다. Java 완료 판정이 Kotlin 완료를
 의미하지 않는다.
 
-### 3.7 Java 검증 상태
+### 3.7 Java/Kotlin 검증 상태
 
 Java target public declaration은 `JavaTargetContractGapTest` 전체 통과와 production symbol
-검색으로 확인했다. Config 6 `StoreFailure`의 SF-A1~E1과 Config 8
-`AutomaticTurnDispatch`의 정식 selector는 real E2E 전체 실행을 통과했다. 다른 Config와
-sample은 이 갱신에서 다시 실행하지 않았으므로 Java 전체 완료 증거로 사용하지 않는다.
+검색으로 확인했다. Java Config 1~10과 Config 11 `ObservabilityOps` 전체 selector가 real E2E를
+통과했다. `ZLinkMessageFlowTracerTest.dispatchErrorsUseContractLogLevels`는 handler 예외를
+one-way 여부와 관계없이 Error로 기록하고, handler 없음·decode 실패·invalid frame의 기본 수준을
+send는 Warning, publish는 Debug로 기록하는 계약을 고정한다. Kotlin channel handler도 같은
+Java dispatch reporter를 사용한다.
+
+Kotlin은 `KotlinPublicSurfaceContractTest`, 전체 unit/integration test와 언어별 E2E로 확인했다.
+`KotlinFlowContextBridgeTest`는 suspending lifecycle의 flow가 suspension 전후에 유지되고 다음
+호출에 남지 않는지 검증한다. `KotlinCompletionStageAwaitIntegrationTest`는 drain waiter를 취소해도
+공유 drain stage가 취소되지 않는지 검증한다. Config 8 전체 실행은 `ATD-E3`의 pending await 중
+Play 재시작과 같은 routing id recovery를 포함해 통과했다. Config 11 전체 실행도 각 selector를
+새 Redis와 새 토폴로지에서 실행하여 OBS-A1~C5가 모두 통과했다.
 
 ## 4. Node.js
 
@@ -329,41 +342,33 @@ callback과 binding 정리를 실행한다. routing id가 없는 이전 event를
 framework의 다중 session 회귀 검사에서 지정된 session만 종료되는지 확인했다. sample 재검토는
 별도 G5 gate에서 계속 추적한다.
 
-### 4.10 Stream Connector 브라우저 진입점과 비동기 flow 문맥
+### 4.10 Stream Connector browser-only package와 검증
 
-**transport 충족, flow 문맥 미충족.** `@zlink-systems/stream-connector/browser`를 추가하고 플랫폼의 네이티브
-`WebSocket`을 기본 transport로 연결했다. 브라우저 진입점은 `ws://`와 `wss://`만 허용하며,
-`tcp://`와 `tls://`는 connector를 만들 때 `ConfigurationError`로 거부한다.
+`@zlink-systems/stream-connector` package root를 플랫폼 `WebSocket` 기반 browser ESM으로 교체했다.
+Node TCP/TLS, 직접 WebSocket 구현, Node flow context와 `/browser` subpath를 제거했다. public
+transport는 `WebSocket`과 `WebSocketSecure`만 남으며 `tcp://`와 `tls://`는 connector를 만들 때
+`ConfigurationError`로 거부한다.
 
-공용 runtime에서 `node:async_hooks`, `node:crypto`와 Node 기본 transport의 정적 import를
-제거했다. Node 진입점만 해당 구현을 선택하므로 브라우저 bundle 그래프에는 `net`, `tls`,
-`async_hooks`, `crypto` Node 모듈과 `Buffer`가 포함되지 않는다. 두 진입점은 같은 public export
-목록과 connector option·interface type을 유지한다.
+브라우저 비동기 flow는 [flow correlation §4.4](53-flow-correlation.ko.md)의 명시적 계약을 따른다.
+connector instance에는 현재 inbound flow를 저장하지 않는다. 관련 outbound는 call builder의
+`flowFrom(message)`로 flow 쌍을 전달하고, 표시하지 않은 outbound는 새 application flow를 만든다.
+fake WebSocket contract test에서 관련 outbound의 보존과 관련 없는 callback의 격리를 확인했다.
 
-검증은 다음 범위를 통과했다.
+MessagePack과 Protobuf package root도 browser-safe payload codec만 내보내고 server serializer 등록은
+`./framework` subpath로 분리했다. `stream-wire`는 같은 source의 ESM/CommonJS 산출물을 제공한다.
+Bingo는 생성된 정적 encode/decode와 결정성 검사를 사용하며 runtime filesystem lookup과 `protoPath`
+option을 사용하지 않는다.
 
-- esbuild로 생성한 실제 browser bundle과 module graph 검사
-- 플랫폼 `WebSocket` event 계약을 사용한 WSS request/reply·push 수신 smoke
-- `tcp://`·`tls://` 즉시 거부 contract test
-- Node Stream Connector contract test 전체
-- 실제 npm tarball의 Node·browser runtime import와 TypeScript 소비자 compile
+실제 Chromium은 `ws`와 `wss` request/reply·push, 명시적 flow 전달과 관련 없는 callback 격리,
+reconnect, drain, close reason을 검증한다. 브라우저 기본 신뢰 설정에서는 자체 서명 인증서를
+거부하며, 테스트가 이를 우회하는 connector option은 없다. `close()`는 WebSocket의 실제 close
+event가 올 때까지 완료되지 않는지 fake WebSocket 회귀 검사에서도 확인한다.
 
-검증 환경에 headless 브라우저 실행 도구가 없어 실제 브라우저 프로세스는 실행하지 않았다.
-배포 전 브라우저 호환성 확인에서는 같은 WSS 시나리오를 실제 브라우저에서도 실행한다.
-
-남은 gap은 [flow correlation MFLOW-EXT-014](53-flow-correlation.ko.md)의 비동기 실행 문맥이다.
-현재 `BrowserZlinkFlowContext`는 한 connector instance의 current flow를 handler Promise가 끝날 때까지
-유지한다. 그래서 handler가 `await`로 기다리는 동안 관련 없는 timer나 UI callback이 같은 connector로
-메시지를 보내면 inbound flow를 잘못 재사용할 수 있다. callback 직후 current flow를 복원하면
-`await` 이후 continuation이 flow를 잃으므로 해결이 아니다.
-
-브라우저 표준에는 `AsyncLocalStorage`에 해당하는 기능이 없고, 저장소의 기존 dependency에도 이를
-대신할 수단이 없다. `zone.js` 0.16.2도 native async function의 첫 `await` 뒤 child Zone을 보존하지
-못해 계약 테스트의 기반으로 사용할 수 없었다. public callback에 flow-bound sender를 추가하면
-공통 스펙이 금지한 v1 capture/wrap 표면을 새로 만들게 된다. 따라서 불완전한 전역 변수나 Promise
-patch를 추가하지 않고, 브라우저 async-context 환경 또는 public callback 계약을 별도 설계로
-확정할 때까지 이 항목을 Node.js G2 public runtime gap으로 유지한다. G2가 열려 있으므로
-후속 build·test gate인 G3와 최종 재검토 gate인 G7도 완료로 표시하지 않는다.
+Node ambient type 없는 browser declaration/build, browser bundle의 Node module 부재, codec graph
+분리, Bingo 생성 codec 결정성, npm tarball browser/CommonJS consumer도 통과했다. 다섯 STREAM
+sample client와 네 framework E2E client를 Chromium으로 실행했고, Browser TypeScript connector에서
+`.NET`과 C++ STREAM server로 보내는 cross-language smoke도 통과했다. 따라서 이 항목에 남은
+public contract gap은 없다.
 
 ### 4.11 dispatch 실패 수준과 `FailCaller`
 
@@ -397,26 +402,31 @@ session relay도 같은 actor별 lifecycle coordinator에서 실행하도록 수
 서로 다른 play node 사이 actor 이동 직후 client request를 반복 실행해 이 경합의 실제 경로도
 검증한다.
 
-### 4.13 startup validation 누락
+### 4.13 startup validation 누락 (해소)
 
 2026-07-13에 [channel 메시징 §4](11-channel-messaging.ko.md)와
 [SPOT 메시징 §8](20-spot-messaging.ko.md)의 각 행을 Node.js registration validator에 직접
-대입해 다음 누락을 확인했다.
+대입해 다음 누락을 확인했고, 같은 날 구현과 회귀 검사를 추가해 모두 해소했다.
 
 - server에 request/send handler가 하나도 없어도 startup이 성공한다.
 - subscriber에 publish handler가 하나도 없어도 startup이 성공한다.
 - router와 pub/sub 역할을 모두 사용하지 않는 SpotNode가 허용된다.
 - actor factory를 등록한 SpotNode에 router 역할이 없어도 허용된다.
 - router 또는 pub/sub 역할을 사용하면서 bind endpoint를 지정하지 않아도 허용된다.
-- location store의 자동 연결과 같은 SPOT 수신 관계의 수동 peer endpoint를 함께 지정해도
-  허용된다.
+- location store의 자동 연결과 같은 SPOT 수신 역할의 수동 peer endpoint를 함께 지정하면
+  역할별 연결 정책이 필요하다.
 
-이 항목은 설정 오류를 첫 message 호출이나 연결 timeout까지 늦추므로 application 개발자가
+해소한 항목은 설정 오류를 첫 message 호출이나 연결 timeout까지 늦추므로 application 개발자가
 runtime 내부 연결 조건과 구동 순서를 알아야 하는 문제로 이어진다. Node.js는 registration과
 NestJS handler discovery가 끝난 뒤, socket을 만들기 전에 위 구성을
-`ZLinkConfigurationException`으로 거부해야 한다. 각 누락은 잘못된 구성이 startup 전에 실패하는
-회귀 검사로 고정하고, 수동 peer를 사용하는 sample은 같은 관계의 store 자동 연결에 의존하지
-않도록 구성을 분리한다.
+`ZLinkConfigurationException`으로 거부한다. 회귀 검사는 잘못된 구성이 startup 전에 실패하는지
+검증한다.
+
+마지막 항목은 공통 channel topology §5.2의 역할별 manual 연결 규칙을 runtime에 적용해 해소했다.
+router에 manual peer가 있으면 router auto reconcile만 수행하지 않고, pub/sub에 manual endpoint가
+있으면 pub/sub auto reconcile만 수행하지 않는다. location store와 actor 위치 조회는 그대로
+유지한다. 따라서 TicTacToe는 sample 전용 wrapper 없이 수동 SPOT peer와 원격 actor 위치 조회를
+함께 사용할 수 있다.
 
 ## 5. C++
 
@@ -549,7 +559,8 @@ G0에서 실제 symbol과 source 위치를 조사한다. 기존 monitoring 또�
 | 사용 예제와 배포 검증 | Bingo §17 공개 사용 예제와 Config 11 OBS-A1~C5 전체 | 각 언어 G5~G6 |
 
 Java runtime을 공유하는 Kotlin도 별도 완료 판정을 받는다. Kotlin coroutine 문맥에서 flow가 누출되지
-않고 drain waiter 취소가 shared drain을 취소하지 않는다는 Kotlin 전용 test가 필요하다. C++는
+않는지는 `KotlinFlowContextBridgeTest`, drain waiter 취소가 shared drain을 취소하지 않는지는
+`KotlinCompletionStageAwaitIntegrationTest`가 검증한다. C++는
 framework가 signal handler를 설치하지 않으며 애플리케이션이 소유한 종료 실행 문맥에서 drain을
 호출하는 예제를 제공해야 한다.
 

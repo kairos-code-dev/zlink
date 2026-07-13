@@ -145,7 +145,7 @@ cleanup() {
     fi
   done
   if [[ -n "${redis_container}" ]]; then
-    docker rm -f "${redis_container}" >/dev/null 2>&1 || true
+    docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -304,18 +304,9 @@ generate_tls_cert() {
     -out "${cert}" >/dev/null 2>&1
 }
 
-if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
-else
-  redis_container="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-  )"
-  redis_endpoint="$(zlink_redis_endpoint "${redis_container}")"
-fi
+zlink_redis_start_scoped_assign redis_container redis_port \
+  "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+redis_endpoint="127.0.0.1:${redis_port}"
 export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
@@ -741,10 +732,10 @@ run_client_mode() {
 scenario_modes() {
   case "$1" in
     all)
-      echo "state1 state2 send normal worker missing timeout owner stage-wrapper spot-outbound spot-to-spot route-mesh route-lifecycle spot-only-mesh actor-session stream-tls remote-actor-session owner-remap join-leave-race bound-push-load idle-timer timer-overrun"
+      echo "state1 state2 send normal worker missing timeout owner stage-wrapper spot-outbound spot-to-spot route-mesh route-lifecycle spot-only-mesh actor-session session-transfer stream-tls remote-actor-session owner-remap join-leave-race bound-push-load idle-timer timer-overrun"
       ;;
     default-batch)
-      echo "state1 state2 send normal worker missing timeout owner stage-wrapper spot-outbound spot-to-spot route-mesh route-lifecycle actor-session stream-tls remote-actor-session idle-timer timer-overrun"
+      echo "state1 state2 send normal worker missing timeout owner stage-wrapper spot-outbound spot-to-spot route-mesh route-lifecycle actor-session session-transfer stream-tls remote-actor-session idle-timer timer-overrun"
       ;;
     SM-A1) echo "state1" ;;
     SM-A2) echo "state2" ;;
@@ -754,6 +745,7 @@ scenario_modes() {
     SM-A7) echo "type-mismatch" ;;
     SM-A8) echo "worker" ;;
     SM-B1|SM-B3|SM-B5|SM-B6|SM-B7|SM-B8|SM-D1|SM-D3|SM-D4|SM-D5|SM-D6|SM-D7|SM-D8|SM-D9|SM-D10|SM-D11|SM-D13) echo "actor-session" ;;
+    SM-D12) echo "session-transfer" ;;
     SM-D14) echo "stream-tls" ;;
     SM-B2|SM-B4|SM-D2) echo "remote-actor-session" ;;
     SM-G2) echo "owner-remap" ;;
@@ -770,6 +762,7 @@ scenario_modes() {
     SM-F1|SM-F2|SM-F3|SM-F4) echo "route-mesh" ;;
     SM-F5) echo "route-lifecycle" ;;
     SM-F6|sm-f6) echo "spot-only-mesh" ;;
+    SM-Q9) echo "multi-node" ;;
     *)
       echo "SpotService Kotlin scenario $1 is not mapped to an implemented client mode" >&2
       return 1
@@ -801,19 +794,21 @@ for mode in ${client_modes}; do
     sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "actor-session" || "${mode}" == "session-transfer" ]]; then
-    start_session
-    sleep "${MODE_RETRY_SETTLE_SECONDS}"
+    if [[ -z "${SESSION_A_PID}" ]]; then
+      start_session
+      sleep "${MODE_RETRY_SETTLE_SECONDS}"
+    fi
   fi
   if [[ "${mode}" == "gateway-publish" ]]; then
     start_gateway
     sleep "${MODE_RETRY_SETTLE_SECONDS}"
   fi
-  if [[ "${mode}" == "spot-only-mesh" ]]; then
-    start_multi_nodes true
+  if [[ "${mode}" == "spot-only-mesh" || "${mode}" == "multi-node" ]]; then
+    start_multi_nodes "$([[ "${mode}" == "spot-only-mesh" ]] && echo true || echo false)"
     sleep "${MODE_RETRY_SETTLE_SECONDS}"
   fi
   run_client_mode "${mode}"
-  if [[ "${mode}" == "spot-only-mesh" ]]; then
+  if [[ "${mode}" == "spot-only-mesh" || "${mode}" == "multi-node" ]]; then
     fetch_evidence multi-node-a "${MULTI_HTTP_A}"
     fetch_evidence multi-node-b "${MULTI_HTTP_B}"
     stop_multi_nodes
@@ -822,7 +817,7 @@ for mode in ${client_modes}; do
     fetch_evidence gateway "${GATEWAY_HTTP}"
     stop_gateway
   fi
-  if [[ "${mode}" == "actor-session" || "${mode}" == "session-transfer" ]]; then
+  if [[ "${mode}" == "session-transfer" ]]; then
     fetch_evidence session-a "${HTTP_SESSION_A}"
     fetch_evidence session-b "${HTTP_SESSION_B}"
     stop_session

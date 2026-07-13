@@ -13,6 +13,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkChannelMessageDispatcher {
@@ -35,6 +36,9 @@ final class ZLinkChannelMessageDispatcher {
         String channelName,
         ZLinkBackendRouterSocket router,
         ZLinkBackendReceived received) {
+        var incomingFlow = ZLinkChannelFlowFrame.decode(received.parts());
+        var flowScope = incomingFlow == null ? null
+            : systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(incomingFlow);
         try {
             if (isProbeFrame(received.parts())) {
                 return;
@@ -97,11 +101,16 @@ final class ZLinkChannelMessageDispatcher {
                 packet,
                 registration);
         } finally {
+            if (flowScope != null) flowScope.close();
             received.parts().forEach(Message::close);
         }
     }
 
     void dispatchPublish(String channelName, ZLinkBackendTopicMessage received) {
+        ZLinkRuntimeMetrics.increment("zlink.fanout.received", java.util.Map.of());
+        var incomingFlow = ZLinkChannelFlowFrame.decode(received.parts());
+        var flowScope = incomingFlow == null ? null
+            : systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(incomingFlow);
         try {
             ParsedPacket packet = parsePacket(received.parts());
             ChannelPublishHandlerRegistration registration =
@@ -156,6 +165,7 @@ final class ZLinkChannelMessageDispatcher {
                     })
                     .whenComplete((ignored, error) -> payload.close()));
         } finally {
+            if (flowScope != null) flowScope.close();
             received.parts().forEach(Message::close);
         }
     }

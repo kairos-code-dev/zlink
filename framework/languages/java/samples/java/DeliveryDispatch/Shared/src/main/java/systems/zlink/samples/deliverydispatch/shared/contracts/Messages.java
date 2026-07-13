@@ -1,7 +1,5 @@
 package systems.zlink.samples.deliverydispatch.shared.contracts;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
@@ -19,22 +17,22 @@ public final class Messages {
         Failed
     }
 
-    @ZLinkPacket("CreateDeliveryRequest")
-    public record CreateDeliveryRequest(
+    @ZLinkPacket("CreateDeliveryReq")
+    public record CreateDeliveryReq(
         String deliveryId,
         String customerId,
         String pickupAddress,
         String dropoffAddress) {
     }
 
-    public record CreateDeliveryResponse(String deliveryId, DeliveryStatus status) {
+    public record CreateDeliveryRes(String deliveryId) {
     }
 
-    @ZLinkPacket("SubscribeDelivery")
-    public record SubscribeDelivery(String deliveryId) {
+    @ZLinkPacket("SubscribeDeliveryReq")
+    public record SubscribeDeliveryReq(String deliveryId) {
     }
 
-    public record SubscribeDeliveryAccepted(String deliveryId) {
+    public record SubscribeDeliveryRes(String deliveryId) {
     }
 
     public record DeliveryStatusNotify(
@@ -44,60 +42,50 @@ public final class Messages {
         String occurredAt) {
     }
 
-    @ZLinkPacket("AssignDelivery")
-    public record AssignDelivery(
+    @ZLinkPacket("AssignDeliveryMsg")
+    public record AssignDeliveryMsg(
         String deliveryId,
         String customerId,
         String pickupAddress,
         String dropoffAddress) {
     }
 
-    @ZLinkPacket("BindCourierSession")
-    public record BindCourierSession(String courierId, ActorRefWire actor, String sessionRoute) {
-        public BindCourierSession(String courierId) {
+    @ZLinkPacket("BindCourierSessionReq")
+    public record BindCourierSessionReq(String courierId, ActorRefSnapshot actor, String sessionRoute) {
+        public BindCourierSessionReq(String courierId) {
             this(courierId, null, null);
         }
     }
 
-    public record BindCourierSessionAccepted(String courierId, String nodeRid, String sessionRoute) {
+    public record BindCourierSessionRes(
+        String courierId,
+        ActorRefSnapshot actor,
+        String sessionRoute) {
     }
 
-    @ZLinkPacket("BindCourier")
-    public record BindCourier(String courierId, String sessionRoute) {
+    @ZLinkPacket("BindCourierReq")
+    public record BindCourierReq(String courierId, String sessionRoute) {
     }
 
-    public record ActorRefWire(String nodeRid, String actorId, long generation) {
-        public static ActorRefWire from(ActorRef actor) {
-            return new ActorRefWire(
-                actor.nodeRid().toString(),
-                actor.actorId(),
-                actor.generation());
-        }
-
-        public ActorRef toActorRef() {
-            return new ActorRef(RoutingId.from(nodeRid), actorId, generation);
-        }
+    public record BindCourierRes(String courierId, ActorRefSnapshot actor, String sessionRoute) {
     }
 
-    public record CourierBound(String courierId, ActorRefWire actor, String sessionRoute) {
+    @ZLinkPacket("FindCourierActorReq")
+    public record FindCourierActorReq(String courierId) {
     }
 
-    @ZLinkPacket("FindCourierActor")
-    public record FindCourierActor(String courierId) {
+    public record FindCourierActorRes(String courierId, ActorRefSnapshot actor) {
     }
 
-    public record CourierActorFound(String courierId, ActorRefWire actor) {
+    @ZLinkPacket("EnsureCourierActorReq")
+    public record EnsureCourierActorReq(String courierId) {
     }
 
-    @ZLinkPacket("EnsureCourierActor")
-    public record EnsureCourierActor(String courierId) {
+    public record EnsureCourierActorRes(String courierId, ActorRefSnapshot actor) {
     }
 
-    public record CourierActorEnsured(String courierId, ActorRefWire actor) {
-    }
-
-    @ZLinkPacket("OfferDelivery")
-    public record OfferDelivery(
+    @ZLinkPacket("OfferDeliveryReq")
+    public record OfferDeliveryReq(
         String courierId,
         String deliveryId,
         String pickupAddress,
@@ -111,7 +99,7 @@ public final class Messages {
         String dropoffAddress) {
     }
 
-    public record OfferDeliveryResult(String deliveryId, String courierId, boolean accepted, String reason) {
+    public record OfferDeliveryRes(String deliveryId, String courierId, boolean accepted, String reason) {
     }
 
     @ZLinkPacket("CourierDecision")
@@ -126,10 +114,9 @@ public final class Messages {
         String reason) {
     }
 
-    @ZLinkPacket("DeliveryStatusChanged")
-    public record DeliveryStatusChanged(
+    @ZLinkPacket("DeliveryStatusChangedReq")
+    public record DeliveryStatusChangedReq(
         String deliveryId,
-        String customerId,
         DeliveryStatus status,
         String courierId,
         String occurredAt) {
@@ -144,14 +131,21 @@ public final class Messages {
         String occurredAt) {
     }
 
-    public record DeliveryStatusAck(String deliveryId, DeliveryStatus status) {
+    public record DeliveryStatusChangedRes(String deliveryId, DeliveryStatus status) {
     }
 
-    @ZLinkPacket("EnsureCustomerActor")
-    public record EnsureCustomerActor(String customerId) {
+    @ZLinkPacket("FindCustomerActorReq")
+    public record FindCustomerActorReq(String customerId) {
     }
 
-    public record CustomerActorEnsured(String customerId, ActorRefSnapshot actorRef) {
+    public record FindCustomerActorRes(String customerId, ActorRefSnapshot actorRef) {
+    }
+
+    @ZLinkPacket("EnsureCustomerActorReq")
+    public record EnsureCustomerActorReq(String customerId) {
+    }
+
+    public record EnsureCustomerActorRes(String customerId, ActorRefSnapshot actorRef) {
     }
 
     @ZLinkPacket("ServerAssertionRequest")

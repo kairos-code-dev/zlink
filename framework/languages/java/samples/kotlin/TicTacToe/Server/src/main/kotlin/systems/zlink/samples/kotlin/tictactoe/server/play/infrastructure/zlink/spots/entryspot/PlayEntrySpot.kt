@@ -1,11 +1,10 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot
 
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.ZLinkAwait.await as awaitStage
+import kotlinx.coroutines.future.await
+import org.slf4j.LoggerFactory
 import systems.zlink.framework.kotlin.addHandler
-import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
@@ -20,7 +19,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotif
 class PlayEntrySpot(
     private val context: ZLinkEntrySpotContext,
     private val settings: SampleSettings,
-) : ZLinkEntrySpot<PlayActor> {
+) : ZLinkSuspendingEntrySpot<PlayActor>() {
     private val milestoneObservers = mutableListOf<PlayActor>()
 
     override fun context(): ZLinkEntrySpotContext = context
@@ -29,10 +28,9 @@ class PlayEntrySpot(
         context.handlers().addHandler<PlayerWinMilestoneMsgHandler>()
     }
 
-    override fun onCreateActor(
+    override suspend fun onCreateActorSuspending(
         actor: PlayActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ) {
         if (createRequest.isEmpty) {
             return
@@ -40,33 +38,24 @@ class PlayEntrySpot(
         actor.applyPlayer(createRequest.decode(PlayerInfo::class.java))
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
         ZLinkSpotActorJoinResponse.accept()
 
-    override fun onJoinedActor(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: PlayActor) {
         if (actor.destroyAfterEntrySpotJoin) {
-            awaitStage(context.destroyActor(actor))
+            context.destroyActor(actor).await()
+            logger.info("tictactoe actor destroy completed actor={}", actor.actorId)
         }
     }
 
-    override fun onLeaveActor(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: PlayActor) {
         milestoneObservers.removeIf { it.actorId == actor.actorId }
     }
 
-    override fun onDisconnectActor(
-        actor: PlayActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: PlayActor) {
         actor.markDisconnected()
         milestoneObservers.removeIf { it.actorId == actor.actorId }
     }
@@ -94,5 +83,9 @@ class PlayEntrySpot(
     private fun rememberObserver(actor: PlayActor) {
         milestoneObservers.removeIf { it.actorId == actor.actorId }
         milestoneObservers += actor
+    }
+
+    private companion object {
+        val logger = LoggerFactory.getLogger(PlayEntrySpot::class.java)
     }
 }

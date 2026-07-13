@@ -4,10 +4,9 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.UserActorEchoHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.UserActorLeaveHandler
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.addHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -15,7 +14,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 class UserSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
-) : ZLinkSpot<ScenarioActor> {
+) : ZLinkSuspendingSpot<ScenarioActor>() {
     private val pendingProfiles = mutableMapOf<String, Contracts.ActorProfile>()
     override fun context(): ZLinkSpotContext = context
 
@@ -24,23 +23,22 @@ class UserSpot(
         context.handlers().addHandler<UserActorLeaveHandler>()
     }
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         evidence.record("SpotCreated", context.spotRid().toString(), if (request.isEmpty) "" else "request")
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         evidence.record("SpotInitialized", context.spotRid().toString(), "")
     }
 
-    override fun onClosing() {
+    override suspend fun onClosingSuspending() {
         evidence.record("SpotClosing", context.spotRid().toString(), "")
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         val join = request.decode(Contracts.ActorJoinReq::class.java)
         pendingProfiles[actorId] = join.profile
@@ -61,10 +59,7 @@ class UserSpot(
         )
     }
 
-    override fun onJoinedActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: ScenarioActor) {
         actor.applyProfile(
             pendingProfiles.remove(actor.actorId())
                 ?: error("joined actor does not have a pending admission")
@@ -72,17 +67,11 @@ class UserSpot(
         evidence.record("ActorUserJoined", context.spotRid().toString(), actor.actorId() + "#" + actor.nextSequence())
     }
 
-    override fun onLeaveActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: ScenarioActor) {
         evidence.record("ActorUserLeft", context.spotRid().toString(), actor.actorId())
     }
 
-    override fun onDisconnectActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: ScenarioActor) {
         evidence.record("ActorUserDisconnected", context.spotRid().toString(), actor.actorId())
     }
 

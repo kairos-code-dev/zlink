@@ -16,10 +16,11 @@ public final class AutoRequestHandler
     }
 
     @Override
-    public Contracts.EchoRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.EchoAutoReq request,
         ZLinkRequestContext context) {
         state.record("Request", "EchoAuto", request.value());
-        return new Contracts.EchoRes("echo:" + request.value(), "auto");
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.EchoRes("echo:" + request.value(), "auto"));
     }
 }

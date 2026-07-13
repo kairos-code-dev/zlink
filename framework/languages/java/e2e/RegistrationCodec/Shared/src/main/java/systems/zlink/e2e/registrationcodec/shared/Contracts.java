@@ -19,18 +19,23 @@ public final class Contracts {
     public record EchoAutoMsg(String value) {
     }
 
+    @ZLinkPacket("EchoAttr")
     public record EchoAttrReq(String value) {
     }
 
+    @ZLinkPacket("EchoAttr")
     public record EchoAttrMsg(String value) {
     }
 
+    @ZLinkPacket("EchoManual")
     public record EchoManualReq(String value) {
     }
 
+    @ZLinkPacket("EchoManual")
     public record EchoManualMsg(String value) {
     }
 
+    @ZLinkPacket("DiLifecycle")
     public record DiLifecycleReq(String value) {
     }
 
@@ -41,18 +46,22 @@ public final class Contracts {
         int disposedCount) {
     }
 
+    @ZLinkPacket("JsonEcho")
     public record JsonEchoReq(String value) {
     }
 
+    @ZLinkPacket("JsonEcho")
     public record JsonEchoMsg(String value) {
     }
 
+    @ZLinkPacket("MsgpackEcho")
     public record PackedEchoReq(String value) {
     }
 
     public record PackedEchoRes(String value) {
     }
 
+    @ZLinkPacket("MsgpackEcho")
     public record PackedEchoMsg(String value) {
     }
 

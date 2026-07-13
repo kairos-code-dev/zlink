@@ -6,10 +6,10 @@ internal fun ensure(condition: Boolean, message: String) {
     }
 }
 
-internal fun expectFailure(action: () -> Unit) {
+internal suspend fun expectFailure(action: suspend () -> Unit) {
     try {
         action()
-    } catch (_: RuntimeException) {
+    } catch (_: Exception) {
         return
     }
     throw IllegalStateException("operation unexpectedly succeeded")

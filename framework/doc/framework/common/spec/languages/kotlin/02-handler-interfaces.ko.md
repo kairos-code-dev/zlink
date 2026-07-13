@@ -369,7 +369,23 @@ class ZLinkKotlinStreamConnector(
     internal val inner: ZLinkStreamConnector,
 ) {
     val isConnected: Boolean
+    val state: ZLinkStreamConnectionState
+    val options: ZLinkStreamConnectorOptions
+    val pendingDispatchCount: Int
     fun receivedCount(name: String): Int
+    fun observeInbound(observer: ZLinkStreamInboundObserver): AutoCloseable
+    fun on(
+        name: String,
+        handler: ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>,
+    ): AutoCloseable
+    inline fun <reified TPayload> on(
+        handler: ZLinkStreamMessageHandler<TPayload>,
+    ): AutoCloseable
+    fun onErrorReceived(handler: ZLinkStreamErrorHandler): AutoCloseable
+    fun onDisconnected(handler: ZLinkStreamDisconnectedHandler): AutoCloseable
+    fun onConnectionStateChanged(
+        handler: ZLinkStreamConnectionStateHandler,
+    ): AutoCloseable
     fun connect(): ZLinkKotlinLifecycleCall
     fun disconnect(): ZLinkKotlinLifecycleCall
     fun reconnect(): ZLinkKotlinLifecycleCall
@@ -831,20 +847,20 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 
 | 대상 symbol | 목표 Kotlin 계약 | 현재 public 선언/adapter | 판정과 구현 작업 |
 |-------------|--------------------|--------------------------|------------------|
-| `ZLinkSuspendingRequestHandler`, `ZLinkSuspendingSendHandler`, `ZLinkSuspendingPublishHandler`, 두 route handler | `suspend fun handle` 완료를 Java stage로 전달 | `ZLinkSuspendingHandlers.kt` adapter가 `runBlocking` 사용 | gap — 다섯 adapter를 `CoroutineScope.future` 또는 동등한 non-blocking bridge로 바꾼다. |
-| 네 Spot actor suspending handler와 네 Spot packet/request/subscription/timer handler | `suspend fun handle`, 별도 token 없음 | adapter override가 Java `CancellationToken`을 받고 `runBlocking` 사용 | gap — Java target signature 변경과 함께 token parameter 및 blocking bridge를 제거한다. |
-| `ZLinkSuspendingActorFactory.create` | `suspend` 완료를 Java `CompletionStage<TActor>`로 전달 | 동기 Java factory adapter에서 `runBlocking` 사용 | gap — factory adapter가 coroutine completion을 stage로 반환한다. |
-| `ZLinkSuspendingSpot`, `ZLinkSuspendingEntrySpot` lifecycle | `suspend`, 별도 token 없음 | Java lifecycle override에 `CancellationToken`이 있고 `runBlocking` 사용 | gap — lifecycle adapter의 token과 blocking call을 제거한다. |
-| `ZLinkSuspendingActorTransferAdapter.transferOut/transferIn` | `suspend`, 별도 token 없음 | 동기 Java transfer와 token parameter에 연결 | gap — Java stage와 coroutine completion을 양방향 non-blocking으로 연결한다. |
-| `CompletionStage<T>.await()`와 내부 `awaitFrameworkStage` | coroutine을 중단하고 stage callback으로 재개 | `ZLinkCoroutineTurnAwait.kt`에서 `.join()` 호출 | gap — cancellation-aware continuation bridge로 교체하고 coroutine 취소 시 callback 참조를 정리한다. |
-| `ZLinkSuspendingTypedSessionPacketHandler.handle` | typed payload를 직접 받고 suspend 완료 | Java typed/raw bridge의 `UnsupportedOperationException` default method에 의존 | gap — Java typed registry와 직접 연결한다. |
+| `ZLinkSuspendingRequestHandler`, `ZLinkSuspendingSendHandler`, `ZLinkSuspendingPublishHandler`, 두 route handler | `suspend fun handle` 완료를 Java stage로 전달 | coroutine completion을 `CompletionStage`로 반환하는 adapter 사용 | 일치 — Kotlin unit test가 incomplete stage와 예외 완료를 검증한다. |
+| 네 Spot actor suspending handler와 네 Spot packet/request/subscription/timer handler | `suspend fun handle`, 별도 token 없음 | token 없이 coroutine completion을 stage로 반환 | 일치 — handler 등록과 dispatch test가 suspending 완료를 검증한다. |
+| `ZLinkSuspendingActorFactory.create` | `suspend` 완료를 Java `CompletionStage<TActor>`로 전달 | coroutine completion을 `CompletionStage<ZLinkActor>`로 반환 | 일치 |
+| `ZLinkSuspendingSpot`, `ZLinkSuspendingEntrySpot` lifecycle | `suspend`, 별도 token 없음 | lifecycle override가 token 없이 `CompletionStage`를 반환 | 일치 |
+| `ZLinkSuspendingActorTransferAdapter.transferOut/transferIn` | `suspend`, 별도 token 없음 | transfer coroutine completion을 stage로 전달 | 일치 |
+| `CompletionStage<T>.await()`와 내부 `awaitFrameworkStage` | coroutine을 중단하고 stage callback으로 재개 | `suspendCancellableCoroutine` callback bridge 사용 | 일치 — waiter 취소가 framework stage를 취소하지 않고 완료 오류를 unwrap하는 integration test가 통과한다. |
+| `ZLinkSuspendingTypedSessionPacketHandler.handle` | typed payload를 직접 받고 suspend 완료 | typed registry가 suspending handler를 직접 호출하고 stage 완료를 기다림 | 일치 |
 | `ZLinkKotlinLifecycleCall.await`, stream request/wait `await` | `kotlinx-coroutines-jdk8` 방식의 non-blocking stage 대기 | connector wrapper는 `kotlinx.coroutines.future.await` 사용 | 일치 — Java core의 stage가 실제 비동기 완료를 나타내는지 contract test로 고정한다. |
 | `ZLinkKotlinSendCall.submit` | one-way, 완료 객체 없음 | `inner.submit()` 결과를 반환하지 않음 | 일치 |
-| `ZLinkActorSendCall.awaitSend`, `ZLinkActorClient.sendToActorAwait` | 목표 public 계약에 없음 | 현재 extension으로 공개됨 | gap — Java actor send가 `void submit()`으로 바뀔 때 두 completion 대기 extension을 제거한다. |
-| `ZLinkFanoutClient.publishToTopic` | 일반 `fun`, one-way 완료 객체 없음 | 불필요한 `suspend fun`으로 공개됨 | gap — suspension modifier를 제거하고 내부 `submit()`만 호출한다. |
-| request/join/worker yield extension | 별도 extension 없음. 일반 `await`가 실행 문맥을 보존 | 여러 `yield(...)` top-level extension 공개 | gap — yield extension을 제거하고 Java의 단일 완료 계약을 사용한다. |
-| Spot messaging target | `SpotHandle` extension과 handle resolver | `SpotRef` resolver extension 공개 | gap — 주소 snapshot 대신 불투명 handle을 사용한다. |
-| 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | public 함수는 존재하지만 기존 문서는 이름만 나열 | 문서 gap 해소 — contract test가 각 overload의 JVM signature까지 검증해야 한다. |
+| actor one-way completion extension | 목표 public 계약에 없음 | `awaitSend`와 `sendToActorAwait`를 제거하고 Java one-way `submit()`을 직접 사용 | 일치 |
+| `ZLinkFanoutClient.publishToTopic` | 일반 `fun`, one-way 완료 객체 없음 | 일반 함수가 내부 `submit()`만 호출 | 일치 |
+| request/join/worker yield extension | 별도 extension 없음. 일반 `await`가 실행 문맥을 보존 | yield extension 없음 | 일치 |
+| Spot messaging target | `SpotHandle` extension과 handle resolver | `resolveSpotHandle`과 `resolveActorSpotHandle`이 nullable handle을 반환 | 일치 |
+| 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | type·function 이름과 overload 수를 검사하고, 각 public method의 JVM descriptor snapshot을 검증함 | 일치 — Kotlin 이름과 JVM에서 충돌을 피하려고 바꾼 이름까지 contract test가 고정한다. |
 
 ## 8. 관측·운영 표면 (metrics · flow correlation · drain)
 

@@ -46,7 +46,7 @@
 
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
-| Redis room route store | `run_sample.sh`, `SampleLocationStore`, `RedisRoomRouteStore` | external-adapter | done | runner가 전용 Redis 또는 `TICTACTOE_REDIS_ENDPOINT`를 사용한다. |
+| Redis room route store | `run_sample.sh`, `SampleLocationStore`, `RedisRoomRouteStore` | external-adapter | done | runner가 실행별 전용 Docker Redis를 만들고 그 endpoint만 사용한다. |
 | API A/B와 Play A/B scale-out | `run_sample.sh` | validation | done | API 2개, Play 2개를 띄우고 manual channel, Spot route, Spot pub/sub endpoint를 서로 연결한다. |
 | observer cross-node milestone | runner grep + client marker | validation | done | observer가 owner가 아닌 Play에 붙고 `WinMilestoneNotify`를 받는 marker를 확인한다. |
 | message flow marker | `TICTACTOE_LOG_DIR` grep | validation | done | runner가 role별 flow log의 `message flow` marker를 확인한다. |

@@ -4,22 +4,25 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
-import systems.zlink.samples.supportchat.server.support.domain.ConversationStore;
+import systems.zlink.samples.supportchat.server.support.application.ConversationAllocator;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 @ZLinkHandlerGroup(SampleNames.SupportChannel)
 public final class AllocateConversationHandler
     implements ZLinkRequestHandler<Messages.AllocateConversationReq, Messages.AllocateConversationRes> {
-    private final ConversationStore store;
+    private final ConversationAllocator allocator;
 
-    public AllocateConversationHandler(ConversationStore store) {
-        this.store = store;
+    public AllocateConversationHandler(ConversationAllocator allocator) {
+        this.allocator = allocator;
     }
 
     @Override
-    public Messages.AllocateConversationRes handle(
+    public java.util.concurrent.CompletionStage<Messages.AllocateConversationRes> handle(
         Messages.AllocateConversationReq request,
         ZLinkRequestContext context) {
-        return store.allocate(request);
+        return allocator.allocate(
+                request.customerActorId(), request.customerDisplayName(), request.subject())
+            .thenApply(conversationId -> new Messages.AllocateConversationRes(
+                conversationId, SampleNames.Statuses.WaitingForAgent));
     }
 }

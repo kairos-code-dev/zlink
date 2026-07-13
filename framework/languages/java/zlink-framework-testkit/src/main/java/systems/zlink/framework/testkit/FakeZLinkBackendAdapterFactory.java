@@ -1,7 +1,6 @@
 package systems.zlink.framework.testkit;
 
 import java.time.Duration;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -247,6 +246,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         entrySpot.dispatchActorLifecycleReadable();
     }
 
+    public void dispatchSpotActorLifecycleLeft(String actorId) {
+        FakeSpot spot = firstUserSpot();
+        spot.enqueueActorLifecycleLeft(actorId);
+        spot.dispatchActorLifecycleReadable();
+    }
+
     public void dispatchSpotRoute(String packetName, String payload) {
         FakeSpot spot = firstUserSpot();
         spot.enqueueRoute(packetName, payload, Optional.empty());
@@ -353,34 +358,22 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         String packetName,
         Optional<Long> requestSeq,
         int additionalFlags) {
-        if (additionalFlags == 0) {
-            return ZLinkStreamHeaderCodec.encode(new ZLinkStreamHeader(
-                ZLinkStreamMessageKind.fromValue(kind),
-                ZLinkStreamCodec.fromValue(codec),
-                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                requestSeq,
-                packetName,
-                Map.of()));
+        EnumSet<ZLinkStreamHeaderFlag> flags = EnumSet.noneOf(ZLinkStreamHeaderFlag.class);
+        if ((additionalFlags & ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED.value()) != 0) {
+            flags.add(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED);
         }
-        return encodeRawStreamHeader(kind, codec, packetName, requestSeq, additionalFlags);
-    }
-
-    private static byte[] encodeRawStreamHeader(
-        int kind,
-        int codec,
-        String packetName,
-        Optional<Long> requestSeq,
-        int additionalFlags) {
-        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
-        ByteBuffer buffer = ByteBuffer.allocate(
-            3 + (requestSeq.isPresent() ? Long.BYTES : 0) + 1 + name.length);
-        buffer.put((byte) kind);
-        buffer.put((byte) codec);
-        buffer.put((byte) ((requestSeq.isPresent() ? 0x01 : 0) | additionalFlags));
-        requestSeq.ifPresent(buffer::putLong);
-        buffer.put((byte) name.length);
-        buffer.put(name);
-        return buffer.array();
+        int supportedFlags = ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED.value();
+        if ((additionalFlags & ~supportedFlags) != 0) {
+            throw new IllegalArgumentException(
+                "fake STREAM dispatch does not have values for flags: " + additionalFlags);
+        }
+        return ZLinkStreamHeaderCodec.encode(new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.fromValue(kind),
+            ZLinkStreamCodec.fromValue(codec),
+            flags,
+            requestSeq,
+            packetName,
+            Map.of()));
     }
 
     @Override
@@ -957,6 +950,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {
         private final FakeZLinkBackendAdapterFactory owner;
+        private RoutingId routingId;
         private final Deque<ZLinkBackendActorJoinRequest> actorJoins = new ArrayDeque<>();
         private final Deque<ZLinkBackendActorLifecycleEvent> actorLifecycles = new ArrayDeque<>();
         private final Deque<ZLinkBackendReceived> routes = new ArrayDeque<>();
@@ -970,6 +964,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             FakeZLinkBackendAdapterFactory owner) {
             super(calls, name);
             this.owner = owner;
+            this.routingId = RoutingId.from(name);
         }
 
         void enqueueActorJoin(String actorId, String packetName, String payload) {
@@ -1003,7 +998,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 new ZLinkBackendActorLifecycleInfo(
                     actor,
                     actor,
-                    Optional.of(RoutingId.from("entrySpot")),
+                    Optional.of(routingId()),
                     Optional.empty(),
                     1,
                     0)));
@@ -1121,8 +1116,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                         false))));
         }
 
-        @Override public RoutingId routingId() { return RoutingId.from(name()); }
-        @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
+        @Override public RoutingId routingId() { return routingId; }
+        @Override public void setRoutingId(RoutingId routingId) {
+            this.routingId = routingId;
+            record("setRoutingId");
+        }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return subscriptions.pollFirst(); }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return routes.pollFirst(); }

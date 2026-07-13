@@ -1,6 +1,8 @@
 package systems.zlink.e2e.toactormessaging.caller;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -44,68 +46,47 @@ public final class Program {
         boot("http route health");
         http.get("/health", () -> java.util.Map.of("status", "ok"));
         boot("http route send");
-        http.post("/send", Contracts.ActorCallRequest.class, request -> {
-            try {
+        http.postAsync("/send", Contracts.ActorCallRequest.class, request ->
+            actorRef(actorRefs, request.actorId()).thenApply(actorRef -> {
                 actors.sendToActor(
-                        actorRef(actorRefs, request.actorId()),
-                        new Contracts.ActorNotify(request.scenario(), request.actorId(), request.value()))
-                    .packetName("ActorNotify")
-                    .submit()
-                    .toCompletableFuture()
-                    .join();
+                    actorRef,
+                    new Contracts.ActorNotify(request.scenario(), request.actorId(), request.value())).submit();
                 return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "sent");
-            } catch (RuntimeException ex) {
-                return failed(request, ex);
-            }
-        });
+            }).exceptionally(error -> failed(request, error)));
         boot("http route request");
-        http.post("/request", Contracts.ActorCallRequest.class, request -> {
-            try {
-                Contracts.ActorReply reply = actors.requestToActor(
-                        actorRef(actorRefs, request.actorId()),
-                        new Contracts.ActorAsk(request.scenario(), request.actorId(), request.value()))
-                    .packetName("ActorAsk")
-                    .timeout(Duration.ofSeconds(5))
-                    .submit(Contracts.ActorReply.class)
-                    .toCompletableFuture()
-                    .join();
-                return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), reply.value());
-            } catch (RuntimeException ex) {
-                return failed(request, ex);
-            }
-        });
+        http.postAsync("/request", Contracts.ActorCallRequest.class, request ->
+            actorRef(actorRefs, request.actorId()).thenCompose(actorRef -> actors.requestToActor(
+                    actorRef,
+                    new Contracts.ActorAsk(request.scenario(), request.actorId(), request.value()))
+                .timeout(Duration.ofSeconds(5))
+                .submit(Contracts.ActorReply.class))
+                .thenApply(reply -> Contracts.ActorCallResponse.ok(
+                    request.scenario(), request.actorId(), reply.value()))
+                .exceptionally(error -> failed(request, error)));
         boot("http route send-ref");
-        http.post("/send-ref", Contracts.ActorRefCallRequest.class, request -> {
+        http.postAsync("/send-ref", Contracts.ActorRefCallRequest.class, request -> {
+            ActorRef actorRef = toActorRef(request.actorRef());
             try {
-                ActorRef actorRef = toActorRef(request.actorRef());
                 actors.sendToActor(
-                        actorRef,
-                        new Contracts.ActorNotify(request.scenario(), actorRef.actorId(), request.value()))
-                    .packetName("ActorNotify")
-                    .submit()
-                    .toCompletableFuture()
-                    .join();
-                return Contracts.ActorCallResponse.ok(request.scenario(), actorRef.actorId(), "sent");
-            } catch (RuntimeException ex) {
-                return failed(request, ex);
+                    actorRef,
+                    new Contracts.ActorNotify(request.scenario(), actorRef.actorId(), request.value())).submit();
+                return CompletableFuture.completedFuture(
+                    Contracts.ActorCallResponse.ok(request.scenario(), actorRef.actorId(), "sent"));
+            } catch (RuntimeException error) {
+                return CompletableFuture.completedFuture(failed(request, error));
             }
         });
         boot("http route request-ref");
-        http.post("/request-ref", Contracts.ActorRefCallRequest.class, request -> {
-            try {
-                ActorRef actorRef = toActorRef(request.actorRef());
-                Contracts.ActorReply reply = actors.requestToActor(
+        http.postAsync("/request-ref", Contracts.ActorRefCallRequest.class, request -> {
+            ActorRef actorRef = toActorRef(request.actorRef());
+            return actors.requestToActor(
                         actorRef,
                         new Contracts.ActorAsk(request.scenario(), actorRef.actorId(), request.value()))
-                    .packetName("ActorAsk")
                     .timeout(Duration.ofSeconds(5))
                     .submit(Contracts.ActorReply.class)
-                    .toCompletableFuture()
-                    .join();
-                return Contracts.ActorCallResponse.ok(request.scenario(), actorRef.actorId(), reply.value());
-            } catch (RuntimeException ex) {
-                return failed(request, ex);
-            }
+                .thenApply(reply -> Contracts.ActorCallResponse.ok(
+                    request.scenario(), actorRef.actorId(), reply.value()))
+                .exceptionally(error -> failed(request, error));
         });
         boot("http start");
         http.start();
@@ -146,20 +127,20 @@ public final class Program {
 
     private static Contracts.ActorCallResponse failed(
         Contracts.ActorCallRequest request,
-        RuntimeException ex) {
+        Throwable ex) {
         return failed(request.scenario(), request.actorId(), ex);
     }
 
     private static Contracts.ActorCallResponse failed(
         Contracts.ActorRefCallRequest request,
-        RuntimeException ex) {
+        Throwable ex) {
         return failed(request.scenario(), request.actorRef().actorId(), ex);
     }
 
     private static Contracts.ActorCallResponse failed(
         String scenario,
         String actorId,
-        RuntimeException ex) {
+        Throwable ex) {
         Throwable current = ex;
         while (current.getCause() != null) {
             if (current instanceof ZLinkFrameworkException frameworkError) {
@@ -179,14 +160,12 @@ public final class Program {
         return Contracts.ActorCallResponse.failed(scenario, actorId, current.getClass().getSimpleName());
     }
 
-    private static ActorRef actorRef(ZLinkActorDirectory actors, String actorId) {
+    private static CompletionStage<ActorRef> actorRef(ZLinkActorDirectory actors, String actorId) {
         return actors.find(actorId)
             .thenApply(found -> found
                 .orElseThrow(() -> new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
-                    "actor ref not found: " + actorId)))
-            .toCompletableFuture()
-            .join();
+                    "actor ref not found: " + actorId)));
     }
 
     private static ActorRef toActorRef(Contracts.ActorRefWire ref) {

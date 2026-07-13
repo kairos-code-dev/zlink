@@ -17,12 +17,12 @@ public final class WorkReqHandler
     }
 
     @Override
-    public Contracts.WorkRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.WorkRes> handle(
         Contracts.WorkReq request,
         ZLinkRequestContext context) {
         evidence.record("work", evidence.rid(), "WorkReq", request.value());
-        return new Contracts.WorkRes(
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.WorkRes(
             "work:" + request.value(),
-            Env.get("ZLINK_JAVA_E2E_RID", "svc-a"));
+            Env.get("ZLINK_JAVA_E2E_RID", "svc-a")));
     }
 }

@@ -1,7 +1,7 @@
 plugins {
     idea
-    id("org.jetbrains.kotlin.jvm") version "2.1.0" apply false
-    kotlin("plugin.spring") version "2.1.0"
+    id("org.jetbrains.kotlin.jvm") version "2.2.21" apply false
+    kotlin("plugin.spring") version "2.2.21"
 }
 
 group = "systems.zlink"
@@ -153,6 +153,22 @@ subprojects {
                         name.set(project.name)
                         description.set(project.description ?: project.name)
                         url.set("https://github.com/kairos-code-dev/zlink")
+                        licenses {
+                            // http-client wraps java.net.http (JDK standard library)
+                            // rather than any zlink-original transport, so it ships
+                            // under Apache-2.0 instead of the framework-wide FSL.
+                            if (project.name in setOf("zlink-http-client", "zlink-http-client-kotlin")) {
+                                license {
+                                    name.set("Apache-2.0")
+                                    url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                                }
+                            } else {
+                                license {
+                                    name.set("FSL-1.1-ALv2")
+                                    url.set("https://github.com/kairos-code-dev/zlink/blob/main/framework/LICENSE")
+                                }
+                            }
+                        }
                         scm {
                             connection.set("scm:git:https://github.com/kairos-code-dev/zlink.git")
                             developerConnection.set("scm:git:git@github.com:kairos-code-dev/zlink.git")

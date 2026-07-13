@@ -1,20 +1,21 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorSnapshotHandler {
     @ZLinkSpotActorRequest(packetName = "SnapshotReq")
-    public Contracts.SnapshotRes handle(
+    public CompletionStage<Contracts.SnapshotRes> handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.SnapshotReq request,
-        CancellationToken cancellationToken) {
+        Contracts.SnapshotReq request) {
         if (!actor.actorId().equals(request.actorId())) {
             throw new IllegalStateException("Snapshot request actor does not match dispatched actor.");
         }
-        return new Contracts.SnapshotRes(actor.actorId(), actor.currentSequence());
+        return CompletableFuture.completedFuture(
+            new Contracts.SnapshotRes(actor.actorId(), actor.currentSequence()));
     }
 }

@@ -17,7 +17,4 @@ public interface ZLinkStreamWaitCall {
 
     <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> submit(Class<TPayload> payloadType);
 
-    default <TPayload> ZLinkStreamMessage<TPayload> await(Class<TPayload> payloadType) throws Exception {
-        return ZLinkStreamCompletions.await(submit(payloadType));
-    }
 }

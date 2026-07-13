@@ -347,12 +347,12 @@ final class ZLinkHandlerScannerTest {
             SpotActorRequest,
             SpotActorReply> {
         @Override
-        public SpotActorReply handle(
+        public CompletionStage<SpotActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
             SpotActorRequest request) {
-            return new SpotActorReply();
+            return CompletableFuture.completedFuture(new SpotActorReply());
         }
     }
 

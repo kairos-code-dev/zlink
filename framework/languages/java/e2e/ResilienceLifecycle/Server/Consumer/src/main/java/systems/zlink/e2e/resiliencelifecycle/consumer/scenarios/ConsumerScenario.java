@@ -197,7 +197,7 @@ public final class ConsumerScenario {
                         Contracts.CHANNEL,
                         new Contracts.WorkReq("a5-flap-" + index))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkRes.class);
+                    .submit(Contracts.WorkRes.class).toCompletableFuture().join();
                 ensure(reply.value().equals("work:a5-flap-" + index),
                     "RL-A5 reply payload mismatch");
                 providers.add(reply.providerRid());
@@ -214,7 +214,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("a5-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:a5-follow-up".equals(followUp.value()), "RL-A5 follow-up payload mismatch");
         ensure(successes >= 10, "RL-A5 did not send enough traffic during flapping");
         ensure(providers.contains("api-b"), "RL-A5 did not converge to live api-b during flapping");
@@ -237,7 +237,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.WorkReq("rl-c1-" + index))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             ensure(reply.value().equals("work:rl-c1-" + index),
                 "RL-C1 request payload mismatch for " + index);
         }
@@ -245,7 +245,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("rl-c1-after-cleanup"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure(followUp.value().equals("work:rl-c1-after-cleanup"),
             "RL-C1 follow-up payload mismatch");
         System.out.println("scenario RL-C1 passed");
@@ -262,13 +262,13 @@ public final class ConsumerScenario {
                 String value = "d5-soak-" + window + "-" + index;
                 if (index % 5 == 0) {
                     client.sendToChannel(Contracts.CHANNEL, new Contracts.WorkMsg(value))
-                        .await();
+                        .submit();
                 } else {
                     Contracts.WorkRes reply = client.requestToChannel(
                             Contracts.CHANNEL,
                             new Contracts.WorkReq(value))
                         .timeout(Duration.ofSeconds(3))
-                        .await(Contracts.WorkRes.class);
+                        .submit(Contracts.WorkRes.class).toCompletableFuture().join();
                     ensure(reply.value().equals("work:" + value),
                         "RL-D5 reply payload mismatch for " + value);
                     providers.add(reply.providerRid());
@@ -300,7 +300,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.WorkReq(value))
                 .timeout(Duration.ofMillis(700))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException(scenario + " down-window request unexpectedly completed");
         } catch (RuntimeException expected) {
             // The scenario only requires a public failure while the sole admissible provider is down.
@@ -313,7 +313,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.WorkReq("timeout"))
                 .timeout(Duration.ofMillis(300))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException("RL-B1 timeout request unexpectedly completed");
         } catch (RuntimeException expected) {
             waitForEvidenceAny("TimeoutStarted", adminA(), adminB());
@@ -323,7 +323,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("b1-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:b1-follow-up".equals(followUp.value()), "RL-B1 follow-up payload mismatch");
         System.out.println("scenario RL-B1 passed");
     }
@@ -422,7 +422,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.UnhandledReq("d3-missing-handler"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException("RL-D3 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
             waitForDispatchErrorAny("UnhandledReq", adminA(), adminB());
@@ -431,7 +431,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("d3-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:d3-follow-up".equals(followUp.value()), "RL-D3 follow-up payload mismatch");
         System.out.println("scenario RL-D3 passed");
     }
@@ -444,7 +444,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.UnhandledReq("d2-observer-fault"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException("RL-D2 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
             waitForEvidenceAny("ObserverFaultThrown", adminA(), adminB());
@@ -457,7 +457,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("rl-d2-after"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:rl-d2-after".equals(followUp.value()),
             "RL-D2 messaging did not continue after observer failure");
         waitForEvidenceAny("WorkReq", adminA(), adminB());
@@ -470,7 +470,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.UnhandledReq("d4-missing-handler"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException("RL-D4 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
             waitForDispatchErrorAny("UnhandledReq", adminA(), adminB());
@@ -479,7 +479,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("d4-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:d4-follow-up".equals(followUp.value()), "RL-D4 follow-up payload mismatch");
         System.out.println("scenario RL-D4 passed");
     }
@@ -496,7 +496,7 @@ public final class ConsumerScenario {
                         Contracts.CHANNEL,
                         new Contracts.WorkReq("b6-gray-" + index))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkRes.class);
+                    .submit(Contracts.WorkRes.class).toCompletableFuture().join();
                 ensure(reply.value().equals("work:b6-gray-" + index),
                     "RL-B6 reply payload mismatch");
                 providers.add(reply.providerRid());
@@ -514,7 +514,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("b6-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:b6-follow-up".equals(followUp.value()), "RL-B6 follow-up payload mismatch");
         System.out.println("scenario RL-B6 passed");
     }
@@ -552,7 +552,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("b3-before-shutdown"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:b3-before-shutdown".equals(beforeShutdown.value()),
             "RL-B3 pre-shutdown reply payload mismatch");
 
@@ -583,7 +583,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("c4-before-outage"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:c4-before-outage".equals(before.value()),
             "RL-C4 pre-outage reply payload mismatch");
         waitForProviderEvidence("c4-before-outage");
@@ -595,7 +595,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("c4-during-outage"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:c4-during-outage".equals(during.value()),
             "RL-C4 established channel failed during store outage");
         waitForProviderEvidence("c4-during-outage");
@@ -607,7 +607,7 @@ public final class ConsumerScenario {
                 Contracts.CHANNEL,
                 new Contracts.WorkReq("c4-after-recovery"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes.class);
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join();
         ensure("work:c4-after-recovery".equals(after.value()),
             "RL-C4 recovery reply payload mismatch");
         waitForProviderEvidence("c4-after-recovery");
@@ -621,7 +621,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.WorkReq(prefix + "-" + index))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             ensure(reply.value().equals("work:" + prefix + "-" + index),
                 "reply payload mismatch for " + prefix + "-" + index);
             providers.add(reply.providerRid());
@@ -657,7 +657,7 @@ public final class ConsumerScenario {
                             Contracts.CHANNEL,
                             new Contracts.WorkReq(value))
                         .timeout(Duration.ofSeconds(3))
-                        .await(Contracts.WorkRes.class);
+                        .submit(Contracts.WorkRes.class).toCompletableFuture().join();
                     ensure(reply.value().equals("work:" + value),
                         "reply payload mismatch for " + value);
                     providers.add(reply.providerRid());
@@ -759,7 +759,7 @@ public final class ConsumerScenario {
     }
 
     private CompletionStage<java.util.List<ZLinkPeerLocation>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocationsAsync(new ZLinkPeerLocationFilter(
+        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocations(new ZLinkPeerLocationFilter(
             ZLinkLocationAutoConnectType.CLIENT_SERVER,
             Contracts.CHANNEL,
             ZLinkLocationRole.ROUTER,
@@ -829,7 +829,7 @@ public final class ConsumerScenario {
                     Contracts.CHANNEL,
                     new Contracts.WorkReq(value))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes.class);
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             ensure("work:".concat(value).equals(reply.value()),
                 "RL-A4 reply payload mismatch for " + value);
             if ("api-b".equals(reply.providerRid()) && hasEvidence(baseUrl, "WorkReq", value)) {

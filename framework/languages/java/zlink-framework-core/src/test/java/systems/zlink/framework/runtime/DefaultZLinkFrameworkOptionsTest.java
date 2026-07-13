@@ -825,10 +825,10 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     public static final class TestFilter implements ZLinkHandlerFilter {
         @Override
-        public <T> CompletionStage<T> invokeAsync(
+        public <T> CompletionStage<T> invoke(
             ZLinkInvocationContext context,
             ZLinkNext<T> next) {
-            return next.invokeAsync();
+            return next.invoke();
         }
     }
 
@@ -860,15 +860,18 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

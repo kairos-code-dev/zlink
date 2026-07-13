@@ -9,16 +9,16 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler {
     @ZLinkRequest
-    public AuthenticatePlayerRes handle(AuthenticatePlayerReq request) {
+    public java.util.concurrent.CompletionStage<AuthenticatePlayerRes> handle(AuthenticatePlayerReq request) {
         String actorId = request.accessToken().trim();
         if (actorId.isBlank()) {
             throw new IllegalArgumentException("authentication token is empty");
         }
-        return new AuthenticatePlayerRes(new PlayerInfo(
+        return java.util.concurrent.CompletableFuture.completedFuture(new AuthenticatePlayerRes(new PlayerInfo(
             actorId,
             displayName(actorId),
             3,
-            "player-x".equals(actorId) ? 99 : 0));
+            "player-x".equals(actorId) ? 99 : 0)));
     }
 
     private static String displayName(String actorId) {

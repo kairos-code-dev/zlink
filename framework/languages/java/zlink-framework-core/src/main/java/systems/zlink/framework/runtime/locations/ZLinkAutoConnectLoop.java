@@ -50,6 +50,10 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
         return reconciler.shutdown();
     }
 
+    CompletionStage<Void> markDraining() {
+        return reconciler.markDraining();
+    }
+
     private CompletionStage<Void> tick() {
         return reconciler.tick();
     }
@@ -58,15 +62,12 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
         if (!running) {
             return;
         }
-        try {
-            tick().toCompletableFuture().join();
-        } catch (RuntimeException ignored) {
+        tick().whenComplete((ignored, failure) -> {
             // The reconciler records store failures as fail-static ticks.
-        } finally {
             if (running) {
                 scheduleNext();
             }
-        }
+        });
     }
 
     private void scheduleNext() {
@@ -79,7 +80,6 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
 
     @Override
     public void close() {
-        stop().toCompletableFuture().join();
-        executor.close();
+        stop();
     }
 }

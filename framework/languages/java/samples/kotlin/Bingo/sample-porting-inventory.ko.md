@@ -73,8 +73,8 @@
 | common: Spot pub/sub reward fan-out | `BingoRoomSpot.kt`, `BingoWinnerMsgHandler.kt` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.kt` | external-adapter | done | Redis를 application port 뒤에 둔다. |
 | common: Redis-backed location store | `SampleLocationStore.kt`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
-| common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
-| common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
+| common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
+| common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | 애플리케이션은 runner가 만든 endpoint만 받고, runner는 자신이 만든 container id만 정리한다. |
 | common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만든다. |
 | common: Protobuf schema와 생성 message 사용 | `Shared/src/main/proto/bingo_messages.proto`, `Shared/.../Messages.kt` | shared-contract | done | `com.google.protobuf` Gradle plugin으로 schema를 generate하고 Kotlin public sample code는 generated `Messages.*` payload를 typealias로 사용한다. |
 | common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.kt`, role application classes, `Shared/src/main/proto/bingo_messages.proto` | codec | done | Protobuf codec을 등록한 stream/channel/actor/Spot 경로에서 generated message payload를 사용한다. |

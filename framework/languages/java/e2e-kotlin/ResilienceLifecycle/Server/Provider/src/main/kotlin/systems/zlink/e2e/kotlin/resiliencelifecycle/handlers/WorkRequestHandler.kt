@@ -3,14 +3,15 @@ package systems.zlink.e2e.kotlin.resiliencelifecycle.handlers
 import systems.zlink.e2e.kotlin.resiliencelifecycle.Contracts
 import systems.zlink.e2e.kotlin.resiliencelifecycle.ScenarioState
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import kotlinx.coroutines.delay
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 class WorkRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
+    override suspend fun handle(
         request: Contracts.WorkReq,
         context: ZLinkRequestContext,
     ): Contracts.WorkRes {
@@ -26,7 +27,7 @@ class WorkRequestHandler(
             }
             request.value() == "timeout" -> {
                 state.record("TimeoutStarted", request.value())
-                sleep(1500)
+                delay(1500)
                 state.record("TimeoutCompleted", request.value())
             }
             else -> state.record("WorkReq", request.value())
@@ -34,12 +35,4 @@ class WorkRequestHandler(
         return Contracts.WorkRes("work:${request.value()}", state.providerRid())
     }
 
-    private fun sleep(millis: Long) {
-        try {
-            Thread.sleep(millis)
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("interrupted", error)
-        }
-    }
 }

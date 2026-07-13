@@ -1,6 +1,7 @@
 package systems.zlink.e2e.registrymessaging.shared;
 
 import java.util.List;
+import systems.zlink.framework.handlers.ZLinkPacket;
 
 public final class Contracts {
     public static final String API_CHANNEL = "registry.messaging.api";
@@ -15,6 +16,9 @@ public final class Contracts {
     public record ProfileReq(String value) {
     }
 
+    public record MissingProfileReq(String value) {
+    }
+
     public record ProfileRes(
         String value,
         String providerRid,
@@ -22,6 +26,9 @@ public final class Contracts {
     }
 
     public record ProfileMsg(String commandId) {
+    }
+
+    public record MissingProfileMsg(String commandId) {
     }
 
     public record PayloadReq(String marker, String payload) {
@@ -41,6 +48,7 @@ public final class Contracts {
         String providerRid) {
     }
 
+    @ZLinkPacket(ROUTE_PACKET)
     public record RouteReq(String value) {
     }
 

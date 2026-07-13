@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.time.Duration
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
@@ -9,7 +11,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmB8Scenario {
-    fun run() {
+    suspend fun run() {
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
         try {
             val actorId = "actor-sm-b8-destroy"
@@ -17,12 +19,12 @@ internal object SmB8Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-B8 auth actor mismatch")
 
             val destroyed = connector
                 .request(Contracts.DestroyActorReq(actorId))
-                .await(Contracts.DestroyActorRes::class.java)
+                .await<Contracts.DestroyActorRes>()
             ensure(destroyed.destroyed && destroyed.actorId == actorId, "SM-B8 destroy reply mismatch")
 
             val evidence = postJson(
@@ -43,7 +45,7 @@ internal object SmB8Scenario {
                 connector
                     .request(Contracts.ActorEchoReq("after-destroy", 8, profile))
                     .timeout(Duration.ofMillis(500))
-                    .await(Contracts.ActorEchoRes::class.java)
+                    .await<Contracts.ActorEchoRes>()
             }
 
             println("scenario SM-B8 passed")

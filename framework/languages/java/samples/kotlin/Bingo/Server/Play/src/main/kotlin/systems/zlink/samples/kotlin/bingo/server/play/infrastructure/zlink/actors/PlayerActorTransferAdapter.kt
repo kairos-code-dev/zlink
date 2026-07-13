@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingActorTransferAdapter
 import systems.zlink.framework.messaging.ZLinkMessage
@@ -8,7 +7,6 @@ import systems.zlink.framework.messaging.ZLinkMessage
 class PlayerActorTransferAdapter : ZLinkSuspendingActorTransferAdapter<PlayerActor>() {
     override suspend fun transferOutSuspending(
         actor: PlayerActor,
-        cancellationToken: CancellationToken,
     ): ZLinkMessage = ZLinkMessage.of(
         TransferState(
             actor.displayName,
@@ -22,7 +20,6 @@ class PlayerActorTransferAdapter : ZLinkSuspendingActorTransferAdapter<PlayerAct
         actorId: String,
         context: ZLinkActorContext,
         state: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): PlayerActor {
         val transferred = state.decode(TransferState::class.java)
         return PlayerActor(actorId, context).also { actor ->

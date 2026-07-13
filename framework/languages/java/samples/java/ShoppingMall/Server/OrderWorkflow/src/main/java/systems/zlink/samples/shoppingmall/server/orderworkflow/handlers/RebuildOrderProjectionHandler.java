@@ -5,6 +5,7 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.OrderWorkflowService;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
+import java.util.concurrent.CompletionStage;
 
 @ZLinkHandlerGroup("order-workflow")
 public final class RebuildOrderProjectionHandler
@@ -16,9 +17,10 @@ public final class RebuildOrderProjectionHandler
     }
 
     @Override
-    public Messages.RebuildOrderProjectionRes handle(
+    public CompletionStage<Messages.RebuildOrderProjectionRes> handle(
         Messages.RebuildOrderProjectionReq request,
         ZLinkRequestContext context) {
-        return new Messages.RebuildOrderProjectionRes(workflow.rebuildProjection(request.orderId()));
+        return workflow.rebuildProjection(request.orderId())
+            .thenApply(Messages.RebuildOrderProjectionRes::new);
     }
 }

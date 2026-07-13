@@ -14,11 +14,11 @@ public final class SecondOrderFilter implements ZLinkHandlerFilter {
     }
 
     @Override
-    public <T> CompletionStage<T> invokeAsync(
+    public <T> CompletionStage<T> invoke(
         ZLinkInvocationContext context,
         ZLinkNext<T> next) {
         record(context, "second-before");
-        return next.invokeAsync()
+        return next.invoke()
             .whenComplete((ignored, error) -> record(context, "second-after"));
     }
 

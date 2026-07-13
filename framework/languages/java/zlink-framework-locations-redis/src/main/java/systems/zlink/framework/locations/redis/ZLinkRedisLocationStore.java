@@ -48,7 +48,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updatePeerAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updatePeer(
         ZLinkPeerLocation peer,
         ZLinkLocationWriteIntent intent) {
         return scripts.write(
@@ -63,14 +63,14 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removePeerAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removePeer(
         ZLinkPeerLocationKey key,
         systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
         return scripts.remove("peer", ZLinkRedisLocationKeyCodec.encodePeerKey(key), key.meshName(), owner);
     }
 
     @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
+    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter) {
         return rows.listRows("peer", ZLinkRedisLocationRowJson::deserializePeer)
             .thenApply(items -> items.stream()
                 .filter(row -> ZLinkRedisLocationFilters.matches(row, filter))
@@ -78,7 +78,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateSpotAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateSpot(
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent) {
         return scripts.write(
@@ -92,14 +92,14 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeSpotAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeSpot(
         ZLinkSpotLocationKey key,
         systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
         return scripts.remove("spot", ZLinkRedisLocationKeyCodec.encodeSpotKey(key), key.meshName(), owner);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
+    public CompletionStage<ZLinkSpotLocation> resolveSpot(ZLinkSpotLocationKey key) {
         return rows.resolve(
             "spot",
             ZLinkRedisLocationKeyCodec.encodeSpotKey(key),
@@ -107,7 +107,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocations(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page) {
         return rows.listPage(
@@ -118,7 +118,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateActorAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateActor(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent) {
         return scripts.write(
@@ -132,14 +132,14 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeActorAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeActor(
         ZLinkActorLocationKey key,
         systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
         return scripts.remove("actor", ZLinkRedisLocationKeyCodec.encodeActorKey(key), null, owner);
     }
 
     @Override
-    public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
+    public CompletionStage<ZLinkActorLocation> resolveActor(ZLinkActorLocationKey key) {
         return rows.resolve(
             "actor",
             ZLinkRedisLocationKeyCodec.encodeActorKey(key),
@@ -147,7 +147,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocations(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page) {
         return rows.listPage(
@@ -158,7 +158,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateRouteAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateRoute(
         ZLinkRouteLocation route,
         ZLinkLocationWriteIntent intent) {
         return scripts.write(
@@ -172,14 +172,14 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeRouteAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeRoute(
         ZLinkRouteLocationKey key,
         systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
         return scripts.remove("route", ZLinkRedisLocationKeyCodec.encodeRouteKey(key), null, owner);
     }
 
     @Override
-    public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
+    public CompletionStage<ZLinkRouteLocation> resolveRoute(ZLinkRouteLocationKey key) {
         return rows.resolve(
             "route",
             ZLinkRedisLocationKeyCodec.encodeRouteKey(key),
@@ -187,7 +187,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page) {
         return rows.listPage(
@@ -198,7 +198,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
+    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl) {
@@ -206,31 +206,27 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
+    public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
         return scripts.removeOwnerLeaseAsync(ownerId);
     }
 
     @Override
-    public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+    public CompletionStage<Long> removeAllByOwner(String ownerId) {
         return scripts.removeAllByOwnerAsync(ownerId);
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeasesAsync() {
+    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
         return scripts.listOwnerLeasesAsync();
     }
 
     @Override
-    public CompletionStage<Long> getChangeStampAsync(ZLinkLocationChangeStampScope scope) {
+    public CompletionStage<Long> getChangeStamp(ZLinkLocationChangeStampScope scope) {
         return stamps.getChangeStampAsync(scope);
-    }
-
-    public CompletionStage<Void> closeAsync() {
-        return connection.closeAsync();
     }
 
     @Override
     public void close() {
-        closeAsync().toCompletableFuture().join();
+        connection.closeAsync().toCompletableFuture().join();
     }
 }

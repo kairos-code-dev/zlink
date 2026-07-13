@@ -1,18 +1,21 @@
 package systems.zlink.framework.streams;
 
 import systems.zlink.framework.messaging.ZLinkMessage;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public interface ZLinkSession {
     ZLinkSessionContext context();
 
-    void onConnected();
+    CompletionStage<Void> onConnected();
 
-    void onDisconnected();
+    CompletionStage<Void> onDisconnected();
 
-    void onError(ZLinkStreamError error);
+    CompletionStage<Void> onError(ZLinkStreamError error);
 
-    default void onDispatch(
+    default CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
+        return CompletableFuture.completedFuture(null);
     }
 }

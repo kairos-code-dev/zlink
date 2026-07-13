@@ -54,7 +54,7 @@ final class ZLinkStreamConnectorTest {
     @AfterEach
     void closeConnectors() throws Exception {
         for (ZLinkStreamConnector connector : connectors) {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
         }
         connectors.clear();
     }
@@ -93,7 +93,7 @@ final class ZLinkStreamConnectorTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -110,7 +110,7 @@ final class ZLinkStreamConnectorTest {
             assertEquals(1, connector.receivedCount("Ping"));
             assertEquals(0, handled.get());
 
-            connector.dispatch().await();
+            ConnectorTestAwait.await(connector.dispatch());
 
             assertEquals(0, connector.pendingDispatchCount());
             assertEquals(0, connector.receivedCount("Ping"));
@@ -123,7 +123,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -174,7 +174,7 @@ final class ZLinkStreamConnectorTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
                 .timeout(Duration.ofMillis(500))
@@ -224,7 +224,7 @@ final class ZLinkStreamConnectorTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -273,7 +273,7 @@ final class ZLinkStreamConnectorTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             assertThrows(IllegalStateException.class,
                 () -> connector.observeInbound(observation ->
                     CompletableFuture.completedFuture(null)));
@@ -326,7 +326,7 @@ final class ZLinkStreamConnectorTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -371,7 +371,7 @@ final class ZLinkStreamConnectorTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -416,7 +416,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var frame = server.readFrameAsync();
             connector.send(payload("Meta", "hello"))
@@ -436,7 +436,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var frame = server.readFrameAsync();
             connector.send(new ZLinkStreamEncodedPayload(
@@ -458,7 +458,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("MetaRequest", "hello"))
@@ -506,7 +506,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var plainFrame = server.readFrameAsync();
             connector.send(payload("Plain", "A".repeat(1024)))
@@ -534,7 +534,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL, 8));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             assertThrows(IllegalArgumentException.class, () ->
                 connector.send(payload("Compressed", "A".repeat(1024)))
@@ -548,7 +548,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(compressedOptions(server.endpoint(), ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -591,7 +591,7 @@ final class ZLinkStreamConnectorTest {
                     false,
                     false,
                     ZLinkStreamCompression.LZ4));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -635,7 +635,7 @@ final class ZLinkStreamConnectorTest {
                 message.payload().payload().close();
                 return CompletableFuture.completedFuture(null);
             });
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var sentFrame = server.readFrameAsync();
             connector.send(payload("CustomOutbound", "outbound"))
@@ -684,7 +684,7 @@ final class ZLinkStreamConnectorTest {
                 false,
                 ZLinkStreamCompression.LZ4,
                 codec));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -720,7 +720,7 @@ final class ZLinkStreamConnectorTest {
         try (WebSocketStreamConnectorTestServer server = new WebSocketStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -763,7 +763,7 @@ final class ZLinkStreamConnectorTest {
                     false,
                     false,
                     ZLinkStreamCompression.NONE));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             server.sendBytesAsync(framePrefix(0, 2)).join();
 
@@ -777,7 +777,7 @@ final class ZLinkStreamConnectorTest {
         try (TlsStreamConnectorTestServer server = new TlsStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -828,7 +828,7 @@ final class ZLinkStreamConnectorTest {
                 false);
             ZLinkStreamConnector connector = createConnector(strict);
 
-            assertThrows(SSLHandshakeException.class, () -> connector.connect().await());
+            assertThrows(SSLHandshakeException.class, () -> ConnectorTestAwait.await(connector.connect()));
             assertEquals(ZLinkStreamConnectionState.DISCONNECTED, connector.state());
         }
     }
@@ -845,7 +845,7 @@ final class ZLinkStreamConnectorTest {
                     false,
                     true,
                     ZLinkStreamCompression.NONE));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             server.sendBytesAsync(framePrefix(0, 2)).join();
 
@@ -897,7 +897,7 @@ final class ZLinkStreamConnectorTest {
                  new SecureWebSocketStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "hello"))
@@ -940,7 +940,7 @@ final class ZLinkStreamConnectorTest {
                     false,
                     false,
                     ZLinkStreamCompression.NONE));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             server.sendRawAsync(framePrefix(0, 2)).join();
 
@@ -954,7 +954,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
                 createConnector(server.options(ZLinkStreamDispatchMode.MANUAL));
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             CompletionException ex = assertThrows(CompletionException.class, () ->
                 connector.request(payload("MissingReply", "hello"))
@@ -975,9 +975,9 @@ final class ZLinkStreamConnectorTest {
                 createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
             assertFalse(connector.isConnected());
             assertEquals(ZLinkStreamDispatchMode.AUTO, connector.options().dispatchMode());
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             assertTrue(connector.isConnected());
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
             assertEquals(ZLinkStreamConnectionState.CLOSED, connector.state());
         }
     }
@@ -993,14 +993,15 @@ final class ZLinkStreamConnectorTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
-            connector.disconnect().await();
+            ConnectorTestAwait.await(connector.connect());
+            ConnectorTestAwait.await(connector.disconnect());
             assertFalse(connector.isConnected());
 
-            connector.reconnect().await();
+            ConnectorTestAwait.await(connector.reconnect());
 
             assertTrue(connector.isConnected());
             assertEquals(List.of(
+                ZLinkStreamConnectionState.CONNECTING,
                 ZLinkStreamConnectionState.CONNECTED,
                 ZLinkStreamConnectionState.DISCONNECTED,
                 ZLinkStreamConnectionState.RECONNECTING,
@@ -1020,25 +1021,64 @@ final class ZLinkStreamConnectorTest {
                 states.add(state);
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
-            AutoCloseable disconnectedRegistration = connector.onDisconnected(() -> {
+            AutoCloseable disconnectedRegistration = connector.onDisconnected(event -> {
+                assertEquals(ZLinkStreamCloseReason.CLIENT_CLOSE, event.closeReason());
                 disconnected.incrementAndGet();
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
-            connector.close().await();
+            ConnectorTestAwait.await(connector.connect());
+            ConnectorTestAwait.await(connector.close());
 
             assertEquals(List.of(
+                ZLinkStreamConnectionState.CONNECTING,
                 ZLinkStreamConnectionState.CONNECTED,
                 ZLinkStreamConnectionState.CLOSED), states);
             assertEquals(1, disconnected.get());
 
             stateRegistration.close();
             disconnectedRegistration.close();
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
 
-            assertEquals(2, states.size());
+            assertEquals(3, states.size());
             assertEquals(1, disconnected.get());
+        }
+    }
+
+    @Test
+    void sessionClosingPublishesServerDrainReasonBeforeDisconnect() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = createConnector(
+                server.options(
+                    ZLinkStreamDispatchMode.AUTO,
+                    Duration.ofSeconds(1),
+                    1,
+                    false,
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(5),
+                    Duration.ofMillis(10)));
+            AtomicReference<ZLinkStreamCloseReason> reason = new AtomicReference<>();
+            CountDownLatch disconnected = new CountDownLatch(1);
+            connector.onDisconnected(event -> {
+                reason.set(event.closeReason());
+                disconnected.countDown();
+                return CompletableFuture.completedFuture(null);
+            });
+
+            ConnectorTestAwait.await(connector.connect());
+            server.sendAsync(
+                new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_CONTROL,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    0,
+                    null,
+                    ZLinkSessionClosingControl.NAME,
+                    Map.of(),
+                    null),
+                new byte[] {1, 4, 0, 0}).join();
+
+            assertTrue(disconnected.await(5, TimeUnit.SECONDS));
+            assertEquals(ZLinkStreamCloseReason.SERVER_DRAIN, reason.get());
         }
     }
 
@@ -1053,7 +1093,7 @@ final class ZLinkStreamConnectorTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendRawAsync(
                 "invalid-header".getBytes(StandardCharsets.UTF_8),
                 TcpStreamConnectorTestServer.bytes("payload")).join();
@@ -1062,7 +1102,7 @@ final class ZLinkStreamConnectorTest {
                 () -> connector.pendingDispatchCount() == 1);
             assertEquals(null, received.get());
 
-            connector.dispatch().await();
+            ConnectorTestAwait.await(connector.dispatch());
 
             assertEquals(ZLinkStreamErrorCode.FRAME_DECODE_FAILED, received.get().code());
         }
@@ -1079,7 +1119,7 @@ final class ZLinkStreamConnectorTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_ERROR,
                     ZLinkStreamWireProtocol.CODEC_JSON,
@@ -1112,7 +1152,7 @@ final class ZLinkStreamConnectorTest {
                 throw new IllegalStateException("boom");
             });
 
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -1143,7 +1183,7 @@ final class ZLinkStreamConnectorTest {
             assertThrows(IllegalArgumentException.class,
                 () -> connector.request(payload("$zlink.request", "hello")));
         } finally {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
         }
     }
 
@@ -1162,7 +1202,7 @@ final class ZLinkStreamConnectorTest {
             assertThrows(IllegalArgumentException.class,
                 () -> connector.request(payload(tooLong, "hello")));
         } finally {
-            connector.close().await();
+            ConnectorTestAwait.await(connector.close());
         }
     }
 

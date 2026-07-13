@@ -181,9 +181,10 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             return appendSpotHandler(
                 java.util.concurrent.CompletableFuture.completedFuture(null),
                 () ->
-                host.runWithOutbound(context.dispatchOutbound(), () ->
-                    handlerInvoker.invokeRequest(handler, spotSurface, payloadCopy))
-                    .thenAccept(reply -> received.reply(List.of(reply)))
+                systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(
+                    host.runWithOutbound(context.dispatchOutbound(), () ->
+                        handlerInvoker.invokeRequest(handler, spotSurface, payloadCopy))
+                        .thenAccept(reply -> received.reply(List.of(reply))))
                     .whenComplete((ignored, error) -> {
                         if (error != null && !host.isClosing()) {
                             host.replySpotRouteDispatchError(

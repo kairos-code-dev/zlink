@@ -1,12 +1,14 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmD13Scenario {
-    fun run() {
+    suspend fun run() {
         val actorId = "actor-sm-d13-heartbeat"
         val profile = Contracts.ActorProfile("Heartbeat", 13, listOf("heartbeat"))
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -14,7 +16,7 @@ internal object SmD13Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D13 auth actor mismatch")
 
             Thread.sleep(700)
@@ -22,7 +24,7 @@ internal object SmD13Scenario {
 
             val reply = connector
                 .request(Contracts.ActorEchoReq("after-heartbeat", 13, profile))
-                .await(Contracts.ActorEchoRes::class.java)
+                .await<Contracts.ActorEchoRes>()
             ensure(reply.actorId == actorId, "SM-D13 actor reply mismatch")
             ensure(reply.nodeRid == "session-a", "SM-D13 actor node mismatch")
             ensure(reply.value == "entry:after-heartbeat", "SM-D13 actor value mismatch")

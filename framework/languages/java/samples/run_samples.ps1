@@ -36,20 +36,6 @@ function Read-SampleManifest {
 
 $Manifest = Read-SampleManifest $ManifestPath
 $SampleFilter = if ($env:ZLINK_SAMPLE_FILTER) { $env:ZLINK_SAMPLE_FILTER } else { "" }
-$SharedRedisEndpoint = if ($env:ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT) {
-    $env:ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT
-} else {
-    $env:ZLINK_REDIS_LOCATION_ENDPOINT
-}
-
-if ($SharedRedisEndpoint) {
-    foreach ($redisEnvVar in $Manifest["SAMPLE_REDIS_ENV_VARS"]) {
-        if (-not [Environment]::GetEnvironmentVariable($redisEnvVar)) {
-            [Environment]::SetEnvironmentVariable($redisEnvVar, $SharedRedisEndpoint, "Process")
-        }
-    }
-}
-
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments)
     & $FilePath @Arguments

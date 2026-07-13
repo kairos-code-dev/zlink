@@ -71,9 +71,7 @@ final class ZLinkActorClientRuntimeTest {
 
         ActorRef actorRef = new ActorRef(RoutingId.from("actor-node"), "actor-1", 7);
         client.sendToActor(actorRef, new Ping("hello"))
-            .submit()
-            .toCompletableFuture()
-            .join();
+            .submit();
         Pong pong = client.requestToActor(actorRef, new Ping("hello"))
             .submit(Pong.class)
             .toCompletableFuture()
@@ -98,9 +96,7 @@ final class ZLinkActorClientRuntimeTest {
         ActorRef actorRef = new ActorRef(RoutingId.from("direct-node"), "actor-direct", 17);
 
         client.sendToActor(actorRef, new Ping("hello"))
-            .submit()
-            .toCompletableFuture()
-            .join();
+            .submit();
         Pong pong = client.requestToActor(actorRef, new Ping("hello"))
             .submit(Pong.class)
             .toCompletableFuture()
@@ -127,7 +123,7 @@ final class ZLinkActorClientRuntimeTest {
     }
 
     @Test
-    void noBindActorSendRetriesWhileRouteConverges() {
+    void noBindActorSendRetriesWhileRouteConverges() throws Exception {
         ZLinkInMemoryLocationStore store = storeWithActor("actor-1");
         RecordingSpotNode node = new RecordingSpotNode();
         node.sendFailuresRemaining = 1;
@@ -140,12 +136,22 @@ final class ZLinkActorClientRuntimeTest {
             Duration.ofMillis(250));
 
         client.sendToActor(new ActorRef(RoutingId.from("actor-node"), "actor-1", 7), new Ping("hello"))
-            .submit()
-            .toCompletableFuture()
-            .join();
+            .submit();
+
+        awaitCondition(() -> node.sendAttempts == 2);
 
         assertEquals(2, node.sendAttempts);
         assertEquals("actor-1", node.sentActor.actorId());
+    }
+
+    private static void awaitCondition(java.util.function.BooleanSupplier condition) throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("condition was not reached in time");
+            }
+            Thread.sleep(10);
+        }
     }
 
     @Test

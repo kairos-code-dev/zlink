@@ -35,7 +35,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -53,7 +52,6 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -65,8 +63,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -151,7 +147,6 @@ final class RouteRequestCall implements ZLinkRequestCall {
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
-    private final ZLinkYieldTurn turn;
 
     RouteRequestCall(
         ZLinkChannelCallRuntime runtime,
@@ -161,19 +156,6 @@ final class RouteRequestCall implements ZLinkRequestCall {
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
-        this(runtime, channelName, router, target, payload, packetName, timeout,
-            ZLinkFrameworkTurns.captureCurrent());
-    }
-
-    private RouteRequestCall(
-        ZLinkChannelCallRuntime runtime,
-        String channelName,
-        ZLinkBackendRouterSocket router,
-        RoutingId target,
-        Message payload,
-        Optional<String> packetName,
-        Duration timeout,
-        ZLinkYieldTurn turn) {
         this.runtime = runtime;
         this.channelName = channelName;
         this.router = router;
@@ -181,7 +163,6 @@ final class RouteRequestCall implements ZLinkRequestCall {
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
-        this.turn = turn;
     }
 
     public ZLinkRequestCall packetName(String packetName) {
@@ -192,8 +173,7 @@ final class RouteRequestCall implements ZLinkRequestCall {
             target,
             payload,
             Optional.of(packetName),
-            timeout,
-            turn);
+            timeout);
     }
 
     @Override
@@ -203,7 +183,7 @@ final class RouteRequestCall implements ZLinkRequestCall {
 
     @Override
     public ZLinkRequestCall timeout(Duration timeout) {
-        return new RouteRequestCall(runtime, channelName, router, target, payload, packetName, timeout, turn);
+        return new RouteRequestCall(runtime, channelName, router, target, payload, packetName, timeout);
     }
 
     @Override
@@ -246,15 +226,7 @@ final class RouteRequestCall implements ZLinkRequestCall {
         } finally {
             requestParts.forEach(Message::close);
         }
-        return result;
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
-    @Override
-    public <TReply> TReply await(Class<TReply> replyType) {
-        CompletionStage<TReply> stage = submit(replyType);
-        if (turn == null) {
-            return ZLinkAwait.await(stage);
-        }
-        return ZLinkAwait.await(ZLinkFrameworkTurns.awaitManagedCompletion(turn, stage));
-    }
 }

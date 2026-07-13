@@ -59,12 +59,10 @@ public final class PublisherEndpoints implements SmartLifecycle {
             String scenario = query.getOrDefault("scenario", "");
             int sequence = Integer.parseInt(query.getOrDefault("sequence", "0"));
             String value = query.getOrDefault("value", "");
-            fanout.publish(
-                    Contracts.EVENT_CHANNEL,
-                    topic,
-                    new Contracts.EventMsg(scenario, sequence, value))
-                .packetName(packetName)
-                .await();
+            Object event = Contracts.MISSING_PACKET.equals(packetName)
+                ? new Contracts.MissingEventMsg(scenario, sequence, value)
+                : new Contracts.EventMsg(scenario, sequence, value);
+            fanout.publish(Contracts.EVENT_CHANNEL, topic, event).submit();
             evidence.record(packetName + "|" + topic + "|" + scenario + "|" + sequence);
             writeText(exchange, 200, "published\n");
         } catch (Exception error) {

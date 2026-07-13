@@ -26,6 +26,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 final class ZLinkChannelCallRuntime {
     private static final Logger LOGGER = Logger.getLogger(ZLinkChannelCallRuntime.class.getName());
@@ -115,7 +116,12 @@ final class ZLinkChannelCallRuntime {
         Duration timeout,
         ZLinkBackendRequestCallback callback,
         CompletableFuture<?> result) {
-        requestSubmitter.submitClient(client, requestParts, timeout, callback, result);
+        requestSubmitter.submitClient(
+            client,
+            requestParts,
+            timeout,
+            preserveCurrentFlow(callback),
+            result);
     }
 
     void submitRoute(
@@ -129,9 +135,22 @@ final class ZLinkChannelCallRuntime {
             router,
             target,
             requestParts,
-            callback,
+            preserveCurrentFlow(callback),
             timeout,
             result);
+    }
+
+    private static ZLinkBackendRequestCallback preserveCurrentFlow(
+        ZLinkBackendRequestCallback callback) {
+        ZLinkFlowContext.State captured = ZLinkFlowContext.current();
+        if (captured == null) {
+            return callback;
+        }
+        return reply -> {
+            try (ZLinkFlowContext.Scope ignored = ZLinkFlowContext.enter(captured)) {
+                callback.handle(reply);
+            }
+        };
     }
 
     <TReply> void completeReply(
@@ -197,8 +216,10 @@ final class ZLinkChannelCallRuntime {
         if (packetName.isEmpty()) {
             return List.of(payload);
         }
-        return List.of(
-            Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)),
-            payload);
+        Message flow = ZLinkChannelFlowFrame.current();
+        return flow == null
+            ? List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload)
+            : List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload, flow);
     }
+
 }

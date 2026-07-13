@@ -18,6 +18,14 @@ import systems.zlink.stream.connector.ZLinkStreamRequestCall
 import systems.zlink.stream.connector.ZLinkStreamSendCall
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamWaitCall
+import systems.zlink.stream.connector.ZLinkTypedStreamRequestCall
+import systems.zlink.stream.connector.ZLinkTypedStreamSendCall
+import systems.zlink.stream.connector.ZLinkStreamConnectionState
+import systems.zlink.stream.connector.ZLinkStreamConnectionStateHandler
+import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler
+import systems.zlink.stream.connector.ZLinkStreamErrorHandler
+import systems.zlink.stream.connector.ZLinkStreamInboundObserver
+import systems.zlink.stream.connector.ZLinkStreamMessageHandler
 
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector =
     ZLinkKotlinStreamConnector(this)
@@ -70,8 +78,38 @@ class ZLinkKotlinStreamConnector(
     val isConnected: Boolean
         get() = inner.isConnected
 
+    val state: ZLinkStreamConnectionState
+        get() = inner.state()
+
+    val options: ZLinkStreamConnectorOptions
+        get() = inner.options()
+
+    val pendingDispatchCount: Int
+        get() = inner.pendingDispatchCount()
+
     fun receivedCount(name: String): Int =
         inner.receivedCount(name)
+
+    fun observeInbound(observer: ZLinkStreamInboundObserver): AutoCloseable =
+        inner.observeInbound(observer)
+
+    fun on(
+        name: String,
+        handler: ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>,
+    ): AutoCloseable = inner.on(name, handler)
+
+    inline fun <reified TPayload> on(
+        handler: ZLinkStreamMessageHandler<TPayload>,
+    ): AutoCloseable = inner.on(TPayload::class.java, handler)
+
+    fun onErrorReceived(handler: ZLinkStreamErrorHandler): AutoCloseable =
+        inner.onErrorReceived(handler)
+
+    fun onDisconnected(handler: ZLinkStreamDisconnectedHandler): AutoCloseable =
+        inner.onDisconnected(handler)
+
+    fun onConnectionStateChanged(handler: ZLinkStreamConnectionStateHandler): AutoCloseable =
+        inner.onConnectionStateChanged(handler)
 
     fun connect(): ZLinkKotlinLifecycleCall =
         ZLinkKotlinLifecycleCall(inner.connect())
@@ -97,7 +135,7 @@ class ZLinkKotlinStreamConnector(
     fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall =
         inner.request(payload)
 
-    fun request(payload: Any): ZLinkStreamRequestCall =
+    fun request(payload: Any): ZLinkTypedStreamRequestCall =
         inner.request(payload)
 
     inline fun <reified TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload> =
@@ -122,12 +160,22 @@ class ZLinkKotlinLifecycleCall(
 }
 
 class ZLinkKotlinSendCall(
-    private val inner: ZLinkStreamSendCall,
+    private val submitter: () -> Unit,
 ) {
+    constructor(inner: ZLinkStreamSendCall) : this({ inner.submit() })
+
+    constructor(inner: ZLinkTypedStreamSendCall) : this({ inner.submit() })
+
     fun submit() {
-        inner.submit()
+        submitter()
     }
 }
+
+suspend inline fun <reified TReply> ZLinkTypedStreamRequestCall.await(): TReply =
+    submit(TReply::class.java).await()
+
+suspend inline fun <reified TReply> ZLinkTypedStreamRequestCall.awaitReply(): TReply =
+    submit(TReply::class.java).await()
 
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload =
     submit().await()

@@ -9,7 +9,7 @@ import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 public final class EvidenceStore {
     private final Map<String, List<Messages.DeliveryStatusNotify>> deliveries = new ConcurrentHashMap<>();
 
-    public void append(Messages.DeliveryStatusChanged change) {
+    public void append(Messages.DeliveryStatusChangedReq change) {
         deliveries.computeIfAbsent(change.deliveryId(), ignored -> new ArrayList<>())
             .add(new Messages.DeliveryStatusNotify(
                 change.deliveryId(),

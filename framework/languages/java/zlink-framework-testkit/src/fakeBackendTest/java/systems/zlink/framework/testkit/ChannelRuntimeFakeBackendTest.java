@@ -24,20 +24,18 @@ final class ChannelRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
-                .sendToChannel("profile", "hello")
-                .packetName("Greeting")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("profile", new Greeting("hello"))
+                .submit();
             String reply = runtime.client()
-                .requestToChannel("profile", "question")
-                .packetName("Question")
+                .requestToChannel("profile", new Question("question"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
             assertEquals("reply", reply);
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -64,9 +62,7 @@ final class ChannelRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
                 .sendToChannel("profile", new ProfileGreeting("hello"))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
             runtime.client()
                 .requestToChannel("profile", new ProfileQuestion("question"))
                 .submit(String.class)
@@ -74,15 +70,15 @@ final class ChannelRuntimeFakeBackendTest {
                 .join();
             runtime.route()
                 .sendToNode("route", RoutingId.from("peer"), new ProfileGreeting("hello"))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
             runtime.route()
                 .requestToNode("route", RoutingId.from("peer"), new ProfileQuestion("question"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -108,14 +104,22 @@ final class ChannelRuntimeFakeBackendTest {
     public static final class ChannelMessagingFakeHandler
         implements ZLinkRequestHandler<String, String> {
         @Override
-        public String handle(
+        public CompletionStage<String> handle(
             String request,
             ZLinkRequestContext context) {
-            return request;
+            return CompletableFuture.completedFuture(request);
         }
     }
 
     public record ProfileGreeting(String value) {
+    }
+
+    @ZLinkPacket("Greeting")
+    public record Greeting(String value) {
+    }
+
+    @ZLinkPacket("Question")
+    public record Question(String value) {
     }
 
     @ZLinkPacket("ProfileQuestion")

@@ -1,6 +1,7 @@
 package systems.zlink.samples.shoppingmall.server.orderworkflow.spots;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -18,10 +19,12 @@ public final class OrderWorkflowSpot implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 }

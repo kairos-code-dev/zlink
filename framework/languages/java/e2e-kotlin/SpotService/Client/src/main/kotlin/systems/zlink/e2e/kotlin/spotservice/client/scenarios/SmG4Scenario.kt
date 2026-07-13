@@ -1,16 +1,21 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.util.UUID
-import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.coroutineScope
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
-import systems.zlink.stream.connector.ZLinkStreamConnector
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 
 internal object SmG4Scenario {
-    fun run() {
-        val connectors = mutableListOf<ZLinkStreamConnector>()
+    suspend fun run() {
+        val connectors = mutableListOf<ZLinkKotlinStreamConnector>()
         val actorIds = mutableListOf<String>()
         val values = mutableListOf<String>()
         try {
@@ -24,29 +29,31 @@ internal object SmG4Scenario {
                 connector.connect().await()
                 val auth = connector
                     .request(Contracts.ActorAuthReq(actorId, profile))
-                    .await(Contracts.ActorAuthRes::class.java)
+                    .await<Contracts.ActorAuthRes>()
                 ensure(auth.actorId == actorId, "SM-G4 auth actor mismatch")
             }
 
-            val pushes = connectors.map { connector ->
-                connector.waitFor(Contracts.ActorPushNotify::class.java)
-                    .submit(Contracts.ActorPushNotify::class.java)
-            }
-            val replies = connectors.mapIndexed { index, connector ->
-                val value = values[index]
-                val profile = Contracts.ActorProfile("Bound Load Request $index", 14, listOf("load"))
-                CompletableFuture.supplyAsync {
-                    connector
-                        .request(Contracts.ActorEchoReq(value, 14, profile))
-                        .await(Contracts.ActorEchoRes::class.java)
+            val (pushes, replies) = coroutineScope {
+                val pushes = connectors.map { connector ->
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        connector.waitFor<Contracts.ActorPushNotify>().await()
+                    }
                 }
+                connectors.mapIndexed { index, connector ->
+                    val value = values[index]
+                    val profile = Contracts.ActorProfile("Bound Load Request $index", 14, listOf("load"))
+                    async {
+                        connector.request(Contracts.ActorEchoReq(value, 14, profile))
+                            .await<Contracts.ActorEchoRes>()
+                    }
+                }.awaitAll().let { pushes to it }
             }
 
             connectors.forEachIndexed { index, connector ->
                 val actorId = actorIds[index]
                 val value = values[index]
-                val reply = replies[index].join()
-                val notify = connector.await(pushes[index]).payload()
+                val reply = replies[index]
+                val notify = pushes[index].await().payload()
                 ensure(reply.actorId == actorId, "SM-G4 push reply actor mismatch")
                 ensure(reply.value == "entry:$value", "SM-G4 push reply value mismatch")
                 ensure(notify.actorId == actorId, "SM-G4 push notify actor mismatch")

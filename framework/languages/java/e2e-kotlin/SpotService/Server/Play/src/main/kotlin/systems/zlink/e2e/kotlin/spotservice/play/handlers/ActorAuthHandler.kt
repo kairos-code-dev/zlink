@@ -6,27 +6,26 @@ import systems.zlink.e2e.kotlin.spotservice.play.spots.*
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
-import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
+import kotlinx.coroutines.future.await
 
 class ActorAuthHandler(
     private val actors: ZLinkActorManager,
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthReq> {
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthReq> {
     override fun packetName(): String = "ActorAuthReq"
 
     override fun messageType(): Class<Contracts.ActorAuthReq> = Contracts.ActorAuthReq::class.java
 
-    override fun handle(
+    override suspend fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
         request: Contracts.ActorAuthReq
     ) {
         val actor = actors.getOrCreate(request.actorId, "scenario", request)
-            .toCompletableFuture()
-            .join()
+            .await()
         val bound = context.actors().bind(actor)
-            .toCompletableFuture()
-            .join()
+            .await()
         evidence.record("ActorSessionBound", "session", request.actorId)
         context.client()
             .reply(
@@ -39,6 +38,6 @@ class ActorAuthHandler(
                     request.profile.tags
                 )
             )
-            .await()
+            .submit()
     }
 }

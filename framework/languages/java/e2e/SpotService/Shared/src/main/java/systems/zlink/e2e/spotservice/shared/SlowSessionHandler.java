@@ -13,17 +13,12 @@ public final class SlowSessionHandler
     }
 
     @Override
-    public String packetName() {
-        return "SlowSessionReq";
-    }
-
-    @Override
     public Class<Contracts.SlowSessionReq> messageType() {
         return Contracts.SlowSessionReq.class;
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Contracts.SlowSessionReq request) {
@@ -35,11 +30,10 @@ public final class SlowSessionHandler
         }
         evidence.record("SlowSessionHandled", "session", request.value());
         try {
-            context.client()
-                .reply(new Contracts.SlowSessionRes(request.value()))
-                .await();
+            context.client().reply(new Contracts.SlowSessionRes(request.value())).submit();
         } catch (Exception error) {
             evidence.record("SlowSessionReplyFailed", "session", request.value() + "/" + error.getClass().getSimpleName());
         }
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+    implementation("systems.zlink:zlink-framework-kotlin:0.1.0-SNAPSHOT")
     implementation(project(":Shared"))
     implementation(project(":Server:Service"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")

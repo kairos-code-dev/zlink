@@ -1,6 +1,9 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.time.Duration
+import kotlinx.coroutines.delay
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
@@ -8,7 +11,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmD8Scenario {
-    fun run() {
+    suspend fun run() {
         val actorId = "actor-sm-d8-reconnect"
         val profile = Contracts.ActorProfile("Reconnect", 8, listOf("reconnect"))
         val first = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -16,19 +19,19 @@ internal object SmD8Scenario {
             first.connect().await()
             val auth = first
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D8 initial auth actor mismatch")
 
             val pending = first
                 .request(Contracts.SlowSessionReq("before-disconnect", 1000))
                 .timeout(Duration.ofSeconds(10))
                 .submit(Contracts.SlowSessionRes::class.java)
-            Thread.sleep(100)
+            delay(100)
             first.close().await()
 
             var pendingFailed = false
             try {
-                first.await(pending)
+                pending.await()
             } catch (_: Exception) {
                 pendingFailed = true
             }
@@ -55,12 +58,12 @@ internal object SmD8Scenario {
             second.connect().await()
             val auth = second
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D8 reauth actor mismatch")
 
             val reply = second
                 .request(Contracts.ActorEchoReq("after-reconnect", 8, profile))
-                .await(Contracts.ActorEchoRes::class.java)
+                .await<Contracts.ActorEchoRes>()
             ensure(reply.actorId == actorId, "SM-D8 reconnected actor mismatch")
             ensure(reply.nodeRid == "session-a", "SM-D8 reconnected node mismatch")
             ensure(reply.value == "entry:after-reconnect", "SM-D8 reconnected value mismatch")

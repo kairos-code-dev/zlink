@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.sessions
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
@@ -21,10 +20,10 @@ class PlaySession(
     }
 
     override suspend fun onDispatchSuspending(header: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        if (ZLinkAwait.await(handlers.tryHandleAsync(context, header, payload))) {
+        if (handlers.tryHandle(context, header, payload).await()) {
             return
         }
-        ZLinkAwait.await(requireActor(header.packetName()).relay(header, payload))
+        requireActor(header.packetName()).relay(header, payload).await()
     }
 
     private fun requireActor(packetName: String): ZLinkSessionActor =

@@ -25,7 +25,6 @@ public final class CustomerActor implements ZLinkActor {
     public void push(Object message) {
         context.boundSession()
             .send(message)
-            .submit()
-            .await();
+            .submit();
     }
 }

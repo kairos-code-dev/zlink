@@ -34,27 +34,27 @@ final class ZLinkRedisCrossLanguageTest {
     @Test
     void javaWritesRowsForDotnetToRead() throws Exception {
         try (ZLinkRedisLocationStore store = crossLanguageStore("java")) {
-            store.renewOwnerLeaseAsync("java-owner", RoutingId.from("java-node"), LEASE_TTL)
+            store.renewOwnerLease("java-owner", RoutingId.from("java-node"), LEASE_TTL)
                 .toCompletableFuture()
                 .get();
 
             assertEquals(ZLinkLocationWriteStatus.STORED,
-                store.updatePeerAsync(javaPeer(), ZLinkLocationWriteIntent.NEW_CLAIM)
+                store.updatePeer(javaPeer(), ZLinkLocationWriteIntent.NEW_CLAIM)
                     .toCompletableFuture()
                     .get()
                     .status());
             assertEquals(ZLinkLocationWriteStatus.STORED,
-                store.updateSpotAsync(javaSpot(), ZLinkLocationWriteIntent.NEW_CLAIM)
+                store.updateSpot(javaSpot(), ZLinkLocationWriteIntent.NEW_CLAIM)
                     .toCompletableFuture()
                     .get()
                     .status());
             assertEquals(ZLinkLocationWriteStatus.STORED,
-                store.updateActorAsync(javaActor(), ZLinkLocationWriteIntent.NEW_CLAIM)
+                store.updateActor(javaActor(), ZLinkLocationWriteIntent.NEW_CLAIM)
                     .toCompletableFuture()
                     .get()
                     .status());
             assertEquals(ZLinkLocationWriteStatus.STORED,
-                store.updateRouteAsync(javaRoute(), ZLinkLocationWriteIntent.NEW_CLAIM)
+                store.updateRoute(javaRoute(), ZLinkLocationWriteIntent.NEW_CLAIM)
                     .toCompletableFuture()
                     .get()
                     .status());
@@ -64,19 +64,19 @@ final class ZLinkRedisCrossLanguageTest {
     @Test
     void javaReadsRowsWrittenByDotnet() throws Exception {
         try (ZLinkRedisLocationStore store = crossLanguageStore("dotnet")) {
-            ZLinkActorLocation actor = store.resolveActorAsync(
+            ZLinkActorLocation actor = store.resolveActor(
                     new ZLinkActorLocationKey("dotnet-actor"))
                 .toCompletableFuture()
                 .get();
-            ZLinkSpotLocation spot = store.resolveSpotAsync(
+            ZLinkSpotLocation spot = store.resolveSpot(
                     new ZLinkSpotLocationKey("cross", RoutingId.from("dotnet-spot")))
                 .toCompletableFuture()
                 .get();
-            ZLinkRouteLocation route = store.resolveRouteAsync(
+            ZLinkRouteLocation route = store.resolveRoute(
                     new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, "dotnet-route"))
                 .toCompletableFuture()
                 .get();
-            List<ZLinkPeerLocation> peers = store.listPeerLocationsAsync(new ZLinkPeerLocationFilter(
+            List<ZLinkPeerLocation> peers = store.listPeerLocations(new ZLinkPeerLocationFilter(
                     ZLinkLocationAutoConnectType.ROUTE_MESH,
                     "cross",
                     ZLinkLocationRole.ROUTER,

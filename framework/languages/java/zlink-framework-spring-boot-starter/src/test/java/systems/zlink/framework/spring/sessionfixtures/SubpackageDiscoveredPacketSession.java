@@ -1,5 +1,7 @@
 package systems.zlink.framework.spring.sessionfixtures;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -24,23 +26,24 @@ public final class SubpackageDiscoveredPacketSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public CompletionStage<Void> onConnected() {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnected() {
+    public CompletionStage<Void> onDisconnected() {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onError(ZLinkStreamError error) {
+    public CompletionStage<Void> onError(ZLinkStreamError error) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(
+    public CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
-        dispatcher.tryHandleAsync(context, dispatch, payload)
-            .toCompletableFuture()
-            .join();
+        return dispatcher.tryHandle(context, dispatch, payload).thenApply(ignored -> null);
     }
 }

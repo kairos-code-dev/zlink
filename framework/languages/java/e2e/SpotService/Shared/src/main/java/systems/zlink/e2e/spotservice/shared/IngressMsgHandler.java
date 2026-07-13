@@ -11,9 +11,10 @@ public final class IngressMsgHandler implements ZLinkSendHandler<Contracts.Outbo
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.OutboundMsg message,
         ZLinkSendContext context) {
         state.record("IngressMsg", "channel", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

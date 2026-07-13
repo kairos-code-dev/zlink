@@ -17,6 +17,8 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleLocationSto
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.BingoSession
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.configuration.BingoMetricsReporter
+import io.micrometer.core.instrument.MeterRegistry
 
 
 
@@ -56,6 +58,10 @@ class SessionServerApplication {
 
     @Bean
     fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+
+    @Bean(destroyMethod = "close")
+    fun bingoMetricsReporter(registry: MeterRegistry): BingoMetricsReporter =
+        BingoMetricsReporter(registry, "session")
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

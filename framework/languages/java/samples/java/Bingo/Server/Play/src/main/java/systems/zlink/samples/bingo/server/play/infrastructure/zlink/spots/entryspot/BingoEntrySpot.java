@@ -1,10 +1,8 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot;
 
-import static systems.zlink.framework.ZLinkAwait.await;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -37,46 +35,45 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     }
 
     @Override
-    public void onCreateActor(
+    public java.util.concurrent.CompletionStage<Void> onCreateActor(
         PlayerActor actor,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken) {
+        ZLinkMessage createRequest) {
         Messages.EnsurePlayerActorReq request =
             createRequest.decode(Messages.EnsurePlayerActorReq.class);
         actor.setDisplayName(request.getDisplayName());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept();
+        ZLinkMessage request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onJoinedActor(
+        PlayerActor actor) {
         if (actor.destroyAfterEntrySpotJoin()) {
-            await(context.destroyActor(actor));
+            return context.destroyActor(actor);
         }
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onLeaveActor(
+        PlayerActor actor) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnectActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onDisconnectActor(
+        PlayerActor actor) {
         actor.markDisconnected();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
-    public Messages.ObserveBingoEventsRes observeEvents(
+    public java.util.concurrent.CompletionStage<Messages.ObserveBingoEventsRes> observeEvents(
         PlayerActor actor,
         Messages.ObserveBingoEventsReq request) {
         String observerRid = "observe:" + request.getRoomId() + ":" + context.nodeRid();
@@ -85,19 +82,27 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                 request.getRoomId(),
                 context.nodeRid().toString(),
                 SampleTimings.DrawPeriod.toMillis());
-        await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), ZLinkMessage.of(settings)));
-        var joined = actor.context()
-            .joinSpot(
-                RoutingId.from(observerRid),
-                BingoMessages.bingoRoomJoinReq(
-                    request.getRoomId(),
-                    actor.actorId(),
-                    actor.displayName(),
-                    true))
-            .await(Messages.BingoRoomJoinRes.class);
-        return BingoMessages.observeBingoEventsRes(
-            joined.reply().getState().getStatus().equals("Running"),
-            joined.actor().nodeRid().toString());
+        return spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), ZLinkMessage.of(settings))
+            .thenCompose(ignored -> actor.context().joinSpot(
+                    RoutingId.from(observerRid),
+                    BingoMessages.bingoRoomJoinReq(
+                        request.getRoomId(),
+                        actor.actorId(),
+                        actor.displayName(),
+                        true))
+                .submit(Messages.BingoRoomJoinRes.class))
+            .thenApply(joined -> BingoMessages.observeBingoEventsRes(
+                joined.reply().getState().getStatus().equals("Running"),
+                joinedActor(joined).nodeRid().toString()));
+    }
+
+    private static systems.zlink.framework.actors.ActorRef joinedActor(
+        systems.zlink.framework.actors.ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined) {
+        if (joined instanceof systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted<Messages.BingoRoomJoinRes>
+            accepted) {
+            return accepted.actor();
+        }
+        throw new IllegalStateException("observer actor join was rejected");
     }
 
 }

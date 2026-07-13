@@ -9,7 +9,8 @@ import java.util.List;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
@@ -19,6 +20,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final String endpoint;
     private final ZLinkSpotManager spots;
     private final ZLinkRouteClient routes;
+    private final SpotHandleResolver spotHandles;
     private HttpServer server;
     private boolean running;
 
@@ -27,12 +29,14 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ObjectMapper json,
         String endpoint,
         ZLinkSpotManager spots,
-        ZLinkRouteClient routes) {
+        ZLinkRouteClient routes,
+        SpotHandleResolver spotHandles) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.spots = spots;
         this.routes = routes;
+        this.spotHandles = spotHandles;
     }
 
     @Override
@@ -84,11 +88,15 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     result.state().name())));
             });
             server.createContext("/spot/state/request", exchange -> {
-                Contracts.SpotStateRouteReq request = json.readValue(
-                    exchange.getRequestBody(),
-                    Contracts.SpotStateRouteReq.class);
-                Contracts.StateRes result = requestStateWithRetry(request);
-                write(exchange, 200, json.writeValueAsString(result));
+                try {
+                    Contracts.SpotStateRouteReq request = json.readValue(
+                        exchange.getRequestBody(),
+                        Contracts.SpotStateRouteReq.class);
+                    Contracts.StateRes result = requestStateWithRetry(request);
+                    write(exchange, 200, json.writeValueAsString(result));
+                } catch (RuntimeException error) {
+                    write(exchange, 500, failureText(error));
+                }
             });
             server.createContext("/spot/missing-handler/request", exchange -> {
                 Contracts.SpotMissingHandlerReq request = json.readValue(
@@ -96,23 +104,14 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     Contracts.SpotMissingHandlerReq.class);
                 boolean failed = fails(() -> routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        new SpotRef(
-                            Contracts.SPOT_MESH,
-                            RoutingId.from(state.nodeRid()),
-                            RoutingId.from(request.spotRid())),
-                        new Contracts.StateReq("noop"))
-                    .packetName("MissingSpotReq")
+                        spotHandle(request.spotRid()),
+                        new Contracts.MissingSpotReq("noop"))
                     .timeout(java.time.Duration.ofSeconds(2))
-                    .await(Contracts.StateRes.class));
-                Contracts.EvidenceSnapshot evidence = state.waitFor(
-                    List.of("DispatchError|" + state.nodeRid()
-                        + "|" + request.spotRid()
-                        + "|HANDLER_MISSING/REPLY_ERROR/MissingSpotReq"),
-                    10_000);
+                    .submit(Contracts.StateRes.class).toCompletableFuture().join());
                 write(exchange, 200, json.writeValueAsString(new Contracts.SpotMissingHandlerRes(
                     request.spotRid(),
                     failed,
-                    evidence)));
+                    state.snapshot())));
             });
             server.createContext("/spot/missing-handler/command", exchange -> {
                 Contracts.SpotMissingCommandReq request = json.readValue(
@@ -121,26 +120,17 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 try {
                     routes.sendToSpot(
                             Contracts.ROUTE_CHANNEL,
-                            new SpotRef(
-                                Contracts.SPOT_MESH,
-                                RoutingId.from(state.nodeRid()),
-                                RoutingId.from(request.spotRid())),
-                            new Contracts.StateMsg(request.marker()))
-                        .packetName("MissingSpotMsg")
-                        .await();
+                            spotHandle(request.spotRid()),
+                            new Contracts.MissingSpotMsg(request.marker()))
+                        .submit();
                 } catch (RuntimeException ignored) {
                     // The assertion below is the contract: a missing send handler is recorded as a drop.
                 }
-                Contracts.EvidenceSnapshot evidence = state.waitFor(
-                    List.of("DispatchError|" + state.nodeRid()
-                        + "|" + request.spotRid()
-                        + "|HANDLER_MISSING/DROP/MissingSpotMsg"),
-                    10_000);
                 write(exchange, 200, json.writeValueAsString(new Contracts.SpotMissingCommandRes(
                     request.spotRid(),
                     request.marker(),
                     true,
-                    evidence)));
+                    state.snapshot())));
             });
             server.createContext("/spot/stage/request", exchange -> {
                 Contracts.SpotStageProbeRouteReq request = json.readValue(
@@ -260,14 +250,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 String op = request.op() + "-" + request.delta();
                 return routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        new SpotRef(
-                            Contracts.SPOT_MESH,
-                            RoutingId.from(state.nodeRid()),
-                            RoutingId.from(request.spotRid())),
+                        spotHandle(request.spotRid()),
                         new Contracts.StateReq(op))
-                    .packetName("StateReq")
                     .timeout(java.time.Duration.ofSeconds(2))
-                    .await(Contracts.StateRes.class);
+                    .submit(Contracts.StateRes.class).toCompletableFuture().join();
             } catch (RuntimeException error) {
                 lastFailure = error;
                 try {
@@ -313,14 +299,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             try {
                 return routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        new SpotRef(
-                            Contracts.SPOT_MESH,
-                            RoutingId.from(state.nodeRid()),
-                            RoutingId.from(spotRid)),
+                        spotHandle(spotRid),
                         packet)
-                    .packetName(packetName)
                     .timeout(java.time.Duration.ofSeconds(2))
-                    .await(responseType);
+                    .submit(responseType).toCompletableFuture().join();
             } catch (RuntimeException error) {
                 lastFailure = error;
                 try {
@@ -345,6 +327,11 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         }
     }
 
+    private SpotHandle spotHandle(String spotRid) {
+        return spotHandles.resolveSpotHandle(RoutingId.from(spotRid)).toCompletableFuture().join()
+            .orElseThrow(() -> new IllegalStateException("spot not found: " + spotRid));
+    }
+
     private static String queryValue(URI uri, String name) {
         String query = uri.getRawQuery();
         if (query == null || query.isBlank()) {
@@ -367,6 +354,20 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
+    }
+
+    private static String failureText(Throwable error) {
+        StringBuilder text = new StringBuilder();
+        Throwable current = error;
+        while (current != null) {
+            if (!text.isEmpty()) {
+                text.append(" caused by ");
+            }
+            text.append(current.getClass().getSimpleName()).append(": ")
+                .append(current.getMessage());
+            current = current.getCause();
+        }
+        return text.append('\n').toString();
     }
 
     @Override

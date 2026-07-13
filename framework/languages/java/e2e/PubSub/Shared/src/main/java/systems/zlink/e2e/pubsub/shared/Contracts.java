@@ -17,6 +17,12 @@ public final class Contracts {
         String value) {
     }
 
+    public record MissingEventMsg(
+        String scenario,
+        int sequence,
+        String value) {
+    }
+
     public record EvidenceEntry(
         String marker,
         String subscriberRid,

@@ -2,7 +2,8 @@ package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
 import java.time.Instant;
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -23,11 +24,13 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     private boolean idleKeepRecorded;
 
     @Override
-    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     public TimerScenarioSpot(
@@ -49,7 +52,7 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+    public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
         String rid = context.spotRid().toString();
         if (rid.startsWith("timer-overrun-")) {
             ZLinkTimerOptions options = new ZLinkTimerOptions();
@@ -69,13 +72,14 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
             context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler.class, new ZLinkTimerOptions());
             evidence.record("IdleTimerConfigured", rid, "idle");
         }
-        return ZLinkSpotCreateResponse.accept();
+        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
     @Override
-    public void onClosing() {
+    public CompletionStage<Void> onClosing() {
         status = "closed";
         evidence.record("IdleClosed", context.spotRid().toString(), "closed");
+        return CompletableFuture.completedFuture(null);
     }
 
     public void activity(String value) {

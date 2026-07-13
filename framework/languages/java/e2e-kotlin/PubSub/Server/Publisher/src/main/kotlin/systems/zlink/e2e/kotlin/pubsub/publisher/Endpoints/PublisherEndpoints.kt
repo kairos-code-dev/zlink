@@ -11,6 +11,7 @@ import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.e2e.kotlin.pubsub.shared.EventMsg
+import systems.zlink.e2e.kotlin.pubsub.shared.MissingEventMsg
 import systems.zlink.framework.channels.ZLinkFanoutClient
 
 class PublisherEndpoints(
@@ -37,15 +38,16 @@ class PublisherEndpoints(
         httpServer.createContext("/publish") { exchange ->
             val request = exchange.readJson<PublishReq>()
             fanout.publish(Contracts.EVENT_CHANNEL, request.topic, request.message)
-                .packetName(Contracts.EVENT_PACKET)
-                .await()
+                .submit()
             exchange.writeJson(mapOf("status" to "published"))
         }
         httpServer.createContext("/publish-missing") { exchange ->
             val request = exchange.readJson<PublishReq>()
-            fanout.publish(Contracts.EVENT_CHANNEL, request.topic, request.message)
-                .packetName("MissingEventMsg")
-                .await()
+            fanout.publish(
+                Contracts.EVENT_CHANNEL,
+                request.topic,
+                MissingEventMsg(request.message.scenario, request.message.sequence, request.message.value),
+            ).submit()
             exchange.writeJson(mapOf("status" to "published"))
         }
         httpServer.createContext("/shutdown") { exchange ->

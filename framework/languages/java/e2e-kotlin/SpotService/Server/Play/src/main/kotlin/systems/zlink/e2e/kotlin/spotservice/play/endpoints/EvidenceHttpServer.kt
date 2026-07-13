@@ -20,8 +20,9 @@ import java.util.concurrent.TimeoutException
 import org.springframework.context.SmartLifecycle
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
+import systems.zlink.framework.spots.SpotHandle
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class EvidenceHttpServer(
@@ -30,6 +31,7 @@ class EvidenceHttpServer(
     private val endpoint: String,
     private val spots: ZLinkSpotManager,
     private val routes: ZLinkRouteClient,
+    private val handles: SpotHandleResolver,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var executor: java.util.concurrent.ExecutorService? = null
@@ -81,27 +83,35 @@ class EvidenceHttpServer(
                 handle(exchange) {
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotStateRouteReq::class.java)
+                    val message: Any = if (request.packetName == "StateReq") {
+                        Contracts.StateReq(request.op)
+                    } else {
+                        Contracts.MissingSpotReq(request.op)
+                    }
                     val call = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
-                        Contracts.StateReq(request.op)
+                        spotHandle(request.spotRid),
+                        message
                     )
-                        .packetName(request.packetName)
                         .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
-                    writeJson(exchange, 200, call.await(Contracts.StateRes::class.java))
+                    writeJson(exchange, 200, call.submit(Contracts.StateRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS))
                 }
             }
             nextServer.createContext("/spot/state/command") { exchange ->
                 handle(exchange) {
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotStateCommandReq::class.java)
+                    val message: Any = if (request.packetName == "StateMsg") {
+                        Contracts.StateMsg(request.value)
+                    } else {
+                        Contracts.MissingSpotMsg(request.value)
+                    }
                     routes.sendToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
-                        Contracts.StateMsg(request.value)
+                        spotHandle(request.spotRid),
+                        message
                     )
-                        .packetName(request.packetName)
-                        .await()
+                        .submit()
                     writeJson(exchange, 200, Contracts.AckRes(true))
                 }
             }
@@ -111,12 +121,11 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotStageProbeReq::class.java)
                     val reply = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
+                        spotHandle(request.spotRid),
                         Contracts.StageProbeReq(request.marker, request.op)
                     )
-                        .packetName("StageProbeReq")
                         .timeout(Duration.ofSeconds(5))
-                        .await(Contracts.StateRes::class.java)
+                        .submit(Contracts.StateRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
                     writeJson(exchange, 200, reply)
                 }
             }
@@ -126,11 +135,10 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotStageTimerReq::class.java)
                     routes.sendToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
+                        spotHandle(request.spotRid),
                         Contracts.StageTimerStartMsg(request.name, request.periodMilliseconds)
                     )
-                        .packetName("StageTimerStartMsg")
-                        .await()
+                        .submit()
                     state.waitUntilContainsAll(
                         listOf("StageTimer", request.spotRid, request.name),
                         Duration.ofSeconds(10)
@@ -144,11 +152,11 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotSlowRouteReq::class.java)
                     val call = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
+                        spotHandle(request.spotRid),
                         Contracts.SlowReq(request.value)
                     )
                         .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
-                    writeJson(exchange, 200, call.await(Contracts.StateRes::class.java))
+                    writeJson(exchange, 200, call.submit(Contracts.StateRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS))
                 }
             }
             nextServer.createContext("/spot/outbound/request") { exchange ->
@@ -157,11 +165,11 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotOutboundRouteReq::class.java)
                     val reply = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
+                        spotHandle(request.spotRid),
                         Contracts.OutboundReq(request.value)
                     )
                         .timeout(Duration.ofSeconds(5))
-                        .await(Contracts.OutboundRes::class.java)
+                        .submit(Contracts.OutboundRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
                     writeJson(exchange, 200, reply)
                 }
             }
@@ -171,11 +179,10 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotOutboundCommandReq::class.java)
                     routes.sendToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        SpotRef(Contracts.SPOT_MESH, targetNode("room-a"), RoutingId.from("room-a")),
+                        spotHandle("room-a"),
                         Contracts.SpotToSpotCommandReq(request.spotRid, request.value)
                     )
-                        .packetName("SpotToSpotCommandReq")
-                        .await()
+                        .submit()
                     state.waitUntilContainsAll(
                         listOf("SpotToSpotSend", request.value),
                         Duration.ofSeconds(10)
@@ -192,9 +199,8 @@ class EvidenceHttpServer(
                         RoutingId.from(request.targetRid),
                         Contracts.RoutePingReq(request.value)
                     )
-                        .packetName(Contracts.ROUTE_PACKET)
                         .timeout(Duration.ofSeconds(5))
-                        .await(Contracts.RoutePingRes::class.java)
+                        .submit(Contracts.RoutePingRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
                     writeJson(exchange, 200, reply)
                 }
             }
@@ -337,6 +343,12 @@ class EvidenceHttpServer(
     override fun isRunning(): Boolean =
         running
 
+    private fun spotHandle(spotRid: String): SpotHandle =
+        handles.resolveSpotHandle(RoutingId.from(spotRid))
+            .toCompletableFuture()
+            .get(5, TimeUnit.SECONDS)
+            .orElseThrow { IllegalStateException("spot handle was not found: $spotRid") }
+
     private fun queryValue(uri: URI, name: String): String? {
         val query = uri.rawQuery
         if (query.isNullOrBlank()) {
@@ -360,9 +372,6 @@ class EvidenceHttpServer(
 
     private fun <T> readJson(exchange: HttpExchange, type: Class<T>): T =
         exchange.requestBody.use { body -> json.readValue(body, type) }
-
-    private fun targetNode(spotRid: String): RoutingId =
-        RoutingId.from(if (spotRid == "room-b") "play-b" else state.nodeRid())
 
     private fun writeJson(exchange: HttpExchange, status: Int, value: Any) {
         val body = json.writeValueAsBytes(value)

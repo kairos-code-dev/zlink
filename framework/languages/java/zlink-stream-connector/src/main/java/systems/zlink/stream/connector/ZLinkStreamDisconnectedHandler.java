@@ -4,5 +4,5 @@ import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface ZLinkStreamDisconnectedHandler {
-    CompletionStage<Void> handleAsync();
+    CompletionStage<Void> handle(ZLinkStreamDisconnected event);
 }

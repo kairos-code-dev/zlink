@@ -25,6 +25,7 @@ final class ZLinkFrameworkLocationSubsystem {
     private final ZLinkLocationAutoConnectHost locationAutoConnectHost;
     private final SpotTransportAddressResolver spotTransportAddressResolver;
     private final ZLinkStoreLocationResolvers storeLocationResolvers;
+    private final java.util.concurrent.CompletionStage<Void> startup;
 
     private ZLinkFrameworkLocationSubsystem(
         ZLinkRegisteredLocationStores locationStores,
@@ -33,7 +34,8 @@ final class ZLinkFrameworkLocationSubsystem {
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkLocationAutoConnectHost locationAutoConnectHost,
         SpotTransportAddressResolver spotTransportAddressResolver,
-        ZLinkStoreLocationResolvers storeLocationResolvers) {
+        ZLinkStoreLocationResolvers storeLocationResolvers,
+        java.util.concurrent.CompletionStage<Void> startup) {
         this.locationStores = locationStores;
         this.locationRuntime = locationRuntime;
         this.locationRuntimeQuery = locationRuntimeQuery;
@@ -41,6 +43,7 @@ final class ZLinkFrameworkLocationSubsystem {
         this.locationAutoConnectHost = locationAutoConnectHost;
         this.spotTransportAddressResolver = spotTransportAddressResolver;
         this.storeLocationResolvers = storeLocationResolvers;
+        this.startup = startup;
     }
 
     static ZLinkFrameworkLocationSubsystem create(
@@ -58,9 +61,8 @@ final class ZLinkFrameworkLocationSubsystem {
             locationStores,
             registration.locations().options().ownerLeaseTtl(),
             registration.locations().options().heartbeatInterval());
-        locationRuntime.start(RoutingId.from(locationRuntime.ownerId()))
-            .toCompletableFuture()
-            .join();
+        java.util.concurrent.CompletionStage<Void> startup =
+            locationRuntime.start(RoutingId.from(locationRuntime.ownerId()));
 
         ZLinkLiveLocationRows liveLocationRows = ZLinkLiveLocationRows.create(
             locationStores,
@@ -103,7 +105,8 @@ final class ZLinkFrameworkLocationSubsystem {
             locationLifecycle,
             locationAutoConnectHost,
             locationSpotHandleResolver,
-            storeLocationResolvers);
+            storeLocationResolvers,
+            startup);
     }
 
     boolean enabled() {
@@ -138,8 +141,14 @@ final class ZLinkFrameworkLocationSubsystem {
         return storeLocationResolvers;
     }
 
+    java.util.concurrent.CompletionStage<Void> startup() {
+        return startup;
+    }
+
     private static ZLinkFrameworkLocationSubsystem disabled() {
-        return new ZLinkFrameworkLocationSubsystem(null, null, null, null, null, null, null);
+        return new ZLinkFrameworkLocationSubsystem(
+            null, null, null, null, null, null, null,
+            java.util.concurrent.CompletableFuture.completedFuture(null));
     }
 
     private static java.util.List<String> spotMeshNames(ZLinkFrameworkRegistration registration) {

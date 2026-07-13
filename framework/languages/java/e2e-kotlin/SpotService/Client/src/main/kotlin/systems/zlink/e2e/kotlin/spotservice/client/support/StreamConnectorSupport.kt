@@ -1,35 +1,24 @@
 package systems.zlink.e2e.kotlin.spotservice.client.support
 
+import systems.zlink.framework.kotlin.*
+
 import java.net.URI
 import java.time.Duration
-import java.util.concurrent.CompletionStage
 import systems.zlink.stream.connector.ZLinkStreamCompression
-import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
 internal val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(5)
 
-internal fun <T> awaitUnchecked(
-    connector: ZLinkStreamConnector,
-    stage: CompletionStage<T>,
-) {
-    try {
-        connector.await(stage)
-    } catch (error: Exception) {
-        throw RuntimeException(error)
-    }
-}
-
-internal fun createStreamConnector(endpoint: String): ZLinkStreamConnector =
+internal fun createStreamConnector(endpoint: String): ZLinkKotlinStreamConnector =
     createStreamConnector(endpoint, ZLinkStreamDispatchMode.AUTO, 2)
 
 internal fun createStreamConnector(
     endpoint: String,
     dispatchMode: ZLinkStreamDispatchMode,
     maxReceivedMessages: Int,
-): ZLinkStreamConnector =
+): ZLinkKotlinStreamConnector =
     createStreamConnector(endpoint, dispatchMode, maxReceivedMessages, true)
 
 internal fun createStreamConnector(
@@ -37,7 +26,7 @@ internal fun createStreamConnector(
     dispatchMode: ZLinkStreamDispatchMode,
     maxReceivedMessages: Int,
     skipServerCertificateValidation: Boolean,
-): ZLinkStreamConnector =
+): ZLinkKotlinStreamConnector =
     ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
             URI.create(endpoint),
@@ -60,4 +49,4 @@ internal fun createStreamConnector(
             null,
             null,
         ),
-    )
+    ).kotlin()

@@ -76,7 +76,7 @@
 | common: 중복 요청 멱등 | idempotency store | validation | done | 같은 key는 같은 order id를 돌려준다. |
 | common: projection 삭제 후 재생 | rebuild self-check | validation | done | 이벤트를 다시 접어 read model을 복구한다. |
 | common: API/Workflow scale-out | runner topology | validation | done | API 2개와 Workflow 2개를 실행하고 owner가 나뉘는 경로를 검증한다. |
-| common: Redis-backed shared state | RedisCommerceStore | external-adapter | done | runner가 전용 Redis container 또는 외부 endpoint를 사용한다. |
+| common: Redis-backed shared state | RedisCommerceStore | external-adapter | done | runner가 실행별 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
 
 ## 남은 확인 사항
 

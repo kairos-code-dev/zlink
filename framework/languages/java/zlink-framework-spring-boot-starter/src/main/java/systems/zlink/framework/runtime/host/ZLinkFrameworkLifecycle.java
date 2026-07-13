@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.host;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
@@ -13,7 +14,6 @@ import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -23,7 +23,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
-import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -31,8 +31,10 @@ import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 public final class ZLinkFrameworkLifecycle
     implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient,
         ZLinkChannelRuntimeOptions,
-        systems.zlink.framework.configuration.ZLinkMessageFlowControl {
+        systems.zlink.framework.configuration.ZLinkMessageFlowControl,
+        systems.zlink.framework.monitoring.ZLinkDrainControl {
     public static final int PHASE = 0;
+    private static final Duration SPRING_SHUTDOWN_DRAIN_DEADLINE = Duration.ofSeconds(25);
 
     private final DefaultZLinkFrameworkOptions options;
     private final ZLinkBackendAdapterProvider backendAdapterFactory;
@@ -79,23 +81,40 @@ public final class ZLinkFrameworkLifecycle
         if (!running) {
             return;
         }
-        try {
-            if (runtime != null) {
-                runtime.close();
-                runtime = null;
-            }
-        } finally {
+        ZLinkFrameworkRuntime current = runtime;
+        if (current == null) {
             running = false;
+            return;
         }
+        current.drain(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
+            synchronized (ZLinkFrameworkLifecycle.this) {
+                if (runtime == current) {
+                    runtime = null;
+                }
+                running = false;
+            }
+        });
     }
 
     @Override
     public void stop(Runnable callback) {
-        try {
-            stop();
-        } finally {
-            callback.run();
+        ZLinkFrameworkRuntime current;
+        synchronized (this) {
+            current = runtime;
+            if (!running || current == null) {
+                callback.run();
+                return;
+            }
         }
+        // Spring's default shutdown-phase timeout is 30 seconds. Leave time for
+        // location ownership cleanup and for the lifecycle callback to complete.
+        current.drain(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
+            synchronized (ZLinkFrameworkLifecycle.this) {
+                runtime = null;
+                running = false;
+            }
+            callback.run();
+        });
     }
 
     @Override
@@ -129,8 +148,16 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToChannel(String channelName, Object message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
         return requireRuntime().client().requestToChannel(channelName, message);
+    }
+
+    public systems.zlink.framework.spots.SpotHandleResolver spotHandleResolver() {
+        return requireRuntime().spotHandleResolver();
+    }
+
+    public systems.zlink.framework.spots.ActorSpotHandleResolver actorSpotHandleResolver() {
+        return requireRuntime().actorSpotHandleResolver();
     }
 
     @Override
@@ -152,11 +179,11 @@ public final class ZLinkFrameworkLifecycle
     @Override
     public ZLinkSendCall sendToSpot(
         String channelName,
-        SpotRef spotRef,
+        SpotHandle spot,
         Object message) {
         return requireRuntime().route().sendToSpot(
             channelName,
-            spotRef,
+            spot,
             message);
     }
 
@@ -171,11 +198,11 @@ public final class ZLinkFrameworkLifecycle
     @Override
     public ZLinkRequestCall requestToSpot(
         String channelName,
-        SpotRef spotRef,
+        SpotHandle spot,
         Object message) {
         return requireRuntime().route().requestToSpot(
             channelName,
-            spotRef,
+            spot,
             message);
     }
 
@@ -209,6 +236,12 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().channelRuntimeOptions().clientServerChannel(channelName);
     }
 
+    @Override
+    public systems.zlink.framework.channels.ZLinkRouteMeshChannelRuntimeOptions routeMeshChannel(
+        String channelName) {
+        return requireRuntime().channelRuntimeOptions().routeMeshChannel(channelName);
+    }
+
     public Map<String, ZLinkBackendSocket> monitoringSocketSources() {
         return requireRuntime().monitoringSocketSources();
     }
@@ -223,6 +256,27 @@ public final class ZLinkFrameworkLifecycle
 
     public boolean stopSpotRuntime() {
         return requireRuntime().stopSpotRuntime();
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain() {
+        return requireRuntime().drain();
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain(
+        java.time.Duration deadline) {
+        return requireRuntime().drain(deadline);
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> awaitDrained() {
+        return requireRuntime().awaitDrained();
+    }
+
+    @Override
+    public boolean isReady() {
+        return runtime != null && runtime.isReady();
     }
 
     private ZLinkFrameworkRuntime requireRuntime() {

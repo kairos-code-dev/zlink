@@ -24,7 +24,7 @@ public final class PlayServer {
             SampleLogging.configure(settings, "play");
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
             options.configureDispatch()
-                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .messageFlow(ZLinkMessageFlowLogMode.DIAGNOSTIC)
                 .traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid()))
                 .traceLabel(settings.playSpotNodeRid());
             options.addHandlersFromPackageOf(PlayServer.class);

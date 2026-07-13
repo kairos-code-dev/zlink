@@ -5,9 +5,10 @@ import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 public final class OutboundMsgHandler
     implements ZLinkSpotPacketHandler<UserSpot, Contracts.OutboundMsg> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         UserSpot spot,
         Contracts.OutboundMsg message) {
         spot.record("SpotToSpotSend", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

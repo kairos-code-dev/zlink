@@ -1,5 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.shared.contracts
 
+import systems.zlink.framework.actors.ActorRefSnapshot
+
 data class AuthenticateReq(
     val accessToken: String,
 )
@@ -45,12 +47,6 @@ data class AllocateConversationRes(
     val state: ConversationState? = null,
 )
 
-data class ActorRefWire(
-    val nodeRid: String,
-    val actorId: String,
-    val generation: Long,
-)
-
 data class EnsureSupportUserActorReq(
     val actorId: String,
     val displayName: String,
@@ -59,8 +55,7 @@ data class EnsureSupportUserActorReq(
 )
 
 data class EnsureSupportUserActorRes(
-    val actorId: String,
-    val actor: ActorRefWire,
+    val actor: ActorRefSnapshot,
 )
 
 data class EnsureAgentConversationReq(
@@ -70,7 +65,7 @@ data class EnsureAgentConversationReq(
 )
 
 data class EnsureAgentConversationRes(
-    val actor: ActorRefWire,
+    val actor: ActorRefSnapshot,
     val state: ConversationState,
 )
 
@@ -92,7 +87,9 @@ data class SetAgentAvailableRes(
 )
 
 data class JoinConversationReq(
-    val conversationId: String? = null,
+    val participantId: String = "",
+    val role: String = "",
+    val displayName: String = "",
 )
 
 data class JoinConversationRes(
@@ -100,7 +97,6 @@ data class JoinConversationRes(
 )
 
 data class SendChatMessageReq(
-    val conversationId: String? = null,
     val text: String,
 )
 
@@ -110,12 +106,10 @@ data class SendChatMessageRes(
 )
 
 data class SetTypingReq(
-    val conversationId: String? = null,
     val isTyping: Boolean,
 )
 
 data class CloseConversationReq(
-    val conversationId: String? = null,
     val reason: String?,
 )
 
@@ -175,38 +169,4 @@ data class ChatMessage(
     val senderActorId: String,
     val text: String,
     val sentAtUnixMs: Long,
-)
-
-data class JoinConversationSupportReq(
-    val conversationId: String,
-    val actorId: String,
-    val displayName: String,
-    val role: String,
-)
-
-data class SendChatMessageSupportReq(
-    val conversationId: String,
-    val actorId: String,
-    val text: String,
-)
-
-data class SetTypingSupportReq(
-    val conversationId: String,
-    val actorId: String,
-    val isTyping: Boolean,
-)
-
-data class CloseConversationSupportReq(
-    val conversationId: String,
-    val actorId: String,
-    val reason: String?,
-)
-
-data class ServerAssertionRequest(
-    val conversationId: String,
-)
-
-data class ServerAssertionResponse(
-    val passed: Boolean,
-    val reason: String?,
 )

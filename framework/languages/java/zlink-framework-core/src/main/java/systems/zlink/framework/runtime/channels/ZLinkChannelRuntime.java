@@ -39,7 +39,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -58,7 +57,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
-import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -70,8 +69,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.spots.SpotHandle;
@@ -300,7 +297,8 @@ public final class ZLinkChannelRuntime
         this.codecs = Objects.requireNonNull(registration.codecs(), "codecs");
         this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
         this.spotAddressResolver = resolveSpotAddressResolver(this.handlerFactory);
-        this.handlerExecutor = Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor");
+        this.handlerExecutor = systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext
+            .propagating(Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor"));
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.filterTypes = List.copyOf(registration.filters());
         this.channelHandlerInvoker = new ZLinkChannelHandlerInvoker(
@@ -383,7 +381,7 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkYieldRequestCall requestToChannel(String channelName, Object message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RequestCall(
@@ -541,12 +539,55 @@ public final class ZLinkChannelRuntime
             Objects.requireNonNull(handler, "handler"));
     }
 
+    /** Sends one framework-internal request without exposing its packet as a public codec type. */
+    public CompletionStage<Message> requestInternalToNode(
+        String channelName,
+        RoutingId target,
+        String packetName,
+        Message payload,
+        Duration timeout) {
+        CompletableFuture<Message> result = new CompletableFuture<>();
+        Duration effectiveTimeout = effectiveRouteTimeout(timeout);
+        callRuntime.track(result, effectiveTimeout);
+        List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+            Optional.of(packetName), payload);
+        try {
+            callRuntime.submitRoute(
+                requireRouteRouter(channelName),
+                target,
+                requestParts,
+                reply -> {
+                    try {
+                        if (reply.result() != ZLinkBackendRequestResult.OK) {
+                            result.completeExceptionally(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                                "internal route request failed: " + reply.result()));
+                        } else if (reply.parts().isEmpty()) {
+                            result.completeExceptionally(new ZLinkConfigurationException(
+                                "internal route request reply was empty: " + packetName));
+                        } else {
+                            result.complete(Message.from(reply.parts().get(0)));
+                        }
+                    } catch (RuntimeException error) {
+                        result.completeExceptionally(error);
+                    } finally {
+                        reply.parts().forEach(Message::close);
+                    }
+                },
+                effectiveTimeout,
+                result);
+        } finally {
+            requestParts.forEach(Message::close);
+        }
+        return ZLinkAsyncSerialQueue.manageCurrent(result);
+    }
+
     public CompletionStage<Void> sendToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts) {
-        ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId);
+        ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId, targetNodeRid);
         if (target instanceof ZLinkSpotRouterNodeTarget spotRouterNodeTarget) {
             return sendToSpotViaSpotRouterNode(
                 routerChannelId,
@@ -588,7 +629,7 @@ public final class ZLinkChannelRuntime
             + " targetNode=" + targetNodeRid
             + " targetSpot=" + targetSpotRid
             + " parts=" + describeTraceParts(spotParts));
-        ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId);
+        ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId, targetNodeRid);
         if (target instanceof ZLinkSpotRouterNodeTarget spotRouterNodeTarget) {
             trace("spot-route request-path=spot-router-node router=" + routerChannelId
                 + " targetNode=" + targetNodeRid
@@ -630,7 +671,15 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    private ZLinkSpotRouteTarget resolveSpotRouteTarget(String routerChannelId) {
+    private ZLinkSpotRouteTarget resolveSpotRouteTarget(
+        String routerChannelId,
+        RoutingId targetNodeRid) {
+        if (spotRouteBridgeOwner != null) {
+            ZLinkInternalSpotNode localNode = spotRouteBridgeOwner.get();
+            if (localNode != null && localNode.routingId().equals(targetNodeRid)) {
+                return new ZLinkSpotRouterNodeTarget(localNode);
+            }
+        }
         ChannelRegistration registration = sockets.registration(routerChannelId);
         if (registration != null && registration.kind() == ChannelKind.ROUTE_MESH) {
             return new ZLinkRouteBridgeTarget();

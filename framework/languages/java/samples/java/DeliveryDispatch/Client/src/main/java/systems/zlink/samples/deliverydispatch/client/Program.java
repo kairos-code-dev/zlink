@@ -18,14 +18,30 @@ public final class Program {
         ZLinkStreamConnector customer = createClient(SampleTopology.CustomerStreamEndpoint);
         ZLinkStreamConnector courierA = createClient(SampleTopology.CourierStreamEndpoint);
         ZLinkStreamConnector courierB = createClient(SampleTopology.CourierStreamEndpoint);
-        try {
-            new DeliveryDispatchClientScenario().run(customer, courierA, courierB);
-        } finally {
-            customer.close().await();
-            courierA.close().await();
-            courierB.close().await();
-        }
-        System.out.println(SampleNames.CompletedMarker);
+        java.util.concurrent.ScheduledExecutorService processLifetime =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        processLifetime.schedule(() -> { }, 5, java.util.concurrent.TimeUnit.MINUTES);
+        new DeliveryDispatchClientScenario().run(customer, courierA, courierB)
+            .toCompletableFuture()
+            .orTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+            .whenComplete((ignored, error) -> java.util.concurrent.CompletableFuture.allOf(
+                    customer.close().submit().toCompletableFuture(),
+                    courierA.close().submit().toCompletableFuture(),
+                    courierB.close().submit().toCompletableFuture())
+                .whenComplete((closed, closeError) -> {
+                    if (error != null) {
+                        error.printStackTrace(System.err);
+                        processLifetime.shutdownNow();
+                        System.exit(1);
+                    }
+                    if (closeError != null) {
+                        closeError.printStackTrace(System.err);
+                        processLifetime.shutdownNow();
+                        System.exit(1);
+                    }
+                    System.out.println(SampleNames.CompletedMarker);
+                    processLifetime.shutdownNow();
+                }));
     }
 
     private static ZLinkStreamConnector createClient(String endpoint) {

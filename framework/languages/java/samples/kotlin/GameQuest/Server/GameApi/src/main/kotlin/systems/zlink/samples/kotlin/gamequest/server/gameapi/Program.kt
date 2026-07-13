@@ -37,7 +37,7 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.DeleteQuestProjec
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameQuestServerAssertRes
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetQuestProgressReq
@@ -207,7 +207,7 @@ class GameQuestSession(
         context.client().reply(UnlockFeatureRes(processed.eventId)).submit()
     }
 
-    private suspend fun process(event: GameplayEventEnvelope): QuestProcessingRes {
+    private suspend fun process(event: GameplayMsg): QuestProcessingRes {
         store.recordGameplay(event)
         val processed = routes
             .requestToChannel(SampleTopology.ownerChannel(event.playerId), event)
@@ -220,11 +220,11 @@ class GameQuestSession(
     }
 
     private fun event(playerId: String, idempotencyKey: String, eventType: String, value: String, count: Int, publish: Boolean) =
-        GameplayEventEnvelope(
+        GameplayMsg.create(
             "$playerId-$idempotencyKey",
             playerId,
-            idempotencyKey,
             eventType,
+            idempotencyKey,
             value,
             count,
             SampleTopology.apiName(),
@@ -315,13 +315,13 @@ class GameQuestStore : AutoCloseable {
     fun unbind(playerId: String) = shared.unbind(playerId)
 
     @Synchronized
-    fun recordGameplay(event: GameplayEventEnvelope) {
-        when (event.eventType) {
-            "kill" -> kills.getOrPut(event.playerId) { mutableMapOf() }.merge(event.value, event.count, Int::plus)
-            "collect" -> items.getOrPut(event.playerId) { mutableMapOf() }.merge(event.value, event.count, Int::plus)
-            "mission" -> completedMissions.getOrPut(event.playerId) { mutableSetOf() } += event.value
-            "feature" -> unlockedFeatures.getOrPut(event.playerId) { mutableSetOf() } += event.value
-            "area" -> enteredAreas.getOrPut(event.playerId) { mutableSetOf() } += event.value
+    fun recordGameplay(event: GameplayMsg) {
+        when (event.type) {
+            "kill" -> kills.getOrPut(event.playerId) { mutableMapOf() }.merge(event.decodePayload().value, event.decodePayload().count, Int::plus)
+            "collect" -> items.getOrPut(event.playerId) { mutableMapOf() }.merge(event.decodePayload().value, event.decodePayload().count, Int::plus)
+            "mission" -> completedMissions.getOrPut(event.playerId) { mutableSetOf() } += event.decodePayload().value
+            "feature" -> unlockedFeatures.getOrPut(event.playerId) { mutableSetOf() } += event.decodePayload().value
+            "area" -> enteredAreas.getOrPut(event.playerId) { mutableSetOf() } += event.decodePayload().value
         }
     }
 

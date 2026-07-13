@@ -1,6 +1,5 @@
 package systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -13,12 +12,11 @@ import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 @ZLinkHandlerGroup(SampleNames.PlayActor)
 public final class PlayActorObserveMilestoneHandler {
     @ZLinkSpotActorRequest
-    public ObserveMilestoneRes observe(
+    public java.util.concurrent.CompletionStage<ObserveMilestoneRes> observe(
         PlayEntrySpot entrySpot,
         PlayActor actor,
         ZLinkSpotActorRequestContext context,
-        ObserveMilestoneReq request,
-        CancellationToken cancellationToken) {
-        return entrySpot.observeMilestone(actor);
+        ObserveMilestoneReq request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(entrySpot.observeMilestone(actor));
     }
 }

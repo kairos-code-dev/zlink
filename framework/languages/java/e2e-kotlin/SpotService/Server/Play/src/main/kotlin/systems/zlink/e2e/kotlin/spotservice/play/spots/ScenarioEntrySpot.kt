@@ -3,17 +3,16 @@ package systems.zlink.e2e.kotlin.spotservice.play.spots
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.addHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 
 class ScenarioEntrySpot(
     private val context: ZLinkEntrySpotContext,
     private val evidence: ScenarioState
-) : ZLinkEntrySpot<ScenarioActor> {
+) : ZLinkSuspendingEntrySpot<ScenarioActor>() {
     override fun context(): ZLinkEntrySpotContext = context
 
     fun nodeRid(): String = evidence.nodeRid()
@@ -27,10 +26,9 @@ class ScenarioEntrySpot(
         context.handlers().addHandler<EntryActorJoinHandler>()
     }
 
-    override fun onCreateActor(
+    override suspend fun onCreateActorSuspending(
         actor: ScenarioActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken
     ) {
         if (!createRequest.isEmpty) {
             val request = createRequest.decode(Contracts.ActorAuthReq::class.java)
@@ -46,25 +44,18 @@ class ScenarioEntrySpot(
         evidence.record("ActorCreated", "entry", actor.actorId() + "#" + actor.nextSequence())
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         evidence.record("ActorEntryJoinRequested", "entry", actorId)
         return ZLinkSpotActorJoinResponse.accept()
     }
 
-    override fun onJoinedActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: ScenarioActor) {
         evidence.record("ActorEntryJoined", "entry", actor.actorId() + "#" + actor.nextSequence())
     }
 
-    override fun onLeaveActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: ScenarioActor) {
     }
 }

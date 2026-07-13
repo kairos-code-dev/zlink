@@ -28,6 +28,4 @@ public interface ZLinkWorkerCall<T> {
 
     CompletionStage<T> submit();
 
-    T yield();
-
 }

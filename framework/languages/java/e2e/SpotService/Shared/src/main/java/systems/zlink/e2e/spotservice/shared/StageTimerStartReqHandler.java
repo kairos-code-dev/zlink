@@ -4,9 +4,9 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 
 public final class StageTimerStartReqHandler {
     @ZLinkSpotRequest
-    public Contracts.StageTimerStartRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.StageTimerStartRes> handle(
         UserSpot spot,
         Contracts.StageTimerStartReq request) {
-        return spot.stage().startTimer(request);
+        return java.util.concurrent.CompletableFuture.completedFuture(spot.stage().startTimer(request));
     }
 }

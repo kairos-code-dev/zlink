@@ -35,12 +35,15 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
     private final CopyOnWriteArrayList<BiConsumer<ZLinkLocationKind, String>> ownershipLostListeners = new CopyOnWriteArrayList<>();
     private final ScheduledExecutorService heartbeatExecutor;
     private final Object stateGate = new Object();
+    private final java.util.concurrent.atomic.AtomicBoolean heartbeatInFlight =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private ScheduledFuture<?> heartbeatTask;
     private RoutingId nodeRid;
     private boolean started;
     private volatile boolean ownerLeaseHealthy;
     private volatile String lastError;
     private volatile java.time.Instant ownerLeaseRenewedAt;
+    private volatile long nextOwnerLeaseRenewalNanos;
 
     ZLinkLocationRuntime(
         ZLinkLocationStore store,
@@ -133,9 +136,8 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
-        return stores.ownerLeaseStore().removeOwnerLease(ownerId)
-            .handle((ignored, failure) -> null)
-            .thenCompose(ignored -> stores.unifiedStore().removeAllByOwner(ownerId).handle((removed, failure) -> null))
+        return stores.unifiedStore().removeAllByOwner(ownerId)
+            .thenCompose(ignored -> stores.ownerLeaseStore().removeOwnerLease(ownerId))
             .thenApply(ignored -> null);
     }
 
@@ -153,9 +155,8 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
                     recordFailure(failure.getMessage());
                     return false;
                 }
-                ownerLeaseHealthy = true;
-                ownerLeaseRenewedAt = result.storeNow();
-                lastError = null;
+                recordSuccessfulRenewal(result.storeNow());
+                nextOwnerLeaseRenewalNanos = System.nanoTime() + heartbeatInterval.toNanos();
                 return true;
             });
     }
@@ -258,7 +259,29 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
     }
 
     private void renewOwnerLeaseOnHeartbeat() {
-        renewOwnerLeaseOnce().toCompletableFuture().join();
+        if (!heartbeatInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        long expected = nextOwnerLeaseRenewalNanos;
+        if (expected != 0L) {
+            long lateNanos = Math.max(0L, System.nanoTime() - expected);
+            systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics.record(
+                "zlink.location.owner_lease.renew.lateness",
+                java.time.Duration.ofNanos(lateNanos),
+                java.util.Map.of());
+        }
+        renewOwnerLeaseOnce().whenComplete((ignored, failure) -> heartbeatInFlight.set(false));
+    }
+
+    private void recordSuccessfulRenewal(java.time.Instant storeNow) {
+        synchronized (stateGate) {
+            java.time.Instant previous = ownerLeaseRenewedAt;
+            ownerLeaseRenewedAt = previous == null || storeNow.isAfter(previous)
+                ? storeNow
+                : previous.plusNanos(1L);
+            ownerLeaseHealthy = true;
+            lastError = null;
+        }
     }
 
     private ZLinkLocationWriteResult notifyIfStale(

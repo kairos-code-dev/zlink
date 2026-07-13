@@ -4,6 +4,6 @@ import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public record CourierBinding(
     String courierId,
-    Messages.ActorRefWire actor,
+    systems.zlink.framework.actors.ActorRefSnapshot actor,
     String sessionRoute) {
 }

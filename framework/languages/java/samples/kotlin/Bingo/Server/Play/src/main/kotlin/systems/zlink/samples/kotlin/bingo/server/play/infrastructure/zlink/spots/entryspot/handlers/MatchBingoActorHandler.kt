@@ -1,7 +1,8 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers
 
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.CancellationToken
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.awaitJoin
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
@@ -27,7 +28,6 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,
         request: MatchBingoReq,
-        cancellationToken: CancellationToken,
     ): MatchBingoRes {
         val matched = entrySpot.context().outbound().requestToChannel(
             SampleNames.ApiChannel,
@@ -39,10 +39,8 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
             ),
         )
             .timeout(SampleTimings.RequestTimeout)
-            .await(MatchBingoApiRes::class.java)
-        if (cancellationToken.isCancellationRequested) {
-            throw IllegalStateException("MatchBingoReq was cancelled")
-        }
+            .submit(MatchBingoApiRes::class.java)
+            .await()
         val joined = actor.context().joinSpot(
             RoutingId.from(matched.roomId),
             BingoRoomJoinReq(
@@ -53,10 +51,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
             ),
         )
             .timeout(SampleTimings.RequestTimeout)
-            .await(BingoRoomJoinRes::class.java)
-        if (cancellationToken.isCancellationRequested) {
-            throw IllegalStateException("MatchBingoReq was cancelled")
-        }
+            .awaitJoin(BingoRoomJoinRes::class.java)
         return MatchBingoRes(matched.roomId, joined.reply().state, matched.roomOwnerNodeRid)
     }
 }

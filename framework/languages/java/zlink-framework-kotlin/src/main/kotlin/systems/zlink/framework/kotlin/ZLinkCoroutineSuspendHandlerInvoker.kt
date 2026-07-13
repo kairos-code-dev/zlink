@@ -6,21 +6,17 @@ import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.future.future
-import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
-import systems.zlink.framework.execution.ZLinkYieldTurn
-import systems.zlink.framework.execution.ZLinkFrameworkTurns
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
-import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
+import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter
 
-class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
+class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendInvocationAdapter {
     private val scope: CoroutineScope
     private val dispatcher: CoroutineDispatcher
 
@@ -50,9 +46,9 @@ class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
         method: Method,
         logicalArguments: Array<Any>,
     ): CompletionStage<Any> {
-        val turn = ZLinkFrameworkTurns.captureCurrent()
+        val invocationContext = ZLinkCoroutineInvocationContext.capture(dispatcher)
         return (
-        scope.future(dispatcher + ZLinkYieldTurnContext(turn)) {
+        scope.future(invocationContext) {
             invokeSuspend(handler, method, logicalArguments)
         } as CompletionStage<Any>
         )
@@ -82,21 +78,4 @@ class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
                 continuation.resumeWithException(ex)
             }
         }
-
-    private class ZLinkYieldTurnContext(
-        private val turn: ZLinkYieldTurn?,
-    ) : ThreadContextElement<AutoCloseable>,
-        AbstractCoroutineContextElement(Key) {
-        companion object Key : CoroutineContext.Key<ZLinkYieldTurnContext>
-
-        override fun updateThreadContext(context: CoroutineContext): AutoCloseable =
-            ZLinkFrameworkTurns.enterTurn(turn)
-
-        override fun restoreThreadContext(
-            context: CoroutineContext,
-            oldState: AutoCloseable,
-        ) {
-            oldState.close()
-        }
-    }
 }

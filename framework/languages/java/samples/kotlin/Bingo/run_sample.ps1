@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -35,7 +36,7 @@ function Cleanup {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer *> $null
+        Remove-ZlinkSampleRedis $RedisContainer
     }
 }
 
@@ -125,20 +126,9 @@ try {
     $playBRouter = Split-Endpoint $endpoints[12]
     $sessionBStream = Split-Endpoint $endpoints[13]
 
-    if ($env:BINGO_REDIS_ENDPOINT) {
-        $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
-    } else {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
-        }
-        $RedisContainer = "bingo-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis Docker container."
-        }
-        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
-    }
+    $redis = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-bingo"
+    $RedisContainer = $redis.ContainerId
+    $redisEndpoint = $redis.Endpoint
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
     $redisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):" }
@@ -173,7 +163,6 @@ try {
     Wait-Port $playBRouter.Host $playBRouter.Port
     Wait-Port $playBSpot.Host $playBSpot.Port
 
-    Start-Sleep -Seconds 10
     $clientLog = Join-Path $LogDir "client.log"
     $env:JAVA_TOOL_OPTIONS = $commonJavaOptions
     & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon :Client:run --quiet *> $clientLog

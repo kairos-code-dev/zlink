@@ -8,8 +8,24 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 
 final class ZLinkStreamJsonTest {
+    @Test
+    void frameworkActorReferencesRoundTripThroughDefaultJsonCodec() {
+        ActorRefSnapshot expected = new ActorRefSnapshot(
+            RoutingId.from(new byte[] {0, 65, 66}),
+            "courier-a",
+            7L);
+
+        ActorRefSnapshot actual = ZLinkStreamJson.decode(
+            ZLinkStreamJson.encode("actor-ref", expected),
+            ActorRefSnapshot.class);
+
+        assertEquals(expected, actual);
+    }
+
     @Test
     void typedSendUsesPacketNameAnnotationByDefault() {
         FakeConnector connector = new FakeConnector(options());

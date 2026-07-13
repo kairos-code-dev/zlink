@@ -6,19 +6,19 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmC1Scenario {
-    fun runSend(spots: SpotHttpDriver) {
+    suspend fun runSend(spots: SpotHttpDriver) {
         spots.sendState("room-a", "cmd-c1")
         println("scenario SM-C1-send passed")
     }
 
-    fun runTimeout(spots: SpotHttpDriver) {
+    suspend fun runTimeout(spots: SpotHttpDriver) {
         expectFailure {
             spots.requestSlow("room-a", "late", 100)
         }
         println("scenario SM-C1-timeout passed")
     }
 
-    fun runNormal(spots: SpotHttpDriver) {
+    suspend fun runNormal(spots: SpotHttpDriver) {
         val after = eventually {
             spots.requestState("room-a", "after-timeout")
         }

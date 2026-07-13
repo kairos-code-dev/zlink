@@ -27,7 +27,57 @@ print_logs() {
   done
 }
 
-trap cleanup EXIT
+deliverydispatch_cleanup() {
+  local status="$?"
+  local cleanup_failed=0
+  set +e
+  print_logs "${status}"
+
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+
+  for _ in $(seq 1 "${ZLINK_SAMPLE_CLEANUP_WAIT_ATTEMPTS:-300}"); do
+    local running=0
+    for pid in "${pids[@]}"; do
+      local state
+      state="$(ps -o stat= -p "${pid}" 2>/dev/null | tr -d ' ')"
+      if [[ -n "${state}" && "${state}" != Z* ]]; then
+        running=1
+        break
+      fi
+    done
+    [[ "${running}" == "0" ]] && break
+    sleep 0.1
+  done
+
+  for pid in "${pids[@]}"; do
+    local state exit_code
+    state="$(ps -o stat= -p "${pid}" 2>/dev/null | tr -d ' ')"
+    if [[ -n "${state}" && "${state}" != Z* ]]; then
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+      cleanup_failed=1
+    fi
+    wait "${pid}"
+    exit_code="$?"
+    if [[ "${exit_code}" != "0" && "${exit_code}" != "143" ]]; then
+      echo "deliverydispatch cleanup process ${pid} exited with ${exit_code}" >&2
+      cleanup_failed=1
+    fi
+  done
+
+  if [[ -n "${redis_container_id}" ]]; then
+    zlink_redis_remove_by_id "${redis_container_id}" || cleanup_failed=1
+  fi
+  if [[ "${status}" != "0" ]]; then
+    exit "${status}"
+  fi
+  if [[ "${cleanup_failed}" != "0" ]]; then
+    exit 1
+  fi
+}
+
+trap deliverydispatch_cleanup EXIT
 
 reserve_ports() {
   python3 - <<'PY'
@@ -91,14 +141,9 @@ common_java_options+=" -Dzlink.samples.deliverydispatch.courierSessionSpotRouter
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")"
 
 deliverydispatch_redis_key_prefix="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:java:${RANDOM}:$$:}"
-if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-  DELIVERYDISPATCH_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
-fi
+zlink_redis_start_scoped_assign redis_container_id redis_port \
+  "zlink-redis-java-sample-deliverydispatch" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+DELIVERYDISPATCH_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port "${DELIVERYDISPATCH_REDIS_ENDPOINT%:*}" "${DELIVERYDISPATCH_REDIS_ENDPOINT##*:}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.redisEndpoint=${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.redisKeyPrefix=${deliverydispatch_redis_key_prefix}"
@@ -145,7 +190,6 @@ JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Dispatch Dispatch)"
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
 
-sleep 3
 echo "topology=ready"
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 cat "${log_dir}/client.log"

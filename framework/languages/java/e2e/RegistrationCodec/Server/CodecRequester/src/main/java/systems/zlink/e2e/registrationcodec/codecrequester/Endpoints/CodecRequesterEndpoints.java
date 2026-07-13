@@ -7,6 +7,8 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.registrationcodec.codecrequester.Configuration.CodecRequesterOptions;
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
@@ -59,27 +61,42 @@ public final class CodecRequesterEndpoints implements SmartLifecycle {
         return running;
     }
 
-    private Contracts.CodecMismatchProbeRes protobufRequest() {
-        try {
-            StringValue reply = client.requestToChannel(
+    private CompletionStage<Contracts.CodecMismatchProbeRes> protobufRequest() {
+        return client.requestToChannel(
                     Contracts.CHANNEL,
                     StringValue.of("rc-b5"))
-                .packetName("ProtobufEcho")
                 .timeout(Duration.ofSeconds(2))
-                .await(StringValue.class);
-            return new Contracts.CodecMismatchProbeRes(false, null, reply.getValue());
-        } catch (RuntimeException error) {
-            return new Contracts.CodecMismatchProbeRes(true, error.getClass().getSimpleName(), null);
-        }
+                .submit(StringValue.class)
+            .handle((reply, error) -> error == null
+                ? new Contracts.CodecMismatchProbeRes(false, null, reply.getValue())
+                : new Contracts.CodecMismatchProbeRes(true, error.getClass().getSimpleName(), null));
     }
 
-    private Contracts.EchoRes jsonRequest() {
+    private CompletionStage<Contracts.EchoRes> jsonRequest() {
         return client.requestToChannel(
                 Contracts.CHANNEL,
                 new Contracts.JsonEchoReq("rc-b5-json"))
-            .packetName("JsonEcho")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.EchoRes.class);
+            .submit(Contracts.EchoRes.class);
+    }
+
+    private void writeJson(
+        com.sun.net.httpserver.HttpExchange exchange,
+        CompletionStage<?> response) {
+        response.whenComplete((value, error) -> {
+            try {
+                if (error == null) {
+                    writeJson(exchange, value);
+                    return;
+                }
+                Throwable cause = error instanceof CompletionException && error.getCause() != null
+                    ? error.getCause()
+                    : error;
+                writeError(exchange, cause);
+            } catch (java.io.IOException writeFailure) {
+                exchange.close();
+            }
+        });
     }
 
     private void writeJson(com.sun.net.httpserver.HttpExchange exchange, Object value) throws java.io.IOException {
@@ -96,11 +113,17 @@ public final class CodecRequesterEndpoints implements SmartLifecycle {
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
         } catch (RuntimeException error) {
-            byte[] body = error.toString().getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(500, body.length);
-            exchange.getResponseBody().write(body);
+            writeError(exchange, error);
         } finally {
             exchange.close();
         }
+    }
+
+    private static void writeError(
+        com.sun.net.httpserver.HttpExchange exchange,
+        Throwable error) throws java.io.IOException {
+        byte[] body = error.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(500, body.length);
+        exchange.getResponseBody().write(body);
     }
 }

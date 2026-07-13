@@ -1,8 +1,6 @@
 package systems.zlink.samples.supportchat.server.support.handlers;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
-import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
@@ -20,15 +18,10 @@ public final class EnsureSupportUserActorHandler
     }
 
     @Override
-    public Messages.EnsureSupportUserActorRes handle(
+    public java.util.concurrent.CompletionStage<Messages.EnsureSupportUserActorRes> handle(
         Messages.EnsureSupportUserActorReq request,
         ZLinkRequestContext context) {
-        ActorRef actor = await(actors.getOrCreate(request.actorId(), SampleNames.SupportActorType, request));
-        return new Messages.EnsureSupportUserActorRes(
-            actor.actorId(),
-            new Messages.ActorRefWire(
-                actor.nodeRid().toString(),
-                actor.actorId(),
-                actor.generation()));
+        return actors.getOrCreate(request.actorId(), SampleNames.SupportActorType, request)
+            .thenApply(actor -> new Messages.EnsureSupportUserActorRes(ActorRefSnapshot.from(actor)));
     }
 }

@@ -100,13 +100,12 @@ class ActorNodeHttpServer(
         val request = json.readValue(exchange.requestBody, Contracts.JoinTargetReq::class.java)
         try {
             val result = actorClient.requestToActor(requireActor(actorId), request)
-                .packetName("JoinTargetReq")
                 .timeout(Duration.ofSeconds(12))
-                .await(Contracts.JoinTargetRes::class.java)
+                .submit(Contracts.JoinTargetRes::class.java).toCompletableFuture().get(12, TimeUnit.SECONDS)
             evidence.add(request.scenario(), actorId,
                 if (result.accepted()) "success_reply" else "reject_reply", request.targetSpotRid())
             writeJson(exchange, result)
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             evidence.add(request.scenario(), actorId, "join_failed", rootMessage(error))
             writeJson(exchange, Contracts.JoinTargetRes(
                 request.scenario(), actorId, false, evidence.nodeRid, request.targetSpotRid(), 0,
@@ -117,9 +116,8 @@ class ActorNodeHttpServer(
     private fun probeActor(exchange: HttpExchange, actorId: String) {
         val request = json.readValue(exchange.requestBody, Contracts.ProbeReq::class.java)
         val result = actorClient.requestToActor(requireActor(actorId), request)
-            .packetName("ProbeReq")
             .timeout(Duration.ofSeconds(10))
-            .await(Contracts.ProbeRes::class.java)
+            .submit(Contracts.ProbeRes::class.java).toCompletableFuture().get(10, TimeUnit.SECONDS)
         writeJson(exchange, result)
     }
 
@@ -129,11 +127,11 @@ class ActorNodeHttpServer(
             val result = actorClient.requestToActor(
                 requireActor(actorId),
                 Contracts.ProbeReq(request.scenario(), request.marker()),
-            ).packetName("ProbeReq")
-                .timeout(Duration.ofMillis(request.timeoutMillis()))
-                .await(Contracts.ProbeRes::class.java)
+            ).timeout(Duration.ofMillis(request.timeoutMillis()))
+                .submit(Contracts.ProbeRes::class.java).toCompletableFuture()
+                .get(request.timeoutMillis() + 1_000, TimeUnit.MILLISECONDS)
             writeJson(exchange, result)
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             evidence.add(request.scenario(), actorId, "request_timeout", errorKind(error))
             throw error
         }
@@ -154,11 +152,10 @@ class ActorNodeHttpServer(
             val result = actorClient.requestToActor(
                 ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
                 request.probe(),
-            ).packetName("ProbeReq")
-                .timeout(Duration.ofSeconds(5))
-                .await(Contracts.ProbeRes::class.java)
+            ).timeout(Duration.ofSeconds(5))
+                .submit(Contracts.ProbeRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
             writeJson(exchange, result)
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             evidence.add(request.probe().scenario(), actorId, "mapping_evicted", request.nodeRid())
             evidence.add(request.probe().scenario(), actorId, "stale_fail_fast", errorKind(error))
             throw error
@@ -170,8 +167,7 @@ class ActorNodeHttpServer(
         actorClient.sendToActor(
             ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
             request.message(),
-        ).packetName("StragglerSendReq")
-            .submit().toCompletableFuture().get(5, TimeUnit.SECONDS)
+        ).submit()
         evidence.add(request.message().scenario(), actorId, "straggler_forward", request.nodeRid())
         writeJson(exchange, mapOf("sent" to true))
     }
@@ -182,7 +178,9 @@ class ActorNodeHttpServer(
 
     private fun errorKind(error: Throwable): String {
         var current = error
-        while (current is java.util.concurrent.CompletionException && current.cause != null) {
+        while ((current is java.util.concurrent.CompletionException
+                || current is java.util.concurrent.ExecutionException)
+            && current.cause != null) {
             current = current.cause!!
         }
         return if (current is ZLinkFrameworkException) current.kind().name else rootMessage(current)

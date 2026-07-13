@@ -3,18 +3,17 @@ package systems.zlink.e2e.kotlin.spotservice.session.handlers
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActor
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioEntrySpot
-import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 
-class EntryActorEchoHandler {
+class EntryActorEchoHandler : ZLinkSuspendingEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, Contracts.ActorEchoReq, Contracts.ActorEchoRes> {
     @ZLinkSpotActorRequest(packetName = "ActorEchoReq")
-    fun handle(
+    override suspend fun handle(
         spot: ScenarioEntrySpot,
         actor: ScenarioActor,
         context: ZLinkSpotActorRequestContext,
         request: Contracts.ActorEchoReq,
-        cancellationToken: CancellationToken
     ): Contracts.ActorEchoRes {
         val seq = actor.nextSequence()
         spot.record("ActorEntryRequest", actor.actorId() + "/" + request.value + "#" + seq)

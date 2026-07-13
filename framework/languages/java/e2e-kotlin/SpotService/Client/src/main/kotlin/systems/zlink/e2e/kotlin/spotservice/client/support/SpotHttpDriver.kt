@@ -1,20 +1,24 @@
 package systems.zlink.e2e.kotlin.spotservice.client.support
 
+import systems.zlink.framework.kotlin.*
+
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import java.time.Duration
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.spots.SpotHandle
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.spots.ZLinkSpotOutbound
 
 internal class SpotHttpDriver(
     private val playA: String = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
     private val playB: String = Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),
     private val outbound: ZLinkSpotOutbound? = null,
-    private val routes: ZLinkRouteClient? = null
+    private val routes: ZLinkRouteClient? = null,
+    private val spotHandles: SpotHandleResolver? = null,
 ) {
-    fun requestState(
+    suspend fun requestState(
         spotRid: String,
         op: String,
         timeoutMilliseconds: Int = 5_000,
@@ -24,9 +28,8 @@ internal class SpotHttpDriver(
         if (currentOutbound != null) {
             val target = spotRef(spotRid)
             return currentOutbound.requestToSpot(target, Contracts.StateReq(op))
-                .packetName(packetName)
                 .timeout(Duration.ofMillis(timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
-                .await(Contracts.StateRes::class.java)
+                .awaitReply<Contracts.StateRes>()
         }
         return postJson(
             endpointFor(spotRid),
@@ -36,7 +39,7 @@ internal class SpotHttpDriver(
         )
     }
 
-    fun sendState(
+    suspend fun sendState(
         spotRid: String,
         value: String,
         packetName: String = "StateMsg"
@@ -44,9 +47,7 @@ internal class SpotHttpDriver(
         val currentOutbound = outbound
         if (currentOutbound != null) {
             val target = spotRef(spotRid)
-            currentOutbound.sendToSpot(target, Contracts.StateMsg(value))
-                .packetName(packetName)
-                .await()
+            currentOutbound.sendToSpot(target, Contracts.StateMsg(value)).submit()
             return Contracts.AckRes(true)
         }
         return postJson(
@@ -57,7 +58,7 @@ internal class SpotHttpDriver(
         )
     }
 
-    fun requestStage(
+    suspend fun requestStage(
         spotRid: String,
         marker: String,
         op: String
@@ -69,7 +70,7 @@ internal class SpotHttpDriver(
             Contracts.StateRes::class.java
         )
 
-    fun startStageTimer(
+    suspend fun startStageTimer(
         spotRid: String,
         name: String,
         periodMilliseconds: Int
@@ -81,7 +82,7 @@ internal class SpotHttpDriver(
             Contracts.SpotStageTimerRes::class.java
         )
 
-    fun requestSlow(
+    suspend fun requestSlow(
         spotRid: String,
         value: String,
         timeoutMilliseconds: Int
@@ -91,7 +92,7 @@ internal class SpotHttpDriver(
             val target = spotRef(spotRid)
             return currentOutbound.requestToSpot(target, Contracts.SlowReq(value))
                 .timeout(Duration.ofMillis(timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
-                .await(Contracts.StateRes::class.java)
+                .awaitReply<Contracts.StateRes>()
         }
         return postJson(
             endpointFor(spotRid),
@@ -101,13 +102,13 @@ internal class SpotHttpDriver(
         )
     }
 
-    fun requestOutbound(spotRid: String, value: String): Contracts.OutboundRes {
+    suspend fun requestOutbound(spotRid: String, value: String): Contracts.OutboundRes {
         val currentOutbound = outbound
         if (currentOutbound != null) {
             val target = spotRef(spotRid)
             return currentOutbound.requestToSpot(target, Contracts.OutboundReq(value))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.OutboundRes::class.java)
+                .awaitReply<Contracts.OutboundRes>()
         }
         return postJson(
             endpointFor(spotRid),
@@ -117,7 +118,7 @@ internal class SpotHttpDriver(
         )
     }
 
-    fun sendOutbound(
+    suspend fun sendOutbound(
         spotRid: String,
         value: String,
         packetName: String = "OutboundMsg"
@@ -127,9 +128,7 @@ internal class SpotHttpDriver(
             currentOutbound.sendToSpot(
                 spotRef("room-a"),
                 Contracts.SpotToSpotCommandReq(spotRid, value)
-            )
-                .packetName("SpotToSpotCommandReq")
-                .await()
+            ).submit()
             return Contracts.AckRes(true)
         }
         return postJson(
@@ -140,7 +139,7 @@ internal class SpotHttpDriver(
         )
     }
 
-    fun routePing(targetRid: String, value: String): Contracts.RoutePingRes {
+    suspend fun routePing(targetRid: String, value: String): Contracts.RoutePingRes {
         val currentRoutes = routes
         if (currentRoutes != null) {
             return currentRoutes.requestToNode(
@@ -148,9 +147,8 @@ internal class SpotHttpDriver(
                 RoutingId.from(targetRid),
                 Contracts.RoutePingReq(value)
             )
-                .packetName(Contracts.ROUTE_PACKET)
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.RoutePingRes::class.java)
+                .awaitReply<Contracts.RoutePingRes>()
         }
         return postJson(
             playA,
@@ -163,9 +161,9 @@ internal class SpotHttpDriver(
     private fun endpointFor(spotRid: String): String =
         if (spotRid == "room-b") playB else playA
 
-    private fun spotRef(spotRid: String): SpotRef =
-        SpotRef(Contracts.SPOT_MESH, targetNode(spotRid), RoutingId.from(spotRid))
-
-    private fun targetNode(spotRid: String): RoutingId =
-        RoutingId.from(if (spotRid == "room-b") "play-b" else "play-a")
+    private suspend fun spotRef(spotRid: String): SpotHandle =
+        requireNotNull(spotHandles) { "SpotHandleResolver is required for framework routing" }
+            .resolveSpotHandle(RoutingId.from(spotRid))
+            .await()
+            .orElseThrow { IllegalStateException("Spot location was not found: $spotRid") }
 }

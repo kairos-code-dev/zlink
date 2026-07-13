@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.z
 import java.time.Duration
 import org.slf4j.LoggerFactory
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -77,29 +76,22 @@ class ConversationSpot(
     }
 
     override suspend fun onClosingSuspending() {
-        idleTimer?.cancelAsync()?.await()
+        idleTimer?.cancel()?.await()
     }
 
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val conversation = requireConversation()
-        val join = request.decode(JoinConversationReq::class.java)
-        require(join.conversationId == conversation.conversationId) {
-            "join request targets a different conversation"
-        }
+        request.decode(JoinConversationReq::class.java)
         pendingJoins += actorId
         return ZLinkSpotActorJoinResponse.accept(
             JoinConversationRes(ConversationContracts.toState(conversation.snapshot())),
         )
     }
 
-    override suspend fun onJoinedActorSuspending(
-        actor: SupportUserActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: SupportUserActor) {
         check(pendingJoins.remove(actor.actorId())) {
             "joined actor does not have a pending admission"
         }
@@ -121,10 +113,7 @@ class ConversationSpot(
         )
     }
 
-    override suspend fun onLeaveActorSuspending(
-        actor: SupportUserActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: SupportUserActor) {
         pendingJoins.remove(actor.actorId())
         actors.remove(actor.participantId)
     }

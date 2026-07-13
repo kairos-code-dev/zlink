@@ -315,8 +315,9 @@ final class KotlinConnectorWrapperTest {
 
         private fun decodeHeader(header: ByteArray): Frame {
             val buffer = ByteBuffer.wrap(header)
+            assertEquals(0xF2, buffer.get().toInt() and 0xff)
             val kind = buffer.get().toInt() and 0xff
-            buffer.get()
+            val codec = buffer.get().toInt() and 0xff
             val flags = buffer.get().toInt() and 0xff
             val requestSeq = if ((flags and 0x01) != 0) buffer.long else null
             val nameLength = buffer.get().toInt() and 0xff
@@ -324,7 +325,7 @@ final class KotlinConnectorWrapperTest {
             buffer.get(nameBytes)
             return Frame(
                 kind = kind,
-                codec = 0,
+                codec = codec,
                 requestSeq = requestSeq,
                 name = String(nameBytes, StandardCharsets.UTF_8),
                 payload = ByteArray(0),
@@ -334,7 +335,8 @@ final class KotlinConnectorWrapperTest {
         private fun encodeHeader(frame: Frame): ByteArray {
             val name = frame.name.toByteArray(StandardCharsets.UTF_8)
             val flags = if (frame.requestSeq == null) 0 else 0x01
-            val buffer = ByteBuffer.allocate(3 + (if (frame.requestSeq == null) 0 else 8) + 1 + name.size)
+            val buffer = ByteBuffer.allocate(4 + (if (frame.requestSeq == null) 0 else 8) + 1 + name.size)
+            buffer.put(0xF2.toByte())
             buffer.put(frame.kind.toByte())
             buffer.put(frame.codec.toByte())
             buffer.put(flags.toByte())

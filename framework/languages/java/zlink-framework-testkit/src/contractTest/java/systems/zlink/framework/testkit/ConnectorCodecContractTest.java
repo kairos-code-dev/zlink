@@ -76,12 +76,10 @@ final class ConnectorCodecContractTest {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connect().await();
+            connector.connect().submit().toCompletableFuture().join();
             ZLinkStreamJson.send(connector, "hello")
                 .compress()
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
             Frame sent = server.readFrame();
             assertEquals(1, sent.kind());
             assertEquals(1, sent.codec());
@@ -94,7 +92,7 @@ final class ConnectorCodecContractTest {
                 "String",
                 "\"server\"".getBytes(StandardCharsets.UTF_8)));
             awaitPendingDispatch(connector);
-            connector.dispatch().await();
+            connector.dispatch().submit().toCompletableFuture().join();
 
             var replyFuture = ZLinkStreamJson.request(connector, "reply")
                 .compress()
@@ -120,7 +118,7 @@ final class ConnectorCodecContractTest {
 
             assertEquals(List.of("server"), handled);
             } finally {
-                connector.close().await();
+                connector.close().submit().toCompletableFuture().join();
             }
         }
     }
@@ -261,10 +259,11 @@ final class ConnectorCodecContractTest {
                 flags |= 0x01;
             }
             ByteBuffer buffer = ByteBuffer.allocate(
-                3
+                4
                     + (frame.requestSeq() == null ? 0 : 8)
                     + 1
                     + name.length);
+            buffer.put((byte) 0xF2);
             buffer.put((byte) frame.kind());
             buffer.put((byte) frame.codec());
             buffer.put((byte) flags);
@@ -278,6 +277,7 @@ final class ConnectorCodecContractTest {
 
         private static Header decodeHeader(byte[] header) {
             ByteBuffer buffer = ByteBuffer.wrap(header);
+            assertEquals(0xF2, Byte.toUnsignedInt(buffer.get()));
             int kind = Byte.toUnsignedInt(buffer.get());
             int codec = Byte.toUnsignedInt(buffer.get());
             int flags = Byte.toUnsignedInt(buffer.get());

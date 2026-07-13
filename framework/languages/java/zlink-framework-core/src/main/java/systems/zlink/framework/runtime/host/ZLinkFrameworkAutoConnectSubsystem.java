@@ -9,21 +9,19 @@ final class ZLinkFrameworkAutoConnectSubsystem {
     private ZLinkFrameworkAutoConnectSubsystem() {
     }
 
-    static void start(
+    static java.util.concurrent.CompletionStage<Void> start(
         ZLinkLocationAutoConnectHost locationAutoConnectHost,
         ZLinkFrameworkRegistration registration,
         ZLinkChannelRuntime channels,
         ZLinkSpotRuntime spots) {
         if (locationAutoConnectHost == null) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
-        locationAutoConnectHost.start(
-                registration,
-                channels,
-                spots == null ? java.util.Map.of() : spots.nodesByName(),
-                spots)
-            .toCompletableFuture()
-            .join();
+        return locationAutoConnectHost.start(
+            registration,
+            channels,
+            spots == null ? java.util.Map.of() : spots.nodesByName(),
+            spots);
     }
 }

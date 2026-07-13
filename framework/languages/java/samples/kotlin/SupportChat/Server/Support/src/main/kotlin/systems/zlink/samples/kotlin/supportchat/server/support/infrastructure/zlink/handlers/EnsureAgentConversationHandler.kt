@@ -8,12 +8,12 @@ import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory
-import systems.zlink.samples.kotlin.supportchat.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureAgentConversationReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureAgentConversationRes
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureSupportUserActorReq
@@ -47,11 +47,25 @@ class EnsureAgentConversationHandler(
 
         val joined = if (existingActorRef == null) {
             val conversationActor = directory.get(conversationActorId)
-            conversationActor.actor.context()
-                .joinSpot(RoutingId.from(request.conversationId), JoinConversationReq())
+            val initialJoin = conversationActor.actor.context()
+                .joinSpot(
+                    RoutingId.from(request.conversationId),
+                    JoinConversationReq(
+                        request.rosterActorId,
+                        SupportChatRoles.Agent,
+                        request.displayName,
+                    ),
+                )
                 .submit(JoinConversationRes::class.java)
                 .await()
-                .reply()
+            val target = (initialJoin as? systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted)
+                ?.actor()
+                ?: throw IllegalStateException("Agent conversation join was rejected.")
+            actorClient
+                .requestToActor(target, JoinConversationReq())
+                .timeout(SampleTimings.RequestTimeout)
+                .submit(JoinConversationRes::class.java)
+                .await()
         } else {
             actorClient
                 .requestToActor(actorRef, JoinConversationReq())
@@ -65,13 +79,10 @@ class EnsureAgentConversationHandler(
             request.conversationId,
             request.rosterActorId,
         )
-        return EnsureAgentConversationRes(actorRef.toWire(), joined.state)
+        return EnsureAgentConversationRes(ActorRefSnapshot.from(actorRef), joined.state)
     }
 
     private companion object {
         private val logger = LoggerFactory.getLogger(EnsureAgentConversationHandler::class.java)
     }
 }
-
-private fun ActorRef.toWire(): ActorRefWire =
-    ActorRefWire(nodeRid().toString(), actorId(), generation())

@@ -25,6 +25,12 @@ public final class Contracts {
     public record StateMsg(String value) {
     }
 
+    public record MissingSpotReq(String value) {
+    }
+
+    public record MissingSpotMsg(String value) {
+    }
+
     public record CreateSpotReq(String spotRid) {
     }
 
@@ -259,6 +265,9 @@ public final class Contracts {
         String value,
         int seq,
         ActorProfile profile) {
+    }
+
+    public record MissingActorReq(String value) {
     }
 
     public record ActorPingReq(String value) {

@@ -1,16 +1,19 @@
 package systems.zlink.framework.testkit;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public abstract class TestZLinkEntrySpot<TActor extends ZLinkActor>
     implements ZLinkEntrySpot<TActor> {
     @Override
-    public void onJoinedActor(TActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(TActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(TActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(TActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 }

@@ -6,7 +6,7 @@ import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
-import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -22,6 +22,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
     private val routes: ZLinkRouteClient,
+    private val spots: SpotHandleResolver,
 ) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     override fun packetName(): String = "AuthenticateReq"
 
@@ -50,10 +51,12 @@ class AuthenticateSessionHandler(
             )
         }
         val preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid())
+        val spot = spots.resolveSpotHandle(preferredPlayNode).await()
+            .orElseThrow { IllegalStateException("spot not found: $preferredPlayNode") }
         val ensured = routes
             .requestToSpot(
                 SampleNames.RoomSpotDiscovery,
-                SpotRef(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
+                spot,
                 EnsurePlayerActorReq(
                     authenticated.actorId,
                     authenticated.displayName,
@@ -81,6 +84,5 @@ class AuthenticateSessionHandler(
                 ),
             )
             .submit()
-            .await()
     }
 }

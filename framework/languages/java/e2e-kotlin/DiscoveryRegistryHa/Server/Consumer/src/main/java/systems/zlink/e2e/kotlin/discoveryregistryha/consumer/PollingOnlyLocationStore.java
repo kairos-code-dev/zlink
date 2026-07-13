@@ -33,122 +33,122 @@ final class PollingOnlyLocationStore implements ZLinkLocationStore {
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updatePeerAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updatePeer(
         ZLinkPeerLocation peer,
         ZLinkLocationWriteIntent intent) {
-        return inner.updatePeerAsync(peer, intent);
+        return inner.updatePeer(peer, intent);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removePeerAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removePeer(
         ZLinkPeerLocationKey key,
         ZLinkLocationOwnerToken owner) {
-        return inner.removePeerAsync(key, owner);
+        return inner.removePeer(key, owner);
     }
 
     @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
-        return inner.listPeerLocationsAsync(filter);
+    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter) {
+        return inner.listPeerLocations(filter);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateSpotAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateSpot(
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent) {
-        return inner.updateSpotAsync(spot, intent);
+        return inner.updateSpot(spot, intent);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeSpotAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeSpot(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner) {
-        return inner.removeSpotAsync(key, owner);
+        return inner.removeSpot(key, owner);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
-        return inner.resolveSpotAsync(key);
+    public CompletionStage<ZLinkSpotLocation> resolveSpot(ZLinkSpotLocationKey key) {
+        return inner.resolveSpot(key);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocations(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page) {
-        return inner.listSpotLocationsAsync(filter, page);
+        return inner.listSpotLocations(filter, page);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateActorAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateActor(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent) {
-        return inner.updateActorAsync(actor, intent);
+        return inner.updateActor(actor, intent);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeActorAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeActor(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner) {
-        return inner.removeActorAsync(key, owner);
+        return inner.removeActor(key, owner);
     }
 
     @Override
-    public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
-        return inner.resolveActorAsync(key);
+    public CompletionStage<ZLinkActorLocation> resolveActor(ZLinkActorLocationKey key) {
+        return inner.resolveActor(key);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocations(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page) {
-        return inner.listActorLocationsAsync(filter, page);
+        return inner.listActorLocations(filter, page);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> updateRouteAsync(
+    public CompletionStage<ZLinkLocationWriteResult> updateRoute(
         ZLinkRouteLocation route,
         ZLinkLocationWriteIntent intent) {
-        return inner.updateRouteAsync(route, intent);
+        return inner.updateRoute(route, intent);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeRouteAsync(
+    public CompletionStage<ZLinkLocationWriteResult> removeRoute(
         ZLinkRouteLocationKey key,
         ZLinkLocationOwnerToken owner) {
-        return inner.removeRouteAsync(key, owner);
+        return inner.removeRoute(key, owner);
     }
 
     @Override
-    public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
-        return inner.removeAllByOwnerAsync(ownerId);
+    public CompletionStage<Long> removeAllByOwner(String ownerId) {
+        return inner.removeAllByOwner(ownerId);
     }
 
     @Override
-    public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
-        return inner.resolveRouteAsync(key);
+    public CompletionStage<ZLinkRouteLocation> resolveRoute(ZLinkRouteLocationKey key) {
+        return inner.resolveRoute(key);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page) {
-        return inner.listRouteLocationsAsync(filter, page);
+        return inner.listRouteLocations(filter, page);
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
+    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl) {
-        return inner.renewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl);
+        return inner.renewOwnerLease(ownerId, nodeRid, leaseTtl);
     }
 
     @Override
-    public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
-        return inner.removeOwnerLeaseAsync(ownerId);
+    public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
+        return inner.removeOwnerLease(ownerId);
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeasesAsync() {
-        return inner.listOwnerLeasesAsync();
+    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
+        return inner.listOwnerLeases();
     }
 }

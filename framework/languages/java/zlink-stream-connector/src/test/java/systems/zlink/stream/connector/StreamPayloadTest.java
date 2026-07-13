@@ -14,7 +14,7 @@ final class StreamPayloadTest {
             ZLinkStreamConnector connector =
                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "copy-me"))
@@ -38,7 +38,7 @@ final class StreamPayloadTest {
                 reply.payload().close();
             }
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }
@@ -49,7 +49,7 @@ final class StreamPayloadTest {
             ZLinkStreamConnector connector =
                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO));
             try {
-            connector.connect().await();
+            ConnectorTestAwait.await(connector.connect());
 
             var push = connector.waitFor("Push").submit();
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
@@ -73,7 +73,7 @@ final class StreamPayloadTest {
                 message.payload().payload().close();
             }
             } finally {
-                connector.close().await();
+                ConnectorTestAwait.await(connector.close());
             }
         }
     }

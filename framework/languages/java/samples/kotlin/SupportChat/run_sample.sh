@@ -17,33 +17,22 @@ PIDS=()
 REDIS_CONTAINER=""
 export SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:kotlin:${RUN_ID}:"
 
-trap cleanup EXIT
+on_exit() {
+  local status="$?"
+  if [[ "${status}" != "0" ]]; then
+    for log in "${BUILD_LOG}" "${LOG_DIR}"/*.log; do
+      [[ -f "${log}" ]] || continue
+      echo "===== ${log} =====" >&2
+      tail -n 200 "${log}" >&2 || true
+    done
+  fi
+  cleanup
+  return "${status}"
+}
 
-read -r -a PORTS <<<"$(python3 - <<'PY'
-import random
-import socket
+trap on_exit EXIT
 
-sockets = []
-try:
-    chosen = set()
-    while len(sockets) < 8:
-        port = random.randint(48000, 60999)
-        if port in chosen:
-            continue
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            sock.close()
-            continue
-        chosen.add(port)
-        sockets.append(sock)
-    print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
-finally:
-    for sock in sockets:
-        sock.close()
-PY
-)"
+read -r -a PORTS <<<"$(zlink_sample_reserve_ports 8)"
 
 export SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
 export SUPPORTCHAT_API_HTTP_ENDPOINT="http://127.0.0.1:${PORTS[1]}"
@@ -91,8 +80,9 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-REDIS_CONTAINER="$(zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
-export SUPPORTCHAT_REDIS_ENDPOINT="$(zlink_redis_endpoint "${REDIS_CONTAINER}")"
+zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
+  "zlink-redis-kotlin-sample-supportchat" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export SUPPORTCHAT_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
 wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
 
 cd "${SCRIPT_DIR}"
@@ -122,7 +112,7 @@ grep -q "supportchat=completed" "${LOG_DIR}/client.log"
 grep -q "supportchat-closed-typing-ignore=verified" "${LOG_DIR}/client.log"
 wait_log "support conversation: created" "${LOG_DIR}/support.log"
 wait_log "support conversation: actor joined" "${LOG_DIR}/support.log"
-wait_log "status=WaitingForAgent" "${LOG_DIR}/support.log"
+wait_log "status=WaitingForAgent" "${LOG_DIR}/api.log"
 wait_log "status=Active" "${LOG_DIR}/support.log"
 wait_log "status=WaitingForClose" "${LOG_DIR}/support.log"
 wait_log "status=Closed" "${LOG_DIR}/support.log"

@@ -10,10 +10,11 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -84,7 +85,7 @@ final class EntrySpotActorDispatchTest {
     }
 
     @Test
-    void entrySpotActorDispatch_yieldCallFailsImmediatelyInsideActorHandler()
+    void entrySpotActorDispatch_workerCompletionStageCompletesInsideActorHandler()
         throws Exception {
         EntryActorDispatchHandlers.reset();
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
@@ -101,10 +102,7 @@ final class EntrySpotActorDispatchTest {
                     + ", calls="
                     + backendFactory.calls());
             Throwable error = EntryActorDispatchHandlers.yieldError.get();
-            assertInstanceOf(IllegalStateException.class, error);
-            assertTrue(
-                error.getMessage().contains("yield requires a framework Spot handler turn"),
-                "unexpected yield misuse error: " + error.getMessage());
+            assertEquals(null, error);
         }
     }
 
@@ -180,12 +178,12 @@ final class EntrySpotActorDispatchTest {
         }
 
         @Override
-        public void onCreateActor(
+        public CompletionStage<Void> onCreateActor(
             ZLinkActor actor,
-            ZLinkMessage createRequest,
-            CancellationToken cancellationToken) {
+            ZLinkMessage createRequest) {
             EntryActorDispatchHandlers.events.add("created:" + actor.actorId());
             EntryActorDispatchHandlers.actorCreated.countDown();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -198,12 +196,12 @@ final class EntrySpotActorDispatchTest {
         }
 
         @Override
-        public EnsureActorReply handle(EntryActorDispatchSpot spot, EnsureActorRequest request) {
-            ActorRef actor = actors
+        public CompletionStage<EnsureActorReply> handle(
+            EntryActorDispatchSpot spot,
+            EnsureActorRequest request) {
+            return actors
                 .getOrCreate(request.actorId(), "player")
-                .toCompletableFuture()
-                .join();
-            return new EnsureActorReply(actor.actorId());
+                .thenApply(actor -> new EnsureActorReply(actor.actorId()));
         }
     }
 
@@ -235,8 +233,8 @@ final class EntrySpotActorDispatchTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(String actorId, ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
@@ -263,13 +261,11 @@ final class EntrySpotActorDispatchTest {
         }
 
         @ZLinkSpotActorSend
-        public void handle(
+        public CompletionStage<Void> handle(
             EntryActorDispatchSpot entrySpot,
             ZLinkActor actor,
             ZLinkSpotActorSendContext context,
-            String message,
-            CancellationToken cancellationToken) throws InterruptedException {
-            assertFalse(cancellationToken.isCancellationRequested());
+            String message) throws InterruptedException {
             assertEquals(Optional.of("String"), context.packetName());
             if (message.startsWith("block:")) {
                 String value = message.substring("block:".length());
@@ -277,7 +273,7 @@ final class EntrySpotActorDispatchTest {
                 actorAStarted.countDown();
                 releaseActorA.await();
                 events.add(actor.actorId() + ":" + value + ":end");
-                return;
+                return CompletableFuture.completedFuture(null);
             }
             if (message.startsWith("record:")) {
                 String value = message.substring("record:".length());
@@ -288,19 +284,18 @@ final class EntrySpotActorDispatchTest {
                 if ("actor-a".equals(actor.actorId())) {
                     actorASecondStarted.countDown();
                 }
-                return;
+                return CompletableFuture.completedFuture(null);
             }
             if ("yield".equals(message)) {
-                try {
-                    entrySpot.context().runWorker(token -> message).yield();
-                } catch (Throwable error) {
-                    yieldError.set(error);
-                    yieldObserved.countDown();
-                    return;
-                }
-                yieldError.set(new AssertionError("yield unexpectedly completed for " + actor.actorId()));
-                yieldObserved.countDown();
+                return entrySpot.context().runWorker(() -> message).submit()
+                    .thenAccept(ignored -> yieldObserved.countDown())
+                    .exceptionally(error -> {
+                        yieldError.set(error);
+                        yieldObserved.countDown();
+                        return null;
+                    });
             }
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

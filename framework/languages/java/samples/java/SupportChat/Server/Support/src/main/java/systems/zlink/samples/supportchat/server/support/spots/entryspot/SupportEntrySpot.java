@@ -1,18 +1,27 @@
 package systems.zlink.samples.supportchat.server.support.spots.entryspot;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
+import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
+import systems.zlink.samples.supportchat.server.support.application.AgentAssignmentService;
+import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
     private final ZLinkEntrySpotContext context;
+    private final SupportActorDirectory directory;
+    private final AgentAssignmentService assignment;
 
-    public SupportEntrySpot(ZLinkEntrySpotContext context) {
+    public SupportEntrySpot(
+        ZLinkEntrySpotContext context,
+        SupportActorDirectory directory,
+        AgentAssignmentService assignment) {
         this.context = context;
+        this.directory = directory;
+        this.assignment = assignment;
     }
 
     @Override
@@ -21,32 +30,38 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
     }
 
     @Override
-    public void onCreateActor(
+    public java.util.concurrent.CompletionStage<Void> onCreateActor(
         SupportUserActor actor,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken) {
+        ZLinkMessage createRequest) {
         Messages.EnsureSupportUserActorReq request =
             createRequest.decode(Messages.EnsureSupportUserActorReq.class);
-        actor.setIdentity(request.displayName(), request.role());
+        actor.setIdentity(request.displayName(), request.role(), request.participantId());
+        directory.remember(actor);
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept();
+        ZLinkMessage request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(SupportUserActor actor, CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onJoinedActor(SupportUserActor actor) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(SupportUserActor actor, CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onLeaveActor(SupportUserActor actor) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnectActor(SupportUserActor actor, CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onDisconnectActor(SupportUserActor actor) {
+        if (SampleNames.Roles.Agent.equals(actor.role())) {
+            assignment.setAvailable(actor.participantId(), actor.displayName(), false);
+        }
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

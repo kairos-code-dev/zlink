@@ -20,8 +20,8 @@ public final class Program {
         try {
             new GameQuestClientScenario().run(apiA, apiB);
         } finally {
-            apiA.close().await();
-            apiB.close().await();
+            apiA.close().submit().toCompletableFuture().join();
+            apiB.close().submit().toCompletableFuture().join();
         }
         System.out.println(SampleNames.CompletedMarker);
     }

@@ -5,9 +5,10 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 
 public final class StateTimerHandler implements ZLinkSpotTimerHandler<UserSpot> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         UserSpot spot,
         ZLinkTimerTick tick) {
         spot.timerTick(tick.deliveryIndex());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

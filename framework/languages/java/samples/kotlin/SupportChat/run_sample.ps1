@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/../../redis-common.ps1"
 $ErrorActionPreference = "Stop"
 
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -42,7 +43,7 @@ function Cleanup {
         }
     }
     if ($RedisContainer) {
-        & docker rm -f $RedisContainer *> $null
+        Remove-ZlinkSampleRedis $RedisContainer
     }
     if ($env:SUPPORTCHAT_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
@@ -124,16 +125,9 @@ try {
     $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
     $env:SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
 
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the SupportChat sample."
-    }
-    $RedisContainer = "zlink-supportchat-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $env:SUPPORTCHAT_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redis = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-supportchat"
+    $RedisContainer = $redis.ContainerId
+    $env:SUPPORTCHAT_REDIS_ENDPOINT = $redis.Endpoint
     Wait-Port "redis" "tcp://$env:SUPPORTCHAT_REDIS_ENDPOINT"
 
     & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon --no-parallel --max-workers=1 `

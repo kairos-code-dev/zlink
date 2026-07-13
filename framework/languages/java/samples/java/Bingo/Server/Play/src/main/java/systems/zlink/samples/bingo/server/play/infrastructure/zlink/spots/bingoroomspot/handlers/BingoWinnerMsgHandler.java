@@ -10,7 +10,10 @@ import systems.zlink.samples.bingo.shared.contracts.Messages;
 public final class BingoWinnerMsgHandler
     implements ZLinkSpotSubscriptionHandler<BingoRoomSpot, Messages.BingoWinnerMsg> {
     @Override
-    public void handle(BingoRoomSpot spot, Messages.BingoWinnerMsg message) {
+    public java.util.concurrent.CompletionStage<Void> handle(
+        BingoRoomSpot spot,
+        Messages.BingoWinnerMsg message) {
         spot.announceWinner(message);
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

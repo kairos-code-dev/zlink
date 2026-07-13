@@ -8,6 +8,8 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Function;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 
 public final class JsonHttp implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
@@ -30,6 +32,33 @@ public final class JsonHttp implements AutoCloseable {
             }
             T request = JSON.readValue(exchange.getRequestBody(), requestType);
             sendJson(exchange, handler.apply(request));
+        });
+    }
+
+    public <T> void postAsync(
+        String path,
+        Class<T> requestType,
+        Function<T, CompletionStage<?>> handler) {
+        server.createContext(path, exchange -> {
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                send(exchange, 405, "method not allowed");
+                return;
+            }
+            T request = JSON.readValue(exchange.getRequestBody(), requestType);
+            handler.apply(request).whenComplete((reply, failure) -> {
+                try {
+                    if (failure == null) {
+                        sendJson(exchange, reply);
+                        return;
+                    }
+                    Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+                        ? failure.getCause()
+                        : failure;
+                    send(exchange, 500, cause.toString());
+                } catch (IOException ignored) {
+                    exchange.close();
+                }
+            });
         });
     }
 

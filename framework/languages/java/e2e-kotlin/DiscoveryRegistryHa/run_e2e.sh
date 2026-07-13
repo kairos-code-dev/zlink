@@ -19,8 +19,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/DiscoveryRegistryHa}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/DiscoveryRegistryHa-gradle-cache}"
-export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
-ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT=""
+ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT=""
 export ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS:-500}"
 export ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS:-1000}"
 export ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS:-3000}"
@@ -64,7 +64,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
     if [[ "${REDIS_CONTAINER_OWNED}" == "1" ]]; then
-      docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+      docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
     fi
   fi
   wait >/dev/null 2>&1 || true
@@ -106,22 +106,16 @@ port_of() {
 }
 
 start_redis_container() {
+  local redis_port
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
     exit 1
   fi
-  if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_CONTAINER:-}" ]]; then
-    REDIS_CONTAINER="${ZLINK_KOTLIN_E2E_REDIS_CONTAINER}"
-    REDIS_CONTAINER_OWNED=0
-    return
-  fi
   REDIS_CONTAINER_OWNED=1
-  REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${REDIS_CONTAINER}"
-  )"
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
+  ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
   export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
 }
 
@@ -137,7 +131,7 @@ stop_redis_container() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
     if [[ "${REDIS_CONTAINER_OWNED}" == "1" ]]; then
-      docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+      docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
     fi
     REDIS_CONTAINER=""
     REDIS_CONTAINER_OWNED=0

@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -36,7 +37,6 @@ import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
@@ -51,6 +51,7 @@ import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
@@ -75,9 +76,10 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.spring.sessionfixtures.SubpackageDiscoveredPacketSession;
 import systems.zlink.framework.spring.sessionfixtures.SubpackageSessionPacketAnchor;
 
@@ -336,11 +338,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
             ZLinkSpotPublisherClient publisher =
                 context.getBean(ZLinkSpotPublisherClient.class);
-            publisher.publish("game", "stage.events", "opened")
-                .packetName("StageOpened")
-                .submit()
-                .toCompletableFuture()
-                .join();
+            publisher.publish("game", "stage.events", new StageOpened("opened"))
+                .submit();
         }
     }
 
@@ -360,7 +359,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             InjectedRequestHandler handler =
                 (InjectedRequestHandler) handlerFactory.create(InjectedRequestHandler.class);
 
-            String reply = handler.handle("42", requestContext());
+            String reply = handler.handle("42", requestContext())
+                .toCompletableFuture()
+                .join();
 
             assertEquals("profile:42", reply);
         }
@@ -379,7 +380,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            backendFactory.dispatchStreamPacket("auto.session.packet", "payload");
+            backendFactory.dispatchStreamPacket(
+                "auto.session.packet",
+                Message.from("{\"value\":\"payload\"}".getBytes(StandardCharsets.UTF_8)),
+                ZLinkStreamCodec.JSON);
 
             context.getBean("sessionPacketHandled", CompletableFuture.class)
                 .get(2, TimeUnit.SECONDS);
@@ -400,7 +404,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            backendFactory.dispatchStreamPacket("subpackage.session.packet", "payload");
+            backendFactory.dispatchStreamPacket(
+                "subpackage.session.packet",
+                Message.from("{\"value\":\"payload\"}".getBytes(StandardCharsets.UTF_8)),
+                ZLinkStreamCodec.JSON);
 
             context.getBean("sessionPacketHandled", CompletableFuture.class)
                 .get(2, TimeUnit.SECONDS);
@@ -420,8 +427,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             ProfileReply reply = context.getBean(ZLinkClient.class)
-                .requestToChannel("profile", new ProfileRequest("42"))
-                .packetName("GetProfile")
+                .requestToChannel("profile", new GetProfileRequest("42"))
                 .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
@@ -447,8 +453,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             ProfileReply reply = context.getBean(ZLinkClient.class)
-                .requestToChannel("profile", new ProfileRequest("42"))
-                .packetName("DecorateProfile")
+                .requestToChannel("profile", new DecorateProfileRequest("42"))
                 .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
@@ -470,8 +475,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             ProfileReply reply = context.getBean(ZLinkClient.class)
-                .requestToChannel("profile", new ProfileRequest("42"))
-                .packetName("DecorateProfileSet")
+                .requestToChannel("profile", new DecorateProfileSetRequest("42"))
                 .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
@@ -493,8 +497,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             ProfileReply reply = context.getBean(ZLinkClient.class)
-                .requestToChannel("profile", new ProfileRequest("42"))
-                .packetName("FilteredProfile")
+                .requestToChannel("profile", new FilteredProfileRequest("42"))
                 .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
@@ -535,8 +538,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 sourceContext.refresh();
 
                 String reply = sourceContext.getBean(ZLinkRouteClient.class)
-                    .requestToNode("route", targetRid, "hello")
-                    .packetName("SpringRoute")
+                    .requestToNode("route", targetRid, new SpringRouteRequest("hello"))
                     .timeout(Duration.ofSeconds(3))
                     .submit(String.class)
                     .toCompletableFuture()
@@ -642,7 +644,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkLocationRuntimeQuery query = context
                 .getBean(ZLinkFrameworkLifecycle.class)
                 .monitoringLocationRuntimeQuery();
-            ZLinkLocationRuntimeStatus status = query.getStatusAsync()
+            ZLinkLocationRuntimeStatus status = query.getStatus()
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
 
@@ -769,6 +771,15 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         CompletableFuture<Void> sessionPacketHandled() {
             return new CompletableFuture<>();
+        }
+
+        @Bean
+        AutoDiscoveredSessionPacketHandler autoDiscoveredSessionPacketHandler(
+            AtomicInteger sessionPacketCount,
+            CompletableFuture<Void> sessionPacketHandled) {
+            return new AutoDiscoveredSessionPacketHandler(
+                sessionPacketCount,
+                sessionPacketHandled);
         }
 
         @Bean
@@ -983,7 +994,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             channel.enableClient(filteredEndpoint);
                     channel.addRequestHandler(
                         InjectedProfileRequestHandler.class,
-                        ProfileRequest.class,
+                        FilteredProfileRequest.class,
                         ProfileReply.class,
                         "FilteredProfile"); };
             };
@@ -1006,7 +1017,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(
                     InjectedRouteRequestHandler.class,
-                    String.class,
+                    SpringRouteRequest.class,
                     String.class,
                     "SpringRoute"); };
         }
@@ -1030,11 +1041,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1058,11 +1071,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1079,11 +1094,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1138,10 +1155,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
@@ -1153,13 +1170,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new InjectedPlayerActor(
+            return CompletableFuture.completedFuture(new InjectedPlayerActor(
                 actorId,
                 context,
-                dependency.format(actorId));
+                dependency.format(actorId)));
         }
     }
 
@@ -1194,29 +1211,30 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDispatch(
+        public CompletionStage<Void> onDispatch(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            dispatcher.tryHandleAsync(context, dispatch, payload)
-                .toCompletableFuture()
-                .join();
+            return dispatcher.tryHandle(context, dispatch, payload).thenApply(ignored -> null);
         }
     }
 
     public static final class AutoDiscoveredSessionPacketHandler
-        implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
+        implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, AutoSessionPacket> {
         private final AtomicInteger count;
         private final CompletableFuture<Void> handled;
 
@@ -1228,18 +1246,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public String packetName() {
-            return "auto.session.packet";
+        public Class<AutoSessionPacket> messageType() {
+            return AutoSessionPacket.class;
         }
 
         @Override
-        public void handle(
+        public CompletionStage<Void> handle(
             ZLinkSessionContext context,
             ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload) {
+            AutoSessionPacket payload) {
             count.incrementAndGet();
             handled.complete(null);
+            return CompletableFuture.completedFuture(null);
         }
+    }
+
+    @ZLinkPacket("auto.session.packet")
+    public record AutoSessionPacket(String value) {
     }
 
     static final class HandlerDependency {
@@ -1275,15 +1298,15 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public String handle(
+        public CompletionStage<String> handle(
             String request,
             ZLinkRequestContext context) {
-            return dependency.format(request);
+            return CompletableFuture.completedFuture(dependency.format(request));
         }
     }
 
     public static final class InjectedProfileRequestHandler
-        implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+        implements ZLinkRequestHandler<FilteredProfileRequest, ProfileReply> {
         private final HandlerDependency dependency;
 
         public InjectedProfileRequestHandler(HandlerDependency dependency) {
@@ -1291,11 +1314,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public ProfileReply handle(
-            ProfileRequest request,
+        public CompletionStage<ProfileReply> handle(
+            FilteredProfileRequest request,
             ZLinkRequestContext context) {
-            return
-                new ProfileReply(dependency.format(request.profileId()));
+            return CompletableFuture.completedFuture(
+                new ProfileReply(dependency.format(request.profileId())));
         }
     }
 
@@ -1307,10 +1330,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public <T> CompletionStage<T> invokeAsync(
+        public <T> CompletionStage<T> invoke(
             ZLinkInvocationContext context,
             ZLinkNext<T> next) {
-            return next.invokeAsync().thenApply(reply -> {
+            return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
                 T decorated = (T) new ProfileReply(dependency.decorate((ProfileReply) reply));
                 return decorated;
@@ -1328,10 +1351,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "GetProfile")
-        public ProfileReply handle(ProfileRequest request) {
+        public CompletionStage<ProfileReply> handle(GetProfileRequest request) {
             requestCount++;
-            return
-                new ProfileReply(dependency.format(request.profileId()));
+            return CompletableFuture.completedFuture(
+                new ProfileReply(dependency.format(request.profileId())));
         }
 
         int requestCount() {
@@ -1339,8 +1362,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
-    public record ProfileRequest(String profileId) {
-    }
+    @ZLinkPacket("StageOpened")
+    public record StageOpened(String value) { }
+
+    @ZLinkPacket("GetProfile")
+    public record GetProfileRequest(String profileId) { }
+
+    @ZLinkPacket("DecorateProfile")
+    public record DecorateProfileRequest(String profileId) { }
+
+    @ZLinkPacket("DecorateProfileSet")
+    public record DecorateProfileSetRequest(String profileId) { }
+
+    @ZLinkPacket("FilteredProfile")
+    public record FilteredProfileRequest(String profileId) { }
+
+    @ZLinkPacket("SpringRoute")
+    public record SpringRouteRequest(String value) { }
 
     public record ProfileReply(String value) {
     }
@@ -1375,12 +1413,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "DecorateProfile")
-        public ProfileReply handle(ProfileRequest request) {
+        public CompletionStage<ProfileReply> handle(DecorateProfileRequest request) {
             String value = dependency.format(request.profileId());
             for (ProfileDecorator decorator : decorators) {
                 value = decorator.decorate(value);
             }
-            return new ProfileReply(value);
+            return CompletableFuture.completedFuture(new ProfileReply(value));
         }
     }
 
@@ -1397,17 +1435,17 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "DecorateProfileSet")
-        public ProfileReply handle(ProfileRequest request) {
+        public CompletionStage<ProfileReply> handle(DecorateProfileSetRequest request) {
             String value = dependency.format(request.profileId());
             for (ProfileDecorator decorator : decorators) {
                 value = decorator.decorate(value);
             }
-            return new ProfileReply(value);
+            return CompletableFuture.completedFuture(new ProfileReply(value));
         }
     }
 
     public static final class InjectedRouteRequestHandler
-        implements ZLinkRouteRequestHandler<String, String> {
+        implements ZLinkRouteRequestHandler<SpringRouteRequest, String> {
         private final HandlerDependency dependency;
 
         public InjectedRouteRequestHandler(HandlerDependency dependency) {
@@ -1415,10 +1453,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public String handle(
-            String request,
+        public CompletionStage<String> handle(
+            SpringRouteRequest request,
             ZLinkRouteRequestContext context) {
-            return dependency.format(request);
+            return CompletableFuture.completedFuture(dependency.format(request.value()));
         }
     }
 
@@ -1462,10 +1500,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 return java.util.Optional.empty();
             }
 
-            @Override
-            public CancellationToken cancellationToken() {
-                return () -> false;
-            }
         };
     }
 }

@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 
+zlink_sample_reserve_ports() {
+  local count="$1"
+  python3 - "${count}" <<'PY'
+import socket
+import sys
+
+sockets = []
+try:
+    for _ in range(int(sys.argv[1])):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+    print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
 zlink_sample_descendants() {
   local pid="$1"
   local child
@@ -22,6 +41,8 @@ zlink_sample_print_logs() {
 
 cleanup() {
   local status="$?"
+  local cleanup_status=0
+  local force_killed=0
   set +e
   zlink_sample_print_logs "${status}"
   local pid_list_name=""
@@ -40,7 +61,9 @@ cleanup() {
       kill "${pid}" >/dev/null 2>&1 || true
     done
     local any_alive=1
-    for _ in $(seq 1 "${ZLINK_SAMPLE_CLEANUP_WAIT_ATTEMPTS:-100}"); do
+    # Spring's framework lifecycle allows up to 25 seconds for actor handoff and
+    # ownership cleanup. Keep the runner order-neutral and wait for that contract.
+    for _ in $(seq 1 "${ZLINK_SAMPLE_CLEANUP_WAIT_ATTEMPTS:-300}"); do
       any_alive=0
       for pid in "${zlink_sample_pids[@]}"; do
         if kill -0 "${pid}" >/dev/null 2>&1; then
@@ -60,6 +83,7 @@ cleanup() {
       sleep 0.1
     done
     if [[ "${any_alive}" == "1" ]]; then
+      force_killed=1
       for ((i=${#zlink_sample_pids[@]}-1; i>=0; i--)); do
         local pid="${zlink_sample_pids[$i]}"
         for child in $(zlink_sample_descendants "${pid}"); do
@@ -70,15 +94,33 @@ cleanup() {
     fi
     set +m
     for pid in "${zlink_sample_pids[@]}"; do
-      wait "${pid}" >/dev/null 2>&1 || true
+      wait "${pid}" >/dev/null 2>&1
+      local wait_status="$?"
+      case "${wait_status}" in
+        0|143)
+          ;;
+        *)
+          echo "Sample process ${pid} exited during cleanup with status ${wait_status}." >&2
+          if [[ "${cleanup_status}" == "0" ]]; then
+            cleanup_status="${wait_status}"
+          fi
+          ;;
+      esac
     done
+    if [[ "${force_killed}" == "1" && "${cleanup_status}" == "0" ]]; then
+      echo "Sample cleanup exceeded the graceful shutdown deadline." >&2
+      cleanup_status=1
+    fi
   fi
   if [[ -n "${redis_container_id:-}" ]]; then
-    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
+    zlink_redis_remove_by_id "${redis_container_id}" || true
   elif [[ -n "${REDIS_CONTAINER:-}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    zlink_redis_remove_by_id "${REDIS_CONTAINER}" || true
   fi
-  return "${status}"
+  if [[ "${status}" != "0" ]]; then
+    return "${status}"
+  fi
+  return "${cleanup_status}"
 }
 
 wait_port() {
@@ -154,18 +196,6 @@ app_bin() {
   echo "${project}/build/install/${script}/bin/${script}"
 }
 
-zlink_redis_cleanup_scope() {
-  local scope="$1"
-  if [[ -z "${scope}" ]]; then
-    return 0
-  fi
-  while read -r container_id container_name; do
-    if [[ "${container_name}" == "${scope}"* ]]; then
-      docker rm -f "${container_id}" >/dev/null 2>&1 || true
-    fi
-  done < <(docker ps -a --format '{{.ID}} {{.Names}}')
-}
-
 zlink_redis_wait_ready() {
   local container_id="$1"
   local timeout_seconds="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
@@ -182,6 +212,13 @@ zlink_redis_wait_ready() {
   return 1
 }
 
+zlink_redis_remove_by_id() {
+  local container_id="$1"
+  local docker_timeout_seconds="${ZLINK_REDIS_DOCKER_TIMEOUT_SECONDS:-10}"
+  timeout -k 2s "${docker_timeout_seconds}s" docker rm -fv "${container_id}" \
+    >/dev/null 2>&1
+}
+
 zlink_redis_start_scoped() {
   local scope="$1"
   local image="${2:-${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}}"
@@ -194,6 +231,7 @@ zlink_redis_start_scoped() {
   set +e
   create_output="$(timeout -k 2s "${docker_timeout_seconds}s" docker create \
     --name "${name}" \
+    --tmpfs /data \
     -p "${port_mapping}" \
     "${image}" 2>&1)"
   create_status="$?"
@@ -209,12 +247,12 @@ zlink_redis_start_scoped() {
   set -e
   running="$(timeout -k 2s 5s docker inspect -f '{{.State.Running}}' "${container_id}" 2>/dev/null || true)"
   if [[ "${running}" != "true" ]]; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    zlink_redis_remove_by_id "${container_id}" || true
     printf 'Failed to start Redis container %s (docker status %s)\n%s\n' "${name}" "${start_status}" "${start_output}" >&2
     return 1
   fi
   if ! zlink_redis_wait_ready "${container_id}"; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    zlink_redis_remove_by_id "${container_id}" || true
     return 1
   fi
   printf '%s' "${container_id}"
@@ -250,7 +288,7 @@ zlink_redis_start_scoped_assign() {
     return 1
   fi
   if ! host_port="$(zlink_redis_host_port "${container_id}")"; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    zlink_redis_remove_by_id "${container_id}" || true
     return 1
   fi
 

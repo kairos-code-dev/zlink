@@ -14,11 +14,12 @@ public final class MsgpackRequestHandler
     }
 
     @Override
-    public Contracts.PackedEchoRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.PackedEchoRes> handle(
         Contracts.PackedEchoReq request,
         ZLinkRequestContext context) {
         state.record("Request", "MsgpackEcho", request.value());
         state.record("ContentType", "MsgpackEcho", context.contentType().orElse(""));
-        return new Contracts.PackedEchoRes("echo:" + request.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.PackedEchoRes("echo:" + request.value()));
     }
 }

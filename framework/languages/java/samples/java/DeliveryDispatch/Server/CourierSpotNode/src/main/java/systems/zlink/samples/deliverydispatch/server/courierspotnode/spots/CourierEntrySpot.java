@@ -1,12 +1,13 @@
 package systems.zlink.samples.deliverydispatch.server.courierspotnode.spots;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.ActorDirectory;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.CourierActor;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
     private final ZLinkEntrySpotContext context;
@@ -25,32 +26,29 @@ public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
     }
 
     @Override
-    public void onCreateActor(
+    public CompletionStage<Void> onCreateActor(
         CourierActor actor,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken) {
+        ZLinkMessage createRequest) {
         actors.register(actor);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept();
+        ZLinkMessage request) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(
-        CourierActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(CourierActor actor) {
         actors.register(actor);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(
-        CourierActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(CourierActor actor) {
         actors.remove(actor.actorId());
+        return CompletableFuture.completedFuture(null);
     }
 }

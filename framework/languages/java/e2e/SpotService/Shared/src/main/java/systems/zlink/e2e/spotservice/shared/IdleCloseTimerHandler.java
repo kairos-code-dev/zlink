@@ -5,9 +5,10 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 
 public final class IdleCloseTimerHandler implements ZLinkSpotTimerHandler<TimerScenarioSpot> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         TimerScenarioSpot spot,
         ZLinkTimerTick tick) {
         spot.idleTick();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

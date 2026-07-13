@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingActorTransferAdapter
 import systems.zlink.framework.messaging.ZLinkMessage
@@ -9,7 +8,6 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 class PlayActorTransferAdapter : ZLinkSuspendingActorTransferAdapter<PlayActor>() {
     override suspend fun transferOutSuspending(
         actor: PlayActor,
-        cancellationToken: CancellationToken,
     ): ZLinkMessage = ZLinkMessage.of(
         TransferState(
             actor.joinedRoomIdOrNull(),
@@ -23,7 +21,6 @@ class PlayActorTransferAdapter : ZLinkSuspendingActorTransferAdapter<PlayActor>(
         actorId: String,
         context: ZLinkActorContext,
         state: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): PlayActor {
         val transferred = state.decode(TransferState::class.java)
         return PlayActor(actorId, context).also { actor ->

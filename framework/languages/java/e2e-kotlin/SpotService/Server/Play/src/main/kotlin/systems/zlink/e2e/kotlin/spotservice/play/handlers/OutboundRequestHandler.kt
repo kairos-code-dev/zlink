@@ -5,32 +5,30 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.spots.*
 import java.time.Duration
 import systems.zlink.framework.handlers.ZLinkSpotRequest
+import systems.zlink.framework.kotlin.await
 
 class OutboundRequestHandler {
     @ZLinkSpotRequest
-    fun handle(
+    suspend fun handle(
         spot: UserSpot,
         request: Contracts.OutboundReq,
     ): Contracts.OutboundRes {
         val channelReply = spot.context()
             .outbound()
             .requestToChannel(Contracts.INGRESS_CHANNEL, request.value)
-            .packetName("Noop")
             .timeout(Duration.ofSeconds(5))
-            .await(String::class.java)
+            .submit(String::class.java).await()
         spot.context()
             .outbound()
             .sendToChannel(
                 Contracts.INGRESS_CHANNEL,
                 Contracts.OutboundMsg("send:${request.value}"),
             )
-            .packetName("OutboundMsg")
-            .await()
+            .submit()
         spot.context()
             .outbound()
             .publish("spot.events", Contracts.MeshMsg("publish:${request.value}"))
-            .packetName("MeshMsg")
-            .await()
+            .submit()
         spot.record("SpotOutbound", "${request.value}/$channelReply")
         return Contracts.OutboundRes(
             spot.context().spotRid().toString(),

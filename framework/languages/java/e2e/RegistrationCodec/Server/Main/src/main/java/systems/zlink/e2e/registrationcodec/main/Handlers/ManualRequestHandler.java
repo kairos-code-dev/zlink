@@ -14,10 +14,11 @@ public final class ManualRequestHandler
     }
 
     @Override
-    public Contracts.EchoRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.EchoRes> handle(
         Contracts.EchoManualReq request,
         ZLinkRequestContext context) {
         state.record("Request", context.packetName().orElse("EchoManual"), request.value());
-        return new Contracts.EchoRes("echo:" + request.value(), "manual");
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.EchoRes("echo:" + request.value(), "manual"));
     }
 }

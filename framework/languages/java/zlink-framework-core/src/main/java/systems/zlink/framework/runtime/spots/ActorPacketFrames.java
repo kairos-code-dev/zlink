@@ -12,6 +12,7 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
+import systems.zlink.framework.configuration.ZLinkFlowOrigin;
 
 final class ActorPacketFrames {
     private ActorPacketFrames() {
@@ -29,6 +30,8 @@ final class ActorPacketFrames {
                 0,
                 EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
                 Map.of(),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
         }
     }
@@ -72,7 +75,9 @@ final class ActorPacketFrames {
             header.codec().value(),
             header.flags(),
             header.metadata(),
-            header.correlationId());
+            header.correlationId(),
+            header.flowId(),
+            header.flowOrigin());
     }
 
     private static String errorMessage(Throwable error) {
@@ -92,7 +97,9 @@ final class ActorPacketFrames {
         int codec,
         EnumSet<ZLinkStreamHeaderFlag> flags,
         Map<String, String> metadata,
-        Optional<String> correlationId) {
+        Optional<String> correlationId,
+        Optional<String> flowId,
+        Optional<ZLinkFlowOrigin> flowOrigin) {
         Header {
             EnumSet<ZLinkStreamHeaderFlag> normalizedFlags =
                 EnumSet.noneOf(ZLinkStreamHeaderFlag.class);
@@ -102,6 +109,8 @@ final class ActorPacketFrames {
             flags = normalizedFlags;
             metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
             correlationId = correlationId == null ? Optional.empty() : correlationId;
+            flowId = flowId == null ? Optional.empty() : flowId;
+            flowOrigin = flowOrigin == null ? Optional.empty() : flowOrigin;
         }
 
         ZLinkStreamHeader toRequestHeader() {
@@ -112,7 +121,9 @@ final class ActorPacketFrames {
                 requestSeq,
                 packetName,
                 metadata,
-                correlationId);
+                correlationId,
+                flowId,
+                flowOrigin);
         }
 
         ZLinkStreamHeader toStreamHeader() {
@@ -123,7 +134,9 @@ final class ActorPacketFrames {
                 requestSeq,
                 packetName,
                 metadata,
-                correlationId);
+                correlationId,
+                flowId,
+                flowOrigin);
         }
     }
 }

@@ -5,9 +5,9 @@ import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.supportchat.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureSupportUserActorReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureSupportUserActorRes
 
@@ -32,10 +32,5 @@ class EnsureSupportUserActorHandler(
 
 private fun ActorRef.toResponse(): EnsureSupportUserActorRes =
     EnsureSupportUserActorRes(
-        actorId = actorId(),
-        actor = ActorRefWire(
-            nodeRid = nodeRid().toString(),
-            actorId = actorId(),
-            generation = generation(),
-        ),
+        actor = ActorRefSnapshot.from(this),
     )

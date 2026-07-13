@@ -5,7 +5,7 @@ import java.util.concurrent.CompletionStage;
 public interface ZLinkTimer extends AutoCloseable {
     boolean isDisposed();
 
-    CompletionStage<Void> cancelAsync();
+    CompletionStage<Void> cancel();
 
     @Override
     void close();

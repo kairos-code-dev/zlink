@@ -106,41 +106,60 @@ public class Program {
             store.addUnpublishedKill(playerId);
             writeJson(exchange, json, 200, new Accepted(true));
         });
-        server.createContext("/self-check/projection/", exchange -> handleProjection(exchange, json, store));
+        server.createContext("/self-check/projection/", exchange ->
+            handleProjection(exchange, json, store).exceptionally(error -> {
+                writeJsonUnchecked(exchange, json, 500, new ErrorBody(error.getMessage()));
+                return null;
+            }));
         server.createContext("/self-check/assert", exchange -> writeJson(exchange, json, 200, store.assertState()));
         server.start();
         return server;
     }
 
-    private static void handleProjection(
+    private static java.util.concurrent.CompletionStage<Void> handleProjection(
         HttpExchange exchange,
         ObjectMapper json,
-        GameQuestStore store) throws IOException {
+        GameQuestStore store) {
         String[] parts = exchange.getRequestURI().getPath().split("/");
         String playerId = parts.length >= 4 ? parts[3] : "";
         String questId = parts.length >= 5 ? parts[4] : "";
         String action = parts.length >= 6 ? parts[5] : "";
         if ("delete".equals(action)) {
-            Messages.DeleteQuestProjectionRes deleted = ApplicationContextHolder.channels
+            return ApplicationContextHolder.channels
                 .requestToChannel(
                     SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
-                .await(Messages.DeleteQuestProjectionRes.class);
-            store.deleteProjection(playerId, questId);
-            writeJson(exchange, json, 200, deleted);
-            return;
+                .submit(Messages.DeleteQuestProjectionRes.class)
+                .thenAccept(deleted -> {
+                    store.deleteProjection(playerId, questId);
+                    writeJsonUnchecked(exchange, json, 200, deleted);
+                });
         }
         if ("rebuild".equals(action)) {
-            Messages.QuestProgress rebuilt = ApplicationContextHolder.channels
+            return ApplicationContextHolder.channels
                 .requestToChannel(
                     SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
-                .await(Messages.QuestProgress.class);
-            store.mergeProjection(playerId, java.util.List.of(rebuilt));
-            writeJson(exchange, json, 200, rebuilt);
-            return;
+                .submit(Messages.QuestProgress.class)
+                .thenAccept(rebuilt -> {
+                    store.mergeProjection(playerId, java.util.List.of(rebuilt));
+                    writeJsonUnchecked(exchange, json, 200, rebuilt);
+                });
         }
-        writeJson(exchange, json, 404, new ErrorBody("unknown projection action"));
+        writeJsonUnchecked(exchange, json, 404, new ErrorBody("unknown projection action"));
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
+    private static void writeJsonUnchecked(
+        HttpExchange exchange,
+        ObjectMapper json,
+        int status,
+        Object body) {
+        try {
+            writeJson(exchange, json, status, body);
+        } catch (IOException error) {
+            throw new java.util.concurrent.CompletionException(error);
+        }
     }
 
     private static <T> T readJson(HttpExchange exchange, ObjectMapper json, Class<T> type) throws IOException {

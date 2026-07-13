@@ -1,24 +1,24 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorPingHandler {
     @ZLinkSpotActorRequest(packetName = "ActorPingReq")
-    public Contracts.ActorPingRes handle(
+    public CompletionStage<Contracts.ActorPingRes> handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorPingReq request,
-        CancellationToken cancellationToken) {
+        Contracts.ActorPingReq request) {
         int seq = actor.nextSequence();
         spot.record("ActorPingReq", actor.actorId() + "/" + request.value() + "#" + seq);
-        return new Contracts.ActorPingRes(
+        return CompletableFuture.completedFuture(new Contracts.ActorPingRes(
             actor.actorId(),
             spot.nodeRid(),
             "entry",
             request.value(),
-            seq);
+            seq));
     }
 }

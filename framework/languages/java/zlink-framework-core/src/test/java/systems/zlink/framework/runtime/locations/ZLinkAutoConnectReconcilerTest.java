@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.locations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +24,45 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
 
 final class ZLinkAutoConnectReconcilerTest {
+    @Test
+    void markDrainingRenewsTypedMarkerWithoutDisconnectingPeers() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
+        ZLinkPeerLocation localRow = peer(
+            ZLinkLocationRole.ROUTER,
+            RoutingId.from("local-node"),
+            "inproc://local",
+            "local-owner");
+        RecordingExecutor executor = new RecordingExecutor();
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("local-node"),
+                "inproc://local"),
+            localRow,
+            runtime,
+            resolver(store),
+            executor,
+            options());
+
+        reconciler.tick().toCompletableFuture().join();
+        reconciler.markDraining().toCompletableFuture().join();
+
+        ZLinkPeerLocation stored = findPeer(store, new ZLinkPeerLocationKey(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            "orders",
+            ZLinkLocationRole.ROUTER,
+            RoutingId.from("local-node"),
+            "inproc://local"));
+        assertTrue(stored.draining());
+        assertEquals(List.of(), executor.disconnected);
+
+        reconciler.shutdown().toCompletableFuture().join();
+        runtime.close();
+    }
+
     @Test
     void advertiseOnlyCapabilityPublishesAndRemovesPeerRow() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
@@ -185,6 +225,176 @@ final class ZLinkAutoConnectReconcilerTest {
     }
 
     @Test
+    void dialingCapabilityConvergesWhenProviderStartsAfterConsumer() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime consumerRuntime = runtime(store, "consumer-owner", "consumer-node");
+        RecordingExecutor executor = new RecordingExecutor();
+        ZLinkAutoConnectReconciler consumer = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.DEALER,
+                RoutingId.from("consumer-node"),
+                ""),
+            null,
+            consumerRuntime,
+            resolver(store),
+            executor,
+            options());
+
+        // A consumer started before any provider remains valid and keeps reconciling.
+        consumer.tick().toCompletableFuture().join();
+        assertEquals(List.of(), executor.connected);
+
+        store.renewOwnerLease("provider-owner", RoutingId.from("provider-node"), Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .join();
+        store.updatePeer(
+                peer(
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("provider-node"),
+                    "inproc://provider",
+                    "provider-owner"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .join();
+
+        // The next internal reconciliation discovers the late provider without application action.
+        consumer.tick().toCompletableFuture().join();
+        assertEquals(List.of("inproc://provider"), executor.connected);
+
+        consumer.shutdown().toCompletableFuture().join();
+        consumerRuntime.close();
+    }
+
+    @Test
+    void samePeerIdentityWithNewOwnerReplacesActiveConnection() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
+        store.renewOwnerLease("remote-owner-1", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .join();
+        ZLinkPeerLocation first = peer(
+            ZLinkLocationRole.ROUTER,
+            RoutingId.from("remote-node"),
+            "inproc://remote",
+            "remote-owner-1");
+        var firstWrite = store.updatePeer(first, ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .join();
+        RecordingExecutor executor = new RecordingExecutor();
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.DEALER,
+                RoutingId.from("local-node"),
+                ""),
+            null,
+            runtime,
+            resolver(store),
+            executor,
+            options());
+
+        reconciler.tick().toCompletableFuture().join();
+        store.removePeer(
+                new ZLinkPeerLocationKey(
+                    ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    "orders",
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("remote-node"),
+                    "inproc://remote"),
+                new ZLinkLocationOwnerToken("remote-owner-1", firstWrite.generation()))
+            .toCompletableFuture()
+            .join();
+        store.renewOwnerLease("remote-owner-2", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .join();
+        store.updatePeer(
+                peer(
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("remote-node"),
+                    "inproc://remote",
+                    "remote-owner-2"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .join();
+        Thread.sleep(options().pollingInterval().toMillis() + 10);
+
+        reconciler.tick().toCompletableFuture().join();
+
+        assertEquals(List.of("inproc://remote", "inproc://remote"), executor.connected);
+        assertEquals(List.of("inproc://remote"), executor.disconnected);
+        runtime.close();
+    }
+
+    @Test
+    void manualNonInitiatorTracksOwnerReplacementWithoutOwningInitialConnect() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "play-b");
+        store.renewOwnerLease("remote-owner-1", RoutingId.from("play-a"), Duration.ofSeconds(30))
+            .toCompletableFuture().join();
+        ZLinkPeerLocation first = routePeer("play-a", "inproc://play-a", "remote-owner-1");
+        var firstWrite = store.updatePeer(first, ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture().join();
+        RecordingExecutor executor = new RecordingExecutor(true);
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.ROUTE_MESH,
+                "route",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("play-b"),
+                "inproc://play-b"),
+            null,
+            runtime,
+            resolver(store),
+            executor,
+            options());
+
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(List.of(), executor.connected);
+        store.removePeer(
+                new ZLinkPeerLocationKey(
+                    ZLinkLocationAutoConnectType.ROUTE_MESH,
+                    "route",
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("play-a"),
+                    "inproc://play-a"),
+                new ZLinkLocationOwnerToken("remote-owner-1", firstWrite.generation()))
+            .toCompletableFuture().join();
+        Thread.sleep(options().pollingInterval().toMillis() + 10);
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(List.of(), executor.disconnected);
+        assertEquals(List.of(), executor.connected);
+        store.renewOwnerLease("remote-owner-2", RoutingId.from("play-a"), Duration.ofSeconds(30))
+            .toCompletableFuture().join();
+        var secondWrite = store.updatePeer(
+                routePeer("play-a", "inproc://play-a", "remote-owner-2"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture().join();
+        Thread.sleep(options().pollingInterval().toMillis() + 10);
+
+        reconciler.tick().toCompletableFuture().join();
+
+        assertEquals(List.of("inproc://play-a"), executor.disconnected);
+        assertEquals(List.of("inproc://play-a"), executor.connected);
+        store.removePeer(
+                new ZLinkPeerLocationKey(
+                    ZLinkLocationAutoConnectType.ROUTE_MESH,
+                    "route",
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("play-a"),
+                    "inproc://play-a"),
+                new ZLinkLocationOwnerToken("remote-owner-2", secondWrite.generation()))
+            .toCompletableFuture().join();
+        Thread.sleep(options().pollingInterval().toMillis() + 10);
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(List.of("inproc://play-a"), executor.disconnected);
+        assertEquals(List.of("inproc://play-a"), executor.connected);
+        runtime.close();
+    }
+
+    @Test
     void storeFailureKeepsExistingConnectionAndRecoveryDefersDisconnectDiff() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
@@ -308,9 +518,43 @@ final class ZLinkAutoConnectReconcilerTest {
             Instant.EPOCH);
     }
 
+    private static ZLinkPeerLocation routePeer(
+        String nodeRid,
+        String endpoint,
+        String ownerId) {
+        return new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            "route",
+            RoutingId.from(nodeRid),
+            ZLinkLocationRole.ROUTER,
+            endpoint,
+            100,
+            false,
+            0,
+            null,
+            null,
+            ownerId,
+            0,
+            Instant.EPOCH);
+    }
+
     private static final class RecordingExecutor implements ZLinkAutoConnectExecutor {
         final List<String> connected = new ArrayList<>();
         final List<String> disconnected = new ArrayList<>();
+        final boolean manual;
+
+        RecordingExecutor() {
+            this(false);
+        }
+
+        RecordingExecutor(boolean manual) {
+            this.manual = manual;
+        }
+
+        @Override
+        public boolean isManual(ZLinkAutoConnectPlanner.Target target) {
+            return manual;
+        }
 
         @Override
         public void connect(ZLinkAutoConnectPlanner.Target target) {

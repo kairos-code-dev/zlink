@@ -1,10 +1,10 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 
-import systems.zlink.framework.ZLinkAwait
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.DeliveryEvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
@@ -16,13 +16,13 @@ class DeliveryStatusChangedHandler(
     private val evidenceStore: DeliveryEvidenceStore,
     private val actors: ZLinkActorClient,
     private val actorRefs: ZLinkActorDirectory,
-) : ZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes> {
+    override suspend fun handle(
         request: DeliveryStatusChangedReq,
         context: ZLinkRequestContext,
     ): DeliveryStatusChangedRes {
         evidenceStore.append(request)
-        val actorRef = ZLinkAwait.await(actorRefs.find("customer-1"))
+        val actorRef = actorRefs.find("customer-1").await()
             .orElseThrow { IllegalStateException("customer actor not found: customer-1") }
         actors.sendToActor(
             actorRef,
@@ -34,8 +34,7 @@ class DeliveryStatusChangedHandler(
                 occurredAt = request.occurredAt,
             ),
         )
-            .packetName("DeliveryStatusUpdatedMsg")
-            .await()
+            .submit()
         return DeliveryStatusChangedRes(request.deliveryId, request.status)
     }
 }

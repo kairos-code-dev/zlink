@@ -3,7 +3,6 @@ package systems.zlink.e2e.kotlin.spotservice.play
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
-import systems.zlink.e2e.kotlin.spotservice.SpotRouteResolver
 import systems.zlink.e2e.kotlin.spotservice.play.endpoints.EvidenceHttpServer
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
 import systems.zlink.e2e.kotlin.spotservice.play.spots.*
@@ -24,6 +23,7 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -44,14 +44,16 @@ class PlayApplication {
         state: ScenarioState,
         json: ObjectMapper,
         spots: ZLinkSpotManager,
-        routes: ZLinkRouteClient
+        routes: ZLinkRouteClient,
+        handles: SpotHandleResolver,
     ): EvidenceHttpServer =
         EvidenceHttpServer(
             state,
             json,
             Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"),
             spots,
-            routes
+            routes,
+            handles,
         )
 
     @Bean
@@ -59,7 +61,6 @@ class PlayApplication {
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.addSpotRemoteRefResolver(SpotRouteResolver::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -106,10 +107,9 @@ class PlayApplication {
                 .setRoutingId(RoutingId.from(nodeRid))
             ingress.addSendHandler(
                 IngressCommandHandler::class.java,
-                Contracts.OutboundMsg::class.java,
-                "OutboundMsg"
+                Contracts.OutboundMsg::class.java
             )
-            ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java, "Noop")
+            ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java)
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(Contracts.SPOT_MESH)
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
                 .enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"))

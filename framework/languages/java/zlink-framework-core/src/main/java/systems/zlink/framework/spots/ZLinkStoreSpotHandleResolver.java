@@ -17,14 +17,14 @@ public final class ZLinkStoreSpotHandleResolver
 
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(RoutingId spotRid) {
-        return addresses.resolveAnySpotRow(spotRid).thenApply(row -> row == null
+        return flowAware(addresses.resolveAnySpotRow(spotRid)).thenApply(row -> row == null
             ? Optional.empty()
             : Optional.of(new FrameworkSpotHandle(row.spotRid())));
     }
 
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveActorSpotHandle(String actorId) {
-        return addresses.resolveActorSpotRow(actorId).thenApply(row -> row == null
+        return flowAware(addresses.resolveActorSpotRow(actorId)).thenApply(row -> row == null
             ? Optional.empty()
             : Optional.of(new FrameworkSpotHandle(targetSpot(
                 row.locationKind(), row.nodeRid(), row.spotRid()))));
@@ -32,10 +32,14 @@ public final class ZLinkStoreSpotHandleResolver
 
     @Override
     public CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle) {
-        return addresses.resolveAnySpotRow(handle.spotRid()).thenApply(row -> row == null
+        return flowAware(addresses.resolveAnySpotRow(handle.spotRid())).thenApply(row -> row == null
             ? Optional.empty()
             : Optional.of(new SpotTransportAddress(
                 addresses.routerChannelId(row.meshName()), row.nodeRid(), row.spotRid(), row.spotKind())));
+    }
+
+    private static <T> CompletionStage<T> flowAware(CompletionStage<T> source) {
+        return systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(source);
     }
 
     private static RoutingId targetSpot(ZLinkSpotKind kind, RoutingId nodeRid, RoutingId spotRid) {

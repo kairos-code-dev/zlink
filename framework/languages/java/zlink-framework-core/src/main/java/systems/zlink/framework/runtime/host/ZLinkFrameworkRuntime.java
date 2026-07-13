@@ -63,7 +63,12 @@ public final class ZLinkFrameworkRuntime
     private final java.util.concurrent.atomic.AtomicBoolean spotRuntimeStopped =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean ready =
-        new java.util.concurrent.atomic.AtomicBoolean(true);
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean drainStarted =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean drainTerminalStarted =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final ZLinkCloseGate closeGate = new ZLinkCloseGate();
     private final java.util.concurrent.CompletableFuture<
         systems.zlink.framework.monitoring.ZLinkDrainResult> drained =
         new java.util.concurrent.CompletableFuture<>();
@@ -71,6 +76,7 @@ public final class ZLinkFrameworkRuntime
     // options so every surface observes setMessageFlowMode live.
     private final java.util.concurrent.atomic.AtomicReference<
         systems.zlink.framework.configuration.ZLinkMessageFlowLogMode> messageFlowMode;
+    private final ZLinkRuntimeEventDispatcher eventDispatcher;
 
     ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
@@ -94,6 +100,7 @@ public final class ZLinkFrameworkRuntime
         ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
         options.validate();
+        this.eventDispatcher = eventDispatcher;
         this.registration = options.registration();
         var diagnostics = this.registration.dispatchOptions().diagnostics();
         this.messageFlowMode =
@@ -171,14 +178,23 @@ public final class ZLinkFrameworkRuntime
             runtimeHandlers,
             eventDispatcher,
             this.spots,
-            this.actors);
+            this.actors,
+            this.actorDirectory);
         this.streams = streamSubsystem.streams();
 
-        ZLinkFrameworkAutoConnectSubsystem.start(
-            this.locationAutoConnectHost,
-            this.registration,
-            this.channels,
-            this.spots);
+        locationSubsystem.startup()
+            .thenCompose(ignored -> spotSubsystem.startup())
+            .thenCompose(ignored -> ZLinkFrameworkAutoConnectSubsystem.start(
+                this.locationAutoConnectHost,
+                this.registration,
+                this.channels,
+                this.spots))
+            .whenComplete((ignored, failure) -> {
+                if (failure == null && !drainStarted.get()) {
+                    ready.set(true);
+                    publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.SERVING);
+                }
+            });
     }
 
     static ZLinkFrameworkRuntime start(
@@ -300,9 +316,7 @@ public final class ZLinkFrameworkRuntime
             return false;
         }
         spots.beginClose();
-        ZLinkFrameworkShutdown shutdown = new ZLinkFrameworkShutdown();
-        shutdown.defer(spots::close);
-        shutdown.close();
+        spots.closeAsync();
         return true;
     }
 
@@ -327,6 +341,24 @@ public final class ZLinkFrameworkRuntime
         return actorClient;
     }
 
+    public systems.zlink.framework.spots.SpotHandleResolver spotHandleResolver() {
+        if (spotTransportAddressResolver
+            instanceof systems.zlink.framework.spots.SpotHandleResolver resolver) {
+            return resolver;
+        }
+        throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+            "SpotHandleResolver requires a configured location store");
+    }
+
+    public systems.zlink.framework.spots.ActorSpotHandleResolver actorSpotHandleResolver() {
+        if (spotTransportAddressResolver
+            instanceof systems.zlink.framework.spots.ActorSpotHandleResolver resolver) {
+            return resolver;
+        }
+        throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+            "ActorSpotHandleResolver requires a configured location store");
+    }
+
     public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid) {
         if (streams == null) {
             throw new ZLinkConfigurationException("Stream runtime is not configured");
@@ -336,6 +368,25 @@ public final class ZLinkFrameworkRuntime
 
     @Override
     public void close() {
+        try {
+            closeAsync().toCompletableFuture().get();
+        } catch (java.lang.InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new ZLinkConfigurationException("framework shutdown was interrupted", error);
+        } catch (java.util.concurrent.ExecutionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof RuntimeException runtimeError) {
+                throw runtimeError;
+            }
+            throw new ZLinkConfigurationException("framework shutdown failed", cause);
+        }
+    }
+
+    java.util.concurrent.CompletionStage<Void> closeAsync() {
+        return closeGate.close(this::closeCoreAsync);
+    }
+
+    private java.util.concurrent.CompletionStage<Void> closeCoreAsync() {
         ready.set(false);
         if (spots != null && !spotRuntimeStopped.get()) {
             spots.beginClose();
@@ -347,27 +398,32 @@ public final class ZLinkFrameworkRuntime
         if (locationRuntime != null) {
             shutdown.defer(locationRuntime::close);
             shutdown.defer(locationLifecycle::close);
-            shutdown.defer(() -> locationRuntime.stop().toCompletableFuture().join());
+            shutdown.deferStage(locationRuntime::stop);
         }
         if (spots != null) {
-            shutdown.defer(() -> {
+            shutdown.deferStage(() -> {
                 if (spotRuntimeStopped.compareAndSet(false, true)) {
-                    spots.close();
+                    return spots.closeAsync();
                 }
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
         }
         shutdown.defer(channels::close);
         if (locationAutoConnectHost != null) {
-            shutdown.defer(() -> locationAutoConnectHost.stop().toCompletableFuture().join());
-        }
-        if (streams != null) {
-            shutdown.defer(streams::close);
+            shutdown.deferStage(locationAutoConnectHost::stop);
         }
         if (actors != null) {
-            shutdown.defer(actors::close);
+            shutdown.deferStage(actors::closeAsync);
         }
-        shutdown.close();
-        drained.complete(new systems.zlink.framework.monitoring.Drained());
+        if (streams != null) {
+            shutdown.deferStage(streams::closeAsync);
+        }
+        return shutdown.closeAsync().whenComplete((ignored, failure) -> {
+            if (!drainStarted.get() && failure == null) {
+                publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.DRAINED);
+                drained.complete(new systems.zlink.framework.monitoring.Drained());
+            }
+        });
     }
 
     @Override
@@ -379,17 +435,26 @@ public final class ZLinkFrameworkRuntime
     public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain(
         java.time.Duration deadline) {
         java.util.Objects.requireNonNull(deadline, "deadline");
-        if (ready.compareAndSet(true, false)) {
-            java.util.concurrent.CompletableFuture.runAsync(this::close)
-                .whenComplete((ignored, error) -> drained.complete(
-                    error == null
-                        ? new systems.zlink.framework.monitoring.Drained()
-                        : new systems.zlink.framework.monitoring.ForceStopped(
-                            systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED)));
+        if (deadline.isZero() || deadline.isNegative()) {
+            throw new IllegalArgumentException("deadline must be positive");
+        }
+        if (drainStarted.compareAndSet(false, true)) {
+            ready.set(false);
+            publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.DRAINING);
+            if (streams != null) {
+                streams.beginDrain();
+            }
+            if (spots != null) {
+                spots.beginDrain().exceptionally(error -> null);
+            }
+            if (actors != null) {
+                actors.beginDrain();
+            }
+            runDrain();
             java.util.concurrent.CompletableFuture.delayedExecutor(
-                Math.max(0L, deadline.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS)
-                .execute(() -> drained.complete(new systems.zlink.framework.monitoring.ForceStopped(
-                    systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED)));
+                deadline.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
+                .execute(() -> forceStop(
+                    systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED));
         }
         return drained;
     }
@@ -402,6 +467,211 @@ public final class ZLinkFrameworkRuntime
     @Override
     public boolean isReady() {
         return ready.get();
+    }
+
+    private void runDrain() {
+        java.util.concurrent.CompletionStage<Void> markerPublished = locationAutoConnectHost == null
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : locationAutoConnectHost.markDraining();
+        markerPublished.whenComplete((ignored, publishFailure) -> {
+            if (publishFailure != null) {
+                forceStop(systems.zlink.framework.monitoring.ZLinkDrainForceReason.DRAINING_STATE_PUBLISH_FAILED);
+                return;
+            }
+            beginActorHandoff().whenComplete((handoffCount, handoffFailure) -> {
+                if (handoffFailure != null) {
+                    forceStop(systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED);
+                    return;
+                }
+                for (int i = 0; i < handoffCount; i++) {
+                    systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics.increment(
+                        "zlink.drain.actors.handed_off", java.util.Map.of());
+                }
+                java.util.concurrent.CompletionStage<Void> spotDrain = spots == null
+                    ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                    : spots.continueDrain();
+                spotDrain.exceptionally(error -> null).thenCompose(spotIgnored -> awaitWorkloadsDrained())
+                    .whenComplete((workloadsIgnored, workloadFailure) -> {
+                if (workloadFailure != null) {
+                    forceStop(systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED);
+                    return;
+                }
+                completeDrain();
+                    });
+            });
+        });
+    }
+
+    private java.util.concurrent.CompletionStage<Integer> beginActorHandoff() {
+        if (actors == null || storeLocationResolvers == null || spots == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(0);
+        }
+        java.util.Set<RoutingId> localNodes = new java.util.HashSet<>();
+        for (ZLinkInternalSpotNode node : spots.nodesByName().values()) {
+            localNodes.add(node.routingId());
+        }
+        java.util.List<String> meshNames = registration.spotNodes().stream()
+            .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName)
+            .distinct()
+            .toList();
+        java.util.concurrent.CompletionStage<java.util.List<ServingTarget>> rows =
+            java.util.concurrent.CompletableFuture.completedFuture(java.util.List.of());
+        for (String meshName : meshNames) {
+            String transferRouteChannel = transferRouteChannelName(registration, meshName);
+            if (transferRouteChannel == null) {
+                continue;
+            }
+            rows = rows.thenCompose(current -> storeLocationResolvers.listLivePeers(
+                    new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
+                        systems.zlink.framework.locations.ZLinkLocationAutoConnectType.SPOT_MESH,
+                        meshName,
+                        systems.zlink.framework.locations.ZLinkLocationRole.SPOT,
+                        null,
+                        null))
+                .thenApply(found -> {
+                    java.util.ArrayList<ServingTarget> merged =
+                        new java.util.ArrayList<>(current);
+                    found.forEach(peer -> merged.add(
+                        new ServingTarget(transferRouteChannel, meshName, peer)));
+                    return java.util.List.copyOf(merged);
+                }));
+        }
+        return rows.thenCompose(found -> found.stream()
+            .filter(target -> !target.peer().draining())
+            .filter(target -> isEligibleActorHandoffTarget(target.peer(), localNodes))
+            .sorted(java.util.Comparator
+                .comparing(ServingTarget::spotMeshName)
+                .thenComparing(target -> target.peer().nodeRid().toString()))
+            .findFirst()
+            .<java.util.concurrent.CompletionStage<Integer>>map(target ->
+                actors.handoffActorsToEntrySpot(
+                    target.routeChannelName(), target.peer().nodeRid()))
+            .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(0)));
+    }
+
+    static String transferRouteChannelName(
+        systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration registration,
+        String spotMeshName) {
+        String mapped = registration.locations().options().spotRouterChannels()
+            .getOrDefault(spotMeshName, spotMeshName);
+        return registration.channels().stream()
+            .filter(channel -> channel.kind()
+                == systems.zlink.framework.runtime.channels.ChannelKind.ROUTE_MESH)
+            .filter(channel -> channel.name().equals(mapped))
+            .map(systems.zlink.framework.runtime.channels.ChannelRegistration::name)
+            .findFirst()
+            .orElse(null);
+    }
+
+    static boolean isEligibleActorHandoffTarget(
+        systems.zlink.framework.locations.ZLinkPeerLocation peer,
+        java.util.Set<RoutingId> localNodes) {
+        return peer != null
+            && peer.metadata() != null
+            && "true".equals(peer.metadata().get(
+                systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost
+                    .ACTOR_HOST_CAPABILITY_METADATA_KEY))
+            && !localNodes.contains(peer.nodeRid());
+    }
+
+    private record ServingTarget(
+        String routeChannelName,
+        String spotMeshName,
+        systems.zlink.framework.locations.ZLinkPeerLocation peer) {
+    }
+
+    private java.util.concurrent.CompletionStage<Void> awaitWorkloadsDrained() {
+        if (drained.isDone() || workloadsDrained()) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        java.util.concurrent.CompletableFuture<Void> result = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture.delayedExecutor(10L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .execute(() -> {
+                java.util.concurrent.CompletionStage<Void> retrySpotDrain =
+                    (actors == null || actors.drainComplete())
+                        && spots != null && !spots.drainComplete()
+                    ? spots.continueDrain().exceptionally(error -> null)
+                    : java.util.concurrent.CompletableFuture.completedFuture(null);
+                retrySpotDrain.thenCompose(ignored -> awaitWorkloadsDrained())
+                    .whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    result.completeExceptionally(failure);
+                } else {
+                    result.complete(null);
+                }
+                    });
+            });
+        return result;
+    }
+
+    private boolean workloadsDrained() {
+        return (spots == null || spots.drainComplete())
+            && (actors == null || actors.drainComplete());
+    }
+
+    private void completeDrain() {
+        if (!drainTerminalStarted.compareAndSet(false, true)) {
+            return;
+        }
+        ZLinkTeardownExecutor.execute(this::completeDrainOnTeardownThread);
+    }
+
+    private void completeDrainOnTeardownThread() {
+        if (drained.isDone()) {
+            return;
+        }
+        java.util.concurrent.CompletionStage<Void> notification = streams == null
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : streams.notifyServerDrain();
+        notification.thenCompose(ignored -> closeAsync())
+            .whenComplete((ignored, failure) -> {
+                if (failure == null) {
+                    publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.DRAINED);
+                    drained.complete(new systems.zlink.framework.monitoring.Drained());
+                } else {
+                    completeForcedStop(
+                        systems.zlink.framework.monitoring.ZLinkDrainForceReason.OWNER_CLEANUP_FAILED);
+                }
+            });
+    }
+
+    private void forceStop(systems.zlink.framework.monitoring.ZLinkDrainForceReason reason) {
+        if (!drainTerminalStarted.compareAndSet(false, true)) {
+            return;
+        }
+        ZLinkTeardownExecutor.execute(() -> forceStopOnTeardownThread(reason));
+    }
+
+    private void forceStopOnTeardownThread(
+        systems.zlink.framework.monitoring.ZLinkDrainForceReason initialReason) {
+        if (drained.isDone()) {
+            return;
+        }
+        systems.zlink.framework.monitoring.ZLinkDrainForceReason reason = initialReason;
+        publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.FORCE_STOPPING);
+        systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics.increment(
+            "zlink.drain.forced", java.util.Map.of("kind", streams == null ? "runtime" : "session"));
+        java.util.concurrent.CompletionStage<Void> notification = streams == null
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : streams.notifyServerDrain();
+        systems.zlink.framework.monitoring.ZLinkDrainForceReason requestedReason = reason;
+        notification.handle((ignored, failure) -> null)
+            .thenCompose(ignored -> closeAsync())
+            .whenComplete((ignored, failure) -> completeForcedStop(failure == null
+                ? requestedReason
+                : systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED));
+    }
+
+    private void completeForcedStop(
+        systems.zlink.framework.monitoring.ZLinkDrainForceReason reason) {
+        drained.complete(new systems.zlink.framework.monitoring.ForceStopped(reason));
+    }
+
+    private void publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState state) {
+        if (eventDispatcher != null) {
+            eventDispatcher.publish(new systems.zlink.framework.monitoring.ZLinkDrainEvent(
+                state, java.time.Instant.now()));
+        }
     }
 
     private void closeHandlerExecutor() {

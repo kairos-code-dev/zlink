@@ -5,7 +5,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 
 public final class TimerOverrunHandler implements ZLinkSpotTimerHandler<TimerScenarioSpot> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         TimerScenarioSpot spot,
         ZLinkTimerTick tick) {
         try {
@@ -15,5 +15,6 @@ public final class TimerOverrunHandler implements ZLinkSpotTimerHandler<TimerSce
             throw new IllegalStateException("timer overrun interrupted", error);
         }
         spot.overrunTick(tick.deliveryIndex(), tick.skippedTicks());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

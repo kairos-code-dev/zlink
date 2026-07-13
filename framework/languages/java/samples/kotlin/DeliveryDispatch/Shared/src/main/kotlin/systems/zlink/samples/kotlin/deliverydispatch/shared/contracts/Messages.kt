@@ -1,8 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.shared.contracts
 
 import java.time.Instant
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ActorRefSnapshot
 
 data class CreateDeliveryReq(
@@ -31,7 +29,7 @@ data class DeliveryStatusNotify(
     val occurredAt: Instant,
 )
 
-data class AssignDelivery(
+data class AssignDeliveryMsg(
     val deliveryId: String,
     val customerId: String,
     val pickupAddress: String,
@@ -40,33 +38,15 @@ data class AssignDelivery(
 
 data class BindCourierSessionReq(
     val courierId: String,
-    val actor: ActorRefWire? = null,
+    val actor: ActorRefSnapshot? = null,
     val sessionRoute: String? = null,
 )
 
 data class BindCourierSessionRes(
     val courierId: String,
-    val nodeRid: String,
+    val actor: ActorRefSnapshot,
     val sessionRoute: String,
 )
-
-data class ActorRefWire(
-    val nodeRid: String,
-    val actorId: String,
-    val generation: Long,
-) {
-    fun toActorRef(): ActorRef =
-        ActorRef(RoutingId.from(nodeRid), actorId, generation)
-
-    companion object {
-        fun from(actor: ActorRef): ActorRefWire =
-            ActorRefWire(
-                nodeRid = actor.nodeRid().toString(),
-                actorId = actor.actorId(),
-                generation = actor.generation(),
-            )
-    }
-}
 
 data class BindCourierReq(
     val courierId: String,
@@ -75,7 +55,7 @@ data class BindCourierReq(
 
 data class BindCourierRes(
     val courierId: String,
-    val actor: ActorRefWire,
+    val actor: ActorRefSnapshot,
     val sessionRoute: String,
 )
 
@@ -85,7 +65,7 @@ data class FindCourierActorReq(
 
 data class FindCourierActorRes(
     val courierId: String,
-    val actor: ActorRefWire?,
+    val actor: ActorRefSnapshot?,
 )
 
 data class EnsureCourierActorReq(
@@ -94,7 +74,7 @@ data class EnsureCourierActorReq(
 
 data class EnsureCourierActorRes(
     val courierId: String,
-    val actor: ActorRefWire,
+    val actor: ActorRefSnapshot,
 )
 
 data class OfferDeliveryReq(
@@ -145,6 +125,15 @@ data class DeliveryStatusChangedRes(
     val status: DeliveryStatus,
 )
 
+data class FindCustomerActorReq(
+    val customerId: String,
+)
+
+data class FindCustomerActorRes(
+    val customerId: String,
+    val actorRef: ActorRefSnapshot?,
+)
+
 data class ServerAssertionReq(
     val successfulDeliveryId: String,
     val reassignedDeliveryId: String,
@@ -161,7 +150,7 @@ data class EnsureCustomerActorReq(
 
 data class EnsureCustomerActorRes(
     val customerId: String,
-    val actor: ActorRefSnapshot,
+    val actorRef: ActorRefSnapshot,
 )
 
 enum class DeliveryStatus {

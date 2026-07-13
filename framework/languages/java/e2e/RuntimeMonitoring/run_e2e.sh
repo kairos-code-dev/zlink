@@ -18,9 +18,7 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
-EXPLICIT_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${EXPLICIT_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}"
-ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=""
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:runtime-monitoring:${run_id}}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=600
@@ -66,7 +64,7 @@ cleanup() {
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -119,22 +117,14 @@ wait_port() {
 }
 
 start_redis_container() {
-  if [[ -n "${EXPLICIT_REDIS_LOCATION_ENDPOINT}" ]]; then
-    return
-  fi
-  if [[ "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" != "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
-    return
-  fi
+  local redis_port
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
     exit 1
   fi
-  REDIS_CONTAINER="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  )"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
-    zlink_redis_endpoint "${REDIS_CONTAINER}"
-  )"
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
   export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
 }
 

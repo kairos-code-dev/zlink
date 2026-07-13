@@ -1,5 +1,10 @@
 package systems.zlink.samples.kotlin.gamequest.shared.contracts
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+
 object QuestIds {
     const val FirstHunt = "first-hunt"
     const val OpenAuction = "open-auction"
@@ -61,17 +66,68 @@ data class QuestProgress(
     val updatedAtUnixMs: Long,
 )
 
-data class GameplayEventEnvelope(
+data class GameplayMsg(
     val eventId: String,
     val playerId: String,
+    val type: String,
+    val payload: ByteArray,
+    val occurredAtUnixMs: Long,
+) {
+    fun decodePayload(): GameplayPayload = GameplayPayload.decode(payload)
+
+    companion object {
+        fun create(
+            eventId: String,
+            playerId: String,
+            type: String,
+            idempotencyKey: String,
+            value: String,
+            count: Int,
+            sourceApi: String,
+            occurredAtUnixMs: Long,
+            publish: Boolean,
+        ): GameplayMsg = GameplayMsg(
+            eventId,
+            playerId,
+            type,
+            GameplayPayload.encode(GameplayPayload(idempotencyKey, value, count, sourceApi, publish)),
+            occurredAtUnixMs,
+        )
+    }
+}
+
+data class GameplayPayload(
     val idempotencyKey: String,
-    val eventType: String,
     val value: String,
     val count: Int,
     val sourceApi: String,
-    val createdAtUnixMs: Long,
     val publish: Boolean,
-)
+) {
+    companion object {
+        fun encode(payload: GameplayPayload): ByteArray {
+            val bytes = ByteArrayOutputStream()
+            DataOutputStream(bytes).use { output ->
+                output.writeUTF(payload.idempotencyKey)
+                output.writeUTF(payload.value)
+                output.writeInt(payload.count)
+                output.writeUTF(payload.sourceApi)
+                output.writeBoolean(payload.publish)
+            }
+            return bytes.toByteArray()
+        }
+
+        fun decode(bytes: ByteArray): GameplayPayload =
+            DataInputStream(ByteArrayInputStream(bytes)).use { input ->
+                GameplayPayload(
+                    input.readUTF(),
+                    input.readUTF(),
+                    input.readInt(),
+                    input.readUTF(),
+                    input.readBoolean(),
+                )
+            }
+    }
+}
 
 class QuestProgressedEvent
 class QuestCompletedEvent

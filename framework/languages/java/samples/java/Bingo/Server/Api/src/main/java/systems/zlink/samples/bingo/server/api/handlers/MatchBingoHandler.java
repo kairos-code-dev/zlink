@@ -21,17 +21,18 @@ public final class MatchBingoHandler
     }
 
     @Override
-    public Messages.MatchBingoApiRes handle(
+    public java.util.concurrent.CompletionStage<Messages.MatchBingoApiRes> handle(
         Messages.MatchBingoApiReq request,
         ZLinkRequestContext context) {
-        Messages.AllocateBingoRoomRes allocated = channels.requestToChannel(
+        return channels.requestToChannel(
                 SampleNames.PlayChannel,
                 BingoMessages.allocateBingoRoomReq(
                     request.getMode(),
                     request.getActorId(),
                     request.getActorNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.AllocateBingoRoomRes.class);
-        return BingoMessages.matchBingoApiRes(allocated.getRoomId(), allocated.getRoomOwnerNodeRid());
+            .submit(Messages.AllocateBingoRoomRes.class)
+            .thenApply(allocated -> BingoMessages.matchBingoApiRes(
+                allocated.getRoomId(), allocated.getRoomOwnerNodeRid()));
     }
 }

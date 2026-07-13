@@ -85,6 +85,13 @@ final class ZLinkActorOwnershipCoordinator {
         return runtime.removeActor(key, tracked.row().generation()).thenApply(ignored -> null);
     }
 
+    void abandon(String actorId) {
+        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorId));
+        synchronized (gate) {
+            actors.remove(canonical);
+        }
+    }
+
     boolean owns(String actorType, String actorId) {
         String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorId));
         synchronized (gate) {

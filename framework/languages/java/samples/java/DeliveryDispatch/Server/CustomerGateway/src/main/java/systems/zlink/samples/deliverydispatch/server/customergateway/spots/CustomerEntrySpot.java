@@ -1,6 +1,5 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway.spots;
 
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -8,6 +7,8 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActorDirectory;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     private final ZLinkEntrySpotContext context;
@@ -26,39 +27,36 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     }
 
     @Override
-    public void onCreateActor(
+    public CompletionStage<Void> onCreateActor(
         CustomerActor actor,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken) {
+        ZLinkMessage createRequest) {
         customers.register(actor);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept();
+        ZLinkMessage request) {
+        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(
-        CustomerActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(CustomerActor actor) {
         customers.register(actor);
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(
-        CustomerActor actor,
-        CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(CustomerActor actor) {
         customers.remove(actor.actorId());
+        return CompletableFuture.completedFuture(null);
     }
 
-    public Messages.SubscribeDeliveryAccepted subscribe(
+    public Messages.SubscribeDeliveryRes subscribe(
         CustomerActor actor,
-        Messages.SubscribeDelivery request) {
+        Messages.SubscribeDeliveryReq request) {
         customers.subscribe(actor.actorId(), request.deliveryId());
-        return new Messages.SubscribeDeliveryAccepted(request.deliveryId());
+        return new Messages.SubscribeDeliveryRes(request.deliveryId());
     }
 }

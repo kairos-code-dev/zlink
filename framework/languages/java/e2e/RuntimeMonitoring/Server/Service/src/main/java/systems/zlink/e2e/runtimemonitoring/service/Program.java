@@ -151,8 +151,11 @@ public final class Program {
                 MonitoringSpot.class,
                 RoutingId.from("monitoring-room"),
                 ZLinkMessage.of("bootstrap"))
-            .toCompletableFuture()
-            .join();
+                .whenComplete((ignoredResult, error) -> {
+                    if (error != null) {
+                        throw new IllegalStateException("failed to create monitoring Spot", error);
+                    }
+                });
         };
     }
 

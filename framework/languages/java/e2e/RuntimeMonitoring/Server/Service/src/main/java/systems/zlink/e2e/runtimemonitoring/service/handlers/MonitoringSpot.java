@@ -1,7 +1,8 @@
 package systems.zlink.e2e.runtimemonitoring.service.handlers;
 
 import java.time.Duration;
-import systems.zlink.framework.CancellationToken;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -24,29 +25,32 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+    public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
         ZLinkTimerOptions options = new ZLinkTimerOptions();
         options.setStopOnUnhandledException(false);
         context.addTimer("failing-monitoring-timer", Duration.ofMillis(500),
             FailingTimerHandler.class, options);
         context.addTimer("stopping-monitoring-timer", Duration.ofMillis(500),
             FailingTimerHandler.class, new ZLinkTimerOptions());
-        return ZLinkSpotCreateResponse.accept();
+        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
     @Override
-    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
+        return CompletableFuture.completedFuture(null);
     }
 
     public static final class FailingTimerHandler
         implements ZLinkSpotTimerHandler<MonitoringSpot> {
         @Override
-        public void handle(MonitoringSpot spot, ZLinkTimerTick tick) {
-            throw new IllegalStateException("monitoring timer boom");
+        public CompletionStage<Void> handle(MonitoringSpot spot, ZLinkTimerTick tick) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("monitoring timer boom"));
         }
     }
 }

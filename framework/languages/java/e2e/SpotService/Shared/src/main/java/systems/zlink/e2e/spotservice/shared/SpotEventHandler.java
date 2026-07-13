@@ -7,9 +7,10 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 public final class SpotEventHandler
     implements ZLinkSpotSubscriptionHandler<UserSpot, Contracts.MeshMsg> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         UserSpot spot,
         Contracts.MeshMsg message) {
         spot.record("SpotMeshMsg", message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

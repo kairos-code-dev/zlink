@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -42,7 +43,6 @@ public final class Program {
             } catch (Exception ignored) {
             }
         }));
-        Thread.currentThread().join();
     }
 
     public static AutoCloseable run(String... args) {
@@ -87,8 +87,9 @@ public final class Program {
     OrderWorkflowService orderWorkflowService(
         RedisCommerceStore store,
         ZLinkSpotManager spots,
-        ZLinkRouteClient routes) {
-        return new OrderWorkflowService(store, spots, routes);
+        ZLinkRouteClient routes,
+        SpotHandleResolver spotHandles) {
+        return new OrderWorkflowService(store, spots, routes, spotHandles);
     }
 
     private static HttpServer startHttp() throws IOException {

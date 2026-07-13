@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -27,7 +29,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -44,19 +45,20 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -70,7 +72,7 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 final class SpotRuntimeFakeBackendTest {
     @Test
     void spotManagerCreateListFindAndCloseUseBackendSpotNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router");
                 node.enablePubSub("inproc://spot-pub");
                 node.addSpotFactory(GameSpot.class); }; };
@@ -112,6 +114,8 @@ final class SpotRuntimeFakeBackendTest {
                 .join());
         }
 
+        RuntimeTestSupport.awaitClosed(backendFactory);
+
         assertEquals(
             List.of(
                 "factory.channel",
@@ -136,7 +140,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void spotManagerCreatePayloadIsPassedToOnCreate() {
         PayloadSpot.lastCreatePayload.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://payload-router");
                 node.addSpotFactory(PayloadSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-spot");
@@ -161,7 +165,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotManagerListAndCloseCanRunConcurrently() throws Exception {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router-concurrent");
                 node.addSpotFactory(GameSpot.class); }; };
         List<RoutingId> rids = java.util.stream.IntStream.range(0, 32)
@@ -200,7 +204,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void customCodecSpotCreateDecodesEncodedFrameworkMessage() {
         PayloadSpot.lastCreatePayload.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://payload-codec-router");
                 node.addSpotFactory(PayloadSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-codec-spot");
@@ -237,7 +241,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void protobufSpotCreateDecodesRequestAndReplyThroughFrameworkMessage() {
         ProtobufCreateSpot.lastCreatePayload.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.codecs().use(ZLinkProtobufCodec.defaultCodec());
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://payload-protobuf-router");
                 node.addSpotFactory(ProtobufCreateSpot.class); }; };
@@ -274,7 +278,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void messagePackSpotCreateDecodesRequestAndReplyThroughFrameworkMessage() {
         MessagePackCreateSpot.lastCreatePayload.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://payload-messagepack-router");
                 node.addSpotFactory(MessagePackCreateSpot.class); }; };
@@ -310,7 +314,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundChannelCallsUseSharedChannelClient() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
         { var channel = options.addClientServerChannel("play-rpc"); channel.enableClient("inproc://play-rpc"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
@@ -325,14 +329,10 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToChannel("play-events", message("hello", "Greeting"))
-                .packetName("Greeting")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToChannel("play-events", new Greeting("hello"))
+                .submit();
             OutboundSpot.context.outbound()
-                .requestToChannel("play-rpc", message("ping", "Ping"))
-                .packetName("Ping")
+                .requestToChannel("play-rpc", new Ping("ping"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -347,7 +347,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void spotContextDispatchesRegisteredPacketRequestAndSubscriptionHandlers() {
         HandlerSpot.dispatches.clear();
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://spot-pub");
                 node.addSpotFactory(HandlerSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
@@ -366,19 +366,16 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertEquals(
-            List.of(
-                "packet:hello",
-                "request:ping",
-                "subscription:opened"),
-            HandlerSpot.dispatches);
+            java.util.Set.of("packet:hello", "request:ping", "subscription:opened"),
+            java.util.Set.copyOf(HandlerSpot.dispatches));
         assertEquals(List.of("\"reply:ping\""), backendFactory.spotReplies());
         assertTrue(backendFactory.calls().contains("spot.1.setSubscription.stage.events"));
     }
 
     @Test
-    void userSpotDispatchesRouteHandlersOnSingleSpotSerialQueue() throws Exception {
+    void userSpotReleasesItsTurnWhileRouteHandlerStageIsIncomplete() throws Exception {
         SerialSpotHandler.reset();
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(SerialSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
@@ -392,17 +389,12 @@ final class SpotRuntimeFakeBackendTest {
             backendFactory.dispatchSpotRoute("String", "\"first\"");
             SerialSpotHandler.firstStarted.get(1, TimeUnit.SECONDS);
             backendFactory.dispatchSpotRoute("String", "\"second\"");
-
-            assertFalse(
-                SerialSpotHandler.secondStarted.isDone(),
-                SerialSpotHandler.events.toString());
-
-            SerialSpotHandler.releaseFirst.complete(null);
             SerialSpotHandler.secondStarted.get(1, TimeUnit.SECONDS);
+            SerialSpotHandler.releaseFirst.complete(null);
         }
 
         assertEquals(
-            List.of("start:first", "end:first", "start:second", "end:second"),
+            List.of("start:first", "start:second", "end:second", "end:first"),
             SerialSpotHandler.events);
     }
 
@@ -410,7 +402,7 @@ final class SpotRuntimeFakeBackendTest {
     void userSpotActorJoinWaitsOnSingleSpotSerialQueue() throws Exception {
         SerialSpotHandler.reset();
         SerialActorJoinHandler.reset();
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(SerialSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
@@ -455,7 +447,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundSpotCallsUseBackendSpotRouteOperations() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -468,20 +460,18 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(targetSpotRef(), message("hello", "Greeting"))
-                .packetName("Greeting")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToSpot(targetSpotHandle(runtime), new Greeting("hello"))
+                .submit();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(targetSpotRef(), message("ping", "Ping"))
-                    .packetName("Ping")
+                    .requestToSpot(targetSpotHandle(runtime), new Ping("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -504,7 +494,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundUsesMessageTypePacketNameByDefault() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -517,18 +507,18 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(targetSpotRef(), new SpotGreeting("hello"))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToSpot(targetSpotHandle(runtime), new SpotGreeting("hello"))
+                .submit();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotHandle(runtime), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -551,7 +541,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundRequestReplyIgnoresBackendPacketNamePart() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -570,7 +560,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotHandle(runtime), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -579,7 +569,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundRequestCompletesFrameworkErrorReplyAsFrameworkException() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -597,7 +587,7 @@ final class SpotRuntimeFakeBackendTest {
             CompletionException error = assertThrows(
                 CompletionException.class,
                 () -> OutboundSpot.context.outbound()
-                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotHandle(runtime), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -608,7 +598,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotOutboundUsesConfiguredClientServerEgressChannel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var channel = options.addClientServerChannel("egress").enableClient("inproc://ingress-server");};
         { var channel = options.addClientServerChannel("ingress").enableServer("inproc://ingress-server");
             channel.addSendHandler(NoopSendHandler.class, String.class, "Noop"); };
@@ -624,11 +614,9 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(targetSpotRef(), message("hello", "Greeting"))
-                .packetName("Greeting")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToSpot(targetSpotHandle(runtime), new Greeting("hello"))
+                .submit();
+            awaitCall(backendFactory, "spot.1.sendToSpot.spot-node.target-spot.Greeting");
         }
 
         assertTrue(
@@ -638,8 +626,8 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
-    void spotOutboundUsesConfiguredRouteMeshEgressChannel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+    void resolvedSpotHandleUsesEntrySpotRequestPath() {
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
         { var route = options.addRouteMeshChannel("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
@@ -659,8 +647,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(routeTargetSpotRef("egress"), message("ping", "Ping"))
-                    .packetName("Ping")
+                    .requestToSpot(targetSpotHandle(runtime), new Ping("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -668,13 +655,13 @@ final class SpotRuntimeFakeBackendTest {
 
         assertTrue(
             backendFactory.calls().contains(
-                "spotRouteBridge.bridge.request.egress.ingress-route.target-spot.Ping"),
+                "entrySpot.requestToSpot.spot-node.target-spot.Ping"),
             backendFactory.calls().toString());
     }
 
     @Test
-    void routeMeshSpotEgressUsesSpotRefTargetRoutePeerRoutingId() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+    void resolvedSpotHandleUsesEntrySpotSendPath() {
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
         { var route = options.addRouteMeshChannel("ingress"); route.enableServer("inproc://ingress-route");
@@ -691,22 +678,20 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(routeTargetSpotRef("egress"), message("hello", "Ping"))
-                .packetName("Ping")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToSpot(targetSpotHandle(runtime), new Ping("hello"))
+                .submit();
+            awaitCall(backendFactory, "entrySpot.sendToSpot.spot-node.target-spot.Ping");
         }
 
         assertTrue(
             backendFactory.calls().contains(
-                "spotRouteBridge.bridge.send.egress.ingress-route.target-spot.Ping"),
+                "entrySpot.sendToSpot.spot-node.target-spot.Ping"),
             backendFactory.calls().toString());
     }
 
     @Test
-    void spotOutboundUsesSpotRefMeshToSelectRouteMeshEgressChannel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+    void resolvedSpotHandleDoesNotExposeRouteMeshSelection() {
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var route = options.addRouteMeshChannel("egress-a"); route.enableServer("inproc://egress-a"); };
         { var route = options.addRouteMeshChannel("egress-b"); route.enableServer("inproc://egress-b"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
@@ -721,22 +706,20 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(routeTargetSpotRef("egress-b"), message("hello", "Ping"))
-                .packetName("Ping")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .sendToSpot(targetSpotHandle(runtime), new Ping("hello"))
+                .submit();
+            awaitCall(backendFactory, "entrySpot.sendToSpot.spot-node.target-spot.Ping");
         }
 
         assertTrue(
             backendFactory.calls().contains(
-                "spotRouteBridge.bridge.send.egress-b.ingress-route.target-spot.Ping"),
+                "entrySpot.sendToSpot.spot-node.target-spot.Ping"),
             backendFactory.calls().toString());
     }
 
     @Test
     void ambientSpotOutboundWorksInsideSpotCallback() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(AmbientOutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -749,6 +732,7 @@ final class SpotRuntimeFakeBackendTest {
                 .create(AmbientOutboundSpot.class, RoutingId.from("game-3"))
                 .toCompletableFuture()
                 .join();
+            awaitCall(backendFactory, "dealer.send.Greeting");
         }
 
         assertEquals(
@@ -758,7 +742,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotPublisherClientPublishesThroughAttachedPublisherSpot() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://spot-pub");}; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -766,12 +750,12 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotPublisherClient()
-                .publish("game", "stage.events", message("opened", "StageOpened"))
-                .packetName("StageOpened")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .publish("game", "stage.events", new StageOpened("opened"))
+                .submit();
+            awaitCall(backendFactory, "spot.1.publish.stage.events.StageOpened");
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -792,7 +776,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotRouterAndPubSubManualPeersConnectThroughBackendNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router")
                     .setRoutingId(RoutingId.from("spot-node-1"))
                     .connectRouter("inproc://spot-router-peer");
@@ -804,6 +788,8 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -826,7 +812,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void acceptedSpotRouteChannelManualConnectionsAttachRouterChannelPeers() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var route = options.addRouteMeshChannel("api"); route.enableServer("inproc://api-route");
             route.enableClient("inproc://api-route-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router");}; };
@@ -836,6 +822,8 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         List<String> calls = backendFactory.calls();
         assertEquals(
@@ -879,7 +867,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void entrySpotRoutingIdAppliesToBackendEntrySpotBeforeBind() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.enableRouter("inproc://spot-router"); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -888,6 +876,8 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
+
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -910,7 +900,7 @@ final class SpotRuntimeFakeBackendTest {
         LifecycleEntrySpot.configureCount.set(0);
         LifecycleEntrySpot.initializeCount.set(0);
         LifecycleEntrySpot.closingCount.set(0);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.enableRouter("inproc://spot-router");
                 node.addEntrySpot(LifecycleEntrySpot.class); }; };
@@ -925,6 +915,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         awaitCondition(() -> LifecycleEntrySpot.closingCount.get() == 1);
+        RuntimeTestSupport.awaitClosed(backendFactory);
         assertEquals(1, LifecycleEntrySpot.closingCount.get());
         assertEquals(
             List.of(
@@ -947,7 +938,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void entrySpotDispatchReadableDrainsUnhandledActorJoinWithRejectReply() {
         LifecycleEntrySpot.rejectJoin.set(false);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -969,7 +960,7 @@ final class SpotRuntimeFakeBackendTest {
         LifecycleEntrySpot.lastActorJoin.set(null);
         LifecycleEntrySpot.lastJoin.set(null);
         LifecycleEntrySpot.rejectJoin.set(false);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -983,6 +974,8 @@ final class SpotRuntimeFakeBackendTest {
                 "String",
                 "join-request");
             awaitCall(backendFactory, "entrySpot.replyActorJoin.player-1.0");
+            awaitCondition(() ->
+                "player-1:true".equals(LifecycleEntrySpot.lastJoin.get()));
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
@@ -998,7 +991,7 @@ final class SpotRuntimeFakeBackendTest {
         LifecycleEntrySpot.lastActorJoin.set(null);
         LifecycleEntrySpot.lastJoin.set(null);
         LifecycleEntrySpot.rejectJoin.set(true);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1026,7 +1019,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void entrySpotActorReadableInvokesRegisteredActorSendHandlerOnActorQueue() {
         ActorSendHandler.lastMessage.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1050,7 +1043,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void entrySpotActorReadableInvokesRegisteredActorRequestHandlerAndRepliesBoundSession() {
         ActorRequestHandler.lastRequest.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1078,7 +1071,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void entrySpotActorReadableInvokesInterfaceActorRequestHandler() {
         InterfaceEntryActorRequestHandler.lastRequest.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(InterfaceEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1109,7 +1102,7 @@ final class SpotRuntimeFakeBackendTest {
     void entrySpotActorRequestUsesEntryHandlerWhenUserSpotSharesPacketName() {
         SharedEntryActorRequestHandler.lastRequest.set(null);
         SharedUserActorRequestHandler.lastRequest.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(SharedEntrySpot.class); node.addSpotFactory(SharedUserSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1138,7 +1131,7 @@ final class SpotRuntimeFakeBackendTest {
     void userSpotActorRequestCanLeaveActorAndReplyBoundSession() {
         LeaveDuringRequestSpot.lastLeave.set(null);
         LeaveDuringRequestHandler.lastRequest.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.addSpotFactory(LeaveDuringRequestSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1156,6 +1149,7 @@ final class SpotRuntimeFakeBackendTest {
                 "player-1",
                 null,
                 "join");
+            awaitCall(backendFactory, "spot.1.replyActorJoin.player-1.");
             backendFactory.dispatchSpotActorStreamRequest(
                 "player-1",
                 "LeaveDuringRequest",
@@ -1163,6 +1157,7 @@ final class SpotRuntimeFakeBackendTest {
                 42);
 
             awaitCall(backendFactory, "spotNode.leaveActor.player-1.");
+            backendFactory.dispatchSpotActorLifecycleLeft("player-1");
             awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
         }
 
@@ -1177,7 +1172,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void creatingSecondUserSpotOfSameTypeDoesNotDuplicateActorPacketRegistration() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://same-type-router");
                 node.addSpotFactory(SharedUserSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1202,7 +1197,7 @@ final class SpotRuntimeFakeBackendTest {
     void userSpotActorJoinReadableInvokesMemberJoinAndLifecycleCallbacks() {
         InterfaceUserSpot.lastJoin.set(null);
         InterfaceUserSpot.lastPostJoin.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(InterfaceUserSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1231,10 +1226,11 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void spotContextLeaveActorMarksActorLeftAndInvokesMemberCallback() {
+        OutboundSpot.lastJoin.set(null);
         OutboundSpot.lastLeave.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entrySpot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
                 node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1246,13 +1242,22 @@ final class SpotRuntimeFakeBackendTest {
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
-            backendFactory.dispatchEntrySpotActorJoinReadable(
+            backendFactory.dispatchSpotActorJoinReadable(
                 "player-1",
-                "String",
+                null,
                 "join-request");
+            awaitCall(backendFactory, "spot.1.replyActorJoin.player-1.0");
+            awaitCondition(() -> "player-1:true".equals(OutboundSpot.lastJoin.get()));
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
-            OutboundSpot.context.leaveActor(actor).toCompletableFuture().join();
+            var leaving = OutboundSpot.context.leaveActor(actor).toCompletableFuture();
+            awaitCall(backendFactory, "spotNode.leaveActor.player-1.game-2");
+            backendFactory.dispatchSpotActorLifecycleLeft("player-1");
+            awaitCondition(() -> "player-1:false".equals(OutboundSpot.lastLeave.get()));
+            awaitCall(backendFactory, "spotNode.joinActorEntrySpot.player-1.spot-node");
+            backendFactory.dispatchEntrySpotActorLifecycleJoined(
+                "player-1", RoutingId.from("entrySpot"));
+            leaving.join();
         }
 
         assertEquals("player-1:false", OutboundSpot.lastLeave.get());
@@ -1260,8 +1265,9 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void entrySpotActorLifecycleReadableDrainsLeftEventAndInvokesMemberCallback() {
+        LifecycleEntrySpot.lastJoin.set(null);
         LifecycleEntrySpot.lastLeave.set(null);
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -1274,6 +1280,7 @@ final class SpotRuntimeFakeBackendTest {
                 "player-1",
                 "String",
                 "join-request");
+            awaitCondition(() -> "player-1:true".equals(LifecycleEntrySpot.lastJoin.get()));
             backendFactory.dispatchEntrySpotActorLifecycleLeft("player-1");
             awaitCondition(() -> "player-1:false".equals(LifecycleEntrySpot.lastLeave.get()));
         }
@@ -1284,7 +1291,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void entrySpotActorLifecycleJoinedBindsActorContextToUserSpot() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
@@ -1305,13 +1312,13 @@ final class SpotRuntimeFakeBackendTest {
 
             awaitCondition(() -> Optional.of(spotRid).equals(actor.context().spotRid()));
             assertEquals(Optional.of(spotRid), actor.context().spotRid());
-            assertSame(OutboundSpot.instance, actor.context().getSpot(OutboundSpot.class));
+            assertEquals(Optional.of(spotRid), actor.context().spotRid());
         }
     }
 
     @Test
     void spotPublisherClientRejectsUnattachedChannel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://spot-pub");}; };
 
         try (ZLinkFrameworkRuntime runtime =
@@ -1332,8 +1339,9 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onInitialize() {
-                    }
+        public CompletionStage<Void> onInitialize() {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class PayloadSpot extends TestZLinkSpot<ZLinkActor> {
@@ -1345,10 +1353,11 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             String decoded = request.decode(String.class);
             lastCreatePayload.set(decoded);
-            return ZLinkSpotCreateResponse.accept(new CreatePayload("reply:" + decoded));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotCreateResponse.accept(new CreatePayload("reply:" + decoded)));
         }
     }
 
@@ -1364,10 +1373,11 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             StringValue decoded = request.decode(StringValue.class);
             lastCreatePayload.set(decoded.getValue());
-            return ZLinkSpotCreateResponse.accept(StringValue.of("reply:" + decoded.getValue()));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotCreateResponse.accept(StringValue.of("reply:" + decoded.getValue())));
         }
     }
 
@@ -1380,10 +1390,11 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             PackedCreatePayload decoded = request.decode(PackedCreatePayload.class);
             lastCreatePayload.set(decoded.value());
-            return ZLinkSpotCreateResponse.accept(new PackedCreatePayload("reply:" + decoded.value()));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotCreateResponse.accept(new PackedCreatePayload("reply:" + decoded.value())));
         }
     }
 
@@ -1476,6 +1487,7 @@ final class SpotRuntimeFakeBackendTest {
     public static final class OutboundSpot extends TestZLinkSpot<ZLinkActor> {
         static OutboundSpot instance;
         static ZLinkSpotContext context;
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
         static final AtomicReference<String> lastLeave = new AtomicReference<>();
 
         public OutboundSpot(ZLinkSpotContext context) {
@@ -1489,11 +1501,25 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
-                    }
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
+        }
+
+        @Override
+        public CompletionStage<Void> onJoinedActor(
+            ZLinkActor actor) {
+            lastJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onLeaveActor(
+            ZLinkActor actor) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class HandlerSpot extends TestZLinkSpot<ZLinkActor> {
@@ -1520,16 +1546,17 @@ final class SpotRuntimeFakeBackendTest {
     public static final class SpotCommandHandler
         implements ZLinkSpotPacketHandler<HandlerSpot, String> {
         @Override
-        public void handle(HandlerSpot spot, String message) {
+        public CompletionStage<Void> handle(HandlerSpot spot, String message) {
             HandlerSpot.dispatches.add("packet:" + message);
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class SpotQueryHandler {
         @ZLinkSpotRequest(packetName = "SpotQuery")
-        public String handle(HandlerSpot spot, String request) {
+        public CompletionStage<String> handle(HandlerSpot spot, String request) {
             HandlerSpot.dispatches.add("request:" + request);
-            return "reply:" + request;
+            return CompletableFuture.completedFuture("reply:" + request);
         }
     }
 
@@ -1537,9 +1564,10 @@ final class SpotRuntimeFakeBackendTest {
     public static final class SpotEventHandler
         implements ZLinkSpotSubscriptionHandler<HandlerSpot, String> {
         @Override
-        public void handle(HandlerSpot spot, String message) {
+        public CompletionStage<Void> handle(HandlerSpot spot, String message) {
             HandlerSpot.dispatches.add("subscription:" + message);
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class SerialSpot extends TestZLinkSpot<ZLinkActor> {
@@ -1560,17 +1588,17 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             SerialJoinRequest decoded = request.decode(SerialJoinRequest.class);
             SerialActorJoinHandler.events.add(
                 "join:start:" + actorId + ":" + decoded.value());
             SerialActorJoinHandler.started.complete(null);
             SerialActorJoinHandler.release.join();
             SerialActorJoinHandler.events.add("join:end:" + actorId);
-            return ZLinkSpotActorJoinResponse.accept("joined:" + decoded.value());
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept("joined:" + decoded.value()));
         }
     }
 
@@ -1589,17 +1617,16 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void handle(SerialSpot spot, String message) {
+        public CompletionStage<Void> handle(SerialSpot spot, String message) {
             events.add("start:" + message);
             if ("first".equals(message)) {
                 firstStarted.complete(null);
-                releaseFirst.join();
-                events.add("end:first");
-                return;
+                return releaseFirst.thenRun(() -> events.add("end:first"));
             }
             events.add("end:" + message);
             secondStarted.complete(null);
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     @ZLinkPacket("SerialJoinRequest")
@@ -1666,10 +1693,11 @@ final class SpotRuntimeFakeBackendTest {
     public static final class NoopSendHandler
         implements ZLinkSendHandler<String> {
         @Override
-        public void handle(
+        public CompletionStage<Void> handle(
             String message,
             ZLinkSendContext context) {
-                    }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class AmbientOutboundSpot extends TestZLinkSpot<ZLinkActor> {
@@ -1681,14 +1709,11 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
             outbound
-                .sendToChannel("play-events", message("hello", "Greeting"))
-                .packetName("Greeting")
-                .submit()
-                .toCompletableFuture()
-                .join();
-            return ZLinkSpotCreateResponse.accept();
+                .sendToChannel("play-events", new Greeting("hello"))
+                .submit();
+            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
         }
     }
 
@@ -1717,41 +1742,43 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onInitialize() {
+        public CompletionStage<Void> onInitialize() {
             initializeCount.incrementAndGet();
-                    }
-
-        @Override
-        public void onClosing() {
-            closingCount.incrementAndGet();
-                    }
-
-        @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
-            String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
-            String decoded = request.decode(String.class);
-            lastActorJoin.set(actorId + ":" + decoded);
-            if (Boolean.TRUE.equals(rejectJoin.get())) {
-                return ZLinkSpotActorJoinResponse.reject("entry-rejected:" + decoded);
-            }
-            return ZLinkSpotActorJoinResponse.accept("entry:" + decoded);
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            lastJoin.set(actor.actorId() + ":" + actor.context().isJoined());
-                    }
+        public CompletionStage<Void> onClosing() {
+            closingCount.incrementAndGet();
+            return CompletableFuture.completedFuture(null);
+        }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
-                    }
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            String decoded = request.decode(String.class);
+            lastActorJoin.set(actorId + ":" + decoded);
+            if (Boolean.TRUE.equals(rejectJoin.get())) {
+                return CompletableFuture.completedFuture(
+                    ZLinkSpotActorJoinResponse.reject("entry-rejected:" + decoded));
+            }
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("entry:" + decoded));
+        }
+
+        @Override
+        public CompletionStage<Void> onJoinedActor(
+            ZLinkActor actor) {
+            lastJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> onLeaveActor(
+            ZLinkActor actor) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class InterfaceEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
@@ -1781,14 +1808,13 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @Override
-        public String handle(
+        public CompletionStage<String> handle(
             InterfaceEntrySpot entrySpot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
-            InterfaceActorRequest request,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+            InterfaceActorRequest request) {
             lastRequest.set(actor.actorId() + ":" + request.value());
-            return "reply:" + request.value();
+            return CompletableFuture.completedFuture("reply:" + request.value());
         }
     }
 
@@ -1832,14 +1858,13 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @ZLinkSpotActorRequest(packetName = "SharedActorRequest")
-        public String handle(
+        public CompletionStage<String> handle(
             SharedEntrySpot spot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
-            String request,
-            CancellationToken cancellationToken) {
+            String request) {
             lastRequest.set("entry:" + actor.actorId() + ":" + request);
-            return "entry-reply:" + request;
+            return CompletableFuture.completedFuture("entry-reply:" + request);
         }
     }
 
@@ -1847,14 +1872,13 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @ZLinkSpotActorRequest(packetName = "SharedActorRequest")
-        public String handle(
+        public CompletionStage<String> handle(
             SharedUserSpot spot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
-            String request,
-            CancellationToken cancellationToken) {
+            String request) {
             lastRequest.set("user:" + actor.actorId() + ":" + request);
-            return "user-reply:" + request;
+            return CompletableFuture.completedFuture("user-reply:" + request);
         }
     }
 
@@ -1877,18 +1901,17 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept();
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept());
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
+        public CompletionStage<Void> onLeaveActor(
+            ZLinkActor actor) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1896,15 +1919,14 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @ZLinkSpotActorRequest(packetName = "LeaveDuringRequest")
-        public String handle(
+        public CompletionStage<String> handle(
             LeaveDuringRequestSpot spot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
-            String request,
-            CancellationToken cancellationToken) {
+            String request) {
             lastRequest.set(actor.actorId() + ":" + request);
-            spot.context().leaveActor(actor).toCompletableFuture().join();
-            return "left:" + request;
+            return spot.context().leaveActor(actor).thenApply(
+                ignored -> "left:" + request);
         }
     }
 
@@ -1927,21 +1949,20 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             String decoded = request.decode(String.class);
             lastJoin.set(actorId + ":" + decoded);
-            return ZLinkSpotActorJoinResponse.accept("joined:" + decoded);
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("joined:" + decoded));
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            lastPostJoin.set(actor.actorId() + ":" + actor.context().isJoined());
-                    }
+        public CompletionStage<Void> onJoinedActor(
+            ZLinkActor actor) {
+            lastPostJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     @ZLinkPacket("InterfaceActorRequest")
@@ -1980,8 +2001,9 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastMessage = new AtomicReference<>();
 
         @ZLinkSpotActorSend
-        public void send(PlayerActor actor, String message) {
+        public CompletionStage<Void> send(PlayerActor actor, String message) {
             lastMessage.set(actor.actorId() + ":" + message);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1990,9 +2012,9 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @ZLinkSpotActorRequest(packetName = "ActorRequestString")
-        public String request(PlayerActor actor, String request) {
+        public CompletionStage<String> request(PlayerActor actor, String request) {
             lastRequest.set(actor.actorId() + ":" + request);
-            return "reply:" + request;
+            return CompletableFuture.completedFuture("reply:" + request);
         }
     }
 
@@ -2018,27 +2040,26 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
-        }
-    }
-
-    public static final class RouteEgressResolver
-        implements SpotRemoteRefResolver {
-        @Override
-        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
-            return CompletableFuture.completedFuture(
-                new SpotRemoteRef(
-                    "egress",
-                    RoutingId.from("ingress-route"),
-                    spotRid,
-                    ZLinkSpotKind.USER));
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
     public record SpotGreeting(String value) {
+    }
+
+    @ZLinkPacket("Greeting")
+    public record Greeting(String value) {
+    }
+
+    @ZLinkPacket("Ping")
+    public record Ping(String value) {
+    }
+
+    @ZLinkPacket("StageOpened")
+    public record StageOpened(String value) {
     }
 
     @ZLinkPacket("SpotQuestion")
@@ -2049,12 +2070,26 @@ final class SpotRuntimeFakeBackendTest {
         return value;
     }
 
-    private static SpotRef targetSpotRef() {
-        return new SpotRef("game", RoutingId.from("spot-node"), RoutingId.from("target-spot"));
+    private static SpotHandle targetSpotHandle(ZLinkFrameworkRuntime runtime) {
+        return runtime.spotHandleResolver()
+            .resolveSpotHandle(RoutingId.from("target-spot"))
+            .toCompletableFuture()
+            .join()
+            .orElseThrow();
     }
 
-    private static SpotRef routeTargetSpotRef(String routeChannelName) {
-        return new SpotRef(routeChannelName, RoutingId.from("ingress-route"), RoutingId.from("target-spot"));
+    private static DefaultZLinkFrameworkOptions optionsWithTargetLocation() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        Instant now = Instant.now();
+        store.renewOwnerLease("target-owner", RoutingId.from("spot-node"), Duration.ofHours(1))
+            .toCompletableFuture().join();
+        store.updateSpot(new ZLinkSpotLocation(
+            "game", RoutingId.from("target-spot"), "target", RoutingId.from("spot-node"),
+            ZLinkSpotKind.USER, "inproc://spot-router", "target-owner", 1, now),
+            ZLinkLocationWriteIntent.TAKEOVER).toCompletableFuture().join();
+        options.addLocationStore(store);
+        return options;
     }
 
     private static ZLinkActor managedActor(

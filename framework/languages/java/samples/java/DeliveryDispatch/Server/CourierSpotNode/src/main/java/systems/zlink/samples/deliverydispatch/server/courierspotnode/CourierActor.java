@@ -30,7 +30,7 @@ public final class CourierActor implements ZLinkActor {
         return context;
     }
 
-    public Messages.OfferDeliveryResult offer(Messages.OfferDelivery offer) {
+    public Messages.OfferDeliveryRes offer(Messages.OfferDeliveryReq offer) {
         CompletableFuture<Messages.CourierDecision> decision = new CompletableFuture<>();
         synchronized (gate) {
             pending.put(offer.deliveryId(), decision);
@@ -45,13 +45,13 @@ public final class CourierActor implements ZLinkActor {
                 .submit();
             Messages.CourierDecision accepted =
                 decision.get(SampleTimings.CourierDecisionTimeout.toMillis(), TimeUnit.MILLISECONDS);
-            return new Messages.OfferDeliveryResult(
+            return new Messages.OfferDeliveryRes(
                 offer.deliveryId(),
                 offer.courierId(),
                 accepted.accepted(),
                 accepted.reason());
         } catch (java.util.concurrent.TimeoutException ex) {
-            return new Messages.OfferDeliveryResult(
+            return new Messages.OfferDeliveryRes(
                 offer.deliveryId(),
                 offer.courierId(),
                 false,

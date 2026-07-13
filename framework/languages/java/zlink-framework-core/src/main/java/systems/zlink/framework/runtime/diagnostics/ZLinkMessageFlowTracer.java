@@ -9,10 +9,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import systems.zlink.framework.configuration.ZLinkDiagnosticsOptions;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
+import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
+import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -65,14 +70,15 @@ public final class ZLinkMessageFlowTracer {
         if (!enabled(flow.outcome())) {
             return;
         }
-        if (flow.outcome() != ZLinkMessageFlowOutcome.DROPPED
-            && flow.outcome() != ZLinkMessageFlowOutcome.ERROR
-            && !sample()) {
+        ZLinkMessageFlowEvent tracedFlow = attachFlow(flow);
+        if (tracedFlow.outcome() != ZLinkMessageFlowOutcome.DROPPED
+            && tracedFlow.outcome() != ZLinkMessageFlowOutcome.ERROR
+            && !sample(tracedFlow.flowId())) {
             return;
         }
         tracedCount.incrementAndGet();
         try {
-            logDefault(flow);
+            logDefault(tracedFlow);
         } catch (Throwable ex) {
             observerFailureCount.incrementAndGet();
         }
@@ -86,7 +92,7 @@ public final class ZLinkMessageFlowTracer {
                 if (observer == null) {
                     return;
                 }
-                CompletionStage<Void> result = observer.onMessageFlow(flow);
+                CompletionStage<Void> result = observer.onMessageFlow(tracedFlow);
                 if (result != null) {
                     result.exceptionally(error -> {
                         reportObserverFailure(error);
@@ -97,6 +103,23 @@ public final class ZLinkMessageFlowTracer {
                 reportObserverFailure(ex);
             }
         }, executor);
+    }
+
+    private ZLinkMessageFlowEvent attachFlow(ZLinkMessageFlowEvent event) {
+        if (event.flowId() != null) {
+            return event;
+        }
+        ZLinkFlowContext.State state = ZLinkFlowContext.current();
+        if (state == null) {
+            state = ZLinkFlowContext.create(originFor(event));
+        }
+        return event.withFlow(state.flowId(), state.origin());
+    }
+
+    private static ZLinkFlowOrigin originFor(ZLinkMessageFlowEvent event) {
+        return event.outcome() == ZLinkMessageFlowOutcome.RECEIVED
+            ? ZLinkFlowOrigin.INBOUND
+            : ZLinkFlowOrigin.APPLICATION;
     }
 
     public long tracedCount() {
@@ -114,7 +137,7 @@ public final class ZLinkMessageFlowTracer {
             : ZLinkMessageFlowLogMode.KEY_TRANSITIONS;
     }
 
-    private boolean sample() {
+    private boolean sample(String flowId) {
         double rate = options.diagnostics().sampleRate();
         if (rate >= 1.0d) {
             return true;
@@ -123,6 +146,9 @@ public final class ZLinkMessageFlowTracer {
             return false;
         }
         long stride = Math.max(1L, Math.round(1.0d / rate));
+        if (flowId != null) {
+            return Math.floorMod(flowId.hashCode(), stride) == 0;
+        }
         return sampleCounter.incrementAndGet() % stride == 0;
     }
 
@@ -174,7 +200,35 @@ public final class ZLinkMessageFlowTracer {
         if (diagnostics.logFile() != null) {
             ZLinkTraceFileWriter.write(diagnostics.logFile(), line);
         } else {
-            LOGGER.log(Level.INFO, line);
+            LOGGER.log(logLevel(flow), line);
         }
+    }
+
+    Level logLevel(ZLinkMessageFlowEvent flow) {
+        if (flow.outcome() != ZLinkMessageFlowOutcome.ERROR
+            && flow.outcome() != ZLinkMessageFlowOutcome.DROPPED) {
+            return Level.INFO;
+        }
+        if (flow.errorReason() == ZLinkDispatchErrorReason.HANDLER_EXCEPTION) {
+            return Level.SEVERE;
+        }
+        if (flow.messageKind() == ZLinkDispatchMessageKind.PUBLISH) {
+            return julLevel(options.unhandled().publishLogLevel());
+        }
+        if (flow.messageKind() == ZLinkDispatchMessageKind.SEND
+            || flow.messageKind() == ZLinkDispatchMessageKind.ACTOR_SEND) {
+            return julLevel(options.unhandled().sendLogLevel());
+        }
+        return Level.SEVERE;
+    }
+
+    private static Level julLevel(ZLinkLogLevel level) {
+        return switch (level) {
+            case TRACE -> Level.FINEST;
+            case DEBUG -> Level.FINE;
+            case INFO -> Level.INFO;
+            case WARN -> Level.WARNING;
+            case ERROR -> Level.SEVERE;
+        };
     }
 }

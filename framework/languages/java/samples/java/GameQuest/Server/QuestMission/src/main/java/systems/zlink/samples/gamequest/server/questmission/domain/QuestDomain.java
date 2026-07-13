@@ -7,7 +7,7 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class QuestDomain {
     public QuestDecision apply(
-        Messages.GameplayEventEnvelope event,
+        Messages.GameplayMsg event,
         List<Messages.QuestProgress> current,
         long nextVersion) {
         long now = Instant.now().toEpochMilli();
@@ -28,7 +28,7 @@ public final class QuestDomain {
     }
 
     private static void applyCounter(
-        Messages.GameplayEventEnvelope event,
+        Messages.GameplayMsg event,
         List<Messages.QuestProgress> projection,
         List<Messages.StoredQuestEvent> stored,
         List<Messages.QuestProgressNotify> progressNotifications,
@@ -99,7 +99,7 @@ public final class QuestDomain {
     }
 
     private static void completeOnce(
-        Messages.GameplayEventEnvelope event,
+        Messages.GameplayMsg event,
         List<Messages.QuestProgress> projection,
         List<Messages.StoredQuestEvent> stored,
         List<Messages.QuestCompletedNotify> completedNotifications,

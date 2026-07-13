@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -59,8 +60,11 @@ class DispatchServerApplication {
     fun dispatchWorkQueue(worker: DispatchWorker): DispatchWorkQueue = DispatchWorkQueue(worker)
 
     @Bean
-    fun dispatchWorker(channels: ZLinkClient, routes: ZLinkRouteClient): DispatchWorker =
-        DispatchWorker(channels, routes)
+    fun dispatchWorker(
+        channels: ZLinkClient,
+        routes: ZLinkRouteClient,
+        spots: SpotHandleResolver,
+    ): DispatchWorker = DispatchWorker(channels, routes, spots)
 
     @Bean
     fun dispatchHttpServer(

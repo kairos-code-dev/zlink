@@ -4,7 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioC
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmD3Scenario {
-    fun run(context: ActorSessionScenarioContext) {
+    suspend fun run(context: ActorSessionScenarioContext) {
         ensure(context.entryReply.spotRid == "entry", "SM-D3 entry bind spot mismatch")
         ensure(context.entryPush.spotRid == "entry", "SM-D3 entry push spot mismatch")
         ensure(context.entryReply.actorId == context.auth.actorId, "SM-D3 entry bind actor mismatch")

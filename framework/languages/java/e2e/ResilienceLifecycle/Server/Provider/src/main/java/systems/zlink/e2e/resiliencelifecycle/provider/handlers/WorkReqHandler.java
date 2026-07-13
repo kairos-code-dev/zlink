@@ -16,24 +16,26 @@ public final class WorkReqHandler
     }
 
     @Override
-    public Contracts.WorkRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.WorkRes> handle(
         Contracts.WorkReq request,
         ZLinkRequestContext context) {
-        if (state.grayFailure() && request.value().startsWith("b6-gray-")) {
-            state.record("GrayFailureInjected", request.value());
-            throw new IllegalStateException("gray failure");
-        } else if ("slow".equals(request.value())) {
-            state.record("SlowStarted", request.value());
-            state.awaitSlowRelease();
-            state.record("SlowCompleted", request.value());
-        } else if ("timeout".equals(request.value())) {
-            state.record("TimeoutStarted", request.value());
-            sleep(1500);
-            state.record("TimeoutCompleted", request.value());
-        } else {
-            state.record("WorkReq", request.value());
-        }
-        return new Contracts.WorkRes("work:" + request.value(), state.providerRid());
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            if (state.grayFailure() && request.value().startsWith("b6-gray-")) {
+                state.record("GrayFailureInjected", request.value());
+                throw new IllegalStateException("gray failure");
+            } else if ("slow".equals(request.value())) {
+                state.record("SlowStarted", request.value());
+                state.awaitSlowRelease();
+                state.record("SlowCompleted", request.value());
+            } else if ("timeout".equals(request.value())) {
+                state.record("TimeoutStarted", request.value());
+                sleep(1500);
+                state.record("TimeoutCompleted", request.value());
+            } else {
+                state.record("WorkReq", request.value());
+            }
+            return new Contracts.WorkRes("work:" + request.value(), state.providerRid());
+        });
     }
 
     private static void sleep(long millis) {

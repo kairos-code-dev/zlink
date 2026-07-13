@@ -19,6 +19,18 @@
 공유 계약, handler, client와 runner를 함께 수정한다. 새 public API가 필요한 경우에는 sample-local
 helper로 우회하지 않고 public contract gap으로 분리한다.
 
+## 문서 분모
+
+상위 `sample/README.ko.md`가 정본으로 지정한 구현 대상은 Bingo, TicTacToe, SupportChat,
+DeliveryDispatch, ShoppingMall, GameQuest 6종이다. `event/README.ko.md`는 두 event sample의
+목적을 묶어 설명하고, `languages/README.ko.md`는 언어별 추가 계약이 현재 없음을 명시한다.
+runner template의 Redis 격리·실행 순서는 Java/Kotlin 공용 helper와 12개 개별 runner에 반영했다.
+TicTacToe 구현 prompt는 시나리오 계약을 추가하지 않는 작성 입력이다.
+
+ZoneWorld 문서는 구현 자체를 별도 sample 작업으로 진행한다고 명시한 설계 초안이므로 현재
+Java/Kotlin sample parity의 완료 분모에 넣지 않는다. 정식 구현 대상으로 바뀌면 언어별 서버와
+공용 TypeScript browser client를 별도 ledger에서 검증한다.
+
 ## 진행 현황
 
 | 언어 | sample | 공통 spec | 역할·연결 | 메시지·필드 | 상태 전이 | codec | self-check | runner | 결과 |
@@ -146,3 +158,7 @@ helper로 우회하지 않고 public contract gap으로 분리한다.
 - [x] `ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh`와
   `ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh`가 모두 통과한다.
 - [x] 공통 spec의 메시지 이름을 자동 대조하는 contract test가 추가되어 이후 과거 이름으로 되돌아가지 않는다.
+
+2026-07-14에는 각 sample runner가 언어와 sample별 Docker Redis를 직접 준비하도록 바꾼 뒤 두
+통합 명령을 다시 실행했다. Java 6종과 Kotlin 6종 모두 실제 client self-check와 server evidence를
+확인했으며, 두 실행은 각각 `All Java/Kotlin samples passed`를 출력하고 종료 코드 0으로 끝났다.

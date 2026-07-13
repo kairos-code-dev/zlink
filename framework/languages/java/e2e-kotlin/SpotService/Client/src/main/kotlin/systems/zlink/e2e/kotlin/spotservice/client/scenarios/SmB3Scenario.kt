@@ -4,7 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioC
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmB3Scenario {
-    fun run(context: ActorSessionScenarioContext) {
+    suspend fun run(context: ActorSessionScenarioContext) {
         ensure(context.auth.displayName == context.profile.displayName, "SM-B3 create profile display name mismatch")
         ensure(context.auth.level == context.profile.level, "SM-B3 create profile level mismatch")
         ensure(context.auth.tags == context.profile.tags, "SM-B3 create profile tags mismatch")

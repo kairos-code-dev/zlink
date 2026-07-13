@@ -27,7 +27,7 @@ final class ZLinkStreamWireProtocolTest {
         byte[] encoded = ZLinkStreamWireProtocol.encodeHeader(header);
 
         assertArrayEquals(hex(
-                "02 01 03 00 00 00 00 00 00 00 07 04 4a 6f 69 6e "
+                "f2 02 01 03 00 00 00 00 00 00 00 07 04 4a 6f 69 6e "
                     + "00 0c 01 05 74 72 61 63 65 00 03 61 62 63"),
             encoded);
 

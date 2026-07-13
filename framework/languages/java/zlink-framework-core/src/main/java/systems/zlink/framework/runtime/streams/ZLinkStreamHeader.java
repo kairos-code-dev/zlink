@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
+import systems.zlink.framework.configuration.ZLinkFlowOrigin;
 
 public record ZLinkStreamHeader(
     ZLinkStreamMessageKind kind,
@@ -16,7 +17,9 @@ public record ZLinkStreamHeader(
     Map<String, String> metadata,
     // First-class correlation id (flag 0x08, wire layout: after metadata, u8 length +
     // UTF-8 bytes). Client-generated, server-echoed. Empty = absent.
-    Optional<String> correlationId) {
+    Optional<String> correlationId,
+    Optional<String> flowId,
+    Optional<ZLinkFlowOrigin> flowOrigin) {
     private static final int MAX_PACKET_NAME_BYTES = 255;
 
     public ZLinkStreamHeader {
@@ -57,7 +60,30 @@ public record ZLinkStreamHeader(
             correlationId = Optional.empty();
             flags.remove(ZLinkStreamHeaderFlag.HAS_CORRELATION_ID);
         }
-        validateKindRules(kind, codec, flags, requestSequence, metadata, correlationId);
+        flowId = flowId == null ? Optional.empty() : flowId;
+        flowOrigin = flowOrigin == null ? Optional.empty() : flowOrigin;
+        if (flowId.isPresent() != flowOrigin.isPresent()) {
+            throw new IllegalArgumentException("STREAM flow id and origin must be present together");
+        }
+        if (flowId.isPresent()) {
+            validateFlowId(flowId.get());
+            flags.add(ZLinkStreamHeaderFlag.HAS_FLOW_ID);
+        } else {
+            flags.remove(ZLinkStreamHeaderFlag.HAS_FLOW_ID);
+        }
+        validateKindRules(kind, codec, flags, requestSequence, metadata, correlationId, flowId);
+    }
+
+    public ZLinkStreamHeader(
+        ZLinkStreamMessageKind kind,
+        ZLinkStreamCodec codec,
+        EnumSet<ZLinkStreamHeaderFlag> flags,
+        Optional<Long> requestSequence,
+        String name,
+        Map<String, String> metadata,
+        Optional<String> correlationId) {
+        this(kind, codec, flags, requestSequence, name, metadata, correlationId,
+            Optional.empty(), Optional.empty());
     }
 
     // Back-compat 6-arg constructor (no correlation id).
@@ -68,7 +94,8 @@ public record ZLinkStreamHeader(
         Optional<Long> requestSequence,
         String name,
         Map<String, String> metadata) {
-        this(kind, codec, flags, requestSequence, name, metadata, Optional.empty());
+        this(kind, codec, flags, requestSequence, name, metadata, Optional.empty(),
+            Optional.empty(), Optional.empty());
     }
 
     public ZLinkStreamHeader(
@@ -84,7 +111,7 @@ public record ZLinkStreamHeader(
             requestSequence,
             packetName,
             metadata,
-            Optional.empty());
+            Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     public String packetName() {
@@ -107,7 +134,7 @@ public record ZLinkStreamHeader(
             requestHeader.requestSequence(),
             packetName,
             metadata,
-            requestHeader.correlationId());
+            requestHeader.correlationId(), requestHeader.flowId(), requestHeader.flowOrigin());
     }
 
     public static ZLinkStreamHeader createErrorResponse(
@@ -123,7 +150,7 @@ public record ZLinkStreamHeader(
             requestHeader.requestSequence(),
             packetName,
             Map.of(),
-            requestHeader.correlationId());
+            requestHeader.correlationId(), requestHeader.flowId(), requestHeader.flowOrigin());
     }
 
     // Returns a copy of this header carrying the given correlation id (for echoing the
@@ -131,7 +158,12 @@ public record ZLinkStreamHeader(
     public ZLinkStreamHeader withCorrelationId(String correlationId) {
         return new ZLinkStreamHeader(
             kind, codec, flags, requestSequence, name, metadata,
-            correlationId == null ? Optional.empty() : Optional.of(correlationId));
+            correlationId == null ? Optional.empty() : Optional.of(correlationId), flowId, flowOrigin);
+    }
+
+    public ZLinkStreamHeader withFlow(String id, ZLinkFlowOrigin origin) {
+        return new ZLinkStreamHeader(kind, codec, flags, requestSequence, name, metadata,
+            correlationId, Optional.ofNullable(id), Optional.ofNullable(origin));
     }
 
     private static void validateKindRules(
@@ -140,7 +172,8 @@ public record ZLinkStreamHeader(
         EnumSet<ZLinkStreamHeaderFlag> flags,
         Optional<Long> requestSequence,
         Map<String, String> metadata,
-        Optional<String> correlationId) {
+        Optional<String> correlationId,
+        Optional<String> flowId) {
         if (requestSequence.isPresent() && requestSequence.get() == 0) {
             throw new IllegalArgumentException("STREAM request sequence must not be zero");
         }
@@ -160,9 +193,16 @@ public record ZLinkStreamHeader(
                 || !flags.isEmpty()
                 || requestSequence.isPresent()
                 || !metadata.isEmpty()
-                || correlationId.isPresent())) {
+                || correlationId.isPresent()
+                || flowId.isPresent())) {
             throw new IllegalArgumentException(
                 "STREAM control packet must use raw codec and must not contain flags");
+        }
+    }
+
+    private static void validateFlowId(String value) {
+        if (!value.matches("[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")) {
+            throw new IllegalArgumentException("STREAM flow id must be a canonical UUIDv7");
         }
     }
 }

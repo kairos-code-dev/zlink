@@ -15,7 +15,7 @@ public final class ZLinkFilterPipeline {
     private ZLinkFilterPipeline() {
     }
 
-    public static <T> CompletionStage<T> invokeAsync(
+    public static <T> CompletionStage<T> invoke(
         List<Class<? extends ZLinkHandlerFilter>> filterTypes,
         ZLinkHandlerActivator handlerFactory,
         ZLinkHandlerContext context,
@@ -31,10 +31,10 @@ public final class ZLinkFilterPipeline {
                 @SuppressWarnings("unchecked")
                 ZLinkHandlerFilter filter =
                     (ZLinkHandlerFilter) handlerFactory.create(filterType);
-                return filter.invokeAsync(invocation, currentNext);
+                return filter.invoke(invocation, currentNext);
             };
         }
-        return next.invokeAsync();
+        return next.invoke();
     }
 
     private static final class DefaultInvocationContext implements ZLinkInvocationContext {

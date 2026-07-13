@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.host;
 
-import systems.zlink.framework.spots.SpotHandles;
+import systems.zlink.framework.spots.SpotHandleResolver;
 
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 
@@ -294,9 +294,11 @@ final class NodesAndServicesTest {
         static RoutingId targetRoomRid;
         static RoutingId targetNodeRid;
         private final ZLinkSpotContext context;
+        private final SpotHandleResolver handles;
 
-        public ClientSpot(ZLinkSpotContext context) {
+        public ClientSpot(ZLinkSpotContext context, SpotHandleResolver handles) {
             this.context = context;
+            this.handles = handles;
         }
 
         @Override
@@ -306,20 +308,21 @@ final class NodesAndServicesTest {
 
         @Override
         public CompletionStage<Void> onInitialize() {
-            context.outbound()
-                .requestToSpot(
-                    SpotHandles.create(targetRoomRid),
-                    new Ping("ping"))
-                .timeout(Duration.ofSeconds(2))
-                .submit(Pong.class)
+            return handles.resolveSpotHandle(targetRoomRid)
+                .thenCompose(handle -> context.outbound()
+                    .requestToSpot(
+                        handle.orElseThrow(() -> new IllegalStateException("target Spot handle not found")),
+                        new Ping("ping"))
+                    .timeout(Duration.ofSeconds(2))
+                    .submit(Pong.class))
                 .whenComplete((value, error) -> {
                     if (error != null) {
                         reply.completeExceptionally(error);
                     } else {
                         reply.complete(value);
                     }
-                });
-            return CompletableFuture.completedFuture(null);
+                })
+                .thenApply(ignored -> null);
         }
 
         @Override public CompletionStage<Void> onJoinedActor(ZLinkActor actor) {
@@ -394,15 +397,18 @@ final class NodesAndServicesTest {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
+import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -29,6 +29,9 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleLocationSto
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.configuration.BingoMetricsReporter
+import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy
+import io.micrometer.core.instrument.MeterRegistry
 
 
 
@@ -57,7 +60,8 @@ class PlayServerApplication {
                 .enableClient()
                 .addHandlerGroup("play-route")
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-            val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+            val node: ZLinkSpotMeshBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+            node.useDrainPolicy(ZLinkSpotDrainPolicy.DRAIN_NATURAL)
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.configureEntrySpot()
@@ -94,6 +98,10 @@ class PlayServerApplication {
             .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
             .findAndAddModules()
             .build()
+
+    @Bean(destroyMethod = "close")
+    fun bingoMetricsReporter(registry: MeterRegistry): BingoMetricsReporter =
+        BingoMetricsReporter(registry, "play")
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

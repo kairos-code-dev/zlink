@@ -16,25 +16,12 @@ source "$SAMPLES_DIR/runner-common.sh"
 
 SAMPLE_FILTER="${ZLINK_SAMPLE_FILTER:-}"
 SAMPLE_LANGUAGES="${ZLINK_SAMPLE_LANGUAGES:-java kotlin}"
-shared_redis_endpoint="${ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 should_run_language() {
   local language="$1"
   [[ " ${SAMPLE_LANGUAGES} " == *" ${language} "* ]]
 }
-
-for language in ${SAMPLE_LANGUAGES}; do
-  zlink_redis_cleanup_scope "zlink-redis-${language}-sample"
-done
-
-if [[ -n "$shared_redis_endpoint" ]]; then
-  for redis_env_var in $SAMPLE_REDIS_ENV_VARS; do
-    if [[ -z "${!redis_env_var:-}" ]]; then
-      export "${redis_env_var}=${shared_redis_endpoint}"
-    fi
-  done
-fi
 
 should_run_sample() {
   local language="$1"

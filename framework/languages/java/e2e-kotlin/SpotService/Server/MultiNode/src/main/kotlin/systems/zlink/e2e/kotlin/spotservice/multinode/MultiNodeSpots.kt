@@ -1,28 +1,30 @@
 package systems.zlink.e2e.kotlin.spotservice.multinode
 
 import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.framework.CancellationToken
+import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
-import systems.zlink.framework.actors.ZLinkActorFactory
+import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler
 import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.handlers.ZLinkSpotRequest
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
-import systems.zlink.framework.spots.ZLinkSpotPacketHandler
+import systems.zlink.framework.spots.SpotHandleResolver
 
 class MultiNodeSpotA(
     private val context: ZLinkSpotContext,
-    private val evidence: MultiNodeEvidenceStore
-) : ZLinkSpot<MultiNodeActor> {
+    private val evidence: MultiNodeEvidenceStore,
+    private val handles: SpotHandleResolver,
+) : ZLinkSuspendingSpot<MultiNodeActor>() {
     private var value = 0
 
     override fun context(): ZLinkSpotContext =
@@ -38,33 +40,33 @@ class MultiNodeSpotA(
         return value
     }
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse =
-        onCreateMultiNodeSpot(context, evidence, request)
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse =
+        onCreateMultiNodeSpot(context, evidence, handles, request)
 
-    override fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         evidence.add("multi-spot-initialize|node=${Contracts.MULTI_SPOT_NODE_A}|spot=${context.spotRid()}")
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         return ZLinkSpotActorJoinResponse.accept()
     }
 
-    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
         evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_A}|spot=${context.spotRid()}|actor=${actor.actorId()}")
     }
 
-    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    override suspend fun onLeaveActorSuspending(actor: MultiNodeActor) {
     }
 }
 
 class MultiNodeSpotB(
     private val context: ZLinkSpotContext,
-    private val evidence: MultiNodeEvidenceStore
-) : ZLinkSpot<MultiNodeActor> {
+    private val evidence: MultiNodeEvidenceStore,
+    private val handles: SpotHandleResolver,
+) : ZLinkSuspendingSpot<MultiNodeActor>() {
     private var value = 0
 
     override fun context(): ZLinkSpotContext =
@@ -80,32 +82,32 @@ class MultiNodeSpotB(
         return value
     }
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse =
-        onCreateMultiNodeSpot(context, evidence, request)
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse =
+        onCreateMultiNodeSpot(context, evidence, handles, request)
 
-    override fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         evidence.add("multi-spot-initialize|node=${Contracts.MULTI_SPOT_NODE_B}|spot=${context.spotRid()}")
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         return ZLinkSpotActorJoinResponse.accept()
     }
 
-    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
         evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_B}|spot=${context.spotRid()}|actor=${actor.actorId()}")
     }
 
-    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    override suspend fun onLeaveActorSuspending(actor: MultiNodeActor) {
     }
 }
 
-private fun onCreateMultiNodeSpot(
+private suspend fun onCreateMultiNodeSpot(
     context: ZLinkSpotContext,
     evidence: MultiNodeEvidenceStore,
+    handles: SpotHandleResolver,
     request: ZLinkMessage
 ): ZLinkSpotCreateResponse {
     evidence.add("spot-created|node=${context.nodeRid()}|spot=${context.spotRid()}")
@@ -113,20 +115,15 @@ private fun onCreateMultiNodeSpot(
         return ZLinkSpotCreateResponse.accept()
     }
     val command = request.decode(Contracts.SpotOnlyMeshReq::class.java)
-    val target = SpotRef(
-        Contracts.SPOT_MESH,
-        systems.zlink.contracts.core.RoutingId.from(Contracts.MULTI_SPOT_NODE_B),
-        systems.zlink.contracts.core.RoutingId.from(command.targetSpotRid)
-    )
+    val target = handles.resolveSpotHandle(systems.zlink.contracts.core.RoutingId.from(command.targetSpotRid))
+        .await().orElseThrow { IllegalStateException("spot handle was not found: ${command.targetSpotRid}") }
     val reply = context.outbound()
         .requestToSpot(target, Contracts.MultiNodeStateReq("add", 7))
-        .packetName("StateReq")
         .timeout(java.time.Duration.ofSeconds(5))
-        .await(Contracts.MultiNodeStateRes::class.java)
+        .submit(Contracts.MultiNodeStateRes::class.java).await()
     context.outbound()
         .sendToSpot(target, Contracts.StateMsg("sm-f6-send-${command.marker}"))
-        .packetName("StateMsg")
-        .await()
+        .submit()
     evidence.add(
         "spot-only-request|node=${context.nodeRid()}|source=${context.spotRid()}" +
             "|target=${command.targetSpotRid}|value=${reply.value}|marker=${command.marker}"
@@ -143,7 +140,7 @@ private fun onCreateMultiNodeSpot(
 class MultiNodeStateAHandler(
     private val evidence: MultiNodeEvidenceStore
 ) {
-    @ZLinkSpotRequest(packetName = "StateReq")
+    @ZLinkSpotRequest
     fun handle(
         spot: MultiNodeSpotA,
         request: Contracts.MultiNodeStateReq
@@ -161,8 +158,8 @@ class MultiNodeStateAHandler(
 
 class MultiNodeStateCommandAHandler(
     private val evidence: MultiNodeEvidenceStore
-) : ZLinkSpotPacketHandler<MultiNodeSpotA, Contracts.StateMsg> {
-    override fun handle(
+) : ZLinkSuspendingSpotPacketHandler<MultiNodeSpotA, Contracts.StateMsg> {
+    override suspend fun handle(
         spot: MultiNodeSpotA,
         command: Contracts.StateMsg
     ) {
@@ -173,7 +170,7 @@ class MultiNodeStateCommandAHandler(
 class MultiNodeStateBHandler(
     private val evidence: MultiNodeEvidenceStore
 ) {
-    @ZLinkSpotRequest(packetName = "StateReq")
+    @ZLinkSpotRequest
     fun handle(
         spot: MultiNodeSpotB,
         request: Contracts.MultiNodeStateReq
@@ -191,8 +188,8 @@ class MultiNodeStateBHandler(
 
 class MultiNodeStateCommandBHandler(
     private val evidence: MultiNodeEvidenceStore
-) : ZLinkSpotPacketHandler<MultiNodeSpotB, Contracts.StateMsg> {
-    override fun handle(
+) : ZLinkSuspendingSpotPacketHandler<MultiNodeSpotB, Contracts.StateMsg> {
+    override suspend fun handle(
         spot: MultiNodeSpotB,
         command: Contracts.StateMsg
     ) {
@@ -209,8 +206,8 @@ class MultiNodeActor(
     override fun context(): ZLinkActorContext = context
 }
 
-class MultiNodeActorFactory : ZLinkActorFactory {
-    override fun create(
+class MultiNodeActorFactory : ZLinkSuspendingActorFactory() {
+    override suspend fun createActor(
         actorId: String,
         context: ZLinkActorContext
     ): ZLinkActor = MultiNodeActor(actorId, context)
@@ -218,11 +215,14 @@ class MultiNodeActorFactory : ZLinkActorFactory {
 
 class MultiNodeEntrySpot(
     private val context: ZLinkEntrySpotContext
-) : ZLinkEntrySpot<MultiNodeActor> {
-    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+) : ZLinkSuspendingEntrySpot<MultiNodeActor>() {
+    override suspend fun onCreateActorSuspending(actor: MultiNodeActor, createRequest: ZLinkMessage) {
+    }
+    override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = ZLinkSpotActorJoinResponse.accept()
+    override suspend fun onJoinedActorSuspending(actor: MultiNodeActor) {
     }
 
-    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    override suspend fun onLeaveActorSuspending(actor: MultiNodeActor) {
     }
     override fun context(): ZLinkEntrySpotContext = context
 
@@ -231,18 +231,17 @@ class MultiNodeEntrySpot(
     }
 }
 
-class MultiNodeSpotOnlyJoinHandler {
+class MultiNodeSpotOnlyJoinHandler : ZLinkSuspendingEntrySpotActorRequestHandler<MultiNodeEntrySpot, MultiNodeActor, Contracts.SpotOnlyJoinReq, Contracts.SpotOnlyJoinRes> {
     @ZLinkSpotActorRequest(packetName = "SpotOnlyJoinReq")
-    fun handle(
+    override suspend fun handle(
         spot: MultiNodeEntrySpot,
         actor: MultiNodeActor,
         context: ZLinkSpotActorRequestContext,
         request: Contracts.SpotOnlyJoinReq,
-        cancellationToken: CancellationToken
     ): Contracts.SpotOnlyJoinRes {
         actor.context()
             .joinSpot(systems.zlink.contracts.core.RoutingId.from(request.targetSpotRid), request)
-            .await()
+            .submit().await()
         return Contracts.SpotOnlyJoinRes(true, actor.actorId())
     }
 }

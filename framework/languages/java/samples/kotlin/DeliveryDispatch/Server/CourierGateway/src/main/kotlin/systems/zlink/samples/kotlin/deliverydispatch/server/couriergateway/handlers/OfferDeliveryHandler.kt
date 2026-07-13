@@ -1,12 +1,12 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.handlers
 
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.ZLinkAwait.await
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.CourierDirectory
@@ -17,25 +17,24 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliv
 class OfferDeliveryHandler(
     private val directory: CourierDirectory,
     private val routes: ZLinkRouteClient,
-) : ZLinkRequestHandler<OfferDeliveryReq, OfferDeliveryRes> {
-    override fun handle(
+    private val spots: SpotHandleResolver,
+) : ZLinkSuspendingRequestHandler<OfferDeliveryReq, OfferDeliveryRes> {
+    override suspend fun handle(
         request: OfferDeliveryReq,
         context: ZLinkRequestContext,
     ): OfferDeliveryRes {
         val binding = directory.require(request.courierId)
-        return await(
-            routes
+        val nodeRid = binding.actor.nodeRid
+        val spot = spots.resolveSpotHandle(nodeRid).await()
+            .orElseThrow { IllegalStateException("spot not found: $nodeRid") }
+        return routes
                 .requestToSpot(
                     SampleNames.CourierSpotMesh,
-                    SpotRef(
-                        SampleNames.CourierSpotMesh,
-                        RoutingId.from(binding.actor.nodeRid),
-                        RoutingId.from(binding.actor.nodeRid),
-                    ),
+                    spot,
                     request,
                 )
                 .timeout(SampleTimings.OfferRequestTimeout)
-                .submit(OfferDeliveryRes::class.java),
-        )
+                .submit(OfferDeliveryRes::class.java)
+                .await()
     }
 }

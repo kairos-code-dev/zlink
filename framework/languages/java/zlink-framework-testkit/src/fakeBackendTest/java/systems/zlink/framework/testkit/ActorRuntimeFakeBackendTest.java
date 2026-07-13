@@ -3,6 +3,7 @@ package systems.zlink.framework.testkit;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -12,14 +13,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 import com.google.protobuf.StringValue;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
@@ -45,8 +47,9 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.SpotRemoteRef;
-import systems.zlink.framework.spots.SpotRemoteRefResolver;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -80,6 +83,8 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals("player-1", created.actorId());
         }
 
+        RuntimeTestSupport.awaitClosed(backendFactory);
+
         assertEquals(
             List.of(
                 "factory.channel",
@@ -88,7 +93,8 @@ final class ActorRuntimeFakeBackendTest {
                 "factory.spot",
                 "create.spotNode",
                 "spotNode.createActor.player-1",
-                "spotNode.destroyActor.player-1",
+                "spotNode.entrySpot",
+                "create.entrySpot",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -112,8 +118,8 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actor().actorId());
-            assertEquals(RoutingId.from("entry-node"), joined.actor().nodeRid());
+            assertEquals("player-1", accepted(joined).actor().actorId());
+            assertEquals(RoutingId.from("entry-node"), accepted(joined).actor().nodeRid());
         }
 
         assertEquals(
@@ -143,21 +149,19 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(0, joined.resultCode());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("joined", joined.reply());
-            assertEquals("player-1", joined.actor().actorId());
-            assertEquals(RoutingId.from("spot-node"), joined.actor().nodeRid());
+            assertEquals("player-1", accepted(joined).actor().actorId());
+            assertEquals(RoutingId.from("spot-node"), accepted(joined).actor().nodeRid());
             assertEquals(Optional.of(spotRid), actor.context().spotRid());
-            assertSame(GameSpot.instance, actor.context().getSpot(GameSpot.class));
+            assertEquals(Optional.of(spotRid), actor.context().spotRid());
 
             actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
                 .submit(Message.class)
                 .toCompletableFuture()
                 .join();
-            assertThrows(
-                ZLinkConfigurationException.class,
-                actor.context()::getSpot);
+            assertEquals(Optional.of(RoutingId.from("entry-node")), actor.context().spotRid());
         }
 
         assertEquals(
@@ -201,7 +205,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(0, joined.resultCode());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("custom", serializer.lastJoinRequest.get());
             assertEquals("joined", joined.reply().value());
         }
@@ -237,7 +241,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(0, joined.resultCode());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("reply:proto", joined.reply().getValue());
         }
     }
@@ -272,7 +276,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(0, joined.resultCode());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("reply:msgpack", joined.reply().value());
         }
     }
@@ -418,7 +422,8 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorJoinSpotUsesRemoteAddressResolverWhenSpotIsNotLocal() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
+        options.addLocationStore(remoteRoomStore());
+        options.configureLocations().setSpotRouterChannel("game", "rooms");
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -436,9 +441,9 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(0, joined.resultCode());
+            assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("joined", joined.reply());
-            assertEquals(RoutingId.from("remote-node"), joined.actor().nodeRid());
+            assertEquals(RoutingId.from("remote-node"), accepted(joined).actor().nodeRid());
         }
 
         assertTrue(backendFactory.calls().contains(
@@ -453,7 +458,8 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void remoteRoutedActorJoinRejectDoesNotDeserializeEmptyReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
+        options.addLocationStore(remoteRoomStore());
+        options.configureLocations().setSpotRouterChannel("game", "rooms");
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -465,23 +471,23 @@ final class ActorRuntimeFakeBackendTest {
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActor actor = managedActor(runtime, "player-reject-join", "player");
 
-            CompletionException error = assertThrows(
-                CompletionException.class,
-                () -> actor.context()
-                    .joinSpot(RoutingId.from("remote-room"), "join-request")
-                    .submit(String.class)
-                    .toCompletableFuture()
-                    .join());
+            ZLinkActorJoinResult<String> result = actor.context()
+                .joinSpot(RoutingId.from("remote-room"), "join-request")
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
 
-            assertTrue(error.getCause() instanceof ZLinkConfigurationException);
-            assertEquals("actor spot join rejected: 1", error.getCause().getMessage());
+            ZLinkActorJoinResult.Rejected<String> rejected = assertInstanceOf(
+                ZLinkActorJoinResult.Rejected.class, result);
+            assertEquals(null, rejected.reply());
         }
     }
 
     @Test
     void boundManagedActorRoutesPacketsToRemoteJoinedSpotInsteadOfNativeGateway() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
+        options.addLocationStore(remoteRoomStore());
+        options.configureLocations().setSpotRouterChannel("game", "rooms");
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -509,7 +515,7 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.send.rooms.remote-node.remote-room.__zlink.actor.packet"),
+            "stream.relayBoundActor.player-remote-relay.RAW.ActorNotify"),
             () -> "calls: " + backendFactory.calls());
         assertEquals(
             false,
@@ -548,7 +554,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(RoutingId.from("native-remote-node"), joined.actor().nodeRid());
+            assertEquals(RoutingId.from("native-remote-node"), accepted(joined).actor().nodeRid());
             assertEquals(Optional.of(RoutingId.from("native-remote-room")), actor.context().spotRid());
         }
 
@@ -652,25 +658,24 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class RemoteRoomResolver implements SpotRemoteRefResolver {
-        @Override
-        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
-            RoutingId spotRid) {
-            return java.util.concurrent.CompletableFuture.completedFuture(
-                new SpotRemoteRef(
-                    "rooms",
-                    RoutingId.from("remote-node"),
-                    spotRid,
-                    ZLinkSpotKind.USER));
-        }
+    private static ZLinkInMemoryLocationStore remoteRoomStore() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        Instant now = Instant.now();
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofHours(1))
+            .toCompletableFuture().join();
+        store.updateSpot(new ZLinkSpotLocation(
+            "game", RoutingId.from("remote-room"), "room", RoutingId.from("remote-node"),
+            ZLinkSpotKind.USER, "inproc://remote-router", "remote-owner", 1, now),
+            ZLinkLocationWriteIntent.TAKEOVER).toCompletableFuture().join();
+        return store;
     }
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public ZLinkActor create(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
-            return new PlayerActor(actorId, context);
+            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
         }
     }
 
@@ -696,13 +701,13 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             CustomJoinRequest decoded = request.decode(CustomJoinRequest.class);
             lastJoin.set(actorId + ":" + decoded.value());
-            return ZLinkSpotActorJoinResponse.accept(new CustomJoinReply("reply:" + decoded.value()));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept(new CustomJoinReply("reply:" + decoded.value())));
         }
     }
 
@@ -715,13 +720,13 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             StringValue decoded = request.decode(StringValue.class);
             lastJoin.set(actorId + ":" + decoded.getValue());
-            return ZLinkSpotActorJoinResponse.accept(StringValue.of("reply:" + decoded.getValue()));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept(StringValue.of("reply:" + decoded.getValue())));
         }
     }
 
@@ -734,13 +739,13 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
+            ZLinkMessage request) {
             PackedJoinRequest decoded = request.decode(PackedJoinRequest.class);
             lastJoin.set(actorId + ":" + decoded.value());
-            return ZLinkSpotActorJoinResponse.accept(new PackedJoinReply("reply:" + decoded.value()));
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept(new PackedJoinReply("reply:" + decoded.value())));
         }
     }
 
@@ -817,18 +822,17 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotActorJoinResponse onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
             String actorId,
-            ZLinkMessage request,
-            CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept("joined");
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept("joined"));
         }
 
         @Override
-        public void onJoinedActor(
-            ZLinkActor actor,
-            CancellationToken cancellationToken) {
-            ZLinkAwait.await(actor.context().boundSession().send("joined-notify").submit());
+        public CompletionStage<Void> onJoinedActor(
+            ZLinkActor actor) {
+            actor.context().boundSession().send("joined-notify").submit();
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -850,25 +854,25 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onCreateActor(
+        public CompletionStage<Void> onCreateActor(
             ZLinkActor actor,
-            systems.zlink.framework.messaging.ZLinkMessage createRequest,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+            systems.zlink.framework.messaging.ZLinkMessage createRequest) {
             createCount++;
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onLeaveActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onLeaveActor(
+            ZLinkActor actor) {
             leftCount++;
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnectActor(
-            ZLinkActor actor,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+        public CompletionStage<Void> onDisconnectActor(
+            ZLinkActor actor) {
             disconnectCount++;
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -886,11 +890,11 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onCreateActor(
+        public CompletionStage<Void> onCreateActor(
             ZLinkActor actor,
-            systems.zlink.framework.messaging.ZLinkMessage createRequest,
-            systems.zlink.framework.CancellationToken cancellationToken) {
+            systems.zlink.framework.messaging.ZLinkMessage createRequest) {
             createCount++;
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -901,15 +905,18 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onConnected() {
+        public CompletionStage<Void> onConnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onDisconnected() {
+        public CompletionStage<Void> onDisconnected() {
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void onError(ZLinkStreamError error) {
+        public CompletionStage<Void> onError(ZLinkStreamError error) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -934,5 +941,11 @@ final class ActorRuntimeFakeBackendTest {
         } finally {
             ZLinkSessionActorsRuntime.exitRelayDispatch();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> ZLinkActorJoinResult.Accepted<T> accepted(ZLinkActorJoinResult<T> result) {
+        return (ZLinkActorJoinResult.Accepted<T>) assertInstanceOf(
+            ZLinkActorJoinResult.Accepted.class, result);
     }
 }

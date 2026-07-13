@@ -3,37 +3,30 @@ package systems.zlink.e2e.kotlin.spotservice.session.handlers
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActor
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioEntrySpot
-import systems.zlink.framework.CancellationToken
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 
-class EntryActorDestroyHandler {
+class EntryActorDestroyHandler : ZLinkSuspendingEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, Contracts.DestroyActorReq, Contracts.DestroyActorRes> {
     @ZLinkSpotActorRequest(packetName = "DestroyActorReq")
-    fun handle(
+    override suspend fun handle(
         spot: ScenarioEntrySpot,
         actor: ScenarioActor,
         context: ZLinkSpotActorRequestContext,
         request: Contracts.DestroyActorReq,
-        cancellationToken: CancellationToken
     ): Contracts.DestroyActorRes {
         if (request.actorId != actor.actorId()) {
             throw IllegalStateException("destroy request actor does not match dispatched actor")
         }
 
-        spot.context().runWorker { true }
-            .submit(
-                { _, _ ->
-                    try {
-                        spot.context().destroyActor(actor).toCompletableFuture().join()
-                        spot.record("ActorDestroyed", actor.actorId())
-                    } catch (error: Exception) {
-                        spot.record("ActorDestroyFailed", actor.actorId() + "/" + error.javaClass.simpleName)
-                    }
-                },
-                { error, _ ->
-                    spot.record("ActorDestroyFailed", actor.actorId() + "/" + error.javaClass.simpleName)
-                }
-            )
+        try {
+            spot.context().runWorker { true }.submit().await()
+            spot.context().destroyActor(actor).await()
+            spot.record("ActorDestroyed", actor.actorId())
+        } catch (error: Throwable) {
+            spot.record("ActorDestroyFailed", actor.actorId() + "/" + error.javaClass.simpleName)
+        }
 
         return Contracts.DestroyActorRes(actor.actorId(), true)
     }

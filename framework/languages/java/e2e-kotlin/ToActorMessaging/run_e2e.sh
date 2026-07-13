@@ -67,18 +67,9 @@ PY
   return 1
 }
 
-if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
-else
-  redis_container="$(
-    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-  )"
-  redis_endpoint="$(zlink_redis_endpoint "${redis_container}")"
-fi
+zlink_redis_start_scoped_assign redis_container redis_port \
+  "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+redis_endpoint="127.0.0.1:${redis_port}"
 export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
@@ -126,7 +117,7 @@ cleanup() {
     kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   if [[ -n "${redis_container}" ]]; then
-    docker rm -f "${redis_container}" >/dev/null 2>&1 || true
+    docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"

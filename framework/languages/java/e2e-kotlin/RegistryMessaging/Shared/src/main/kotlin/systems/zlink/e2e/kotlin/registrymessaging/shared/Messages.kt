@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.registrymessaging.shared
 
+import systems.zlink.framework.handlers.ZLinkPacket
+
 object Contracts {
     const val PROFILE_CHANNEL = "profile"
     const val PROFILE_MANUAL_CHANNEL = "profile.manual"
@@ -23,6 +25,16 @@ data class ProfileRes(
 )
 
 data class ProfileMsg(
+    var commandId: String = "",
+)
+
+@ZLinkPacket("MissingProfileReq")
+data class MissingProfileReq(
+    var value: String = "",
+)
+
+@ZLinkPacket("MissingProfileMsg")
+data class MissingProfileMsg(
     var commandId: String = "",
 )
 

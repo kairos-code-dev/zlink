@@ -4,10 +4,9 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
 import java.time.Duration
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.addHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -16,7 +15,7 @@ import systems.zlink.framework.spots.ZLinkTimerOptions
 class UserSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
-) : ZLinkSpot<ScenarioActor> {
+) : ZLinkSuspendingSpot<ScenarioActor>() {
     private val pendingProfiles = mutableMapOf<String, Contracts.ActorProfile>()
     private var state = ""
     private var workerDone = true
@@ -37,24 +36,23 @@ class UserSpot(
         context.handlers().addHandler<UserActorLeaveHandler>()
     }
 
-    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         evidence.record("SpotCreated", context.spotRid().toString(), if (request.isEmpty) "" else "request")
         context.addTimer("state-timer", Duration.ofSeconds(2), StateTimerHandler::class.java, ZLinkTimerOptions())
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         evidence.record("SpotInitialized", context.spotRid().toString(), "")
     }
 
-    override fun onClosing() {
+    override suspend fun onClosingSuspending() {
         evidence.record("SpotClosing", context.spotRid().toString(), state)
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         val join = request.decode(Contracts.ActorJoinReq::class.java)
         pendingProfiles[actorId] = join.profile
@@ -75,10 +73,7 @@ class UserSpot(
         )
     }
 
-    override fun onJoinedActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: ScenarioActor) {
         actor.applyProfile(
             pendingProfiles.remove(actor.actorId())
                 ?: error("joined actor does not have a pending admission")
@@ -86,17 +81,11 @@ class UserSpot(
         evidence.record("ActorUserJoined", context.spotRid().toString(), actor.actorId() + "#" + actor.nextSequence())
     }
 
-    override fun onLeaveActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: ScenarioActor) {
         evidence.record("ActorUserLeft", context.spotRid().toString(), actor.actorId())
     }
 
-    override fun onDisconnectActor(
-        actor: ScenarioActor,
-        cancellationToken: CancellationToken
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: ScenarioActor) {
         evidence.record("ActorUserDisconnected", context.spotRid().toString(), actor.actorId())
     }
 
@@ -112,20 +101,19 @@ class UserSpot(
     fun startWorker(op: String): String {
         workerDone = false
         evidence.record("WorkerStarted", context.spotRid().toString(), op)
-        context.runWorker { token ->
+        context.runWorker {
             val delayMillis = if (op == "worker-start-long") 5000L else 1500L
             Thread.sleep(delayMillis)
             "$op-done"
-        }.submit(
-            { value, token ->
-                workerDone = true
-                state = if (state.isBlank()) value else "$state,$value"
-                evidence.record("WorkerCompleted", context.spotRid().toString(), value)
-            },
-            { error, token ->
+        }.submit().whenComplete { value, error ->
+            if (error != null) {
                 evidence.record("WorkerFailed", context.spotRid().toString(), error.javaClass.simpleName)
+                return@whenComplete
             }
-        )
+            workerDone = true
+            state = if (state.isBlank()) value else "$state,$value"
+            evidence.record("WorkerCompleted", context.spotRid().toString(), value)
+        }
         return state
     }
 

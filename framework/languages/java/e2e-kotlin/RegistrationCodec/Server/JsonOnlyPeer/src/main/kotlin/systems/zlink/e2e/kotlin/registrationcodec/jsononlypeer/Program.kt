@@ -83,8 +83,8 @@ class ServerApplication {
             channel.addRequestHandler(DiLifecycleRequestHandler::class.java, DiLifecycleReq::class.java, DiLifecycleRes::class.java, "DiLifecycleReq")
             channel.addRequestHandler(JsonRequestHandler::class.java, JsonEchoReq::class.java, JsonEchoRes::class.java, "JsonEchoReq")
             channel.addSendHandler(JsonSendHandler::class.java, JsonEchoMsg::class.java, "JsonEchoMsg")
-            channel.addRequestHandler(ProtobufRequestHandler::class.java, StringValue::class.java, StringValue::class.java, "ProtobufEcho")
-            channel.addSendHandler(ProtobufSendHandler::class.java, StringValue::class.java, "ProtobufEcho")
+            channel.addRequestHandler(ProtobufRequestHandler::class.java, StringValue::class.java, StringValue::class.java)
+            channel.addSendHandler(ProtobufSendHandler::class.java, StringValue::class.java)
             channel.addRequestHandler(MsgpackRequestHandler::class.java, PackedEchoReq::class.java, PackedEchoRes::class.java, "PackedEchoReq")
             channel.addSendHandler(MsgpackSendHandler::class.java, PackedEchoMsg::class.java, "PackedEchoMsg")
         }

@@ -5,9 +5,10 @@ import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 public final class StateMsgHandler
     implements ZLinkSpotPacketHandler<UserSpot, Contracts.StateMsg> {
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         UserSpot spot,
         Contracts.StateMsg message) {
         spot.command(message.value());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

@@ -23,6 +23,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
+import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 
 final class ZLinkSpotLifecycle {
     @FunctionalInterface
@@ -67,6 +68,8 @@ final class ZLinkSpotLifecycle {
 
     void addEntrySpot(EntrySpotActivation activation) {
         entrySpots.add(activation);
+        ZLinkRuntimeMetrics.add("zlink.spot.count", 1, Map.of("kind", "entry"));
+        ZLinkRuntimeMetrics.increment("zlink.spot.created", Map.of("kind", "entry"));
     }
 
     CompletionStage<ZLinkSpotCreateResult> create(
@@ -138,7 +141,11 @@ final class ZLinkSpotLifecycle {
             return CompletableFuture.completedFuture(false);
         }
         return locations.releaseUserSpotAsync(primaryNode.routingId(), spotRid)
-            .whenComplete((ignored, error) -> removed.close())
+            .whenComplete((ignored, error) -> {
+                removed.close();
+                ZLinkRuntimeMetrics.add("zlink.spot.count", -1, Map.of("kind", "user"));
+                ZLinkRuntimeMetrics.increment("zlink.spot.closed", Map.of("kind", "user"));
+            })
             .thenApply(ignored -> true);
     }
 
@@ -196,30 +203,74 @@ final class ZLinkSpotLifecycle {
     }
 
     void closeAll() {
-        RuntimeException firstFailure = null;
+        closeAllAsync();
+    }
+
+    CompletionStage<Void> closeAllAsync() {
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure =
+            new java.util.concurrent.atomic.AtomicReference<>();
         for (EntrySpotActivation entrySpot : entrySpots) {
-            firstFailure = closeComponent(
-                () -> locations.releaseEntrySpotAsync(entrySpot.context.nodeRid())
-                    .toCompletableFuture()
-                    .join(),
-                firstFailure);
-            firstFailure = closeComponent(entrySpot::close, firstFailure);
+            locations.releaseEntrySpotAsync(entrySpot.context.nodeRid())
+                .exceptionally(error -> null);
+            recordCloseFailure(firstFailure, closeComponent(entrySpot::close, null));
+        }
+        for (SpotActivation spot : spots.values()) {
+            locations.releaseUserSpotAsync(
+                    primaryNode.routingId(), spot.backendSpot.routingId())
+                .exceptionally(error -> null);
+            recordCloseFailure(firstFailure, closeComponent(spot::close, null));
+        }
+        if (!entrySpots.isEmpty()) {
+            ZLinkRuntimeMetrics.add("zlink.spot.count", -entrySpots.size(), Map.of("kind", "entry"));
         }
         entrySpots.clear();
-        for (SpotActivation spot : spots.values()) {
-            firstFailure = closeComponent(
-                () -> locations.releaseUserSpotAsync(
-                        primaryNode.routingId(),
-                        spot.backendSpot.routingId())
-                    .toCompletableFuture()
-                    .join(),
-                firstFailure);
-            firstFailure = closeComponent(spot::close, firstFailure);
+        if (!spots.isEmpty()) {
+            ZLinkRuntimeMetrics.add("zlink.spot.count", -spots.size(), Map.of("kind", "user"));
         }
         spots.clear();
-        if (firstFailure != null) {
-            throw firstFailure;
+        return firstFailure.get() == null
+            ? CompletableFuture.completedFuture(null)
+            : CompletableFuture.failedFuture(firstFailure.get());
+    }
+
+    private static void recordCloseFailure(
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> target,
+        Throwable error) {
+        if (error == null) {
+            return;
         }
+        Throwable value = error;
+        while (value instanceof java.util.concurrent.CompletionException && value.getCause() != null) {
+            value = value.getCause();
+        }
+        RuntimeException failure = value instanceof RuntimeException runtime
+            ? runtime : new RuntimeException(value);
+        RuntimeException first = target.get();
+        if (first == null) {
+            target.compareAndSet(null, failure);
+        } else {
+            first.addSuppressed(failure);
+        }
+    }
+
+    CompletionStage<Void> releaseRecreatableSpots() {
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (RoutingId spotRid : List.copyOf(spots.keySet())) {
+            chain = chain.thenCompose(ignored -> close(spotRid).thenCompose(closed ->
+                closed
+                    ? CompletableFuture.completedFuture(null)
+                    : CompletableFuture.failedFuture(new IllegalStateException(
+                        "recreatable spot still has actors: " + spotRid))));
+        }
+        return chain;
+    }
+
+    boolean userSpotsDrained() {
+        return spots.isEmpty() && pendingCreates.isEmpty();
+    }
+
+    int userSpotCount() {
+        return spots.size();
     }
 
     private CompletionStage<ZLinkSpotCreateResult> beginCreate(
@@ -289,6 +340,8 @@ final class ZLinkSpotLifecycle {
                     throw spotCreateLocationFailure(spotRid, status);
                 }
                 spots.put(spotRid, activation);
+                ZLinkRuntimeMetrics.add("zlink.spot.count", 1, Map.of("kind", "user"));
+                ZLinkRuntimeMetrics.increment("zlink.spot.created", Map.of("kind", "user"));
                 return new ZLinkSpotCreateResult(
                     spotRid,
                     ZLinkSpotCreateState.CREATED,

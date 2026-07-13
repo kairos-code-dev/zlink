@@ -8,6 +8,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -17,7 +18,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
-import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkSessionClient;
@@ -37,7 +38,8 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkStreamCompressionCodec compressionCodec;
     private final ZLinkMessageFlowTracer flow;
-    private ZLinkStreamHeader currentDispatchHeader;
+    private final ConcurrentHashMap<String, ZLinkStreamHeader> requestHeadersByFlow =
+        new ConcurrentHashMap<>();
 
     ZLinkStreamSessionContextState(
         String streamNodeName,
@@ -113,7 +115,13 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         ZLinkStreamHeader header,
         ZLinkMessage payload,
         ZLinkSession session) {
-        currentDispatchHeader = header;
+        ZLinkFlowContext.State dispatchFlow = ZLinkFlowContext.current();
+        if (header.requestSequence().isPresent()) {
+            String dispatchKey = dispatchFlow == null
+                ? "request:" + header.requestSequence().orElseThrow()
+                : dispatchFlow.flowId();
+            requestHeadersByFlow.put(dispatchKey, header);
+        }
         ZLinkStreamRuntime.trace("stream-node dispatch-start node=" + streamNodeName
             + " routingId=" + routingId
             + " name=" + header.packetName()
@@ -125,20 +133,22 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
             header.requestSequence().isPresent());
         CompletionStage<Void> stage;
         try {
-            stage = ZLinkHandlerStages.fromRunnable(() -> {
-                ZLinkSessionActorsRuntime.enterRelayDispatch(dispatch, header);
-                try {
-                    session.onDispatch(dispatch, payload);
-                } finally {
-                    ZLinkSessionActorsRuntime.exitRelayDispatch(dispatch);
-                }
-            });
+            ZLinkSessionActorsRuntime.enterRelayDispatch(dispatch, header);
+            try {
+                stage = java.util.Objects.requireNonNull(
+                    session.onDispatch(dispatch, payload),
+                    "session onDispatch result");
+            } finally {
+                ZLinkSessionActorsRuntime.exitRelayDispatch();
+            }
         } catch (RuntimeException ex) {
-            currentDispatchHeader = null;
-            return CompletableFuture.failedFuture(ex);
+            stage = CompletableFuture.failedFuture(ex);
         }
         CompletableFuture<Void> result = new CompletableFuture<>();
-        stage.whenComplete((ignored, error) -> completeDispatch(header, error, result));
+        stage.whenComplete((ignored, error) -> {
+            ZLinkSessionActorsRuntime.exitRelayDispatch(dispatch);
+            completeDispatch(header, error, result);
+        });
         return result;
     }
 
@@ -156,19 +166,32 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                 null,
                 null,
                 null,
-                null));
+                null,
+                null, null, null, null,
+                requestHeader.flowId().orElse(null),
+                requestHeader.flowOrigin().orElse(null)));
         }
     }
 
     Optional<ZLinkStreamHeader> currentDispatchHeader() {
-        return Optional.ofNullable(currentDispatchHeader);
+        ZLinkFlowContext.State flow = ZLinkFlowContext.current();
+        if (flow != null) {
+            ZLinkStreamHeader header = requestHeadersByFlow.get(flow.flowId());
+            if (header != null) {
+                return Optional.of(header);
+            }
+        }
+        if (requestHeadersByFlow.size() == 1) {
+            return requestHeadersByFlow.values().stream().findFirst();
+        }
+        return Optional.empty();
     }
 
     private void completeDispatch(
         ZLinkStreamHeader header,
         Throwable error,
         CompletableFuture<Void> result) {
-        currentDispatchHeader = null;
+        requestHeadersByFlow.entrySet().removeIf(entry -> entry.getValue() == header);
         if (error != null) {
             completeDispatchError(header, error, result);
             return;
@@ -186,7 +209,10 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                 null,
                 null,
                 null,
-                null));
+                null,
+                null, null, null, null,
+                header.flowId().orElse(null),
+                header.flowOrigin().orElse(null)));
         }
         result.complete(null);
     }

@@ -40,22 +40,22 @@ fun ZLinkLocationRuntimeQuery.spots(
     filter: ZLinkSpotLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkSpotLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listSpotLocationsAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listSpotLocations(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.actors(
     filter: ZLinkActorLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkActorLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listActorLocationsAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listActorLocations(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.routes(
     filter: ZLinkRouteLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkRouteLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listRouteLocationsAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listRouteLocations(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.topology(
     filter: ZLinkLocationTopologyFilter,
     pageSize: Int,
 ): Flow<ZLinkLocationTopologyEntry> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listTopologyAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listTopology(filter, page) }

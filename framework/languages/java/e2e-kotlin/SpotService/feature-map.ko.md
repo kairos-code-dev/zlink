@@ -182,19 +182,15 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   장애 중 request 실패, play-b 생존 확인, play-a 재시작 뒤 stream 재auth/rejoin/rebind를 검증한다.
   `logs/20260707-185134-3145895/client.stdout.log`에서 `scenario SM-G1 passed`와
   `spot-service kotlin e2e mode=play-crash-recovery result=passed`를 확인했다.
+- `SM-D12`: `session-a`에서 `play-a`의 remote actor를 bind하고 요청 상태를 변경한 뒤 연결을 종료한다.
+  `session-b`에서 같은 `ActorRef`를 다시 bind해 다음 handler sequence가 정확히 1 증가하고, 새 bound
+  session으로 전달된 push가 같은 sequence를 포함하는지 확인한다.
+  `logs/20260713-153718-1546351/client-session-transfer.stdout.log`에서 `scenario SM-D12 passed`와
+  `spot-service kotlin e2e mode=session-transfer result=passed`를 확인했다.
 
 ## public contract parity 또는 spec 검토 대기
 
-아래 항목은 공통 E2E에 존재하고 .NET 또는 C++ SpotService E2E에서도 public framework 흐름으로
-검증되는 scenario다. Kotlin에서 같은 public 기능을 제공할지는 spec, 공통 framework 문서, guide의
-계약 근거를 먼저 확인한다. 근거가 확인된 항목만 Kotlin public contract parity 구현 대상으로 삼고,
-다른 언어 구현만 근거인 항목은 draft/spec 검토 대상으로 남긴다.
-
-- `SM-D12`: `session-a`에서 끊고 `session-b`로 재접속하는 topology는 준비했지만, 현재 Kotlin Session
-  role은 연결 서버와 actor logic을 분리하지 않아 같은 actor id가 `session-b` 쪽 actor로 bind된다. 추가
-  재현 mode에서는 `play-a`의 `EnsureActorReq` reply 뒤 public `ZLinkSessionActors.bind(ActorRef)`가
-  remote actor ref에 대해 완료되지 않아 stream request가 timeout된다. 버그 리포트:
-  `framework/doc/plan/framework-kotlin-sm-d12-remote-session-bind-bug.ko.md`.
+현재 이 구역에 남은 항목은 없다.
 
 ## .NET 추가 검증 파일
 

@@ -50,7 +50,7 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
     public CompletionStage<ZLinkActorJoinResult<Void>> submit() {
         Message requestPart = Message.from(request);
         try {
-            return services.spotNode().joinActorEntrySpot(
+            return manage(services.spotNode().joinActorEntrySpot(
                     context.actorRef(),
                     spotNodeRid,
                     requestPart,
@@ -71,7 +71,7 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
                         ? services.locationRenewal().renew(context.actor(), result.targetNodeRid())
                             .thenApply(ignored -> decoded)
                         : CompletableFuture.completedFuture(decoded);
-                });
+                }));
         } finally {
             requestPart.close();
         }
@@ -84,7 +84,7 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
         }
         Message requestPart = Message.from(request);
         try {
-            return services.spotNode().joinActorEntrySpot(
+            return manage(services.spotNode().joinActorEntrySpot(
                     context.actorRef(),
                     spotNodeRid,
                     requestPart,
@@ -107,10 +107,14 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
                         ? services.locationRenewal().renew(context.actor(), result.targetNodeRid())
                             .thenApply(ignored -> decoded)
                         : CompletableFuture.completedFuture(decoded);
-                });
+                }));
         } finally {
             requestPart.close();
         }
+    }
+
+    private static <T> CompletionStage<T> manage(CompletionStage<T> stage) {
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
     }
 
     @FunctionalInterface

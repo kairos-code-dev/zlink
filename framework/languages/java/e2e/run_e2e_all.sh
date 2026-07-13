@@ -2,37 +2,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../e2e-redis-common.sh"
-
-REDIS_SCOPE="zlink-redis-java-e2e"
 MAX_ATTEMPTS="${ZLINK_E2E_RETRY_ATTEMPTS:-3}"
 SCENARIO_TIMEOUT_SECONDS="${ZLINK_JAVA_E2E_SCENARIO_TIMEOUT_SECONDS:-1800}"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 DEFAULT_SCENARIOS=(
-  DiscoveryRegistryHa
+  StoreFailure
   RegistrationCodec
   RegistryMessaging
   PubSub
   SpotService
   RuntimeMonitoring
   ResilienceLifecycle
-  YieldDispatch
+  AutomaticTurnDispatch
   ToActorMessaging
   SpotActorTransfer
+  ObservabilityOps
 )
 
 cleanup_done=0
-
-cleanup_e2e_processes() {
-  local scenario_regex pattern
-  scenario_regex="$(IFS='|'; echo "${DEFAULT_SCENARIOS[*]}")"
-  pattern="${SCRIPT_DIR}/(${scenario_regex})/"
-
-  pkill -TERM -f "${pattern}" >/dev/null 2>&1 || true
-  sleep 0.5
-  pkill -KILL -f "${pattern}" >/dev/null 2>&1 || true
-}
+active_scenario_pid=""
 
 cleanup_resources() {
   if [[ "${cleanup_done}" == "1" ]]; then
@@ -40,8 +29,10 @@ cleanup_resources() {
   fi
   cleanup_done=1
 
-  cleanup_e2e_processes
-  zlink_redis_cleanup_scope "${REDIS_SCOPE}"
+  if [[ -n "${active_scenario_pid}" ]] && kill -0 "${active_scenario_pid}" >/dev/null 2>&1; then
+    kill -TERM "${active_scenario_pid}" >/dev/null 2>&1 || true
+    wait "${active_scenario_pid}" >/dev/null 2>&1 || true
+  fi
 }
 
 on_exit() {
@@ -51,7 +42,7 @@ on_exit() {
 }
 
 on_interrupt() {
-  echo "[java-e2e] interrupted; cleaning up Java processes and Redis..." >&2
+  echo "[java-e2e] interrupted; stopping the current configuration..." >&2
   exit 130
 }
 
@@ -78,8 +69,6 @@ else
   done
 fi
 
-zlink_redis_cleanup_scope "${REDIS_SCOPE}"
-
 run_scenario_with_retry() {
   local scenario="$1"
   local selector="$2"
@@ -92,9 +81,12 @@ run_scenario_with_retry() {
     set +e
     (
       cd "$SCRIPT_DIR/$scenario" &&
-        nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${selector}"
-    ) 2>&1 | tee "${output}"
-    status="${PIPESTATUS[0]}"
+        exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${selector}"
+    ) > >(tee "${output}") 2>&1 &
+    active_scenario_pid="$!"
+    wait "${active_scenario_pid}"
+    status="$?"
+    active_scenario_pid=""
     set -e
     ended_at="$(date +%s)"
 

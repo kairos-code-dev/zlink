@@ -34,12 +34,11 @@ public final class DispatchHttpServer implements AutoCloseable {
             write(exchange, 405, "");
             return;
         }
-        Messages.CreateDeliveryRequest request =
-            json.readValue(exchange.getRequestBody(), Messages.CreateDeliveryRequest.class);
+        Messages.CreateDeliveryReq request =
+            json.readValue(exchange.getRequestBody(), Messages.CreateDeliveryReq.class);
         queue.enqueue(request);
-        write(exchange, 200, json.writeValueAsString(new Messages.CreateDeliveryResponse(
-            request.deliveryId(),
-            Messages.DeliveryStatus.Created)));
+        write(exchange, 200, json.writeValueAsString(new Messages.CreateDeliveryRes(
+            request.deliveryId())));
     }
 
     private void handleServerAssertion(HttpExchange exchange) throws IOException {
@@ -49,8 +48,19 @@ public final class DispatchHttpServer implements AutoCloseable {
         }
         Messages.ServerAssertionRequest request =
             json.readValue(exchange.getRequestBody(), Messages.ServerAssertionRequest.class);
-        Messages.ServerAssertionResponse response = queue.assertServerEvidence(request);
-        write(exchange, response.passed() ? 200 : 500, json.writeValueAsString(response));
+        queue.assertServerEvidence(request).whenComplete((response, error) -> {
+            try {
+                if (error != null) {
+                    write(exchange, 500, json.writeValueAsString(
+                        java.util.Map.of("error", error.getMessage())));
+                } else {
+                    write(exchange, response.passed() ? 200 : 500,
+                        json.writeValueAsString(response));
+                }
+            } catch (IOException writeError) {
+                exchange.close();
+            }
+        });
     }
 
     private static void write(HttpExchange exchange, int status, String body) throws IOException {

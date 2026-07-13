@@ -3,6 +3,10 @@ package systems.zlink.e2e.kotlin.registrationcodec.main.endpoints
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.protobuf.StringValue
 import com.sun.net.httpserver.HttpExchange
+import java.time.Duration
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletionStage
 import systems.zlink.e2e.kotlin.registrationcodec.CodecRoundtripRes
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
 import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReq
@@ -30,91 +34,96 @@ class RegistrationScenarioEndpoints(
 ) {
     fun map(httpServer: com.sun.net.httpserver.HttpServer) {
         httpServer.createContext("/registration/auto") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, EchoAutoReq("auto-request"))
-                .packetName("EchoAutoReq")
-                .await(EchoAutoRes::class.java)
-            client.sendToChannel(Contracts.CHANNEL, EchoAutoMsg("auto-send"))
-                .packetName("EchoAutoMsg")
-                .await()
-            exchange.writeJson(reply)
+            exchange.writeJson(request(EchoAutoReq("auto-request"), EchoAutoRes::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, EchoAutoMsg("auto-send")).submit()
+                reply
+            })
         }
         httpServer.createContext("/registration/attribute") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, EchoAttrReq("attr-request"))
-                .packetName("EchoAttrReq")
-                .await(EchoAttrRes::class.java)
-            client.sendToChannel(Contracts.CHANNEL, EchoAttrMsg("attr-send"))
-                .packetName("EchoAttrMsg")
-                .await()
-            exchange.writeJson(reply)
+            exchange.writeJson(request(EchoAttrReq("attr-request"), EchoAttrRes::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, EchoAttrMsg("attr-send")).submit()
+                reply
+            })
         }
         httpServer.createContext("/registration/manual") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, EchoManualReq("manual-request"))
-                .packetName("EchoManualReq")
-                .await(EchoManualRes::class.java)
-            client.sendToChannel(Contracts.CHANNEL, EchoManualMsg("manual-send"))
-                .packetName("EchoManualMsg")
-                .await()
-            exchange.writeJson(reply)
+            exchange.writeJson(request(EchoManualReq("manual-request"), EchoManualRes::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, EchoManualMsg("manual-send")).submit()
+                reply
+            })
         }
         httpServer.createContext("/registration/di-lifecycle") { exchange ->
-            val replies = (0 until 3).map { index ->
-                client.requestToChannel(Contracts.CHANNEL, DiLifecycleReq("di-$index"))
-                    .packetName("DiLifecycleReq")
-                    .await(DiLifecycleRes::class.java)
+            val replies = mutableListOf<DiLifecycleRes>()
+            var sequence: CompletionStage<Void> = CompletableFuture.completedFuture(null)
+            repeat(3) { index ->
+                sequence = sequence.thenCompose {
+                    request(DiLifecycleReq("di-$index"), DiLifecycleRes::class.java)
+                        .thenAccept(replies::add)
+                }
             }
-            exchange.writeJson(replies)
+            exchange.writeJson(sequence.thenApply { replies.toList() })
         }
         httpServer.createContext("/registration/filter-order") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, EchoManualReq("filter-order-request"))
-                .packetName("EchoManualReq")
-                .await(EchoManualRes::class.java)
-            exchange.writeJson(reply)
+            exchange.writeJson(request(EchoManualReq("filter-order-request"), EchoManualRes::class.java))
         }
         httpServer.createContext("/codec/json") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, JsonEchoReq("json-request"))
-                .packetName("JsonEchoReq")
-                .await(JsonEchoRes::class.java)
-            client.sendToChannel(Contracts.CHANNEL, JsonEchoMsg("json-send"))
-                .packetName("JsonEchoMsg")
-                .await()
-            exchange.writeJson(reply)
+            exchange.writeJson(request(JsonEchoReq("json-request"), JsonEchoRes::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, JsonEchoMsg("json-send")).submit()
+                reply
+            })
         }
         httpServer.createContext("/codec/protobuf") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-request"))
-                .packetName("ProtobufEcho")
-                .await(StringValue::class.java)
-            client.sendToChannel(Contracts.CHANNEL, StringValue.of("protobuf-send"))
-                .packetName("ProtobufEcho")
-                .await()
-            exchange.writeJson(mapOf("value" to reply.value))
+            exchange.writeJson(request(StringValue.of("protobuf-request"), StringValue::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, StringValue.of("protobuf-send")).submit()
+                mapOf("value" to reply.value)
+            })
         }
         httpServer.createContext("/codec/messagepack") { exchange ->
-            val reply = client.requestToChannel(Contracts.CHANNEL, PackedEchoReq("msgpack-request"))
-                .packetName("PackedEchoReq")
-                .await(PackedEchoRes::class.java)
-            client.sendToChannel(Contracts.CHANNEL, PackedEchoMsg("msgpack-send"))
-                .packetName("PackedEchoMsg")
-                .await()
-            exchange.writeJson(reply)
+            exchange.writeJson(request(PackedEchoReq("msgpack-request"), PackedEchoRes::class.java).thenApply { reply ->
+                client.sendToChannel(Contracts.CHANNEL, PackedEchoMsg("msgpack-send")).submit()
+                reply
+            })
         }
         httpServer.createContext("/codec/roundtrip") { exchange ->
-            val jsonReply = client.requestToChannel(Contracts.CHANNEL, JsonEchoReq("json-request"))
-                .packetName("JsonEchoReq")
-                .await(JsonEchoRes::class.java)
-            val protobufReply = client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-request"))
-                .packetName("ProtobufEcho")
-                .await(StringValue::class.java)
-            val packedReply = client.requestToChannel(Contracts.CHANNEL, PackedEchoReq("msgpack-request"))
-                .packetName("PackedEchoReq")
-                .await(PackedEchoRes::class.java)
-            exchange.writeJson(CodecRoundtripRes(jsonReply.value, protobufReply.value, packedReply.value))
+            val response = request(JsonEchoReq("json-request"), JsonEchoRes::class.java)
+                .thenCompose { jsonReply ->
+                    request(StringValue.of("protobuf-request"), StringValue::class.java)
+                        .thenApply { protobufReply -> jsonReply to protobufReply }
+                }
+                .thenCompose { (jsonReply, protobufReply) ->
+                    request(PackedEchoReq("msgpack-request"), PackedEchoRes::class.java)
+                        .thenApply { packedReply ->
+                            CodecRoundtripRes(jsonReply.value, protobufReply.value, packedReply.value)
+                        }
+                }
+            exchange.writeJson(response)
         }
     }
 
-    private fun HttpExchange.writeJson(value: Any) {
+    private fun <TReply> request(payload: Any, replyType: Class<TReply>): CompletionStage<TReply> =
+        client.requestToChannel(Contracts.CHANNEL, payload)
+            .timeout(Duration.ofSeconds(5))
+            .submit(replyType)
+
+    private fun HttpExchange.writeJson(response: CompletionStage<*>) {
+        response.whenComplete { value, error ->
+            if (error == null) {
+                writeJsonValue(value)
+            } else {
+                val cause = if (error is CompletionException && error.cause != null) error.cause!! else error
+                val body = json.writeValueAsBytes(mapOf("error" to (cause.message ?: cause.javaClass.simpleName)))
+                responseHeaders.add("Content-Type", "application/json")
+                sendResponseHeaders(500, body.size.toLong())
+                responseBody.use { it.write(body) }
+                close()
+            }
+        }
+    }
+
+    private fun HttpExchange.writeJsonValue(value: Any?) {
         val body = json.writeValueAsBytes(value)
         responseHeaders.add("Content-Type", "application/json")
         sendResponseHeaders(200, body.size.toLong())
         responseBody.use { it.write(body) }
+        close()
     }
 }

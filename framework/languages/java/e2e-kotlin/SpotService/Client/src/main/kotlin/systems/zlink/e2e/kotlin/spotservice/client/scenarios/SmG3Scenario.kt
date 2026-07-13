@@ -1,17 +1,21 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.util.UUID
-import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
-import systems.zlink.stream.connector.ZLinkStreamConnector
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 
 internal object SmG3Scenario {
-    fun run() {
-        val connectors = mutableListOf<ZLinkStreamConnector>()
+    suspend fun run() {
+        val connectors = mutableListOf<ZLinkKotlinStreamConnector>()
         val actorIds = mutableListOf<String>()
         val key = UUID.randomUUID().toString().replace("-", "")
         val spotRid = "spot-sm-g3-$key"
@@ -28,36 +32,37 @@ internal object SmG3Scenario {
 
                 val auth = connector
                     .request(Contracts.ActorAuthReq(actorId, profile))
-                    .await(Contracts.ActorAuthRes::class.java)
+                    .await<Contracts.ActorAuthRes>()
                 ensure(auth.actorId == actorId, "SM-G3 auth actor mismatch")
 
                 val joined = connector
                     .request(Contracts.ActorJoinReq(spotRid, profile, profile.tags))
                     .metadata("actor-id", actorId)
-                    .await(Contracts.ActorJoinRes::class.java)
+                    .await<Contracts.ActorJoinRes>()
                 ensure(joined.actorId == actorId, "SM-G3 join actor mismatch")
                 ensure(joined.nodeRid == "play-a", "SM-G3 join node mismatch")
             }
 
-            val tasks = actorIds.mapIndexed { index, actorId ->
-                val connector = connectors[index]
-                CompletableFuture.runAsync {
+            coroutineScope {
+                actorIds.mapIndexed { index, actorId ->
+                    val connector = connectors[index]
+                    async {
                     val ping = connector
                         .request(Contracts.ActorEchoReq(actorId, 3, profile))
                         .metadata("actor-id", actorId)
-                        .await(Contracts.ActorEchoRes::class.java)
+                        .await<Contracts.ActorEchoRes>()
                     ensure(ping.actorId == actorId, "SM-G3 actor request target mismatch")
                     ensure(ping.nodeRid == "play-a", "SM-G3 actor request node mismatch")
 
                     val left = connector
                         .request(Contracts.LeaveActorReq(actorId))
                         .metadata("actor-id", actorId)
-                        .await(Contracts.LeaveActorRes::class.java)
+                        .await<Contracts.LeaveActorRes>()
                     ensure(left.actorId == actorId, "SM-G3 leave actor mismatch")
                     ensure(left.accepted, "SM-G3 leave was not accepted")
-                }
+                    }
+                }.awaitAll()
             }
-            CompletableFuture.allOf(*tasks.toTypedArray()).join()
 
             val expected = actorIds.flatMap { actorId ->
                 listOf(

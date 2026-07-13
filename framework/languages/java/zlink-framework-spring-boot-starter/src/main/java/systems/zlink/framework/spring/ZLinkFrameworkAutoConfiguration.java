@@ -7,6 +7,7 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -143,6 +144,39 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnMissingBean
     public ZLinkRouteClient zlinkRouteClient(ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public systems.zlink.framework.spots.SpotHandleResolver zlinkSpotHandleResolver(
+        ZLinkFrameworkLifecycle lifecycle) {
+        return spotRid -> lifecycle.spotHandleResolver().resolveSpotHandle(spotRid);
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public systems.zlink.framework.spots.ActorSpotHandleResolver zlinkActorSpotHandleResolver(
+        ZLinkFrameworkLifecycle lifecycle) {
+        return actorId -> lifecycle.actorSpotHandleResolver().resolveActorSpotHandle(actorId);
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public systems.zlink.framework.monitoring.ZLinkDrainControl zlinkDrainControl(
+        ZLinkFrameworkLifecycle lifecycle) {
+        return lifecycle;
+    }
+
+    @Bean("zlinkDrainReadiness")
+    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnBean(systems.zlink.framework.monitoring.ZLinkDrainControl.class)
+    @ConditionalOnMissingBean(name = "zlinkDrainReadiness")
+    public ZLinkDrainReadinessContributor zlinkDrainReadinessContributor(
+        systems.zlink.framework.monitoring.ZLinkDrainControl drainControl) {
+        return new ZLinkDrainReadinessContributor(drainControl);
     }
 
 }

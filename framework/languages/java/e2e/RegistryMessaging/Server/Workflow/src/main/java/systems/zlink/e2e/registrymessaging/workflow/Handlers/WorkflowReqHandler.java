@@ -16,10 +16,11 @@ public final class WorkflowReqHandler
     }
 
     @Override
-    public Contracts.WorkflowRes handle(
+    public java.util.concurrent.CompletionStage<Contracts.WorkflowRes> handle(
         Contracts.WorkflowReq request,
         ZLinkRequestContext context) {
         state.record("workflow-request", request.value());
-        return new Contracts.WorkflowRes("workflow:" + request.value(), state.providerRid());
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Contracts.WorkflowRes("workflow:" + request.value(), state.providerRid()));
     }
 }

@@ -1,8 +1,7 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot
 
 import java.time.Duration
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.await
+import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -63,7 +62,6 @@ class BingoRoomSpot(
     override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val joinRequest = request.decode(BingoRoomJoinReq::class.java)
         validateJoin(actorId, joinRequest)
@@ -76,27 +74,18 @@ class BingoRoomSpot(
         return ZLinkSpotActorJoinResponse.accept(BingoRoomJoinRes(preview))
     }
 
-    override suspend fun onJoinedActorSuspending(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: PlayerActor) {
         val request = pendingJoins.remove(actor.actorId())
             ?: error("joined actor does not have a pending admission")
         join(actor, request)
     }
 
-    override suspend fun onLeaveActorSuspending(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onLeaveActorSuspending(actor: PlayerActor) {
         actors.remove(actor.actorId())
         observers.remove(actor.actorId())
     }
 
-    override fun onDisconnectActor(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: PlayerActor) {
         actor.markDisconnected()
     }
 
@@ -113,7 +102,7 @@ class BingoRoomSpot(
     }
 
     override suspend fun onClosingSuspending() {
-        timer?.cancelAsync()?.await()
+        timer?.cancel()?.await()
     }
 
     fun join(
@@ -255,7 +244,6 @@ class BingoRoomSpot(
                 ),
             )
             .submit()
-            .await()
     }
 
     private fun publishEvents(

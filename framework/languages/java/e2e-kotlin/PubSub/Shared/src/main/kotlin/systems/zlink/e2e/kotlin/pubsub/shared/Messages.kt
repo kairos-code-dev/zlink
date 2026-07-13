@@ -22,6 +22,12 @@ class EventMsg() {
     }
 }
 
+class MissingEventMsg(
+    var scenario: String = "",
+    var sequence: Int = 0,
+    var value: String = "",
+)
+
 class EvidenceEntry() {
     var marker: String = ""
     var subscriberRid: String = ""

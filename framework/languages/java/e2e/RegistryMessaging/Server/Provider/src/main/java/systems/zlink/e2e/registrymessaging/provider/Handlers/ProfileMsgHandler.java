@@ -16,7 +16,7 @@ public final class ProfileMsgHandler
     }
 
     @Override
-    public void handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         Contracts.ProfileMsg message,
         ZLinkSendContext context) {
         if (message.commandId().startsWith("slow")) {
@@ -28,5 +28,6 @@ public final class ProfileMsgHandler
             }
         }
         state.record("ProfileMsg", message.commandId());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

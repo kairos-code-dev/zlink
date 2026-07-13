@@ -7,7 +7,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 import systems.zlink.e2e.kotlin.spotservice.client.support.waitForEvidence
 
 internal object SmA8Scenario {
-    fun run(spots: SpotHttpDriver) {
+    suspend fun run(spots: SpotHttpDriver) {
         eventually {
             spots.requestState("room-a", "worker-start-long")
         }

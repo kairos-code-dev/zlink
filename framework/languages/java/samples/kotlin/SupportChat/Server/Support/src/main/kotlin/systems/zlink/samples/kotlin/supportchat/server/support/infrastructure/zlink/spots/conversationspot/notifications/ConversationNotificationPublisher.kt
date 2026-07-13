@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.notifications
 
-import kotlinx.coroutines.future.await
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.ConversationEvent
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.ConversationEventKind
@@ -32,9 +31,7 @@ class ConversationNotificationPublisher {
         val state = ConversationContracts.toState(snapshot)
         roster.context().boundSession()
             .send(ConversationAssignedNotify(state.conversationId, state))
-            .packetName(SampleNames.ConversationAssignedPacket)
             .submit()
-            .await()
     }
 
     private suspend fun publish(
@@ -49,13 +46,11 @@ class ConversationNotificationPublisher {
             ConversationEventKind.Idle -> publishAll(actors.values) { actor ->
                 actor.context().boundSession()
                     .send(ConversationIdleNotify(state.conversationId, state))
-                    .packetName(SampleNames.ConversationIdlePacket)
                     .submit()
             }
             ConversationEventKind.Closed -> publishAll(excludeActor(actors, event.actorId).values) { actor ->
                 actor.context().boundSession()
                     .send(ConversationClosedNotify(state.conversationId, state))
-                    .packetName(SampleNames.ConversationClosedPacket)
                     .submit()
             }
         }
@@ -81,9 +76,7 @@ class ConversationNotificationPublisher {
                     state,
                 ),
             )
-            .packetName(SampleNames.ParticipantJoinedPacket)
             .submit()
-            .await()
     }
 
     private suspend fun publishMessage(
@@ -96,7 +89,6 @@ class ConversationNotificationPublisher {
         publishAll(excludeActor(actors, message.senderActorId).values) { actor ->
             actor.context().boundSession()
                 .send(ChatMessageNotify(state.conversationId, chatMessage, state))
-                .packetName(SampleNames.ChatMessagePacket)
                 .submit()
         }
     }
@@ -111,7 +103,6 @@ class ConversationNotificationPublisher {
         publishAll(excludeActor(actors, actorId).values) { actor ->
             actor.context().boundSession()
                 .send(TypingChangedNotify(state.conversationId, actorId, isTyping, state))
-                .packetName(SampleNames.TypingChangedPacket)
                 .submit()
         }
     }
@@ -124,10 +115,10 @@ class ConversationNotificationPublisher {
 
     private suspend fun publishAll(
         actors: Collection<SupportUserActor>,
-        publish: (SupportUserActor) -> java.util.concurrent.CompletionStage<Void>,
+        publish: (SupportUserActor) -> Unit,
     ) {
         for (actor in actors) {
-            publish(actor).await()
+            publish(actor)
         }
     }
 }

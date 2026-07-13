@@ -31,7 +31,9 @@ public final class ZLinkActorSpotRoutePackets {
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
         RoutingId sourceEntrySpotRid,
+        String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         Message joinPayload) {
@@ -44,7 +46,9 @@ public final class ZLinkActorSpotRoutePackets {
                 actorId,
                 actorType,
                 actorRef,
+                sourceEntrySpotNodeRid,
                 sourceEntrySpotRid,
+                sourceEntryRouterChannelId,
                 sourceNodeRid,
                 sourceSessionRid,
                 ""),
@@ -57,7 +61,9 @@ public final class ZLinkActorSpotRoutePackets {
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
         RoutingId sourceEntrySpotRid,
+        String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         String adapterKey,
@@ -73,7 +79,9 @@ public final class ZLinkActorSpotRoutePackets {
                 actorId,
                 actorType,
                 actorRef,
+                sourceEntrySpotNodeRid,
                 sourceEntrySpotRid,
+                sourceEntryRouterChannelId,
                 sourceNodeRid,
                 sourceSessionRid,
                 adapterKey == null ? "" : adapterKey,
@@ -95,13 +103,16 @@ public final class ZLinkActorSpotRoutePackets {
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
         RoutingId sourceEntrySpotRid,
+        String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         String adapterKey) {
         return encodeTransferRequest(
             phase, transferId, timeout, actorId, actorType, actorRef,
-            sourceEntrySpotRid, sourceNodeRid, sourceSessionRid, adapterKey, 0);
+            sourceEntrySpotNodeRid, sourceEntrySpotRid,
+            sourceEntryRouterChannelId, sourceNodeRid, sourceSessionRid, adapterKey, 0);
     }
 
     private static Message encodeTransferRequest(
@@ -111,7 +122,9 @@ public final class ZLinkActorSpotRoutePackets {
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
         RoutingId sourceEntrySpotRid,
+        String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         String adapterKey,
@@ -126,7 +139,9 @@ public final class ZLinkActorSpotRoutePackets {
             actorType,
             actorRef.nodeRid().toString(),
             Long.toUnsignedString(actorRef.generation()),
+            sourceEntrySpotNodeRid.toString(),
             sourceEntrySpotRid.toString(),
+            sourceEntryRouterChannelId,
             sourceNodeRid == null ? "" : sourceNodeRid.toString(),
             sourceSessionRid == null ? "" : sourceSessionRid.toString(),
             adapterKey,
@@ -135,14 +150,16 @@ public final class ZLinkActorSpotRoutePackets {
 
     public static TransferRequest decodeTransferRequest(Message message) {
         String[] fields = message.toUtf8String().split("\n", -1);
-        if (fields.length != 12
+        if (fields.length != 14
             || (!ADMISSION_PHASE.equals(fields[0]) && !COMMIT_PHASE.equals(fields[0]))
             || fields[1].isBlank()
             || fields[3].isBlank()
             || fields[4].isBlank()
             || fields[5].isBlank()
             || fields[7].isBlank()
-            || (fields[8].isBlank() != fields[9].isBlank())) {
+            || fields[8].isBlank()
+            || fields[9].isBlank()
+            || (fields[10].isBlank() != fields[11].isBlank())) {
             throw new ZLinkConfigurationException("invalid actor Spot transfer request");
         }
         return new TransferRequest(
@@ -154,10 +171,12 @@ public final class ZLinkActorSpotRoutePackets {
             RoutingId.from(fields[5]),
             Long.parseUnsignedLong(fields[6]),
             RoutingId.from(fields[7]),
-            fields[8].isBlank() ? null : RoutingId.from(fields[8]),
-            fields[9].isBlank() ? null : RoutingId.from(fields[9]),
-            fields[10].isBlank() ? null : fields[10],
-            Integer.parseInt(fields[11]));
+            RoutingId.from(fields[8]),
+            fields[9],
+            fields[10].isBlank() ? null : RoutingId.from(fields[10]),
+            fields[11].isBlank() ? null : RoutingId.from(fields[11]),
+            fields[12].isBlank() ? null : fields[12],
+            Integer.parseInt(fields[13]));
     }
 
     public static List<WireHandoffPacket> decodeHandoffPackets(
@@ -354,7 +373,9 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         RoutingId actorNodeRid,
         long actorGeneration,
+        RoutingId sourceEntrySpotNodeRid,
         RoutingId sourceEntrySpotRid,
+        String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         String adapterKey,

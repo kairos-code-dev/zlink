@@ -12,21 +12,22 @@ mkdir -p "$LOG_DIR"
 rm -f "$LOG_DIR"/*.log
 
 export SUPPORTCHAT_LOG_DIR="$LOG_DIR"
-export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:19611}"
-export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:19612}"
-export SUPPORTCHAT_SESSION_STREAM_ENDPOINT="${SUPPORTCHAT_SESSION_STREAM_ENDPOINT:-tcp://127.0.0.1:19613}"
-export SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:19614}"
-export SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:19615}"
-export SUPPORTCHAT_API_HTTP_ENDPOINT="${SUPPORTCHAT_API_HTTP_ENDPOINT:-http://127.0.0.1:19621}"
-export SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT="${SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT:-http://127.0.0.1:19622}"
+read -r api_channel_port support_channel_port session_stream_port \
+  session_router_port support_router_port api_http_port support_http_port \
+  <<<"$(zlink_sample_reserve_ports 7)"
+export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${api_channel_port}}"
+export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${support_channel_port}}"
+export SUPPORTCHAT_SESSION_STREAM_ENDPOINT="${SUPPORTCHAT_SESSION_STREAM_ENDPOINT:-tcp://127.0.0.1:${session_stream_port}}"
+export SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${session_router_port}}"
+export SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${support_router_port}}"
+export SUPPORTCHAT_API_HTTP_ENDPOINT="${SUPPORTCHAT_API_HTTP_ENDPOINT:-http://127.0.0.1:${api_http_port}}"
+export SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT="${SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT:-http://127.0.0.1:${support_http_port}}"
 export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-zlink:supportchat:sample:$(date +%s):$$}"
 
 REDIS_CONTAINER=""
-if [[ -z "${SUPPORTCHAT_REDIS_ENDPOINT:-}" ]]; then
-  REDIS_CONTAINER="$(zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379")"
-  REDIS_PORT="$(zlink_redis_host_port "$REDIS_CONTAINER")"
-  export SUPPORTCHAT_REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
+  "zlink-redis-java-sample-supportchat" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export SUPPORTCHAT_REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 
 pids=()
 trap cleanup EXIT
@@ -63,11 +64,11 @@ if [[ -z "$conversation_id" ]]; then
   exit 1
 fi
 
-assertion="$(curl -fsS "$SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT/self-check/assert/$conversation_id")"
-if [[ "$assertion" != *'"passed":true'* ]]; then
-  echo "supportchat server assertion failed: $assertion" >&2
-  exit 1
-fi
+grep -q "support conversation: created" "$LOG_DIR/support.log"
+grep -q "status=Active" "$LOG_DIR/support.log"
+grep -q "status=WaitingForClose" "$LOG_DIR/support.log"
+grep -q "status=Closed" "$LOG_DIR/support.log"
+grep -q "supportchat-closed-typing-ignore=verified" "$LOG_DIR/client.log"
 
 for file in "$LOG_DIR"/flow-*.log; do
   if [[ ! -s "$file" ]]; then

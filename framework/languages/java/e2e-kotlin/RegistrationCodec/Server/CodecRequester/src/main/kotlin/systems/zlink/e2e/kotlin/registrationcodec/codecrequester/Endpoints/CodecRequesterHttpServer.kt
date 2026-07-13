@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CompletionStage
 import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.CodecRequesterProbe
 
@@ -25,16 +26,10 @@ class CodecRequesterHttpServer(
             exchange.responseBody.use { it.write(body) }
         }
         httpServer.createContext("/codec/json/request") { exchange ->
-            val body = json.writeValueAsBytes(requester.requestJson())
-            exchange.responseHeaders.add("Content-Type", "application/json")
-            exchange.sendResponseHeaders(200, body.size.toLong())
-            exchange.responseBody.use { it.write(body) }
+            write(exchange, requester.requestJson())
         }
         httpServer.createContext("/codec/protobuf/request") { exchange ->
-            val body = json.writeValueAsBytes(requester.requestProtobuf())
-            exchange.responseHeaders.add("Content-Type", "application/json")
-            exchange.sendResponseHeaders(200, body.size.toLong())
-            exchange.responseBody.use { it.write(body) }
+            write(exchange, requester.requestProtobuf())
         }
         httpServer.start()
         server = httpServer
@@ -48,4 +43,20 @@ class CodecRequesterHttpServer(
     }
 
     override fun isRunning(): Boolean = running
+
+    private fun write(
+        exchange: com.sun.net.httpserver.HttpExchange,
+        result: CompletionStage<*>,
+    ) {
+        result.whenComplete { value, error ->
+            val status = if (error == null) 200 else 500
+            val body = json.writeValueAsBytes(
+                if (error == null) value else mapOf("error" to (error.message ?: error.javaClass.simpleName)),
+            )
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(status, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+            exchange.close()
+        }
+    }
 }

@@ -8,11 +8,14 @@ public final class SupportUserActor implements ZLinkActor {
     private final ZLinkActorContext context;
     private String displayName;
     private String role = "";
+    private String participantId;
+    private String conversationId = "";
 
     public SupportUserActor(String actorId, ZLinkActorContext context) {
         this.actorId = actorId;
         this.context = context;
         this.displayName = actorId;
+        this.participantId = actorId;
     }
 
     @Override
@@ -33,9 +36,22 @@ public final class SupportUserActor implements ZLinkActor {
         return role;
     }
 
-    public void setIdentity(String displayName, String role) {
+    public String participantId() {
+        return participantId;
+    }
+
+    public String conversationId() {
+        return conversationId;
+    }
+
+    public void setIdentity(String displayName, String role, String participantId) {
         this.displayName = displayName;
         this.role = role;
+        this.participantId = participantId;
+    }
+
+    public void joinConversation(String conversationId) {
+        this.conversationId = conversationId;
     }
 
     public void push(Object message) {

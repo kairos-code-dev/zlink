@@ -1,5 +1,11 @@
 package systems.zlink.samples.gamequest.shared.contracts;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+
 import java.util.List;
 
 public final class Messages {
@@ -119,16 +125,78 @@ public final class Messages {
         long updatedAtUnixMs) {
     }
 
-    public record GameplayEventEnvelope(
+    public record GameplayMsg(
         String eventId,
         String playerId,
+        String type,
+        byte[] payload,
+        long occurredAtUnixMs) {
+        public static GameplayMsg create(
+            String eventId,
+            String playerId,
+            String type,
+            String idempotencyKey,
+            String value,
+            int count,
+            String sourceApi,
+            long occurredAtUnixMs,
+            boolean publish) {
+            return new GameplayMsg(
+                eventId,
+                playerId,
+                type,
+                GameplayPayload.encode(
+                    new GameplayPayload(idempotencyKey, value, count, sourceApi, publish)),
+                occurredAtUnixMs);
+        }
+
+        public GameplayPayload decodePayload() {
+            return GameplayPayload.decode(payload);
+        }
+
+        public String idempotencyKey() { return decodePayload().idempotencyKey(); }
+        public String eventType() { return type; }
+        public String value() { return decodePayload().value(); }
+        public int count() { return decodePayload().count(); }
+        public String sourceApi() { return decodePayload().sourceApi(); }
+        public long createdAtUnixMs() { return occurredAtUnixMs; }
+        public boolean publish() { return decodePayload().publish(); }
+    }
+
+    public record GameplayPayload(
         String idempotencyKey,
-        String eventType,
         String value,
         int count,
         String sourceApi,
-        long createdAtUnixMs,
         boolean publish) {
+        private static byte[] encode(GameplayPayload payload) {
+            try {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                try (DataOutputStream output = new DataOutputStream(bytes)) {
+                    output.writeUTF(payload.idempotencyKey());
+                    output.writeUTF(payload.value());
+                    output.writeInt(payload.count());
+                    output.writeUTF(payload.sourceApi());
+                    output.writeBoolean(payload.publish());
+                }
+                return bytes.toByteArray();
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to encode gameplay payload", error);
+            }
+        }
+
+        private static GameplayPayload decode(byte[] bytes) {
+            try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+                return new GameplayPayload(
+                    input.readUTF(),
+                    input.readUTF(),
+                    input.readInt(),
+                    input.readUTF(),
+                    input.readBoolean());
+            } catch (IOException error) {
+                throw new IllegalArgumentException("invalid gameplay payload", error);
+            }
+        }
     }
 
     public record QuestProgressedEvent(

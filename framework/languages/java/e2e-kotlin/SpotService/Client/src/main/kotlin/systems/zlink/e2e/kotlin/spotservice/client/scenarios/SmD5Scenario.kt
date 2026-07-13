@@ -1,5 +1,7 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.framework.kotlin.*
+
 import java.util.UUID
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
@@ -8,7 +10,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmD5Scenario {
-    fun run() {
+    suspend fun run() {
         val actorId = "actor-sm-d5-notified-" + UUID.randomUUID().toString().replace("-", "")
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
         try {
@@ -16,12 +18,12 @@ internal object SmD5Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await(Contracts.ActorAuthRes::class.java)
+                .await<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D5 auth actor mismatch")
             val joined = connector
                 .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", actorId)
-                .await(Contracts.ActorJoinRes::class.java)
+                .await<Contracts.ActorJoinRes>()
             ensure(joined.actorId == actorId, "SM-D5 join actor mismatch")
             connector.close().await()
         } finally {

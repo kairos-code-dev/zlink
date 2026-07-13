@@ -16,9 +16,9 @@ public final class SyncQuestProgressHandler
     }
 
     @Override
-    public Messages.SyncQuestProgressRes handle(
+    public java.util.concurrent.CompletionStage<Messages.SyncQuestProgressRes> handle(
         Messages.SyncQuestProgressReq request,
         ZLinkRequestContext context) {
-        return store.sync(request.playerId(), 4);
+        return java.util.concurrent.CompletableFuture.completedFuture(store.sync(request.playerId(), 4));
     }
 }

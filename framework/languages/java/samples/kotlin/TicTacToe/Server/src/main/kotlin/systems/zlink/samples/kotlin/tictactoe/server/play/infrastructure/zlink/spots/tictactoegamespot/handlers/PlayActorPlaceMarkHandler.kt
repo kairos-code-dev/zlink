@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers
 
-import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
@@ -17,7 +16,6 @@ class PlayActorPlaceMarkHandler {
         actor: PlayActor,
         context: ZLinkSpotActorRequestContext,
         request: PlaceMarkReq,
-        cancellationToken: CancellationToken,
     ): PlaceMarkRes {
         actor.requireJoinedGame()
         return spot.placeMark(actor, request.cell)

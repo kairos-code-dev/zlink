@@ -10,7 +10,10 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneMsg;
 public final class PlayerWinMilestoneMsgHandler
     implements ZLinkSpotSubscriptionHandler<PlayEntrySpot, PlayerWinMilestoneMsg> {
     @Override
-    public void handle(PlayEntrySpot spot, PlayerWinMilestoneMsg message) {
+    public java.util.concurrent.CompletionStage<Void> handle(
+        PlayEntrySpot spot,
+        PlayerWinMilestoneMsg message) {
         spot.notifyMilestone(message);
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

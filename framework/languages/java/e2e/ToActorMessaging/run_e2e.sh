@@ -13,7 +13,9 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+SCENARIO="${1:-all}"
 echo "start_order=${E2E_START_ORDER}"
+echo "scenario=${SCENARIO}"
 
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
@@ -67,18 +69,9 @@ PY
   return 1
 }
 
-if [[ -n "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_LOCATION_ENDPOINT}"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
-else
-  redis_container="$(
-    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-  )"
-  redis_endpoint="$(zlink_redis_endpoint "${redis_container}")"
-fi
+zlink_redis_start_scoped_assign redis_container redis_port \
+  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+redis_endpoint="127.0.0.1:${redis_port}"
 export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
@@ -126,7 +119,7 @@ cleanup() {
     kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   if [[ -n "${redis_container}" ]]; then
-    docker rm -f "${redis_container}" >/dev/null 2>&1 || true
+    docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -232,4 +225,5 @@ for role in "${SERVER_ROLES[@]}"; do
   wait_role_ready "$role"
 done
 
-./Client/build/install/to-actor-client/bin/to-actor-client > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"
+./Client/build/install/to-actor-client/bin/to-actor-client "${SCENARIO}" \
+  > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"

@@ -16,9 +16,10 @@ public final class GetQuestProgressHandler
     }
 
     @Override
-    public Messages.GetQuestProgressRes handle(
+    public java.util.concurrent.CompletionStage<Messages.GetQuestProgressRes> handle(
         Messages.GetQuestProgressReq request,
         ZLinkRequestContext context) {
-        return new Messages.GetQuestProgressRes(store.projection(request.playerId()));
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            new Messages.GetQuestProgressRes(store.projection(request.playerId())));
     }
 }

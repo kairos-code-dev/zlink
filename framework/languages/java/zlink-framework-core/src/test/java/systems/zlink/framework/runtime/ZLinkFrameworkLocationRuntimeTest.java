@@ -82,7 +82,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             .toCompletableFuture()
             .get();
 
-        runtime.close();
+        runtime.closeAsync().toCompletableFuture().get();
 
         assertEquals(List.of(), store.listOwnerLeases().toCompletableFuture().get().leases());
         assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
@@ -155,7 +155,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         assertEquals("player-1", rows.items().get(0).actorId());
         assertTrue(rows.items().get(0).actorRef() != null);
 
-        runtime.close();
+        runtime.closeAsync().toCompletableFuture().get();
 
         assertEquals(
             List.of(),

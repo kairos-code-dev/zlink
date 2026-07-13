@@ -2,11 +2,10 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.ZLinkAwait.await
-import systems.zlink.framework.kotlin.await
+import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
+import systems.zlink.framework.kotlin.awaitJoin
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotManager
@@ -24,43 +23,32 @@ class BingoEntrySpot(
     private val context: ZLinkEntrySpotContext,
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
-) : ZLinkEntrySpot<PlayerActor> {
+) : ZLinkSuspendingEntrySpot<PlayerActor>() {
     override fun context(): ZLinkEntrySpotContext = context
 
-    override fun onCreateActor(
+    override suspend fun onCreateActorSuspending(
         actor: PlayerActor,
         createRequest: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ) {
         val request = createRequest.decode(EnsurePlayerActorReq::class.java)
         actor.setDisplayName(request.displayName)
     }
 
-    override fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-        cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
         ZLinkSpotActorJoinResponse.accept()
 
-    override fun onJoinedActor(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onJoinedActorSuspending(actor: PlayerActor) {
         if (actor.destroyAfterEntrySpotJoin) {
-            await(context.destroyActor(actor))
+            context.destroyActor(actor).await()
         }
     }
 
-    override fun onLeaveActor(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) = Unit
+    override suspend fun onLeaveActorSuspending(actor: PlayerActor) = Unit
 
-    override fun onDisconnectActor(
-        actor: PlayerActor,
-        cancellationToken: CancellationToken,
-    ) {
+    override suspend fun onDisconnectActorSuspending(actor: PlayerActor) {
         actor.markDisconnected()
     }
 
@@ -83,10 +71,12 @@ class BingoEntrySpot(
                 actor.displayName,
                 true,
             ),
-        ).await(BingoRoomJoinRes::class.java)
+        ).awaitJoin(BingoRoomJoinRes::class.java)
+        val accepted = joined as? systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted
+            ?: error("observer actor join was rejected")
         return ObserveBingoEventsRes(
-            joined.reply().state.status == "Running",
-            joined.actor().nodeRid().toString(),
+            accepted.reply().state.status == "Running",
+            accepted.actor().nodeRid().toString(),
         )
     }
 }

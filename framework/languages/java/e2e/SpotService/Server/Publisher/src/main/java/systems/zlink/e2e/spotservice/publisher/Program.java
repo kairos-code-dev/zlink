@@ -33,8 +33,7 @@ public final class Program {
                     Contracts.SPOT_MESH,
                     "spot.events",
                     new Contracts.MeshMsg("c4-publisher"))
-                .packetName("MeshMsg")
-                .await();
+                .submit();
             System.out.println("scenario SM-C4 passed");
         } finally {
             context.close();

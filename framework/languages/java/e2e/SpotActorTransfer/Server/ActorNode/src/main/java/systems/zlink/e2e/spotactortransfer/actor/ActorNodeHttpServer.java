@@ -129,9 +129,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         try {
             Contracts.JoinTargetRes result = actorClient
                 .requestToActor(requireActor(actorId), request)
-                .packetName("JoinTargetReq")
                 .timeout(Duration.ofSeconds(12))
-                .await(Contracts.JoinTargetRes.class);
+                .submit(Contracts.JoinTargetRes.class).toCompletableFuture().join();
             evidence.add(request.scenario(), actorId,
                 result.accepted() ? "success_reply" : "reject_reply", request.targetSpotRid());
             writeJson(exchange, result);
@@ -148,9 +147,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
             exchange.getRequestBody(), Contracts.ProbeReq.class);
         Contracts.ProbeRes result = actorClient
             .requestToActor(requireActor(actorId), request)
-            .packetName("ProbeReq")
             .timeout(Duration.ofSeconds(10))
-            .await(Contracts.ProbeRes.class);
+            .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
         writeJson(exchange, result);
     }
 
@@ -162,9 +160,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 .requestToActor(
                     requireActor(actorId),
                     new Contracts.ProbeReq(request.scenario(), request.marker()))
-                .packetName("ProbeReq")
                 .timeout(Duration.ofMillis(request.timeoutMillis()))
-                .await(Contracts.ProbeRes.class);
+                .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
             writeJson(exchange, result);
         } catch (RuntimeException error) {
             evidence.add(request.scenario(), actorId, "request_timeout", errorKind(error));
@@ -188,9 +185,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 .requestToActor(
                     new ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
                     request.probe())
-                .packetName("ProbeReq")
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.ProbeRes.class);
+                .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
             writeJson(exchange, result);
         } catch (RuntimeException error) {
             evidence.add(request.probe().scenario(), actorId, "mapping_evicted", request.nodeRid());
@@ -205,10 +201,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         actorClient.sendToActor(
                 new ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
                 request.message())
-            .packetName("StragglerSendReq")
-            .submit()
-            .toCompletableFuture()
-            .get(5, TimeUnit.SECONDS);
+            .submit();
         evidence.add(request.message().scenario(), actorId, "straggler_forward", request.nodeRid());
         writeJson(exchange, java.util.Map.of("sent", true));
     }

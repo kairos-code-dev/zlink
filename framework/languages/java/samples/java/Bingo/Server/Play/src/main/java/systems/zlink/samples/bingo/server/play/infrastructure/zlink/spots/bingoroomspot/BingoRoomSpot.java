@@ -1,12 +1,10 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot;
 
-import static systems.zlink.framework.ZLinkAwait.await;
 
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
@@ -51,67 +49,68 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-        return settingsInitializer.handle(this, request);
+    public java.util.concurrent.CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(settingsInitializer.handle(this, request));
     }
 
     @Override
-    public ZLinkSpotActorJoinResponse onActorJoin(
+    public java.util.concurrent.CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
         String actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken) {
+        ZLinkMessage request) {
         Messages.BingoRoomJoinReq joinRequest = request.decode(Messages.BingoRoomJoinReq.class);
         validateJoin(actorId, joinRequest);
         Messages.BingoRoomState preview = joinRequest.getObserveOnly()
             ? observerJoinState(joinRequest)
             : game.previewJoin(actorId, joinRequest.getDisplayName());
         pendingJoins.put(actorId, joinRequest);
-        return ZLinkSpotActorJoinResponse.accept(BingoMessages.bingoRoomJoinRes(preview));
+        return java.util.concurrent.CompletableFuture.completedFuture(
+            ZLinkSpotActorJoinResponse.accept(BingoMessages.bingoRoomJoinRes(preview)));
     }
 
     @Override
-    public void onJoinedActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onJoinedActor(
+        PlayerActor actor) {
         Messages.BingoRoomJoinReq request = pendingJoins.remove(actor.actorId());
         if (request == null) {
             throw new IllegalStateException("joined actor does not have a pending admission");
         }
         join(actor, request);
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onLeaveActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onLeaveActor(
+        PlayerActor actor) {
         actors.remove(actor.actorId());
         observers.remove(actor.actorId());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDisconnectActor(
-        PlayerActor actor,
-        CancellationToken cancellationToken) {
+    public java.util.concurrent.CompletionStage<Void> onDisconnectActor(
+        PlayerActor actor) {
         actor.markDisconnected();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onInitialize() {
+    public java.util.concurrent.CompletionStage<Void> onInitialize() {
         if (settings.observerMode()) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
-        timer = await(context.addTimer(
+        return context.addTimer(
                 "bingo-draw",
                 Duration.ofMillis(settings.drawPeriodMillis()),
                 BingoRoomTimerHandler.class,
-                new ZLinkTimerOptions()));
+                new ZLinkTimerOptions())
+            .thenAccept(created -> timer = created);
     }
 
     @Override
-    public void onClosing() {
-        if (timer != null) {
-            await(timer.cancelAsync());
-        }
+    public java.util.concurrent.CompletionStage<Void> onClosing() {
+        return timer == null
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : timer.cancel();
     }
 
     public Messages.BingoRoomJoinRes join(
@@ -166,14 +165,14 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         return BingoMessages.submitBingoCardRes(change.state());
     }
 
-    public void tick() {
+    public java.util.concurrent.CompletionStage<Void> tick() {
         if (game == null || cleanupStarted) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         BingoRoomGame.Change change = game.drawNext();
         publishEvents(change.events(), actors::get);
         publishWinner(change);
-        leaveFinishedActors(change);
+        return leaveFinishedActors(change);
     }
 
     public void announceWinner(Messages.BingoWinnerMsg event) {
@@ -222,16 +221,19 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         this.cleanupStarted = false;
     }
 
-    private void leaveFinishedActors(BingoRoomGame.Change change) {
+    private java.util.concurrent.CompletionStage<Void> leaveFinishedActors(BingoRoomGame.Change change) {
         if (cleanupStarted || !change.state().getStatus().equals("Finished")) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
         cleanupStarted = true;
+        java.util.List<java.util.concurrent.CompletableFuture<Void>> leaves = new java.util.ArrayList<>();
         for (PlayerActor actor : actors.values().toArray(PlayerActor[]::new)) {
             actor.markForDestroyAfterRoomLeave();
-            await(context.leaveActor(actor));
+            leaves.add(context.leaveActor(actor).toCompletableFuture());
         }
+        return java.util.concurrent.CompletableFuture.allOf(
+            leaves.toArray(java.util.concurrent.CompletableFuture[]::new));
     }
 
     private void publishWinner(BingoRoomGame.Change change) {
@@ -249,7 +251,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                     "rare-golden-dauber",
                     "Golden Dauber",
                     "Legendary"))
-            .await();
+            .submit();
     }
 
     private void publishEvents(

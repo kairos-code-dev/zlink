@@ -284,5 +284,5 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Message Model](03-message-model.ko.md) | [다음: ZLink Framework API](05-framework-api.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework API](05-framework-api.ko.md) | [다음: Channel 메시징](11-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

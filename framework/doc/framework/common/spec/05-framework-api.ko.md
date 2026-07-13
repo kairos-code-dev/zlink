@@ -289,27 +289,6 @@ event 는 원본 native frame 이나 message ownership 을 노출하지 않는 �
 observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남아야 한다. observer callback 실패는
 별도 error sink 나 내부 로그로만 기록하고 dispatch loop, error reply 전송, shutdown 을 깨지 않는다.
 
-### 2.6 Handler filter
-
-**handler filter는 framework가 소유하는 dispatch 계약이다.** 언어별 이름은 달라도 의미는 같다.
-
-| 축 | 계약 |
-|---|---|
-| **등록** | framework 등록 루트에서 filter 타입을 등록한다 |
-| **실행 순서** | **등록 순서대로 바깥에서 안쪽으로** 실행한다. 마지막 안쪽이 handler다 |
-| **호출 표면** | filter는 **invocation**(메시지와 context)과 **`next`**(다음 단계)를 받는다 |
-| **`next`의 의미** | **`next`를 호출해야 다음 filter 또는 handler가 실행된다.** 호출하지 않으면 파이프라인이 거기서 끝나고 filter가 결과를 대신 만든다 |
-| **결과** | filter는 `next`의 결과를 그대로 돌려주거나 **바꿔서 돌려줄 수 있다** |
-| **생성** | filter는 **그 dispatch의 DI scope에서 resolve한다.** handler와 같은 scope다 |
-
-**AOP와 구분한다.** AOP는 handler가 주입받는 **서비스 계층**에 적용하고, filter는 **dispatch
-파이프라인 자체**에 적용한다.
-
-**적용 범위:** filter는 **channel dispatch 경로**(request·send·publish)에 적용한다. **SPOT
-handler, STREAM session handler, route-mesh handler는 filter 파이프라인을 거치지 않는다** — 이
-경로들은 spot 실행 문맥과 session 실행 문맥이 소유하는 별도 dispatch다. **filter를 이 경로까지
-넓히려면 공개 계약을 먼저 확장해야 한다.**
-
 ### 2.5 public contract와 runtime 구현의 분리 기준
 
 이 기준은 모든 framework 언어에 적용한다. 언어마다
@@ -431,6 +410,27 @@ payload, option 값처럼 작은 구조화 데이터는 concrete record, class, 
   interface로 둔다.
 - concrete 값 객체를 public으로 둘 때도 내부 저장 방식은 숨긴다. public 필드나 mutable
   collection을 그대로 노출하지 않는다.
+
+### 2.6 Handler filter
+
+**handler filter는 framework가 소유하는 dispatch 계약이다.** 언어별 이름은 달라도 의미는 같다.
+
+| 축 | 계약 |
+|---|---|
+| **등록** | framework 등록 루트에서 filter 타입을 등록한다 |
+| **실행 순서** | **등록 순서대로 바깥에서 안쪽으로** 실행한다. 마지막 안쪽이 handler다 |
+| **호출 표면** | filter는 **invocation**(메시지와 context)과 **`next`**(다음 단계)를 받는다 |
+| **`next`의 의미** | **`next`를 호출해야 다음 filter 또는 handler가 실행된다.** 호출하지 않으면 파이프라인이 거기서 끝나고 filter가 결과를 대신 만든다 |
+| **결과** | filter는 `next`의 결과를 그대로 돌려주거나 **바꿔서 돌려줄 수 있다** |
+| **생성** | filter는 **그 dispatch의 DI scope에서 resolve한다.** handler와 같은 scope다 |
+
+**AOP와 구분한다.** AOP는 handler가 주입받는 **서비스 계층**에 적용하고, filter는 **dispatch
+파이프라인 자체**에 적용한다.
+
+**적용 범위:** filter는 **channel dispatch 경로**(request·send·publish)에 적용한다. **SPOT
+handler, STREAM session handler, route-mesh handler는 filter 파이프라인을 거치지 않는다** — 이
+경로들은 spot 실행 문맥과 session 실행 문맥이 소유하는 별도 dispatch다. **filter를 이 경로까지
+넓히려면 공개 계약을 먼저 확장해야 한다.**
 
 ## 3. ASP.NET Core 방향
 
@@ -892,5 +892,5 @@ dispatch loop를 framework host가 직접 관리하는 것이다. application이
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](10-channel-topology.ko.md) | [다음: ZLink Framework Actor Model](22-actor-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) | [다음: ZLink Framework Channel Topology](10-channel-topology.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

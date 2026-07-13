@@ -21,18 +21,13 @@
 
 | ID | 정식 계약 문서 | 적용 범위 | 상태 |
 |----|----------------|-----------|------|
-| JV-DOC-001 | `README.ko.md` | Java naming, 비동기 완료, 취소 정책 | 검토 완료 |
-| JV-DOC-002 | `handler-interfaces.ko.md` | 전체 public interface와 §8.1 gap | 검토 완료 |
-| JV-DOC-003 | `system-structure.ko.md` | actor/session 등록·동작 | 검토 완료 |
-| JV-DOC-004 | `system-structure.ko.md` | channel/route/fanout | 검토 완료 |
-| JV-DOC-005 | `system-structure.ko.md` | monitoring/flow/metrics/drain | 검토 완료 |
-| JV-DOC-006 | `system-structure.ko.md` | location store/runtime | 검토 완료 |
-| JV-DOC-007 | `system-structure.ko.md` | Spot/actor lifecycle와 messaging | 검토 완료 |
-| JV-DOC-008 | `system-structure.ko.md` | server STREAM/session | 검토 완료 |
-| JV-DOC-009 | `32-stream-connector.ko.md` | client connector 전체 계약 | 검토 완료 |
+| JV-DOC-001 | `README.ko.md` | 언어별 계약 index와 취소 표현 | 검토 완료 |
+| JV-DOC-002 | `01-system-structure.ko.md` | 패키지 구조·배포, Spring Boot 등록·부트스트랩·lifecycle — channel · SPOT · STREAM · actor session · monitoring 등록 표면과 startup validation | 검토 완료 |
+| JV-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·annotation·context·options 카탈로그 | 검토 완료 |
+| JV-DOC-004 | `03-stream-connector.ko.md` | client connector의 public 표면 | 검토 완료 |
 | JV-DOC-010 | `25-stage-wrapper-on-spot.ko.md` | 상위 guide; interface 분모 비적용, G7 정합성 검토 | 검토 완료 |
 
-공통 spec 19개는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
+공통 spec 전체(§6 snapshot이 고정한 목록)는 모든 행의 동작 근거로 함께 적용한다. E2E 문서는 새 public API의 근거가
 아니며, 정식 계약을 검증할 scenario와 누락을 식별하는 데만 사용한다.
 
 ## 3. symbol·동작·test gap
@@ -52,7 +47,7 @@
 | JV-G0-EXPORT-001 | application package에 public contract만 export | backend와 handler runtime SPI가 internal 경계에 있음 | clean packaged consumer는 별도 gate | target contract PASS | PARTIAL |
 | JV-G0-NAMING-001 | `CompletionStage` method에 불필요한 `Async` suffix 없음 | application 공개 계약의 legacy suffix 제거 | connector transport internal 이름은 public application 계약과 분리 유지 | target contract PASS | DONE |
 | JV-G0-LOC-001 | sealed `ZLinkLocationKey`과 전체 store/runtime facets | exact facet 구현과 real Redis 장애·복구 검증 완료 | 없음 | target contract PASS, Config 6 SF-A1~E1 PASS | DONE |
-| JV-G0-CONNECTOR-001 | Java Stream Connector 정식 전체 계약 | lifecycle/call/codec/observer/TLS/package coverage 미완전 | `32-stream-connector.ko.md` 전체 member와 동작 정렬 | JAR snapshot과 §13 contract tests | GAP |
+| JV-G0-CONNECTOR-001 | Java Stream Connector 정식 전체 계약 | lifecycle/call/codec/observer/TLS/package coverage 미완전 | `03-stream-connector.ko.md` 전체 member와 동작 정렬 | JAR snapshot과 §13 contract tests | GAP |
 | JV-G0-REUSE-001 | Kotlin coroutine invocation의 단일 owner | Java core fallback 제거, Kotlin module provider만 소유 | Kotlin provider 동작은 Kotlin gate에서 검증 | Java target contract PASS | PARTIAL |
 
 ## 4. E2E·sample inventory
@@ -82,26 +77,26 @@ application-visible backend/adapter/handler factory/suspend invoker, obsolete `*
 
 ```text
 a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.ko.md
-8235c0dc082bc8f0460457f77b96fa05064898cc01cd5be4f27cbfd9b26c7025 common/22-actor-model.ko.md
-7993d0aa2f5f1a286a19e55a05eb71bdbb14f44926967aa1f58cb7d22378de0c common/04-async-execution-policy.ko.md
+6b68a42a1ebab714fc7b1cd775e45f4ab4adfdaf536d181fd44fccaa9f50e1fc common/22-actor-model.ko.md
+9c8021112e2f4b1566679afeefaee8013b7dd643d12817260a063ec93cefb804 common/04-async-execution-policy.ko.md
 7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d common/11-channel-messaging.ko.md
-b39269fb7176468f35ddbef69d73cefe02f46b8e1778809d5af0d9e91fcc42d5 common/10-channel-topology.ko.md
+a44902a9f8775cfabe50b946fe1cab7f1a56083ad4a210c13a7d941eaca31c41 common/10-channel-topology.ko.md
 3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8 common/53-flow-correlation.ko.md
-dbabc2629a4e546f7cd2ba773678f000fb537770abe2565c1a61b1b661cdf5fa common/05-framework-api.ko.md
-d708b3b3eea51001e2e294aff9da0b03463742b172352a8e48a8893a64648ea6 common/54-graceful-drain-handoff.ko.md
+49e0d306d42b1ab9909c9d7a29da44c25a57198168c23936070de6e5fd73cb93 common/05-framework-api.ko.md
+4395cee67501d0a5dc17385acedd6a2e52824d2226b8d65b654b26afd9b3057e common/54-graceful-drain-handoff.ko.md
 99acba971dbefef3eadd0e43c007af578d82ed012eea5c7736eb676acd231749 common/90-implementation-gap.ko.md
-5abba134f48f8d95d63e8cc409de998ab146cdad39fdf7cba22f6455b19b046d common/02-interaction-model.ko.md
+bbc0dbf64aadd7b03e6b3952b2cfc283d69ce271968926c8fda1ce5a5d491492 common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md
-68b153f892d88b9f0ddab3d7f2fa266606f7b4d3527746172662166ff011144a common/52-message-flow-tracing.ko.md
-c8477f874dbf0ff6aa8110708b9a5e7a1dc0b99ae387c79cbe06e1df8c0c9d2e common/03-message-model.ko.md
-9bb03da9c4e7522c409597f63228b35ce23a8f5136e965d2ce160323cf65599a common/01-overview.ko.md
+516df0e441d62169b57ae642d8e9301778c8d8e8ac7a849a9703bd7c02f6731e common/52-message-flow-tracing.ko.md
+2a6cbc45740487b9fab970699b94cac29f774d397407d314747b5b94479b010c common/03-message-model.ko.md
+729dabd5dfc131095164ec4dec823edb05a75d7ac3ac939ce67c109f9ba66274 common/01-overview.ko.md
 67c50c2750243eaaaad34dd579d45707dd37eacca9c31d3c074601ce3692bd88 common/00-public-contract-governance.ko.md
 d808af4314ff9e1a3531275310a2aa2325403c74f362fb637da60c35937653dd common/51-runtime-metrics.ko.md
 7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94 common/50-runtime-monitoring.ko.md
-dff5a5d7ae75c763798bfdb748e580bc6661f067bb23fcb3306f2fbd8ddf9c7e common/31-session-actor-dispatch.ko.md
+4dac9b99fd195db97cf3f9bc375749311b7bbfac69e31749fbb203ad79a2ea8a common/31-session-actor-dispatch.ko.md
 a4e8e2231abb2ecbb70e3c1938bb5b9bf39233981e329a25f8dc5d8befa407b2 common/23-spot-actor.ko.md
-5c3b233e111d37d4089969b8ba317f7d5525dce6adcab6d8bdd6fe9b3b072c9d common/24-spot-address-messaging.ko.md
+c4cb5fc6f41aea5877062956657668abfe7d228f0dca7b9e785eb0054e3e2353 common/24-spot-address-messaging.ko.md
 34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4 common/20-spot-messaging.ko.md
 03f4e3e114799a62cdd64cc230e11d5e8c024109747714db7306c000404552aa common/21-spot-node.ko.md
 d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md

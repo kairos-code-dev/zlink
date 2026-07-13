@@ -78,10 +78,10 @@ location event 구독과 stale 갱신 시점은 framework가 관리한다.
 owner 이동, node 장애, 정상 lifecycle의 spot destroy 후 보유 주소는 낡는다. 그때의
 실패는 **구분 가능**해야 한다 — 이것이 이 설계의 핵심 계약이다.
 
-| 경로 | stale 주소일 때 | framework 동작 |
-|------|-----------------|----------------|
-| request | handler 미실행이 확정된 stale 실패이면 handle을 한 번 갱신하고 한 번 재전송한다. 두 번째 실패는 typed error로 반환한다. timeout은 재전송하지 않는다. |
-| send | 최신 handle snapshot으로 best-effort 전송한다. location event가 도착하면 이후 전송에 새 snapshot을 사용한다. 전달 여부를 확인하기 위한 숨은 request는 만들지 않는다. |
+| 경로 | framework 동작 |
+|------|----------------|
+| **request** | handler 미실행이 확정된 stale 실패이면 **handle을 한 번 갱신하고 한 번 재전송한다.** 두 번째 실패는 typed error로 반환한다. **timeout은 재전송하지 않는다** |
+| **send** | 최신 handle snapshot으로 **best-effort 전송한다.** location event가 도착하면 이후 전송에 새 snapshot을 사용한다. **전달 여부를 확인하기 위한 숨은 request를 만들지 않는다** |
 
 ### 4.1 request 실패 분류 — fail-fast
 

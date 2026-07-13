@@ -283,5 +283,5 @@ OpenTelemetry adapter에 연결하는 일은 application 또는 별도 extension
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md) | [다음: Location Runtime](40-location-runtime.ko.md)
+[스펙 목차](README.ko.md) | [이전: 런타임 메트릭 계기 (Runtime Metrics Instruments)](51-runtime-metrics.ko.md) | [다음: 메시지 흐름 상관관계 (Flow Correlation)](53-flow-correlation.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

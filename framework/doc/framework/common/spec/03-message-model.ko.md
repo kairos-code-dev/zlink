@@ -249,5 +249,5 @@ core protocol API만 제공한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](02-interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](10-channel-topology.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Interaction Model](02-interaction-model.ko.md) | [다음: 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

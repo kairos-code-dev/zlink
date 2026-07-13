@@ -179,5 +179,5 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

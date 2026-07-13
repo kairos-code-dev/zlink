@@ -323,5 +323,5 @@ delegate 모델을 우선하고 coroutine API를 public 표면에 강제하지 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: framework API](05-framework-api.ko.md) | [다음: Actor 모델](22-actor-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Message Model](03-message-model.ko.md) | [다음: ZLink Framework API](05-framework-api.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

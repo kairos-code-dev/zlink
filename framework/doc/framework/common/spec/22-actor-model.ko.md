@@ -419,5 +419,5 @@ actor factory와 location store를 등록하지만 framework location resolver �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](05-framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
+[스펙 목차](README.ko.md) | [이전: SpotNode](21-spot-node.ko.md) | [다음: Spot Actor Join / Transfer 공통 스펙](23-spot-actor.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -264,8 +264,7 @@ message kind이고, location resolver 입력은 `actorId` 또는 `spotRid`로 �
 
 구체 .NET 시그니처(`ZLinkMessageMetadata`, `IZLinkMessageMetadataPolicy`,
 `options.ConfigureMetadata(...)`)는
-[bindings/dotnet/handler-interfaces.ko.md](languages/dotnet/02-handler-interfaces.ko.md)
-§3.2를 참고한다.
+[.NET 인터페이스 §4.4.2](languages/dotnet/02-handler-interfaces.ko.md)를 참고한다.
 
 ### 8.4 실행 순서
 
@@ -497,10 +496,8 @@ session actor handle(`IZLinkSessionActor`, binding별 동등 이름)은 local `S
 actor runtime의 actor에 대한 dispatch handle만 노출한다. application actor 객체
 (`IZLinkActor`) 자체와는 다른 표면이며, `Configure()`나 handler registry를 갖지 않는다.
 
-구체 .NET 시그니처(`IZLinkSessionContext`, `IZLinkSessionActor`)는
-[handler-interfaces.ko.md §4.4](languages/dotnet/02-handler-interfaces.ko.md)와
-[bindings/dotnet/handler-interfaces.ko.md](languages/dotnet/02-handler-interfaces.ko.md)
-§7-8을 참고한다.
+구체 `.NET` 시그니처(`IZLinkSessionContext`, `IZLinkSessionActor`)는
+[.NET 인터페이스 §4.4](languages/dotnet/02-handler-interfaces.ko.md)를 참고한다.
 
 생성 후 bind(`GetOrCreateAsync` + `BindAsync`)는 현재 session host가 가진 actor runtime에 create 요청을 보낸다.
 이 함수는 actor 생성과 현재 session binding metadata 생성을 하나의 작업으로 묶어,
@@ -652,6 +649,16 @@ actor로 가는 방향은 actor create/bind/relay helper이고, actor에서 clie
 bound session이다. 두 방향을 하나의 gateway나 proxy 객체로 합치거나 호환 alias를 두지
 않는다.
 
+### 11.1 push 실패 격리
+
+**stale binding token, 이미 닫힌 stream, 늦게 도착한 push는 그 push 하나만 실패시킨다.**
+
+**route receive loop나 host shutdown 자체를 실패시켜서는 안 된다.** 이 실패는 로그·counter·
+message flow error event로 기록한다.
+
+**client의 처리 완료 ack가 필요하면** actor message나 session message로 application이 직접
+설계한다. framework가 push 전달 보장을 제공하지 않는다.
+
 ## 12. Codec 정책
 
 session actor dispatch sample은 별도 serializer helper를 두면 안 된다. framework에는 codec
@@ -676,17 +683,7 @@ internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framew
 계약은 application handler가 framework codec registry와 typed message만 보고, 내부
 server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
-## 11.1 push 실패 격리
-
-**stale binding token, 이미 닫힌 stream, 늦게 도착한 push는 그 push 하나만 실패시킨다.**
-
-**route receive loop나 host shutdown 자체를 실패시켜서는 안 된다.** 이 실패는 로그·counter·
-message flow error event로 기록한다.
-
-**client의 처리 완료 ack가 필요하면** actor message나 session message로 application이 직접
-설계한다. framework가 push 전달 보장을 제공하지 않는다.
-
-## 12.1 내부 routed wire 계약
+### 12.1 내부 routed wire 계약
 
 **server 사이를 잇는 내부 route transport는 [message-model](03-message-model.ko.md)의 multipart
 계약을 따른다.** public API는 typed object 중심이지만, wire는 part로 나뉜다.
@@ -704,7 +701,7 @@ gateway가 각 delivery를 다음 구성으로 만든다.
 결정할 뿐 application handler를 결정하지 않는다.** handler는 **payload part의 stream header를
 decode한 뒤 그 packet name으로** 고른다.
 
-### 12.1.1 Session 서버 → Play 서버 actor
+#### 12.1.1 Session 서버 → Play 서버 actor
 
 **stream header와 stream payload를 하나의 메시지에 4개 part로 묶지 않는다.** framework는 두 part를
 넘기고, **gateway가 각 part를 별도 delivery로 보낸다.** 각 delivery는 위 3-part 구성을 갖는다.
@@ -713,7 +710,7 @@ decode한 뒤 그 packet name으로** 고른다.
 첫 delivery에 `MORE`, 마지막에 `FINAL`이 붙는다. **받는 쪽은 순서로 판단한다.** 첫 part를 stream
 header로 decode하고, 그 `MORE` 값으로 **body가 뒤따르는지** 판단한 뒤 다음 part를 body로 받는다.
 
-### 12.1.2 Play 서버 actor → Session 서버의 client stream
+#### 12.1.2 Play 서버 actor → Session 서버의 client stream
 
 **bound session push는 완전한 stream frame 하나를 보낸다.** framework가 stream header와 payload를
 **하나의 frame으로 encode한 뒤** gateway에 넘기므로, `parts[2]`는 **header + payload가 합쳐진 완전한
@@ -721,7 +718,7 @@ stream frame**이다.
 
 **reply도 같다** — 완전한 frame 하나를 전달한다.
 
-### 12.1.3 왜 이렇게 나누는가
+#### 12.1.3 왜 이렇게 나누는가
 
 **application payload를 route 경로에서 재인코딩하지 않기 위해서다.**
 
@@ -736,7 +733,7 @@ stream frame**이다.
 - **단일 DTO 안에 stream header와 payload bytes를 같이 넣고, 그 DTO 전체를 다시 직렬화**하는 방식
 - **control part 하나만 보내고 그 안에서 header와 payload를 모두 decode**하는 방식
 
-### 12.1.4 STREAM은 예외다
+#### 12.1.4 STREAM은 예외다
 
 **client와 Session 서버 사이의 STREAM transport는 stream packet 하나 안에 header와 payload frame을
 그대로 담는다**([Stream Connector §4](32-stream-connector.ko.md)). 위 multipart 계약은
@@ -1055,5 +1052,5 @@ public surface와 구현의 책임 경계는 다음 요구를 만족해야 한�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](22-actor-model.ko.md) | [다음: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md)
+[스펙 목차](README.ko.md) | [이전: STREAM 서버 세션](30-stream-session.ko.md) | [다음: Stream Connector](32-stream-connector.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

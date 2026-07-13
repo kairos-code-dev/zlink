@@ -70,7 +70,7 @@ drain의 정확성은 [location runtime](40-location-runtime.ko.md)과의 상호
 | actor join target 노드 선택 | draining peer 제외 |
 | Entry Spot 배정 | draining peer 제외 |
 | owner routing(신규 owner spot allocation) | draining peer 제외 |
-| **자동 연결 diff(§6.3)** | **마커만으로 disconnect하지 않음**(연결 유지) |
+| **자동 연결 diff([location-runtime §6](40-location-runtime.ko.md))** | **마커만으로 disconnect하지 않음**(연결 유지) |
 
 `Weight`(0..100)를 0으로 두는 방법은 배치 로직이 Weight를 참조한다는 계약이 없으므로 채택하지
 않는다 — 명시적 `draining` 마커 + 위 결정 지점 계약이 정본이다.
@@ -333,10 +333,10 @@ correlation이 제거한 "조용한 무관측" 함정이 drain에서 재발하�
 | 계기/이벤트 | 종류 | 의미 |
 |-------------|------|------|
 | `zlink.drain.state` | observable gauge | 현재 상태 label 하나에 값 1을 방출(`state`는 닫힌 집합) |
-| `zlink.drain.duration` | histogram | Drain 시작→terminal 소요(`outcome=drained|force_stopped`) |
+| `zlink.drain.duration` | histogram | Drain 시작→terminal 소요(`outcome=drained` 또는 `force_stopped`) |
 | `zlink.drain.actors.handed_off` | counter | 핸드오프 성공 actor 수 |
 | `zlink.drain.rooms.drained` | counter | 정책대로 정리된 room 수(`policy` 라벨) |
-| `zlink.drain.forced` | counter | 강제 종료 단위 수(`kind=actor|spot|request|session`) |
+| `zlink.drain.forced` | counter | 강제 종료 단위 수(`kind`=actor · spot · request · session) |
 | drain lifecycle 이벤트 | observer | 상태 전이(운영 알람 연결) |
 
 `state` 값은 `serving|draining|drained|force_stopping`, `outcome`은

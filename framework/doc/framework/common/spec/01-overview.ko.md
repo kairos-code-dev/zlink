@@ -136,5 +136,5 @@ header만 읽는 장점도 잃는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework 공통 스펙](../README.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: Framework 공개 계약 관리](00-public-contract-governance.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -61,10 +61,23 @@ class hosted_service_t; // 시작·종료 훅
 class module_t;         // 기능 묶음 등록
 ```
 
-- **`hosted_service_t`는 host lifecycle에 참여한다.** 시작 순서대로 시작하고 **역순으로 정리한다.**
 - **`module_t`는 관련 등록을 한 덩어리로 묶는다.** 큰 app을 기능 단위로 나눌 때 쓴다.
 - **runtime은 host startup에서 만들고 shutdown에서 정리한다.** lazy 생성으로 숨기지 않는다
   ([channel-messaging §2](../../11-channel-messaging.ko.md)).
+
+### 3.1 hosted service의 실행 순서
+
+| 단계 | 규칙 |
+|---|---|
+| **시작** | 등록 순서대로 시작한다 |
+| **종료** | **시작 역순으로 정리한다** |
+
+### 3.2 시작 실패 — fail-fast
+
+**시작 도중 한 service라도 실패하면, 그때까지 시작한 service를 역순으로 정리한 뒤 예외를 다시
+던진다.** 반쯤 시작된 host를 남기지 않는다.
+
+**정리는 실패하지 않는다**(`noexcept`). 정리 중의 오류가 원래 실패를 가리면 안 되기 때문이다.
 
 ## 4. DI 컨테이너
 
@@ -143,6 +156,25 @@ class service_scope_t;  // RAII. 소멸 시 scoped 인스턴스를 정리한다
 
 **handler는 service locator를 받지 않는다.** 생성자 주입만 쓴다.
 
+### 4.5 오류 계약
+
+| 상황 | 결과 |
+|---|---|
+| **같은 타입을 두 번 등록** | **등록 시점에 실패한다** — 조용히 덮어쓰지 않는다 |
+| **등록되지 않은 타입을 `get_required`** | **실패한다** |
+| 등록되지 않은 타입을 `get` | **빈 값을 돌려준다.** 실패하지 않는다 |
+| **scope 없이 `scoped` 서비스를 resolve** | **실패한다** — scoped는 scope를 요구한다 |
+| **닫힌 provider에서 resolve하거나 scope를 만든다** | **shutdown 경계 오류로 실패한다** |
+
+### 4.6 수명과 정리
+
+- **`singleton`은 처음 resolve할 때 만들고 host 수명 동안 재사용한다.**
+- **`scoped`는 그 scope에서 처음 resolve할 때 만들고 scope 안에서 재사용한다.**
+- **scope가 닫히면 그 scope의 `scoped`·`transient` 인스턴스를 함께 정리한다.**
+- **`service_scope_t`는 RAII다.** 소멸하면 닫힌다.
+
+**닫힌 provider는 되살아나지 않는다.** 이후의 resolve는 전부 실패한다.
+
 ## 5. Configuration
 
 ```cpp
@@ -191,13 +223,37 @@ class logger_factory_t;
 
 **`logger_t<TCategory>`는 DI로 주입받는다.** category는 타입으로 구분한다.
 
-## 7. Handler 등록과 filter
+## 7. HTTP hosting
+
+**framework가 내장 HTTP 서버를 제공한다.** 계약은 [60](60-http-hosting.ko.md)·[61](61-embedded-http-server.ko.md)이
+소유하고, public 타입은 [02 §16.5](02-framework-interfaces.ko.md)가 소유한다. 여기서는
+**시스템 구조에 걸리는 규칙**만 정리한다.
+
+### 7.1 요청당 DI scope
+
+**요청 하나가 scope 하나다.** route handler와 middleware는 **같은 요청 scope의 provider**를
+받는다. 요청이 끝나면 그 scope의 `scoped`·`transient` 인스턴스를 정리한다(§4.6).
+
+### 7.2 Middleware 실행 순서
+
+**middleware는 `before`/`after` 쌍이다.** handler filter의 `next` delegate 방식과 다르다
+([framework API §2.6](../../05-framework-api.ko.md)).
+
+| 단계 | 순서 |
+|---|---|
+| `before` | **등록 순서대로** |
+| route handler | — |
+| `after` | **역순으로** |
+
+**`after`는 `before`를 실행한 middleware에 대해서만 돈다.**
+
+## 8. Handler 등록과 filter
 
 handler 등록 표면과 filter 계약은 [02-framework-interfaces §8](02-framework-interfaces.ko.md)이
 소유한다. filter의 언어 중립 의미는
 [framework API §2.6](../../05-framework-api.ko.md)이 소유한다.
 
-## 8. 기능 등록
+## 9. 기능 등록
 
 각 기능의 등록 표면은 [02-framework-interfaces](02-framework-interfaces.ko.md)가 소유한다.
 
@@ -216,7 +272,7 @@ handler 등록 표면과 filter 계약은 [02-framework-interfaces §8](02-frame
 **C++은 모든 위반을 host 시작 전에 실패로 만든다.** 오류는 예외가 아니라
 `result_t`/`framework_exception_t` 경계 규약을 따른다([02 §1](02-framework-interfaces.ko.md)).
 
-## 9. 회귀 테스트
+## 10. 회귀 테스트
 
 등록과 startup validation의 회귀 항목은
 [regression-test-matrix](../../../../cpp/internals/regression-test-matrix.ko.md)가 소유한다.

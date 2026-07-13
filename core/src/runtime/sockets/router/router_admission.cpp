@@ -89,13 +89,13 @@ bool router_t::duplicate_pipe_should_replace (const out_pipe_t &existing_outpipe
     if (!locally_initiated_)
         return true;
 
-    if (existing_outpipe_.locally_initiated == locally_initiated_) {
-        if (!socket_msg_dispatch_active ())
-            return true;
-        return existing_outpipe_.pipe
-               && existing_outpipe_.pipe->get_msgs_read () == 0
-               && existing_outpipe_.pipe->get_msgs_written () == 0;
-    }
+    //  A same-direction duplicate always adopts the newest pipe under the
+    //  handover policy. Past traffic on the existing pipe does not prove the
+    //  underlying connection is still usable (the peer may have restarted at
+    //  the same endpoint), so it must not veto the replacement even while
+    //  socket message callback dispatch is active.
+    if (existing_outpipe_.locally_initiated == locally_initiated_)
+        return true;
 
     const size_t local_size = options.routing_id_size;
     const size_t peer_size = routing_id_.size ();

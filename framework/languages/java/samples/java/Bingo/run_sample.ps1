@@ -154,7 +154,7 @@ try {
             throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
         }
         $RedisContainer = "bingo-java-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to start Redis Docker container."
         }

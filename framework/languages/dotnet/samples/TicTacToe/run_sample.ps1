@@ -77,7 +77,7 @@ try {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker is required to run the TicTacToe sample."
     }
-    $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$RunId" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
+    $redisContainerId = (& docker run -d --rm --tmpfs /data --name "zlink-tictactoe-dotnet-redis-$RunId" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "docker failed to start Redis."
     }

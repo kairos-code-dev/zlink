@@ -8,7 +8,7 @@ zlink_redis_cleanup_scope() {
 
   while read -r container_id container_name; do
     if [[ "${container_name}" == "${scope}"* ]]; then
-      docker rm -f "${container_id}" >/dev/null 2>&1 || true
+      docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     fi
   done < <(docker ps -a --format '{{.ID}} {{.Names}}')
 }
@@ -28,6 +28,7 @@ zlink_redis_start_scoped() {
   set +e
   create_output="$(timeout -k 2s "${docker_timeout_seconds}s" docker create \
     --name "${name}" \
+    --tmpfs /data \
     -p "${port_mapping}" \
     "${image}" 2>&1)"
   create_status="$?"
@@ -47,7 +48,7 @@ zlink_redis_start_scoped() {
 
   running="$(timeout -k 2s 5s docker inspect -f '{{.State.Running}}' "${container_id}" 2>/dev/null || true)"
   if [[ "${running}" != "true" ]]; then
-    timeout -k 2s 10s docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     printf 'Failed to start Redis container %s (docker status %s)\n%s\n' \
       "${name}" "${start_status}" "${start_output}" >&2
     return 1
@@ -57,7 +58,7 @@ zlink_redis_start_scoped() {
     -f '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' \
     "${container_id}" 2>/dev/null || true)"
   if [[ -z "${host_port}" ]]; then
-    timeout -k 2s 10s docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    timeout -k 2s 10s docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     printf 'Failed to inspect Redis host port for %s\n' "${name}" >&2
     return 1
   fi

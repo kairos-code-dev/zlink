@@ -7,7 +7,7 @@ zlink_redis_cleanup_scope() {
   fi
   while read -r container_id container_name; do
     if [[ "${container_name}" == "${scope}"* ]]; then
-      docker rm -f "${container_id}" >/dev/null 2>&1 || true
+      docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     fi
   done < <(docker ps -a --format '{{.ID}} {{.Names}}')
 }
@@ -40,6 +40,7 @@ zlink_redis_start_scoped() {
   set +e
   create_output="$(timeout -k 2s "${docker_timeout_seconds}s" docker create \
     --name "${name}" \
+    --tmpfs /data \
     -p "${port_mapping}" \
     "${image}" 2>&1)"
   create_status="$?"
@@ -55,12 +56,12 @@ zlink_redis_start_scoped() {
   set -e
   running="$(timeout -k 2s 5s docker inspect -f '{{.State.Running}}' "${container_id}" 2>/dev/null || true)"
   if [[ "${running}" != "true" ]]; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     printf 'Failed to start Redis container %s (docker status %s)\n%s\n' "${name}" "${start_status}" "${start_output}" >&2
     return 1
   fi
   if ! zlink_redis_wait_ready "${container_id}"; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     return 1
   fi
   printf '%s' "${container_id}"
@@ -96,7 +97,7 @@ zlink_redis_start_scoped_assign() {
     return 1
   fi
   if ! host_port="$(zlink_redis_host_port "${container_id}")"; then
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    docker rm -fv "${container_id}" >/dev/null 2>&1 || true
     return 1
   fi
 

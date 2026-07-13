@@ -108,7 +108,7 @@ try {
     $RedisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
     if (-not $RedisEndpoint) {
         $RedisContainer = "zlink-tictactoe-java-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7-alpine *> $null
+        & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7-alpine *> $null
         if ($LASTEXITCODE -ne 0) {
             throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
         }

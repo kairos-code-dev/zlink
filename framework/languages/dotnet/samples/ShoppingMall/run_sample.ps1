@@ -34,7 +34,7 @@ try {
         throw "Docker is required to run the ShoppingMall sample (it provisions a dedicated Redis container)."
     }
     $RedisContainer = "zlink-shoppingmall-dotnet-redis-$RunId"
-    & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+    & docker run -d --rm --tmpfs /data --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start Redis container."
     }

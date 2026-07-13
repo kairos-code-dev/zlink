@@ -160,6 +160,12 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
 언어별 구현은 shell, PowerShell, npm, Gradle, dotnet, CMake처럼 도구가 달라도 아래 실행
 계약을 맞춘다.
 
+**필수 격리 규칙:** Redis가 필요한 각 sample 실행은 그 실행만 사용하는 전용 Docker Redis
+container를 새로 만들어야 한다. 이미 실행 중인 container, host Redis, 다른 sample이나 E2E가 만든
+Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key prefix만 다르게 지정하는 것도
+인스턴스 공유를 허용하지 않는다. cleanup 시점과 저장 데이터가 다른 실행에 영향을 주지 않게 하는
+것이 이 규칙의 목적이다.
+
 기준 템플릿은 이 디렉토리의 `runner-templates/` 아래에 둔다.
 
 - `runner-templates/redis-common.template.sh`: Redis helper 기준
@@ -176,11 +182,16 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
   달라도 cleanup, 장애 주입, latency injection, sample 간 데이터 정리 시점이 섞이면 테스트
   간섭이 발생할 수 있기 때문이다. 샘플 애플리케이션 코드가 Docker를 호출하거나 Redis container
   생명주기를 소유하면 안 된다.
+- Docker Redis를 만들지 못하면 runner는 즉시 실패한다. host Redis나 다른 실행의 endpoint로
+  자동 전환해서 성공 처리하면 안 된다.
 - Redis container 시작은 모든 언어에서 같은 순서를 쓴다.
-  `docker create --name <scoped-name> -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
+  `docker create --name <scoped-name> --tmpfs /data -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
   만들고, `docker start <container-id>`로 시작한 뒤, `docker inspect`로 실행 상태와 배정된
   host port를 읽는다. `docker run -d` 출력에 의존해 container id와 port를 동시에 처리하는
   방식은 쓰지 않는다.
+- sample Redis 데이터는 실행 중에만 필요하므로 Docker volume을 만들지 않는다. Redis 이미지가
+  선언한 `/data` volume은 `--tmpfs /data`로 덮어쓰고, container 정리에는 `docker rm -fv`를
+  사용한다. 이렇게 해야 반복 실행 후 anonymous volume이 남지 않는다.
 - 개별 `run_sample.*`가 Redis를 띄울 때는 container 이름에 언어와 sample 실행 범위를
   드러내는 prefix를 붙인다. 예를 들어 Java sample은 `zlink-redis-java-sample...`,
   Kotlin sample은 `zlink-redis-kotlin-sample...`처럼 같은 언어·sample 범위를 한눈에

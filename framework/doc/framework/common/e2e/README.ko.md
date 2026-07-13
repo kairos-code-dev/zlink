@@ -335,6 +335,12 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 
 모든 언어의 실행 스크립트는 같은 사용 의미와 같은 Redis 구동 방식을 가져야 한다.
 
+**필수 격리 규칙:** Redis가 필요한 각 E2E 실행은 그 실행만 사용하는 전용 Docker Redis
+container를 새로 만들어야 한다. 이미 실행 중인 container, host Redis, 다른 E2E나 sample이 만든
+Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key prefix만 다르게 지정하는 것도
+인스턴스 공유를 허용하지 않는다. pause, stop, restart, 지연 주입과 cleanup이 다른 실행에 영향을
+주지 않게 하는 것이 이 규칙의 목적이다.
+
 기준 템플릿은 이 디렉토리의 `runner-templates/` 아래에 둔다.
 
 - `runner-templates/redis-common.template.sh`: Redis helper 기준
@@ -363,11 +369,16 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
   안 된다. Redis key prefix가 달라도 장애 주입, pause/stop/restart, flush, cleanup, latency
   injection이 다른 실행에 영향을 줄 수 있기 때문이다. 실행 종료 시에는 자신이 만든 container
   id만 정리한다. 개별 script가 같은 prefix의 다른 Redis container를 지우면 안 된다.
+- Docker Redis를 만들지 못하면 runner는 즉시 실패한다. host Redis나 다른 실행의 endpoint로
+  자동 전환해서 성공 처리하면 안 된다.
 - Redis container 시작은 모든 언어에서 같은 순서를 쓴다.
-  `docker create --name <scoped-name> -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
+  `docker create --name <scoped-name> --tmpfs /data -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
   만들고, `docker start <container-id>`로 시작한 뒤, `docker inspect`로 실행 상태와 배정된
   host port를 읽는다. `docker run -d` 출력에 의존해 container id와 port를 동시에 처리하는
   방식은 쓰지 않는다.
+- E2E Redis 데이터는 실행 중에만 필요하므로 Docker volume을 만들지 않는다. Redis 이미지가
+  선언한 `/data` volume은 `--tmpfs /data`로 덮어쓰고, container 정리에는 `docker rm -fv`를
+  사용한다. 이렇게 해야 반복 실행 후 anonymous volume이 남지 않는다.
 - Redis container 이름에는 언어와 e2e 실행 범위를 드러내는 prefix를 붙인다. 예를 들어 Java e2e는
   `zlink-redis-java-e2e...`, Kotlin e2e는 `zlink-redis-kotlin-e2e...`처럼 잡는다. 다른 언어도
   같은 규칙으로 `<language>-e2e` 범위를 이름에서 확인할 수 있어야 한다.

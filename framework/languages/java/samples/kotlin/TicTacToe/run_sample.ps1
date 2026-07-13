@@ -146,7 +146,7 @@ try {
             throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
         }
         $RedisContainer = "zlink-tictactoe-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $RedisContainer --label "systems.zlink.sample=tictactoe-kotlin" -p "127.0.0.1::6379" redis:7-alpine | Out-Null
+        & docker run -d --rm --tmpfs /data --name $RedisContainer --label "systems.zlink.sample=tictactoe-kotlin" -p "127.0.0.1::6379" redis:7-alpine | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to start Redis Docker container."
         }

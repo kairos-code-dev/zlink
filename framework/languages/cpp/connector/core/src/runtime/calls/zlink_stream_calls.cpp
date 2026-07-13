@@ -802,18 +802,14 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
               "seq="
                 + (value.request_seq ? std::to_string (*value.request_seq) : std::string ("-"))
                 + " name=" + value.packet.name + " kind=" + message_kind_name (value.kind));
+            /* §5.2: pending request 매칭은 request_seq가 정본이다. packet name은 대조 조건이
+             * 아니므로 이름이 달라도 응답을 버리지 않는다. */
             const auto pending = value.request_seq
                                    ? state->pending_requests.find (*value.request_seq)
                                    : state->pending_requests.end ();
             if ((value.kind == message_kind_t::response || value.kind == message_kind_t::error)
                 && pending != state->pending_requests.end ()) {
-                if (value.packet.name != pending->second.packet.name) {
-                    completed_requests.emplace_back (
-                      *value.request_seq,
-                      result_t<request_reply_t>::failure (
-                        error_code_t::frame_decode_failed,
-                        "Response packet name does not match the pending request."));
-                } else if (value.kind == message_kind_t::response) {
+                if (value.kind == message_kind_t::response) {
                     completed_requests.emplace_back (
                       *value.request_seq, result_t<request_reply_t>::success (request_reply_t{
                                             value.packet.codec, std::move (value.packet.payload)}));
@@ -1284,15 +1280,6 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
          * 요청에서 서버가 세션을 heartbeat timeout으로 끊는다. 이 루프는 transport mutex를 쥔
          * 동기 전송 문맥이므로 동기 write가 맞다. */
         (void) send_due_pong (*state);
-        if ((frame.kind == message_kind_t::response || frame.kind == message_kind_t::error)
-            && frame.request_seq == seq && frame.packet.name != request_packet_name) {
-            state->pending_requests.erase (seq);
-            trace_request ("pending-complete", seq, request_packet_name,
-                           "result=failure error=packet-name-mismatch");
-            return complete_request (result_t<request_reply_t>::failure (
-              error_code_t::frame_decode_failed,
-              "Response packet name does not match the pending request."));
-        }
         if (frame.kind == message_kind_t::response && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
             trace_request ("pending-complete", seq, request_packet_name, "result=success");

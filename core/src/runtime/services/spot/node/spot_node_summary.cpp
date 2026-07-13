@@ -259,13 +259,19 @@ int spot_node_t::update_logical_spot_subscription (const std::string &raw_filter
     if (!changed)
         return 0;
 
+    //  Keep the reason the receiver could not be created. It is usually a
+    //  transient one (the attachment handshake timing out under load), and
+    //  overwriting it with ENOTSUP reports a permanent "pub/sub unsupported"
+    //  for what a retry would have cleared.
+    errno = 0;
     spot_internal_receiver_t *receiver = ensure_internal_receiver ();
     spot_sub_t *sub = receiver ? receiver->impl () : NULL;
     if (!sub) {
+        const int err = errno != 0 ? errno : ENOTSUP;
         const bool rollback_changed =
           update_aggregate_subscription (raw_filter_, pattern_, !subscribe_);
         LIBZLINK_UNUSED (rollback_changed);
-        errno = ENOTSUP;
+        errno = err;
         return -1;
     }
 

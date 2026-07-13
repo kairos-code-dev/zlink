@@ -1266,6 +1266,8 @@ int main ()
             return 173;
         }
 
+        /* §5.2: pending request 매칭은 request_seq가 정본이다. 응답의 packet name이 request와
+         * 달라도 그 응답으로 완료한다 — 이름은 대조 조건이 아니다. */
         auto mismatched_reply_frame = make_server_frame (
           zlink::stream_connector::message_kind_t::response, 1, "unexpected.reply", "payload");
         const auto mismatched_reply_text = mismatched_reply_frame.to_string ();
@@ -1277,7 +1279,7 @@ int main ()
               .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
         mismatched_reply_state->state = zlink::stream_connector::connection_state_t::connected;
         mismatched_reply_state->connection = mismatched_reply_connection;
-        std::atomic<bool> mismatched_reply_rejected{false};
+        std::atomic<bool> mismatched_reply_completed{false};
         zlink::stream_connector::detail::submit_request_async (
           mismatched_reply_state,
           zlink::stream_connector::packet_t{.name = "expected.reply",
@@ -1285,13 +1287,11 @@ int main ()
           std::chrono::milliseconds (25),
           [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
                  result) {
-              mismatched_reply_rejected =
-                !result
-                && result.error_code ()
-                     == zlink::stream_connector::error_code_t::frame_decode_failed;
+              mismatched_reply_completed =
+                result && result.value ().payload.to_string () == "payload";
           });
         if (!eventually ([&] {
-                return mismatched_reply_rejected.load ()
+                return mismatched_reply_completed.load ()
                        && mismatched_reply_state->pending_requests.empty ();
             })) {
             return 179;

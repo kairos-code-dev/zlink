@@ -248,7 +248,9 @@ response에만** 들어간다.
 | `Error` 수신 — `request_seq` 있음 | 같은 `request_seq`의 pending request를 **실패로 완료**한다 |
 | `Error` 수신 — `request_seq` 없음 | pending request와 무관한 **stream 수준 오류**로 error 표면에 전달한다(§9) |
 
-- **`Response`와 `Error`의 packet name은 원래 request의 packet name과 같아야 한다.**
+- **pending request 매칭은 `request_seq`가 정본이다.** `Response`와 `Error`의 packet name은 참고
+  값일 뿐 대조 조건이 아니다. 이름이 request와 달라도 응답을 버리지 않는다 — 어떤 응답인지는
+  sequence가 이미 정한다(§31 "request sequence 보존"과 같은 규칙).
 - **request timeout·close·disconnect가 발생하면 pending request는 모두 실패로 완료하고 map에서
   제거한다.** 재연결 후 자동 재전송하지 않는다(§6).
 

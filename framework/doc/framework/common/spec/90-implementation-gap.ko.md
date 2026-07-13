@@ -48,7 +48,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | ? | O | O |
 | 03 | [메시지 모델](03-message-model.ko.md) | O | O | ? | O | O |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | O |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | **?** coroutine bridge 미검증 | O | **△** Config 8 ATD-C3B 미통과 [§5.1](#51-c-비동기-실행-정책-미해결-항목) |
 | 05 | [framework API](05-framework-api.ko.md) | O | O | ? | O | O |
 
 ### 2.2 Channel (1x)
@@ -104,6 +104,7 @@ DSL)이 그 스펙을 만족하는지를 뜻하며, 대부분 별도 검증을 �
 | [§4.13](#413-startup-validation-누락) | **Node** | channel과 SPOT의 일부 잘못된 구성을 startup에서 거부하지 않는다 |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
+| [§5.1](#51-c-비동기-실행-정책-미해결-항목) | **C++** | Config 8 `AutomaticTurnDispatch`의 **ATD-C3B가 통과하지 못한다.** spot timer 핸들러가 outbound channel 응답을 await하는 동안 route-channel 디스패치가 멈춘다 |
 | 전 영역 | **Kotlin** | Kotlin 고유 표면(`suspend`·`Flow`·DSL)이 각 스펙을 만족하는지 **이 문서가 검증하지 않았다** |
 | §51·§52·§54 | **Java** | 관측·운영 계약을 **Config 6·8에서만 검증했다.** 나머지 Config는 미검증 |
 
@@ -438,6 +439,19 @@ dispatch 실패의 로그 수준([channel 메시징 §3.1](11-channel-messaging.
 payload decode 실패·invalid frame은 send(및 actor send)를 Warning, publish를 Debug로 낮춘다.
 request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogLevel`/`PublishLogLevel`
 기본값과 같은 의미). 검증은 `test_cpp_framework_message_flow`의 수준 매핑 케이스다.
+
+### 5.1 C++ 비동기 실행 정책 미해결 항목
+
+**미충족(C++).** [비동기 실행 정책](04-async-execution-policy.ko.md)의 turn 계약을 검증하는
+Config 8 `AutomaticTurnDispatch`에서 **ATD-C3B가 통과하지 못한다.** spot timer 핸들러가
+outbound channel request를 await하는 동안 그 노드의 **route-channel 디스패치가 멈추고**,
+기다리던 응답과 그 사이 도착한 다른 route 요청이 프로세스 종료 시퀀스에서야 처리된다.
+같은 await를 actor 핸들러에서 하는 ATD-C3A는 정상이고, 형제 actor 요청도 그 사이 진행되므로
+**직렬 turn 해제·재개 배선 자체는 계약을 지킨다** — 막히는 것은 route-channel의 공유
+dispatch 자원이다.
+
+재현·증거·배제한 가설은 C++ 구현 로그의 `CPP-ATD-TIMER-RESUME-001`에 있다. 이 항목이 닫히기
+전에는 C++의 04 스펙을 충족으로 판정하지 않는다.
 
 STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
 `[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의

@@ -560,69 +560,26 @@ export interface ZLinkEntrySpotActorRequestHandler<
 > `ZLinkEntrySpot.onJoinedActor(...)` / `onLeaveActor(...)` 멤버 callback 으로 선언한다.
 > actor disconnected 도 `ZLinkEntrySpot.onDisconnectActor(...)` 멤버 callback 으로 선언한다.
 
-#### lifecycle callback 의미
+#### lifecycle과 handler 의미
 
-- `onCreate(request)` 는 생성 요청이 넘긴 단일 `ZLinkMessage` 를 spot 상태로 해석하는
-  단계다. framework 가 새 spot 인스턴스를 만든 경우에만 호출된다. 반환값은
-  `{ accepted, reply? }` 이며, `accepted: false` 는 등록 없이 `Rejected` 결과로
-  caller 에게 돌아간다.
-- `onInitialize()` 는 payload 와 무관한 lifecycle 준비 단계다. timer 등록 같은 작업을 둔다.
-- 새 spot 생성 시 호출 순서: `configure()`, descriptor binding, `onCreate(request)`,
-  `onInitialize()`. 이미 ready 상태인 spot 을 반환하는 `getOrCreate(...)` 는
-  `onCreate` / `onInitialize` 를 다시 호출하지 않는다.
-- `onClosing()` 은 `ZLinkSpotManager.close(...)` 로 정상 종료할 때 실행 문맥 안에서
-  호출된다. destructor 가 아니므로 host shutdown / process 종료 시 반드시 호출되는 것은 아니다.
-
-다음 handler 등록 호출은 `configure()` 단계 안에서만 허용된다. 초기화 후 추가하면
-framework 가 예외를 던진다.
-
-- `context.handlers.addPacket(...)`
-- `context.handlers.addHandler(...)`
-- `context.handlers.addSubscribe(...)`
-
-actor packet handler 는 `configure()` 에서 등록하지 않는다. Entry Spot actor
-request handler 는 `zlinkEntrySpotActorRequestHandler(...)`, user Spot actor
-request handler 는 `zlinkSpotActorRequestHandler(...)` decorator 로 등록한다.
-
-handler 선언은 두 방식이다.
-
-- interface 방식: 위 handler interface 중 하나를 구현한다. 컴파일 타임 시그니처 확인이 강하다.
-- decorator 방식: `@ZLinkSpotActorRequest()` 같은 method decorator 를 단다. 한 클래스에
-  여러 역할을 모을 수 있지만 검증은 startup validation 단계에서 한다.
-
-하나의 handler 타입이 두 개 이상의 actor packet interface 를 구현하거나, 두 개 이상의
-actor handler decorator method 를 선언하면 startup validation 오류다.
-
-
-`onJoinedActor(...)` / `onLeaveActor(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
-문맥에서 호출된다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
-않는다. `notifyDisconnected(...)` 로 대상 actor 를 명시하면 호출된다.
-
-중복 등록은 같은 registry 단위로 검사한다. Entry Spot registry 와 각 user Spot registry 는
-서로 별개의 namespace 다. 같은 registry 안에서 동일한 `actor type + packet kind + packet name`
-조합이 둘 이상 등록되면 startup validation 오류다.
+Spot 생성, 초기화, 종료, actor membership과 handler 실행 순서는
+[Spot Node](../../21-spot-node.ko.md), [Spot Actor](../../23-spot-actor.ko.md),
+[Spot 위의 상위 모델](../../25-stage-wrapper-on-spot.ko.md)이 소유한다. 이 문서는 위의
+TypeScript callback, registry와 decorator 시그니처만 고정한다.
 
 #### outbound / publish 표면
 
-`ZLinkSpotContext.outbound` 가 노출하는 호출 표면(§5.2 `ZLinkSpotOutbound`):
-
-- `context.outbound.sendToSpot(...)` / `requestToSpot(...)` 은 현재 SPOT 문맥에서 다른
-  SPOT으로 routed send/request를 보낸다. target은 resolver가 만든 `SpotHandle`로 지정한다.
-  전송 API 는 호출 중에 location store 를 다시 조회하지 않는다.
-- `context.outbound.publish(topic, ...)` 는 현재 SPOT 이 속한 active SPOT channel 로
-  publish 한다.
-- `context.outbound.sendToChannel(...)` / `requestToChannel(...)` 은 route bridge channel socket을 호출한다.
+Spot 주소 전송과 channel messaging의 의미는
+[Spot 주소 전송](../../24-spot-address-messaging.ko.md)과
+[channel messaging](../../11-channel-messaging.ko.md)이 소유한다. Node.js의 정확한 호출
+모양은 §5.2의 `ZLinkSpotOutbound` 선언이 고정한다.
 
 #### timer 실행 문맥
 
-framework runtime 이 만든 managed timer 가 tick 을 만들고, user Spot timer 는 그 tick 을
-**같은 spot execution context** 안으로 enqueue 해서 `ZLinkSpotTimerHandler<TSpot>.handle(...)`
-를 호출한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶이지 않고 별도 흐름에서 호출한다.
-`addTimer(...)` 가 돌려주는 `ZLinkTimer.cancel()` 은 이 managed timer loop 를 중단하는
-고수준 handle 이다(§7).
-
-`requestToChannel(...)` 의 completion 도 **항상 같은 spot execution context** 안에서
-실행된다. 임의의 thread/microtask 에서 promise 를 직접 완료하지 않는다.
+user Spot과 Entry Spot timer의 실행 문맥, 수명과 overrun 의미는
+[Spot 위의 상위 모델 §4](../../25-stage-wrapper-on-spot.ko.md)가 소유한다. 특히 Entry Spot
+timer는 lifecycle, route, subscription과 같은 Entry 실행 줄에서 처리하며 actor packet만
+actor별 mailbox에서 처리한다. Node.js의 timer 시그니처는 §7이 고정한다.
 
 #### 4.3.2 SPOT 실행 문맥 정책
 
@@ -1017,10 +974,6 @@ export interface ZLinkMessageSerializer {
 
 serializer 선택과 기본 codec 의미는 [message model](../../03-message-model.ko.md)이 소유한다.
 
-codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
-
-```
-
 **serializer 선택 규칙** — `canSerialize(value, context)`는 **선택적**이며, 같은 runtime에
 serializer가 여러 개일 때 어떤 payload를 맡을지 알려준다.
 
@@ -1034,7 +987,10 @@ serializer가 여러 개일 때 어떤 payload를 맡을지 알려준다.
 
 **전송 실패는 런타임 오류다.** custom codec을 여러 개 등록할 때 이 규칙을 지키지 않으면 여기서
 걸린다.
-ts
+
+codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
+
+```ts
 export interface ZLinkCodecRegistryBuilder {
   use(extension: ZLinkCodecExtension): this;
 }
@@ -1440,41 +1396,47 @@ export interface ZLinkSpotInfo {
 
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  create<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
+    request: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  create<TSpot extends ZLinkSpot, TRequest>(
+    spotType: Type<TSpot>,
+    request: TRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
 
   getOrCreate<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, spotRid: RoutingId, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  getOrCreate<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    request: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  getOrCreate<TSpot extends ZLinkSpot, TRequest>(
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    request: TRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
 
-  find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null>;
-  list(): Promise<readonly ZLinkSpotInfo[]>;
-  close(spotRid: RoutingId): Promise<boolean>;
+  find(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
+  list(signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
+  close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
 }
 ```
 
-> `ZLinkSpotManager`는 generic `TSpot`으로 factory를 고른다. 조회 메서드는 `find`이며
-> 결과는 public 식별자 `SpotRid` 만 돌려준다(spot 타입/factory 정보는 노출하지 않음).
-> `ZLinkSpotInfo` 는 `spotRid` 만 가진다. `ZLinkSpotCreateResult` 는 `spotRid` +
-> `Existing` / `Created` / `Rejected` 상태와 선택적 reply DTO 를 가진다.
-> generic type은 TypeScript에서 `spotType: Type<TSpot>` 첫 인자로 표현한다.
-
-- `create(spotType, request?)`: generic 타입으로 factory 선택, runtime 이 새 spotRid 발급.
-  payload 가 없으면 빈 `ZLinkMessage` 를 `onCreate(...)` 에 전달한다.
-- `getOrCreate(spotType, spotRid, request?)`: 호출자가 logical spot rid 지정. 이미 같은
-  spotRid 가 있으면 `Existing` 을 반환하고 새 request 는 전달하지 않음.
-- `find(...)` / `list(...)`: 조회 표면. `SpotRid` 만 돌려준다.
-- `close(...)`: 정상 종료(이때 `onClosing()` 호출). actor 가 남은 user Spot 은 종료하지 않고
-  `false` 를 반환한다.
-
-`onCreate(request)` 는 caller 가 넘긴 payload 를 `ZLinkMessage` 로 전달한다. 기본 사용자는
-DTO 를 넘기고 `request.decode<T>()` 로 읽는다. MessagePack, Protobuf, custom codec 은
-기존처럼 module options 의 codec registry 에 등록하며, handler 에서 `Message` bytes 나
-codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `TSpot` 으로
-`getOrCreate(...)` 하면 `SpotTypeMismatch` 로 실패한다.
-
-기존 방식 중 유지되는 것은 codec extension 등록이다. 예를 들어 module 구성에서 custom codec을
-등록하는 코드는 변경 후에도 그대로 둔다. 제거되는 기존 방식은 handler나 session에서
-`Message.from(...)`, `Buffer`, JSON parse helper, stream frame codec을 직접 호출하는 코드다.
-변경 후 업무 코드는 DTO를 넘기거나 `ZLinkMessage.decode<T>()`만 호출한다.
+Spot 생성, 조회와 종료 결과의 의미는 [Spot Node](../../21-spot-node.ko.md)가 소유한다.
+Node.js는 spot factory type을 `Type<TSpot>`으로 받고, 중단 가능한 모든 manager 작업에
+optional `AbortSignal`을 받는 overload로 그 계약을 표현한다.
 
 #### SpotNode / mesh builder
 
@@ -1482,6 +1444,7 @@ codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `T
 export interface ZLinkSpotNodeBuilder {
   enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
   connectRouter(endpoint: string): this;
+  connectRouter(peerRid: RoutingId, endpoint: string): this;
   routingId(routingId: RoutingId): this;
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
   connectPeerPub(endpoint: string): this;
@@ -1501,7 +1464,8 @@ export interface ZLinkSpotNodeBuilder {
 builder 함수 의미:
 
 - `enableRouter(endpoint, routingId?, connect?)`: spot-to-spot routed packet 을 처리할 local router 역할 활성화.
-- `connectRouter(endpoint)`: remote router endpoint 를 수동 연결 목록에 추가.
+- `connectRouter(...)`: endpoint만 지정하거나 peer routing id와 endpoint를 함께 지정해
+  remote router 수동 연결을 등록한다.
 - `routingId(routingId)`: SPOT node 대표 routing id 지정.
 - `enablePubSub(endpoint, routingId?, connect?)`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
 - `connectPeerPub(endpoint)`: peer SpotNode의 PUB endpoint를 수동 연결 목록에 추가한다.
@@ -1556,7 +1520,7 @@ export interface ZLinkSpotSubscriberConfig {
 }
 
 export interface ZLinkEntrySpotOptions {
-  routingId: RoutingId;
+  routingId?: RoutingId;
 }
 ```
 
@@ -1606,27 +1570,9 @@ export interface ZLinkTimerTick {
 }
 ```
 
-framework 의 timer abstraction 은 native timer 를 그대로 노출하지 않는다. framework runtime 이
-managed timer 를 만든 뒤 각 tick 을 handler 실행 문맥으로 넘긴다. user Spot timer 는 spot
-직렬 실행 경로로 들어가고, Entry Spot timer 는 Entry Spot 전체 직렬 줄에 묶이지 않는다.
-
-`ZLinkTimerTick` 은 timer 이름, 실제 전달된 callback 번호(`deliveryIndex`), fixed-rate 시간표의
-tick 번호(`scheduledIndex`), 예정/시작 시각, 지연, 건너뛴 tick 수를 담는다. 지연·skip 은
-monotonic clock 기준이며, `Date` 값은 로그/운영 관찰용 wall-clock 이다. `ulong` 은 안전하게
-`bigint` 로 옮긴다.
-
-overrun 정책:
-
-- `SkipLateTicks`: 늦은 tick 을 합쳐 건너뛰고 최신 예정 시각 기준으로 이어 간다.
-- `CatchUpBounded`: 밀린 tick 을 `maxCatchUpTicks` 개 callback 까지만 연속 실행.
-- `DelayNextTick`: fixed-delay(handler 완료 뒤 다시 period 대기).
-
-`maxCatchUpTicks` 는 `CatchUpBounded` 에서만 의미 있고 `0` 보다 커야 한다. 알 수 없는
-overrun 정책 값은 설정 오류다. handler 예외는 기본적으로 monitoring 의 `TimerHandlerFailed`
-event 로 기록하고 timer 는 계속 실행한다. `stopOnUnhandledException` 이 `true` 이면 첫 예외
-뒤 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한다.
-
-`cancel()` 은 native timer stop wrapper 가 아니라 framework managed timer loop 를 중단하는 표면이다.
+timer 실행 문맥, tick 값, overrun과 검증 의미는
+[Spot 위의 상위 모델 §4](../../25-stage-wrapper-on-spot.ko.md)가 소유한다. 이 절은 Node.js가
+그 계약을 표현하는 `ZLinkTimer`, options, enum과 tick 시그니처만 고정한다.
 
 ## 8. Handler Filter
 
@@ -2244,88 +2190,25 @@ export function ZLinkStreamRaw(): MethodDecorator;
 
 ## 12. 시그니처 규칙
 
-decorator 기반 handler 의 메서드 시그니처 규칙:
-
-- 첫 인자: decoded payload 타입
-- 두 번째 인자: context 타입(생략 가능)
-- request handler 반환: `Promise<T>`
-- send handler 반환: `Promise<void>`
-- publish handler 반환: `Promise<void>`
-
-framework scanner 와 runtime invoker 는 반환 타입을 등록 단계에서 먼저 판정한다. 허용되지
-않는 반환형은 startup validation 오류다(C# 의 `Task`/`Task<T>`/`ValueTask`/`ValueTask<T>` 구분에
-대응하는 node 규칙은 "`handle` 은 `Promise` 를 반환해야 한다"로 둔다).
-
-node 경계를 넘는 payload 는 request/reply payload 와 session actor dispatch 두 곳에서 나온다.
-이 payload 는 codec 이 직렬화/역직렬화할 수 있는 DTO 여야 한다. root 타입이나 컬렉션 원소가
-abstract class / interface 면 명시적 codec/converter 계약 없이는 등록 단계나 첫 submit 이전에
-명확한 configuration 오류로 실패시킨다. domain 내부 이벤트 계층을 그대로 reply DTO 로 쓰지 않고,
-wire 에 올릴 구체 DTO 로 한 번 변환한다.
-
-핵심 규칙은 하나다: "resolved packet key 하나는 동일한 실행 문맥 안에서 단 하나의 handler 에만
-매핑된다." 실행 문맥 구분:
-
-- 일반 channel messaging 의 실행 문맥은 inbound channel 역할이다.
-- actor 와 spot 은 각각 고유한 실행 문맥을 가진다.
-
-class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 단일 class `UserGetHandler` 모두 허용).
+handler 실행, packet 식별, 직렬화와 비동기 완료의 의미는
+[상호 작용 모델](../../02-interaction-model.ko.md),
+[메시지 모델](../../03-message-model.ko.md),
+[비동기 실행 정책](../../04-async-execution-policy.ko.md)이 소유한다.
+Node.js는 이 계약을 앞 절의 decorator와 `Promise<T>` 시그니처로 표현한다.
 
 ## 13. DI 동작 기준
 
-- handler class 는 NestJS DI 에서 resolve 한다. handler 의 생성자 주입이 동작해야 한다.
-- outbound client(`ZLinkChannelClient`, `ZLinkFanoutClient`, `ZLinkSpotManager` 등)도 같은
-  컨테이너에서 provider token 으로 주입된다.
-- `ZLinkHandlerFilter` 구현체도 같은 컨테이너에서 resolve 한다.
-- framework 는 별도 객체 생성기를 두지 않고 NestJS `ModuleRef`/DI 기반으로 handler invocation 을 구성한다.
-- channel/route/publish handler 는 dispatch마다 NestJS context id를 만들고 그 context에서 resolve 한다.
-  따라서 `Scope.REQUEST` provider는 dispatch마다 새 instance가 될 수 있고, singleton provider는 같은
-  application context 안에서 유지된다.
-- request-scoped provider의 정리 시점과 dispose hook 호출은 NestJS container 정책을 따른다. framework는
-  현재 dispatch 완료 시점마다 별도 dispose hook을 호출한다고 보장하지 않는다.
-- public registration 함수에 DI 컨테이너를 매번 노출할 필요는 없다.
-- `Spot`, packet handler, timer handler 는 framework 가 만든 per-spot scope 에서 resolve 한다.
-  `context.handlers.addPacket(handlerType)`, `context.addTimer(...)` 는 service locator 가 아니라
-  "이 타입을 spot scope 에서 쓰겠다"는 등록 선언이다.
-- `onCreate(...)` / `onInitialize(...)` 도 DI 컨테이너를 직접 받지 않고 spot 자체의 생성자 주입과
-  cached dependency 를 쓴다.
+NestJS에서 공개 client와 manager는 §7의 injection token으로 주입하고, handler와 filter는
+앞 절의 decorator가 표시한 provider type으로 등록한다. provider 해석과 scope의 내부 배선은
+[Node.js runtime lifecycle](../../../../node/internals/runtime-lifecycle.ko.md)이 설명한다.
+공통 framework의 등록 및 lifecycle 의미는
+[Framework API](../../05-framework-api.ko.md)가 소유한다.
 
-### 13.1 public service DI 등록 조건
+## 14. Message flow observer 시그니처
 
-모든 public service 를 항상 DI 에 등록하지는 않는다. 생성자 주입은 그 기능을 쓸 수 있다는
-신호이므로 역할이 없는 service 는 등록하지 않는다.
-
-| Interface | DI 등록 조건 |
-|-----------|--------------|
-| `ZLinkChannelClient` | 항상 등록. channel 누락은 호출 시 `ZLinkConfigurationException` |
-| `ZLinkRouteClient` | 항상 등록. route channel 누락은 호출 시 `ZLinkConfigurationException` |
-| `ZLinkFanoutClient` | 항상 등록. publisher 역할 누락은 호출 시 `ZLinkConfigurationException` |
-| `ZLinkSpotManager` | `SpotNode` 가 하나 이상일 때 등록 |
-| `ZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상일 때 등록 |
-| `ZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록 |
-| `ZLinkBoundSession` | actor bound session runtime 등록 시 |
-| `ZLinkSpotHandleResolver`, `ZLinkActorSpotHandleResolver` | location store 가 등록되어 있을 때 등록 |
-
-channel 이름의 위치는 handler class/method decorator 가 아니라 channel registration 에 둔다.
-outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수도 있다.
-
-## 14. 결정된 기준
-
-- `ZLinkRequestContext` 와 `ZLinkSendContext` 는 합치지 않는다. request-response 와 one-way send
-  는 timeout/reply/호출 의미가 다르다.
-- `onError(...)` 는 session 에 매핑할 수 있는 transport 오류만 수신한다. application handler 내부
-  예외, bind/accept/close 같은 node 단위 오류, handshake 이전 monitor 이벤트는 runtime monitoring
-  표면에만 남긴다.
-- framework runtime 은 `ZLinkChannelClient` 위에 channel 별 typed wrapper 를 공식 기본 표면으로
-  제공하지 않는다. 필요하면 응용/확장 패키지가 얹는다.
-- `spotRid`는 Node.js의 `RoutingId` 값 타입을 쓰지만 의미는 logical Spot 식별자다.
-  owner node 같은 transport 대상은 이 값에서 꺼내지 않고 `SpotHandle`이 내부에서 관리한다.
-
-### 14.1 message flow observer
-
-미등록 메시지와 dispatch 실패 관측은 전역 `ZLinkMessageFlowObserver` 의 Error outcome 으로 처리한다.
-channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
-error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `Promise` 를 framework error 로
-reject 한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
+message flow의 outcome과 실패 처리 의미는
+[message flow tracing](../../52-message-flow-tracing.ko.md)이 소유한다. Node.js는 observer 등록을
+다음 TypeScript 시그니처로 표현한다.
 
 ```ts
 export interface ZLinkDispatchOptionsBuilder {
@@ -2344,23 +2227,14 @@ export interface ZLinkMessageFlowObserver {
 }
 ```
 
-dispatch 실패는 `ZLinkMessageFlowEvent` 에서 `outcome` 이 `Error` 이고, `errorReason` 과
-`errorAction` 에 실패 이유와 처리 결과가 들어간다. event 는 `surface`, `messageKind`,
-`packetName`, `channelName`, `topic`, `spotRid`, `actorId`, `sourceRid`, `correlationId`,
-`errorType`, `errorMessage`를 담는 readonly snapshot이다. native frame이나 buffer ownership은
-포함하지 않는다.
+## 15. 검증
 
-
-## 15. 회귀 테스트
-
-검증 스코프와 실제 Node 테스트 이름은
-[regression test matrix](../../../../node/internals/regression-test-matrix.ko.md)가 소유한다.
+검증 범위는 [회귀 검증 matrix](../../../../node/internals/regression-test-matrix.ko.md)가 소유한다.
 
 ## 16. public export 판정
 
-이 문서의 각 시그니처와 package root export가 일치하는지는
-`contract-surface.test.js`와 배포 package consumer 검증으로 확인한다. 현재 구현과
-다른 목표 시그니처를 이 문서 뒤에 별도로 중복하지 않는다. 미구현 계약은
+이 문서의 각 시그니처와 package root export는 배포 package consumer 검증에서 함께 확인한다.
+현재 구현과 다른 목표 시그니처를 이 문서 뒤에 별도로 중복하지 않는다. 미구현 계약은
 [implementation gap](../../90-implementation-gap.ko.md)에서만 추적한다.
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.

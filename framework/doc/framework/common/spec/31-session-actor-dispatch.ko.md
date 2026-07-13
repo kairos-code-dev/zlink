@@ -676,6 +676,16 @@ internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framew
 계약은 application handler가 framework codec registry와 typed message만 보고, 내부
 server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
+## 11.1 push 실패 격리
+
+**stale binding token, 이미 닫힌 stream, 늦게 도착한 push는 그 push 하나만 실패시킨다.**
+
+**route receive loop나 host shutdown 자체를 실패시켜서는 안 된다.** 이 실패는 로그·counter·
+message flow error event로 기록한다.
+
+**client의 처리 완료 ack가 필요하면** actor message나 session message로 application이 직접
+설계한다. framework가 push 전달 보장을 제공하지 않는다.
+
 ## 12.1 내부 routed wire 계약
 
 **server 사이를 잇는 내부 route transport는 [message-model](03-message-model.ko.md)의 multipart

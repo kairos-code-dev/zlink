@@ -2107,11 +2107,11 @@ client 에게 새 request 를 보내는 API 는 제공하지 않는다. client r
 
 `IZLinkBoundSession` 자체는 연결된 client stream 을 향한 proxy 이므로
 `Zlink.Framework.Contracts.Streams` 에 둔다. Spot actor handler 는 actor 의
-
-Spot actor handler 인터페이스와 `ZLinkSpotActorSendContext`·`ZLinkSpotActorRequestContext`는
-`Zlink.Framework.Contracts.Spots`에 둔다.
 `Context.BoundSession` 으로 이 proxy 에 접근하고, stream packet metadata 는
 `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 로 받는다.
+
+**Spot actor handler 인터페이스와 `ZLinkSpotActorSendContext`·`ZLinkSpotActorRequestContext`는
+`Zlink.Framework.Contracts.Spots`에 둔다.**
 
 application handler 는 actor id 만 넘긴다. 다음 metadata 들은
 framework/core 의 actor-session binding 안에만 머문다.
@@ -2253,6 +2253,10 @@ public interface IZLinkStreamNodeBuilder
 public interface IZLinkSessionHandlerRegistry
 {
     void AddHandler<THandler>()
+        where THandler : class;
+
+    // packet name을 명시하는 override. 생략하면 payload 타입 이름을 사용한다.
+    void AddHandler<THandler>(string packetName)
         where THandler : class;
 
     ValueTask<bool> TryHandleAsync(
@@ -2914,7 +2918,9 @@ timer 가 어떤 실행 문맥에서 callback 을 호출하는지가 핵심이�
   instance 안에서는 이전 callback이 끝나기 전에 다음 callback을 겹쳐 실행하지
   않으며, route packet, subscription과 다른 Entry Spot callback과도 직렬 순서를 지킨다.
 
-## 7.1 서비스 레이어 AOP
+## 8. Handler Filter
+
+### 8.1 서비스 레이어 AOP와의 경계
 
 **AOP는 handler 메서드 자체가 아니라, handler가 주입받는 서비스 계층에서 동작한다.**
 
@@ -2924,7 +2930,6 @@ AOP가 그대로 적용된다. **어떤 AOP 라이브러리를 쓸지는 그 라
 **framework는 handler 메서드에 AOP를 걸지 않는다.** handler 자체에 걸어야 하는 관심사는
 handler filter(§8)를 사용한다.
 
-## 8. Handler Filter
 
 이 절은 ZLink handler 호출 전후의 공통 처리를 담당하는 filter 표면을
 정의한다.
@@ -4584,7 +4589,7 @@ public enum ZLinkDispatchErrorReason
     InvalidFrame = 3, ReplyPathMissing = 4, UnexpectedReply = 5
 }
 
-public enum ZLinkDispatchErrorAction { ReplyError = 0, Drop = 1 }
+public enum ZLinkDispatchErrorAction { ReplyError = 0, Drop = 1, FailCaller = 2 }
 
 public enum ZLinkDrainState
 {

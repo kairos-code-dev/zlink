@@ -36,7 +36,7 @@ TypeScript 표면에 남기는 결과가 **entrypoint 분리**(§2)다.
 **계약:**
 
 - 브라우저 entrypoint의 번들 그래프에는 **`net`·`tls`·`Buffer` 같은 Node 전용 모듈이 포함되지
-  않는다.** 회귀 테스트로 고정한다(§8).
+  않는다.** 검증 범위는 §8의 문서가 소유한다.
 - 두 entrypoint는 **동일한 public 타입과 시그니처**를 노출한다. 다른 것은 기본 transport
   factory 하나뿐이다.
 - 공통 wire 계층(`@zlink-systems/stream-wire`)은 두 런타임에서 **같은 코드**로 동작한다.
@@ -145,15 +145,6 @@ option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이
 `observeInbound(...)`는 `Disposable`을 반환하며, **`connect(...)` 호출 전에만** 등록할 수 있다.
 연결이 시작된 뒤 등록하면 오류를 던진다.
 
-```ts
-const registration = client.observeInbound((observation) => {
-  console.log(
-    `stream-inbound kind=${observation.kind} ` +
-    `name=${observation.name} bytes=${observation.payloadLength}`);
-});
-await client.connect();
-```
-
 두 큐의 한도는 다음 option으로 조절한다. 기본값은
 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다.
 
@@ -202,25 +193,12 @@ WSS 연결, request/reply, push 수신을 검증했다.
 표시하지 않는다. 현재 구현 차이는 [implementation gap §4.10](../../90-implementation-gap.ko.md)에
 기록한다.
 
-## 8. 회귀 테스트
+## 8. 검증
 
-stream connector 문서는 connector 표면이 framework server 표면과 다른 책임을 가진다는 점을
-계속 유지해야 한다. 아래 회귀 항목이 이 문서와 구현을 함께 고정한다.
-
-- `test/contract/documentation-regression.test.js`
-  - spec 문서가 회귀 테스트 절을 계속 포함하는지 확인한다.
-- `test/contract/stream-connector*.test.js`
-  - connector wait builder, codec decode, inbound observer가 public surface대로 동작하는지 확인한다.
-- 브라우저 entrypoint 회귀
-  - 브라우저 entrypoint의 실제 bundle 그래프에 Node 전용 모듈(`net`·`tls`·`async_hooks`·`crypto`)과
-    `Buffer`가 없는지 확인한다(§2).
-  - 브라우저 entrypoint가 `tcp://`·`tls://` endpoint를 `ConfigurationError`로 거부하는지 확인한다(§3).
-  - 플랫폼 `WebSocket` adapter로 `wss://` 연결, request/reply와 push 수신이 동작하는지 확인한다.
-  - handler의 `await` continuation은 같은 flow를 사용하고, handler가 기다리는 동안 실행되는 관련
-    없는 callback은 새 application flow를 사용하는지 확인한다. 이 항목은 현재 실패하는 gap이다.
-  - 배포 전 검증 환경에 headless 브라우저를 제공하면 실제 브라우저에서도 같은 WSS 시나리오를 확인한다.
-- `samples/*`
-  - sample client가 connector helper와 `waitFor(...)`를 기본 경로로 사용하는지 확인한다.
+공통 동작의 검증 범위는 [공통 Stream Connector 스펙](../../32-stream-connector.ko.md)이,
+Node.js 구현에서 실행하는 검증 묶음은
+[회귀 검증 matrix](../../../../node/internals/regression-test-matrix.ko.md)가 소유한다.
+이 문서는 공개 TypeScript 시그니처와 Node.js·브라우저 entrypoint 구분만 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -25,11 +25,11 @@
 
 | package | 역할 | 의존 |
 |---|---|---|
-| `@zlink-systems/framework` | framework core — contract, runtime, dispatcher | core 바인딩 |
-| `@zlink-systems/nestjs` | NestJS host adapter — `ZLinkModule.forRoot(...)` 등록 표면 | `framework` |
-| `@zlink-systems/framework-codec-protobuf` | Protobuf codec **extension** | `framework` |
-| `@zlink-systems/framework-codec-msgpack` | MessagePack codec **extension** | `framework` |
-| `@zlink-systems/framework-locations-redis` | Redis location store **extension** | `framework` |
+| `@zlink-systems/framework` | framework core — contract, runtime, dispatcher | `zlink`, `stream-wire`, OpenTelemetry API |
+| `@zlink-systems/nestjs` | NestJS host adapter — `ZLinkModule.forRoot(...)` 등록 표면 | `framework`, NestJS common/core, `reflect-metadata`, `rxjs` |
+| `@zlink-systems/framework-codec-protobuf` | Protobuf codec **extension** | `framework`, `stream-connector`, `protobufjs` |
+| `@zlink-systems/framework-codec-msgpack` | MessagePack codec **extension** | `framework`, `stream-connector`, `@msgpack/msgpack` |
+| `@zlink-systems/framework-locations-redis` | Redis location store **extension** | `framework`, `zlink`, `redis` |
 | `@zlink-systems/http-client` | fluent HTTP/JSON client | `framework`, `undici` |
 | `@zlink-systems/stream-connector` | **client** connector — 서버 framework에 의존하지 않는다 | `stream-wire` |
 | `@zlink-systems/stream-wire` | connector와 서버가 공유하는 **wire 계층** | 없음 |
@@ -96,6 +96,9 @@
 | `ZLINK_CHANNEL_CLIENT` | channel client |
 | `ZLINK_ROUTE_CLIENT` | route client |
 | `ZLINK_FANOUT_CLIENT` | fanout client |
+| `ZLINK_BOUND_SESSION_FACTORY` | bound session factory |
+| `ZLINK_RUNTIME_EVENT_PUBLISHER` | runtime event publisher |
+| `ZLINK_DRAIN_CONTROL` | graceful drain control |
 | `ZLINK_MESSAGE_METADATA_POLICY` | metadata 정책 |
 | `ZLINK_FRAMEWORK_RUNTIME` · `ZLINK_FRAMEWORK_REGISTRATION` | runtime과 등록 |
 
@@ -107,10 +110,7 @@
 | `ZLINK_SPOT_PUBLISHER_CLIENT` | spot publisher 역할 |
 | `ZLINK_ACTOR_MANAGER` · `ZLINK_ACTOR_CLIENT` | actor factory 등록 |
 | `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | spot handle resolver 등록 |
-| `ZLINK_BOUND_SESSION_FACTORY` | session actor dispatch |
 | `ZLINK_LOCATION_RUNTIME_QUERY` | location runtime 등록 |
-| `ZLINK_RUNTIME_EVENT_PUBLISHER` | monitoring 등록 |
-| `ZLINK_DRAIN_CONTROL` | drain 등록 |
 
 **등록되지 않은 token을 주입하면 NestJS의 미해결 의존성 오류로 실패한다.**
 

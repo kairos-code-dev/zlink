@@ -126,7 +126,7 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-DOC-001 | `README.ko.md` | 언어별 계약 index와 cancellation projection | `RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection` |
 | DN-DOC-002 | `01-system-structure.ko.md` | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-A1` |
 | DN-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그와 §17 공개 계약 산출물 검증 절차 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions`; `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` |
-| DN-DOC-004 | `32-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
+| DN-DOC-004 | `03-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
 
 `25-stage-wrapper-on-spot.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
 문서의 회귀 참조는 active unit test 또는 실제 `.NET` feature-map scenario로만 해석되며, 삭제된
@@ -259,14 +259,14 @@ E2E class allowlist는 존재하지 않는다.
 
 ```text
 a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e common/README.ko.md
-281afb2d758740012507ff6c9e3b84ff3eced8dab68aff622aa0e1e7b8accf55 common/22-actor-model.ko.md
+8235c0dc082bc8f0460457f77b96fa05064898cc01cd5be4f27cbfd9b26c7025 common/22-actor-model.ko.md
 7993d0aa2f5f1a286a19e55a05eb71bdbb14f44926967aa1f58cb7d22378de0c common/04-async-execution-policy.ko.md
 7d372f6a15a0e45bf8eb9c26d891d02dca3bcb78475c0ab1925d34abbaefb91d common/11-channel-messaging.ko.md
 b39269fb7176468f35ddbef69d73cefe02f46b8e1778809d5af0d9e91fcc42d5 common/10-channel-topology.ko.md
 3dbcd28d5e9bdd9f7a6e1473f9291eb14fde6a1e1622debf6f9c760754b942f8 common/53-flow-correlation.ko.md
 4e2e7767a0a0ff2324108270f53b0ae51f8f9792991c8db4885ab5f4bdbe8636 common/05-framework-api.ko.md
 1d415bb35d1614e428ca90d8b7ea3bacd8ee78520330c7aa393bfc7316b1f754 common/54-graceful-drain-handoff.ko.md
-63ea92b62010dfe57518db506ad68efa238b9daa83dabf330f7a90162803fef1 common/90-implementation-gap.ko.md
+afd1f113c74926e5d286a5dbf61287ba0f17eba8faa787ee72e648bdca25a795 common/90-implementation-gap.ko.md
 5abba134f48f8d95d63e8cc409de998ab146cdad39fdf7cba22f6455b19b046d common/02-interaction-model.ko.md
 e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6 common/40-location-runtime.ko.md
 253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210 common/41-location-store-redis.ko.md
@@ -276,16 +276,16 @@ c8477f874dbf0ff6aa8110708b9a5e7a1dc0b99ae387c79cbe06e1df8c0c9d2e common/03-messa
 67c50c2750243eaaaad34dd579d45707dd37eacca9c31d3c074601ce3692bd88 common/00-public-contract-governance.ko.md
 d808af4314ff9e1a3531275310a2aa2325403c74f362fb637da60c35937653dd common/51-runtime-metrics.ko.md
 7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94 common/50-runtime-monitoring.ko.md
-7ef15f5b8386745ba67395d0a799323cabb7ebc9cda50ae88886abdbcffaacd1 common/31-session-actor-dispatch.ko.md
+609254ef6db87e3e6403794b2a8b257f3e0fe42cbdcac7f5c4fa8eeba8baeda5 common/31-session-actor-dispatch.ko.md
 a4e8e2231abb2ecbb70e3c1938bb5b9bf39233981e329a25f8dc5d8befa407b2 common/23-spot-actor.ko.md
 5c3b233e111d37d4089969b8ba317f7d5525dce6adcab6d8bdd6fe9b3b072c9d common/24-spot-address-messaging.ko.md
-a09be2ff3e6de95b881b98972a00c7f0abef39522aeaa8acaef613b6766d1cf1 common/20-spot-messaging.ko.md
+34f0253beeafe0607da40b100ad78db40c0b018f3a18d3a60cffa66b31f80de4 common/20-spot-messaging.ko.md
 03f4e3e114799a62cdd64cc230e11d5e8c024109747714db7306c000404552aa common/21-spot-node.ko.md
 d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c common/25-stage-wrapper-on-spot.ko.md
 01b72e31d4f661c60cf70110e53d2d158b68d5ce18c270f4fdc033adc083da05 common/32-stream-connector.ko.md
 fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd common/30-stream-session.ko.md
 c9c1680b76b866dedb84be474d9db7218537b8a89ebb9b5f82c635a0fb3ff6bb dotnet/README.ko.md
 6ff175609dacf859b4fdc351fd76ae16308df8f6b5329cee443ea4523feec100 dotnet/03-stream-connector.ko.md
-0a7312da3aac40d86a51d72ea9efb3839b48fc0bb99007b5a6412002bdc4b6bb dotnet/02-handler-interfaces.ko.md
+9866843988de9e6ed24fdd65a5da1692f8f0aecb6ffa06a60b39e10c9140239f dotnet/02-handler-interfaces.ko.md
 12eae9b154f9ed9b871e9933ddf71c9d51cacde140b70c5a7ef9a98e8ec5b8e9 dotnet/01-system-structure.ko.md
 ```

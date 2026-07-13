@@ -166,6 +166,14 @@ actor context는 channel client, stream 객체, client request/reply 또는 sess
 
 ## 4. 라이프사이클 단계
 
+**destroy 계약:**
+
+- **destroy는 actor가 Entry Spot에 있을 때만 가능하다.** session disconnect는 destroy나 user Spot
+  leave를 자동으로 만들지 않는다.
+- **Entry Spot destroy는 leave callback이나 다른 lifecycle callback을 호출하지 않고 actor 상태만
+  정리한다.**
+- **같은 actor instance에 대한 중복 destroy는 성공으로 끝난다.**
+
 ```text
 None
   +--(NewClaim + factory create)-> Created (Entry Spot, unbound)

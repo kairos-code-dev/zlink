@@ -5,18 +5,9 @@
 
 | ID | 정식 interface 문서 | 검토 결과 |
 |----|---------------------|-----------|
-| ND-DOC-001 | `README.ko.md` | 공개 범위와 취소 규칙 검토 완료 |
-| ND-DOC-002 | `02-handler-interfaces.ko.md` | Promise handler와 단일 완료 규칙 검토 완료 |
-| ND-DOC-003 | `02-handler-interfaces.ko.md` | actor lifecycle, handle, join 계약 검토 완료 |
-| ND-DOC-004 | `02-handler-interfaces.ko.md` | channel, route, fanout, timeout 계약 검토 완료 |
-| ND-DOC-005 | `02-handler-interfaces.ko.md` | monitoring event와 등록 계약 검토 완료 |
-| ND-DOC-006 | `01-system-structure.ko.md` | module 구성과 public export 검토 완료 |
-| ND-DOC-007 | `02-handler-interfaces.ko.md` | location store와 자동 연결 계약 검토 완료 |
-| ND-DOC-008 | `02-handler-interfaces.ko.md` | Spot lifecycle, actor, timer 계약 검토 완료 |
-| ND-DOC-009 | `02-handler-interfaces.ko.md` | stream node와 typed session 계약 검토 완료 |
-| ND-DOC-010 | `02-handler-interfaces.ko.md` | bound session relay와 disconnect 계약 검토 완료 |
-| ND-DOC-011 | `02-handler-interfaces.ko.md` | SpotNode capability와 route 계약 검토 완료 |
-| ND-DOC-012 | `03-stream-connector.ko.md` | connector framing, flow, closing 계약 검토 완료 |
+| ND-DOC-001 | `01-system-structure.ko.md` | package, module, DI, lifecycle와 public export 검토 완료 |
+| ND-DOC-002 | `02-handler-interfaces.ko.md` | 전체 public interface, overload, actor, Spot, stream, location과 monitoring 시그니처 검토 완료 |
+| ND-DOC-003 | `03-stream-connector.ko.md` | connector framing, flow, closing 계약 검토 완료 |
 
 공통 `25-stage-wrapper-on-spot.ko.md`는 정식 언어 interface가 아닌 상위 사용 모델이므로 분모에서는
 제외했다. G7 문서 정합성 검토 대상으로 유지한다.
@@ -69,5 +60,5 @@ runtime 동작과 검증을 모두 포함한다.
 | graceful drain | `ZLinkDrainControl`, typed result, NestJS shutdown 순서와 natural drain | drain test, Bingo와 Config 11 | PASS |
 | package 경계 | framework/NestJS/connector/codec/location packages와 supporting stream-wire | source export test, ABI matrix, 실제 `.tgz` 7개 consumer | PASS |
 
-공통 spec 19개와 Node interface 12개는 위 축의 세부 행에 모두 연결했다. 세부 E2E 분모 181개는
+공통 spec 26개와 Node 정식 계약 문서 3개는 위 축의 세부 행에 모두 연결했다. 세부 E2E 분모 181개는
 `node-g6-e2e-ledger.ko.md`에서 selector와 marker 단위로 관리한다.

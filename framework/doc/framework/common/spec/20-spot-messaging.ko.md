@@ -139,6 +139,10 @@ SPOT의 outbound 호출은 **세 축으로 갈라진다.** 각 축이 쓰는 표
   그래서 **Entry Spot actor packet은 actor별 mailbox에서 순서를 보존한다.** 같은 actor의 packet은
   순서대로 실행되지만, **서로 다른 actor의 packet은 Entry Spot 실행 queue 하나 때문에 서로 기다리지
   않는다.**
+- **user Spot queue는 native bound actor 경로에서 반드시 필요한 직렬화 경계다.** managed runtime
+  경로는 actor별 순서 규칙을 거친 뒤 user Spot queue로 들어갈 수 있지만, **native bound actor
+  경로에는 그 앞단이 없다.** 같은 user Spot 안의 여러 actor가 같은 상태를 만질 수 있으므로
+  **spot 단위 순서를 보장하는 것은 user Spot queue뿐이다.**
 - **Entry Spot actor handler와 user Spot actor handler는 표면이 다르다.** Entry Spot에는 user Spot
   객체가 없기 때문이다. Entry Spot handler는 entry spot·actor·payload를, user Spot handler는
   spot·actor·payload를 받는다.

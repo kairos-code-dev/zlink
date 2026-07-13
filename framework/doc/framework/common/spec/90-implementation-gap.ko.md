@@ -202,10 +202,10 @@ DefaultDispatchOptionsBuilder
 내부 normalize/validate helper
 ```
 
-공개 options, builder와 사용자가 구현하는 extension point만 package root에 남겼다. NestJS는
-framework package의 `nest-integration` subpath를 통해 내부 등록 record를 사용하므로 application
-public surface에 이 구현 타입이 나타나지 않는다. source export test와 실제 `.tgz` consumer test가
-이 경계를 검증한다.
+공개 options, builder와 사용자가 구현하는 extension point만 package root에 남겼다. NestJS adapter는
+framework package 내부의 integration bridge를 빌드 시점에 사용하지만, 이 bridge는 package export에
+등록된 public subpath가 아니다. 따라서 application public surface에는 내부 등록 record와 구현 타입이
+나타나지 않는다. source export test와 실제 `.tgz` consumer test가 이 경계를 검증한다.
 
 ### 4.3 typed session handler
 
@@ -420,15 +420,16 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 | # | 항목 | 해소 결과 | 회귀 검사 |
 |---|------|-----------|-----------|
 | 10.1 | **Response/Error packet name 검증** | `.NET`과 C++도 request name을 pending 상태에 보존하고 reply 이름이 다르면 `FrameDecodeFailed`로 완료한다 | `.NET` `PendingResponseRejectsMismatchedPacketName`, C++ mismatched reply 검사 |
-| 10.2 | **Error payload 포맷** | codec과 무관하게 UTF-8 JSON object `{"code","message"}`([§5.3](32-stream-connector.ko.md)) | Node는 압축 해제 뒤 JSON object와 두 string field를 검증한다. C++는 Error payload를 단순 문자열로 다룬다 |
+| 10.2 | **Error payload 포맷** | C++도 압축 해제 뒤 UTF-8 JSON object를 읽고 `code`와 `message`가 문자열인지 검증한다 | C++ invalid Error payload 검사 |
 | 10.3 | **metadata 1024바이트 한도** | C++ public option을 제거하고 송수신 양쪽에 고정된 1024바이트 한도를 적용한다 | C++ 1024바이트 경계와 1025바이트 거부 검사 |
 | 10.4 | **예약 packet name 범위** | C++는 `$zlink.` prefix만 거부하며 `$application.event` 같은 application 이름은 허용한다 | C++ application 이름 허용과 예약 이름 거부 검사 |
-| 10.6 | **연결 상태 `Created`** | `Created`는 "생성됐고 아직 연결하지 않음"을 나타내는 초기 상태다([§6](32-stream-connector.ko.md)) | Java `ZLinkStreamConnectionState`에 **`CREATED`가 없다.** 초기 상태를 `DISCONNECTED`와 구분하지 못해 "한 번도 연결하지 않음"과 "끊김"이 같은 값이 된다 |
+| 10.5 | **수신 메시지 큐 overflow** | `.NET`은 기존 미수신 메시지를 유지하고 새 메시지를 버린 뒤 `ReceivedMessageDropped`를 보고한다 | `.NET` `ReceivedMessagesDropNewestEntryAndReportOverflowAtConfiguredLimit` |
+| 10.6 | **연결 상태 `Created`** | Java에 `CREATED`를 추가하고 첫 연결 시도 전 초기 상태로 사용한다. 연결 시도에 실패한 뒤에는 `DISCONNECTED`로 전환한다 | Java `connectorStartsInCreatedStateBeforeFirstConnectAttempt`와 lifecycle 전체 검사 |
 
 | 10.7 | **dispatch error observer의 `FailCaller` 결과** | `.NET`에 `FailCaller` action을 추가하고 reply가 만들어지지 않은 local dispatch를 `ReplyPathMissing`과 함께 보고한다 | `.NET` `ReplyPathMissing_ReportsFailCallerMessageFlowError`와 enum contract 검사 |
 
-10.1과 10.2는 **wire 호환성 문제**다. Node는 contract test와 browser entrypoint 회귀 검사로
-두 항목을 닫았다. 표에 남은 언어는 계약대로 Error를 보낼 때 동일한 검증과 해석을 해야 한다.
+10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
+회귀 검사로 같은 계약에 맞췄다.
 
 ## 11. 완료 조건
 

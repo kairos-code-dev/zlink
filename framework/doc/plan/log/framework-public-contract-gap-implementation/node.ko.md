@@ -6,7 +6,7 @@
 
 | 실행 시각 | gate | 기준 commit | 명령 또는 검토 | exit code | 결과 | 증거 |
 |-----------|------|-------------|----------------|-----------|------|------|
-| 2026-07-13 | G0-G2 | 작업 tree | 정식 Node interface 12개 inventory, public export/package 검토 | 0 | PASS | `node-g0-contract-ledger.ko.md`; contract surface와 binding public-only tests |
+| 2026-07-13 | G0-G2 | 작업 tree | 정식 Node 계약 문서 3개 inventory, public export/package 검토 | 0 | PASS | `node-g0-contract-ledger.ko.md`; contract surface와 binding public-only tests |
 | 2026-07-13 | G3 | 작업 tree | `npm test`와 `npm run verify:ci` | 0 | PASS | build, typecheck, lint와 contract/unit/integration 전체 파일별 실행 성공 |
 | 2026-07-13 | G3 | 작업 tree | `npm run verify:coverage` | 0 | PASS | all files lines 82.36%, branches 81.57%, functions 82.16% |
 | 2026-07-13 | G4 | 작업 tree | DDD/POSD production source 재검토 | 0 | PASS | `node-g4-refactoring-ledger.ko.md`; `NO DDD/POSD FINDINGS` |

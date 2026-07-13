@@ -186,9 +186,9 @@ d80162c65980230396a2338e0c88019dacbcf8049273b65558cbb7a2efbad8ec cpp/cpp-applica
 6f03b0a249f1da42a3be1fc362d051b6cb3681a017b7d4c73c807fbf39fb7c7d cpp/cpp-http-hosting.ko.md
 1c46398c69025dde34648100d63ef0a131150d8c29a00d3efc90d3ec1a0c03c9 cpp/cpp-monitoring.ko.md
 785690fc5c9b0764546ef5a56145a7eb9670d61c69b11f3cf0d5f53d7a2831be cpp/cpp-registry.ko.md
-78230a89b66d3d05bd3f342a7786a4ded04dda55c36dcc5a0ae3285e45ca8c67 cpp/cpp-spot.ko.md
-8473ab44cd73553e12dc30a18e73432e0c54b1e45a3761d5f54bc03d1f5cf38d cpp/cpp-stream.ko.md
-c661efc0424a7a46e55862b4434c3c431c8123aa33729add5e3b42eb99752dd2 cpp/handler-interfaces.ko.md
+d5d732d3b2aba7eb3e2eedd84f35dc1276a1475d750dd8728ab62d9c5e67f965 cpp/cpp-spot.ko.md
+04061d9c3224e179c3ddd258f72cdb542047893a28377d1298286de6078e368d cpp/cpp-stream.ko.md
+639deb914c2ec3db65c885c954b6a4d1d6a2174c7117d696d914892f424c1078 cpp/handler-interfaces.ko.md
 6b8fe0195ba1b8c43847934cdd709139658cd608639077e971ca1c09e70ba1a1 cpp/stage-wrapper-on-spot.ko.md
 ```
 
@@ -205,3 +205,15 @@ c661efc0424a7a46e55862b4434c3c431c8123aa33729add5e3b42eb99752dd2 cpp/handler-int
 - [x] documentation regression fail-closed: layout needle을 개정 spec 문구로 갱신,
   scan root 부재를 fail-closed로 전환, `http_perf_policy` 문서 경로를 정식
   `common/spec/languages/cpp/` 경로로 수정 — 세 항목 재실행 PASS
+
+## 추가 발견 (G2 Config 11 구현 중, 2026-07-13)
+
+| ID | 표면 | 현재 | 목표/대응 | 상태 |
+|----|------|------|-----------|------|
+| CPP-FANOUT-WIRE-001 | spot fanout wire | cpp는 self-delimited 단일 프레임(`['Z''L''F''E'][u32 BE header_len][header JSON][body]` — G4에서 legacy raw 오분류 방지용 4바이트 매직 추가), .NET은 envelope 2-part. cpp 수신은 양쪽 다 수용하나 cpp 발행은 .NET 구독자가 못 읽을 수 있음. `ZLFE` 프리픽스는 framework 프레임 예약(계약)으로 판정 — 예약 프리픽스로 시작하는 raw payload는 계약 밖(비-framework 발행자를 framework가 escape할 수 없어 in-band 판별의 이론적 한계; Codex MEDIUM 잔여는 이 예약 계약으로 수용) | G6 cross-language fanout에서 .NET 실측 wire 대조 후 정렬(원인인 framework 부착 spot의 multipart 첫 파트만 도달 현상은 core 소유 — core팀 이관 후보). wire 확정 시 예약 프리픽스 계약도 spec 명문화 | 열림(G6) |
+| CPP-BINDING-SENDOP-001 | bindings/cpp send 빌더 | `send_submit_operation_t::message(message_t&&)` rvalue 오버로드가 append가 아닌 single_part 교체(다중 파트 조립 시 앞 파트 유실). lvalue 오버로드는 append로 정상 | 바인딩 소유 — 전달 후보. framework는 lvalue 경로만 사용 | 열림(전달) |
+| CPP-CONN-PUMP-001 | connector 유지보수 pump | heartbeat/pong 송신이 dispatch/API 호출 구동(passive 대기 앱은 pong 굶김→서버 heartbeat_timeout). .NET은 백그라운드 수신 루프가 상시 응답 | 장수명 idle 클라이언트 시나리오에서 차이 노출 — connector 백그라운드 유지보수 루프 검토 후보(G7 판정) | 열림(판정) |
+| CPP-STREAM-LZ4-001 | STREAM 압축 wire | cpp connector/framework가 raw `[u32 BE][LZ4 block]` 프레이밍을 쓰는데 .NET(K4os LZ4Pickler)·Node(lz4-pickle)는 **pickle 프레이밍**이라 압축 payload가 언어 경계를 못 넘었다(G6 실측: .NET 압축 응답을 cpp 커넥터가 receive-limit로 거부) | **닫힘(G6)**: 공용 `lz4_pickle.hpp`로 connector·framework 코덱을 pickle로 교체, 단위 케이스 갱신, cross-language STREAM 양방향 PASS |
+| CPP-E2E-CONCURRENCY-001 | E2E fixture 동시성 | cpp `http_client`는 호출 스레드에서 동기로 수행되고 프레임워크 HTTP 서버도 요청을 직렬 처리해, 한 프로세스 안에서 "요청을 띄워 둔 채 다른 요청"을 하려면 별도 스레드가 필요하다(.NET은 un-awaited task로 표현) | **닫힘(G6)**: SM-A8을 전용 스레드+전용 client로 재구성. 동일 패턴이 필요한 시나리오는 같은 방식 사용 |
+| CPP-SPOT-REG-TXN-001 | spot actor 등록 트랜잭션 동시성 | G4 Codex가 지적한 3건은 **기존 구조의 취약점**(본 작업 이전 커밋에서도 동일): (a) 동시 join이 같은 actor 인스턴스로 초기화/admission을 중복 수행(단일 initializer 선출 없음), (b) join 설치 후 commit 전에 도착한 destroy가 맵/인덱스를 지워 commit이 인스턴스 없이 성공할 수 있음, (c) relay가 create 이전에 취득한 `actor_spot_rids` iterator를 이후 역참조(동시 destroy 시 무효). 본 작업이 추가한 identity index 헬퍼 자체는 Codex 판정 clean(팩토리 락 밖 실행, 맵·인덱스 동시 갱신, 참조-후-erase 무해) | 등록 트랜잭션을 단일 임계구역/버전 검사로 재설계하는 별도 작업으로 분리(핫 경로 재설계라 회귀 위험 — 실측 기반 리팩터가 필요). 현재는 spot node의 직렬 dispatch 스레드+호스트 브리지 경로가 사실상 직렬화하고 있으며 전 게이트(단위·E2E·샘플)에서 재현되지 않음 | 열림(후속) |
+| CPP-SPOTSTOP-001 | spot node 종료 소유권 | 간헐적으로 종료가 `zlink_ctx_term()`(mailbox poll, timeout=-1)에서 무한 대기 → 러너 강제 kill(137)로 config FAIL. **원인은 core가 아니라 프레임워크 소유권 순서**: spot node host service가 컨텍스트를 term 할 때 런타임이 여전히 native SPOT/actor 핸들(`native_spots_by_rid`/`native_actors`/`routed_control_spot`)을 들고 있어 소켓이 살아 있었다 | **닫힘**: `spot_node_runtime_t::release_native_handles()`를 node reset·context term 이전에 호출해 핸들을 먼저 해제 |

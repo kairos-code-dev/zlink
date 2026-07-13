@@ -504,6 +504,9 @@ napi_value create_socket_monitor_event_value (napi_env env, const zlink_monitor_
     napi_create_int64 (env, static_cast<int64_t> (event.value), &value);
     napi_set_named_property (env, obj, "value", value);
 
+    napi_value routing_id = create_routing_id_value (env, event.routing_id);
+    napi_set_named_property (env, obj, "routingId", routing_id);
+
     napi_value local;
     napi_create_string_utf8 (env, event.local_addr, NAPI_AUTO_LENGTH, &local);
     napi_set_named_property (env, obj, "local", local);

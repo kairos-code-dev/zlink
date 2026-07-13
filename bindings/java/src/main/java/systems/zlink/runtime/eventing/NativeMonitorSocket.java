@@ -129,12 +129,12 @@ public final class NativeMonitorSocket implements SocketMonitor {
             return;
         eventHandler = null;
         callbacks.close();
-        RuntimeResources.closeArena(callbackArena);
-        callbackArena = null;
-        callbackStub = MemorySegment.NULL;
         if (own) {
             Native.monitorClose(handle);
         }
+        RuntimeResources.closeArena(callbackArena);
+        callbackArena = null;
+        callbackStub = MemorySegment.NULL;
         handle = MemorySegment.NULL;
     }
 

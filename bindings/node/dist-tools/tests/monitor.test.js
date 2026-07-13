@@ -118,6 +118,89 @@ test('socket monitor onEvent receives bind state events', async () => {
         ctx.close();
     }
 });
+test('stream disconnect monitor event carries the disconnected peer routing id', async () => {
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    const ctx = zlink.createContext();
+    const stream = zlink.createStreamSocket(ctx);
+    const monitor = stream.monitorOpen([
+        zlink.MonitorEventType.Accepted,
+        zlink.MonitorEventType.Disconnected
+    ]);
+    const client = new net.Socket();
+    try {
+        stream.bind(endpoint);
+        await new Promise((resolve, reject) => {
+            client.once('error', reject);
+            client.connect(port, '127.0.0.1', resolve);
+        });
+        client.write(Buffer.from('monitor-probe'));
+        const received = new zlink.Received();
+        const packet = await waitFor(5000, () => stream.recv(received, zlink.RecvFlags.DontWait));
+        assert.ok(packet);
+        received.close();
+        client.end();
+        await once(client, 'close');
+        let disconnected;
+        for (let index = 0; index < 2; index += 1) {
+            const event = monitor.recv();
+            if (event.event === zlink.MonitorEventType.Disconnected) {
+                disconnected = event;
+                break;
+            }
+        }
+        assert.ok(disconnected);
+        assert.ok(disconnected.routingId);
+        assert.ok(disconnected.routingId.size > 0);
+    }
+    finally {
+        client.destroy();
+        monitor.close();
+        stream.close();
+        ctx.close();
+    }
+});
+test('stream disconnect monitor callback carries the disconnected peer routing id', async () => {
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    const ctx = zlink.createContext();
+    const stream = zlink.createStreamSocket(ctx);
+    const monitor = stream.monitorOpen([
+        zlink.MonitorEventType.Accepted,
+        zlink.MonitorEventType.Disconnected
+    ]);
+    const client = new net.Socket();
+    let disconnectedEvent = null;
+    monitor.onEvent((event) => {
+        if (event.event === zlink.MonitorEventType.Disconnected) {
+            disconnectedEvent = event;
+        }
+    });
+    try {
+        stream.bind(endpoint);
+        await new Promise((resolve, reject) => {
+            client.once('error', reject);
+            client.connect(port, '127.0.0.1', resolve);
+        });
+        client.write(Buffer.from('monitor-callback-probe'));
+        const received = new zlink.Received();
+        const packet = await waitFor(5000, () => stream.recv(received, zlink.RecvFlags.DontWait));
+        assert.ok(packet);
+        received.close();
+        client.end();
+        await once(client, 'close');
+        const event = await waitFor(5000, () => disconnectedEvent);
+        assert.ok(event);
+        assert.ok(event.routingId);
+        assert.ok(event.routingId.size > 0);
+    }
+    finally {
+        client.destroy();
+        monitor.close();
+        stream.close();
+        ctx.close();
+    }
+});
 test('spot node status snapshot starts empty', async () => {
     const ctx = zlink.createContext();
     const node = zlink.createSpotNode(ctx);

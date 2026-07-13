@@ -297,7 +297,8 @@ final class SpotRoutedSupport implements AutoCloseable {
                 (index, partFlag) -> {
                     boolean last = partFlag == Native.PART_FINAL;
                     return spotRequestSpotPartOnce(nodeRid, spotRid,
-                        payload.get(index), handler, userData, flags, partFlag,
+                        payload.get(index), last ? handler : MemorySegment.NULL,
+                        last ? userData : MemorySegment.NULL, flags, partFlag,
                         timeoutMs, arena);
                 });
         }
@@ -316,7 +317,8 @@ final class SpotRoutedSupport implements AutoCloseable {
                 (index, partFlag) -> {
                     boolean last = partFlag == Native.PART_FINAL;
                     return spotRequestRouterPartOnce(nativeRid,
-                        payload.get(index), handler, userData, flags, partFlag,
+                        payload.get(index), last ? handler : MemorySegment.NULL,
+                        last ? userData : MemorySegment.NULL, flags, partFlag,
                         timeoutMs, arena);
                 });
         }

@@ -124,9 +124,13 @@ final class NativeRouterSpotSupport {
                                                 int flags,
                                                 int timeoutMs) {
         RequestSubmitLoop.submitErrnoParts(payload,
-            (part, partFlag) -> routerRequestSpotPartOnce(socket, destNodeRid,
-                destSpotRid, part, handler, userData, flags, partFlag,
-                timeoutMs),
+            (part, partFlag) -> {
+                boolean last = partFlag == Native.PART_FINAL;
+                return routerRequestSpotPartOnce(socket, destNodeRid,
+                    destSpotRid, part, last ? handler : MemorySegment.NULL,
+                    last ? userData : MemorySegment.NULL, flags, partFlag,
+                    timeoutMs);
+            },
             () -> submitFailure("zlink_router_request_spot_part"));
     }
 

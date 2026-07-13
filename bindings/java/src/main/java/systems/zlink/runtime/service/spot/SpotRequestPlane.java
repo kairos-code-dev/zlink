@@ -110,7 +110,9 @@ final class SpotRequestPlane {
                 Message part = payload.get(i);
                 int rc = NativeErrno.retryWhileInterrupted(
                     () -> requestChannelPartOnce(service, part,
-                        handler, userData, flags, partFlag,
+                        last ? handler : MemorySegment.NULL,
+                        last ? userData : MemorySegment.NULL,
+                        flags, partFlag,
                         timeoutMs, arena),
                     result -> result != 0);
                 if (rc != 0)

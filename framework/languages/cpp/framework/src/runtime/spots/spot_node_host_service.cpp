@@ -46,16 +46,6 @@ zlink::routing_id_t derive_routing_id (const zlink::routing_id_t &base, std::str
     return zlink::routing_id_t::from (bytes);
 }
 
-/* blocky(false)는 소켓이 만들어지기 "전에" 걸어야 한다. 나중에 걸면 이미 만들어진 소켓이
- * linger=-1(무한)을 그대로 들고 있어, 혼잡으로 미전송 메시지가 남은 채 종료하면
- * zlink_ctx_term()이 영원히 대기한다. */
-zlink::context_t make_spot_node_context ()
-{
-    zlink::context_t context;
-    context.options ().blocky (false);
-    return context;
-}
-
 } // namespace
 
 struct spot_node_host_service_t::native_node_t
@@ -70,7 +60,7 @@ struct spot_node_host_service_t::native_node_t
     std::map<std::string, peer_location_t> active_peers;
 
     native_node_t (detail::spot_node_runtime_t runtime_, zlink::spot_node_mode_t mode_) :
-        context (make_spot_node_context ()),
+        context (),
         node (std::make_shared<zlink::service::spot_node_t> (context, mode_)),
         runtime (std::move (runtime_))
     {

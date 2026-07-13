@@ -7,7 +7,10 @@
 #include "runtime/protocol/framing/frame_codec.hpp"
 #include "runtime/protocol/framing.hpp"
 #include "runtime/protocol/header_codec.hpp"
+#include "runtime/protocol/metadata_codec.hpp"
 #include "runtime/transport/stream_connection.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -122,11 +125,7 @@ result_t<void> validate_packet_limits (const connector_state_t &state, const pac
         return result_t<void>::failure (error_code_t::frame_too_large,
                                         "stream connector payload is too large");
     }
-    std::size_t metadata_size = 0;
-    for (const auto &[key, value] : packet.metadata.values) {
-        metadata_size += key.size () + value.size ();
-    }
-    if (metadata_size > state.options.max_metadata_size) {
+    if (metadata_codec_t::encoded_size (packet.metadata) > max_metadata_size) {
         return result_t<void>::failure (error_code_t::validation_failed,
                                         "stream connector metadata is too large");
     }
@@ -146,6 +145,24 @@ result_t<void> validate_packet_limits (const connector_state_t &state, const pac
         }
     }
     return result_t<void>::success ();
+}
+
+result_t<std::string> decode_remote_error_message (const packet_t &packet)
+{
+    try {
+        const auto payload = nlohmann::json::parse (packet.payload.to_string ());
+        if (!payload.is_object () || !payload.contains ("code") || !payload["code"].is_string ()
+            || !payload.contains ("message") || !payload["message"].is_string ()) {
+            return result_t<std::string>::failure (
+              error_code_t::frame_decode_failed,
+              "Remote error payload must contain string code and message fields.");
+        }
+        return result_t<std::string>::success (payload["message"].get<std::string> ());
+    }
+    catch (const nlohmann::json::exception &) {
+        return result_t<std::string>::failure (error_code_t::frame_decode_failed,
+                                               "Remote error payload must be a JSON object.");
+    }
 }
 
 void publish_error (const connector_state_t &state, const error_t &error)
@@ -756,19 +773,32 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
               "seq="
                 + (value.request_seq ? std::to_string (*value.request_seq) : std::string ("-"))
                 + " name=" + value.packet.name + " kind=" + message_kind_name (value.kind));
-            if (value.kind == message_kind_t::response && value.request_seq
-                && state->pending_requests.find (*value.request_seq)
-                     != state->pending_requests.end ()) {
-                completed_requests.emplace_back (
-                  *value.request_seq, result_t<request_reply_t>::success (request_reply_t{
-                                        value.packet.codec, std::move (value.packet.payload)}));
-            } else if (value.kind == message_kind_t::error && value.request_seq
-                       && state->pending_requests.find (*value.request_seq)
-                            != state->pending_requests.end ()) {
-                completed_requests.emplace_back (
-                  *value.request_seq,
-                  result_t<request_reply_t>::failure (error_code_t::remote_error,
-                                                      value.packet.payload.to_string ()));
+            const auto pending = value.request_seq
+                                   ? state->pending_requests.find (*value.request_seq)
+                                   : state->pending_requests.end ();
+            if ((value.kind == message_kind_t::response || value.kind == message_kind_t::error)
+                && pending != state->pending_requests.end ()) {
+                if (value.packet.name != pending->second.packet.name) {
+                    completed_requests.emplace_back (
+                      *value.request_seq,
+                      result_t<request_reply_t>::failure (
+                        error_code_t::frame_decode_failed,
+                        "Response packet name does not match the pending request."));
+                } else if (value.kind == message_kind_t::response) {
+                    completed_requests.emplace_back (
+                      *value.request_seq, result_t<request_reply_t>::success (request_reply_t{
+                                            value.packet.codec, std::move (value.packet.payload)}));
+                } else if (auto remote_error = decode_remote_error_message (value.packet)) {
+                    completed_requests.emplace_back (
+                      *value.request_seq,
+                      result_t<request_reply_t>::failure (error_code_t::remote_error,
+                                                          std::move (remote_error.value ())));
+                } else {
+                    completed_requests.emplace_back (
+                      *value.request_seq,
+                      result_t<request_reply_t>::failure (remote_error.error_code (),
+                                                          remote_error.error ()->message));
+                }
             } else {
                 pushed_packets.push_back (std::move (value.packet));
             }
@@ -1214,6 +1244,15 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
         auto frame = std::move (received.value ());
         trace_request ("read-dispatch", frame.request_seq, frame.packet.name,
                        std::string ("kind=") + message_kind_name (frame.kind));
+        if ((frame.kind == message_kind_t::response || frame.kind == message_kind_t::error)
+            && frame.request_seq == seq && frame.packet.name != request_packet_name) {
+            state->pending_requests.erase (seq);
+            trace_request ("pending-complete", seq, request_packet_name,
+                           "result=failure error=packet-name-mismatch");
+            return complete_request (result_t<request_reply_t>::failure (
+              error_code_t::frame_decode_failed,
+              "Response packet name does not match the pending request."));
+        }
         if (frame.kind == message_kind_t::response && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
             trace_request ("pending-complete", seq, request_packet_name, "result=success");
@@ -1222,10 +1261,17 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
         }
         if (frame.kind == message_kind_t::error && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
+            auto remote_error = decode_remote_error_message (frame.packet);
+            if (remote_error) {
+                trace_request ("pending-complete", seq, request_packet_name,
+                               "result=failure error=remote");
+                return complete_request (result_t<request_reply_t>::failure (
+                  error_code_t::remote_error, std::move (remote_error.value ())));
+            }
             trace_request ("pending-complete", seq, request_packet_name,
-                           "result=failure error=remote");
+                           "result=failure error=invalid-remote-error");
             return complete_request (result_t<request_reply_t>::failure (
-              error_code_t::remote_error, frame.packet.payload.to_string ()));
+              remote_error.error_code (), remote_error.error ()->message));
         }
         if (frame.kind == message_kind_t::response || frame.kind == message_kind_t::error) {
             continue;

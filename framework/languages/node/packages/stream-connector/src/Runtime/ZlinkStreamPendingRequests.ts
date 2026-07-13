@@ -7,6 +7,7 @@ export interface PendingZlinkStreamRequest {
 }
 
 interface TrackedPendingRequest {
+  readonly packetName: string;
   readonly promise: Promise<ZlinkStreamEncodedPayload>;
   resolve(value: ZlinkStreamEncodedPayload): void;
   reject(error: ZlinkStreamError): void;
@@ -21,9 +22,9 @@ export class ZlinkStreamPendingRequests {
     return this.active.size;
   }
 
-  create(timeoutMs: number): PendingZlinkStreamRequest {
+  create(packetName: string, timeoutMs: number): PendingZlinkStreamRequest {
     const requestSeq = this.nextRequestSeq++;
-    let timeout: NodeJS.Timeout | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     let resolvePending!: (value: ZlinkStreamEncodedPayload) => void;
     let rejectPending!: (error: ZlinkStreamError) => void;
     const promise = new Promise<ZlinkStreamEncodedPayload>((resolve, reject) => {
@@ -35,6 +36,7 @@ export class ZlinkStreamPendingRequests {
       rejectPending = (error) => reject(connectorError(error.code, error.message, error.cause));
     });
     this.active.set(requestSeq, {
+      packetName,
       promise,
       resolve: (value) => {
         if (timeout !== undefined) {
@@ -57,22 +59,30 @@ export class ZlinkStreamPendingRequests {
     return { requestSeq, promise };
   }
 
-  resolve(requestSeq: bigint, value: ZlinkStreamEncodedPayload): boolean {
+  resolve(requestSeq: bigint, packetName: string, value: ZlinkStreamEncodedPayload): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;
     }
     this.active.delete(requestSeq);
+    if (pending.packetName !== packetName) {
+      pending.reject(packetNameMismatch(pending.packetName, packetName));
+      return true;
+    }
     pending.resolve(value);
     return true;
   }
 
-  reject(requestSeq: bigint, error: ZlinkStreamError): boolean {
+  reject(requestSeq: bigint, packetName: string, error: ZlinkStreamError): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;
     }
     this.active.delete(requestSeq);
+    if (pending.packetName !== packetName) {
+      pending.reject(packetNameMismatch(pending.packetName, packetName));
+      return true;
+    }
     pending.reject(error);
     return true;
   }
@@ -92,4 +102,11 @@ export class ZlinkStreamPendingRequests {
       pending.reject(error);
     }
   }
+}
+
+function packetNameMismatch(expected: string, actual: string): ZlinkStreamError {
+  return {
+    code: ZlinkStreamErrorCode.FrameDecodeFailed,
+    message: `Reply packet name '${actual}' does not match request packet name '${expected}'.`
+  };
 }

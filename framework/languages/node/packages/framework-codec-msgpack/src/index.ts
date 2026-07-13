@@ -1,39 +1,17 @@
 import * as msgpack from '@msgpack/msgpack';
 import {
-  ZLinkEncodedPayload,
-  type ZLinkCodecExtension,
-  type ZLinkCodecRegistrar,
-  type ZLinkMessageSerializer
-} from '@zlink-systems/framework';
-import {
-  ZlinkStreamCodec,
   type ZlinkStreamEncodedPayload,
   type ZlinkStreamPayloadCodec
 } from '@zlink-systems/stream-connector';
+import { ZlinkStreamCodec } from '@zlink-systems/stream-wire';
 
 export const ZLINK_MESSAGEPACK_CONTENT_TYPE = 'application/x-msgpack';
 export const zlinkStreamMessagePackCodecName = 'messagepack';
 
-export type ZLinkMessagePackCodecExtension = ZLinkCodecExtension & ZlinkStreamPayloadCodec;
-
-export function zlinkMessagePackCodec(): ZLinkMessagePackCodecExtension {
-  return {
-    register(codecs: ZLinkCodecRegistrar): void {
-      codecs.addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, createMessagePackSerializer());
-      codecs.addStreamCodec(ZLINK_MESSAGEPACK_CONTENT_TYPE, this);
-    },
-
-    encode(payload: unknown, messageType?: Function): ZlinkStreamEncodedPayload {
-      return toMsgPack(payload, messageType);
-    },
-
-    decode<T = unknown>(payload: ZlinkStreamEncodedPayload): T {
-      return fromMsgPack<T>(payload);
-    }
-  };
-}
-
-export const zlinkStreamMessagePackCodec: ZlinkStreamPayloadCodec = zlinkMessagePackCodec();
+export const zlinkStreamMessagePackCodec: ZlinkStreamPayloadCodec = {
+  encode: toMsgPack,
+  decode: fromMsgPack
+};
 
 export function toMsgPack<T>(value: T, messageType?: Function): ZlinkStreamEncodedPayload {
   return {
@@ -48,23 +26,11 @@ export function fromMsgPack<T>(payload: ZlinkStreamEncodedPayload): T {
   return decodeMessagePack(payload.payload) as T;
 }
 
-export function createMessagePackSerializer(): ZLinkMessageSerializer {
-  return {
-    serialize<T>(value: T): ZLinkEncodedPayload {
-      return ZLinkEncodedPayload.from(encodeMessagePack(value));
-    },
-
-    deserialize<T>(payload: ZLinkEncodedPayload): T {
-      return decodeMessagePack(payload.data()) as T;
-    }
-  };
-}
-
-function encodeMessagePack(value: unknown): Uint8Array {
+export function encodeMessagePack(value: unknown): Uint8Array {
   return msgpack.encode(value);
 }
 
-function decodeMessagePack(value: Uint8Array): unknown {
+export function decodeMessagePack(value: Uint8Array): unknown {
   return msgpack.decode(value);
 }
 

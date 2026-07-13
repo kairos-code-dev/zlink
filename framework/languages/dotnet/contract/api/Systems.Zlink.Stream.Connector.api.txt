@@ -155,6 +155,7 @@ assembly Systems.Zlink.Stream.Connector
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode FrameTooLarge = 6 [nullability=read:not-null,write:not-null]
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode ObserverDropped = 13 [nullability=read:not-null,write:not-null]
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode ObserverFailed = 12 [nullability=read:not-null,write:not-null]
+    field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode ReceivedMessageDropped = 15 [nullability=read:not-null,write:not-null]
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode RemoteError = 14 [nullability=read:not-null,write:not-null]
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode RequestTimeout = 3 [nullability=read:not-null,write:not-null]
     field const Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamErrorCode SendFailed = 7 [nullability=read:not-null,write:not-null]

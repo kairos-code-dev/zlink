@@ -1,9 +1,16 @@
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
 const protobuf = require('../../packages/framework-codec-protobuf/dist');
+const protobufFramework = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
 
 test('stream connector messagepack codec encodes and decodes payloads', () => {
   const payload = msgpack.toMsgPack({ ready: true });
@@ -20,7 +27,7 @@ test('stream connector messagepack codec encodes and decodes payloads', () => {
 test('stream connector messagepack codec decodes replies through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://browser.test/stream',
     transportFactory,
     codec: msgpack.zlinkStreamMessagePackCodec
   });
@@ -36,7 +43,7 @@ test('stream connector messagepack codec decodes replies through connector', asy
       codec: connector.ZlinkStreamCodec.MessagePack,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
-      name: 'JoinReply',
+      name: 'Join',
       metadata: connector.ZlinkStreamMetadataMap.empty
     }),
     msgpack.toMsgPack({ accepted: true }).payload
@@ -62,7 +69,7 @@ test('stream connector protobuf codec dispatches typed payloads through connecto
   const type = createLengthPrefixedJsonType();
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://browser.test/stream',
     transportFactory,
     codec: protobuf.createZlinkStreamProtobufCodec(type)
   });
@@ -86,6 +93,95 @@ test('stream connector protobuf codec dispatches typed payloads through connecto
 
   await instance.dispatch();
   assert.deepEqual(received, [{ notice: 1 }]);
+});
+
+test('protobuf envelope extension registers the schema-backed envelope serializer', () => {
+  const encodedBytes = Uint8Array.from([7, 8, 9]);
+  const calls = [];
+  let serializer;
+  const extension = protobufFramework.createZlinkProtobufEnvelopeCodec({
+    encode(value, context) {
+      calls.push({ direction: 'encode', value, context });
+      return {
+        codec: connector.ZlinkStreamCodec.Protobuf,
+        payload: encodedBytes
+      };
+    },
+    decode(payload) {
+      calls.push({ direction: 'decode', payload });
+      return { decoded: true };
+    }
+  });
+
+  extension.register({
+    addSerializer(contentType, candidate) {
+      assert.equal(contentType, protobuf.ZLINK_PROTOBUF_CONTENT_TYPE);
+      serializer = candidate;
+    },
+    addStreamCodec(contentType, candidate) {
+      assert.equal(contentType, protobuf.ZLINK_PROTOBUF_CONTENT_TYPE);
+      assert.equal(candidate, extension);
+    }
+  });
+
+  const value = new Join();
+  const encoded = serializer.serialize(value);
+  assert.deepEqual([...encoded.data()], [...encodedBytes]);
+  assert.equal(calls[0].direction, 'encode');
+  assert.equal(calls[0].value, value);
+  assert.equal(calls[0].context, Join);
+
+  assert.deepEqual(serializer.deserialize(encoded), { decoded: true });
+  assert.equal(calls[1].direction, 'decode');
+  assert.equal(calls[1].payload.codec, connector.ZlinkStreamCodec.Protobuf);
+  assert.deepEqual([...calls[1].payload.payload], [...encodedBytes]);
+});
+
+test('generated Bingo browser codec is deterministic and round-trips without filesystem lookup', async () => {
+  const root = path.resolve(__dirname, '../..');
+  const sample = path.join(root, 'samples/Bingo.Ts');
+  const generated = path.join(sample, 'Shared/Contracts/bingo-messages.generated.ts');
+  const generator = path.join(sample, 'scripts/generate-protobuf-types.js');
+  childProcess.execFileSync(process.execPath, [generator], { cwd: sample });
+  const first = crypto.createHash('sha256').update(fs.readFileSync(generated)).digest('hex');
+  childProcess.execFileSync(process.execPath, [generator], { cwd: sample });
+  const second = crypto.createHash('sha256').update(fs.readFileSync(generated)).digest('hex');
+  assert.equal(second, first);
+
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-bingo-codec-'));
+  try {
+    const entry = path.join(temporary, 'entry.ts');
+    const output = path.join(temporary, 'entry.mjs');
+    fs.writeFileSync(entry, [
+      `export { bingoProtobuf } from ${JSON.stringify(path.join(sample, 'Shared/Contracts/protobuf-browser-codec.ts'))};`,
+      `export { AuthenticateReq, ActorRefWire } from ${JSON.stringify(generated)};`
+    ].join('\n'));
+    childProcess.execFileSync(path.join(root, 'node_modules/.bin/esbuild'), [
+      entry,
+      '--bundle',
+      '--platform=browser',
+      '--format=esm',
+      `--outfile=${output}`
+    ], { cwd: root });
+    const browser = await import(`${pathToFileURL(output).href}?v=${Date.now()}`);
+    const authenticate = new browser.AuthenticateReq({ accessToken: 'player-1' });
+    const encoded = browser.bingoProtobuf.encode(authenticate, browser.AuthenticateReq);
+    const decoded = browser.bingoProtobuf.decode(encoded);
+    assert.equal(decoded.constructor, browser.AuthenticateReq);
+    assert.equal(decoded.accessToken, 'player-1');
+
+    const generation = '18446744073709551615';
+    const actor = new browser.ActorRefWire({ nodeRid: 'node-a', actorId: 'actor-a', generation });
+    const actorEncoded = browser.bingoProtobuf.encode(actor, browser.ActorRefWire);
+    const actorDecoded = browser.bingoProtobuf.decode(actorEncoded);
+    assert.equal(actorDecoded.generation, generation);
+    assert.equal(typeof actorDecoded.generation, 'string');
+
+    const bundle = fs.readFileSync(output, 'utf8');
+    assert.doesNotMatch(bundle, /protoPath|loadSync|node:fs|__dirname/);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 });
 
 class MemoryTransportFactory {

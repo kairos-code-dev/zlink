@@ -29,7 +29,6 @@ bool frame_codec_t::validate_frame_size (std::size_t header_size,
                                          const connector_options_t &options)
 {
     return header_size <= std::numeric_limits<std::uint16_t>::max ()
-           && header_size <= options.max_metadata_size
            && payload_size <= options.max_send_payload_size;
 }
 
@@ -38,7 +37,6 @@ bool frame_codec_t::validate_receive_frame_size (std::size_t header_size,
                                                  const connector_options_t &options)
 {
     return header_size <= std::numeric_limits<std::uint16_t>::max ()
-           && header_size <= options.max_metadata_size
            && payload_size <= options.max_receive_payload_size;
 }
 

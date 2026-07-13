@@ -61,6 +61,13 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void ReceivedMessageDroppedAppendsWithoutRenumberingExistingErrorCodes()
+    {
+        Assert.Equal(14, (int)ZlinkStreamErrorCode.RemoteError);
+        Assert.Equal(15, (int)ZlinkStreamErrorCode.ReceivedMessageDropped);
+    }
+
+    [Fact]
     public void ConnectorCallInterfacesMatchTheFrozenSurface()
     {
         AssertMethod(

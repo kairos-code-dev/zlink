@@ -1,7 +1,7 @@
 # STREAM — 외부 client 연결
 
 stream 은 외부 client 와 장기 연결을 유지하는 표면이다. framework server 쪽은 session
-lifecycle 을 받고, client 쪽은 `@zlink-systems/stream-connector` 를 사용한다.
+lifecycle 을 받고, 브라우저 client 쪽은 `@zlink-systems/stream-connector` 를 사용한다.
 
 server application 은 stream socket, frame 길이, header codec, payload codec 을 직접
 다루지 않는다. server 는 `ZLinkModule` 에 stream node 와 session 을 등록하고,
@@ -37,7 +37,7 @@ NestJS server 에서는 stream endpoint 와 session type 만 등록한다.
 ZLinkModule.forRoot(
   zlinkFramework()
     .addStreamNode('game.stream')
-      .bind('tcp://127.0.0.1:9000')
+      .bind('ws://127.0.0.1:9000')
       .registerSession(GameSession)
     .build()
 );
@@ -55,7 +55,7 @@ session 을 만든다.
 ZLinkModule.forRoot(
   zlinkFramework()
     .addStreamNode('game.stream')
-      .bind('tcp://127.0.0.1:9000')
+      .bind('ws://127.0.0.1:9000')
       .registerSession(GameSessionFactory)
     .build()
 );
@@ -78,7 +78,7 @@ class Join {
 }
 
 const connector = zlinkStreamConnectorFactory.create({
-  endpoint: 'tcp://127.0.0.1:9000',
+  endpoint: 'ws://127.0.0.1:9000', // 브라우저가 접속할 WebSocket endpoint를 지정한다.
 });
 
 await connector.connect();
@@ -103,7 +103,7 @@ framework 쪽 등록(`codecs.use(...)`)과 대칭이며, 두 표면의 전체 �
 ```ts
 const avroStreamCodec = {
   encode(payload) { return { name: 'PlaceOrder', codec: 'raw', payload: orderType.toBuffer(payload) }; },
-  decode(encoded) { return orderType.fromBuffer(Buffer.from(encoded.payload)); }
+  decode(encoded) { return orderType.fromBuffer(encoded.payload); }
 };
 const connector = zlinkStreamConnectorFactory.create({ endpoint, codec: avroStreamCodec });
 ```

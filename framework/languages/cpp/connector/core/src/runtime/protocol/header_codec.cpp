@@ -127,7 +127,7 @@ result_t<void> validate_header (const stream_header_t &header)
         return result_t<void>::failure (error_code_t::validation_failed,
                                         "Packet name length is invalid.");
     }
-    if (!header.name.empty () && header.name.front () == '$'
+    if (header.name.starts_with ("$zlink.")
         && header.kind != message_kind_t::control) {
         return result_t<void>::failure (
           error_code_t::frame_decode_failed,

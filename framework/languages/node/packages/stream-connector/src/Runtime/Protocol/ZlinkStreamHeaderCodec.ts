@@ -10,11 +10,13 @@ import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
 import { decodeStreamWireHeader, encodeStreamWireHeader } from '@zlink-systems/stream-wire';
 import { connectorError } from '../ZlinkStreamSupport';
 import { validateName } from './ZlinkStreamPacketNameValidator';
+import { ZlinkStreamMetadataCodec } from './ZlinkStreamMetadataCodec';
 
 export class ZlinkStreamHeaderCodec {
   static encode(header: ZlinkStreamHeader): Uint8Array {
     validateName(header.name, header.kind === ZlinkStreamMessageKind.Control);
     validateHeaderSemantics(header);
+    ZlinkStreamMetadataCodec.size(header.metadata);
     try {
       return encodeStreamWireHeader({
         kind: header.kind,

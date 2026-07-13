@@ -11,6 +11,8 @@
 namespace zlink::stream_connector::detail
 {
 
+inline constexpr std::size_t max_metadata_size = 1024;
+
 class metadata_codec_t
 {
   public:

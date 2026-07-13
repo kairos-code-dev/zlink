@@ -48,6 +48,8 @@ export class ZlinkStreamInboundObservers {
       name: header.name,
       codec: header.codec,
       requestSeq: header.requestSeq,
+      flowId: header.flowId,
+      flowOrigin: header.flowOrigin,
       metadata: ZlinkStreamMetadataMap.from(header.metadata.values),
       payloadLength: payload.length,
       isCompressed: (header.flags & ZlinkStreamHeaderFlags.PayloadCompressed) !== 0,

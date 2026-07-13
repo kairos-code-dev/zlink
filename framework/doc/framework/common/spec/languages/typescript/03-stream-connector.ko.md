@@ -2,57 +2,47 @@
 [문서 목록](../../../../../README.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Node / TypeScript Stream Connector
+# TypeScript Stream Connector
 
 > 이 문서는 [Stream Connector 공통 스펙](../../32-stream-connector.ko.md)의 **TypeScript 투영**이다.
 > transport·wire·생명주기·오류 의미는 공통 스펙이 소유하고, 이 문서는 그 의미가
 > TypeScript에서 갖는 **정확한 public 표면**을 고정한다.
 
-TypeScript connector는 `@zlink-systems/stream-connector` 패키지로 제공하는 client connector다.
+TypeScript connector는 `@zlink-systems/stream-connector` 패키지로 제공하는 브라우저 client
+connector다.
 서버 framework와 별도 모듈이며 request/reply, dispatch(`Manual`/`Immediate`), typed payload API를
-client code에서 사용하게 한다. JSON, MessagePack, Protobuf, custom codec은 connector options의
-codec registry에 등록하고, typed `send`/`request`/`on`/`waitFor` 표면이 그 registry로 업무 DTO를
-encode/decode한다.
+client code에서 사용하게 한다. JSON, MessagePack, Protobuf 또는 custom codec은 connector를 만들 때
+`codec` option 하나로 주입한다. typed `send`/`request`/`on`/`waitFor` 표면은 주입된 codec으로 업무
+DTO를 encode/decode한다.
 
 ## 1. 대상 실행 환경
 
 **엔진 × 빌드 타깃별 담당 connector는 [공통 스펙 §2](../../32-stream-connector.ko.md)가 소유한다.**
 그 배정에 따라 TypeScript connector가 담당하는 것은 **브라우저 계열**(웹 client, Unity WebGL,
-Cocos Creator web, Godot Web)과 **Node**(서버 E2E·도구·봇)다.
+Cocos Creator web, Godot Web)이다. Node.js process는 connector의 제품 실행 환경이 아니다.
 
-**웹(브라우저·WASM)으로 빌드하는 모든 엔진이 언어와 무관하게 이 connector를 사용한다.** 이 배정이
-TypeScript 표면에 남기는 결과가 **entrypoint 분리**(§2)다.
+**웹(브라우저·WASM)으로 빌드하는 모든 엔진이 언어와 무관하게 이 connector를 사용한다.**
 
 ## 2. 진입점(entrypoint)
 
-두 런타임의 제약이 다르므로 패키지는 **entrypoint를 분리**한다. 런타임 분기가 아니라 빌드 시점
-분리다. 브라우저 번들에 Node 소켓 모듈이 섞여 들어가면 안 된다.
-
-| entrypoint | 대상 | 기본 transport factory |
-|---|---|---|
-| `@zlink-systems/stream-connector` | Node | Node transport factory (`net`·`tls` 기반) |
-| `@zlink-systems/stream-connector/browser` | 브라우저 계열 | Browser transport factory (플랫폼 `WebSocket` 기반) |
+공개 진입점은 package root인 `@zlink-systems/stream-connector` 하나다. 이 진입점은 플랫폼
+`WebSocket`을 사용하는 브라우저 구현과 ESM type declaration을 직접 내보낸다. `/browser` subpath와
+Node 조건부 export는 제공하지 않는다.
 
 **계약:**
 
-- 브라우저 entrypoint의 번들 그래프에는 **`net`·`tls`·`Buffer` 같은 Node 전용 모듈이 포함되지
+- package root의 번들 그래프에는 **`net`·`tls`·`Buffer` 같은 Node 전용 모듈이 포함되지
   않는다.** 검증 범위는 §8의 문서가 소유한다.
-- 두 entrypoint는 **동일한 public 타입과 시그니처**를 노출한다. 다른 것은 기본 transport
-  factory 하나뿐이다.
 - 공통 wire 계층(`@zlink-systems/stream-wire`)은 두 런타임에서 **같은 코드**로 동작한다.
-  `Uint8Array`만 사용하고 `Buffer`에 의존하지 않는다.
+  브라우저 ESM과 server CommonJS 산출물은 같은 source와 wire 상수를 사용하며 `Uint8Array` byte
+  fixture가 일치해야 한다.
 
 ## 3. Transport
 
 scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.ko.md)을 따른다.
-**사용 가능한 transport는 entrypoint가 결정한다.**
+TypeScript connector가 사용할 수 있는 transport는 **`ws`와 `wss`뿐**이다.
 
-| entrypoint | 사용 가능한 transport |
-|---|---|
-| Node | `tcp`, `tls`, `ws`, `wss` |
-| **브라우저** | **`ws`, `wss`만** |
-
-**브라우저 entrypoint가 `tcp://`·`tls://` endpoint를 받으면 `ZlinkStreamErrorCode.ConfigurationError`로
+**package root가 `tcp://`·`tls://` endpoint를 받으면 `ZlinkStreamErrorCode.ConfigurationError`로
 즉시 실패한다.** 연결을 시도하다 런타임에 조용히 실패하지 않는다.
 
 브라우저에서 `ws`·`wss`는 **플랫폼의 네이티브 `WebSocket`** 으로 구현한다. 핸드셰이크와 프레이밍을
@@ -60,14 +50,19 @@ scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.k
 
 ### 3.1 transport factory 주입
 
-`transportFactory` option은 두 entrypoint에서 모두 열려 있다. 테스트 대역(in-memory transport)이나
-플랫폼 전용 transport를 넣는 확장점이다. **기본값만 entrypoint별로 다르다.**
+`transportFactory` option은 테스트 대역(in-memory transport)이나 플랫폼 전용 transport를 넣는
+확장점이다. 기본값은 플랫폼 `WebSocket` adapter다. Node transport 호환 지점으로 사용하지 않는다.
 
 ## 4. Public 표면
 
-두 entrypoint가 노출하는 타입은 같다.
+package root가 노출하는 public 타입은 다음과 같다.
 
 ```ts
+interface ZlinkStreamFlow {
+  readonly flowId: string;
+  readonly flowOrigin: ZlinkFlowOrigin;
+}
+
 interface ZlinkStreamConnector {
   readonly isConnected: boolean;
   readonly state: ZlinkStreamConnectionState;
@@ -103,6 +98,7 @@ interface ZlinkStreamSendCall {
   metadata(key: string, value: string): ZlinkStreamSendCall;
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamSendCall;
   compress(): ZlinkStreamSendCall;
+  flowFrom(flow: ZlinkStreamFlow): ZlinkStreamSendCall;
   submit(): void;
 }
 
@@ -112,6 +108,7 @@ interface ZlinkStreamRequestCall {
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamRequestCall;
   timeout(timeoutMs: number): ZlinkStreamRequestCall;
   compress(): ZlinkStreamRequestCall;
+  flowFrom(flow: ZlinkStreamFlow): ZlinkStreamRequestCall;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
   submitEncoded(signal?: AbortSignal): Promise<ZlinkStreamEncodedPayload>;
   submit(callback: (result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void): void;
@@ -132,6 +129,10 @@ connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한�
 - `send`·`request`·`waitFor`는 즉시 실행하지 않고 **call builder를 반환한다.** builder에
   `packetName(...)`·`metadata(...)`·`timeout(...)`·`compress()`를 붙인 뒤 `submit()`으로 제출한다.
   `send`의 `submit()`은 응답을 기다리지 않는다.
+- inbound handler가 시작한 관련 outbound에는 `flowFrom(message)`를 호출한다. 이 메서드는 message의
+  `flowId`와 `flowOrigin`을 한 쌍으로 복사한다. 호출하지 않은 outbound는 `origin=application`인 새
+  flow를 시작한다. 자세한 비동기 문맥 경계는 [flow correlation §4.4](../../53-flow-correlation.ko.md)를
+  따른다.
 
 option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다. TypeScript는 이를
 `ZlinkStreamConnectorOptions`의 필드로 표현하며, 해석된 전체 값을 `RequiredZlinkStreamConnectorOptions`로
@@ -169,36 +170,23 @@ type ZlinkStreamCloseReason =
   | 'ServerDrain' | 'ProtocolError' | 'TransportError';
 ```
 
-**Node에서는 이 값을 connector의 읽기 전용 속성 `closeReason`으로 노출한다.**
+**TypeScript에서는 이 값을 connector의 읽기 전용 속성 `closeReason`으로 노출한다.**
 `onDisconnected(...)` handler는 인자로 사유를 받지 않으므로, handler 안에서 `closeReason`을
 읽는다. 아직 끊긴 적이 없으면 `undefined`다.
 
 ## 7. 구현 상태
 
-§1~§3의 transport 계약을 구현했다. 패키지는 Node 기본 진입점과 `/browser` 진입점을 분리하고,
-브라우저 진입점은 플랫폼의 네이티브 `WebSocket`만 사용한다. 공용 protocol과 connector
-runtime에는 Node 전용 모듈을 import하지 않는다. Node 전용 transport와 flow context는 Node
-진입점에서만 선택한다.
-
-실제 npm tarball 소비자에서 두 진입점의 runtime import와 TypeScript type 해석을 확인했다.
-브라우저 bundle은 `net`, `tls`, `async_hooks`, `crypto` Node 모듈과 `Buffer`를 포함하지 않는다.
-현재 검증 환경에는 headless 브라우저 실행 도구가 없어서 실제 브라우저 프로세스의 WSS 검증은
-실행하지 못했다. 대신 네이티브 `WebSocket`과 같은 event 계약을 제공하는 테스트 대역으로
-WSS 연결, request/reply, push 수신을 검증했다.
-
-브라우저 비동기 flow 문맥은 아직 [공통 flow 계약의 MFLOW-EXT-014](../../53-flow-correlation.ko.md)를
-충족하지 못한다. browser runtime에는 `AsyncLocalStorage`에 해당하는 표준 기능이 없고, 현재
-`BrowserZlinkFlowContext`는 handler가 기다리는 동안 관련 없는 callback에 inbound flow를 노출할
-수 있다. callback 직후 문맥을 지우면 반대로 `await` 이후 continuation이 flow를 잃으므로 완료로
-표시하지 않는다. 현재 구현 차이는 [implementation gap §4.10](../../90-implementation-gap.ko.md)에
-기록한다.
+§1~§4의 browser-only transport와 명시적 flow 전달 계약을 구현했다. package root는 플랫폼의
+네이티브 `WebSocket`만 사용하며 공용 protocol과 connector runtime에는 Node 전용 module을 import하지
+않는다. npm tarball, 실제 Chromium의 WS/WSS 실행과 비동기 flow 격리 결과는 구현 계획의 G3·G4
+로그에서 함께 검증한다.
 
 ## 8. 검증
 
 공통 동작의 검증 범위는 [공통 Stream Connector 스펙](../../32-stream-connector.ko.md)이,
-Node.js 구현에서 실행하는 검증 묶음은
+TypeScript 구현에서 실행하는 검증 묶음은
 [회귀 검증 matrix](../../../../node/internals/regression-test-matrix.ko.md)가 소유한다.
-이 문서는 공개 TypeScript 시그니처와 Node.js·브라우저 entrypoint 구분만 고정한다.
+이 문서는 공개 TypeScript 시그니처와 브라우저 실행 환경을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

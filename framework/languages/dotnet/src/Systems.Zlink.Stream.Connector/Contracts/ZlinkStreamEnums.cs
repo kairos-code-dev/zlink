@@ -53,7 +53,8 @@ public enum ZlinkStreamErrorCode
     UserCallbackFailed,
     ObserverFailed,
     ObserverDropped,
-    RemoteError
+    RemoteError,
+    ReceivedMessageDropped
 }
 
 public enum ZlinkStreamConnectionState

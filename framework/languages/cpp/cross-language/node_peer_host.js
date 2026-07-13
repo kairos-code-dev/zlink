@@ -8,13 +8,13 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 /* The Node packages and their peer dependencies resolve from the Node
  * workspace, not from this directory. */
 const nodeRoot = path.resolve(__dirname, '../../node');
 const { Injectable, Module } = require(path.join(nodeRoot, 'node_modules/@nestjs/common'));
 const { NestFactory } = require(path.join(nodeRoot, 'node_modules/@nestjs/core'));
 const nestjs = require(path.join(nodeRoot, 'packages/nestjs/dist'));
-const connector = require(path.join(nodeRoot, 'packages/stream-connector/dist'));
 
 const args = parseArgs(process.argv.slice(3));
 const mode = process.argv[2];
@@ -181,25 +181,13 @@ async function channelPublisher() {
 }
 
 async function streamConnector() {
-  const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: require_('stream-endpoint'),
-    heartbeat: { enabled: false },
-    reconnect: { enabled: false },
-    requestTimeoutMs: 5000
-  });
-  await instance.connect();
+  const driverModule = await import(pathToFileURL(
+    path.join(nodeRoot, 'scripts/browser-e2e/connector-driver.mjs')
+  ).href);
+  const instance = await driverModule.createBrowserConnectorDriver();
+  await instance.connect(require_('stream-endpoint'));
   const value = args.value ?? 'node-connector-to-cpp';
-  const pending = instance
-    .request({
-      codec: connector.ZlinkStreamCodec.Json,
-      payload: new TextEncoder().encode(JSON.stringify(value))
-    })
-    .packetName('RawPing')
-    .compress()
-    .timeout(5000)
-    .submit();
-  await instance.dispatch();
-  const reply = await pending;
+  const reply = await instance.request('RawPing', value, true);
   appendEvent(`connector-reply|${typeof reply === 'string' ? reply : JSON.stringify(reply)}`);
   writeReady();
   await instance.close();
@@ -211,7 +199,7 @@ async function main() {
     case 'channel-client': return channelClient();
     case 'channel-subscriber': return channelSubscriber();
     case 'channel-publisher': return channelPublisher();
-    case 'stream-connector': return streamConnector();
+    case 'browser-stream-connector': return streamConnector();
     default: throw new Error(`unsupported mode '${mode}'`);
   }
 }

@@ -1,17 +1,21 @@
 import type {
   ZlinkStreamConnection,
   ZlinkStreamEncodedPayload,
+  ZlinkStreamFlow,
   ZlinkStreamMetadata,
   ZlinkStreamMessageKind
 } from '../Contracts';
 import type { ZlinkStreamFrameProtocol } from './Protocol/ZlinkStreamFrameProtocol';
 import { throwIfAborted } from './ZlinkStreamSupport';
-import { currentOrCreateFlow } from './ZlinkFlowContext';
+import type { ZlinkFlowContext } from './ZlinkFlowContext';
 
 export class ZlinkStreamFrameSender {
   private readonly pendingWrites = new Set<Promise<void>>();
 
-  constructor(private readonly protocol: ZlinkStreamFrameProtocol) {}
+  constructor(
+    private readonly protocol: ZlinkStreamFrameProtocol,
+    private readonly flowContext: ZlinkFlowContext
+  ) {}
 
   async send(
     connection: ZlinkStreamConnection,
@@ -22,10 +26,11 @@ export class ZlinkStreamFrameSender {
     compress: boolean,
     requestSeq: bigint | undefined,
     signal?: AbortSignal,
-    correlationId?: string
+    correlationId?: string,
+    explicitFlow?: ZlinkStreamFlow
   ): Promise<void> {
     throwIfAborted(signal);
-    const flow = currentOrCreateFlow();
+    const flow = this.flowContext.currentOrCreate(explicitFlow);
     await this.write(
       connection,
       this.protocol.encode(kind, name, payload, metadata, compress, requestSeq, correlationId, flow.flowId, flow.flowOrigin),

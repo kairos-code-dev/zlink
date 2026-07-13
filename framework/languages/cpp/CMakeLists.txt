@@ -39,7 +39,7 @@ set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PA
   "Path to the zlink repository root")
 set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
   "Root directory containing local package outputs")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "9.0.1" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "9.0.4" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -279,7 +279,7 @@ target_include_directories(zlink_stream_connector PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
 zlink_framework_cpp_add_boost_headers(zlink_stream_connector)
 target_link_libraries(zlink_stream_connector PUBLIC zlink::cpp)
-target_link_libraries(zlink_stream_connector PRIVATE Threads::Threads)
+target_link_libraries(zlink_stream_connector PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
 if(ZLINK_STREAM_CONNECTOR_WITH_TLS AND OpenSSL_FOUND)
   target_compile_definitions(zlink_stream_connector PRIVATE
     ZLINK_STREAM_CONNECTOR_WITH_OPENSSL)

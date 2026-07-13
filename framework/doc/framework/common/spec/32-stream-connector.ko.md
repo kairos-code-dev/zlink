@@ -42,7 +42,6 @@ connector를 쓰는지는 **언어가 아니라 "엔진 × 빌드 타깃"** 으�
 | **Unreal** | C++ connector(plugin) | (해당 없음) |
 | **브라우저 웹 client** | — | **TypeScript** connector |
 | **데스크톱·서버 애플리케이션** | `.NET` / Java / C++ connector | — |
-| **Node**(서버 E2E·도구·봇) | TypeScript connector | — |
 
 **규칙 하나로 요약하면 — 웹(브라우저·WASM)으로 빌드하는 순간 언어와 무관하게 TypeScript
 connector를 사용한다.** 브라우저 샌드박스에서 OS 소켓을 열 수 있는 언어가 없기 때문이다.
@@ -54,7 +53,7 @@ connector를 사용한다.** 브라우저 샌드박스에서 OS 소켓을 열 �
 | 게임 엔진(공통) | 엔진 객체를 main thread 밖에서 다룰 수 없다 | dispatch mode 기본값이 **`Manual`**. main thread에서 명시적으로 pump한다(§7) |
 | 게임 엔진(C++) | 예외·coroutine이 비활성인 빌드가 있다 | C++ connector core는 **no-exception·no-coroutine**. public header가 `<coroutine>`을 노출하지 않는다 |
 | **브라우저·WASM** | **OS 소켓을 열 수 없다**(보안 샌드박스) | **`tcp`·`tls` 사용 불가.** `ws`·`wss`만 사용하며 플랫폼의 네이티브 WebSocket API 위에서 동작한다(§3.2) |
-| Node | `net`·`tls` 사용 가능 | 4개 transport 전부 |
+| Node.js | TypeScript connector의 제품 실행 환경이 아니다 | 서버 process와 browser test runner만 담당한다 |
 
 ## 3. Transport
 
@@ -74,7 +73,6 @@ transport를 명시했는데 endpoint scheme과 어긋나면 **구성 오류**�
 | 환경 | 사용 가능한 transport |
 |---|---|
 | **브라우저 계열**(웹, Cocos web, Unity WebGL, Godot Web) | **`ws`, `wss`만** |
-| Node | `tcp`, `tls`, `ws`, `wss` |
 | 네이티브(`.NET`·C++·Java) | `tcp`, `tls`, `ws`, `wss` |
 
 **브라우저 계열이 `tcp://`·`tls://` endpoint를 받으면 구성 오류로 즉시 실패한다.** 런타임에
@@ -275,9 +273,11 @@ header의 codec은 `JSON`이다.
 | MessagePack | 2 |
 | Protobuf | 3 |
 
-**JSON이 기본 codec이다.** MessagePack·Protobuf는 connector 전용 패키지가 아니라
-**framework codec extension**이 제공한다. 같은 extension을 framework codec registry, HTTP
-client, stream connector에 등록하면 세 표면이 **같은 content type과 codec 매핑을 공유**한다.
+**JSON이 기본 codec이다.** MessagePack·Protobuf는 선택 package가 제공한다. TypeScript package
+root는 browser-safe `ZlinkStreamPayloadCodec`을 내보내며 connector를 만들 때 `codec` option으로
+주입한다. Node framework serializer 등록은 같은 package의 `./framework` subpath를 사용한다. 두
+진입점은 `stream-wire`가 소유하는 같은 codec 번호를 사용하지만 browser module graph가 server
+framework runtime을 참조하지 않아야 한다.
 
 ## 6. 연결 생명주기
 
@@ -447,14 +447,13 @@ client, stream connector에 등록하면 세 표면이 **같은 content type과 
 | **Unity(네이티브)** | 위 `.NET` 패키지를 **그대로 사용**(전용 패키지 없음) | NuGet 또는 UPM(미결) |
 | **Godot C#** | 위 `.NET` 패키지를 **그대로 사용** | NuGet |
 | Java | `zlink-stream-connector` | Maven |
-| Node(E2E·도구·봇) | `@zlink-systems/stream-connector` | npm |
-| **브라우저 계열**(웹·Cocos web·Unity WebGL·Godot Web) | 위 npm 패키지의 **browser entrypoint** | npm |
+| **브라우저 계열**(웹·Cocos web·Unity WebGL·Godot Web) | `@zlink-systems/stream-connector` package root | npm |
 | **Unity WebGL 어댑터** | 위 npm + **jslib interop 어댑터** | npm + UPM(미결) |
 | (공통) wire 계층 | `@zlink-systems/stream-wire` | npm |
 
 **배포 원칙:**
 
-- **웹 계열은 npm 패키지 하나의 browser entrypoint를 공유한다.** 브라우저·Cocos web·Unity
+- **웹 계열은 npm package root 하나를 공유한다.** 브라우저·Cocos web·Unity
   WebGL·Godot Web은 전부 브라우저 런타임이므로 대상별로 패키지를 늘리지 않는다.
 - **네이티브 엔진 어댑터는 source 배포다**(Unreal plugin, GDExtension, Axmol CMake). 엔진
   빌드 시스템에 소스로 편입되는 것이 관례다.
@@ -473,10 +472,10 @@ client, stream connector에 등록하면 세 표면이 **같은 content type과 
 
 현재 구현과 이 스펙의 차이는 [구현 차이](90-implementation-gap.ko.md)에 기록한다.
 
-TypeScript connector는 Node 기본 진입점과 `/browser` 진입점을 분리해 §2.1의 두 환경을
-지원한다. 브라우저 진입점은 플랫폼의 네이티브 `WebSocket`을 사용하며 `tcp://`와 `tls://`를
-구성 오류로 즉시 거부한다. 구현 근거와 검증 범위는
-[Node Stream Connector 공개 계약 §7](languages/node/03-stream-connector.ko.md)에 기록한다.
+TypeScript connector package root는 플랫폼의 네이티브 `WebSocket`을 사용하며 `tcp://`와
+`tls://`를 구성 오류로 즉시 거부한다. Node 전용 구현과 `/browser` subpath는 제공하지 않는다.
+구현 근거와 검증 범위는
+[TypeScript Stream Connector 공개 계약 §7](languages/typescript/03-stream-connector.ko.md)에 기록한다.
 
 ## 13. 회귀 테스트
 
@@ -485,15 +484,15 @@ TypeScript connector는 Node 기본 진입점과 `/browser` 진입점을 분리�
 | 항목 | 검증 |
 |---|---|
 | transport frame | frame·header 인코딩·디코딩이 §4를 따른다 |
-| **환경별 transport 가용성** | **브라우저 entrypoint가 `tcp://`·`tls://`를 구성 오류로 거부한다** |
-| **브라우저 번들** | **브라우저 entrypoint 번들에 플랫폼 전용 소켓 모듈이 포함되지 않는다** |
+| **환경별 transport 가용성** | **TypeScript package root가 `tcp://`·`tls://`를 구성 오류로 거부한다** |
+| **브라우저 번들** | **TypeScript package root 번들에 플랫폼 전용 소켓 module이 포함되지 않는다** |
 | typed request/reply | correlation과 매칭 규칙이 §5.2를 따른다 |
 | error 응답 | `Error` payload가 §5.3의 JSON object이고, `request_seq` 유무에 따라 pending 실패 / stream 오류로 갈린다 |
 | pending request 정리 | timeout·close·disconnect에서 pending이 모두 실패하고 제거된다(§5.2) |
 | payload 한도 | 송신 한도가 **transport write 전에** 적용된다(§4.7) |
 | metadata | 한도·중복·빈 key 검증(§4.4) |
 | packet name | 기본 이름과 override, `$zlink.` prefix 금지(§4.6) |
-| codec | registry 등록과 content type 공유(§5.4) |
+| codec | connector option 주입, codec 번호 공유와 browser/server dependency 분리(§5.4) |
 | compression | 방향별 동작(§8) |
 | error handling | 오류 의미(§9) |
 | inbound observer | 관찰·격리·overflow(§10) |

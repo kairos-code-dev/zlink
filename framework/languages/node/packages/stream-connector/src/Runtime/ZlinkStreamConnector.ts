@@ -9,6 +9,7 @@ import {
   ZlinkStreamEncodedPayload,
   ZlinkStreamError,
   ZlinkStreamErrorCode,
+  ZlinkStreamFlow,
   ZlinkStreamInboundObservation,
   zlinkStreamJsonCodec,
   ZlinkStreamMessage,
@@ -34,12 +35,8 @@ import { ZlinkStreamFrameSender } from './ZlinkStreamFrameSender';
 import { ZlinkStreamReceiveDispatcher } from './ZlinkStreamReceiveDispatcher';
 import { ZlinkStreamConnectorLifecycle } from './ZlinkStreamConnectorLifecycle';
 import { ZlinkStreamConnectorEvents } from './ZlinkStreamConnectorEvents';
-
-export const zlinkStreamConnectorFactory = {
-  create(options: ZlinkStreamConnectorOptions): ZlinkStreamConnector {
-    return new DefaultZlinkStreamConnector(options);
-  }
-};
+import { BrowserZlinkFlowContext, type ZlinkFlowContext } from './ZlinkFlowContext';
+import { BrowserStreamTransportFactory } from './Transport/BrowserWebSocketConnection';
 
 export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   static readonly heartbeatPingName = ZLINK_STREAM_HEARTBEAT_PING;
@@ -57,9 +54,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   readonly options: RequiredZlinkStreamConnectorOptions;
 
   constructor(options: ZlinkStreamConnectorOptions) {
-    this.options = normalizeOptions(options);
+    const flowContext: ZlinkFlowContext = new BrowserZlinkFlowContext();
+    this.options = normalizeOptions(options, new BrowserStreamTransportFactory());
     const protocol = new ZlinkStreamFrameProtocol(this.options);
-    this.frameSender = new ZlinkStreamFrameSender(protocol);
+    this.frameSender = new ZlinkStreamFrameSender(protocol, flowContext);
     this.inboundObservers = new ZlinkStreamInboundObservers(
       this.options.maxInboundObserverNotifications,
       this.options.maxInboundObserverPayloadPreviewBytes,
@@ -76,6 +74,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.receivedMessages,
       this.frameSender,
       this.events,
+      flowContext,
       (reason) => this.lifecycle.serverClosing(reason)
     );
     this.lifecycle = new ZlinkStreamConnectorLifecycle(
@@ -179,7 +178,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     throwIfAborted(signal);
     return new Promise((resolve, reject) => {
       let done = false;
-      let timer: NodeJS.Timeout | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       let disposable: Disposable | undefined;
       const onAbort = () => finish(connectorError(ZlinkStreamErrorCode.Disconnected, 'Operation canceled.'));
       const finish = (error?: unknown, message?: ZlinkStreamMessage<TPayload>) => {
@@ -251,6 +250,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     compress: boolean,
     requestSeq: bigint | undefined,
     signal?: AbortSignal,
+    flow?: ZlinkStreamFlow,
     correlationId?: string
   ): Promise<void> {
     await this.frameSender.send(
@@ -262,7 +262,8 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       compress,
       requestSeq,
       signal,
-      correlationId
+      correlationId,
+      flow
     );
   }
 
@@ -281,9 +282,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     metadata: ZlinkStreamMetadata,
     compress: boolean,
     timeoutMs: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    flow?: ZlinkStreamFlow
   ): Promise<ZlinkStreamEncodedPayload> {
-    const pending = this.pendingRequests.create(timeoutMs);
+    const pending = this.pendingRequests.create(name, timeoutMs);
     try {
       await this.sendEncoded(
         ZlinkStreamMessageKind.Request,
@@ -293,6 +295,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
         compress,
         pending.requestSeq,
         signal,
+        flow,
         this.nextCorrelationId()
       );
       return await pending.promise;

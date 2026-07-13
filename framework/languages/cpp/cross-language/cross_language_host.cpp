@@ -209,8 +209,8 @@ class published_event_handler_t
     event_sink_t &_sink;
 };
 
-/* STREAM raw session: mirrors the peer hosts' session — records the payload and
- * replies "pong", so a peer connector sees the same marker it sees at home. */
+/* STREAM raw session: records the payload and replies with the request packet
+ * name, as required by the request/reply wire contract. */
 class raw_stream_session_t final : public fw::packet_stream_session_t
 {
   public:
@@ -229,7 +229,7 @@ class raw_stream_session_t final : public fw::packet_stream_session_t
         _sink.append ("raw|" + std::string (dispatch.packet_name ()) + "|"
                       + payload.to_string ());
         stream.reply_packet (zlink::message_t::from_json (std::string ("pong")))
-          .packet_name ("RawPong")
+          .packet_name (std::string (dispatch.packet_name ()))
           .submit ();
         co_return;
     }

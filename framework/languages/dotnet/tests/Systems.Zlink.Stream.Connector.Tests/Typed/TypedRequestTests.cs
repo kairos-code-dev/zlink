@@ -30,7 +30,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Json,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                "pong.res",
+                requestHeader.Name,
                 ZlinkStreamMetadata.Empty);
             var responsePayload = JsonSerializer.SerializeToUtf8Bytes(new Pong("pong"));
             await WritePacketAsync(stream, headerCodec.Encode(responseHeader).ToArray(), responsePayload);
@@ -72,7 +72,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Json,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                "callback.res",
+                requestHeader.Name,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,

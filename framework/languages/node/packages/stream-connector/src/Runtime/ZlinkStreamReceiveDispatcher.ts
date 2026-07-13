@@ -15,7 +15,7 @@ import type { ZlinkStreamInboundObservers } from './ZlinkStreamInboundObservers'
 import type { ZlinkStreamPendingRequests } from './ZlinkStreamPendingRequests';
 import type { ZlinkStreamReceivedMessages } from './ZlinkStreamReceivedMessages';
 import { connectorError, toStreamError, utf8Decode } from './ZlinkStreamSupport';
-import { createInboundFlow } from './ZlinkFlowContext';
+import type { ZlinkFlowContext } from './ZlinkFlowContext';
 import { decodeSessionClosing, ZLINK_SESSION_CLOSING } from './Protocol/ZlinkSessionClosing';
 import type { ZlinkStreamCloseReason } from '../Contracts';
 
@@ -32,6 +32,7 @@ export class ZlinkStreamReceiveDispatcher {
     private readonly receivedMessages: ZlinkStreamReceivedMessages,
     private readonly frameSender: ZlinkStreamFrameSender,
     private readonly events: ZlinkStreamConnectorEvents,
+    private readonly flowContext: ZlinkFlowContext,
     private readonly serverClosing?: (reason: ZlinkStreamCloseReason) => Promise<void>
   ) {}
 
@@ -86,30 +87,55 @@ export class ZlinkStreamReceiveDispatcher {
     this.inboundObservers.enqueue(header, payload, signal);
     if (header.kind === ZlinkStreamMessageKind.Response && header.requestSeq !== undefined) {
       try {
-        this.pendingRequests.resolve(header.requestSeq, {
+        if (!this.pendingRequests.resolve(header.requestSeq, header.name, {
           codec: header.codec,
           payload: this.protocol.decodePayload(header, payload)
-        });
+        })) {
+          await this.events.publishError({
+            code: ZlinkStreamErrorCode.FrameDecodeFailed,
+            message: `Response request sequence '${header.requestSeq}' has no pending request.`
+          }, signal);
+        }
       } catch (cause) {
-        this.pendingRequests.reject(
-          header.requestSeq,
-          toStreamError(cause, ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.')
+        const decodeError = toStreamError(
+          cause,
+          ZlinkStreamErrorCode.DecompressionFailed,
+          'Decompression failed.'
         );
+        if (!this.pendingRequests.reject(
+          header.requestSeq,
+          header.name,
+          decodeError
+        )) {
+          await this.events.publishError(decodeError, signal);
+        }
       }
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Error && header.requestSeq !== undefined) {
-      this.pendingRequests.reject(header.requestSeq, {
-        code: ZlinkStreamErrorCode.RemoteError,
-        message: utf8Decode(payload)
-      });
+      try {
+        const remoteError = decodeRemoteError(this.protocol, header, payload);
+        if (!this.pendingRequests.reject(header.requestSeq, header.name, remoteError)) {
+          await this.events.publishError(remoteError, signal);
+        }
+      } catch (cause) {
+        const decodeError = toStreamError(
+          cause,
+          ZlinkStreamErrorCode.FrameDecodeFailed,
+          'Remote error payload is invalid.'
+        );
+        if (!this.pendingRequests.reject(
+          header.requestSeq,
+          header.name,
+          decodeError
+        )) {
+          await this.events.publishError(decodeError, signal);
+        }
+      }
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Error) {
-      await this.events.publishError({
-        code: ZlinkStreamErrorCode.RemoteError,
-        message: utf8Decode(payload)
-      }, signal);
+      await this.events.publishError(decodeRemoteError(this.protocol, header, payload), signal);
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Control) {
@@ -117,7 +143,7 @@ export class ZlinkStreamReceiveDispatcher {
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Send) {
-      const flow = createInboundFlow(header.flowId, header.flowOrigin);
+      const flow = this.flowContext.createInbound(header.flowId, header.flowOrigin);
       this.receivedMessages.enqueue({
         name: header.name,
         metadata: header.metadata,
@@ -157,4 +183,32 @@ export class ZlinkStreamReceiveDispatcher {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown control packet.');
     }
   }
+}
+
+function decodeRemoteError(
+  protocol: ZlinkStreamFrameProtocol,
+  header: ZlinkStreamHeader,
+  payload: Uint8Array
+): { readonly code: ZlinkStreamErrorCode; readonly message: string; readonly cause: unknown } {
+  const decodedPayload = protocol.decodePayload(header, payload);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(utf8Decode(decodedPayload));
+  } catch (cause) {
+    throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Remote error payload must be a JSON object.', cause);
+  }
+  if (
+    decoded === null
+    || typeof decoded !== 'object'
+    || Array.isArray(decoded)
+    || typeof (decoded as { code?: unknown }).code !== 'string'
+    || typeof (decoded as { message?: unknown }).message !== 'string'
+  ) {
+    throw connectorError(
+      ZlinkStreamErrorCode.FrameDecodeFailed,
+      'Remote error payload must contain string code and message fields.'
+    );
+  }
+  const remote = decoded as { readonly code: string; readonly message: string };
+  return { code: ZlinkStreamErrorCode.RemoteError, message: remote.message, cause: remote };
 }

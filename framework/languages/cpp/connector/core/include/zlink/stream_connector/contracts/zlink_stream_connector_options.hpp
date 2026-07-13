@@ -72,9 +72,6 @@ struct connector_options_t
     /// Maximum encoded payload bytes accepted from inbound stream frames.
     std::size_t max_receive_payload_size = 64 * 1024;
 
-    /// Maximum encoded metadata bytes accepted by send and request calls.
-    std::size_t max_metadata_size = 8 * 1024;
-
     /// Maximum pending inbound observer notifications before new notifications are dropped.
     std::size_t max_inbound_observer_notifications = 1024;
 

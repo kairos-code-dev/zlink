@@ -9,6 +9,14 @@ export interface ZLinkStreamWireFrame {
   readonly payload: Uint8Array;
 }
 
+/** Numeric payload codec values shared by browser and server wire paths. */
+export enum ZlinkStreamCodec {
+  Raw = 0,
+  Json = 1,
+  MessagePack = 2,
+  Protobuf = 3
+}
+
 export interface ZLinkStreamWireHeader {
   readonly kind: number;
   readonly codec: number;

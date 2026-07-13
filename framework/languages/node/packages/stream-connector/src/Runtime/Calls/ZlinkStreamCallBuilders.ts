@@ -2,6 +2,7 @@ import {
   RequiredZlinkStreamConnectorOptions,
   ZlinkStreamEncodedPayload,
   ZlinkStreamErrorCode,
+  ZlinkStreamFlow,
   zlinkStreamJsonCodec,
   ZlinkStreamMessage,
   ZlinkStreamMessageKind,
@@ -24,7 +25,8 @@ interface ZlinkStreamConnectorSubmitter {
     metadata: ZlinkStreamMetadata,
     compress: boolean,
     requestSeq: bigint | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    flow?: ZlinkStreamFlow
   ): Promise<void>;
   requestEncoded(
     name: string,
@@ -32,7 +34,8 @@ interface ZlinkStreamConnectorSubmitter {
     metadata: ZlinkStreamMetadata,
     compress: boolean,
     timeoutMs: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    flow?: ZlinkStreamFlow
   ): Promise<ZlinkStreamEncodedPayload>;
   waitForMessage<TPayload>(
     name: string,
@@ -48,6 +51,7 @@ class ZlinkStreamCallBuilderState {
   metadata: ZlinkStreamMetadata = ZlinkStreamMetadataMap.empty;
   timeoutMs: number | undefined;
   compress = false;
+  flow: ZlinkStreamFlow | undefined;
 
   constructor(name: string | undefined) {
     this.name = name;
@@ -99,6 +103,11 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
     return this;
   }
 
+  flowFrom(flow: ZlinkStreamFlow): this {
+    this.state.flow = flow;
+    return this;
+  }
+
   submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.state.ensureNotExecuted();
@@ -109,7 +118,8 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
       this.state.metadata,
       this.state.compress,
       undefined,
-      signal
+      signal,
+      this.state.flow
     ).catch(() => undefined);
   }
 }
@@ -150,6 +160,11 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
     return this;
   }
 
+  flowFrom(flow: ZlinkStreamFlow): this {
+    this.state.flow = flow;
+    return this;
+  }
+
   submit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
   submit(callback: (result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void): void;
   submit<TReply = unknown>(
@@ -162,7 +177,8 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
       this.state.metadata,
       this.state.compress,
       this.state.timeoutMs ?? this.connector.options.requestTimeoutMs,
-      typeof signalOrCallback === 'function' ? undefined : signalOrCallback
+      typeof signalOrCallback === 'function' ? undefined : signalOrCallback,
+      this.state.flow
     );
     if (typeof signalOrCallback === 'function') {
       operation.then(
@@ -182,7 +198,8 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
       this.state.metadata,
       this.state.compress,
       this.state.timeoutMs ?? this.connector.options.requestTimeoutMs,
-      signal
+      signal,
+      this.state.flow
     );
   }
 }

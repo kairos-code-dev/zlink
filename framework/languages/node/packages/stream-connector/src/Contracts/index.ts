@@ -14,6 +14,7 @@ export * from './ZlinkStreamInterfaces';
 export * from './ZlinkStreamMetadata';
 export type {
   ZlinkStreamEncodedPayload,
+  ZlinkStreamFlow,
   ZlinkStreamMessage,
   ZlinkStreamError,
   ZlinkStreamConnectionStateChanged,

@@ -1,16 +1,9 @@
 export enum ZlinkStreamTransport {
-  Tcp = 'tcp',
-  Tls = 'tls',
   WebSocket = 'webSocket',
   WebSocketSecure = 'webSocketSecure'
 }
 
-export enum ZlinkStreamCodec {
-  Raw = 0,
-  Json = 1,
-  MessagePack = 2,
-  Protobuf = 3
-}
+export { ZlinkStreamCodec } from '@zlink-systems/stream-wire';
 
 export enum ZlinkStreamCompression {
   None = 'none',
@@ -58,7 +51,6 @@ export enum ZlinkStreamErrorCode {
   FrameTooLarge = 'frameTooLarge',
   SendFailed = 'sendFailed',
   CompressionFailed = 'compressionFailed',
-  TlsValidationFailed = 'tlsValidationFailed',
   DecompressionFailed = 'decompressionFailed',
   UserCallbackFailed = 'userCallbackFailed',
   ObserverFailed = 'observer-failed',

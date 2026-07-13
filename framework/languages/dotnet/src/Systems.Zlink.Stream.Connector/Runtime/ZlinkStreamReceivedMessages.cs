@@ -16,11 +16,13 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         }
     }
 
-    public void Record(ZlinkStreamMessage<ZlinkStreamEncodedPayload> message)
+    public bool Record(ZlinkStreamMessage<ZlinkStreamEncodedPayload> message)
     {
         TaskCompletionSource arrived;
         lock (_gate)
         {
+            if (_messageCount >= maxMessages) return false;
+
             if (!_messages.TryGetValue(message.Name, out var messages))
             {
                 messages = [];
@@ -31,12 +33,12 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
             received.OrderNode = _messageOrder.AddLast(received);
             messages.Add(received);
             _messageCount++;
-            TrimOldestMessages();
             arrived = _arrived;
             _arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
         arrived.TrySetResult();
+        return true;
     }
 
     public async ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
@@ -100,28 +102,6 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         }
 
         return null;
-    }
-
-    private void TrimOldestMessages()
-    {
-        while (_messageCount > maxMessages)
-        {
-            var oldestNode = _messageOrder.First;
-            if (oldestNode is null) return;
-
-            var oldest = oldestNode.Value;
-            if (!_messages.TryGetValue(oldest.Name, out var messages))
-            {
-                _messageOrder.Remove(oldestNode);
-                continue;
-            }
-
-            messages.Remove(oldest);
-            _messageOrder.Remove(oldestNode);
-            oldest.OrderNode = null;
-            _messageCount--;
-            if (messages.Count == 0) _messages.Remove(oldest.Name);
-        }
     }
 
     private void RemoveFromOrder(ReceivedMessage message)

@@ -28,7 +28,7 @@ test('stream connector json codec rejects prototype mutation keys from wire payl
 test('stream connector json codec writes json payload frame through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
 
@@ -47,7 +47,7 @@ test('stream connector close drains submitted one-way send writes', async () => 
   const transportFactory = new MemoryTransportFactory();
   transportFactory.connection.delayWrites = true;
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
 
@@ -68,7 +68,7 @@ test('stream connector close drains submitted one-way send writes', async () => 
 test('stream connector json codec decodes reply payload through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
 
@@ -83,7 +83,7 @@ test('stream connector json codec decodes reply payload through connector', asyn
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
-      name: 'JoinReply',
+      name: 'Join',
       metadata: connector.ZlinkStreamMetadataMap.empty
     }),
     new TextEncoder().encode('{"accepted":true}')
@@ -96,7 +96,7 @@ test('stream connector json codec decodes reply payload through connector', asyn
 test('stream connector json codec decodes plain-object request replies through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
 
@@ -115,7 +115,7 @@ test('stream connector json codec decodes plain-object request replies through c
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
-      name: 'JoinReply',
+      name: 'Join',
       metadata: connector.ZlinkStreamMetadataMap.empty
     }),
     new TextEncoder().encode('{"accepted":true}')
@@ -128,7 +128,7 @@ test('stream connector json codec decodes plain-object request replies through c
 test('stream connector json codec dispatches typed payloads through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
   const received = [];
@@ -156,7 +156,7 @@ test('stream connector json codec dispatches typed payloads through connector', 
 test('stream connector json codec wait resolves matching typed payload', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
   });
 
@@ -196,7 +196,7 @@ test('stream connector json codec wait resolves matching typed payload', async (
 test('stream connector json codec wait uses connector request timeout by default', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
-    endpoint: 'tcp://127.0.0.1:19000',
+    endpoint: 'ws://127.0.0.1:19000',
     requestTimeoutMs: 1000,
     transportFactory,
   });

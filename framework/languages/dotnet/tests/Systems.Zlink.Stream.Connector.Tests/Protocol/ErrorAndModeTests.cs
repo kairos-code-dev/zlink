@@ -1,10 +1,35 @@
 using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
 {
+    [Fact]
+    public async Task PendingResponseRejectsMismatchedPacketName()
+    {
+        var requests = new ZlinkStreamPendingRequests();
+        var pending = requests.Create("expected.response");
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Response,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            pending.RequestSeq,
+            "unexpected.response",
+            ZlinkStreamMetadata.Empty);
+
+        Assert.True(requests.TryComplete(
+            header,
+            new ZlinkStreamFrame(ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
+            _ => new ZlinkStreamError(ZlinkStreamErrorCode.RemoteError, "unused")));
+
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
+            await requests.WaitAsync(pending, CancellationToken.None));
+        Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, exception.Error.Code);
+    }
+
     [Fact]
     public async Task RequestTimeoutRemovesPendingRequest()
     {

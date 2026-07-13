@@ -2,10 +2,19 @@ import { ZlinkStreamErrorCode, ZlinkStreamMetadata, ZlinkStreamMetadataMap } fro
 import { decodeStreamWireMetadata, encodeStreamWireMetadata } from '@zlink-systems/stream-wire';
 import { connectorError } from '../ZlinkStreamSupport';
 
+export const ZLINK_STREAM_MAX_METADATA_BYTES = 1024;
+
 export class ZlinkStreamMetadataCodec {
   static size(metadata: ZlinkStreamMetadata): number {
     try {
-      return metadata.count === 0 ? 0 : encodeStreamWireMetadata(metadata.values).length;
+      const size = metadata.count === 0 ? 0 : encodeStreamWireMetadata(metadata.values).length;
+      if (size > ZLINK_STREAM_MAX_METADATA_BYTES) {
+        throw connectorError(
+          ZlinkStreamErrorCode.ValidationFailed,
+          `Metadata must not exceed ${ZLINK_STREAM_MAX_METADATA_BYTES} bytes.`
+        );
+      }
+      return size;
     } catch (cause) {
       throw connectorError(ZlinkStreamErrorCode.ValidationFailed, streamWireErrorMessage(cause), cause);
     }

@@ -132,6 +132,23 @@ jobs:
         working-directory: framework/languages/node
         run: npm ci
 
+      - name: Cache Chromium for browser connector E2E
+        if: matrix.node-version == 22 && (matrix.target.name == 'linux-x64' || matrix.target.name == 'win-x64')
+        uses: actions/cache@v4
+        with:
+          path: framework/languages/node/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('framework/languages/node/package-lock.json') }}
+
+      - name: Install Chromium and Linux dependencies
+        if: matrix.node-version == 22 && matrix.target.name == 'linux-x64'
+        working-directory: framework/languages/node
+        run: npm run browser:install:ci
+
+      - name: Install Chromium on Windows
+        if: matrix.node-version == 22 && matrix.target.name == 'win-x64'
+        working-directory: framework/languages/node
+        run: npm run browser:install
+
       - name: Build Node binding JavaScript surface
         working-directory: bindings/node
         run: npm run build
@@ -168,6 +185,11 @@ jobs:
       - name: Run Node framework release gate
         working-directory: framework/languages/node
         run: npm run verify:ci
+
+      - name: Run actual Chromium Stream Connector E2E
+        if: matrix.node-version == 22 && (matrix.target.name == 'linux-x64' || matrix.target.name == 'win-x64')
+        working-directory: framework/languages/node
+        run: npm run test:browser
 
   framework-node-cross-language:
     name: cross-language smoke

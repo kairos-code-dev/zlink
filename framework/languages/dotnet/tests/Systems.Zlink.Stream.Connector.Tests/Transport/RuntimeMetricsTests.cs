@@ -213,7 +213,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                "metric.response",
+                requestHeader.Name,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,

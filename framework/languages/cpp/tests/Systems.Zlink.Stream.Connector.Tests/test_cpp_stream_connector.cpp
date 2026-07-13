@@ -662,19 +662,29 @@ int main ()
             != zlink::stream_connector::error_code_t::validation_failed) {
             return 72;
         }
+        zlink::stream_connector::metadata_t boundary_metadata;
+        boundary_metadata.with ("k", std::string (1019, 'v'));
+        zlink::stream_connector::metadata_t over_limit_metadata;
+        over_limit_metadata.with ("k", std::string (1020, 'v'));
+        if (!metadata_codec.encode (boundary_metadata)
+            || metadata_codec.encode (over_limit_metadata).error_code ()
+                 != zlink::stream_connector::error_code_t::validation_failed) {
+            return 176;
+        }
     }
 
     {
         zlink::stream_connector::connector_options_t frame_options;
-        frame_options.max_metadata_size = 2;
         frame_options.max_send_payload_size = 2;
         frame_options.max_receive_payload_size = 4;
-        if (zlink::stream_connector::detail::frame_codec_t::validate_frame_size (3, 1,
-                                                                                 frame_options)
+        const auto oversized_header =
+          static_cast<std::size_t> (std::numeric_limits<std::uint16_t>::max ()) + 1;
+        if (zlink::stream_connector::detail::frame_codec_t::validate_frame_size (
+              oversized_header, 1, frame_options)
             || zlink::stream_connector::detail::frame_codec_t::validate_frame_size (1, 3,
                                                                                     frame_options)
             || zlink::stream_connector::detail::frame_codec_t::validate_receive_frame_size (
-              3, 1, frame_options)
+              oversized_header, 1, frame_options)
             || zlink::stream_connector::detail::frame_codec_t::validate_receive_frame_size (
               1, 5, frame_options)
             || zlink::stream_connector::detail::frame_codec_t::encode_prefix (
@@ -759,6 +769,18 @@ int main ()
                  != zlink::stream_connector::error_code_t::frame_decode_failed) {
             return 25;
         }
+        zlink::stream_connector::detail::stream_header_t application_name;
+        application_name.kind = zlink::stream_connector::message_kind_t::send;
+        application_name.codec = zlink::stream_connector::codec_t::raw;
+        application_name.name = "$application.event";
+        if (!header_codec.encode (application_name)) {
+            return 177;
+        }
+        application_name.name = "$zlink.private";
+        if (header_codec.encode (application_name).error_code ()
+            != zlink::stream_connector::error_code_t::frame_decode_failed) {
+            return 178;
+        }
         zlink::stream_connector::connector_options_t frame_options;
         frame_options.max_send_payload_size = 16;
         auto frame = zlink::stream_connector::detail::frame_codec_t::encode (
@@ -808,7 +830,8 @@ int main ()
                     inbound.send ().message (push).submit ();
                     auto reply =
                       make_server_frame (zlink::stream_connector::message_kind_t::response,
-                                         frame->header.request_seq.value (), "reply", "ok");
+                                         frame->header.request_seq.value (), frame->header.name,
+                                         "ok");
                     inbound.send ().message (reply).submit ();
                 }
                 ++handled;
@@ -1200,7 +1223,8 @@ int main ()
         }
 
         auto early_reply_frame = make_server_frame (
-          zlink::stream_connector::message_kind_t::response, 1, "early.reply", "early-reply");
+          zlink::stream_connector::message_kind_t::response, 1, "early.reply.request",
+          "early-reply");
         const auto early_reply_text = early_reply_frame.to_string ();
         auto early_reply_connection = std::make_shared<early_reply_connection_t> (
           std::vector<std::uint8_t> (early_reply_text.begin (), early_reply_text.end ()));
@@ -1237,11 +1261,74 @@ int main ()
             return 173;
         }
 
+        auto mismatched_reply_frame = make_server_frame (
+          zlink::stream_connector::message_kind_t::response, 1, "unexpected.reply", "payload");
+        const auto mismatched_reply_text = mismatched_reply_frame.to_string ();
+        auto mismatched_reply_connection = std::make_shared<early_reply_connection_t> (
+          std::vector<std::uint8_t> (mismatched_reply_text.begin (), mismatched_reply_text.end ()));
+        auto mismatched_reply_state =
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
+            zlink::stream_connector::connector_options_t{
+              .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
+        mismatched_reply_state->state = zlink::stream_connector::connection_state_t::connected;
+        mismatched_reply_state->connection = mismatched_reply_connection;
+        std::atomic<bool> mismatched_reply_rejected{false};
+        zlink::stream_connector::detail::submit_request_async (
+          mismatched_reply_state,
+          zlink::stream_connector::packet_t{.name = "expected.reply",
+                                            .payload = zlink::message_t::from ("payload")},
+          std::chrono::milliseconds (25),
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
+              mismatched_reply_rejected =
+                !result
+                && result.error_code ()
+                     == zlink::stream_connector::error_code_t::frame_decode_failed;
+          });
+        if (!eventually ([&] {
+                return mismatched_reply_rejected.load ()
+                       && mismatched_reply_state->pending_requests.empty ();
+            })) {
+            return 179;
+        }
+
+        auto invalid_error_frame = make_server_frame (
+          zlink::stream_connector::message_kind_t::error, 1, "invalid.error.request",
+          "{\"error\":\"missing code and message\"}");
+        const auto invalid_error_text = invalid_error_frame.to_string ();
+        auto invalid_error_connection = std::make_shared<early_reply_connection_t> (
+          std::vector<std::uint8_t> (invalid_error_text.begin (), invalid_error_text.end ()));
+        auto invalid_error_state =
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
+            zlink::stream_connector::connector_options_t{
+              .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
+        invalid_error_state->state = zlink::stream_connector::connection_state_t::connected;
+        invalid_error_state->connection = invalid_error_connection;
+        std::atomic<bool> invalid_error_rejected{false};
+        zlink::stream_connector::detail::submit_request_async (
+          invalid_error_state,
+          zlink::stream_connector::packet_t{.name = "invalid.error.request",
+                                            .payload = zlink::message_t::from ("payload")},
+          std::chrono::milliseconds (25),
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
+              invalid_error_rejected =
+                !result
+                && result.error_code ()
+                     == zlink::stream_connector::error_code_t::frame_decode_failed;
+          });
+        if (!eventually ([&] {
+                return invalid_error_rejected.load ()
+                       && invalid_error_state->pending_requests.empty ();
+            })) {
+            return 180;
+        }
+
         auto interleaved_push_frame = make_server_frame (
           zlink::stream_connector::message_kind_t::send, 0, "interleaved.push", "push-payload");
         auto interleaved_response_frame =
           make_server_frame (zlink::stream_connector::message_kind_t::response, 1,
-                             "interleaved.reply", "reply-payload");
+                             "interleaved.request", "reply-payload");
         const auto interleaved_text =
           interleaved_push_frame.to_string () + interleaved_response_frame.to_string ();
         auto interleaved_connection = std::make_shared<early_reply_connection_t> (
@@ -1519,7 +1606,8 @@ int main ()
         inbound.send ().message (push).submit ();
         auto reply =
           make_server_frame (zlink::stream_connector::message_kind_t::response,
-                             frame->header.request_seq.value (), "reply", "observer-reply");
+                             frame->header.request_seq.value (), frame->header.name,
+                             "observer-reply");
         inbound.send ().message (reply).submit ();
         inbound.close ();
     });
@@ -1566,7 +1654,7 @@ int main ()
             const auto saw_response =
               std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
                   return item.kind == zlink::stream_connector::message_kind_t::response
-                         && item.name == "reply" && item.request_seq.has_value ()
+                         && item.name == "observer.request" && item.request_seq.has_value ()
                          && item.payload_length == std::string ("observer-reply").size ()
                          && item.payload_preview == std::vector<std::uint8_t>{'o', 'b', 's'};
               });
@@ -1585,7 +1673,7 @@ int main ()
         const auto saw_response =
           std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
               return item.kind == zlink::stream_connector::message_kind_t::response
-                     && item.name == "reply" && item.request_seq.has_value ()
+                     && item.name == "observer.request" && item.request_seq.has_value ()
                      && item.payload_length == std::string ("observer-reply").size ()
                      && item.payload_preview == std::vector<std::uint8_t>{'o', 'b', 's'};
           });
@@ -1691,7 +1779,7 @@ int main ()
             inbound.send ().message (push).submit ();
         }
         auto reply = make_server_frame (zlink::stream_connector::message_kind_t::response, 1,
-                                        "reply", "observer-overflow-reply");
+                                        "observer.overflow.trigger", "observer-overflow-reply");
         inbound.send ().message (reply).submit ();
         inbound.close ();
     });
@@ -2048,7 +2136,8 @@ int main ()
         if (auto frame = try_read_server_frame (buffer)) {
             auto reply = make_server_frame (zlink::stream_connector::message_kind_t::error,
                                             frame->header.request_seq.value (), frame->header.name,
-                                            "{\"error\":\"server closed request\"}");
+                                            "{\"code\":\"server_closed\","
+                                            "\"message\":\"server closed request\"}");
             inbound.send ().message (reply).submit ();
         }
         inbound.close ();
@@ -2087,7 +2176,8 @@ int main ()
           inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
         if (auto frame = try_read_server_frame (buffer)) {
             auto reply = make_server_frame (zlink::stream_connector::message_kind_t::response,
-                                            frame->header.request_seq.value (), "reply", "ok");
+                                            frame->header.request_seq.value (), frame->header.name,
+                                            "ok");
             inbound.send ().message (reply).submit ();
         }
         inbound.close ();
@@ -2174,7 +2264,8 @@ int main ()
             inbound.send ().message (push).submit ();
             auto reply =
               make_server_frame (zlink::stream_connector::message_kind_t::response,
-                                 frame->header.request_seq.value (), "reply", "async-pump-reply");
+                                 frame->header.request_seq.value (), frame->header.name,
+                                 "async-pump-reply");
             inbound.send ().message (reply).submit ();
         }
         inbound.close ();
@@ -2291,7 +2382,8 @@ int main ()
                     coroutine_request_seen = true;
                     auto reply =
                       make_server_frame (zlink::stream_connector::message_kind_t::response,
-                                         frame->header.request_seq.value (), "reply", "ok");
+                                         frame->header.request_seq.value (), frame->header.name,
+                                         "ok");
                     inbound.send ().message (reply).submit ();
                 }
             }

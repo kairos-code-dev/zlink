@@ -77,7 +77,16 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         var payload = frameSender.DecompressIfNeeded(header, wirePayload);
         var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
         var message = new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(header.Name, header.Metadata, payloadObject);
-        receivedMessages.Record(message);
+        if (!receivedMessages.Record(message))
+        {
+            await callbacks.PublishErrorAsync(
+                    new ZlinkStreamError(
+                        ZlinkStreamErrorCode.ReceivedMessageDropped,
+                        "Received stream message was dropped because the received-message queue is full."),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
 
         var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)

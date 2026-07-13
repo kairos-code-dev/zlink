@@ -333,25 +333,25 @@ stage_node_publisher_cpp_subscriber() {
   RESULTS+=("flow-wire: Node fanout publisher -> C++ subscriber (envelope + topic)")
 }
 
-# --- STREAM wire: Node connector -> C++ stream server -------------------------
+# --- STREAM wire: Browser TypeScript connector -> C++ stream server -----------
 stage_node_connector_cpp_stream_server() {
   local port endpoint events
   port="$(free_port)"
-  endpoint="tcp://127.0.0.1:${port}"
+  endpoint="ws://127.0.0.1:${port}"
   events="${RUN_DIR}/cpp-stream-server-node.events"
   start_cpp cpp-stream-server-node stream-server \
     --stream-endpoint "${endpoint}" \
     --event-file "${events}" \
     --ready-file "${RUN_DIR}/cpp-stream-server-node.ready"
   wait_for_ready "${RUN_DIR}/cpp-stream-server-node.ready" 60
-  start_node node-stream-connector stream-connector \
+  start_node browser-stream-connector browser-stream-connector \
     --stream-endpoint "${endpoint}" \
     --value node-connector-to-cpp \
     --event-file "${RUN_DIR}/node-stream-connector.events"
   wait_for_line "${events}" "raw|RawPing|" 90
   wait_for_line "${RUN_DIR}/node-stream-connector.events" "connector-reply|pong" 30
   stop_all
-  RESULTS+=("codec: Node STREAM connector (LZ4) -> C++ stream server (frame + compression)")
+  RESULTS+=("codec: Browser TypeScript STREAM connector (LZ4) -> C++ stream server (frame + compression)")
 }
 
 stage_cpp_client_dotnet_channel_server

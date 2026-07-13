@@ -8,9 +8,12 @@ import {
   ZlinkStreamReconnectOptions
 } from '../Contracts';
 import { connectorError } from './ZlinkStreamSupport';
-import { inferTransport, NodeStreamTransportFactory } from './Transport/ZlinkStreamTransportFactory';
+import { inferTransport } from './Transport/ZlinkStreamEndpoint';
 
-export function normalizeOptions(options: ZlinkStreamConnectorOptions): RequiredZlinkStreamConnectorOptions {
+export function normalizeOptions(
+  options: ZlinkStreamConnectorOptions,
+  defaultTransportFactory: RequiredZlinkStreamConnectorOptions['transportFactory']
+): RequiredZlinkStreamConnectorOptions {
   const endpoint = options.endpoint;
   if (endpoint.trim().length === 0) {
     throw connectorError(ZlinkStreamErrorCode.ConfigurationError, 'Endpoint must not be empty.');
@@ -55,12 +58,11 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     maxReceivedMessages: options.maxReceivedMessages ?? 1024,
     maxInboundObserverNotifications: options.maxInboundObserverNotifications ?? 1024,
     maxInboundObserverPayloadPreviewBytes: options.maxInboundObserverPayloadPreviewBytes ?? 0,
-    skipServerCertificateValidation: options.skipServerCertificateValidation ?? false,
     dispatchMode: options.dispatchMode ?? ZlinkStreamDispatchMode.Manual,
     compression: options.compression ?? ZlinkStreamCompression.Lz4,
     compressionCodec: resolveCompressionCodec(options),
     nameResolver: options.nameResolver ?? { resolve: (type) => type.name },
-    transportFactory: options.transportFactory ?? new NodeStreamTransportFactory(),
+    transportFactory: options.transportFactory ?? defaultTransportFactory,
     codec: options.codec,
     meterProvider: options.meterProvider
   };

@@ -1,28 +1,43 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomBytes } from 'node:crypto';
 import type { ZlinkFlowOrigin } from '../Contracts';
+import { ZlinkStreamErrorCode } from '../Contracts';
+import { connectorError } from './ZlinkStreamSupport';
 
 export interface ZlinkFlowContextValue {
   readonly flowId: string;
   readonly flowOrigin: ZlinkFlowOrigin;
 }
 
-const storage = new AsyncLocalStorage<ZlinkFlowContextValue>();
-
-export function currentOrCreateFlow(): ZlinkFlowContextValue {
-  return storage.getStore() ?? { flowId: createUuidV7(), flowOrigin: 'Application' };
+export interface ZlinkFlowContext {
+  currentOrCreate(explicit?: ZlinkFlowContextValue): ZlinkFlowContextValue;
+  createInbound(flowId?: string, flowOrigin?: ZlinkFlowOrigin): ZlinkFlowContextValue;
 }
 
-export function runWithFlow<T>(flow: ZlinkFlowContextValue, callback: () => T): T {
-  return storage.run(flow, callback);
+interface BrowserCrypto {
+  getRandomValues<T extends Uint8Array>(array: T): T;
 }
 
-export function createInboundFlow(flowId?: string, flowOrigin?: ZlinkFlowOrigin): ZlinkFlowContextValue {
-  return { flowId: flowId ?? createUuidV7(), flowOrigin: flowOrigin ?? 'Inbound' };
+export class BrowserZlinkFlowContext implements ZlinkFlowContext {
+  currentOrCreate(explicit?: ZlinkFlowContextValue): ZlinkFlowContextValue {
+    return explicit ?? { flowId: this.createUuidV7(), flowOrigin: 'Application' };
+  }
+
+  createInbound(flowId?: string, flowOrigin?: ZlinkFlowOrigin): ZlinkFlowContextValue {
+    return { flowId: flowId ?? this.createUuidV7(), flowOrigin: flowOrigin ?? 'Inbound' };
+  }
+
+  private createUuidV7(): string {
+    const crypto = (globalThis as { crypto?: BrowserCrypto }).crypto;
+    if (crypto === undefined) {
+      throw connectorError(
+        ZlinkStreamErrorCode.ConfigurationError,
+        'The browser entrypoint requires the platform Web Crypto API.'
+      );
+    }
+    return formatUuidV7(crypto.getRandomValues(new Uint8Array(16)));
+  }
 }
 
-export function createUuidV7(): string {
-  const bytes = randomBytes(16);
+export function formatUuidV7(bytes: Uint8Array): string {
   const timestamp = BigInt(Date.now());
   for (let index = 5; index >= 0; index -= 1) {
     bytes[index] = Number(timestamp >> BigInt((5 - index) * 8) & 0xffn);

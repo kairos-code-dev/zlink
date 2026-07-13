@@ -8,6 +8,8 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/write.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/websocket.hpp>
 #ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
 #include <boost/asio/ssl/stream.hpp>
 #endif
@@ -38,6 +40,9 @@ namespace zlink::framework::runtime
 {
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
+namespace beast = boost::beast;
+namespace websocket = beast::websocket;
+using websocket_stream_t = websocket::stream<tcp::socket>;
 #ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
 namespace ssl = asio::ssl;
 #endif
@@ -88,6 +93,31 @@ parsed_tcp_endpoint_t parse_tls_endpoint (const std::string &endpoint)
     return {endpoint.substr (host_start, separator - host_start), endpoint.substr (separator + 1)};
 }
 
+parsed_tcp_endpoint_t parse_websocket_endpoint (const std::string &endpoint)
+{
+    constexpr std::string_view prefix = "ws://";
+    if (endpoint.rfind (prefix, 0) != 0) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM WebSocket host requires ws://host:port endpoint");
+    }
+    const auto authority_start = prefix.size ();
+    const auto path = endpoint.find ('/', authority_start);
+    const auto authority = endpoint.substr (
+      authority_start, path == std::string::npos ? std::string::npos : path - authority_start);
+    const auto separator = authority.rfind (':');
+    if (separator == std::string::npos || separator == 0
+        || separator + 1 >= authority.size ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM WebSocket endpoint must be ws://host:port[/path]");
+    }
+    return {authority.substr (0, separator), authority.substr (separator + 1)};
+}
+
+bool stream_uses_websocket (const stream_snapshot_t &stream)
+{
+    return stream.bind_endpoint.rfind ("ws://", 0) == 0;
+}
+
 bool stream_uses_tls (const stream_snapshot_t &stream)
 {
     return !stream.tls_certificate_file.empty () || !stream.tls_private_key_file.empty ()
@@ -96,8 +126,13 @@ bool stream_uses_tls (const stream_snapshot_t &stream)
 
 parsed_tcp_endpoint_t parse_stream_endpoint (const stream_snapshot_t &stream)
 {
-    return stream_uses_tls (stream) ? parse_tls_endpoint (stream.bind_endpoint)
-                                    : parse_tcp_endpoint (stream.bind_endpoint);
+    if (stream_uses_tls (stream)) {
+        return parse_tls_endpoint (stream.bind_endpoint);
+    }
+    if (stream_uses_websocket (stream)) {
+        return parse_websocket_endpoint (stream.bind_endpoint);
+    }
+    return parse_tcp_endpoint (stream.bind_endpoint);
 }
 
 bool stream_trace_enabled ()
@@ -451,7 +486,7 @@ class stream_host_service_t::listener_t
 
     void run ()
     {
-        if (!stream_uses_tls (_stream)) {
+        if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
             run_tcp_native_accept ();
             return;
         }
@@ -488,8 +523,8 @@ class stream_host_service_t::listener_t
 
     void request_stop () noexcept
     {
-        wake_native_accept ();
-        if (!stream_uses_tls (_stream)) {
+        if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
+            wake_native_accept ();
             return;
         }
         asio::post (_io, [this] {
@@ -532,7 +567,9 @@ class stream_host_service_t::listener_t
     {
         trace_stream_host ("stop-connections-begin", _stream);
         boost::system::error_code ignored;
-        wake_native_accept ();
+        if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
+            wake_native_accept ();
+        }
         {
             const std::lock_guard<std::mutex> lock (_sockets_mutex);
             for (auto *socket : _sockets) {
@@ -754,7 +791,21 @@ class stream_host_service_t::listener_t
             const std::lock_guard<std::mutex> lock (_sockets_mutex);
             _sockets.insert (&connection->socket);
         }
-        if (stream_uses_tls (_stream)) {
+        if (stream_uses_websocket (_stream)) {
+            auto websocket_connection =
+              std::make_shared<websocket_stream_t> (std::move (connection->socket));
+            {
+                const std::lock_guard<std::mutex> lock (_sockets_mutex);
+                _sockets.erase (&connection->socket);
+                _sockets.insert (&websocket_connection->next_layer ());
+            }
+            {
+                const std::lock_guard<std::mutex> lock (_workers_mutex);
+                _workers.emplace_back ([this, connection, websocket_connection] {
+                    handle_websocket_connection (connection, websocket_connection);
+                });
+            }
+        } else if (stream_uses_tls (_stream)) {
 #ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
             auto tls_connection =
               std::make_shared<ssl::stream<tcp::socket>> (std::move (connection->socket),
@@ -789,6 +840,18 @@ class stream_host_service_t::listener_t
     }
 
     void close_connection (tcp::socket &socket) noexcept { close_tcp_socket (socket); }
+
+    void close_connection (websocket_stream_t &stream) noexcept
+    {
+        boost::system::error_code ignored;
+        {
+            const std::lock_guard<std::mutex> lock (_io_mutex);
+            if (stream.is_open ()) {
+                stream.close (websocket::close_code::normal, ignored);
+            }
+        }
+        close_tcp_socket (stream.next_layer ());
+    }
 
     void close_connection (native_tcp_connection_t &connection) noexcept
     {
@@ -866,6 +929,45 @@ class stream_host_service_t::listener_t
         return {decoded_header, message_from_bytes (payload_bytes)};
     }
 
+    frame_t read_frame (websocket_stream_t &socket)
+    {
+        beast::flat_buffer buffer;
+        socket.read (buffer);
+        if (socket.got_text ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM WebSocket messages must be binary");
+        }
+        const auto size = buffer.size ();
+        if (size < 6) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM WebSocket frame prefix is incomplete");
+        }
+        std::vector<std::uint8_t> bytes (size);
+        asio::buffer_copy (asio::buffer (bytes), buffer.data ());
+        const auto header_size = static_cast<std::size_t> ((bytes[0] << 8) | bytes[1]);
+        const auto payload_size = (static_cast<std::size_t> (bytes[2]) << 24)
+                                  | (static_cast<std::size_t> (bytes[3]) << 16)
+                                  | (static_cast<std::size_t> (bytes[4]) << 8)
+                                  | static_cast<std::size_t> (bytes[5]);
+        if (bytes.size () != 6 + header_size + payload_size) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM WebSocket message size does not match its prefix");
+        }
+        std::vector<std::uint8_t> header_bytes (bytes.begin () + 6,
+                                                bytes.begin () + 6 + header_size);
+        std::vector<std::uint8_t> payload_bytes (bytes.begin () + 6 + header_size, bytes.end ());
+        auto header = _runtime.decode_header (header_bytes);
+        if (!header) {
+            throw framework_exception_t (header.error_kind (), header.error ()
+                                                                 ? header.error ()->what ()
+                                                                 : "STREAM header decode failed");
+        }
+        auto decoded_header = header.value ();
+        trace_stream_host ("read-frame", _stream, decoded_header,
+                           "payload_bytes=" + std::to_string (payload_bytes.size ()));
+        return {decoded_header, message_from_bytes (payload_bytes)};
+    }
+
     template <typename TStream>
     void
     write_frame (TStream &socket, const stream_header_t &header, const zlink::message_t &payload)
@@ -892,6 +994,36 @@ class stream_host_service_t::listener_t
         trace_stream_host ("write-frame", _stream, header,
                            "payload_bytes=" + std::to_string (payload_bytes.size ()));
         boost::asio::write (socket, boost::asio::buffer (frame));
+        trace_stream_host ("write-completion", _stream, header, "result=success");
+    }
+
+    void write_frame (websocket_stream_t &socket,
+                      const stream_header_t &header,
+                      const zlink::message_t &payload)
+    {
+        auto encoded_header = _runtime.encode_header (header);
+        if (!encoded_header) {
+            throw framework_exception_t (encoded_header.error_kind (),
+                                         encoded_header.error () ? encoded_header.error ()->what ()
+                                                                 : "STREAM header encode failed");
+        }
+        const auto payload_bytes = message_bytes (payload);
+        std::vector<std::uint8_t> frame;
+        frame.reserve (6 + encoded_header.value ().size () + payload_bytes.size ());
+        const auto header_size = encoded_header.value ().size ();
+        frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+        frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+        frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+        frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+        frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+        frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+        frame.insert (frame.end (), encoded_header.value ().begin (),
+                      encoded_header.value ().end ());
+        frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+        trace_stream_host ("write-frame", _stream, header,
+                           "payload_bytes=" + std::to_string (payload_bytes.size ()));
+        socket.binary (true);
+        socket.write (asio::buffer (frame));
         trace_stream_host ("write-completion", _stream, header, "result=success");
     }
 
@@ -1327,6 +1459,22 @@ class stream_host_service_t::listener_t
         handle_stream_connection (connection, &connection->next_layer (), true);
     }
 #endif
+
+    void handle_websocket_connection (std::shared_ptr<tcp_connection_t> owner,
+                                      std::shared_ptr<websocket_stream_t> connection)
+    {
+        try {
+            connection->accept ();
+            connection->binary (true);
+        }
+        catch (const boost::system::system_error &) {
+            const std::lock_guard<std::mutex> lock (_sockets_mutex);
+            _sockets.erase (&connection->next_layer ());
+            return;
+        }
+        (void) owner;
+        handle_stream_connection (connection, &connection->next_layer (), true);
+    }
 
     void handle_connection (std::shared_ptr<tcp_connection_t> connection)
     {

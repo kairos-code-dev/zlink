@@ -14,12 +14,15 @@ export interface ZlinkStreamEncodedPayload {
   readonly messageType?: Function;
 }
 
-export interface ZlinkStreamMessage<TPayload = unknown> {
+export interface ZlinkStreamFlow {
+  readonly flowId: string;
+  readonly flowOrigin: ZlinkFlowOrigin;
+}
+
+export interface ZlinkStreamMessage<TPayload = unknown> extends ZlinkStreamFlow {
   readonly name: string;
   readonly metadata: ZlinkStreamMetadata;
   readonly payload: TPayload;
-  readonly flowId: string;
-  readonly flowOrigin: ZlinkFlowOrigin;
 }
 
 export interface ZlinkStreamHeader {
@@ -51,6 +54,8 @@ export interface ZlinkStreamInboundObservation {
   readonly name: string;
   readonly codec: ZlinkStreamCodec;
   readonly requestSeq?: bigint;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZlinkFlowOrigin;
   readonly metadata: ZlinkStreamMetadata;
   readonly payloadLength: number;
   readonly isCompressed: boolean;

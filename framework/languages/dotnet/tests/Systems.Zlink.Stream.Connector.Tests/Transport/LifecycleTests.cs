@@ -796,7 +796,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                "detached-dispose-response",
+                requestHeader.Name,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,
@@ -1100,7 +1100,7 @@ public sealed partial class StreamConnectorTests
             _ => ValueTask.CompletedTask,
             () => { },
             CancellationToken.None);
-        var request = pending.Create();
+        var request = pending.Create("pending.request");
         var pendingCompletion = pending.WaitAsync(request, CancellationToken.None).AsTask();
 
         var observed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -1172,7 +1172,7 @@ public sealed partial class StreamConnectorTests
             _ => ValueTask.CompletedTask,
             () => { },
             CancellationToken.None);
-        var request = pending.Create();
+        var request = pending.Create("pending.request");
         var pendingCompletion = pending.WaitAsync(request, CancellationToken.None).AsTask();
 
         var observed = await Assert.ThrowsAsync<InvalidOperationException>(async () =>

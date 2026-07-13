@@ -23,7 +23,7 @@ export class ZlinkStreamConnectorLifecycle {
   private currentConnection: ZlinkStreamConnection | undefined;
   private connectionGeneration = 0;
   private currentState = ZlinkStreamConnectionState.Created;
-  private heartbeatTimer: NodeJS.Timeout | undefined;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   private lastInboundAt = 0;
   private closeTask: Promise<void> | undefined;
   private connectTask: Promise<void> | undefined;
@@ -122,9 +122,6 @@ export class ZlinkStreamConnectorLifecycle {
     this.closeReasonValue = reason;
     const error = { code: ZlinkStreamErrorCode.Disconnected, message: `Server closed the session: ${reason}.` };
     await this.disconnectForTransportFailure(error, this.currentConnection, this.connectionGeneration);
-    if (this.options.reconnect.enabled && !this.closeRequested) {
-      queueMicrotask(() => { void this.connect().catch(() => undefined); });
-    }
   }
 
   private async closeOnce(signal?: AbortSignal): Promise<void> {
@@ -345,6 +342,13 @@ export class ZlinkStreamConnectorLifecycle {
     if (this.closeRequested) return;
     await this.setState(ZlinkStreamConnectionState.Disconnected, error);
     await this.publishDisconnectedOnce();
+    if (this.shouldReconnect()) {
+      queueMicrotask(() => { void this.connect().catch(() => undefined); });
+    }
+  }
+
+  private shouldReconnect(): boolean {
+    return this.options.reconnect.enabled && !this.closeRequested;
   }
 
   private async publishDisconnectedOnce(signal?: AbortSignal): Promise<void> {

@@ -345,7 +345,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var pending = _pending.Create();
+        var pending = _pending.Create(name);
         var frame = _frameSender.BuildOutboundFrame(ZlinkStreamMessageKind.Request, name, payload, metadata, compress,
             pending.RequestSeq);
 

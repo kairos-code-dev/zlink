@@ -39,6 +39,10 @@ std::size_t metadata_codec_t::encoded_size (const metadata_t &metadata)
 
 result_t<std::vector<std::uint8_t>> metadata_codec_t::encode (const metadata_t &metadata)
 {
+    if (encoded_size (metadata) > max_metadata_size) {
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::validation_failed, "Metadata payload exceeds 1024 bytes.");
+    }
     if (metadata.values.size () > std::numeric_limits<std::uint8_t>::max ()) {
         return result_t<std::vector<std::uint8_t>>::failure (
           error_code_t::validation_failed, "Metadata entry count must not exceed 255.");
@@ -69,6 +73,10 @@ result_t<std::vector<std::uint8_t>> metadata_codec_t::encode (const metadata_t &
 
 result_t<metadata_t> metadata_codec_t::decode (const std::vector<std::uint8_t> &bytes)
 {
+    if (bytes.size () > max_metadata_size) {
+        return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                              "Metadata payload exceeds 1024 bytes.");
+    }
     if (bytes.empty ()) {
         return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
                                               "Metadata payload is empty.");

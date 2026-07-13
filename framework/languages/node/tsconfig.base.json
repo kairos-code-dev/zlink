@@ -30,8 +30,14 @@
       "@zlink-systems/framework-codec-msgpack": [
         "packages/framework-codec-msgpack/src"
       ],
+      "@zlink-systems/framework-codec-msgpack/framework": [
+        "packages/framework-codec-msgpack/src/framework"
+      ],
       "@zlink-systems/framework-codec-protobuf": [
         "packages/framework-codec-protobuf/src"
+      ],
+      "@zlink-systems/framework-codec-protobuf/framework": [
+        "packages/framework-codec-protobuf/src/framework"
       ],
       "@zlink-systems/framework-locations-redis": [
         "packages/framework-locations-redis/src"

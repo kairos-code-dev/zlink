@@ -644,96 +644,96 @@ local package script와 package version을 바꿔야 하면
 
 ### G0. 현재 사용처 inventory
 
-- [ ] Node connector source와 간접 참조 목록 작성
-- [ ] package export와 codec package type dependency 확인
-- [ ] 기존 package 경로 유지에 따른 workspace, project reference와 local-package 영향 확인
-- [ ] sample별 외부 STREAM endpoint 목록 확정
-- [ ] framework E2E와 cross-language 사용처 분류
-- [ ] 관련 spec, guide, draft와 regression 문서 목록 확정
+- [x] Node connector source와 간접 참조 목록 작성
+- [x] package export와 codec package type dependency 확인
+- [x] 기존 package 경로 유지에 따른 workspace, project reference와 local-package 영향 확인
+- [x] sample별 외부 STREAM endpoint 목록 확정
+- [x] framework E2E와 cross-language 사용처 분류
+- [x] 관련 spec, guide, draft와 regression 문서 목록 확정
 
 ### G1. 정식 계약 변경
 
-- [ ] 공통 Stream Connector spec에서 Node 실행 환경 제거
-- [ ] TypeScript browser public interface 문서 확정
-- [ ] documentation regression test를 TypeScript 계약 문서 위치로 전환
-- [ ] `ws/wss` 전용 option과 error 계약 확정
-- [ ] package root 단일 진입점 확정
-- [ ] codec package root와 `./framework` adapter의 공개 dependency 계약 확정
-- [ ] browser flow 계약 대안 두 가지 비교와 정식 계약 확정
-- [ ] 현재 구현과 차이를 implementation gap에 기록
+- [x] 공통 Stream Connector spec에서 Node 실행 환경 제거
+- [x] TypeScript browser public interface 문서 확정
+- [x] documentation regression test를 TypeScript 계약 문서 위치로 전환
+- [x] `ws/wss` 전용 option과 error 계약 확정
+- [x] package root 단일 진입점 확정
+- [x] codec package root와 `./framework` adapter의 공개 dependency 계약 확정
+- [x] browser flow 계약 대안 두 가지 비교와 정식 계약 확정
+- [x] 현재 구현과 차이를 implementation gap에 기록
 
 ### G2. Browser-only connector 구현
 
-- [ ] package root를 browser runtime으로 변경
-- [ ] Node transport와 `NodeZlinkFlowContext` 제거
-- [ ] Node 전용 option, enum과 lifecycle branch 제거
-- [ ] 얕은 browser wrapper와 중복 factory 정리
-- [ ] Node ambient type이 없는 browser ESM build 추가
-- [ ] `stream-wire`의 동일 source 기반 ESM/CommonJS export와 공용 codec 상수 정리
-- [ ] Protobuf와 MessagePack package root에서 server framework runtime import 제거
-- [ ] Protobuf와 MessagePack의 server 등록 adapter를 `./framework` subpath로 분리
-- [ ] JSON codec과 선택한 외부 codec의 browser dependency 검사
-- [ ] runtime proto lookup factory와 `protoPath` public option 제거
-- [ ] Bingo 생성 Protobuf codec에 정적 `encode`/`decode`를 포함하고 filesystem 경로 제거
-- [ ] Protobuf 생성 결과 결정성 검사 통과
-- [ ] clean build와 static import 검사 통과
+- [x] package root를 browser runtime으로 변경
+- [x] Node transport와 `NodeZlinkFlowContext` 제거
+- [x] Node 전용 option, enum과 lifecycle branch 제거
+- [x] 얕은 browser wrapper와 중복 factory 정리
+- [x] Node ambient type이 없는 browser ESM build 추가
+- [x] `stream-wire`의 동일 source 기반 ESM/CommonJS export와 공용 codec 상수 정리
+- [x] Protobuf와 MessagePack package root에서 server framework runtime import 제거
+- [x] Protobuf와 MessagePack의 server 등록 adapter를 `./framework` subpath로 분리
+- [x] JSON codec과 선택한 외부 codec의 browser dependency 검사
+- [x] runtime proto lookup factory와 `protoPath` public option 제거
+- [x] Bingo 생성 Protobuf codec에 정적 `encode`/`decode`를 포함하고 filesystem 경로 제거
+- [x] Protobuf 생성 결과 결정성 검사 통과
+- [x] clean build와 static import 검사 통과
 
 ### G3. Contract와 package 검증
 
-- [ ] 공용 protocol/connector contract test 통과
-- [ ] fake WebSocket 기반 빠른 browser test 통과
-- [ ] browser bundle graph 검사 통과
-- [ ] codec을 포함한 sample production bundle graph 검사 통과
-- [ ] codec package root graph의 server framework dependency 부재 검사 통과
-- [ ] codec `./framework` adapter의 Node server registration contract test 통과
-- [ ] `stream-wire` ESM/CommonJS byte fixture 동등성 test 통과
-- [ ] CommonJS Node server가 codec `./framework` adapter를 실제 package export로 불러와 등록
-- [ ] Node ambient type 없는 browser compile 통과
-- [ ] npm tarball browser consumer compile 통과
-- [ ] codec tarball CommonJS server consumer 등록 통과
-- [ ] 삭제한 Node surface의 absence test 통과
+- [x] 공용 protocol/connector contract test 통과
+- [x] fake WebSocket 기반 빠른 browser test 통과
+- [x] browser bundle graph 검사 통과
+- [x] codec을 포함한 sample production bundle graph 검사 통과
+- [x] codec package root graph의 server framework dependency 부재 검사 통과
+- [x] codec `./framework` adapter의 Node server registration contract test 통과
+- [x] `stream-wire` ESM/CommonJS byte fixture 동등성 test 통과
+- [x] CommonJS Node server가 codec `./framework` adapter를 실제 package export로 불러와 등록
+- [x] Node ambient type 없는 browser compile 통과
+- [x] npm tarball browser consumer compile 통과
+- [x] codec tarball CommonJS server consumer 등록 통과
+- [x] 삭제한 Node surface의 absence test 통과
 
 ### G4. 실제 browser E2E 기반
 
-- [ ] Chromium runner 추가
-- [ ] Playwright bootstrap과 Linux/Windows CI browser cache 추가
-- [ ] `linux-x64`와 `win-x64` 대표 CI job에 실제 Chromium E2E 배치
-- [ ] browser config/result contract 추가
-- [ ] same-origin API reverse proxy 추가
-- [ ] 실제 `ws` request/reply와 push 통과
-- [ ] 실제 `wss` focused E2E 통과
-- [ ] 기본 browser trust에서 test certificate 거부 확인
-- [ ] reconnect, drain과 close reason 통과
+- [x] Chromium runner 추가
+- [x] Playwright bootstrap과 Linux/Windows CI browser cache 추가
+- [x] `linux-x64`와 `win-x64` 대표 CI job에 실제 Chromium E2E 배치
+- [x] browser config/result contract 추가
+- [x] same-origin API reverse proxy 추가
+- [x] 실제 `ws` request/reply와 push 통과
+- [x] 실제 `wss` focused E2E 통과
+- [x] 기본 browser trust에서 test certificate 거부 확인
+- [x] reconnect, drain과 close reason 통과
 
 ### G5. Node sample 전환
 
-- [ ] Bingo
-- [ ] TicTacToe
-- [ ] SupportChat
-- [ ] DeliveryDispatch
-- [ ] GameQuest
-- [ ] ShoppingMall 비대상 재확인
-- [ ] 대상 sample별 Node server와 browser client TypeScript build 분리
-- [ ] 각 대상의 `.sh`와 `.ps1` runner 통과
+- [x] Bingo
+- [x] TicTacToe
+- [x] SupportChat
+- [x] DeliveryDispatch
+- [x] GameQuest
+- [x] ShoppingMall 비대상 재확인
+- [x] 대상 sample별 Node server와 browser client TypeScript build 분리
+- [x] 각 대상의 `.sh`와 `.ps1` runner 통과
 
 ### G6. Framework E2E와 cross-language 전환
 
-- [ ] Node process가 connector instance를 만들어 client 역할을 하는 production/E2E 경로 제거
-- [ ] browser client 동작을 Chromium scenario로 전환
-- [ ] protocol-only test와 browser E2E 이름 구분
-- [ ] Browser TypeScript connector → .NET stream server smoke 통과
-- [ ] Browser TypeScript connector → C++ stream server smoke 통과
-- [ ] Node framework server E2E regression 통과
+- [x] Node process가 connector instance를 만들어 client 역할을 하는 production/E2E 경로 제거
+- [x] browser client 동작을 Chromium scenario로 전환
+- [x] protocol-only test와 browser E2E 이름 구분
+- [x] Browser TypeScript connector → .NET stream server smoke 통과
+- [x] Browser TypeScript connector → C++ stream server smoke 통과
+- [x] Node framework server E2E regression 통과
 
 ### G7. 문서와 최종 재검토
 
-- [ ] Stream Connector spec과 TypeScript interface가 구현과 일치
-- [ ] Node/browser 이중 진입점 설명이 정식 문서에 남지 않음
-- [ ] Node용 connector guide와 TCP/TLS client 예제가 남지 않음
-- [ ] sample 문서가 browser client 실행과 `ws/wss` endpoint를 설명
-- [ ] implementation gap이 실제 Chromium 결과와 남은 flow 차이를 정직하게 기록
-- [ ] browser flow 계약과 runtime/E2E가 일치하며 미해결 public gap이 없음
-- [ ] packaged surface, sample, E2E와 문서 전체 재검토 완료
+- [x] Stream Connector spec과 TypeScript interface가 구현과 일치
+- [x] Node/browser 이중 진입점 설명이 정식 문서에 남지 않음
+- [x] Node용 connector guide와 TCP/TLS client 예제가 남지 않음
+- [x] sample 문서가 browser client 실행과 `ws/wss` endpoint를 설명
+- [x] implementation gap이 실제 Chromium 결과와 남은 flow 차이를 정직하게 기록
+- [x] browser flow 계약과 runtime/E2E가 일치하며 미해결 public gap이 없음
+- [x] packaged surface, sample, E2E와 문서 전체 재검토 완료
 
 ## 13. 완료 판정
 

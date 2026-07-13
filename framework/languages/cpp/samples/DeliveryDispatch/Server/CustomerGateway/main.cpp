@@ -93,22 +93,53 @@ struct customer_actor_factory_t
     }
 };
 
+/* actor 조회·생성은 이 노드의 service scope에서 얻은 actor manager가 맡는다. */
+class customer_actor_runtime_t
+{
+  public:
+    explicit customer_actor_runtime_t (service_provider_t services) :
+        _services (std::move (services))
+    {
+    }
+
+    service_scope_t create_scope () { return _services.create_scope (); }
+
+  private:
+    service_provider_t _services;
+};
+
 class customer_entry_spot_t : public entry_spot_t
 {
   public:
-    explicit customer_entry_spot_t (customer_session_directory_t &sessions) :
-        _sessions (sessions)
+    customer_entry_spot_t (customer_session_directory_t &sessions,
+                           customer_actor_runtime_t &runtime) :
+        _sessions (sessions), _runtime (runtime)
     {
     }
 
     void configure (entry_spot_context_t &context)
     {
         _context = context;
+        /* 공통 sample spec §7.3: Tracking은 고객 actor를 먼저 찾은 뒤 one-way로 상태를
+         * 보낸다. 조회는 이 entry spot의 route 핸들러가 답한다. */
         context.handlers ()
+          .add_handler<&customer_entry_spot_t::find_customer_actor> (
+            find_customer_actor_req_t::packet_name)
           .add_actor_request<&customer_entry_spot_t::subscribe_delivery> (
             subscribe_delivery_req_t::packet_name)
           .add_actor_send<&customer_entry_spot_t::status_updated> (
             delivery_status_updated_msg_t::packet_name);
+    }
+
+    find_customer_actor_res_t find_customer_actor (const find_customer_actor_req_t &request)
+    {
+        auto scope = _runtime.create_scope ();
+        auto &actors = scope.get_required<session_actor_manager_t> ();
+        auto actor = actors.find (request.customer_id);
+        if (!actor) {
+            return {request.customer_id, std::nullopt};
+        }
+        return {request.customer_id, actor_ref_snapshot_t::from (actor->ref ())};
     }
 
     void configure (spot_context_t &context)
@@ -151,6 +182,7 @@ class customer_entry_spot_t : public entry_spot_t
 
   private:
     customer_session_directory_t &_sessions;
+    customer_actor_runtime_t &_runtime;
     entry_spot_context_t _context;
 };
 
@@ -255,47 +287,6 @@ class customer_gateway_session_t final : public packet_stream_session_t
     std::map<std::string, std::string> _bound_actors;
 };
 
-class delivery_status_fanout_handler_t
-{
-  public:
-    using dependency_types =
-      dependency_list_t<customer_session_directory_t, session_actor_manager_t>;
-    using event_type = delivery_status_notify_t;
-    static constexpr const char *topic_name = sample_names_t::status_topic;
-
-    delivery_status_fanout_handler_t (customer_session_directory_t &sessions,
-                                      session_actor_manager_t &actors) :
-        _sessions (sessions), _actors (actors)
-    {
-    }
-
-    task_t<void> handle (const delivery_status_notify_t &notify, const publish_context_t &)
-    {
-        auto customer_id = _sessions.customer_for_delivery (notify.delivery_id);
-        if (!customer_id) {
-            std::cerr << "deliverydispatch customer-fanout: no subscription delivery="
-                      << notify.delivery_id << "\n";
-            co_return;
-        }
-        auto actor = _actors.find (*customer_id);
-        if (!actor) {
-            std::cerr << "deliverydispatch customer-fanout: no actor customer="
-                      << *customer_id << "\n";
-            co_return;
-        }
-        std::cerr << "deliverydispatch customer-fanout: push status delivery="
-                  << notify.delivery_id << " status=" << notify.status << "\n";
-        actor->bound_session ()
-          .send (notify)
-          .submit ();
-        co_return;
-    }
-
-  private:
-    customer_session_directory_t &_sessions;
-    session_actor_manager_t &_actors;
-};
-
 } // namespace zlink::samples::deliverydispatch
 
 int main (int argc, char **argv)
@@ -312,21 +303,21 @@ int main (int argc, char **argv)
           .trace_label ("deliverydispatch-customer-gateway");
         auto sessions = std::make_unique<customer_session_directory_t> ();
         auto *sessions_ptr = sessions.get ();
-        options.services ().add_singleton<customer_session_directory_t> (std::move (sessions));
+        auto runtime =
+          std::make_unique<customer_actor_runtime_t> (options.services ().build_provider ());
+        auto *runtime_ptr = runtime.get ();
+        options.services ()
+          .add_singleton<customer_session_directory_t> (std::move (sessions))
+          .add_singleton<customer_actor_runtime_t> (std::move (runtime));
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
-        options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_client ();
-        options.add_fanout_channel (sample_names_t::status_fanout_channel)
-          .enable_subscriber (topology.status_fanout_endpoint)
-          .use_handler_group ("status");
-        options.handlers ().group ("status").add_publish<delivery_status_fanout_handler_t> ();
         options.add_spot_mesh (sample_names_t::customer_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::customer_spot_node))
           .enable_router (topology.customer_spot_router_endpoint)
           .enable_pub_sub (topology.customer_spot_endpoint)
-          .add_entry_spot<customer_entry_spot_t> (
-            [sessions_ptr] { return std::make_shared<customer_entry_spot_t> (*sessions_ptr); })
+          .add_entry_spot<customer_entry_spot_t> ([sessions_ptr, runtime_ptr] {
+              return std::make_shared<customer_entry_spot_t> (*sessions_ptr, *runtime_ptr);
+          })
           .add_actor_factory<customer_actor_factory_t> (sample_names_t::customer_actor_type);
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.customer_stream_endpoint)

@@ -2,6 +2,7 @@
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
+#include "../Configuration/sample_timings.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
 
@@ -12,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -48,6 +50,8 @@ struct courier_actor_factory_t
     }
 };
 
+/* 배송원이 stream session으로 내려주는 결정을 offer 요청과 만나게 하는 랑데부. offer 핸들러는
+ * 결정이 오거나 배차 결정 시한이 지날 때까지 기다린다. */
 class courier_decision_directory_t
 {
   public:
@@ -61,10 +65,11 @@ class courier_decision_directory_t
     {
         std::unique_lock lock (_mutex);
         const auto pending_key = key (offer.courier_id, offer.delivery_id);
-        const auto ready = _condition.wait_for (lock, std::chrono::milliseconds (700), [&] {
-            const auto found = _pending.find (pending_key);
-            return found != _pending.end () && found->second.has_value ();
-        });
+        const auto ready =
+          _condition.wait_for (lock, sample_timings_t::courier_decision_timeout, [&] {
+              const auto found = _pending.find (pending_key);
+              return found != _pending.end () && found->second.has_value ();
+          });
         if (!ready) {
             _pending.erase (pending_key);
             return {offer.delivery_id, offer.courier_id, false,
@@ -100,18 +105,42 @@ class courier_decision_directory_t
     std::map<std::string, std::optional<courier_decision_msg_t>> _pending;
 };
 
+/* actor 조회·생성은 이 노드의 service scope에서 얻은 actor manager가 맡는다. */
+class courier_actor_runtime_t
+{
+  public:
+    explicit courier_actor_runtime_t (service_provider_t services) :
+        _services (std::move (services))
+    {
+    }
+
+    service_scope_t create_scope () { return _services.create_scope (); }
+
+  private:
+    service_provider_t _services;
+};
+
 class courier_entry_spot_t : public entry_spot_t
 {
   public:
-    explicit courier_entry_spot_t (courier_decision_directory_t &decisions) :
-        _decisions (decisions)
+    courier_entry_spot_t (courier_decision_directory_t &decisions,
+                          courier_actor_runtime_t &runtime) :
+        _decisions (decisions), _runtime (runtime)
     {
     }
 
     void configure (entry_spot_context_t &context)
     {
         _context = context;
+        /* 공통 sample spec §7.2: CourierSession과 DispatchWorker는 이 노드의 entry spot으로
+         * Find/Ensure/Offer를 route 요청한다. 별도 gateway나 session registry는 두지 않는다. */
         context.handlers ()
+          .add_handler<&courier_entry_spot_t::find_courier_actor> (
+            find_courier_actor_req_t::packet_name)
+          .add_handler<&courier_entry_spot_t::ensure_courier_actor> (
+            ensure_courier_actor_req_t::packet_name)
+          .add_handler<&courier_entry_spot_t::offer_delivery_route> (
+            offer_delivery_req_t::packet_name)
           .add_actor_request<&courier_entry_spot_t::bind_courier_session> (
             bind_courier_session_req_t::packet_name)
           .add_actor_request<&courier_entry_spot_t::offer_delivery> (
@@ -126,16 +155,67 @@ class courier_entry_spot_t : public entry_spot_t
         configure (entry_context);
     }
 
-    spot_actor_join_response_t
-    on_actor_join (std::string_view, const zlink::message_t &)
+    spot_actor_join_response_t on_actor_join (std::string_view, const zlink::message_t &)
     {
         return spot_actor_join_response_t::accept ();
     }
 
-    bind_courier_session_res_t
-    bind_courier_session (courier_actor_t &,
-                          spot_actor_request_context_t &,
-                          const bind_courier_session_req_t &request)
+    find_courier_actor_res_t find_courier_actor (const find_courier_actor_req_t &request)
+    {
+        auto scope = _runtime.create_scope ();
+        auto &actors = scope.get_required<session_actor_manager_t> ();
+        auto actor = actors.find (request.courier_id);
+        if (!actor) {
+            return {request.courier_id, std::nullopt};
+        }
+        return {request.courier_id, actor_ref_snapshot_t::from (actor->ref ())};
+    }
+
+    task_t<ensure_courier_actor_res_t>
+    ensure_courier_actor (const ensure_courier_actor_req_t &request)
+    {
+        auto scope = _runtime.create_scope ();
+        auto &actors = scope.get_required<session_actor_manager_t> ();
+        auto actor =
+          actors.get_or_create (sample_names_t::courier_actor_type, request.courier_id, request);
+        if (!actor) {
+            throw framework_exception_t (actor.error_kind (),
+                                         actor.error () ? actor.error ()->what ()
+                                                        : "courier actor create failed");
+        }
+        auto bound = co_await actors.bind_or_get (actor.value ().ref ()).async ();
+        auto joined = co_await bound.context ()
+                        .join_entry_spot (node_rid_t::from_string (g_node_rid), request)
+                        .async ();
+        std::cerr << "deliverydispatch courier-route: ensured courier=" << request.courier_id
+                  << " node=" << g_node_rid << "\n";
+        co_return ensure_courier_actor_res_t{
+          request.courier_id,
+          actor_ref_snapshot_t::from (
+            std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined)
+              .actor)};
+    }
+
+    task_t<offer_delivery_res_t> offer_delivery_route (const offer_delivery_req_t &request)
+    {
+        auto scope = _runtime.create_scope ();
+        auto &actors = scope.get_required<session_actor_manager_t> ();
+        auto actor = actors.find (request.courier_id);
+        if (!actor) {
+            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                                         "courier actor is not bound: " + request.courier_id);
+        }
+        _decisions.begin (request);
+        (void) co_await actor
+          ->relay_request (offer_delivery_req_t::packet_name,
+                           zlink::message_t::from_json (request))
+          .async ();
+        co_return _decisions.wait (request);
+    }
+
+    bind_courier_session_res_t bind_courier_session (courier_actor_t &,
+                                                    spot_actor_request_context_t &,
+                                                    const bind_courier_session_req_t &request)
     {
         return {request.courier_id, request.actor, request.session_route};
     }
@@ -161,98 +241,8 @@ class courier_entry_spot_t : public entry_spot_t
 
   private:
     courier_decision_directory_t &_decisions;
+    courier_actor_runtime_t &_runtime;
     entry_spot_context_t _context;
-};
-
-class courier_actor_runtime_t
-{
-  public:
-    explicit courier_actor_runtime_t (service_provider_t services) :
-        _services (std::move (services))
-    {
-    }
-
-    service_scope_t create_scope ()
-    {
-        return _services.create_scope ();
-    }
-
-  private:
-    service_provider_t _services;
-};
-
-class ensure_courier_actor_handler_t
-{
-  public:
-    using dependency_types = dependency_list_t<courier_actor_runtime_t>;
-    using request_type = ensure_courier_actor_req_t;
-    using reply_type = ensure_courier_actor_res_t;
-    static constexpr const char *topic_name = ensure_courier_actor_req_t::packet_name;
-
-    explicit ensure_courier_actor_handler_t (courier_actor_runtime_t &runtime) :
-        _runtime (runtime)
-    {
-    }
-
-    task_t<ensure_courier_actor_res_t> handle (const ensure_courier_actor_req_t &request)
-    {
-        auto scope = _runtime.create_scope ();
-        auto &actors = scope.get_required<session_actor_manager_t> ();
-        auto actor = actors.get_or_create (sample_names_t::courier_actor_type,
-                                           request.courier_id, request);
-        if (!actor) {
-            throw framework_exception_t (
-              actor.error_kind (),
-              actor.error () ? actor.error ()->what () : "courier actor create failed");
-        }
-        auto bound = co_await actors.bind_or_get (actor.value ().ref ()).async ();
-        auto joined =
-          co_await bound.context ()
-            .join_entry_spot (node_rid_t::from_string (g_node_rid), request)
-            .async ();
-        co_return ensure_courier_actor_res_t{
-          request.courier_id,
-          actor_ref_snapshot_t::from (
-            std::get<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined).actor)};
-    }
-
-  private:
-    courier_actor_runtime_t &_runtime;
-};
-
-class actor_node_offer_delivery_handler_t
-{
-  public:
-    using dependency_types = dependency_list_t<courier_actor_runtime_t, courier_decision_directory_t>;
-    using request_type = offer_delivery_req_t;
-    using reply_type = offer_delivery_res_t;
-    static constexpr const char *topic_name = offer_delivery_req_t::packet_name;
-
-    actor_node_offer_delivery_handler_t (courier_actor_runtime_t &runtime,
-                                         courier_decision_directory_t &decisions) :
-        _runtime (runtime), _decisions (decisions)
-    {
-    }
-
-    task_t<offer_delivery_res_t> handle (const offer_delivery_req_t &request)
-    {
-        auto scope = _runtime.create_scope ();
-        auto &actors = scope.get_required<session_actor_manager_t> ();
-        auto actor = actors.find (request.courier_id);
-        if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
-                                         "courier actor is not bound: " + request.courier_id);
-        }
-        _decisions.begin (request);
-        (void) co_await actor->relay_request (offer_delivery_req_t::packet_name,
-                                              zlink::message_t::from_json (request))
-          .async ();
-        co_return _decisions.wait (request);
-    }
-
-  private:
-    courier_actor_runtime_t &_runtime;
-    courier_decision_directory_t &_decisions;
 };
 
 } // namespace zlink::samples::deliverydispatch
@@ -270,18 +260,12 @@ int main (int argc, char **argv)
     const std::string node_rid = argv[1];
     g_node_rid = node_rid;
     const sample_topology_t topology;
-    const auto route_endpoint =
-      node_rid == sample_names_t::courier_actor_node_1
-        ? topology.courier_actor_node_1_route_endpoint
-        : topology.courier_actor_node_2_route_endpoint;
-    const auto spot_router_endpoint =
-      node_rid == sample_names_t::courier_actor_node_1
-        ? topology.courier_actor_node_1_router_endpoint
-        : topology.courier_actor_node_2_router_endpoint;
-    const auto spot_endpoint =
-      node_rid == sample_names_t::courier_actor_node_1
-        ? topology.courier_actor_node_1_endpoint
-        : topology.courier_actor_node_2_endpoint;
+    const auto spot_router_endpoint = node_rid == sample_names_t::courier_actor_node_1
+                                        ? topology.courier_actor_node_1_router_endpoint
+                                        : topology.courier_actor_node_2_router_endpoint;
+    const auto spot_endpoint = node_rid == sample_names_t::courier_actor_node_1
+                                 ? topology.courier_actor_node_1_endpoint
+                                 : topology.courier_actor_node_2_endpoint;
 
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
@@ -293,25 +277,19 @@ int main (int argc, char **argv)
         add_deliverydispatch_location_store (options, topology);
         auto decisions = std::make_unique<courier_decision_directory_t> ();
         auto *decisions_ptr = decisions.get ();
-        auto runtime = std::make_unique<courier_actor_runtime_t> (
-          options.services ().build_provider ());
+        auto runtime =
+          std::make_unique<courier_actor_runtime_t> (options.services ().build_provider ());
+        auto *runtime_ptr = runtime.get ();
         options.services ()
           .add_singleton<courier_decision_directory_t> (std::move (decisions))
           .add_singleton<courier_actor_runtime_t> (std::move (runtime));
-        options.add_client_server_channel (courier_actor_node_channel_for (node_rid))
-          .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .use_handler_group ("courier-actor-node");
-        options.handlers ()
-          .group ("courier-actor-node")
-          .add<ensure_courier_actor_handler_t> ()
-          .add<actor_node_offer_delivery_handler_t> ();
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (spot_endpoint)
-          .add_entry_spot<courier_entry_spot_t> (
-            [decisions_ptr] { return std::make_shared<courier_entry_spot_t> (*decisions_ptr); })
+          .add_entry_spot<courier_entry_spot_t> ([decisions_ptr, runtime_ptr] {
+              return std::make_shared<courier_entry_spot_t> (*decisions_ptr, *runtime_ptr);
+          })
           .add_actor_factory<courier_actor_factory_t> (sample_names_t::courier_actor_type);
     });
     return app.run (argc, argv);

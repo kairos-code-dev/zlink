@@ -74,7 +74,7 @@ cleanup() {
 }
 trap 'cleanup; status=$?; exit "$status"' EXIT
 
-read -r DELIVERYDISPATCH_RESERVED_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_TRACKING_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_SPOT DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
+read -r DELIVERYDISPATCH_RESERVED_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_DISPATCH_ROUTE DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_TRACKING_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_SPOT DELIVERYDISPATCH_DISPATCH_SPOT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 chosen = set()
@@ -125,12 +125,12 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
 export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
-export DELIVERYDISPATCH_CENTER_ROUTE
-export DELIVERYDISPATCH_COURIER_ROUTE
+export DELIVERYDISPATCH_DISPATCH_ROUTE
+export DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER
 export DELIVERYDISPATCH_TRACKING_ROUTE
 export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER
 export DELIVERYDISPATCH_TRACKING_SPOT
-export DELIVERYDISPATCH_STATUS_FANOUT
+export DELIVERYDISPATCH_DISPATCH_SPOT
 export DELIVERYDISPATCH_CUSTOMER_STREAM
 export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER
 export DELIVERYDISPATCH_CUSTOMER_SPOT
@@ -208,9 +208,7 @@ dump_logs() {
 }
 
 cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_deliverydispatch_dispatch_api \
-  sample_cpp_framework_deliverydispatch_dispatch_center \
-  sample_cpp_framework_deliverydispatch_courier_gateway \
+  sample_cpp_framework_deliverydispatch_dispatch \
   sample_cpp_framework_deliverydispatch_courier_actor_node \
   sample_cpp_framework_deliverydispatch_customer_gateway \
   sample_cpp_framework_deliverydispatch_courier_session \
@@ -223,9 +221,7 @@ start_role customer-gateway "$BIN_DIR/sample_cpp_framework_deliverydispatch_cust
 start_role courier-session "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_session"
 start_role courier-actor-node-1 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-1
 start_role courier-actor-node-2 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-2
-start_role courier-gateway "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_gateway"
-start_role dispatch-center "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_center"
-start_role dispatch-api "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_api"
+start_role dispatch "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch"
 
 wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
 wait_port tracking-spot "$(port_of "$DELIVERYDISPATCH_TRACKING_SPOT_ROUTER")"
@@ -233,13 +229,10 @@ wait_port customer-stream "$(port_of "$DELIVERYDISPATCH_CUSTOMER_STREAM")"
 wait_port customer-spot "$(port_of "$DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER")"
 wait_port courier-stream "$(port_of "$DELIVERYDISPATCH_COURIER_STREAM")"
 wait_port courier-session-spot "$(port_of "$DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER")"
-wait_port courier-actor-node-1 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")"
 wait_port courier-actor-node-1-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")"
-wait_port courier-actor-node-2 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")"
 wait_port courier-actor-node-2-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")"
-wait_port courier-gateway "$(port_of "$DELIVERYDISPATCH_COURIER_ROUTE")"
-wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
-wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
+wait_port dispatch "$(port_of "$DELIVERYDISPATCH_DISPATCH_ROUTE")"
+wait_port dispatch-http "$DELIVERYDISPATCH_API_HTTP_PORT"
 wait_framework_probe
 
 "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" \
@@ -258,7 +251,7 @@ grep -q "deliverydispatch-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "deliverydispatch-reassignment=completed" "$LOG_DIR/client.log"
 grep -q "deliverydispatch=completed" "$LOG_DIR/client.log"
 grep -Rq "message flow" "$DELIVERYDISPATCH_LOG_DIR"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-gateway.log"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-dispatch.log"
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-1.log"
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-2.log"
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-customer-gateway.log"

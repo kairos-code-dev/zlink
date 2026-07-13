@@ -1647,24 +1647,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::http_client
     zlink::stream_e2e_client)
   add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_dispatch_api
-    samples/DeliveryDispatch/Server/DispatchApi/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-api"
+    sample_cpp_framework_deliverydispatch_dispatch
+    samples/DeliveryDispatch/Server/Dispatch/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-api;framework-sample-dispatch"
     zlink::framework
     zlink::framework_locations_redis
     zlink::http_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_dispatch_center
-    samples/DeliveryDispatch/Server/DispatchCenter/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-dispatch"
-    zlink::framework
-    zlink::framework_locations_redis)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_courier_gateway
-    samples/DeliveryDispatch/Server/CourierGateway/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-courier"
-    zlink::framework
-    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_courier_actor_node
     samples/DeliveryDispatch/Server/CourierActorNode/main.cpp

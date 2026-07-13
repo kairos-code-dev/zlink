@@ -27,18 +27,19 @@ struct sample_topology_t
     std::string redis_endpoint = env_or ("DELIVERYDISPATCH_REDIS_ENDPOINT", "");
     std::string redis_key_prefix = env_or ("DELIVERYDISPATCH_REDIS_KEY_PREFIX", "");
     std::string dispatch_api_http_url = env_or ("DELIVERYDISPATCH_API_HTTP", "http://127.0.0.1:7392");
-    std::string dispatch_center_route_endpoint =
-      env_or ("DELIVERYDISPATCH_CENTER_ROUTE", "tcp://127.0.0.1:7394");
-    std::string courier_route_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ROUTE", "tcp://127.0.0.1:7395");
+    std::string dispatch_route_endpoint =
+      env_or ("DELIVERYDISPATCH_DISPATCH_ROUTE",
+              env_or ("DELIVERYDISPATCH_CENTER_ROUTE", "tcp://127.0.0.1:7394"));
+    std::string dispatch_spot_router_endpoint =
+      env_or ("DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER", "tcp://127.0.0.1:7395");
+    std::string dispatch_spot_endpoint =
+      env_or ("DELIVERYDISPATCH_DISPATCH_SPOT", "tcp://127.0.0.1:7396");
     std::string tracking_route_endpoint =
       env_or ("DELIVERYDISPATCH_TRACKING_ROUTE", "tcp://127.0.0.1:7397");
     std::string tracking_spot_router_endpoint =
       env_or ("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER", "tcp://127.0.0.1:7413");
     std::string tracking_spot_endpoint =
       env_or ("DELIVERYDISPATCH_TRACKING_SPOT", "tcp://127.0.0.1:7414");
-    std::string status_fanout_endpoint =
-      env_or ("DELIVERYDISPATCH_STATUS_FANOUT", "tcp://127.0.0.1:7411");
     std::string customer_stream_endpoint =
       env_or ("DELIVERYDISPATCH_CUSTOMER_STREAM",
               env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400"));

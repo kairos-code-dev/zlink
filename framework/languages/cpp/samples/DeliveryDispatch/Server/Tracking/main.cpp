@@ -30,16 +30,11 @@ int main (int argc, char **argv)
           .enable_server (topology.tracking_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_route_node))
           .use_handler_group ("tracking");
-        options.add_fanout_channel (sample_names_t::status_fanout_channel)
-          .enable_publisher (topology.status_fanout_endpoint);
         options.add_spot_mesh (sample_names_t::customer_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_spot_node))
           .enable_router (topology.tracking_spot_router_endpoint)
           .enable_pub_sub (topology.tracking_spot_endpoint);
-        options.handlers ()
-          .group ("tracking")
-          .add<ensure_customer_actor_handler_t> ()
-          .add<delivery_status_changed_handler_t> ();
+        options.handlers ().group ("tracking").add<delivery_status_changed_handler_t> ();
     });
     return app.run (argc, argv);
 }

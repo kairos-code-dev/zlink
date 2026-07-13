@@ -21,5 +21,5 @@ dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extension
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Diagnostics.HealthChecks version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Hosting.Abstractions version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=9.0.2
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=9.0.4
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}

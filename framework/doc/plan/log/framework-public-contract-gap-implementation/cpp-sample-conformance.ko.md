@@ -114,5 +114,12 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 
 | CPP-ATD-TIMER-RESUME-001 | E2E AutomaticTurnDispatch **ATD-C3B**: spot timer 핸들러가 outbound channel request를 await하면 `timer-await-released`까지만 남고 `timer-await-resumed`/`completed`가 오지 않는다. **단독 실행(`run_e2e.sh ATD-C3`)은 통과**, 전체 스위트에서는 결정적으로 실패 → 앞선 시나리오들이 남긴 spot 직렬 큐 상태에 의존한다 | 확인된 사실: (1) delay 서버는 요청을 받고 응답까지 마쳤다(`delay-completed` 증거), (2) 형제 actor 요청은 정상 진행(직렬 턴은 실제로 풀림), (3) 즉 **재개(resume) 경로만 유실**된다. 후보: `serial_execution_queue_t`의 released-turn 회계(`_active`/`_draining`)와 `resume_scheduler()`의 `try_post_async` 상호작용 — 앞 시나리오에서 released turn이 누적된 뒤 resume 항목이 큐에서 픽업되지 않는 것으로 보인다 | framework(열림) |
 
+ATD-C3B 재현 조건(추가 확인): C1/C2/C3는 **같은 timer spot**(`timer_spot_rid`)을 공유하고
+runner의 `all` 모드에서 C1 → C2 → C3 순으로 한 프로세스 안에서 돈다. `run_e2e.sh ATD-C3`로
+C3만 돌리면(=C1/C2 미실행) 통과하므로, 앞선 timer 시나리오가 그 spot의 직렬 큐(
+`serial_execution_queue_t`) 상태를 남기고 그 뒤의 await 재개가 큐에서 픽업되지 않는다.
+다음 단계는 C1/C2 실행 후 큐의 `_active`/`_draining`/`_active_turns` 스냅샷을 찍어
+released turn 회계가 어긋나는 지점을 특정하는 것이다.
+
 두 건은 sample 계약 편차가 아니므로 이 문서의 SMP-* 항목과 분리해 둔다. gate 판정에는
 영향이 있으므로(통합 러너 실패) plan §13.3에 상태를 남긴다.

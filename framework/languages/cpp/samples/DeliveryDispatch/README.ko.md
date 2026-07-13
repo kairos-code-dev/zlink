@@ -14,9 +14,9 @@ DeliveryDispatch 샘플은 배달 생성, courier 배정, 픽업, 완료까지�
 
 - `Client`는 배달 dispatch 흐름을 시나리오처럼 검증한다.
 - 각 server role은 Redis location store를 공유해 channel/spot/route 위치를 발견한다.
-- `Server/DispatchApi`는 `/deliveries`와 `/self-check/assert` HTTP API를 제공한다.
-- `Server/DispatchCenter`는 courier 제안과 tracking 상태 갱신을 조율한다.
-- `Server/CourierGateway`는 courier id를 actor node와 session route로 해석한다.
+- `Server/Dispatch`는 `/deliveries`와 `/self-check/assert` HTTP API를 제공하고, 배차 큐를 비우는
+  DispatchWorker가 courier 제안과 tracking 상태 갱신을 조율한다. courier의 session route는 별도
+  gateway가 아니라 courier actor가 기억한다.
 - `Server/CourierSession`은 배송원 stream 연결을 받고 actor session binding을 연결한다.
 - `Server/CourierActorNode`는 배송원 actor와 entry spot을 실행하며, runner가 node 2개를 띄운다.
 - `Server/CustomerGateway`는 고객 stream 연결, 고객 actor binding, 상태 push를 맡는다.
@@ -26,9 +26,7 @@ DeliveryDispatch 샘플은 배달 생성, courier 배정, 픽업, 완료까지�
 
 ## Public executables
 
-- `sample_cpp_framework_deliverydispatch_dispatch_api`: HTTP API와 dispatch channel client
-- `sample_cpp_framework_deliverydispatch_dispatch_center`: dispatch worker, courier offer, timeout 재배정
-- `sample_cpp_framework_deliverydispatch_courier_gateway`: courier id와 actor node/session route directory
+- `sample_cpp_framework_deliverydispatch_dispatch`: HTTP API, 배차 큐, DispatchWorker(courier offer와 timeout 재배차)
 - `sample_cpp_framework_deliverydispatch_courier_actor_node`: courier entry spot과 courier actor
 - `sample_cpp_framework_deliverydispatch_customer_gateway`: customer stream, customer actor, status fanout
 - `sample_cpp_framework_deliverydispatch_courier_session`: courier stream과 actor session binding

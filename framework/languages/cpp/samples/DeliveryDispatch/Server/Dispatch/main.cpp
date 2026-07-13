@@ -9,13 +9,11 @@
 
 #include <zlink/framework.hpp>
 
-#include <condition_variable>
 #include <ctime>
 #include <deque>
 #include <iostream>
 #include <mutex>
 #include <optional>
-#include <thread>
 #include <string>
 #include <vector>
 
@@ -36,17 +34,13 @@ class dispatch_work_queue_t
   public:
     void enqueue (assign_delivery_msg_t request)
     {
-        {
-            const std::lock_guard lock (_mutex);
-            _queue.push_back (std::move (request));
-        }
-        _condition.notify_one ();
+        const std::lock_guard lock (_mutex);
+        _queue.push_back (std::move (request));
     }
 
     std::optional<assign_delivery_msg_t> take ()
     {
-        std::unique_lock lock (_mutex);
-        _condition.wait (lock, [&] { return _closed || !_queue.empty (); });
+        const std::lock_guard lock (_mutex);
         if (_queue.empty ()) {
             return std::nullopt;
         }
@@ -55,20 +49,9 @@ class dispatch_work_queue_t
         return request;
     }
 
-    void close ()
-    {
-        {
-            const std::lock_guard lock (_mutex);
-            _closed = true;
-        }
-        _condition.notify_all ();
-    }
-
   private:
     std::mutex _mutex;
-    std::condition_variable _condition;
     std::deque<assign_delivery_msg_t> _queue;
-    bool _closed = false;
 };
 
 /* 배송원 후보 순서는 worker의 선택 정책이다. */
@@ -163,101 +146,106 @@ class delivery_status_publisher_t
     channel_client_t &_channels;
 };
 
-class dispatch_worker_t final : public hosted_service_t
+/* 배차 큐를 비우는 worker. 배송원 선택 정책과 offer 요청 timeout(재배차 판정)을 소유한다. */
+class dispatch_worker_t
 {
   public:
-    void start (service_provider_t &services) override
+    dispatch_worker_t (dispatch_work_queue_t &queue,
+                       courier_selection_policy_t &couriers,
+                       courier_offer_port_t offers,
+                       delivery_status_publisher_t statuses) :
+        _queue (queue), _couriers (couriers), _offers (offers), _statuses (statuses)
     {
-        _services = services;
-        _queue = &services.get_required<dispatch_work_queue_t> ();
-        _couriers = &services.get_required<courier_selection_policy_t> ();
-        _thread = std::thread ([this] { run (); });
     }
 
-    void stop () noexcept override
+    task_t<void> drain ()
     {
-        if (_queue) {
-            _queue->close ();
+        while (auto request = _queue.take ()) {
+            co_await dispatch (*request);
         }
-        if (_thread.joinable ()) {
-            _thread.join ();
-        }
+        co_return;
     }
 
   private:
-    void run ()
-    {
-        while (auto request = _queue->take ()) {
-            try {
-                dispatch (*request).result ();
-            }
-            catch (const std::exception &error) {
-                std::cerr << "deliverydispatch dispatch: delivery=" << request->delivery_id
-                          << " failed: " << error.what () << "\n";
-            }
-        }
-    }
-
     task_t<void> dispatch (assign_delivery_msg_t request)
     {
-        auto scope = _services->create_scope ();
-        courier_offer_port_t offers (scope.get_required<route_client_t> (),
-                                     scope.get_required<spot_handle_resolver_t> ());
-        delivery_status_publisher_t statuses (scope.get_required<channel_client_t> ());
         std::cerr << "deliverydispatch dispatch: assign delivery=" << request.delivery_id
                   << " customer=" << request.customer_id << "\n";
 
-        const auto &candidates = _couriers->candidates ();
+        const auto &candidates = _couriers.candidates ();
         bool first_candidate = true;
         for (const auto &courier_id : candidates) {
             if (!first_candidate) {
-                co_await statuses.publish (request, delivery_status_t::reassigned, courier_id);
+                co_await _statuses.publish (request, delivery_status_t::reassigned, courier_id);
             }
-            auto attempt = co_await offers.offer (request, courier_id);
+            auto attempt = co_await _offers.offer (request, courier_id);
             if (!attempt.delivered) {
                 throw std::runtime_error ("delivery '" + request.delivery_id
                                           + "' could not be offered to " + courier_id);
             }
             if (first_candidate) {
-                co_await statuses.publish (request, delivery_status_t::assigned,
-                                           attempt.response.courier_id);
+                co_await _statuses.publish (request, delivery_status_t::assigned,
+                                            attempt.response.courier_id);
             }
             if (attempt.response.accepted) {
-                co_await statuses.publish (request, delivery_status_t::accepted,
-                                           attempt.response.courier_id);
-                co_await statuses.publish (request, delivery_status_t::picked_up,
-                                           attempt.response.courier_id);
-                co_await statuses.publish (request, delivery_status_t::delivered,
-                                           attempt.response.courier_id);
+                co_await _statuses.publish (request, delivery_status_t::accepted,
+                                            attempt.response.courier_id);
+                co_await _statuses.publish (request, delivery_status_t::picked_up,
+                                            attempt.response.courier_id);
+                co_await _statuses.publish (request, delivery_status_t::delivered,
+                                            attempt.response.courier_id);
                 co_return;
             }
             first_candidate = false;
         }
 
-        co_await statuses.publish (request, delivery_status_t::failed, candidates.back ());
+        co_await _statuses.publish (request, delivery_status_t::failed, candidates.back ());
         throw std::runtime_error ("delivery '" + request.delivery_id
                                   + "' was rejected by all couriers");
     }
 
-    dispatch_work_queue_t *_queue = nullptr;
-    courier_selection_policy_t *_couriers = nullptr;
-    std::optional<service_provider_t> _services;
-    std::thread _thread;
+    dispatch_work_queue_t &_queue;
+    courier_selection_policy_t &_couriers;
+    courier_offer_port_t _offers;
+    delivery_status_publisher_t _statuses;
 };
 
+/* HTTP edge가 넣은 배차 요청을 worker가 큐 순서대로 비운다. */
 class assign_delivery_handler_t
 {
   public:
     using message_type = assign_delivery_msg_t;
-    using dependency_types = dependency_list_t<dispatch_work_queue_t>;
+    using dependency_types = dependency_list_t<dispatch_work_queue_t,
+                                               courier_selection_policy_t,
+                                               route_client_t,
+                                               spot_handle_resolver_t,
+                                               channel_client_t>;
     static constexpr const char *topic_name = "AssignDeliveryMsg";
 
-    explicit assign_delivery_handler_t (dispatch_work_queue_t &queue) : _queue (queue) {}
+    assign_delivery_handler_t (dispatch_work_queue_t &queue,
+                               courier_selection_policy_t &couriers,
+                               route_client_t &routes,
+                               spot_handle_resolver_t &spot_handles,
+                               channel_client_t &channels) :
+        _queue (queue), _couriers (couriers), _routes (routes), _spot_handles (spot_handles),
+        _channels (channels)
+    {
+    }
 
-    void handle (const assign_delivery_msg_t &request) { _queue.enqueue (request); }
+    task_t<void> handle (const assign_delivery_msg_t &request)
+    {
+        _queue.enqueue (request);
+        dispatch_worker_t worker (_queue, _couriers, courier_offer_port_t (_routes, _spot_handles),
+                                  delivery_status_publisher_t (_channels));
+        co_await worker.drain ();
+    }
 
   private:
     dispatch_work_queue_t &_queue;
+    courier_selection_policy_t &_couriers;
+    route_client_t &_routes;
+    spot_handle_resolver_t &_spot_handles;
+    channel_client_t &_channels;
 };
 
 class create_delivery_http_handler_t
@@ -354,6 +342,5 @@ int main (int argc, char **argv)
           .map_post<create_delivery_http_handler_t> ("/deliveries")
           .map_post<server_assertion_http_handler_t> ("/self-check/assert");
     });
-    app.add_hosted_service (std::make_unique<dispatch_worker_t> ());
     return app.run (argc, argv);
 }

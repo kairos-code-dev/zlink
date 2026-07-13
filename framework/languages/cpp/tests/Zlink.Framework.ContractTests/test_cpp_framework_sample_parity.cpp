@@ -446,9 +446,7 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
        {"sample_cpp_framework_tictactoe_api", "sample_cpp_framework_tictactoe_play",
         "sample_cpp_framework_tictactoe_client"}},
       {"samples/DeliveryDispatch/README.ko.md",
-       {"sample_cpp_framework_deliverydispatch_dispatch_api",
-        "sample_cpp_framework_deliverydispatch_dispatch_center",
-        "sample_cpp_framework_deliverydispatch_courier_gateway",
+       {"sample_cpp_framework_deliverydispatch_dispatch",
         "sample_cpp_framework_deliverydispatch_courier_actor_node",
         "sample_cpp_framework_deliverydispatch_customer_gateway",
         "sample_cpp_framework_deliverydispatch_courier_session",
@@ -529,21 +527,28 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
 
     const auto courier_actor_node =
       read_file (cpp_root / "samples/DeliveryDispatch/Server/CourierActorNode/main.cpp");
-    EXPECT_NE (
-      courier_actor_node.find (
-        ".group (\"courier-actor-node\")\n          .add<ensure_courier_actor_handler_t> ()\n"
-        "          .add<actor_node_offer_delivery_handler_t> ();"),
-      std::string::npos)
-      << "DeliveryDispatch CourierActorNode must register actor handlers through the framework "
-         "handler group";
-    EXPECT_EQ (courier_actor_node.find ("add_transient<ensure_courier_actor_handler_t>"),
+    /* 공통 sample spec §7.2: courier actor는 이 노드의 entry spot이 route 요청으로 찾고 만들고
+     * offer한다. 별도 gateway나 per-node client-server 채널을 두지 않는다. */
+    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::find_courier_actor>"),
                std::string::npos)
-      << "DeliveryDispatch CourierActorNode must not manually register the ensure actor handler "
-         "beside the handler group";
-    EXPECT_EQ (courier_actor_node.find ("add_transient<actor_node_offer_delivery_handler_t>"),
+      << "DeliveryDispatch CourierActorNode must answer FindCourierActorReq on its entry spot";
+    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::ensure_courier_actor>"),
                std::string::npos)
-      << "DeliveryDispatch CourierActorNode must not manually register the delivery handler "
-         "beside the handler group";
+      << "DeliveryDispatch CourierActorNode must answer EnsureCourierActorReq on its entry spot";
+    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::offer_delivery_route>"),
+               std::string::npos)
+      << "DeliveryDispatch CourierActorNode must answer OfferDeliveryReq on its entry spot";
+    EXPECT_EQ (courier_actor_node.find ("add_client_server_channel"), std::string::npos)
+      << "DeliveryDispatch CourierActorNode must be reached through the spot mesh, not a per-node "
+         "client-server channel";
+
+    const auto dispatch = read_file (cpp_root / "samples/DeliveryDispatch/Server/Dispatch/main.cpp");
+    EXPECT_NE (dispatch.find ("class dispatch_work_queue_t"), std::string::npos)
+      << "DeliveryDispatch Dispatch must own the dispatch work queue";
+    EXPECT_NE (dispatch.find ("class dispatch_worker_t"), std::string::npos)
+      << "DeliveryDispatch Dispatch must run the dispatch worker beside its HTTP edge";
+    EXPECT_NE (dispatch.find ("class courier_selection_policy_t"), std::string::npos)
+      << "DeliveryDispatch Dispatch worker must own the courier selection policy";
 }
 
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)

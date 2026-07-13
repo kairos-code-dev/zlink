@@ -1,5 +1,7 @@
 # Framework 공개 계약 관리
 
+[스펙 목차](README.ko.md) | [다음: ZLink Framework Overview](01-overview.ko.md)
+
 ## 1. 계약 소유권
 
 framework 공개 계약은 두 층으로 나눈다.

@@ -9,10 +9,11 @@
 ## 1. 목적
 
 이 문서는 한 가지 역할만 맡는다. `Node.js` `ZLink Framework`(NestJS 통합)가
-노출해야 하는 **공용 interface / decorator / context / enum / options / client /
-builder의 목표 정의**를 한곳에 모아 두는 계약 문서다. §3~§11과 §16.1에 TypeScript
-declaration이 있는 항목만 정확한 시그니처로 고정하며, 이름만 확인된 항목은 §16.2의
-문서 gap으로 남긴다.
+노출하는 **공용 interface / decorator / context / enum / options / client /
+builder 선언**을 한곳에 모아 두는 계약 문서다. §3~§11의 TypeScript declaration은
+`framework/languages/node`가 실제로 내보내는 public declaration을 정확히 고정한다.
+아직 구현되지 않은 계약은 선언을 중복해서 적지 않고
+[구현 차이 문서](../../90-implementation-gap.ko.md)에 기록한다.
 
 이 문서는 공통 스펙의 기능과 동작을 TypeScript와 NestJS 관례로 구체화한다.
 Node.js의 실제 이름과 시그니처는 이 문서가 정식 계약이며,
@@ -287,30 +288,6 @@ export interface ZLinkRequestHandler<TRequest, TResponse> {
   descriptor로 정하고, channel options의
   `handlerGroups: ['group']` 로 선택한다.
 
-NestJS provider group 등록 방식:
-
-```ts
-@zlinkRequestHandler('api')
-export class GetProfileHandler {
-  async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
-    return { id: request.id };
-  }
-}
-
-@Module({
-  imports: [
-    ZLinkModule.forRoot(
-      zlinkFramework()
-        .addClientServerChannel('api')
-          .enableServer('tcp://0.0.0.0:7301')
-          .addHandlerGroup('api')
-        .build()
-    ),
-  ],
-  providers: [GetProfileHandler],
-})
-export class ApiModule {}
-```
 
 ### 4.2 send handler
 
@@ -616,84 +593,6 @@ handler 선언은 두 방식이다.
 하나의 handler 타입이 두 개 이상의 actor packet interface 를 구현하거나, 두 개 이상의
 actor handler decorator method 를 선언하면 startup validation 오류다.
 
-##### Entry Spot 등록 예시
-
-```ts
-@Injectable()
-export class PlayerEntrySpot implements ZLinkEntrySpot {
-  constructor(readonly context: ZLinkEntrySpotContext) {}
-
-  configure(): void {
-    this.context.handlers.addHandler(AuthenticateHandler);
-    this.context.handlers.addHandler(JoinMatchHandler);
-    this.context.handlers.addHandler(PlayerEntryJoinedHandler);
-    this.context.handlers.addHandler(PlayerEntryLeftHandler);
-  }
-}
-```
-
-decorator 방식 actor request handler:
-
-```ts
-@Injectable()
-export class JoinMatchHandler {
-  @ZLinkSpotActorRequest()
-  async handle(
-    entrySpot: PlayerEntrySpot,
-    actor: PlayerActor,
-    context: ZLinkSpotActorRequestContext,
-    request: JoinMatchReq,
-  ): Promise<JoinMatchRes> {
-    // ...
-  }
-}
-```
-
-Entry Spot 에서 등록한 actor packet handler 는 해당 actor 가 user Spot 에 join 하기 전에
-도착한 message 만 처리한다. join 이후 message 는 user Spot registry 가 담당한다.
-
-##### user Spot 등록 예시
-
-```ts
-@Injectable()
-export class MatchSpot implements ZLinkSpot {
-  constructor(readonly context: ZLinkSpotContext) {}
-
-  configure(): void {
-    this.context.handlers.addHandler(PlaceMarkHandler);
-    this.context.handlers.addHandler(PlayerMatchJoinedHandler);
-    this.context.handlers.addHandler(PlayerMatchLeftHandler);
-  }
-}
-```
-
-user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game/stage 같은 실행
-문맥 상태는 spot 에서, player 상태는 actor 에서 읽는다.
-
-##### actor join/leave lifecycle callback
-
-actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
-Spot 멤버 `onJoinedActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
-user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actorId, request)` 가
-맡는다. Entry Spot 도 명시적 `joinEntrySpot(nodeRid, request)` 재진입에 대해 같은
-`onActorJoin(actorId, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
-`onActorJoin` 을 선언하지 않으면 재진입은 그대로 accept 된다. actor 최초 생성 직후 첫 Entry
-Spot 배치는 admission 이 아니라 `onCreateActor(actor, createRequest)` 로만 처리한다.
-
-```ts
-export class MatchSpot implements ZLinkSpot {
-  async onActorJoin(
-    actorId: string,
-    request: ZLinkMessage,
-  ): Promise<ZLinkSpotActorJoinResponse> {
-    return { accepted: true };
-  }
-
-  async onJoinedActor(actor: PlayerActor): Promise<void> {}
-
-  async onLeaveActor(actor: PlayerActor): Promise<void> {}
-}
-```
 
 `onJoinedActor(...)` / `onLeaveActor(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
 문맥에서 호출된다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
@@ -1176,26 +1075,6 @@ timeout 규칙:
 - queue 수락 이후의 transport 실패는 monitoring/error observer로 전달한다. request와
   달리 완료 Promise, timeout 또는 public no-wait 옵션을 제공하지 않는다.
 
-```ts
-@ZLinkPacket('GetProfile')
-class GetProfileRequest {
-  constructor(readonly accountId: string) {}
-}
-
-const reply = await client
-  .requestToChannel('profile', new GetProfileRequest(accountId))
-  .timeout(200)
-  .submit<GetProfileReply>();
-
-@ZLinkPacket('profile.refresh-cache')
-class RefreshProfileCacheCommand {
-  constructor(readonly accountId: string) {}
-}
-
-client
-  .sendToChannel('profile', new RefreshProfileCacheCommand(accountId))
-  .submit();
-```
 
 ### 5.2 ZLinkSpotOutbound
 
@@ -1279,9 +1158,6 @@ export interface ZLinkFanoutClient {
 identity override를 두지 않는다. `submit()`은 입력 검증과 framework의 bounded local
 queue 수락이 끝나면 반환한다. remote 처리 완료를 기다리지 않는다.
 
-```ts
-publisher.publish(ch, topic, evt).submit(); // 지정한 fanout channel과 topic으로 event를 전송한다.
-```
 
 입력이 잘못됐거나 route가 준비되지 않았거나 local queue가 수락할 수 없으면 `submit()`이
 즉시 예외를 던진다. 수락 뒤 발생한 transport 실패는 monitoring/error observer로 전달하며
@@ -1436,33 +1312,6 @@ handoff하고 이후 old ref packet은 즉시 `ActorLocationStale`로 끝난다.
 하위 설정 람다는 NestJS fluent builder 로 옮긴다. 정확한 메서드와 형태는 이 문서의
 공개 interface 선언이 확정한다.
 
-```ts
-@Module({
-  imports: [
-    ZLinkModule.forRoot(
-      zlinkFramework()
-        .options({
-          filters: [LoggingZLinkFilter, ValidationZLinkFilter],
-          dispatch: { diagnostics: { messageFlow: 'errorsOnly' } },
-        })
-        .codecs()
-          .use(zlinkProtobufCodec())
-        .useInMemoryLocationStores()
-        .addClientServerChannel('api')
-          .enableServer('tcp://0.0.0.0:7101')
-          .addHandlerGroup('api')
-        .addClientServerChannel('profile')
-          .enableClient()
-        .addFanoutChannel('api.events')
-          .enableSubscriber()
-          .addHandlerGroup('api.events')
-        .build()
-    ),
-  ],
-  providers: [GetProfileHandler],
-})
-export class AppModule {}
-```
 
 | dotnet builder 메서드 | node builder 표면 | spec |
 |------|------|------|
@@ -1786,15 +1635,6 @@ export interface ZLinkHandlerFilter {
 }
 ```
 
-등록:
-
-```ts
-ZLinkModule.forRoot(
-  zlinkFramework()
-    .options({ filters: [LoggingZLinkFilter, ValidationZLinkFilter] })
-    .build()
-);
-```
 
 filter 는 framework 가 직접 `new` 하지 않고 NestJS DI 에서 resolve 한다. 주된 용도: logging,
 validation, authorization, metrics, exception → framework 표준 오류 응답 매핑. NestJS 의 HTTP
@@ -1808,15 +1648,6 @@ request 메시지 타입에는 framework 전용 marker interface 를 붙이지 �
 - 메시지는 codec 이 직렬화할 payload 계약만 표현한다.
 - reply 타입은 호출부에서 `submit<TReply>()` 로 명시한다.
 
-```ts
-class GetProfileRequest {
-  constructor(readonly accountId: string) {}
-}
-
-const reply = await client
-  .requestToChannel('profile', new GetProfileRequest(accountId))
-  .submit<GetProfileReply>();
-```
 
 - handler 는 메서드 시그니처만으로 request/reply 타입을 결정한다.
 - client 호출부는 packet 이름과 payload 만 넘기고, 기다릴 reply 타입은 `submit<TReply>()` 에서 지정한다.
@@ -1834,12 +1665,12 @@ location runtime query 는 peer, Spot, actor, route 위치 행과 runtime snapsh
 비동기인 이유는 store 접근과 host lifecycle이 연동되고, Redis 같은 외부 store는 네트워크
 오류와 지연을 가질 수 있기 때문이다.
 
-이 절의 `IZLink...` 선언은 현재 구현과의 차이를 보여 주는 비규범 snapshot이다. 정식
-목표 이름과 전체 member는 §16.1의 `ZLink...` 선언으로 고정하며, 이름 차이는 §16.2의
-gap 표에 기록한다.
+이 절의 선언은 현재 Node.js package가 내보내는 public 이름과 member를 그대로 고정한다.
+공통 계약과의 차이는 선언을 하나 더 만들어 표현하지 않고
+[구현 차이 문서](../../90-implementation-gap.ko.md)에 기록한다.
 
 ```ts
-export interface IZLinkLocationRuntimeQuery {
+export interface ZLinkLocationRuntimeQuery {
   getStatus(signal?: AbortSignal): Promise<ZLinkLocationRuntimeStatus>;
   listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
   listSpotLocations(
@@ -1873,14 +1704,16 @@ location store 는 행의 소유권과 generation 을 함께 저장한다. 호�
 store 구현을 직접 다루지 않고, framework 가 등록된 store 를 통해 필요한 위치를 갱신하고 조회한다.
 
 ```ts
-export interface IZLinkLocationStore extends
-  IZLinkPeerLocationStore,
-  IZLinkSpotLocationStore,
-  IZLinkActorLocationStore,
-  IZLinkRouteLocationStore,
-  IZLinkOwnerLeaseStore {}
+export interface ZLinkLocationStore extends
+  ZLinkPeerLocationStore,
+  ZLinkSpotLocationStore,
+  ZLinkActorLocationStore,
+  ZLinkRouteLocationStore,
+  ZLinkOwnerLeaseStore {
+  removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
+}
 
-export interface IZLinkPeerLocationResolver {
+export interface ZLinkPeerLocationResolver {
   listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
@@ -2335,16 +2168,6 @@ NestJS module 에서는 같은 의미를 handler class decorator 로 표현한�
 사용자가 정하는 임의 문자열이며 실제 channel 이름과 분리된다. 같은 그룹을 여러
 channel 에, 같은 channel 에 여러 그룹을 매핑할 수 있다.
 
-```ts
-@zlinkRequestHandler('api')
-export class GetProfileHandler {
-  async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
-    return { id: request.id };
-  }
-}
-
-providers: [GetProfileHandler]
-```
 
 같은 그룹을 여러 channel 에 매핑하는 것은 허용한다. 다만 같은 channel 안에서 동일
 `kind + packet name` 이 둘 이상으로 해석되면 startup validation 오류다(그룹 내/그룹 간 충돌 모두).
@@ -2512,12 +2335,6 @@ dispatch 실패는 `ZLinkMessageFlowEvent` 에서 `outcome` 이 `Error` 이고, 
 `errorType`, `errorMessage`를 담는 readonly snapshot이다. native frame이나 buffer ownership은
 포함하지 않는다.
 
-```ts
-const framework = zlinkFramework();
-
-framework.configureDispatch()
-  .setMessageFlowObserver(MyMessageFlowObserver);
-```
 
 ## 15. 회귀 테스트
 

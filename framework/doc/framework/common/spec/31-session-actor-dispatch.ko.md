@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](22-actor-model.ko.md) | [다음: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md)
+[스펙 목차](README.ko.md) | [이전: STREAM 서버 세션](30-stream-session.ko.md) | [다음: Stream Connector](32-stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 [문서 묶음](../README.ko.md) | [Actor 모델](22-actor-model.ko.md) | [framework API](05-framework-api.ko.md) | [.NET Session Actor Dispatch](languages/dotnet/02-handler-interfaces.ko.md)
 

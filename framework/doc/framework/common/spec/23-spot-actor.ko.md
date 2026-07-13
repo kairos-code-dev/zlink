@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](22-actor-model.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Actor Model](22-actor-model.ko.md) | [다음: SpotHandle 기반 메시징](24-spot-address-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 [문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [Actor 모델](22-actor-model.ko.md) | [Spot Actor Join / Transfer](23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](31-session-actor-dispatch.ko.md)
 

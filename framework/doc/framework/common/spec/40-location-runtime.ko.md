@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md) | [다음: Location Store — Redis](41-location-store-redis.ko.md)
+[스펙 목차](README.ko.md) | [이전: Stream Connector](32-stream-connector.ko.md) | [다음: Location Store](41-location-store-redis.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 # Location Runtime
 

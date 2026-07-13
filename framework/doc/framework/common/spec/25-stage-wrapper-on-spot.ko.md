@@ -1,6 +1,6 @@
 # Stage Wrapper On SPOT — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: SpotHandle 기반 메시징](24-spot-address-messaging.ko.md) | [다음: STREAM 서버 세션](30-stream-session.ko.md)
 
 > 이 문서는 **SPOT 위에 상위 실행 모델(stage·room·zone)을 얹는 계약의 언어 중립 정본**이다.
 > 어떤 실행 보장에 기대어도 되는지, 무엇이 framework의 책임이고 무엇이 wrapper의 책임인지를

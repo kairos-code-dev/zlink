@@ -1,6 +1,6 @@
 # SpotNode — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: SPOT 메시징](20-spot-messaging.ko.md) | [다음: ZLink Framework Actor Model](22-actor-model.ko.md)
 
 > 이 문서는 **SpotNode 등록과 SpotManager 계약의 언어 중립 정본**이다. Entry Spot 설정, bind
 > 순서, spot 생성·조회·종료의 의미, route 색인의 의미를 소유한다.

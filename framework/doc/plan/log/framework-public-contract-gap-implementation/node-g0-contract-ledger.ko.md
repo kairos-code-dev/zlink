@@ -6,30 +6,30 @@
 | ID | 정식 interface 문서 | 검토 결과 |
 |----|---------------------|-----------|
 | ND-DOC-001 | `README.ko.md` | 공개 범위와 취소 규칙 검토 완료 |
-| ND-DOC-002 | `handler-interfaces.ko.md` | Promise handler와 단일 완료 규칙 검토 완료 |
-| ND-DOC-003 | `handler-interfaces.ko.md` | actor lifecycle, handle, join 계약 검토 완료 |
-| ND-DOC-004 | `handler-interfaces.ko.md` | channel, route, fanout, timeout 계약 검토 완료 |
-| ND-DOC-005 | `handler-interfaces.ko.md` | monitoring event와 등록 계약 검토 완료 |
-| ND-DOC-006 | `handler-interfaces.ko.md` | module 구성과 public export 검토 완료 |
-| ND-DOC-007 | `handler-interfaces.ko.md` | location store와 자동 연결 계약 검토 완료 |
-| ND-DOC-008 | `handler-interfaces.ko.md` | Spot lifecycle, actor, timer 계약 검토 완료 |
-| ND-DOC-009 | `handler-interfaces.ko.md` | stream node와 typed session 계약 검토 완료 |
-| ND-DOC-010 | `handler-interfaces.ko.md` | bound session relay와 disconnect 계약 검토 완료 |
-| ND-DOC-011 | `handler-interfaces.ko.md` | SpotNode capability와 route 계약 검토 완료 |
-| ND-DOC-012 | `32-stream-connector.ko.md` | connector framing, flow, closing 계약 검토 완료 |
+| ND-DOC-002 | `02-handler-interfaces.ko.md` | Promise handler와 단일 완료 규칙 검토 완료 |
+| ND-DOC-003 | `02-handler-interfaces.ko.md` | actor lifecycle, handle, join 계약 검토 완료 |
+| ND-DOC-004 | `02-handler-interfaces.ko.md` | channel, route, fanout, timeout 계약 검토 완료 |
+| ND-DOC-005 | `02-handler-interfaces.ko.md` | monitoring event와 등록 계약 검토 완료 |
+| ND-DOC-006 | `01-system-structure.ko.md` | module 구성과 public export 검토 완료 |
+| ND-DOC-007 | `02-handler-interfaces.ko.md` | location store와 자동 연결 계약 검토 완료 |
+| ND-DOC-008 | `02-handler-interfaces.ko.md` | Spot lifecycle, actor, timer 계약 검토 완료 |
+| ND-DOC-009 | `02-handler-interfaces.ko.md` | stream node와 typed session 계약 검토 완료 |
+| ND-DOC-010 | `02-handler-interfaces.ko.md` | bound session relay와 disconnect 계약 검토 완료 |
+| ND-DOC-011 | `02-handler-interfaces.ko.md` | SpotNode capability와 route 계약 검토 완료 |
+| ND-DOC-012 | `03-stream-connector.ko.md` | connector framing, flow, closing 계약 검토 완료 |
 
 공통 `25-stage-wrapper-on-spot.ko.md`는 정식 언어 interface가 아닌 상위 사용 모델이므로 분모에서는
 제외했다. G7 문서 정합성 검토 대상으로 유지한다.
 
-bindings 기준은 `@zlink-systems/zlink` 9.0.1이며, package의 public `version()`이 보고하는 core
-runtime도 9.0.1이다.
+bindings 기준은 `@zlink-systems/zlink` 9.0.2이며, package의 public `version()`이 보고하는 core
+runtime도 9.0.2이다.
 G0에서 고정한 실제 artifact 증거는 다음과 같다.
 
 | 항목 | 값 |
 |------|----|
-| 중앙 pin | `framework/languages/node/package.json`의 `file:../../../.artifacts/wsl/npm/zlink-systems-zlink-9.0.1.tgz` |
-| archive 절대경로 | `/home/hep7/project/kairos/zlink/.artifacts/wsl/npm/zlink-systems-zlink-9.0.1.tgz` |
-| archive SHA-256 | `f0d15bac4cc05d175587b1b8969f83db34b50d290f7ee7efd4ea8a3b6199f31e` |
+| 중앙 pin | `framework/languages/node/package.json`의 `file:../../../.artifacts/wsl/npm/zlink-systems-zlink-9.0.2.tgz` |
+| archive 절대경로 | `/home/hep7/project/kairos/zlink/.artifacts/wsl/npm/zlink-systems-zlink-9.0.2.tgz` |
+| archive SHA-256 | 최종 package 검증에서 9.0.2 artifact 기준으로 기록 |
 | 설치 package 절대경로 | `/home/hep7/project/kairos/zlink/framework/languages/node/node_modules/@zlink-systems/zlink/package.json` |
 | lock integrity | `sha512-F17hOaFlex5l5IQB2i1znMbG7P7f8BlwOdUPxmVyK32xmjk8EWgn93C8oRV/V6yFS2At66fOExLnEvD7uQSvrA==` |
 | 공개 API 검증 | `node-binding-parity.test.js`, `backend-public-api-only.test.js`, `verify:abi-matrix` |

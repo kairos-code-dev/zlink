@@ -1,6 +1,6 @@
 # Channel 메시징 — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Channel Topology](10-channel-topology.ko.md) | [다음: SPOT 메시징](20-spot-messaging.ko.md)
 
 > 이 문서는 **channel messaging의 런타임 계약 정본**이다. channel runtime의 수명, dispatch 실패
 > 정책, startup validation, host 종료 중 호출의 의미를 소유한다.
@@ -50,6 +50,7 @@
 | **send** | **drop.** Warning 로그 + metric + observer event |
 | **publish** | **drop.** Debug 로그 또는 metric + observer event |
 
+- **observer event의 공통 스키마는 [framework API §2.4.3](05-framework-api.ko.md)이 소유한다.**
 - **observer가 없더라도 기본 로그와 metric은 생략하지 않는다.**
 - **observer callback 실패는 runtime error sink로 분리한다.** 원래 reply 또는 drop 결과를 바꾸지
   않는다.
@@ -80,15 +81,20 @@
 
 ## 5. Host 종료 중 호출
 
-**host stopping이 시작되면 새 inbound dispatch를 받지 않는다.**
+**우아한 종료의 전체 수명주기는 [graceful-drain-handoff](54-graceful-drain-handoff.ko.md)가
+소유한다.** 이 절은 channel 호출자가 관찰하는 결과만 정리한다.
 
+**host stopping이 시작돼도 기존 연결 위의 신규 request를 즉시 전면 차단하지 않는다.** 차단 대상은
+**신규 상태 배정**(spot 생성, actor join, 새 STREAM 연결)이며, **전파 지연 창 동안 도착한 channel
+request는 정상 처리한다** — 완전 차단은 분산 시스템에서 불가능하다
+([§3.3](54-graceful-drain-handoff.ko.md)).
+
+- **전파 지연 창을 지나 draining node에 직접 도착한 channel/route request는 `RequestRejected`로
+  거부한다**([§5](54-graceful-drain-handoff.ko.md)).
 - 이미 실행 중인 handler에는 **취소 신호를 전달하고** graceful shutdown 시간 안에 끝날 기회를
-  준다.
-- **이 시점에 새로 시작하는 outbound request나 submit의 성공은 보장하지 않는다.**
+  준다. **in-flight reply까지 마무리한 뒤 unbind한다.**
 - **runtime이 정리될 때 아직 전송되지 않은 pending submit은 예외로 완료된다.** 호출자는 **정상
   완료로 간주하면 안 된다.**
-
-우아한 종료의 전체 수명주기는 [graceful-drain-handoff](54-graceful-drain-handoff.ko.md)가 소유한다.
 
 ## 6. Codec
 

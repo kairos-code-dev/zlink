@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: framework API](05-framework-api.ko.md) | [다음: Actor 모델](22-actor-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Message Model](03-message-model.ko.md) | [다음: ZLink Framework API](05-framework-api.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 # 비동기 실행과 coroutine 정책
 

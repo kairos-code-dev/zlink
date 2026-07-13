@@ -1,5 +1,7 @@
 # Framework 언어별 구현 차이
 
+[스펙 목차](README.ko.md) | [이전: Graceful Drain & Handoff 수명주기 계약](54-graceful-drain-handoff.ko.md)
+
 이 문서는 정식 public contract가 아니다. 공통 스펙과 언어별 스펙을 기준으로 현재
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
 축소하지 않고, 구현과 contract test를 정식 스펙에 맞춘다.
@@ -423,6 +425,8 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 | 10.4 | **예약 packet name 범위** | `$zlink.` prefix만 금지한다([§4.6](32-stream-connector.ko.md)) | C++는 **`$`로 시작하는 모든 이름**을 거부해 계약보다 과하게 막는다 |
 | 10.5 | **수신 메시지 큐 overflow** | 새 message를 버리고 `ReceivedMessageDropped`를 보고한다([§10.1](32-stream-connector.ko.md)) | `.NET`은 **가장 오래된 미읽음 message를 조용히 밀어낸다.** 오류를 보고하지 않고 `ReceivedMessageDropped` 코드 자체가 없다 |
 | 10.6 | **연결 상태 `Created`** | `Created`는 "생성됐고 아직 연결하지 않음"을 나타내는 초기 상태다([§6](32-stream-connector.ko.md)) | Java `ZLinkStreamConnectionState`에 **`CREATED`가 없다.** 초기 상태를 `DISCONNECTED`와 구분하지 못해 "한 번도 연결하지 않음"과 "끊김"이 같은 값이 된다 |
+
+| 10.7 | **dispatch error observer의 `FailCaller` 결과** | reply frame이 없는 경로(같은 process의 local actor 호출)는 caller를 framework 오류로 완료하고 **`action=FailCaller`로 관측된다**([framework API §2.4.3](05-framework-api.ko.md), [SPOT 메시징 §5](20-spot-messaging.ko.md)) | `.NET` `ZLinkDispatchErrorAction`에는 **`ReplyError`와 `Drop` 두 값뿐**이다. 세 번째 결과를 표현할 값이 없고, 선언된 `ReplyPathMissing` reason은 **런타임에서 한 번도 발행되지 않는다.** 이 경로의 dispatch 실패는 **관측 이벤트를 만들지 못한다** |
 
 10.1과 10.2는 **wire 호환성 문제**다. Node는 contract test와 browser entrypoint 회귀 검사로
 두 항목을 닫았다. 표에 남은 언어는 계약대로 Error를 보낼 때 동일한 검증과 해석을 해야 한다.

@@ -1,6 +1,6 @@
 # SPOT 메시징 — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: Channel 메시징](11-channel-messaging.ko.md) | [다음: SpotNode](21-spot-node.ko.md)
 
 > 이 문서는 **SPOT의 개념 위치와 메시징 축의 언어 중립 정본**이다. outbound 축의 분리,
 > publish·subscribe 모델, dispatch 실패 정책, route ingress 규칙, startup validation을 소유한다.
@@ -160,14 +160,17 @@ SPOT의 packet handler 호출은 room의 **핫패스**가 될 수 있다. 일반
 
 **reply path가 있으면 error reply를 반환하고, 없으면 drop한다.**
 
-| 경로 | handler 없음 · decode 실패 · handler 예외 · invalid frame |
-|---|---|
-| **SPOT route request** | **error reply를 반환한다** |
-| **actor request** | **error reply를 반환한다** |
-| **reply frame이 없는 경로**(같은 process의 local actor call 등) | **caller를 framework 오류로 완료한다** |
-| **SPOT route send** | **drop.** Warning 로그와 metric |
-| **actor send** | **drop.** Warning 로그와 metric |
-| **subscription** | **drop.** Debug 로그 또는 metric, 전역 message flow observer event |
+| 경로 | 결과 | `action` |
+|---|---|---|
+| **SPOT route request** | **error reply를 반환한다.** Error 로그 + metric | `ReplyError` |
+| **actor request** | **error reply를 반환한다.** Error 로그 + metric | `ReplyError` |
+| **reply frame이 없는 경로**(같은 process의 local actor call 등) | **caller를 framework 오류로 완료한다.** Error 로그 + metric | `FailCaller` |
+| **SPOT route send** | **drop.** Warning 로그 + metric | `Drop` |
+| **actor send** | **drop.** Warning 로그 + metric | `Drop` |
+| **subscription** | **drop.** Debug 로그 또는 metric | `Drop` |
+
+**모든 경로가 전역 message flow observer event를 남긴다.** event의 공통 스키마와 `action` 값은
+[framework API §2.4.3](05-framework-api.ko.md)이 소유한다.
 
 **observer 실패가 dispatch loop나 shutdown을 깨뜨리지 않는다.**
 

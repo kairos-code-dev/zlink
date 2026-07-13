@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](05-framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](31-session-actor-dispatch.ko.md)
+[스펙 목차](README.ko.md) | [이전: SpotNode](21-spot-node.ko.md) | [다음: Spot Actor Join / Transfer 공통 스펙](23-spot-actor.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 [문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [Session Actor Dispatch 사용성](31-session-actor-dispatch.ko.md)
 

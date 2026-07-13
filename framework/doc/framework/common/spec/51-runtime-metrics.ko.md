@@ -1,4 +1,4 @@
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: 런타임 모니터링](50-runtime-monitoring.ko.md) | [다음: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md)
 
 # 런타임 메트릭 계기 (Runtime Metrics Instruments)
 

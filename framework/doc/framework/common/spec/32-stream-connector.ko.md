@@ -1,6 +1,6 @@
 # Stream Connector — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: Session Actor Dispatch](31-session-actor-dispatch.ko.md) | [다음: Location Runtime](40-location-runtime.ko.md)
 
 > 이 문서는 **client stream connector의 언어 중립 정본**이다. 대상 실행 환경, transport,
 > wire 계약, packet 모델, 연결 생명주기, 오류 의미, 배포 산출물을 소유한다.

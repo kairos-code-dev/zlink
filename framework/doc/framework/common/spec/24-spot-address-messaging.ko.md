@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](41-location-store-redis.ko.md) | [다음: 공통 Sample](../sample/README.ko.md)
+[스펙 목차](README.ko.md) | [이전: Spot Actor Join / Transfer 공통 스펙](23-spot-actor.ko.md) | [다음: Stage Wrapper On SPOT](25-stage-wrapper-on-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 # SpotHandle 기반 메시징
 

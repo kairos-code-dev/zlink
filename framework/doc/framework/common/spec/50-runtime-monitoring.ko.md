@@ -1,6 +1,6 @@
 # 런타임 모니터링 — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: Location Store](41-location-store-redis.ko.md) | [다음: 런타임 메트릭 계기 (Runtime Metrics Instruments)](51-runtime-metrics.ko.md)
 
 > 이 문서는 **runtime 변화 관측의 언어 중립 정본**이다. source별 표면을 나누는 근거, event
 > 종류, polling 규칙, startup validation을 소유한다.

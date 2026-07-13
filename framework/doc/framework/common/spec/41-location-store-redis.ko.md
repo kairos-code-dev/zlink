@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Runtime](40-location-runtime.ko.md) | [다음: Spot 주소 기반 메시징](24-spot-address-messaging.ko.md)
+[스펙 목차](README.ko.md) | [이전: Location Runtime](40-location-runtime.ko.md) | [다음: 런타임 모니터링](50-runtime-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 # Location Store — 공식 Redis Extension
 

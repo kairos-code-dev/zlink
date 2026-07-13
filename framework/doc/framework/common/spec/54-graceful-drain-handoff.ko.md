@@ -1,4 +1,4 @@
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: 메시지 흐름 상관관계 (Flow Correlation)](53-flow-correlation.ko.md) | [다음: Framework 언어별 구현 차이](90-implementation-gap.ko.md)
 
 # Graceful Drain & Handoff 수명주기 계약
 

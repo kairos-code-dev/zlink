@@ -1,4 +1,4 @@
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](52-message-flow-tracing.ko.md) | [다음: Graceful Drain & Handoff 수명주기 계약](54-graceful-drain-handoff.ko.md)
 
 # 메시지 흐름 상관관계 (Flow Correlation)
 

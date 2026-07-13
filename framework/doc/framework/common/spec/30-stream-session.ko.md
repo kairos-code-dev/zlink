@@ -1,6 +1,6 @@
 # STREAM 서버 세션 — 공통 스펙
 
-[스펙 목차](README.ko.md)
+[스펙 목차](README.ko.md) | [이전: Stage Wrapper On SPOT](25-stage-wrapper-on-spot.ko.md) | [다음: Session Actor Dispatch](31-session-actor-dispatch.ko.md)
 
 > 이 문서는 **서버 쪽 STREAM 세션 계약의 언어 중립 정본**이다. 세션 표면의 모양, dispatch 모델,
 > 등록 규칙, codec 계층 분리, 오류 경계를 소유한다.

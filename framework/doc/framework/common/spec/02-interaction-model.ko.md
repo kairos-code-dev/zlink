@@ -1,8 +1,7 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
+[스펙 목차](README.ko.md) | [이전: ZLink Framework Overview](01-overview.ko.md) | [다음: ZLink Framework Message Model](03-message-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../README.ko.md)
 
 [문서 묶음](../README.ko.md) | [개요](01-overview.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 

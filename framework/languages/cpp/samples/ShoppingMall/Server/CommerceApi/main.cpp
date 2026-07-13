@@ -345,23 +345,23 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
+        /* 공통 sample spec §16: 서버 발견은 registry 프로세스 없이 공유 location store가 맡는다.
+         * endpoint를 코드에 박지 않는다. */
         options.add_route_mesh (order_workflow_channel_for ("workflow-a"))
-          .enable_client (topology.workflow_a_route_endpoint);
+          .set_routing_id (instance.route_rid)
+          .enable_client ();
         options.add_route_mesh (order_workflow_channel_for ("workflow-b"))
-          .enable_client (topology.workflow_b_route_endpoint);
-        auto order_spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
-        order_spot_route.enable_client (topology.workflow_a_spot_route_endpoint);
-        order_spot_route.enable_client (topology.workflow_b_spot_route_endpoint);
+          .set_routing_id (instance.route_rid)
+          .enable_client ();
+        options.add_route_mesh (sample_names_t::order_spot_route)
+          .set_routing_id (instance.route_rid)
+          .enable_client ();
         options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
           sample_names_t::order_spot_route;
         options.add_spot_mesh (std::string (sample_names_t::order_spot_discovery) + "."
                                + instance.instance_id)
           .set_routing_id (instance.spot_rid)
           .enable_router (instance.spot_router_endpoint)
-          .connect_router (topology.for_workflow_instance ("workflow-a").spot_rid,
-                           topology.workflow_a_spot_router_endpoint)
-          .connect_router (topology.for_workflow_instance ("workflow-b").spot_rid,
-                           topology.workflow_b_spot_router_endpoint)
           .accept_route_mesh (sample_names_t::order_spot_route);
         options.http ()
           .listen (instance.http_url)

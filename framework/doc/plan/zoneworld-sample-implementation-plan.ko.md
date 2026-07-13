@@ -453,111 +453,42 @@ transfer의 admission 요청이 정확히 2파트(header+body)라 여기에 걸�
 | 수정 | 두 경로 모두 `partFlag == Final`일 때만 handler를 넘기도록 고쳤다. 로컬 NuGet 패키지 재빌드(`scripts/local-package/build-wsl.sh dotnet`) 후 `ZW-B2` 통과 확인 |
 | **남은 일** | **다른 4개 언어 바인딩(java·kotlin·node·cpp)에 동일 결함이 있는지 대조해야 한다.** core 계약이 언어 중립이므로 같은 실수가 반복됐을 가능성이 높다. 별도 트랙으로 분리한다 |
 
-#### 남은 1개 — **거절된 cross-node join이 대상 노드를 막는다** (framework 결함, 최소 재현 확보)
+#### 남은 1개 — `ZW-E3`: 봇의 `JoinSpot`이 30초 hang하며 spot 큐를 굳힌다 (원인 미확정)
 
-**한 문장 요약: 봇이 도는 상태에서 노드를 점검 모드로 켜 두기만 해도 그 노드의 join 경로가
-영구히 막힌다.** `ZW-E3`가 스위트에서 실패하는 이유가 이것이다.
+**재현:** `dotnet/run_sample.sh ZW-E6,ZW-E3` (봇을 끄면 통과). `ZW-E3` 단독·`ZW-B3`→`ZW-E3`는 통과.
+`all`에서 `ZW-E3`가 실패하는 이유가 이것이다.
 
-| 조합 | 결과 | 그 조합이 하는 일 |
-|---|---|---|
-| `ZW-E3` 단독 | 통과 | — |
-| `ZW-B3` → `ZW-E3` | **통과** | 점검 없음, 노드 내부 이동만 |
-| **`ZW-E6` → `ZW-E3`** | **실패** | `ZW-E6`는 West를 점검으로 켜고 신규 입장이 거절되는지 본 뒤 끈다. **이동이 전혀 없다** |
-| **`ZW-E2` → `ZW-E3`** | **실패** | `ZW-E2`도 West를 점검으로 켠다 |
-| `ZW-E2` → `ZW-E3`, **봇 비활성** | **통과** | 봇이 없으면 거절이 발생하지 않는다 |
+**증상.** 점검 모드를 켠 노드에서, 그 노드 봇들의 `JoinSpot`이 `TimeoutException: SPOT actor join
+timed out after 00:00:30`으로 끝난다 — 원격(`bot-nw-x`→`zone-ne`)뿐 아니라 **노드 내부**
+(`bot-nw-y`→`zone-sw`, `bot-sw-y`→`zone-nw`)도 함께다. 그 spot들의 tick도 멈추고, 이후 도착하는
+`JoinSpot`은 `phase=received`만 찍히고 `phase=replied`가 없다. `ZLinkSerialExecutionQueue.DrainAsync`가
+`_drainGate`를 잡고 한 번에 하나의 work item만 `await`하므로, 끝나지 않는 item 하나가 그 spot의 큐를
+영구히 멈추는 구조와 맞는다.
 
-재현: `dotnet/run_sample.sh ZW-E6,ZW-E3` (러너가 쉼표 구분 목록을 받는다).
+**배제한 것 (전부 실측·소스 확인).**
 
-**메커니즘.** West가 점검 모드인 동안, East의 X축 순찰 봇이 West의 zone spot으로 진입을 시도하고
-West의 `OnActorJoin`이 이를 **거절**한다(§2.3대로 올바른 동작이다). 그 뒤부터 West의 join 경로가
-막힌다 — `ZW-E3`의 `JoinWorldReq`(entry spot actor의 `JoinSpot`)가 timeout되고, `all` 실행에서는
-cross-node `JoinSpot`이 30초 hang 후 `TimeoutException: SPOT actor join timed out`으로 끝난다.
-대상 노드 로그에 그 actor의 흔적이 전혀 없다.
+| 가설 | 판정 |
+|---|---|
+| 샘플의 `OnActorJoinAsync`가 거절 시 상태를 남긴다 | **아니다** — `Reject`만 반환한다 |
+| 거절 reply payload가 원인 | **아니다** — payload 없이 `Reject()`해도 동일 |
+| 대상 측 admission 캐시 누수(`ZLinkActorHandoffAdmissions`) | **아니다** — `_admitting`을 `finally`에서 정리한다 |
+| 소스 측 롤백 누락(`ZLinkActorRemoteJoiner`) | **아니다** — 거절은 admission 단계라 되돌릴 상태가 없다 |
+| spot 큐 self-deadlock(admission이 같은 큐에 재post) | **아니다** — `ambientIsSelf=True`라 직접 호출한다 |
+| admission이 application 핸들러에 못 닿는다 | **아니다** — `invoke-enter`→`invoke-done`이 짝을 이루고, 같은 실행에서 다른 actor의 join은 정상 admit된다 |
+| **`JoinSpot`의 serial turn 유실**(`_turn is null` → 직렬 큐 위 인라인 블로킹) | **아니다** — 계측 결과 `turnNull=True`는 **entry spot 경유 join**(봇 spawn, 사람 `JoinWorld`)에서만 나오고, `ZLinkEntrySpotActivationExecution.ExecuteActorPacketAsync`(`:100`)가 `ZLinkSerialTurn.Suppress()`로 **의도적으로** 없앤 것이다. 그 join들은 **전부 성공한다.** timeout된 zone 이동 join은 `turnNull=False`다 |
 
-**샘플 쪽은 배제했다.** `ZoneSpot.OnActorJoinAsync`는 거절 시 아무 상태도 남기지 않는다
-(`_pendingJoins`에 넣지 않고 `Reject`만 반환).
+**따라서 막히는 것은 admission(대상 측)이 아니라 `JoinSpot` 호출(소스 측)이고, turn 유실도 아니다.**
+`ZLinkActorJoinSpotCall.Async()` → `_turn.AwaitFrameworkCallAsync(ExecuteAsync, ct)` →
+`runtime.JoinActorAsync(...)` 사이에서 완료되지 않는 지점을 찾아야 한다.
 
-**framework 소스에서 배제한 것.**
+**다음 단계.** `ZLinkSerialTurn.AwaitFrameworkCallAsync`(`Runtime/Execution/ZLinkSerialTurn.cs:57`)의
+**suspend/resume 회계**를 본다. `SignalSuspended()` → `AwaitResumePermitAsync()` 짝과,
+`ZLinkSerialExecutionQueue.PostResume`이 만드는 재개 work item이 **거절되어 늦게 끝나는 join**에서도
+정상 동작하는지 확인한다. 사람의 이동(`MoveMsg`, session relay 기원)은 정상이고 봇의 이동
+(`BotTickMsg`, **spot timer** 기원)만 걸리므로, **timer 기원 turn의 재개**가 여전히 1순위 용의자다.
 
-- **대상 측 admission 캐시** — `Runtime/Actors/ZLinkActorHandoffAdmissions.cs`. 거절 경로도 정상
-  정리된다: `_admitting`은 `finally`에서 제거되고, `Register`는 거절 reply를 deadline과 함께
-  `_pending`에 넣을 뿐 `MarkDrainUnsafe`를 호출하지 않는다.
-- **소스 측 롤백** — `ZLinkActorRemoteJoiner.SubmitRoutedJoinActorCoreAsync`. admission이 첫 단계라
-  거절 시 `sourceCaptureStarted`·`sourceLeft`가 모두 false이고, `RollbackSourceHandoffAsync`는 아무
-  일도 하지 않는다(되돌릴 상태가 없으므로 옳다).
-
-**무엇이 굳는지 특정했다 — 노드 전체의 actor join이다.** `ZW-E6,ZW-E3` 재현의 `zone-node-1` 로그:
-
-1. 점검 모드를 켠 뒤, **거절 자체는 정상 완료된다**(`phase=replied spot=zone-nw actor=…`까지 찍힌다).
-2. **그 직후부터 그 노드의 모든 `JoinSpot`이 30초 뒤 `TimeoutException: SPOT actor join timed out`으로
-   끝난다.** 원격 join(`bot-nw-x`→`zone-ne`)만이 아니라 **노드 내부 join**(`bot-nw-y`→`zone-sw`,
-   `bot-sw-y`→`zone-nw`)도 똑같이 hang한다.
-3. 그 노드의 zone spot tick(`ZoneBorderEvent` publish)도 멈춘다. 새 `JoinSpot`은 `phase=received`만
-   찍히고 `phase=replied`가 없다.
-
-**서로 다른 actor·서로 다른 target spot의 join이 전부 걸리므로 spot 단위가 아니라 노드 단위 gate가
-막힌 것이다.**
-
-**원격 거절이 원인이다 (로컬 거절이 아니다).** 봇을 끄면 같은 조합이 통과한다
-(`ZONEWORLD_DISABLE_BOTS=1 run_sample.sh ZW-E6,ZW-E3` → 통과). `ZW-E6`가 만드는 **로컬** 거절(자기 노드
-entry spot → `zone-nw`)만으로는 막히지 않는다. 막는 것은 **점검 중인 노드로 진입하려는 다른 노드의
-봇들이 만드는 원격 join 거절**이다.
-
-**거절 payload는 원인이 아니다.** `ZLinkSpotActorJoinResult.Reject()`를 payload 없이 반환해도 증상이
-그대로다(진단용 변경은 원복함).
-
-**샘플 쪽은 배제했다.** `ZoneSpot.OnActorJoinAsync`는 거절 시 아무 상태도 남기지 않는다.
-
-**framework 소스에서 배제한 것.**
-
-- 소스 측 롤백(`ZLinkActorRemoteJoiner.SubmitRoutedJoinActorCoreAsync`) — 거절은 admission 단계라
-  `sourceCaptureStarted`·`sourceLeft`가 모두 false이고 되돌릴 상태가 없다.
-- 로컬 join(`ZLinkSpotActivationActors.JoinActorAsync`) — 거절이면 `CommitActorJoinCore`를 건너뛰고
-  `ExecuteSerializedAsync`가 정상 반환한다.
-- `ZLinkActorJoinSpotCall.ExecuteAsync`(`Runtime/Actors/ZLinkActorContext.cs:71`) — 거절과 수락을
-  구분하지 않는다.
-
-**굳는 지점을 코드 한 줄까지 좁혔다 — `HandlerInvoker.InvokeActorJoinAsync`가 반환하지 않는다.**
-
-`ZLinkSpotActivationActors.AdmitRemoteActorJoinAsync`(`:110`)에 계측을 넣어 확인했다(진단용 변경은
-원복함).
-
-1. **원격 admission이 그 spot의 직렬 문맥 위에서 실행된다** —
-   `ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)`가 **`True`**다. 따라서
-   `ExecuteSerializedAsync`로 되돌아가지 않고 직접 호출 경로를 탄다. (self-deadlock 가설은 틀렸다.)
-2. 그 직접 경로는 `state.Result = await HandlerInvoker.InvokeActorJoinAsync(descriptor, actorId,
-   request, ct)`를 부른다.
-3. **그런데 application의 `OnActorJoin`은 호출되지 않는다.** 봇에 대한
-   `zone spot: join rejected, node under maintenance` 로그가 **하나도 없다**(같은 실행에서 로컬 join의
-   거절 로그는 정상적으로 찍힌다).
-4. `ADMIT-DIAG`가 **정확히 2건**만 찍힌다 — West의 두 zone spot에 각각 1건. 봇은 500ms마다 재시도하는데
-   더 이상 admission이 들어오지 않는다. **첫 원격 admission이 그 spot을 굳힌다.**
-
-`ZLinkSerialExecutionQueue.DrainAsync`는 `_drainGate`를 잡고 **한 번에 하나의 work item만**
-`await item.InvokeAsync(...)`로 실행한다. 그 item이 끝나지 않으면 그 spot의 큐가 영구히 멈춘다 —
-tick이 죽고 이후 모든 `JoinSpot`이 `phase=received`에서 멈추는 관측과 정확히 맞는다.
-
-**따라서 결함은 `HandlerInvoker.InvokeActorJoinAsync`의 원격 admission 경로에 있다.** application
-핸들러에 닿기 전에 무엇인가를 기다리며 반환하지 않는다. 로컬 join(`JoinActorAsync`)은 같은
-`InvokeActorJoinAsync`를 부르면서도 정상 동작하므로, **원격 진입 시에만 성립하는 대기 조건**이다.
-
-**다음 단계 — 남은 후보는 둘뿐이다.** `ZLinkSpotHandlerInvoker.InvokeActorJoinAsync`
-(`Runtime/Spots/ZLinkSpotHandlerInvoker.cs:63`)는 애플리케이션 핸들러에 닿기까지 두 단계만 거친다.
-
-1. `ResolveHandler(descriptor.HandlerType)` — DI 스코프에서 핸들러를 해석한다.
-2. `ZLinkHandlerInvocationEngine.InvokeAsync(handler, invoker, …)` — 실제 호출.
-
-로컬 join(`JoinActorAsync`)도 **같은** `InvokeActorJoinAsync`를 부르는데 정상 동작한다. 따라서
-**원격 진입일 때만 달라지는 것**을 찾아야 한다 — 원격은 이미 그 spot의 직렬 문맥 위에서 호출되므로
-(`ambientIsSelf=True`), 그 안에서 다시 직렬 자원이나 스코프를 얻으려 하면 자기 자신을 기다리게 된다.
-`ZLinkHandlerInvocationEngine`이 handler invocation executor로 넘기고 그 완료를 기다리는 구조라면,
-그 executor가 같은 직렬 큐를 다시 밟는지 확인한다.
-
-**계측 방법.** `InvokeActorJoinAsync` 진입 직후와 `ResolveHandler` 직후에 로그를 넣고
-`run_sample.sh ZW-E6,ZW-E3`를 돌리면 두 후보 중 어디서 멈추는지 한 번에 갈린다.
-
-**왜 이 경로가 처음 밟히나.** 정본 6종에는 **remote join을 거절하는** 시나리오가 없다. ZoneWorld의
-점검 모드가 §2.3대로 "목표 노드가 권위로 재판정해 거절"을 실제로 발생시키면서 처음 드러났다.
+**왜 이 경로가 처음 밟히나.** 정본 6종에는 **spot timer가 구동하는 actor가 zone을 옮기는** 시나리오가
+없다. ZoneWorld의 봇(§2.7)이 이 경로를 처음 밟았다.
 
 #### 해소 — bound session route가 첫 relay 전에 전파되지 않았다 (수정 완료)
 

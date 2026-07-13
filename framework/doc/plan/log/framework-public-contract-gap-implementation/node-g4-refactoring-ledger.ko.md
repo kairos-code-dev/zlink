@@ -121,4 +121,13 @@ wire protocol 경계에서 길이 prefix로 한 transport chunk의 모든 frame�
 형식의 해석 책임을 protocol 안에 유지할 수 있기 때문이다. 응답·진행 알림·완료 알림을 하나의
 WebSocket message에 넣는 결정적 contract test와 실제 Chromium GameQuest 20회 연속 실행을 통과했다.
 
+전체 E2E 재검증에서는 같은 STREAM session에서 actor 소유권을 갱신할 때 native actor binding을 먼저
+해제한 뒤 다시 등록해, handoff 중 들어온 one-way packet 한 건이 간헐적으로 누락되는 위험 신호를
+확인했다. 별도 replace API를 추가하는 방법과 기존 native bind의 동일 session·actor 교체 동작을
+사용하는 방법을 비교해 후자를 선택했다. 새 공개 표면 없이 binding 교체 책임을 coordinator 안에
+유지할 수 있기 때문이다. 이제 같은 session에서는 기존 binding을 해제하지 않고 새 `ActorRef`를
+등록하며, session 자체가 바뀔 때만 이전 binding을 해제한다. 교체 실패 시에는 이전 ref를 다시
+등록한다. native unbind가 발생하지 않는 결정적 contract test와 실제 Chromium `ST-F3` 10회 연속
+실행으로 packet 누락이 해소됐는지 확인했다.
+
 최종 판정: **NO DDD/POSD FINDINGS**

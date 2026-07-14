@@ -2,7 +2,9 @@ package systems.zlink.samples.bingo.client;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 import systems.zlink.samples.bingo.client.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
@@ -22,13 +24,19 @@ public final class BingoClientScenario {
             client1.request(BingoMessages.authenticateReq("player-1")).submit(Messages.AuthenticateRes.class).toCompletableFuture().join();
         ensure(client1Auth.getActorId().equals("player-1"));
         ensure(!client1Auth.getActorNodeRid().isBlank());
+        AtomicInteger client1OwnJoinNotifications = new AtomicInteger();
+        client1.on(SampleNames.PlayerJoinedPacket, Messages.PlayerJoinedNotify.class, message -> {
+            if (client1Auth.getActorId().equals(message.payload().getActorId())) {
+                client1OwnJoinNotifications.incrementAndGet();
+            }
+            return CompletableFuture.completedFuture(null);
+        });
 
         Messages.MatchBingoRes client1Match =
             client1.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
         ensure(client1Match.getState().getStatus().equals("WaitingForPlayers"));
         ensure(client1Match.getState().getHostActorId().equals(client1Auth.getActorId()));
         ensure(client1Match.getRoomOwnerNodeRid().equals(client1Auth.getActorNodeRid()));
-        ensure(client1.receivedCount(SampleNames.PlayerJoinedPacket) == 0);
 
         Messages.AuthenticateRes observerAuth =
             observer.request(BingoMessages.authenticateReq("observer")).submit(Messages.AuthenticateRes.class).toCompletableFuture().join();
@@ -51,6 +59,13 @@ public final class BingoClientScenario {
         ensure(client2Auth.getActorId().equals("player-2"));
         ensure(!client2Auth.getActorId().equals(client1Auth.getActorId()));
         ensure(!client2Auth.getActorNodeRid().equals(client1Auth.getActorNodeRid()));
+        AtomicInteger client2OwnJoinNotifications = new AtomicInteger();
+        client2.on(SampleNames.PlayerJoinedPacket, Messages.PlayerJoinedNotify.class, message -> {
+            if (client2Auth.getActorId().equals(message.payload().getActorId())) {
+                client2OwnJoinNotifications.incrementAndGet();
+            }
+            return CompletableFuture.completedFuture(null);
+        });
 
         Messages.MatchBingoRes client2Match =
             client2.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
@@ -61,13 +76,15 @@ public final class BingoClientScenario {
 
         Messages.PlayerJoinedNotify join = client1SawClient2Join.toCompletableFuture().join().payload();
         ensure(join.getActorId().equals(client2Auth.getActorId()));
-        ensure(client2.receivedCount(SampleNames.PlayerJoinedPacket) == 0);
         ensure(client1Started.toCompletableFuture().join().payload().getState().getStatus().equals("Running"));
 
         Messages.SubmitBingoCardRes client2Card = client2
             .request(BingoMessages.submitBingoCardReq(client2Match.getRoomId(), BingoClientCards.Player2))
             .submit(Messages.SubmitBingoCardRes.class).toCompletableFuture().join();
         ensure(client2Card.getState().getStatus().equals("Running"));
+        ensure(client2Card.getState().getPlayersList().stream()
+            .anyMatch(player -> player.getActorId().equals(client2Auth.getActorId())
+                && player.getCardCount() == 9));
         var rewardAnnounced = observer.waitFor(SampleNames.RewardAnnouncedPacket)
             .where(
                 Messages.BingoRewardAnnouncedNotify.class,
@@ -100,6 +117,9 @@ public final class BingoClientScenario {
             .request(BingoMessages.submitBingoCardReq(client1Match.getRoomId(), BingoClientCards.Player1))
             .submit(Messages.SubmitBingoCardRes.class).toCompletableFuture().join();
         ensure(client1Card.getState().getStatus().equals("Running"));
+        ensure(client1Card.getState().getPlayersCount() == 2);
+        ensure(client1Card.getState().getPlayersList().stream()
+            .allMatch(player -> player.getCardCount() == 9));
 
         List<Messages.BingoNumberDrawnNotify> drawnNumbers = new ArrayList<>();
         for (int drawSeq = 1; drawSeq <= 15; drawSeq++) {
@@ -111,6 +131,7 @@ public final class BingoClientScenario {
             ensure(client1Drawn.getDrawSeq() == drawSeq);
             ensure(client2Drawn.getDrawSeq() == drawSeq);
             ensure(client2Drawn.getNumber() == client1Drawn.getNumber());
+            ensure(client2Drawn.getState().equals(client1Drawn.getState()));
 
             if (client1Drawn.getState().getStatus().equals("Finished")) {
                 break;
@@ -147,6 +168,8 @@ public final class BingoClientScenario {
             .submit(Messages.StopObservingBingoEventsRes.class).toCompletableFuture().join();
         ensure(stopped.getStopped());
         ensure(stopped.getObserverNodeRid().equals(observed.getObserverNodeRid()));
+        ensure(client1OwnJoinNotifications.get() == 0);
+        ensure(client2OwnJoinNotifications.get() == 0);
     }
 
     private static void ensure(boolean condition) {

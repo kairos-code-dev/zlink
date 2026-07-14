@@ -57,8 +57,8 @@
 | Courier spot node 1/2 | `CourierSpotNode` processes | validation | done | courier-a는 node-1, courier-b는 node-2 actor로 배치된다. |
 | Courier actor bind relay | `CourierSession`, `BindCourierSessionActorHandler`, `run_sample.sh` | validation | done | courier-a/b 요청이 actor handler까지 relay되고 actor 응답이 client에 전달되는지 검증한다. |
 | Dispatch create delivery | `DispatchHttpServer`, client scenario | validation | done | `POST /deliveries`로 success/reassign 배송을 만든다. |
-| delivery-success statuses | `DeliveryDispatchClientScenario` | validation | done | `Assigned`, `Accepted`, `PickedUp`, `Delivered`와 `courier-a`를 검증한다. |
-| delivery-reassign statuses | `DeliveryDispatchClientScenario` | validation | done | `Assigned`, `Reassigned`, `Accepted`, `Delivered`와 `courier-b`를 검증한다. |
+| delivery-success statuses | `DeliveryDispatchClientScenario` | validation | done | typed callback으로 기록한 실제 도착 순서가 `Assigned`, `Accepted`, `PickedUp`, `Delivered`인지 확인하고 각 알림의 `courier-a`를 검증한다. |
+| delivery-reassign statuses | `DeliveryDispatchClientScenario` | validation | done | typed callback으로 기록한 실제 도착 순서가 `Assigned`, `Reassigned`, `Accepted`, `Delivered`인지 확인하고 필요한 알림의 `courier-b`를 검증한다. |
 | server evidence check | `DispatchHttpServer`, `EvidenceStore` | validation | done | `/self-check/assert`가 두 delivery의 상태 순서를 검증한다. |
 | topology marker | `run_sample.sh` | validation | done | 모든 role readiness 뒤 `topology=ready`를 출력한다. |
 | reassignment marker | `DeliveryDispatchClientScenario` | validation | done | `deliverydispatch-reassignment=completed`를 출력한다. |

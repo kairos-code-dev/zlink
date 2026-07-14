@@ -2,6 +2,8 @@ package systems.zlink.samples.tictactoe.client;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
@@ -75,13 +77,27 @@ public final class TicTacToeClientScenario {
             System.out.println("observer-connected endpoint=" + observerEndpoint);
             System.out.println("observer-subscription=verified subscribed=" + subscribed.subscribed());
 
+            AtomicInteger hostOwnJoinNotifications = new AtomicInteger();
+            host.on(PlayerJoinedNotify.class, message -> {
+                if (options.xActorId().equals(message.payload().actorId())) {
+                    hostOwnJoinNotifications.incrementAndGet();
+                }
+                return CompletableFuture.completedFuture(null);
+            });
+            AtomicInteger guestOwnJoinNotifications = new AtomicInteger();
+            guest.on(PlayerJoinedNotify.class, message -> {
+                if (options.oActorId().equals(message.payload().actorId())) {
+                    guestOwnJoinNotifications.incrementAndGet();
+                }
+                return CompletableFuture.completedFuture(null);
+            });
+
             JoinGameRes hostJoin = host
                 .request(new JoinGameReq(game.roomId()))
                 .submit(JoinGameRes.class).toCompletableFuture().join();
             ensure(hostJoin.state().roomId().equals(game.roomId()));
             ensure("WaitingForPlayers".equals(hostJoin.state().status()));
             ensure(options.xActorId().equals(hostJoin.state().xActorId()));
-            ensure(host.receivedCount("PlayerJoinedNotify") == 0);
 
             var hostSawGuestJoin = host
                 .waitFor(PlayerJoinedNotify.class)
@@ -114,7 +130,6 @@ public final class TicTacToeClientScenario {
             PlayerJoinedNotify guestJoinNotify = hostSawGuestJoin.toCompletableFuture().join().payload();
             ensure("O".equals(guestJoinNotify.mark()));
             ensure("InProgress".equals(guestJoinNotify.state().status()));
-            ensure(guest.receivedCount("PlayerJoinedNotify") == 0);
 
             GameStateNotify gameStart = hostSawGameStart.toCompletableFuture().join().payload();
             ensure("X".equals(gameStart.state().nextTurn()));
@@ -232,6 +247,8 @@ public final class TicTacToeClientScenario {
                 .spotNodeRid();
             ensure(milestone.wins() == 100);
             ensure(expectedRid.equals(milestone.receivingSpotNodeRid()));
+            ensure(hostOwnJoinNotifications.get() == 0);
+            ensure(guestOwnJoinNotifications.get() == 0);
             System.out.println("observer-win-milestone=verified actor="
                 + milestone.actorId()
                 + " wins=" + milestone.wins()

@@ -14,7 +14,7 @@
 | `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Windows runner도 같은 role 구성과 Redis endpoint 계약을 사용한다. |
 | `.NET: Client/Bingo.Client.csproj` | `Client/build.gradle.kts` | build | done | Client role project. |
 | `.NET: Client/Program.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/Program.java` | client-entry | done | 세 stream connector를 만들고 scenario에 넘긴다. |
-| `.NET: Client/BingoClientScenario.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/BingoClientScenario.java` | client-scenario | done | 인증, matching, observer, card 제출, draw, 종료, reward, stop-observe를 self-check한다. |
+| `.NET: Client/BingoClientScenario.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/BingoClientScenario.java` | client-scenario | done | 인증과 matching을 검증하고, 자기 join 알림이 없다는 점을 typed callback으로 계수한다. card 제출 응답의 9칸 상태, 양쪽 draw state, 종료, reward, stop-observe도 직접 확인한다. |
 | `.NET: Client/Configuration/SampleNames.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/configuration/SampleNames.java` | client-config | done | packet 이름과 sample marker를 client에서 사용한다. |
 | `.NET: Server/Configuration/Bingo.Server.Configuration.csproj` | `Server/Configuration/build.gradle.kts` | build | done | 서버 공통 설정 project. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/*` role logs + `BINGO_LOG_DIR` | server-evidence | done | Java는 role별 application에서 flow log를 남기고 runner가 `message flow` marker를 확인한다. |

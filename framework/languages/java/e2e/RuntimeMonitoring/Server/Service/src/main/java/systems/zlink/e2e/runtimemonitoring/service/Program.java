@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
+import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
@@ -59,11 +60,13 @@ public final class Program {
         EvidenceState state,
         ObjectMapper json,
         systems.zlink.framework.channels.ZLinkChannelRuntimeOptions runtimeOptions,
+        ObjectProvider<ZLinkSpotManager> spots,
         org.springframework.context.ConfigurableApplicationContext applicationContext) {
         return new EvidenceHttpServer(
             state,
             json,
             runtimeOptions,
+            spots,
             applicationContext,
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"));
     }
@@ -103,6 +106,7 @@ public final class Program {
                     .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a") + "-spot"));
                 node.enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"));
                 node.addSpotFactory(MonitoringSpot.class);
+                node.addSpotFactory(TriggeredMonitoringSpot.class);
             }
         };
     }

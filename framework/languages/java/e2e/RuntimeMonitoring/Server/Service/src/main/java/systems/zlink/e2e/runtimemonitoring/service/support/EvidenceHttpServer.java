@@ -5,15 +5,21 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.SmartLifecycle;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
+import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final EvidenceState state;
     private final ObjectMapper json;
     private final ZLinkChannelRuntimeOptions runtimeOptions;
+    private final ObjectProvider<ZLinkSpotManager> spots;
     private final ConfigurableApplicationContext applicationContext;
     private final String endpoint;
     private HttpServer server;
@@ -23,11 +29,13 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         EvidenceState state,
         ObjectMapper json,
         ZLinkChannelRuntimeOptions runtimeOptions,
+        ObjectProvider<ZLinkSpotManager> spots,
         ConfigurableApplicationContext applicationContext,
         String endpoint) {
         this.state = state;
         this.json = json;
         this.runtimeOptions = runtimeOptions;
+        this.spots = spots;
         this.applicationContext = applicationContext;
         this.endpoint = endpoint;
     }
@@ -51,6 +59,24 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/admin/restore", exchange -> {
                 setWeight(100, "restore");
                 write(exchange, json.writeValueAsString(new AdminResult("restored", 100)));
+            });
+            server.createContext("/admin/create-subject-spot", exchange -> {
+                try {
+                    ZLinkSpotManager manager = spots.getIfAvailable();
+                    if (manager == null) {
+                        throw new IllegalStateException("spot manager is not configured");
+                    }
+                    manager.getOrCreate(
+                        TriggeredMonitoringSpot.class,
+                        RoutingId.from("monitoring-subject-trigger"),
+                        ZLinkMessage.of("monitoring-subject-trigger"))
+                        .toCompletableFuture()
+                        .join();
+                    write(exchange, json.writeValueAsString(new AdminResult("subject-created", -1)));
+                } catch (RuntimeException error) {
+                    Throwable cause = error.getCause() == null ? error : error.getCause();
+                    write(exchange, 500, cause.getClass().getName() + ": " + cause.getMessage());
+                }
             });
             server.createContext("/shutdown", exchange -> {
                 write(exchange, json.writeValueAsString(new AdminResult("stopping", -1)));
@@ -79,9 +105,16 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private static void write(
         com.sun.net.httpserver.HttpExchange exchange,
         String value) throws java.io.IOException {
+        write(exchange, 200, value);
+    }
+
+    private static void write(
+        com.sun.net.httpserver.HttpExchange exchange,
+        int status,
+        String value) throws java.io.IOException {
         byte[] body = value.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, body.length);
+        exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
     }

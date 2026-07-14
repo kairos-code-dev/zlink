@@ -18,6 +18,9 @@ public final class Contracts {
     public record WorkRes(String value, String providerRid) {
     }
 
+    public record SpotSubjectProbe(String value) {
+    }
+
     public record EvidenceEntry(String surface, String sourceName, String event, String detail) {
     }
 

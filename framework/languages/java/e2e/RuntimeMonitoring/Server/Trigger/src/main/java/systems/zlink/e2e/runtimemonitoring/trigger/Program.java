@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.IntPredicate;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -215,6 +216,39 @@ public final class Program {
         }
 
         private String monA2() {
+            String service = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
+            String serviceB = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+            ensure(!serviceB.isBlank(), "MON-A2 requires ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+            int topologyBefore = latestEvidenceCount(
+                service, "location", "TOPOLOGY_CHANGED", "topology");
+            int entriesBefore = evidenceEntryCount(service);
+            post(serviceB + "/shutdown");
+            waitForPort(serviceB, false, "MON-A2 expected service-b to stop");
+            waitForEvidenceCountAfter(
+                service,
+                "location",
+                "TOPOLOGY_CHANGED",
+                "topology",
+                entriesBefore,
+                count -> count < topologyBefore,
+                "MON-A2 location topology did not decrease from " + topologyBefore);
+
+            int restoreEntries = evidenceEntryCount(service);
+            Process restarted = startServiceB();
+            try {
+                waitForPort(serviceB, true, "MON-A2 expected service-b to restart");
+                waitForEvidenceCountAfter(
+                    service,
+                    "location",
+                    "TOPOLOGY_CHANGED",
+                    "topology",
+                    restoreEntries,
+                    count -> count >= topologyBefore,
+                    "MON-A2 location topology did not return to " + topologyBefore);
+            } catch (RuntimeException error) {
+                restarted.destroyForcibly();
+                throw error;
+            }
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "location", Set.of(
                 "STATUS_CHANGED",
                 "TOPOLOGY_CHANGED",
@@ -223,12 +257,116 @@ public final class Program {
         }
 
         private String monA3() {
-            waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "spot", Set.of(
+            String service = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
+            int subjectsBefore = latestEvidenceCount(
+                service, "spot", "SUBJECTS_CHANGED", "subjects");
+            int entriesBefore = evidenceEntryCount(service);
+            post(service + "/admin/create-subject-spot");
+            waitForEvidenceCountAfter(
+                service,
+                "spot",
+                "SUBJECTS_CHANGED",
+                "subjects",
+                entriesBefore,
+                count -> count > subjectsBefore,
+                "MON-A3 spot subjects did not increase from " + subjectsBefore);
+            waitForEvent(service, "spot", Set.of(
                 "STATUS_CHANGED",
                 "PEERS_CHANGED",
                 "SUBJECTS_CHANGED",
                 "TIMER_HANDLER_FAILED"));
             return "scenario MON-A3 passed\n";
+        }
+
+        private void waitForEvidenceCountAfter(
+            String baseUrl,
+            String surface,
+            String event,
+            String field,
+            int firstEntry,
+            IntPredicate expected,
+            String failureMessage) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (System.nanoTime() < deadline) {
+                if (hasEvidenceCountAfter(
+                    baseUrl, surface, event, field, firstEntry, expected)) {
+                    return;
+                }
+                sleep(100);
+            }
+            throw new IllegalStateException(failureMessage);
+        }
+
+        private boolean hasEvidenceCountAfter(
+            String baseUrl,
+            String surface,
+            String event,
+            String field,
+            int firstEntry,
+            IntPredicate expected) {
+            try {
+                JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                ensure(entries.isArray(), "evidence response has no entries array");
+                for (int index = Math.min(firstEntry, entries.size()); index < entries.size(); index++) {
+                    JsonNode entry = entries.get(index);
+                    int count = countFromDetail(entry.path("detail").asText(), field);
+                    if (surface.equals(entry.path("surface").asText())
+                        && event.equals(entry.path("event").asText())
+                        && count >= 0
+                        && expected.test(count)) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to parse evidence", error);
+            }
+        }
+
+        private int evidenceEntryCount(String baseUrl) {
+            try {
+                JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                ensure(entries.isArray(), "evidence response has no entries array");
+                return entries.size();
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to parse evidence", error);
+            }
+        }
+
+        private int latestEvidenceCount(
+            String baseUrl,
+            String surface,
+            String event,
+            String field) {
+            try {
+                JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                ensure(entries.isArray(), "evidence response has no entries array");
+                int latest = -1;
+                for (JsonNode entry : entries) {
+                    if (!surface.equals(entry.path("surface").asText())
+                        || !event.equals(entry.path("event").asText())) {
+                        continue;
+                    }
+                    int count = countFromDetail(entry.path("detail").asText(), field);
+                    if (count >= 0) {
+                        latest = count;
+                    }
+                }
+                ensure(latest >= 0, surface + " evidence has no " + field + " count");
+                return latest;
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to parse evidence", error);
+            }
+        }
+
+        private int countFromDetail(String detail, String field) {
+            String prefix = field + "=";
+            for (String part : detail.split("\\|")) {
+                if (part.startsWith(prefix)) {
+                    return Integer.parseInt(part.substring(prefix.length()));
+                }
+            }
+            return -1;
         }
 
         private String monA5() {

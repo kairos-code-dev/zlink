@@ -76,16 +76,8 @@ public final class SampleTopology {
         return "b".equals(PlayNode) ? PlayBSpotEndpoint : PlayASpotEndpoint;
     }
 
-    public static String peerPlaySpotEndpoint() {
-        return "b".equals(PlayNode) ? PlayASpotEndpoint : PlayBSpotEndpoint;
-    }
-
     public static String selectedPlaySpotRouterEndpoint() {
         return "b".equals(PlayNode) ? PlayBSpotRouterEndpoint : PlayASpotRouterEndpoint;
-    }
-
-    public static String preferredPlaySpotRouterEndpoint() {
-        return "b".equals(SessionNode) ? PlayBSpotRouterEndpoint : PlayASpotRouterEndpoint;
     }
 
     public static String selectedPlayNodeRid() {

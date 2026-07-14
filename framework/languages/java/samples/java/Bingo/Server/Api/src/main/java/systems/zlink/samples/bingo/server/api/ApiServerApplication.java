@@ -43,8 +43,7 @@ public final class ApiServerApplication {
                 .enableServer(SampleTopology.selectedApiChannelEndpoint())
                 .addHandlerGroup("api");
             options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient(SampleTopology.PlayAChannelEndpoint)
-                .enableClient(SampleTopology.PlayBChannelEndpoint);
+                .enableClient();
         };
     }
 

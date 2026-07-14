@@ -16,7 +16,7 @@
 | `.NET: Client/Program.cs` | `Client/src/main/java/.../client/Program.java` | client-entry | done | HTTP client와 stream connector를 만들고 scenario를 실행한다. |
 | `.NET: Client/DeliveryDispatchClientScenario.cs` | `Client/src/main/java/.../client/DeliveryDispatchClientScenario.java` | client-scenario | done | 성공 배차, timeout 재배정, server evidence marker를 검증한다. |
 | `.NET: Server/Configuration/*.cs` | `Server/Configuration/src/main/java/.../server/configuration/*.java` | server-support | done | `EvidenceStore`, `SampleFlowLog`, `SampleNames`, `SampleTopology`, `SampleTimings`로 공통 설정과 evidence를 둔다. `SampleTopology`는 `--config`로 받은 properties 파일을 시작 시 한 번 읽는다. |
-| `.NET: location store bootstrap` | `Server/Configuration/src/main/java/.../server/configuration/SampleLocationStore.java` | server-config | done | role들이 공유하는 Redis location store extension을 생성한다. |
+| `.NET: location store bootstrap` | `Server/Configuration/src/main/java/.../server/configuration/SampleLocationStore.java` | server-config | done | role들이 공유하는 Redis location store extension을 생성한다. channel client와 courier Spot peer는 endpoint를 직접 연결하지 않고 framework가 location store에서 발견한다. |
 | `.NET: Server/Tracking/*` | `Server/Tracking/src/main/java/.../server/tracking/*` | server-role | done | tracking channel, evidence 기록, customer push, server assertion을 처리한다. |
 | `.NET: Server/CustomerGateway/*` | `Server/CustomerGateway/src/main/java/.../server/customergateway/*` | server-role | done | customer stream session, customer actor, entry spot, status push를 처리한다. |
 | `.NET: Server/CourierSession/*` | `Server/CourierSession/src/main/java/.../server/couriersession/*` | server-role | done | courier stream session과 courier actor/session bind를 처리한다. |
@@ -86,3 +86,4 @@ sample helper로 우회하지 않고 public contract gap으로 분리한다.
   허용 종료 코드로 끝났다.
 - `nice -n 15 timeout 600s ./run_sample.sh` 통과: `deliverydispatch full client/server self-check completed`
 - `System.getProperty`·`System.getenv` 애플리케이션 코드 금지 gate와 JVM system property 주입 부재 검사를 통과했다.
+- TicTacToe에만 허용된 endpoint 인자 `enableClient`, `connectRouter`, `connectPeerPub` 금지 gate와 전체 runner를 통과했다.

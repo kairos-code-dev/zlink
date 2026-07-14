@@ -665,7 +665,9 @@ Config 11 전체 실행도 각 selector를
 
 ### 체크리스트
 
-- [ ] **SMP-JV-01** (**절대 규칙 위반**) — TicTacToe 밖 샘플이 **수동 연결을 쓴다**(29곳). `.NET`·Node는 0
+- [ ] **SMP-JV-01** (**절대 규칙 위반**) — TicTacToe 밖 샘플이 **수동 연결을 쓴다**(live 재검증 15곳 → 4곳)
+  - 부분 해결: Bingo·DeliveryDispatch·ShoppingMall의 11개 수동 channel/Spot peer 연결을 제거했고 세 전체 runner가 location store 자동 연결로 통과했다. SupportChat은 재검증 시 이미 0개였다.
+  - §0.8 중단: GameQuest의 4개 channel client도 인자 없는 `enableClient()`로 바꾸면 최초 시나리오는 통과하지만 mission 재기동 직후 rehydrate 요청이 자동 재연결 완료 전에 `NOT_ADMITTED`로 실패한다. 공개 `ZLinkLocationReadiness` interface는 있으나 Spring starter bean이 없어 sample이 공개 DI 경로로 readiness를 기다릴 수 없다. 선택지는 (1) starter가 public readiness bean을 제공하거나, (2) runtime channel request가 자동 재연결 완료까지 계약상 대기하는 것이다. 둘 다 현재 writable scope 밖이므로 GameQuest 수동 연결은 유지하고 항목을 open으로 남긴다.
 - [x] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
   - 증거: `addSpotMesh`·`PlayerQuestSpot`과 전역 monitor 부재를 요구한 gate가 기존 코드에서 실패했다. 두 QuestMission이 같은 spot mesh에 참여하고 channel은 ingress로만 남으며, 모든 quest 요청은 `PlayerId` routing id의 owner Spot으로 전달된다. 전체 runner가 `surface=SPOT ... packet=GameplayMsg` flow와 재기동 복원까지 통과했다.
 - [x] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
@@ -720,7 +722,7 @@ Config 11 전체 실행도 각 selector를
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | Bingo·SupportChat·DeliveryDispatch·ShoppingMall·GameQuest에 `connectRouter`/`connectPeerPub`가 **29곳**(`.NET`·Node는 **0**). 인자 없는 `.enableClient()` overload가 **같은 파일에서 이미 쓰이고 있다** — 피할 수 있는 호출들이다. **[갭 인덱스 §13.2]가 "연결 축은 규약과 일치한다"고 적고 있었는데 거짓이었고, 정정했다** |
+| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | **부분 해결:** live 재검증 수치는 과거 29곳이 아니라 15곳이었다. Bingo 4곳, DeliveryDispatch 5곳, ShoppingMall 2곳은 인자 없는 `enableClient()`와 location-store Spot peer 발견으로 바꿔 각 전체 runner가 통과했으며 SupportChat은 0곳이었다. **남은 4곳:** GameQuest의 owner/notification channel은 자동 연결로 최초 client와 scale-out까지 통과하지만 mission 재기동 직후 request가 `NOT_ADMITTED`로 실패한다. 내부 runtime/query 접근이나 업무 요청 retry는 사용하지 않았다. starter의 public readiness bean 제공 또는 runtime request의 reconnect 대기 계약이 필요해 현재 범위에서는 open이다. |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | **해결:** 두 QuestMission이 `gamequest.player-quests` spot mesh에 참여하고 `PlayerQuestSpot`을 등록한다. 기존 player hash channel은 ingress 선택에만 쓰이며, 실제 소유권과 직렬 처리는 `PlayerId` routing id의 spot owner가 담당한다. |
 | **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | **재검증 중단:** 기존 SF-B2 뒤에 survivor-only gate를 붙이면 계속 실행 중인 `api-b` 응답을 잡아 예상대로 실패한다. 이어 grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작했지만, consumer가 새 outbound 연결을 만들고 `sf-b2-restarted` 요청을 `api-b`에 전달했다. 이는 gate 누락뿐 아니라 Java runtime 계약 위반이다. **선택지:** (1) 허용 범위를 `zlink-framework-core`까지 넓혀 store failure grace 초과 시 reconnect/new connect를 억제한 뒤 provider 재시작 gate를 정식으로 넣는다. (2) 현재 범위를 유지하고 이 항목을 open으로 남긴다. |
 

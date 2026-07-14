@@ -54,12 +54,6 @@ public final class DispatchServerApplication {
             courierRoutes
                 .enableRouter("inproc://deliverydispatch-dispatch-courier-client")
                 .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"));
-            courierRoutes.connectRouter(
-                RoutingId.from(SampleTopology.CourierActorNode1Rid),
-                SampleTopology.CourierActorNode1RouterEndpoint);
-            courierRoutes.connectRouter(
-                RoutingId.from(SampleTopology.CourierActorNode2Rid),
-                SampleTopology.CourierActorNode2RouterEndpoint);
         };
     }
 

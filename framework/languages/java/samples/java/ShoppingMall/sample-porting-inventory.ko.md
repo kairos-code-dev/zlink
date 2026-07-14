@@ -35,7 +35,7 @@
 |------|-----------|------|------|------|
 | `.NET: Server/Configuration/SampleNames.cs` | `Server/Configuration/src/main/java/.../configuration/SampleNames.java` | config | done | OrderWorkflow channel, spot discovery, runner marker를 모은다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | role별 message-flow log 설정 | evidence | done | runner가 `message flow` marker를 확인한다. |
-| common: 공유 location store | Redis location store config | runtime-config | done | CommerceApi와 OrderWorkflow가 같은 Redis prefix로 location store를 사용한다. |
+| common: 공유 location store | Redis location store config | runtime-config | done | CommerceApi와 OrderWorkflow가 같은 Redis prefix로 location store를 사용한다. CommerceApi channel client는 workflow endpoint를 받지 않고 framework가 location store에서 발견한다. |
 
 ## CommerceApi Role
 
@@ -85,6 +85,7 @@
 `shoppingmall full client/server self-check completed` marker를 확인했다. PowerShell runner는
 parser 기반 syntax 검증을 통과했다.
 PowerShell 실제 실행 검증은 PowerShell 환경이 있는 별도 검증 범위로 남긴다.
+TicTacToe에만 허용된 endpoint 인자 `enableClient`, `connectRouter`, `connectPeerPub` 금지 gate도 통과했다.
 
 전체 `samples/run_samples.sh`는 Java와 Kotlin sample gate를 함께 실행한다. Java-only closure에서는
 `ZLINK_SAMPLE_FILTER=java/ShoppingMall`로 이 샘플만 따로 검증하고, 전체 runner gate는 Kotlin 전용

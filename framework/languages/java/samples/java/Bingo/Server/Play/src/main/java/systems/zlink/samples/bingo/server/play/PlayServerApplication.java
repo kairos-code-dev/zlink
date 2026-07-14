@@ -69,7 +69,6 @@ public final class PlayServerApplication {
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint());
-            node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint());
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);

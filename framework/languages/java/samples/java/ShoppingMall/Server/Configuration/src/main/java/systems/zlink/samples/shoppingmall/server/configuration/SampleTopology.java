@@ -12,15 +12,12 @@ public record SampleTopology(
     String channelEndpoint,
     String spotEndpoint,
     String spotRouterEndpoint,
-    String workflowAChannelEndpoint,
-    String workflowBChannelEndpoint,
     String redisEndpoint,
     String redisKeyPrefix) {
 
     public Api api() {
         return new Api(required(instanceName, "instanceName"), required(logDirectory, "logDirectory"),
-            required(httpUrl, "httpUrl"), required(workflowAChannelEndpoint, "workflowAChannelEndpoint"),
-            required(workflowBChannelEndpoint, "workflowBChannelEndpoint"));
+            required(httpUrl, "httpUrl"));
     }
 
     public Workflow workflow() {
@@ -52,8 +49,7 @@ public record SampleTopology(
         return value;
     }
 
-    public record Api(String instanceName, String logDirectory, String httpUrl,
-        String workflowAChannelEndpoint, String workflowBChannelEndpoint) { }
+    public record Api(String instanceName, String logDirectory, String httpUrl) { }
     public record Workflow(String instanceName, String logDirectory, String httpUrl, String channelEndpoint,
         String spotEndpoint, String spotRouterEndpoint, RoutingId routingId) { }
     public record Location(String redisEndpoint, String redisKeyPrefix) { }

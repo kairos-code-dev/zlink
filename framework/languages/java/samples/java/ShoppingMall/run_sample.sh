@@ -5,6 +5,10 @@ set +m
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --glob '*.java'; then
+  echo "ShoppingMall server code must use location-store automatic connections" >&2
+  exit 1
+fi
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -76,14 +80,10 @@ EOF
 cat >"$api_a_config" <<EOF
 sample.instanceName=api-a
 sample.httpUrl=${api_a_http}
-sample.workflowAChannelEndpoint=${workflow_a_channel}
-sample.workflowBChannelEndpoint=${workflow_b_channel}
 EOF
 cat >"$api_b_config" <<EOF
 sample.instanceName=api-b
 sample.httpUrl=${api_b_http}
-sample.workflowAChannelEndpoint=${workflow_a_channel}
-sample.workflowBChannelEndpoint=${workflow_b_channel}
 EOF
 for config in "$workflow_a_config" "$workflow_b_config" "$api_a_config" "$api_b_config"; do write_common "$config"; done
 cat >"$client_config" <<EOF

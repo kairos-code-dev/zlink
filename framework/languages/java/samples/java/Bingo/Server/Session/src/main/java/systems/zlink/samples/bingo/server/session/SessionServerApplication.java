@@ -50,9 +50,6 @@ public final class SessionServerApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
-            node.connectRouter(
-                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
-                SampleTopology.preferredPlaySpotRouterEndpoint());
             node.enablePubSub(SampleTopology.selectedSessionSpotEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())

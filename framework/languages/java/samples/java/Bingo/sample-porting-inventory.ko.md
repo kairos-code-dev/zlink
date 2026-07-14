@@ -72,7 +72,7 @@
 | common: remote room Spot join 검증 | `BingoClientScenario.java` | validation | done | `player-2.ActorNodeRid != RoomOwnerNodeRid`를 확인한다. |
 | common: Spot pub/sub reward fan-out | `BingoRoomSpot.java`, `BingoWinnerMsgHandler.java` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.java` | external-adapter | done | Redis를 application port 뒤에 둔다. |
-| common: Redis-backed location store | `SampleLocationStore.java`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
+| common: Redis-backed location store | `SampleLocationStore.java`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록한다. channel client와 Spot router/pub-sub peer는 endpoint를 직접 연결하지 않고 framework가 location store에서 발견한다. |
 | common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |
 | common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | 애플리케이션은 runner가 만든 endpoint만 받고, runner는 자신이 만든 container id만 정리한다. |
 | common: Protobuf schema와 생성 message 사용 | `Shared/src/main/proto/bingo_messages.proto`, generated `Messages` | shared-contract | done | `Shared` project가 Protobuf plugin과 checked-in schema로 message class를 생성한다. |
@@ -93,3 +93,4 @@
 - `nice -n 15 timeout 720s ./run_sample.sh` 통과: `bingo full client/server self-check completed`
 - `pwsh -NoProfile -File ./run_sample.ps1` 통과: 같은 properties 설정으로 Api·Session·Play 각 2개와 Client를 실제 실행했다.
 - `System.getProperty`·`System.getenv` 애플리케이션 코드 금지 gate와 JVM system property 주입 부재 검사를 통과했다.
+- TicTacToe에만 허용된 endpoint 인자 `enableClient`, `connectRouter`, `connectPeerPub` 금지 gate와 전체 runner를 통과했다.

@@ -11,6 +11,10 @@ if rg -n 'System\.(getProperty|getenv)' Server Client --glob '*.java'; then
   echo "Bingo application code must use sample config files" >&2
   exit 1
 fi
+if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --glob '*.java'; then
+  echo "Bingo server code must use location-store automatic connections" >&2
+  exit 1
+fi
 
 pids=()
 redis_container_id=""

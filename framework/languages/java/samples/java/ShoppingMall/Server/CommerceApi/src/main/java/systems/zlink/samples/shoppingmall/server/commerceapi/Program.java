@@ -68,9 +68,9 @@ public final class Program {
                 .traceLogFile(SampleFlowLog.path(api.logDirectory(), api.instanceName()))
                 .traceLabel(api.instanceName());
             options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-a"))
-                .enableClient(api.workflowAChannelEndpoint());
+                .enableClient();
             options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-b"))
-                .enableClient(api.workflowBChannelEndpoint());
+                .enableClient();
         };
     }
 

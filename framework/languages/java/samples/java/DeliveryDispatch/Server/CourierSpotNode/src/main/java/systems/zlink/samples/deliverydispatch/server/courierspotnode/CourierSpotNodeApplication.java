@@ -45,9 +45,6 @@ public final class CourierSpotNodeApplication {
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
             spotNode.configureEntrySpot()
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
-            spotNode.connectRouter(
-                RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
-                SampleTopology.CourierSessionSpotRouterEndpoint);
             spotNode.enablePubSub(selected.spotEndpoint());
             spotNode.addEntrySpot(CourierEntrySpot.class);
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);

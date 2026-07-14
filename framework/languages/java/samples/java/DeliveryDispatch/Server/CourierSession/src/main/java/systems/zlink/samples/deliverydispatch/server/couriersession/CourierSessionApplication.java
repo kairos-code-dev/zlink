@@ -43,12 +43,6 @@ public final class CourierSessionApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             node.enableRouter(SampleTopology.CourierSessionSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CourierSessionSpotNodeRid));
-            node.connectRouter(
-                RoutingId.from(SampleTopology.CourierActorNode1Rid),
-                SampleTopology.CourierActorNode1RouterEndpoint);
-            node.connectRouter(
-                RoutingId.from(SampleTopology.CourierActorNode2Rid),
-                SampleTopology.CourierActorNode2RouterEndpoint);
             node.enablePubSub(SampleTopology.CourierSessionSpotEndpoint);
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(SampleTopology.CourierStreamEndpoint)

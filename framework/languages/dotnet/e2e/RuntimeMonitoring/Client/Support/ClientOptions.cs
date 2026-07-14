@@ -1,7 +1,6 @@
 namespace RuntimeMonitoring.Client.Support;
 
 internal sealed record ClientOptions(
-    string TriggerUrl,
     string RedisEndpoint,
     string RedisKeyPrefix,
     string ServiceUrl,
@@ -37,7 +36,6 @@ internal sealed record ClientOptions(
         }
 
         return new ClientOptions(
-            Get("--trigger-url"),
             Get("--redis-endpoint"),
             Get("--redis-key-prefix"),
             Get("--service-url"),

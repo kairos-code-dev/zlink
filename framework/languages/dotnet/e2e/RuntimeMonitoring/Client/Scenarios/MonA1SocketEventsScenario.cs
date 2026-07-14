@@ -8,12 +8,13 @@ internal static class MonA1SocketEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
         using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-
-        var reply = (await trigger.Post("/profile/request/disconnect")
-            .Body(new ProfileReq("monitor", "mon-a1-request"))
-            .SubmitAsync<ProfileRes>()).Body;
+        ProfileRes reply;
+        await using (var trigger = await MonitoringChannelClient.StartAsync(
+                         options, options.ServiceChannelEndpoint, "trigger-mon-a1"))
+        {
+            reply = await trigger.RequestAsync(new ProfileReq("monitor", "mon-a1-request"));
+        }
         ScenarioAssert.That(reply.Value == "profile:monitor", "MON-A1 trigger request failed.");
 
         var serviceEvidence = await WaitForSocketEvidenceAsync(service);

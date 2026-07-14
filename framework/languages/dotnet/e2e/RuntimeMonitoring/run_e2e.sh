@@ -32,7 +32,6 @@ PY
 SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
 FILTERED_SERVICE_PROJECT="$ROOT_DIR/Server/FilteredService/RuntimeMonitoring.FilteredService.csproj"
 THROWING_SERVICE_PROJECT="$ROOT_DIR/Server/ThrowingService/RuntimeMonitoring.ThrowingService.csproj"
-TRIGGER_PROJECT="$ROOT_DIR/Server/Trigger/RuntimeMonitoring.Trigger.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RuntimeMonitoring.Client.csproj"
 
 pick_port() {
@@ -48,7 +47,6 @@ PY
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
-TRIGGER_HTTP_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
 CHANNEL_B_PORT="$(pick_port)"
 THROW_CHANNEL_PORT="$(pick_port)"
@@ -144,7 +142,6 @@ echo "log_dir=$LOG_DIR"
 dotnet build "$SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$FILTERED_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$THROWING_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
-dotnet build "$TRIGGER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -187,7 +184,7 @@ SERVICE_B_PID="$!"
 pids+=("$SERVICE_B_PID")
 wait_health "$SVC_B_URL" svc-b
 
-setsid env ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
+setsid env ZLINK_E2E_RID="svc-throw" dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -199,23 +196,9 @@ setsid env ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
 
-setsid env ZLINK_E2E_RID="trigger" dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
-  --http-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --service-channel-endpoint "$CHANNEL_ENDPOINT" \
-  --service-b-url "$SVC_B_URL" \
-  --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
-  --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/trigger.stdout.log" 2>"$LOG_DIR/trigger.stderr.log" &
-pids+=("$!")
-wait_health "http://127.0.0.1:$TRIGGER_HTTP_PORT" trigger
-
 sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
-  --trigger-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-url "$SVC_URL" \

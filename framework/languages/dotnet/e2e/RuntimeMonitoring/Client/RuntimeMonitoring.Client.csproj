@@ -8,7 +8,9 @@
 
     <ItemGroup>
         <ProjectReference Include="../Shared/RuntimeMonitoring.Shared.csproj"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" />
         <PackageReference Include="Zlink.HttpClient"/>
         <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
     </ItemGroup>
 </Project>

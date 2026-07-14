@@ -8,12 +8,10 @@ internal static class MonB1KindFilterScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
         using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
-
-        var reply = (await trigger.Post("/profile/request/service-b")
-            .Body(new ProfileReq("filter", "mon-b1-request"))
-            .SubmitAsync<ProfileRes>()).Body;
+        await using var trigger = await MonitoringChannelClient.StartAsync(
+            options, options.ServiceBChannelEndpoint, "trigger-mon-b1");
+        var reply = await trigger.RequestAsync(new ProfileReq("filter", "mon-b1-request"));
         ScenarioAssert.That(reply.ProviderRid == "svc-b", "MON-B1 direct trigger did not hit filtered service.");
 
         var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB);

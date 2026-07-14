@@ -1,5 +1,4 @@
 using RuntimeMonitoring.Client.Support;
-using Zlink.HttpClient;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -7,13 +6,13 @@ internal static class MonB2RegistrationValidationScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        _ = options;
         var scenarioEvidence = new[]
         {
-            (await trigger.Post("/validation/registration/duplicate-source").SubmitAsync<string>()).Body,
-            (await trigger.Post("/validation/registration/interval").SubmitAsync<string>()).Body,
-            (await trigger.Post("/validation/registration/missing-spot").SubmitAsync<string>()).Body,
-            (await trigger.Post("/validation/registration/missing-socket").SubmitAsync<string>()).Body
+            MonitoringRegistrationValidation.VerifyDuplicateSocketSource(),
+            MonitoringRegistrationValidation.VerifyPollingInterval(),
+            await MonitoringRegistrationValidation.VerifyMissingSpotSourceAsync(),
+            await MonitoringRegistrationValidation.VerifyMissingSocketSourceAsync()
         };
 
         ScenarioAssert.That(

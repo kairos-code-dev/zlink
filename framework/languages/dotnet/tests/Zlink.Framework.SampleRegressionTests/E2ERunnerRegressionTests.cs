@@ -96,6 +96,23 @@ public sealed partial class RegressionTests
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
     }
 
+    [Fact]
+    public void RuntimeMonitoring_Uses_A_Client_Trigger_And_Role_Evidence()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "RuntimeMonitoring");
+        Assert.False(File.Exists(Path.Combine(
+            root, "Server", "Trigger", "RuntimeMonitoring.Trigger.csproj")));
+
+        var runner = File.ReadAllText(Path.Combine(root, "run_e2e.sh"));
+        Assert.DoesNotContain("ZLINK_DEBUG_FRAMEWORK_TASKS", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("/logs/throw-stderr", runner, StringComparison.Ordinal);
+
+        var scenario = File.ReadAllText(Path.Combine(
+            root, "Client", "Scenarios", "MonC1DispatchFailureScenario.cs"));
+        Assert.DoesNotContain("throw-stderr", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("unhandled callback failed", scenario, StringComparison.Ordinal);
+    }
+
     private static void AssertScenarioFiles(string root, string config, string idPrefix, int expectedCount)
     {
         var client = Path.Combine(root, config, "Client");

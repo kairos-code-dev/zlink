@@ -8,12 +8,10 @@ internal static class MonA4AvailabilityTransitionScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
         using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-
-        var before = (await trigger.Post("/profile/request")
-            .Body(new ProfileReq("drain", "mon-a4-before-drain"))
-            .SubmitAsync<ProfileRes>()).Body;
+        await using var trigger = await MonitoringChannelClient.StartAsync(
+            options, options.ServiceChannelEndpoint, "trigger-mon-a4", monitorSocketEvents: true);
+        var before = await trigger.RequestAsync(new ProfileReq("drain", "mon-a4-before-drain"));
         ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 direct trigger did not hit drained service.");
 
         await service.Post("/admin/drain").SubmitRawAsync();
@@ -41,13 +39,11 @@ internal static class MonA4AvailabilityTransitionScenario
         Console.WriteLine("scenario MON-A4 passed");
     }
 
-    private static async Task<string[]> WaitForTriggerDrainEvidenceAsync(ZLinkHttpClient trigger)
+    private static async Task<string[]> WaitForTriggerDrainEvidenceAsync(MonitoringChannelClient trigger)
     {
-        var evidence = (await trigger.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["monitor-socket|"],
-                [["kind=PeerAdmissionChanged"]]))
-            .SubmitAsync<string[]>()).Body;
+        var evidence = await trigger.WaitForEvidenceAsync(entries => entries.Any(line =>
+            line.Contains("monitor-socket|", StringComparison.Ordinal)
+            && line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)));
         if (evidence.Any(line => line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal))) return evidence;
 
         throw new InvalidOperationException("MON-A4 drain transition evidence was incomplete.");

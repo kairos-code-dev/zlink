@@ -11,9 +11,6 @@ internal static class MonD1FailureRecoveryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl)
-            .Timeout(TimeSpan.FromSeconds(20))
-            .Build();
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
@@ -51,7 +48,7 @@ internal static class MonD1FailureRecoveryScenario
             using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(35))
                 .Build();
-            var reply = await RequestRestartedServiceAsync(trigger);
+            var reply = await RequestRestartedServiceAsync(options);
             ScenarioAssert.That(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
@@ -109,7 +106,7 @@ internal static class MonD1FailureRecoveryScenario
         Console.WriteLine("scenario MON-D1 passed");
     }
 
-    private static async Task<ProfileRes> RequestRestartedServiceAsync(ZLinkHttpClient trigger)
+    private static async Task<ProfileRes> RequestRestartedServiceAsync(ClientOptions options)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(60);
         Exception? last = null;
@@ -117,9 +114,9 @@ internal static class MonD1FailureRecoveryScenario
         {
             try
             {
-                return (await trigger.Post("/profile/request/service-b")
-                    .Body(new ProfileReq("restart", "mon-d1-request"))
-                    .SubmitAsync<ProfileRes>()).Body;
+                await using var trigger = await MonitoringChannelClient.StartAsync(
+                    options, options.ServiceBChannelEndpoint, "trigger-mon-d1");
+                return await trigger.RequestAsync(new ProfileReq("restart", "mon-d1-request"));
             }
             catch (Exception ex) when (ex is ZLinkFrameworkException or HttpRequestException or TaskCanceledException)
             {

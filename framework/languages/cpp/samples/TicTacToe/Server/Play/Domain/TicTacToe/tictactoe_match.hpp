@@ -30,7 +30,7 @@ class tictactoe_match_t
         }
         if (_state.x_actor_id.empty ()) {
             _state.x_actor_id = actor_id;
-            _state.next_turn = actor_id;
+            _state.next_turn = tictactoe_marks_t::x;
             _state.status = tictactoe_status_t::waiting_for_players;
             return {_state};
         }
@@ -53,7 +53,9 @@ class tictactoe_match_t
         if (_state.status != tictactoe_status_t::in_progress) {
             throw std::runtime_error ("match is not playing");
         }
-        if (actor_id != _state.next_turn) {
+        const auto &next_actor_id =
+          _state.next_turn == tictactoe_marks_t::x ? _state.x_actor_id : _state.o_actor_id;
+        if (actor_id != next_actor_id) {
             throw std::runtime_error ("not actor turn");
         }
         if (request.cell < 0 || request.cell >= 9
@@ -73,8 +75,8 @@ class tictactoe_match_t
             _state.status = tictactoe_status_t::draw;
             _state.draw = true;
         } else {
-            _state.next_turn =
-              actor_id == _state.x_actor_id ? _state.o_actor_id : _state.x_actor_id;
+            _state.next_turn = actor_id == _state.x_actor_id ? tictactoe_marks_t::o
+                                                             : tictactoe_marks_t::x;
         }
         return _state;
     }

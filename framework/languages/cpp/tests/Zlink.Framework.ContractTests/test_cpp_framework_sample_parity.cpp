@@ -182,6 +182,10 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (room.join (sample_names_t::x_actor_id, created.room_id).state.x_actor_id,
                sample_names_t::x_actor_id);
     EXPECT_EQ (room.join (sample_names_t::o_actor_id, created.room_id).state.status, "InProgress");
+    EXPECT_EQ (room.snapshot ().next_turn, tictactoe_marks_t::x);
+    const auto first_move = room.place (sample_names_t::x_actor_id, place_mark_req_t{0});
+    EXPECT_EQ (first_move.board, "X........");
+    EXPECT_EQ (first_move.next_turn, tictactoe_marks_t::o);
 
     tictactoe_entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
@@ -705,6 +709,21 @@ TEST (CppFrameworkSampleParity, TicTacToeClientGateChecksCommonContractFields)
     EXPECT_NE (client.find ("client1_saw_client2_join.state.status"), std::string::npos);
     EXPECT_NE (client.find ("milestone.display_name == client1_auth.player.display_name"),
                std::string::npos);
+    for (const auto *required : {
+           "client1_first_move.state.board == \"X........\"",
+           "client1_first_move.state.next_turn == tictactoe_marks_t::o",
+           "same_state (client2_saw_first_move.state, client1_first_move.state)",
+           "client2_first_move.state.board == \"X..O.....\"",
+           "client2_first_move.state.next_turn == tictactoe_marks_t::x",
+           "same_state (client1_saw_first_o_move.state, client2_first_move.state)",
+           "client1_second_move.state.board == \"XX.O.....\"",
+           "client1_second_move.state.next_turn == tictactoe_marks_t::o",
+           "same_state (client2_saw_second_x_move.state, client1_second_move.state)",
+           "client2_second_move.state.board == \"XX.OO....\"",
+           "client2_second_move.state.next_turn == tictactoe_marks_t::x",
+           "same_state (client1_saw_second_o_move.state, client2_second_move.state)"}) {
+        EXPECT_NE (client.find (required), std::string::npos) << required;
+    }
 }
 
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)

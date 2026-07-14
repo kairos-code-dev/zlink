@@ -404,7 +404,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-04** (결함) — TicTacToe 발행 메시지에 `Msg` 접미어(`PlayerWinMilestoneMsg`)
 - [ ] **SMP-CP-05** (결함) — TicTacToe가 문서에 없는 push(`GameEndedNotify`)를 추가로 쏜다
 - [ ] **SMP-CP-06** (결함) — Bingo wire 이름이 **샘플 안에서 갈라져 있다**(`...Msg` vs proto `...Event`)
-- [ ] **SMP-CP-07** (결함) — TicTacToe `NextTurn`이 mark가 아니라 **actor id**를 싣는다
+- [x] **SMP-CP-07** (결함) — TicTacToe `NextTurn`이 mark가 아니라 **actor id**를 싣는다
+  - 근거: 수정 전 도메인 회귀 테스트가 `NextTurn`의 실제값을 `player-x`·`player-o`로 검출했다. 공개 state에는 X/O mark를 저장하고 turn actor는 mark와 참가자 정보에서 도출하도록 수정한 뒤 sample parity와 `./run_sample.sh`가 통과했다.
 - [ ] **SMP-CP-08** (미구현) — SupportChat·DeliveryDispatch에 **문서에 없는 `Probe` 프로세스**
 - [ ] **SMP-CP-09** (미구현) — ShoppingMall에 **`ClientScenario`가 없다**
 - [ ] **SMP-CP-10** (결함) — SupportChat이 typed connector wait 대신 **raw packet + 수동 JSON 파싱**
@@ -440,7 +441,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-31** (결함) — **Bingo 게이트가 SMP-CP-02를 구조적으로 잡을 수 없다.** client1만 start를 기다리고 `status`도 안 본다
   - 근거: 두 player client 모두 typed wait로 start push를 받고 각 state의 room id와 `Running` 상태를 단언하게 했다. 강화된 게이트가 수정 전 client2 누락을 검출했고 수정 후 `./run_sample.sh`가 `bingo full client/server self-check completed`로 통과했다.
 - [ ] **SMP-CP-32** (결함) — **GameQuest 멱등성 단언이 `>=`라 실패할 수 없다.** 중복 증가해도 통과한다
-- [ ] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
+- [x] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
+  - 근거: 수정 전 sample parity 게이트가 네 move의 deterministic board·next mark와 상대 push state 대조 12개가 모두 없음을 검출했다. 각 response를 정확값으로 단언하고 상대 push의 전체 state를 비교한 뒤 게이트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-34** (결함) — **Bingo 게이트 5·7·8·9·11단계가 문서보다 약하다**
 - [x] **SMP-CP-35** (결함) — **TicTacToe 게이트 1·3·7·11단계가 필드를 빠뜨린다.** level 입장 조건은 아예 평가되지 않는다
   - 근거: sample parity 회귀 테스트가 Play endpoint 매핑, 두 player의 level 입장 조건, join push의 사용자·상태 필드, milestone display name 단언 부재를 모두 검출했다. 단계별 단언을 보강한 뒤 해당 테스트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.

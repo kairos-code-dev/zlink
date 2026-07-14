@@ -415,7 +415,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 - [x] **SMP-CP-14** (**버그**) — **SupportChat idle timer가 메시지 순번을 wall-clock으로 착각**해 첫 tick에 방을 닫는다
   - 근거: 수정 전 client의 Unix-ms 범위 단언이 실패했고 첫 500ms tick에 idle 알림이 발생했다. `send_message`가 실제 현재 시각을 넘기도록 수정한 뒤 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
-- [ ] **SMP-CP-15** (**버그**) — **ShoppingMall owner spot이 자기 재개를 예약하지 않는다.** HTTP edge가 대신 한다
+- [x] **SMP-CP-15** (**버그**) — **ShoppingMall owner spot이 자기 재개를 예약하지 않는다.** HTTP edge가 대신 한다
+  - 근거: 수정 전 sample parity gate가 owner의 예약 부재와 CommerceApi의 잘못된 예약을 각각 검출했다. owner가 첫 tick에서 취소하는 timer로 같은 continuation 경로를 예약하고 edge의 예약을 제거한 뒤 gate와 `./run_sample.sh`가 `PASS ShoppingMall.Cpp`로 통과했다.
 - [ ] **SMP-CP-16** (결함) — **ShoppingMall이 전역 Redis 키 하나 + 전역 락 하나**로 모든 주문을 직렬화한다. owner-spot 모델이 무효화된다
 - [ ] **SMP-CP-17** (결함) — **SupportChat customer가 자기를 상담원으로 등록할 수 있다**(role 검사 없음)
 - [ ] **SMP-CP-18** (결함) — **TicTacToe notification publisher가 아무것도 발행하지 않는다.** vector에 쌓기만 하고 읽는 곳이 0

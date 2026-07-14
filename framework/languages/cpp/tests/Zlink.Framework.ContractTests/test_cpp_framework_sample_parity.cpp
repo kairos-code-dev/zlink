@@ -313,6 +313,19 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     }
 }
 
+TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
+{
+    const auto owner = read_file (
+      cpp_language_root () / "samples/ShoppingMall/Server/OrderWorkflow/main.cpp");
+    const auto edge = read_file (
+      cpp_language_root () / "samples/ShoppingMall/Server/CommerceApi/main.cpp");
+
+    EXPECT_NE (owner.find ("schedule_continue"), std::string::npos)
+      << "OrderWorkflow owner must schedule its continuation after creating the order";
+    EXPECT_EQ (edge.find ("schedule_continue"), std::string::npos)
+      << "CommerceApi must not own the OrderWorkflow continuation lifecycle";
+}
+
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
     const std::vector<std::string> banned_patterns{"configure_registry_host",

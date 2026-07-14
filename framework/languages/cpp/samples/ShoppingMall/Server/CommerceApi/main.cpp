@@ -68,11 +68,6 @@ class commerce_api_handlers_t
         const auto owner = _topology.for_order_id (command.order_id);
         auto state =
           (co_await request_workflow<start_order_workflow_res_t> (owner.instance_id, command)).state;
-        /* 나머지 단계를 진행할 재개 호출을 기다리지 않고 예약한다(§9.3). 결제 지연이 HTTP 응답
-         * 지연이 되지 않도록, 응답은 여기서 바로 돌려주고 진행은 배경에서 이어진다. */
-        if (state.status != order_status_t::confirmed && state.status != order_status_t::failed) {
-            co_await schedule_continue (state.order_id);
-        }
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
         co_return start_order_res_t{state.order_id, state.status};
@@ -229,19 +224,6 @@ class commerce_api_handlers_t
         }
         throw framework_exception_t (framework_error_kind_t::request_failed,
                                      "Order '" + order_id + "' did not reach status " + status);
-    }
-
-    task_t<void> schedule_continue (const std::string &order_id)
-    {
-        auto target =
-          co_await _spot_handles.resolve_spot_handle (spot_rid_t::from_string (order_id));
-        if (!target) {
-            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
-                                         "Order workflow spot '" + order_id
-                                           + "' has no live location row");
-        }
-        _routes.send_to_spot (*target, continue_order_workflow_msg_t{order_id}).submit ();
-        co_return;
     }
 
     template <typename TReply, typename TRequest>

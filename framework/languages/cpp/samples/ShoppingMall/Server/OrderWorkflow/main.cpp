@@ -14,6 +14,13 @@ namespace zlink::samples::shoppingmall
 {
 using namespace zlink::framework;
 
+class order_workflow_spot_t;
+
+struct order_workflow_continue_timer_handler_t
+{
+    void handle (order_workflow_spot_t &spot, const timer_tick_t &) const;
+};
+
 struct order_workflow_spot_create_req_t
 {
     static constexpr const char *packet_name = "OrderWorkflowSpotCreateReq";
@@ -40,6 +47,7 @@ class order_workflow_spot_t : public spot_t
 
     void configure (spot_context_t &context)
     {
+        _context = context;
         context.handlers ()
           .add_handler<&order_workflow_spot_t::start> (start_order_workflow_req_t::packet_name)
           .add_handler<&order_workflow_spot_t::continue_> (
@@ -57,6 +65,8 @@ class order_workflow_spot_t : public spot_t
         return spot_create_response_t::accept ();
     }
 
+    void on_closing () { _continue_timer.cancel (); }
+
     /* 공통 sample spec §9.3: 시작은 루프를 Created까지만 돌리고 즉시 응답하며, 나머지 단계를
      * 진행할 재개 호출을 기다리지 않고 예약한다. 결제 지연을 HTTP 응답에 묶지 않기 위해서다. */
     start_order_workflow_res_t start (const start_order_workflow_req_t &request)
@@ -67,6 +77,9 @@ class order_workflow_spot_t : public spot_t
         });
         std::cerr << "shoppingmall order: started order=" << state.order_id
                   << " status=" << state.status << " spot=" << _order_id << "\n";
+        if (state.status != order_status_t::confirmed && state.status != order_status_t::failed) {
+            schedule_continue (state.order_id);
+        }
         return {state};
     }
 
@@ -92,6 +105,16 @@ class order_workflow_spot_t : public spot_t
         return {state};
     }
 
+    void run_scheduled_continue ()
+    {
+        _continue_timer.cancel ();
+        auto order_id = std::move (_scheduled_order_id);
+        _scheduled_order_id.clear ();
+        if (!order_id.empty ()) {
+            (void) run_to_completion (order_id);
+        }
+    }
+
   private:
     static std::string source_command_id (const start_order_workflow_req_t &request)
     {
@@ -107,9 +130,26 @@ class order_workflow_spot_t : public spot_t
         });
     }
 
+    void schedule_continue (const std::string &order_id)
+    {
+        _continue_timer.cancel ();
+        _scheduled_order_id = order_id;
+        _continue_timer = _context.add_timer<order_workflow_continue_timer_handler_t> (
+          "order-workflow-continue", std::chrono::milliseconds (1));
+    }
+
     redis_state_store_t _store;
+    spot_context_t _context;
+    zlink::framework::timer_t _continue_timer;
+    std::string _scheduled_order_id;
     std::string _order_id;
 };
+
+void order_workflow_continue_timer_handler_t::handle (order_workflow_spot_t &spot,
+                                                       const timer_tick_t &) const
+{
+    spot.run_scheduled_continue ();
+}
 
 class workflow_route_handlers_t
 {

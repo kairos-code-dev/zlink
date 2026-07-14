@@ -232,7 +232,8 @@
 - [x] **IMP-DN-02** (결함) — 22 §5·20 §8
   — backend 생성 전 user Spot의 구성 단계와 스캔 descriptor를 공통 packet registry로 검증한다. 명시 handler 중복이 host 시작에서 설정 오류로 실패하는 게이트, unit 627건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-03** (결함) — 05 §3.3·31 §15
-- [ ] **IMP-DN-04** (결함) — 51
+- [x] **IMP-DN-04** (결함) — 51
+  — `CreateAsync`가 activation을 catalog에 commit한 직후 user Spot 생성 계측을 기록해 close와 gauge가 균형을 이룬다. metric/lifecycle 테스트 16건, 전체 unit 630건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-05** (결함) — 05 §2.4.3
 - [ ] **IMP-DN-06** (결함) — 40 §3·§8.2
 - [x] **IMP-DN-07** (결함) — 20 §8

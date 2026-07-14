@@ -232,6 +232,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             {
                 _spots.Add(activation.SpotRid, activation);
             }
+            ZLinkRuntimeMetrics.RecordSpotCreated("user");
 
             return new ZLinkSpotCreateResult(
                 activation.SpotRid,

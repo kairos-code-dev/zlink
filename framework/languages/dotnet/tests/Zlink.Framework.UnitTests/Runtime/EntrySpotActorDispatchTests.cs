@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,7 @@ using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
+[Collection(RuntimeMetricsCollection.Name)]
 public sealed partial class EntrySpotActorDispatchTests
 {
     [Fact]
@@ -1131,6 +1133,45 @@ public sealed partial class EntrySpotActorDispatchTests
         finally
         {
             probe.Release.TrySetResult();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_And_CloseAsync_Keep_UserSpotGauge_Balanced()
+    {
+        var deltas = new List<long>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.spot.count")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            foreach (var tag in tags)
+                if (tag.Key == "kind" && Equals(tag.Value, "user"))
+                    deltas.Add(value);
+        });
+        listener.Start();
+
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            userSpotType: typeof(EmptyUserSpot));
+        try
+        {
+            var created = await runtime.CreateAsync<EmptyUserSpot>();
+
+            Assert.Equal(1, deltas.Sum());
+            Assert.True(await runtime.CloseAsync(created.SpotRid));
+            Assert.Equal(0, deltas.Sum());
+        }
+        finally
+        {
             await runtime.StopAsync(CancellationToken.None);
         }
     }

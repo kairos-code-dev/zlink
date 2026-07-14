@@ -2456,6 +2456,53 @@ test('stream node runtime does not reuse a disconnected session for the same rou
   await waitForCondition(() => disconnected.length === 1, 'old stream disconnect');
 });
 
+test('stream session runtime does not invent correlation ids from request sequences', async () => {
+  const socket = new FakeStreamSocket();
+  const flowEvents = [];
+  const dispatchErrors = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    dispatchErrors: {
+      flow: {
+        accepts: () => true,
+        flowCreationEnabled: () => false,
+        trace(event) {
+          flowEvents.push(event);
+        }
+      },
+      report(error) {
+        dispatchErrors.push(error);
+      }
+    },
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(dispatch) {
+          if (dispatch.packetName === 'FailRequest') {
+            throw new Error('expected dispatch failure');
+          }
+        }
+      };
+    }
+  });
+  runtime.start();
+
+  socket.emitFrame('rid-correlation', streamRequestHeader('OkRequest', 41n), bindingMessage('{}'));
+  await waitForCondition(() => flowEvents.length === 2, 'successful request flow events');
+
+  socket.emitFrame('rid-correlation', streamRequestHeader('FailRequest', 42n), bindingMessage('{}'));
+  await waitForCondition(
+    () => dispatchErrors.length === 1 && flowEvents.length === 4,
+    'failed request flow events'
+  );
+
+  assert.deepEqual(
+    [...flowEvents, ...dispatchErrors].map((event) => event.correlationId),
+    [undefined, undefined, undefined, undefined, undefined]
+  );
+  await runtime.dispose();
+});
+
 function fakeStream(sessionId, routingId) {
   return {
     sessionId,
@@ -2548,6 +2595,17 @@ function streamHeader(packetName) {
     kind: streamProtocol.ZLinkStreamMessageKind.Send,
     codec: streamProtocol.ZLinkStreamCodec.Json,
     flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+    name: packetName,
+    metadata: new Map()
+  }));
+}
+
+function streamRequestHeader(packetName, requestSeq) {
+  return bindingMessage(streamProtocol.encodeStreamHeader({
+    kind: streamProtocol.ZLinkStreamMessageKind.Request,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+    requestSeq,
     name: packetName,
     metadata: new Map()
   }));

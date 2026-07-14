@@ -197,7 +197,7 @@ export class ZLinkStreamSessionRuntime {
       const streamKind = decodedHeader.kind === ZLinkStreamMessageKind.Request
         ? ZLinkDispatchMessageKind.Request
         : ZLinkDispatchMessageKind.Send;
-      const streamCorr = decodedHeader.correlationId ?? decodedHeader.requestSeq?.toString();
+      const streamCorr = decodedHeader.correlationId;
       const inboundHeader = decodedHeader;
       await runWithFlow(createInboundFlow(
         inboundHeader.flowId,
@@ -237,7 +237,7 @@ export class ZLinkStreamSessionRuntime {
           : ZLinkDispatchErrorAction.ReplyError,
         packetName: decodedHeader?.name,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId),
-        correlationId: decodedHeader?.correlationId ?? decodedHeader?.requestSeq?.toString(),
+        correlationId: decodedHeader?.correlationId,
         flowId: decodedHeader?.flowId,
         flowOrigin: decodedHeader?.flowOrigin,
         error
@@ -282,7 +282,7 @@ export class ZLinkStreamSessionRuntime {
         surface: ZLinkDispatchErrorSurface.StreamSession,
         messageKind: ZLinkDispatchMessageKind.Request,
         packetName: header.name,
-        correlationId: header.correlationId ?? header.requestSeq.toString(),
+        correlationId: header.correlationId,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
       });
     } catch (replyError) {

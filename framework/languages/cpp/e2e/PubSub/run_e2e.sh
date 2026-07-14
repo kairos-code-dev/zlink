@@ -606,4 +606,26 @@ if should_run PS-C1 ps-c1; then
 fi
 
 snapshot_operational_evidence publisher "$PUBLISHER_HTTP" "$LOG_DIR/publisher-evidence-final.json"
+if should_run PS-C1 ps-c1; then
+  python3 - "$LOG_DIR/publisher-evidence-final.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as evidence_file:
+    entries = json.load(evidence_file).get("entries", [])
+
+dispatch_error_parts = (
+    "error|",
+    "kind=publish",
+    "reason=handlerMissing",
+    "action=drop",
+)
+if any(all(part in entry for part in dispatch_error_parts) for entry in entries):
+    raise SystemExit(
+        "publisher emitted a dispatch error for submit-only publish"
+    )
+
+print("publisher dispatch negative passed")
+PY
+fi
 echo "pubsub e2e result=passed"

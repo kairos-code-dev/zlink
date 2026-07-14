@@ -100,6 +100,7 @@ int main ()
     const auto spot_service_runner = read_file (e2e_root / "SpotService/run_e2e.sh");
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
+    const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
@@ -301,6 +302,13 @@ int main ()
                   "E2E-CP-30", "RegistrationCodec routes RC-A6 through the client glob");
     gate.require (registration_codec_runner.find ("== rc-a[1-5]") != std::string::npos,
                   "E2E-CP-30", "RegistrationCodec client selector does not name RC-A1 through A5");
+
+    /* E2E-CP-48 — submit-only publish produces no publisher dispatch-error marker. */
+    gate.require (pubsub_runner.find ("publisher dispatch negative passed") != std::string::npos,
+                  "E2E-CP-48", "PubSub PS-C1 does not report its publisher-side negative");
+    gate.require (pubsub_runner.find ("publisher emitted a dispatch error for submit-only publish")
+                    != std::string::npos,
+                  "E2E-CP-48", "PubSub PS-C1 has no failing publisher dispatch assertion");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

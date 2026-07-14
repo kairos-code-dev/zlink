@@ -84,18 +84,7 @@ foreach(forbidden_text IN ITEMS
   endif()
 endforeach()
 foreach(required_target IN ITEMS
-    "zlink::framework"
-    "zlink::framework_extension_metrics"
-    "zlink::framework_extension_tracing"
-    "zlink::framework_extension_kafka_bridge"
-    "zlink::framework_extension_grpc_bridge"
-    "zlink::framework_extension_http_gateway"
-    "zlink::framework_extension_advanced_retry"
-    "zlink::framework_extension_dead_letter_storage"
-    "zlink::framework_extension_flatbuffers"
-    "zlink::framework_extension_yaml_config"
-    "zlink::framework_extension_custom_codec"
-    "zlink::framework_extension_custom_transport")
+    "zlink::framework")
   if(NOT framework_targets_text MATCHES "${required_target}")
     message(FATAL_ERROR "framework package export lacks ${required_target}")
   endif()
@@ -137,17 +126,6 @@ find_package(zlink_stream_connector_cpp CONFIG REQUIRED)
 add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE
   zlink::framework
-  zlink::framework_extension_metrics
-  zlink::framework_extension_tracing
-  zlink::framework_extension_kafka_bridge
-  zlink::framework_extension_grpc_bridge
-  zlink::framework_extension_http_gateway
-  zlink::framework_extension_advanced_retry
-  zlink::framework_extension_dead_letter_storage
-  zlink::framework_extension_flatbuffers
-  zlink::framework_extension_yaml_config
-  zlink::framework_extension_custom_codec
-  zlink::framework_extension_custom_transport
   zlink::http_client
   zlink::stream_connector
   zlink::stream_connector_codecs
@@ -157,7 +135,6 @@ target_link_libraries(consumer PRIVATE
 
 file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/framework.hpp>
-#include <zlink/framework/extensions.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
@@ -187,10 +164,6 @@ main ()
                   .base_url ("http://127.0.0.1:18080")
                   .build ();
   (void) client;
-  auto extensions = zlink::framework::extensions::known_extensions ();
-  if (extensions.size () != 12) {
-    return 2;
-  }
   auto packet =
     zlink::stream_connector::codecs::encode_packet (login_request_t {});
   auto connector =

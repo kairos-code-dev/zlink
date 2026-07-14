@@ -52,8 +52,6 @@
 #include <zlink/framework/codecs/json.hpp>
 #include <zlink/framework/codecs/json_stream_connector.hpp>
 #include <zlink/framework/codecs/json_stream_e2e_client.hpp>
-#include <zlink/framework/extensions.hpp>
-#include <zlink/framework/extensions/extension_boundaries.hpp>
 #include <zlink/codecs/protobuf.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>

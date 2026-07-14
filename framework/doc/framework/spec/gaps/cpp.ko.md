@@ -342,7 +342,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 
 ### 체크리스트
 
-- [ ] **IMP-CP-28** (결함) — `extension_boundaries.hpp` — **설치되는 공개 헤더인데 스펙 근거도 구현도 0**
+- [x] **IMP-CP-28** (결함) — `extension_boundaries.hpp` — **설치되는 공개 헤더인데 스펙 근거도 구현도 0**
+  - 근거: 수정 전 target-contract gate가 무근거 extension 설치 헤더 2개와 no-op CMake export 표면을 검출했다. 11개 placeholder target, umbrella/boundary header, 이를 양성으로 고정하던 unit·layout·package test 의존성을 제거한 뒤 target/header/layout contract test와 실제 install-consumer package test가 모두 통과했다.
 - [ ] **IMP-CP-29** (결함) — `unhandled_dispatch_options_t` 5개 필드가 **검증만 되고 읽히지 않는다**
 - [ ] **IMP-CP-30** (결함) — `on_retry`/`on_dead_letter` — **C++에만 있는 메시지 신뢰성 계약**, 스펙 근거 0
 - [x] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다

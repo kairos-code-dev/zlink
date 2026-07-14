@@ -70,6 +70,7 @@ int main ()
     const std::filesystem::path root = ZLINK_FRAMEWORK_CPP_SOURCE_DIR;
     const auto include_root = root / "framework/include";
     const auto e2e_root = root / "e2e";
+    const auto cmake = read_file (root / "CMakeLists.txt");
     gate_t gate;
 
     for (const auto &required :
@@ -327,6 +328,19 @@ int main ()
       !std::filesystem::exists (
         e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_d1_high_fanout_scenario.hpp"),
       "E2E-CP-31", "ResilienceLifecycle retains the dead RL-D1 scenario file");
+
+    /* IMP-CP-28 — unsupported extension placeholders are not public package surface. */
+    gate.require (
+      !std::filesystem::exists (
+        root / "extensions/include/zlink/framework/extensions/extension_boundaries.hpp"),
+      "IMP-CP-28", "unsupported extension_boundaries.hpp remains installable");
+    gate.require (
+      !std::filesystem::exists (root / "extensions/include/zlink/framework/extensions.hpp"),
+      "IMP-CP-28", "unsupported framework extensions umbrella remains installable");
+    gate.require (cmake.find ("add_zlink_framework_extension") == std::string::npos,
+                  "IMP-CP-28", "unsupported no-op framework extension targets remain exported");
+    gate.require (cmake.find ("zlink_framework_extension_metrics") == std::string::npos,
+                  "IMP-CP-28", "unsupported metrics extension target remains public");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

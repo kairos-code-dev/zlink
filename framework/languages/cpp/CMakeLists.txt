@@ -447,53 +447,6 @@ if(TARGET zlink_axmol_stream_connector)
   zlink_enable_coverage(zlink_axmol_stream_connector)
 endif()
 
-function(add_zlink_framework_extension target_name alias_name)
-  add_library(${target_name} INTERFACE)
-  add_library(${alias_name} ALIAS ${target_name})
-  string(REPLACE "zlink_framework_extension_" "framework_extension_"
-    export_name "${target_name}")
-  set_target_properties(${target_name} PROPERTIES EXPORT_NAME ${export_name})
-  target_compile_features(${target_name} INTERFACE cxx_std_20)
-  target_include_directories(${target_name} INTERFACE
-    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/extensions/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-  target_link_libraries(${target_name} INTERFACE zlink::framework)
-endfunction()
-
-add_zlink_framework_extension(
-  zlink_framework_extension_metrics
-  zlink::framework_extension_metrics)
-add_zlink_framework_extension(
-  zlink_framework_extension_tracing
-  zlink::framework_extension_tracing)
-add_zlink_framework_extension(
-  zlink_framework_extension_kafka_bridge
-  zlink::framework_extension_kafka_bridge)
-add_zlink_framework_extension(
-  zlink_framework_extension_grpc_bridge
-  zlink::framework_extension_grpc_bridge)
-add_zlink_framework_extension(
-  zlink_framework_extension_http_gateway
-  zlink::framework_extension_http_gateway)
-add_zlink_framework_extension(
-  zlink_framework_extension_advanced_retry
-  zlink::framework_extension_advanced_retry)
-add_zlink_framework_extension(
-  zlink_framework_extension_dead_letter_storage
-  zlink::framework_extension_dead_letter_storage)
-add_zlink_framework_extension(
-  zlink_framework_extension_flatbuffers
-  zlink::framework_extension_flatbuffers)
-add_zlink_framework_extension(
-  zlink_framework_extension_yaml_config
-  zlink::framework_extension_yaml_config)
-add_zlink_framework_extension(
-  zlink_framework_extension_custom_codec
-  zlink::framework_extension_custom_codec)
-add_zlink_framework_extension(
-  zlink_framework_extension_custom_transport
-  zlink::framework_extension_custom_transport)
-
 function(add_zlink_framework_codec_extension target_name alias_name include_dir)
   add_library(${target_name} INTERFACE)
   add_library(${alias_name} ALIAS ${target_name})
@@ -570,17 +523,6 @@ endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(TARGETS
     zlink_framework
-    zlink_framework_extension_metrics
-    zlink_framework_extension_tracing
-    zlink_framework_extension_kafka_bridge
-    zlink_framework_extension_grpc_bridge
-    zlink_framework_extension_http_gateway
-    zlink_framework_extension_advanced_retry
-    zlink_framework_extension_dead_letter_storage
-    zlink_framework_extension_flatbuffers
-    zlink_framework_extension_yaml_config
-    zlink_framework_extension_custom_codec
-    zlink_framework_extension_custom_transport
     zlink_framework_codec_protobuf
     zlink_framework_codec_messagepack
     zlink_framework_locations_redis
@@ -630,10 +572,6 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     FILES_MATCHING PATTERN "*.hpp")
 endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
-  install(DIRECTORY extensions/include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    COMPONENT Framework
-    FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY extensions/framework-codec-protobuf/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     COMPONENT Framework
@@ -806,7 +744,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp)
   target_link_libraries(test_cpp_framework_contract_headers PRIVATE
     zlink::framework
-    zlink::framework_extension_metrics
     zlink::framework_codec_protobuf
     zlink::http_client
     zlink::stream_connector
@@ -1104,27 +1041,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     COMMAND test_cpp_framework_gtest_harness)
   set_tests_properties(test_cpp_framework_gtest_harness PROPERTIES
     LABELS "framework-unit;framework-regression;gtest"
-    TIMEOUT 30)
-  add_executable(test_cpp_framework_extensions
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_extensions.cpp)
-  target_link_libraries(test_cpp_framework_extensions PRIVATE
-    zlink::framework_extension_metrics
-    zlink::framework_extension_tracing
-    zlink::framework_extension_kafka_bridge
-    zlink::framework_extension_grpc_bridge
-    zlink::framework_extension_http_gateway
-    zlink::framework_extension_advanced_retry
-    zlink::framework_extension_dead_letter_storage
-    zlink::framework_extension_flatbuffers
-    zlink::framework_extension_yaml_config
-    zlink::framework_extension_custom_codec
-    zlink::framework_extension_custom_transport
-    GTest::gtest
-    GTest::gmock)
-  add_test(NAME test_cpp_framework_extensions
-    COMMAND test_cpp_framework_extensions)
-  set_tests_properties(test_cpp_framework_extensions PROPERTIES
-    LABELS "framework-extension"
     TIMEOUT 30)
   add_executable(test_cpp_framework_locations_redis
     tests/Zlink.Framework.UnitTests/test_cpp_framework_locations_redis.cpp)

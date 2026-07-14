@@ -37,7 +37,11 @@ export async function runSmD15(options: ClientOptions): Promise<void> {
       .packetName('AuthReq')
       .timeout(5000)
       .submit<AuthRes>();
-    ensure(auth.generation !== undefined, 'SM-D15 auth reply did not include actor generation.');
+    ensure(auth.nodeRid.trim().length > 0, 'SM-D15 auth reply did not include actor node rid.');
+    ensure(
+      auth.generation !== undefined && BigInt(auth.generation) > 0n,
+      'SM-D15 auth reply did not include a positive actor generation.'
+    );
     const probe = await client
       .request({ value: 'd15-bind-probe' } satisfies ActorPingReq)
       .packetName('ActorPingReq')

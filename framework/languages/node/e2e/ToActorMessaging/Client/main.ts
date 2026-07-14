@@ -214,7 +214,14 @@ async function assertCall(
 }
 
 async function ensureActor(options: ClientOptions, actorId: string): Promise<ActorEnsureResponse> {
-  return await postJson<ActorEnsureResponse>(`${options.actorUrl}/actors/${actorId}/ensure`, {});
+  const response = await postJson<ActorEnsureResponse>(`${options.actorUrl}/actors/${actorId}/ensure`, {});
+  assertConcreteActorRef(response.actor);
+  return response;
+}
+
+function assertConcreteActorRef(actor: ActorRefSnapshot): void {
+  requireCondition(actor.nodeRid.trim().length > 0, `Actor '${actor.actorId}' node rid is empty.`);
+  requireCondition(BigInt(actor.generation) > 0n, `Actor '${actor.actorId}' generation is not positive.`);
 }
 
 async function assertFailure(

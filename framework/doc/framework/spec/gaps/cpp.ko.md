@@ -568,6 +568,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **E2E-CP-20** (미구현) — **`SM-A1`(P0)이 spot location row 조회를 하지 않는다.** config 전체에 location runtime query가 0건
   - 근거: 수정 전 target-contract gate가 server의 `list_spot_locations` 호출과 client의 row 단언 부재를 각각 검출했다. play server의 운영 endpoint가 공개 `location_runtime_query_t`를 주입받아 user Spot row를 조회하고, client가 생성 직후 mesh·spot id·spot type·owner node·kind·owner·generation을 확인하도록 바꿨다. play/client target 빌드, gate, Redis location store를 사용하는 `./run_e2e.sh SM-A1`의 client·server evidence가 모두 통과했다.
 - [ ] **E2E-CP-21** (결함) — **"수렴 직후 첫 요청"이 10초 retry 루프에 가려져 관측 불가**
+  - 재검증: 세 config의 retry를 공개 readiness 대기로 바꾸려 했으나 현재 `list_topology`는 실제 dial 상태를 제공하지 않는다. Config 2에 필요한 Spot topology는 빈 페이지이고, Config 1·5의 peer topology는 store row의 `weight`만으로 `ready/lost`를 정하므로 연결 수렴을 증명하지 못한다. 이는 IMP-CP-10의 topology projection 결함과 같은 원인이므로 두 항목을 같은 묶음에서 고쳐야 한다. request probe 반복이나 고정 sleep으로 readiness를 대신하지 않는다.
 - [ ] **E2E-CP-22** (결함) — **start-order 축이 11개 config 중 9개에서 no-op**이다. 같은 실행을 3번 반복한다
 - [ ] **E2E-CP-23** (결함) — **`RM-A4`(P0) failover가 실제로 일어나지 않는다.** 새 프로세스에 직접 물어본다
 - [ ] **E2E-CP-24** (결함) — **`RM-B2`(P0)가 문서가 금지한 "죽은 endpoint 반복 timeout"을 삼킨다.** scale-in 중 트래픽이 0

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Config 11 — ObservabilityOps (metrics · flow correlation · drain).
-# Implemented scenario subset is asserted; the remaining OBS ids are reported
-# as PENDING with the blocking runtime work (see feature-map.ko.md).
+# Scenario subsets are asserted; incomplete OBS ids remain deferred with their
+# blocking work recorded in feature-map.ko.md.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -574,7 +574,7 @@ PY
 fi
 
 cat <<'EOF'
-PENDING (외부 인프라 주입/스펙 표면 확정 대기, see feature-map.ko.md):
+DEFERRED (외부 인프라 주입/스펙 표면 확정 대기, see feature-map.ko.md):
   OBS-B1 connector reconnects 계기(공개 표면 spec 확정 대기 — 서버측 connections 계기는 검증됨),
   OBS-B3 lease 지연 주입(redis 측 지연 주입 인프라 필요 — fanout 계기는 검증됨),
   OBS-C2 bound-session push 연속성 세부(단언은 post-move ping 연속성으로 대체)

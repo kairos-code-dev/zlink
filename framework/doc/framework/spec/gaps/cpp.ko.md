@@ -542,7 +542,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **E2E-CP-09** (결함) — **§2.1 대기 기준 위반**(SpotActorTransfer readiness 30초, ObservabilityOps 상수 0개)
   - 근거: 수정 전 target-contract gate가 Config 10의 route/scenario 상수 누락과 Config 11의 공통 대기 상수 5개 누락을 검출했다. 두 runner가 readiness 3초·poll 0.1초·route settle 5초·scenario settle 3초·HTTP probe 3초를 이름으로 구분해 실제 wait와 HTTP 호출에 사용하도록 바꿨다. gate와 shell 문법 검사 뒤 기본값 그대로 `SpotActorTransfer/run_e2e.sh ST-A1`과 `ObservabilityOps/run_e2e.sh all`이 통과했다.
 - [ ] **E2E-CP-10** (결함) — **§2.5 시나리오 파일 분리 위반** — 4개 config가 단일 `main.cpp`
-- [ ] **E2E-CP-11** (결함) — **Config 11 feature-map이 자기 모순**이다(pending을 `구현`으로 적는다)
+- [x] **E2E-CP-11** (결함) — **Config 11 feature-map이 자기 모순**이다(pending을 `구현`으로 적는다)
+  - 근거: 수정 전 target-contract gate가 OBS-B1·B3·C2의 비고와 상태 불일치, 비표준 상태값, runner의 `PENDING` 표기를 모두 검출했다. 공통 13개 시나리오만 남기고 현재 심층 gap과 역할 배치 차이에 따라 전부 `deferred`로 정규화했으며, runner도 같은 용어를 사용한다. target-contract gate, 13행 inventory, shell 문법 검사가 통과했다.
 - [ ] **E2E-CP-12** (결함) — **Config 6 기본 실행이 단일 시나리오**(`SF-A1`)이고 프레임워크 knob이 env로 뚫려 있다
 - [x] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
   - 근거: 수정 전 target-contract gate가 `SpotActorTransfer/feature-map.ko.md` 부재로 실패했다. 공통 Config 10의 스무 시나리오를 모두 행으로 두고, 현재 runner와 기존 gap에 근거해 각 상태를 `deferred`로 기록했다. 역할 배치 차이와 약한 단언을 완료로 표시하지 않았으며, 문서 추가 뒤 target-contract gate와 runner 문법 검사가 통과했다.

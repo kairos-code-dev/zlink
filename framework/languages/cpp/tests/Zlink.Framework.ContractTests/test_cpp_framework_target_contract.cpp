@@ -119,6 +119,8 @@ int main ()
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
     const auto transfer_runner = read_file (e2e_root / "SpotActorTransfer/run_e2e.sh");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
+    const auto observability_feature_map =
+      read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
     const auto resilience_client =
       read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
     const auto resilience_b2 = read_file (
@@ -162,6 +164,27 @@ int main ()
                       "E2E-CP-09",
                       "runner HTTP probes do not use the named 3s timeout");
     }
+
+    /* E2E-CP-11 — feature-map status agrees with its documented gaps. */
+    gate.require (observability_feature_map.find ("| OBS-B1 | `deferred` |")
+                    != std::string::npos,
+                  "E2E-CP-11",
+                  "OBS-B1 reconnect gap is still reported as implemented");
+    gate.require (observability_feature_map.find ("| OBS-B3 | `deferred` |")
+                    != std::string::npos,
+                  "E2E-CP-11",
+                  "OBS-B3 lease-latency gap is still reported as implemented");
+    gate.require (observability_feature_map.find ("| OBS-C2 | `deferred` |")
+                    != std::string::npos,
+                  "E2E-CP-11",
+                  "OBS-C2 bound-session gap is still reported as implemented");
+    gate.require (observability_feature_map.find ("구현") == std::string::npos
+                    && observability_feature_map.find ("구현(부분)") == std::string::npos,
+                  "E2E-CP-11",
+                  "feature-map uses ambiguous non-standard status values");
+    gate.require (observability_runner.find ("PENDING") == std::string::npos,
+                  "E2E-CP-11",
+                  "runner contradicts the feature-map with a PENDING status");
 
     /* IMP-CP-08 — session-owned transport failures reach the session callback. */
     gate.require (stream_host.find ("stream_session_error_t::transport_error")

@@ -52,6 +52,9 @@ internal static class ConsumerHostFactory
                 }
             }
 
+            if (string.Equals(options.TraceLabel, "backpressure-consumer", StringComparison.Ordinal))
+                profile.ConfigureClientSocket().SendHighWaterMark = 4;
+
         });
 
         var app = builder.Build();

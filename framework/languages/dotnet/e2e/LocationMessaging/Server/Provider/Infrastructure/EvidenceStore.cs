@@ -57,6 +57,47 @@ internal sealed class EvidenceStore
         }
     }
 
+    public async Task<string[]> WaitUntilCountAsync(
+        string contains,
+        int minimumCount,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var snapshot = Snapshot();
+            if (snapshot.Count(line => line.Contains(contains, StringComparison.Ordinal)) >= minimumCount)
+                return snapshot;
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero
+                || !await _signal.WaitAsync(remaining, cancellationToken))
+                return Snapshot();
+        }
+    }
+
+    public async Task<string[]> WaitUntilQuietAsync(
+        string contains,
+        TimeSpan quietPeriod,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var before = Snapshot();
+            var matchingCount = before.Count(line => line.Contains(contains, StringComparison.Ordinal));
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero) return before;
+
+            await Task.Delay(remaining < quietPeriod ? remaining : quietPeriod, cancellationToken);
+            var after = Snapshot();
+            var updatedCount = after.Count(line => line.Contains(contains, StringComparison.Ordinal));
+            if (updatedCount == matchingCount) return after;
+        }
+    }
+
     public void Clear()
     {
         while (_entries.TryDequeue(out _))

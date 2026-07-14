@@ -8,7 +8,8 @@ namespace LocationMessaging.Client.Scenarios;
 // completion oracle and that the channel recovers for a later request.
 internal static class RmC9BackpressureScenario
 {
-    private const int SlowSendCount = 8;
+    private const int SlowSendCount = 64;
+    private const int PressureEvidenceCount = 5;
 
     public static async Task RunAsync(ZLinkHttpClient backpressureConsumer, ZLinkHttpClient providerA)
     {
@@ -22,18 +23,34 @@ internal static class RmC9BackpressureScenario
             outcomes.All(outcome => outcome == "Submitted"),
             "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle.");
 
-        await Task.Delay(TimeSpan.FromSeconds(10));
+        // Waiting for more handled messages than either configured HWM proves that the
+        // provider is draining work after the burst without exposing send completion.
+        var evidence = (await providerA.Post("/evidence/wait-count")
+            .Body(new EvidenceCountWaitReq(marker, PressureEvidenceCount, 20000))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            evidence.Count(line => line.Contains(marker, StringComparison.Ordinal)
+                                   && line.Contains("profile-command", StringComparison.Ordinal))
+            >= PressureEvidenceCount,
+            "RM-C9 expected provider evidence after the send burst exceeded both HWMs.");
+
+        // The provider observes a bounded quiet period so the follow-up request is
+        // issued after the slow backlog has stopped producing evidence.
+        await providerA.Post("/evidence/wait-quiet")
+            .Body(new EvidenceQuietWaitReq(marker))
+            .SubmitAsync<string[]>();
+
         var followUp = (await backpressureConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c9-after"))
             .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:rm-c9-after",
             "RM-C9 follow-up request failed after backlog cleared.");
 
-        var evidence = (await providerA.Post("/evidence/wait")
+        var recoveryEvidence = (await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq("rm-c9-after", 20000))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
+            recoveryEvidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
             "RM-C9 recovery evidence missing.");
     }
 

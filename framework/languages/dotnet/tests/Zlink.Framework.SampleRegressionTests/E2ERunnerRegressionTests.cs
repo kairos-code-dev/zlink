@@ -40,4 +40,21 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("IsRetriableRequestStartupFailure", endpoints, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.Delay", endpoints, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void LocationMessaging_RmC9_Fills_A_Bounded_High_Water_Mark()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "LocationMessaging");
+        var scenario = File.ReadAllText(Path.Combine(
+            root, "Client", "Scenarios", "RmC9BackpressureScenario.cs"));
+        var consumer = File.ReadAllText(Path.Combine(root, "Server", "Consumer", "ConsumerHostFactory.cs"));
+        var provider = File.ReadAllText(Path.Combine(root, "Server", "Provider", "ProviderHostFactory.cs"));
+
+        Assert.Contains("private const int SlowSendCount = 64", scenario, StringComparison.Ordinal);
+        Assert.Contains("private const int PressureEvidenceCount = 5", scenario, StringComparison.Ordinal);
+        Assert.Contains("SendHighWaterMark = 4", consumer, StringComparison.Ordinal);
+        Assert.Contains("ReceiveHighWaterMark = 4", provider, StringComparison.Ordinal);
+        Assert.Contains("evidence.Count(line => line.Contains(marker", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay(TimeSpan.FromSeconds(10))", scenario, StringComparison.Ordinal);
+    }
 }

@@ -53,6 +53,7 @@ internal static class ProviderHostFactory
                     .SetRoutingId(RoutingId.From(options.Rid));
                 var serverSocket = clientServer.ConfigureServerSocket();
                 serverSocket.Weight = options.Weight;
+                serverSocket.ReceiveHighWaterMark = 4;
                 if (options.MaxMessageSize > 0) serverSocket.MaxMessageSize = options.MaxMessageSize;
                 clientServer.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
                 clientServer.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");

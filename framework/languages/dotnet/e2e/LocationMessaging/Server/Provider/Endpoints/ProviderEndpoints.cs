@@ -119,6 +119,33 @@ internal static class ProviderEndpoints
                 cancellationToken);
             return Results.Ok(snapshot);
         });
+        app.MapPost("/evidence/wait-count", async (
+            EvidenceCountWaitReq request,
+            EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 120000));
+            var snapshot = await evidence.WaitUntilCountAsync(
+                request.Contains,
+                Math.Max(1, request.MinimumCount),
+                timeout,
+                cancellationToken);
+            return Results.Ok(snapshot);
+        });
+        app.MapPost("/evidence/wait-quiet", async (
+            EvidenceQuietWaitReq request,
+            EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            var quietPeriod = TimeSpan.FromMilliseconds(Math.Clamp(request.QuietMilliseconds, 1, 5000));
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
+            var snapshot = await evidence.WaitUntilQuietAsync(
+                request.Contains,
+                quietPeriod,
+                timeout,
+                cancellationToken);
+            return Results.Ok(snapshot);
+        });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {
             lifetime.StopApplication();

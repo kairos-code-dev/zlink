@@ -25,6 +25,16 @@ public sealed record LocationStatusRes(
 
 public sealed record EvidenceWaitReq(string Contains, int TimeoutMilliseconds = 10000);
 
+public sealed record EvidenceCountWaitReq(
+    string Contains,
+    int MinimumCount,
+    int TimeoutMilliseconds = 10000);
+
+public sealed record EvidenceQuietWaitReq(
+    string Contains,
+    int QuietMilliseconds = 1500,
+    int TimeoutMilliseconds = 30000);
+
 public sealed record PayloadReq(string Marker, string Payload);
 
 public sealed record PayloadRes(string Marker, int Length, string Sha256);

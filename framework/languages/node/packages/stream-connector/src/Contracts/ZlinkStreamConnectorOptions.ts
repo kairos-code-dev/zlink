@@ -32,6 +32,9 @@ export interface ZlinkStreamMeterProvider {
     createCounter(name: string, options?: { readonly unit?: string }): {
       add(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
     };
+    createHistogram(name: string, options?: { readonly unit?: string }): {
+      record(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
+    };
   };
 }
 

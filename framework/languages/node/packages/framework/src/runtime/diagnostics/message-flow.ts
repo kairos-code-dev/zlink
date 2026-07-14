@@ -16,6 +16,7 @@ import type {
 import type { ZLinkDispatchErrorSink } from '../channels';
 import { currentOrCreateFlow } from './flow-context';
 import { getDispatchObserverType } from '../../contracts/Configuration/DispatchObserverRegistration';
+import type { ZLinkRuntimeMetrics } from './runtime-metrics';
 
 /** Shared, runtime-mutable message-flow mode cell (the C++ live_mode). */
 export interface ZLinkMessageFlowModeCell {
@@ -94,7 +95,7 @@ export function flowIfEnabled(
   flow: ZLinkMessageFlowTracer | undefined,
   outcome: ZLinkMessageFlowOutcome
 ): ZLinkMessageFlowTracer | undefined {
-  return flow !== undefined && flow.enabled(outcome) ? flow : undefined;
+  return flow !== undefined && flow.accepts(outcome) ? flow : undefined;
 }
 
 /**
@@ -106,14 +107,22 @@ export function flowIfEnabled(
 export class ZLinkMessageFlowTracer {
   private tracedEvents = 0;
   private observerFailures = 0;
+  private observerRunning = false;
+  private readonly observerQueue: ZLinkMessageFlowEvent[] = [];
 
   constructor(
     private readonly ctx: ZLinkDiagnosticsContext,
-    private readonly errorSink: ZLinkDispatchErrorSink
+    private readonly errorSink: ZLinkDispatchErrorSink,
+    private readonly metrics?: ZLinkRuntimeMetrics,
+    private readonly observerQueueCapacity = 1024
   ) {}
 
   enabled(outcome: ZLinkMessageFlowOutcome): boolean {
     return MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[requiredMode(outcome)];
+  }
+
+  accepts(outcome: ZLinkMessageFlowOutcome): boolean {
+    return this.enabled(outcome) || this.ctx.messageFlowObserverType !== undefined;
   }
 
   flowCreationEnabled(): boolean {
@@ -125,7 +134,8 @@ export class ZLinkMessageFlowTracer {
     readonly flowId?: string;
     readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
   }, defaultLogLevel: 'error' | 'warn' | 'debug' = 'error'): void {
-    if (!this.enabled(flowInput.outcome)) {
+    const traceEnabled = this.enabled(flowInput.outcome);
+    if (!traceEnabled && this.ctx.messageFlowObserverType === undefined) {
       return;
     }
     const root = flowInput.flowId !== undefined && flowInput.flowOrigin !== undefined
@@ -136,32 +146,20 @@ export class ZLinkMessageFlowTracer {
       ...root,
       effectiveMode: flowInput.effectiveMode ?? effectiveMessageFlow(this.ctx)
     };
-    if (
-      flow.outcome !== ZLinkMessageFlowOutcome.Dropped &&
-      flow.outcome !== ZLinkMessageFlowOutcome.Error &&
-      !this.sample(flow.flowId)
-    ) {
-      return;
-    }
-    this.tracedEvents += 1;
-    try {
-      this.logDefault(flow, defaultLogLevel);
-    } catch (error) {
-      this.errorSink.reportRuntimeTaskException('message-flow', error);
+    if (traceEnabled && (
+      flow.outcome === ZLinkMessageFlowOutcome.Dropped
+      || flow.outcome === ZLinkMessageFlowOutcome.Error
+      || this.sample(flow.flowId)
+    )) {
+      this.tracedEvents += 1;
+      try {
+        this.logDefault(flow, defaultLogLevel);
+      } catch (error) {
+        this.errorSink.reportRuntimeTaskException('message-flow', error);
+      }
     }
 
-    const observerType = this.ctx.messageFlowObserverType;
-    if (observerType === undefined) {
-      return;
-    }
-    queueMicrotask(() => {
-      void this.resolveObserver(observerType)
-        .then((observer) => observer.onMessageFlow(flow))
-        .catch((error) => {
-          this.observerFailures += 1;
-          this.errorSink.reportRuntimeTaskException(observerFailureTaskName(flow.outcome), error);
-        });
-    });
+    this.enqueueObserver(flow);
   }
 
   get tracedCount(): number {
@@ -170,6 +168,38 @@ export class ZLinkMessageFlowTracer {
 
   get observerFailureCount(): number {
     return this.observerFailures;
+  }
+
+  private enqueueObserver(flow: ZLinkMessageFlowEvent): void {
+    if (this.ctx.messageFlowObserverType === undefined) return;
+    if (this.observerRunning && this.observerQueue.length >= this.observerQueueCapacity) {
+      this.metrics?.count('zlink.observability.observer.overflow', 1, { event: flow.outcome });
+      return;
+    }
+    this.observerQueue.push(flow);
+    if (this.observerRunning) return;
+    this.observerRunning = true;
+    queueMicrotask(() => { void this.drainObserverQueue(); });
+  }
+
+  private async drainObserverQueue(): Promise<void> {
+    const observerType = this.ctx.messageFlowObserverType;
+    if (observerType === undefined) {
+      this.observerQueue.length = 0;
+      this.observerRunning = false;
+      return;
+    }
+    while (this.observerQueue.length > 0) {
+      const flow = this.observerQueue.shift()!;
+      try {
+        const observer = await this.resolveObserver(observerType);
+        await observer.onMessageFlow(flow);
+      } catch (error) {
+        this.observerFailures += 1;
+        this.errorSink.reportRuntimeTaskException(observerFailureTaskName(flow.outcome), error);
+      }
+    }
+    this.observerRunning = false;
   }
 
   private sample(flowId: string): boolean {

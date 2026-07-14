@@ -1,10 +1,13 @@
 import type { ZLinkDispatchFailure, ZLinkProviderResolver } from '../../contracts';
 import {
+  ZLinkDispatchErrorAction,
+  ZLinkDispatchErrorSurface,
   ZLinkDispatchErrorReason,
   ZLinkDispatchMessageKind,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowOutcome
 } from '../../contracts';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
   ZLinkMessageFlowTracer,
   DEFAULT_ZLINK_DIAGNOSTICS,
@@ -32,19 +35,28 @@ export class ZLinkDispatchErrorReporter {
     _observerType: undefined,
     providerResolver: ZLinkProviderResolver | undefined,
     errorSink: ZLinkDispatchErrorSink,
-    ctx?: ZLinkDiagnosticsContext
+    ctx?: ZLinkDiagnosticsContext,
+    private readonly metrics?: ZLinkRuntimeMetrics
   ) {
     const flowCtx: ZLinkDiagnosticsContext = ctx ?? {
       diagnostics: DEFAULT_ZLINK_DIAGNOSTICS,
       liveMode: { mode: ZLinkMessageFlowLogMode.ErrorsOnly },
       providerResolver
     };
-    this.flow = new ZLinkMessageFlowTracer(flowCtx, errorSink);
+    this.flow = new ZLinkMessageFlowTracer(flowCtx, errorSink, metrics);
   }
 
   report(event: ZLinkRuntimeDispatchFailure): void {
     const errorInfo = dispatchErrorInfo(event);
     this.reportedEvents += 1;
+    const dropReason = channelDropReason(event);
+    if (dropReason !== undefined) {
+      this.metrics?.count('zlink.channel.messages.dropped', 1, {
+        surface: event.surface,
+        kind: event.messageKind,
+        reason: dropReason
+      });
+    }
     this.flow.trace({
       outcome: ZLinkMessageFlowOutcome.Error,
       surface: event.surface,
@@ -71,6 +83,23 @@ export class ZLinkDispatchErrorReporter {
 
   get observerFailureCount(): number {
     return this.flow.observerFailureCount;
+  }
+}
+
+function channelDropReason(event: ZLinkRuntimeDispatchFailure): string | undefined {
+  if (
+    event.action !== ZLinkDispatchErrorAction.Drop
+    || (event.surface !== ZLinkDispatchErrorSurface.Channel
+      && event.surface !== ZLinkDispatchErrorSurface.RouteMeshChannel)
+  ) return undefined;
+  switch (event.reason) {
+    case ZLinkDispatchErrorReason.HandlerMissing:
+      return 'no_handler';
+    case ZLinkDispatchErrorReason.PayloadDecodeFailed:
+    case ZLinkDispatchErrorReason.InvalidFrame:
+      return 'decode_error';
+    default:
+      return undefined;
   }
 }
 

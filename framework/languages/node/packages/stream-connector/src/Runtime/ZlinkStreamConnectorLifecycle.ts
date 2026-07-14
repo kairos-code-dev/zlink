@@ -16,9 +16,9 @@ import type { ZlinkStreamFrameSender } from './ZlinkStreamFrameSender';
 import type { ZlinkStreamPendingRequests } from './ZlinkStreamPendingRequests';
 import type { ZlinkStreamReceiveDispatcher } from './ZlinkStreamReceiveDispatcher';
 import { connectorError, delay, throwIfAborted, toStreamError } from './ZlinkStreamSupport';
+import type { ZlinkStreamRuntimeMetrics } from './ZlinkStreamRuntimeMetrics';
 
 export class ZlinkStreamConnectorLifecycle {
-  private readonly reconnectCounter;
   private receiveLoopAbort: AbortController | undefined;
   private currentConnection: ZlinkStreamConnection | undefined;
   private connectionGeneration = 0;
@@ -38,12 +38,9 @@ export class ZlinkStreamConnectorLifecycle {
     private readonly pendingRequests: ZlinkStreamPendingRequests,
     private readonly frameSender: ZlinkStreamFrameSender,
     private readonly receiveDispatcher: ZlinkStreamReceiveDispatcher,
-    private readonly events: ZlinkStreamConnectorEvents
-  ) {
-    this.reconnectCounter = options.meterProvider
-      ?.getMeter('zlink.framework')
-      .createCounter('zlink.stream.reconnects', { unit: '{event}' });
-  }
+    private readonly events: ZlinkStreamConnectorEvents,
+    private readonly metrics: ZlinkStreamRuntimeMetrics
+  ) {}
 
   get isConnected(): boolean {
     return this.currentState === ZlinkStreamConnectionState.Connected;
@@ -198,11 +195,16 @@ export class ZlinkStreamConnectorLifecycle {
     while (attempt < maxAttempts) {
       attempt += 1;
       if (attempt > 1) {
-        this.reconnectCounter?.add(1, { transport: this.options.transport });
+        this.metrics.reconnect();
       }
+      const handshakeStartedAt = performance.now();
       try {
-        return await this.options.transportFactory.connect(this.options, signal);
+        const connection = await this.options.transportFactory.connect(this.options, signal);
+        this.metrics.handshakeCompleted(handshakeStartedAt);
+        return connection;
       } catch (cause) {
+        this.metrics.handshakeCompleted(handshakeStartedAt);
+        this.metrics.handshakeFailed(cause);
         lastError = toStreamError(cause, ZlinkStreamErrorCode.ConnectTimeout, 'Connect failed.');
         if (!this.options.reconnect.enabled || attempt >= maxAttempts) {
           break;

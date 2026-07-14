@@ -18,6 +18,7 @@ import { connectorError, toStreamError, utf8Decode } from './ZlinkStreamSupport'
 import type { ZlinkFlowContext } from './ZlinkFlowContext';
 import { decodeSessionClosing, ZLINK_SESSION_CLOSING } from './Protocol/ZlinkSessionClosing';
 import type { ZlinkStreamCloseReason } from '../Contracts';
+import type { ZlinkStreamRuntimeMetrics } from './ZlinkStreamRuntimeMetrics';
 
 export interface ZlinkStreamReceiveResult {
   readonly available: boolean;
@@ -33,6 +34,7 @@ export class ZlinkStreamReceiveDispatcher {
     private readonly frameSender: ZlinkStreamFrameSender,
     private readonly events: ZlinkStreamConnectorEvents,
     private readonly flowContext: ZlinkFlowContext,
+    private readonly metrics: ZlinkStreamRuntimeMetrics,
     private readonly serverClosing?: (reason: ZlinkStreamCloseReason) => Promise<void>
   ) {}
 
@@ -51,6 +53,7 @@ export class ZlinkStreamReceiveDispatcher {
     if (frameBytes === undefined) {
       return { available: false, inbound: false };
     }
+    this.metrics.inbound(frameBytes.byteLength);
     let frames: ReturnType<ZlinkStreamFrameProtocol['decodeFrames']>;
     try {
       frames = this.protocol.decodeFrames(frameBytes);

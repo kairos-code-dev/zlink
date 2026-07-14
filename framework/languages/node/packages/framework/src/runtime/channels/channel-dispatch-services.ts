@@ -62,7 +62,8 @@ export class ZLinkChannelDispatchServices {
       undefined,
       undefined,
       errorSink,
-      this.diagnosticsContext()
+      this.diagnosticsContext(),
+      this.metricsValue
     );
     this.dispatchErrorReporters.set(errorSink, reporter);
     return reporter;
@@ -123,7 +124,8 @@ export class ZLinkChannelDispatchServices {
   private outboundFlow(): ZLinkMessageFlowTracer {
     this.outboundFlowValue ??= new ZLinkMessageFlowTracer(
       this.diagnosticsContext(),
-      { reportRuntimeTaskException() {} }
+      { reportRuntimeTaskException() {} },
+      this.metricsValue
     );
     return this.outboundFlowValue;
   }

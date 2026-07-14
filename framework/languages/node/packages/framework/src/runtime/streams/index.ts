@@ -99,6 +99,7 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly relay?: (actor: ZLinkSessionActor, header: ZLinkStreamFrameHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
   readonly flowCreationEnabled?: () => boolean;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkStreamPayloadCodec {

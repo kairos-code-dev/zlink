@@ -8,6 +8,7 @@ import {
 } from '../../contracts';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
@@ -24,6 +25,7 @@ export interface ZLinkSessionActorCoordinatorOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly nativeActorNodeProvider?: () => { readonly routingId: ActorRef['nodeRid'] } | undefined;
+  readonly metrics?: ZLinkRuntimeMetrics;
 }
 
 export interface ZLinkRemoteBoundSessionBindRelay {
@@ -51,6 +53,22 @@ export class ZLinkSessionActorCoordinator {
   }
 
   private async replaceBinding(
+    context: DefaultZLinkSessionContext,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<DefaultZLinkSessionActor> {
+    const bindStartedAt = process.hrtime.bigint();
+    try {
+      return await this.replaceBindingCore(context, actorRef, signal);
+    } finally {
+      this.options.metrics?.duration(
+        'zlink.stream.session.bind.duration',
+        Number(process.hrtime.bigint() - bindStartedAt) / 1e9
+      );
+    }
+  }
+
+  private async replaceBindingCore(
     context: DefaultZLinkSessionContext,
     actorRef: ActorRef,
     signal?: AbortSignal

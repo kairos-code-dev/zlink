@@ -163,6 +163,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
       streamCompression: options.registration.streamCompression,
       messageSerializers: options.registration.messageSerializers,
+      metrics: this.metrics,
       flowCreationEnabled: () => this.flowCreationEnabled(),
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
@@ -720,7 +721,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       undefined,
       undefined,
       errorSink,
-      this.diagnosticsContext()
+      this.diagnosticsContext(),
+      this.metrics
     );
     this.dispatchErrorReporters.set(errorSink, reporter);
     return reporter;

@@ -37,6 +37,7 @@ import { ZlinkStreamConnectorLifecycle } from './ZlinkStreamConnectorLifecycle';
 import { ZlinkStreamConnectorEvents } from './ZlinkStreamConnectorEvents';
 import { BrowserZlinkFlowContext, type ZlinkFlowContext } from './ZlinkFlowContext';
 import { BrowserStreamTransportFactory } from './Transport/BrowserWebSocketConnection';
+import { ZlinkStreamRuntimeMetrics } from './ZlinkStreamRuntimeMetrics';
 
 export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   static readonly heartbeatPingName = ZLINK_STREAM_HEARTBEAT_PING;
@@ -56,8 +57,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   constructor(options: ZlinkStreamConnectorOptions) {
     const flowContext: ZlinkFlowContext = new BrowserZlinkFlowContext();
     this.options = normalizeOptions(options, new BrowserStreamTransportFactory());
+    const metrics = new ZlinkStreamRuntimeMetrics(this.options);
     const protocol = new ZlinkStreamFrameProtocol(this.options);
-    this.frameSender = new ZlinkStreamFrameSender(protocol, flowContext);
+    this.frameSender = new ZlinkStreamFrameSender(protocol, flowContext, metrics);
     this.inboundObservers = new ZlinkStreamInboundObservers(
       this.options.maxInboundObserverNotifications,
       this.options.maxInboundObserverPayloadPreviewBytes,
@@ -75,6 +77,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.frameSender,
       this.events,
       flowContext,
+      metrics,
       (reason) => this.lifecycle.serverClosing(reason)
     );
     this.lifecycle = new ZlinkStreamConnectorLifecycle(
@@ -82,7 +85,8 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.pendingRequests,
       this.frameSender,
       this.receiveDispatcher,
-      this.events
+      this.events,
+      metrics
     );
   }
 

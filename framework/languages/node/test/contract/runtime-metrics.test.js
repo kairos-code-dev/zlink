@@ -71,6 +71,75 @@ test('RMETRIC-016 connector owns reconnect attempt counting', async () => {
   assert.equal(records.filter((record) => record.name === 'zlink.stream.reconnects').length, 2);
 });
 
+test('RMETRIC-002 connector records handshake and frame bytes at the transport boundary', async () => {
+  const { provider, records } = collector();
+  const inbound = [];
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'ws://127.0.0.1:7999',
+    meterProvider: provider,
+    dispatchMode: 'manual',
+    transportFactory: {
+      async connect() {
+        return {
+          async write(frame) { inbound.push(frame); },
+          async read() { return inbound.shift(); },
+          async close() {}
+        };
+      }
+    }
+  });
+
+  await instance.connect();
+  instance.send({ value: 'probe' }).packetName('MetricProbe').submit();
+  await new Promise((resolve) => setImmediate(resolve));
+  const outbound = records.find((record) => record.name === 'zlink.stream.outbound.bytes');
+  await instance.dispatch();
+  await instance.close();
+
+  assert(records.some((record) => record.name === 'zlink.stream.handshake.duration'
+    && record.attributes.transport === 'ws'));
+  assert.equal(records.some((record) => record.name === 'zlink.stream.handshake.failures'), false);
+  assert.equal(outbound.value > 0, true);
+  assert.equal(outbound.attributes.transport, 'ws');
+  assert.equal(records.find((record) => record.name === 'zlink.stream.inbound.bytes').value, outbound.value);
+});
+
+test('RMETRIC-003 connector records failed handshake with closed labels', async () => {
+  const { provider, records } = collector();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'wss://127.0.0.1:7999',
+    meterProvider: provider,
+    transportFactory: { async connect() { throw new Error('tls failed'); } }
+  });
+  await assert.rejects(() => instance.connect());
+  assert.deepEqual(records.find((record) => record.name === 'zlink.stream.handshake.failures'), {
+    name: 'zlink.stream.handshake.failures',
+    kind: 'counter',
+    value: 1,
+    attributes: { transport: 'wss', reason: 'transport_error' }
+  });
+});
+
+test('RMETRIC-007 session actor bind records the complete native-to-route interval', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  const socket = {
+    send() { return true; },
+    disconnectPeer() {},
+    async bindActor() {},
+    async unbindActor() {},
+    sendBoundActor() { return true; }
+  };
+  const binding = new framework.ZLinkStreamBindingRuntime({ metrics });
+  const context = binding.createSessionContext(new framework.ZLinkManagedStream(socket, 'session-1'));
+
+  await context.actors.bindOrGet({ nodeRid: 'node-1', actorId: 'actor-1', generation: 1n });
+
+  const sample = records.find((record) => record.name === 'zlink.stream.session.bind.duration');
+  assert.equal(sample.kind, 'histogram');
+  assert.equal(sample.value >= 0, true);
+});
+
 test('RMETRIC Entry Spot activation records entry count and lifecycle counters', async () => {
   const { provider, records } = collector();
   const metrics = new framework.ZLinkRuntimeMetrics(provider);
@@ -139,6 +208,93 @@ test('RMETRIC channel fanout receive omits unregistered dynamic topic labels', a
   const received = records.find((record) => record.name === 'zlink.fanout.received');
   assert.equal(received.value, 1);
   assert.equal(received.attributes, undefined);
+});
+
+test('RMETRIC-008 actor mailbox records queued depth while work waits', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  const mailboxes = new framework.ZLinkActorDispatchMailboxSet(metrics);
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const first = mailboxes.submit('actor-1', () => blocked);
+  const second = mailboxes.submit('actor-1', async () => {});
+
+  assert.deepEqual(
+    records.filter((record) => record.name === 'zlink.actor.mailbox.depth').map((record) => record.value),
+    [1, 1]
+  );
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(
+    records.filter((record) => record.name === 'zlink.actor.mailbox.depth').map((record) => record.value),
+    [1, 1, -1, -1]
+  );
+});
+
+test('RMETRIC-009 channel drops use normalized closed labels when tracing is off', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  const reporter = new framework.ZLinkDispatchErrorReporter(
+    undefined,
+    undefined,
+    { reportRuntimeTaskException() {} },
+    {
+      diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false, includeNativeDiagnostics: false },
+      liveMode: { mode: 'off' }
+    },
+    metrics
+  );
+  const dispatcher = new framework.ZLinkChannelPublishDispatcher({
+    channelName: 'events',
+    dispatchErrors: reporter,
+    handlers: new Map(),
+    metrics
+  });
+  const parts = channelEnvelope.encodeChannelEnvelopeParts(
+    4,
+    'events',
+    'MissingEvent',
+    { value: 'payload' }
+  ).map((part) => ({ data: () => Buffer.from(part) }));
+
+  await dispatcher.dispatch({ topic: 'known', parts });
+
+  assert.deepEqual(records.find((record) => record.name === 'zlink.channel.messages.dropped'), {
+    name: 'zlink.channel.messages.dropped',
+    kind: 'counter',
+    value: 1,
+    attributes: { surface: 'channel', kind: 'publish', reason: 'no_handler' }
+  });
+});
+
+test('RMETRIC-015 bounded flow observer queue counts overflow even when tracing is off', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  class BlockingObserver {
+    async onMessageFlow() { await blocked; }
+  }
+  const tracer = new framework.ZLinkMessageFlowTracer({
+    diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false, includeNativeDiagnostics: false },
+    liveMode: { mode: 'off' },
+    messageFlowObserverType: BlockingObserver
+  }, { reportRuntimeTaskException() {} }, metrics, 1);
+  const event = {
+    outcome: 'received',
+    surface: 'channel',
+    messageKind: 'send',
+    packetName: 'MetricProbe'
+  };
+
+  framework.flowIfEnabled(tracer, 'received').trace(event);
+  await new Promise((resolve) => setImmediate(resolve));
+  framework.flowIfEnabled(tracer, 'received').trace(event);
+  framework.flowIfEnabled(tracer, 'received').trace(event);
+
+  assert.equal(records.filter((record) => record.name === 'zlink.observability.observer.overflow').length, 1);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test('OBS-B2/B3 runtime metric catalog keeps stable instrument kinds and low-cardinality labels', () => {

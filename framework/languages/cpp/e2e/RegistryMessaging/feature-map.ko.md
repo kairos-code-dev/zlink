@@ -11,7 +11,7 @@
 | `RM-A4` | 구현 | location store consumer를 교체 전부터 유지한다. 같은 rid `api-a`를 다른 endpoint의 `api-a-v2`로 교체한 뒤 runtime query에서 p2 row 하나만 남는지 확인하고, 같은 consumer로 보낸 연속 request 20개가 모두 v2 evidence에 기록되는지 검증한다. |
 | `RM-A6` | 구현 | 같은 Redis location store 안에서 `api` channel과 `workflow` channel의 provider가 섞이지 않는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
 | `RM-B1` | 구현 | client 실행 중 `api-b` provider를 추가하고 두 provider로 분산되는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
-| `RM-B2` | 구현 | 두 provider의 시작 순서를 `E2E_START_ORDER`로 바꿀 수 있다. `api-b` provider 종료 뒤 peer row 제거를 기다리고 request가 `api-a`로만 가는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
+| `RM-B2` | 구현 | 두 provider의 시작 순서를 `E2E_START_ORDER`로 바꿀 수 있다. store consumer에서 16개 request가 진행 중일 때 `api-b`를 종료하고, 각 완료를 정상 reply 또는 정해진 public error로 분류한다. peer row 제거 직후 재시도 없이 보낸 20개 request가 모두 `api-a`에서 처리되는지도 검증한다. |
 | `RM-C1` | 구현 | request와 send happy path를 함께 검증한다. |
 | `RM-C2` | 구현 | route mesh에서 target rid `api-b`로 request하고, 없는 rid는 실패하는지 검증한다. |
 | `RM-C3` | 구현 | direct consumer HTTP role이 수동 multi-endpoint client-server channel로 request를 보내고, 두 provider가 모두 처리하는지 검증한다. C++ HTTP array body binding 차이 때문에 `.NET`의 batch endpoint 대신 같은 consumer의 단건 request endpoint를 반복 호출한다. |

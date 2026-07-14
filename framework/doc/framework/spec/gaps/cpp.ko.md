@@ -573,7 +573,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 상위 runner의 대상 config 구분 부재와 RegistryMessaging의 start-order 처리 부재를 각각 검출했다. 상위 runner는 공통 문서가 지정한 Config 1·2·9에만 정방향·역방향·고정 seed shuffle을 적용하고 나머지는 정방향 한 번만 실행한다. RegistryMessaging은 RM-A1·RM-B2의 두 provider 시작 순서를 실제로 재배열한다. shell 문법과 gate가 통과했고, 상위 runner에서 `RegistryMessaging:RM-A1` 세 변형은 모두 통과하며 역방향 로그가 `api-b` 다음 `api-a`를 기록했다. 비대상 `RegistrationCodec:RC-A6`는 정방향 한 번만 실행해 통과했다.
 - [x] **E2E-CP-23** (결함) — **`RM-A4`(P0) failover가 실제로 일어나지 않는다.** 새 프로세스에 직접 물어본다
   - 근거: 수정 전 target-contract gate가 교체 전부터 유지되는 consumer와 peer-row 조회 부재를 검출했다. 별도 location store consumer를 v1과 함께 시작해 같은 HTTP 표면을 전후에 사용하고, 공용 runtime-query handler가 rid `api-a`의 row가 p2 하나로 수렴했는지 확인한 직후 20개 request를 보낸다. provider/consumer/client target 빌드와 gate가 통과했고, `./run_e2e.sh RM-A4`에서 v1 1건과 v2 20건의 instance id·evidence를 확인했다.
-- [ ] **E2E-CP-24** (결함) — **`RM-B2`(P0)가 문서가 금지한 "죽은 endpoint 반복 timeout"을 삼킨다.** scale-in 중 트래픽이 0
+- [x] **E2E-CP-24** (결함) — **`RM-B2`(P0)가 문서가 금지한 "죽은 endpoint 반복 timeout"을 삼킨다.** scale-in 중 트래픽이 0
+  - 근거: 수정 전 target-contract gate가 동시 transition request와 persistent consumer 부재 및 `catch (...)` 재시도를 검출했다. store consumer에서 16개 bounded slow request를 동시에 시작한 뒤 runner가 `api-b`를 정상 종료하고, 모든 future를 정상 provider reply 또는 명시한 public error로 회수하도록 바꿨다. row 제거 뒤 retry settle 구간은 삭제하고 즉시 20개 request가 `api-a`로만 가는지 확인한다. client target 빌드, gate, `./run_e2e.sh RM-B2`가 통과했다.
 - [ ] **E2E-CP-25** (결함) — **`RM-A2`(P0)가 manual-vs-auto 우선순위를 전혀 검증하지 않는다**
 - [ ] **E2E-CP-26** (미구현) — **Config 1·5 어디에서도 public error kind를 분류하지 않는다.** 초과 payload 거절이 timeout과 구분 불가
 - [ ] **E2E-CP-27** (결함) — **`RC-A1`·`RC-A2`(P0)가 `RC-A3`와 완전히 같은 등록 호출**이다. config의 변주 축이 0개

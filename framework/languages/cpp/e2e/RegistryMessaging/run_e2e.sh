@@ -494,7 +494,15 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
 fi
 
 if [[ "$SCENARIO" == "RM-B2" || "$SCENARIO" == "rm-b2" ]]; then
+  if ! rg -q 'std::async' "$SCRIPT_DIR/Client/Scenarios/rm_b2_scale_in_scenario.hpp" \
+    || rg -q 'catch \(\.\.\.\)' \
+      "$SCRIPT_DIR/Client/Scenarios/rm_b2_scale_in_scenario.hpp"; then
+    echo "RM-B2 contract gate failed: scale-in traffic is not continuously classified" >&2
+    exit 1
+  fi
   start_standard_provider_pair
+  start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
+  STORE_CONSUMER_PID="$LAST_PID"
   READY="$LOG_DIR/rm-b2-ready"
   CONTINUE="$LOG_DIR/rm-b2-continue"
   run_client rm-b2 rm-b2 env \
@@ -503,7 +511,6 @@ if [[ "$SCENARIO" == "RM-B2" || "$SCENARIO" == "rm-b2" ]]; then
   B2_CLIENT_PID="$!"
   wait_marker "$READY"
   stop_pid "$API_B_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$B2_CLIENT_PID"
   cat "$LOG_DIR/client-rm-b2.stdout.log"

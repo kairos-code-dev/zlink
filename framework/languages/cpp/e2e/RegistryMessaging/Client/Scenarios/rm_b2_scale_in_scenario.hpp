@@ -4,31 +4,84 @@
 
 #include "../Support/client_support.hpp"
 
+#include <atomic>
+#include <future>
 #include <iostream>
+#include <optional>
 #include <set>
+#include <vector>
 
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
 inline void run_rm_b2_scale_in_scenario ()
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto consumer_url = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
     auto location_client = zlink::http_client::client_t::create ()
-                             .base_url (provider_a_url)
+                             .base_url (consumer_url)
                              .timeout (std::chrono::milliseconds (1000))
                              .build ();
     std::set<std::string> before;
     for (int index = 0; index < 80 && before.size () < 2; ++index) {
         auto reply = post_json<profile_req_t, profile_res_t> (
-          provider_a_url, "/profile/request",
+          consumer_url, "/profile/request",
           profile_req_t{.value = "scale-in-before-" + std::to_string (index)});
         before.insert (reply.provider_rid);
     }
     ensure (before.contains ("api-a") && before.contains ("api-b"),
             "RM-B2 did not start with both providers");
 
+    struct transition_result_t
+    {
+        std::optional<std::string> provider_rid;
+        std::optional<zlink::framework::framework_error_kind_t> error_kind;
+    };
+    std::atomic<bool> start_requests{false};
+    std::vector<std::future<transition_result_t>> transition_requests;
+    transition_requests.reserve (16);
+    for (int index = 0; index < 16; ++index) {
+        transition_requests.push_back (
+          std::async (std::launch::async, [&consumer_url, &start_requests] {
+              while (!start_requests.load (std::memory_order_acquire)) {
+                  std::this_thread::yield ();
+              }
+              try {
+                  const auto reply = post_json<profile_req_t, profile_res_t> (
+                    consumer_url, "/profile/request", profile_req_t{.value = "slow"},
+                    std::chrono::seconds (4));
+                  ensure (reply.value == "profile:slow",
+                          "RM-B2 transition reply payload mismatch");
+                  return transition_result_t{.provider_rid = reply.provider_rid};
+              }
+              catch (const zlink::framework::framework_exception_t &error) {
+                  return transition_result_t{.error_kind = error.kind ()};
+              }
+          }));
+    }
+    start_requests.store (true, std::memory_order_release);
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+
+    int transition_successes = 0;
+    int transition_errors = 0;
+    for (auto &pending : transition_requests) {
+        const auto completed = pending.get ();
+        if (completed.provider_rid) {
+            ensure (*completed.provider_rid == "api-a" || *completed.provider_rid == "api-b",
+                    "RM-B2 transition request used an unexpected provider");
+            ++transition_successes;
+            continue;
+        }
+        ensure (completed.error_kind == zlink::framework::framework_error_kind_t::request_failed
+                  || completed.error_kind
+                       == zlink::framework::framework_error_kind_t::request_target_not_found
+                  || completed.error_kind
+                       == zlink::framework::framework_error_kind_t::route_not_connected,
+                "RM-B2 transition request returned an unexpected public error");
+        ++transition_errors;
+    }
+    std::cout << "RM-B2 transition completed successes=" << transition_successes
+              << " public_errors=" << transition_errors << '\n';
 
     bool api_b_removed = false;
     for (int attempt = 0; attempt < 150 && !api_b_removed; ++attempt) {
@@ -48,25 +101,9 @@ inline void run_rm_b2_scale_in_scenario ()
     }
     ensure (api_b_removed, "RM-B2 timed out waiting for api-b location row removal");
 
-    int settled = 0;
-    for (int attempt = 0; attempt < 40 && settled < 3; ++attempt) {
-        try {
-            auto reply = post_json<profile_req_t, profile_res_t> (
-              provider_a_url, "/profile/request",
-              profile_req_t{.value = "scale-in-settle-" + std::to_string (attempt)},
-              std::chrono::milliseconds (1500));
-            settled = reply.provider_rid == "api-a" ? settled + 1 : 0;
-        }
-        catch (...) {
-            settled = 0;
-            std::this_thread::sleep_for (std::chrono::milliseconds (200));
-        }
-    }
-    ensure (settled >= 3, "RM-B2 traffic did not settle on the surviving provider");
-
     for (int index = 0; index < 20; ++index) {
         auto reply = post_json<profile_req_t, profile_res_t> (
-          provider_a_url, "/profile/request",
+          consumer_url, "/profile/request",
           profile_req_t{.value = "scale-in-after-" + std::to_string (index)},
           std::chrono::seconds (5));
         ensure (reply.provider_rid == "api-a",

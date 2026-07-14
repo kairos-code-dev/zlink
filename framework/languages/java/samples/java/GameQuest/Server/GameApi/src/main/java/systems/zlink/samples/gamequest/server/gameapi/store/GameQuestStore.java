@@ -90,10 +90,12 @@ public final class GameQuestStore implements AutoCloseable {
         List<String> activeBindings = shared.activeBindings();
         List<Messages.StoredQuestEvent> events = shared.readQuestEvents();
         Map<String, String> rehydrates = shared.rehydrates();
+        List<String> deduplicatedEvents = shared.deduplicatedEvents();
         bindingHistory.forEach(binding -> evidence.add("binding:" + binding));
         events.forEach(event -> evidence.add("event:" + event.playerId() + ":" + event.questId()
             + ":" + event.eventType() + ":v" + event.version() + ":source=" + event.sourceEventId()));
         rehydrates.forEach((playerId, count) -> evidence.add("rehydrated:" + playerId + ":" + count));
+        deduplicatedEvents.forEach(eventId -> evidence.add("deduplicated:" + eventId));
 
         List<BooleanSupplier> conditions = List.of(
             check(evidence, "missing:player-alice:first-hunt:RewardGranted", () -> alice.stream().anyMatch(p ->
@@ -116,6 +118,8 @@ public final class GameQuestStore implements AutoCloseable {
             check(evidence, "missing:event:player-alice:first-hunt:QuestRewardGrantedEvent:1",
                 () -> count(events, "player-alice", Messages.QuestIds.FirstHunt,
                     Messages.QuestRewardGrantedEvent.class.getSimpleName()) == 1),
+            check(evidence, "missing:deduplicated:player-alice-kill-3",
+                () -> deduplicatedEvents.contains("player-alice-kill-3")),
             check(evidence, "missing:event:player-alice:first-hunt:QuestProgressReconciledEvent:1",
                 () -> count(events, "player-alice", Messages.QuestIds.FirstHunt,
                     Messages.QuestProgressReconciledEvent.class.getSimpleName()) == 1),

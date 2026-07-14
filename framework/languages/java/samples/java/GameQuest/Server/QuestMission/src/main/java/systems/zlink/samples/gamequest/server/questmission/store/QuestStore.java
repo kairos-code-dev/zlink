@@ -31,6 +31,7 @@ public final class QuestStore implements AutoCloseable {
     public synchronized Messages.QuestProcessingRes apply(Messages.GameplayMsg event) {
         String key = event.playerId() + ":" + event.idempotencyKey();
         if (eventIdsByIdempotency.containsKey(key)) {
+            shared.recordDeduplicatedEvent(event.eventId());
             return new Messages.QuestProcessingRes(
                 eventIdsByIdempotency.get(key),
                 copyProjection(event.playerId()),

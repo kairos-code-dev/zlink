@@ -79,6 +79,14 @@ public final class RedisSampleStore implements AutoCloseable {
         return redis.hgetall(key("owner-rehydrates"));
     }
 
+    public void recordDeduplicatedEvent(String eventId) {
+        redis.sadd(key("deduplicated-events"), eventId);
+    }
+
+    public List<String> deduplicatedEvents() {
+        return redis.smembers(key("deduplicated-events")).stream().sorted().toList();
+    }
+
     @Override
     public void close() {
         connection.close();

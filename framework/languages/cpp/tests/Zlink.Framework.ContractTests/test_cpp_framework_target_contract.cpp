@@ -101,6 +101,8 @@ int main ()
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
+    const auto resilience_client =
+      read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
@@ -309,6 +311,22 @@ int main ()
     gate.require (pubsub_runner.find ("publisher emitted a dispatch error for submit-only publish")
                     != std::string::npos,
                   "E2E-CP-48", "PubSub PS-C1 has no failing publisher dispatch assertion");
+
+    /* E2E-CP-31 — runner-owned RL-C2/RL-D1 scenarios have no dead client duplicates. */
+    gate.require (
+      resilience_client.find ("rl_c2_topology_recovery_scenario.hpp") == std::string::npos,
+      "E2E-CP-31", "ResilienceLifecycle client still includes the dead RL-C2 wrapper");
+    gate.require (
+      resilience_client.find ("rl_d1_high_fanout_scenario.hpp") == std::string::npos,
+      "E2E-CP-31", "ResilienceLifecycle client still includes the dead RL-D1 wrapper");
+    gate.require (
+      !std::filesystem::exists (
+        e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_c2_topology_recovery_scenario.hpp"),
+      "E2E-CP-31", "ResilienceLifecycle retains the dead RL-C2 scenario file");
+    gate.require (
+      !std::filesystem::exists (
+        e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_d1_high_fanout_scenario.hpp"),
+      "E2E-CP-31", "ResilienceLifecycle retains the dead RL-D1 scenario file");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

@@ -552,7 +552,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-29** (미구현) — **`RC-B4`(P0)의 JSON fallback 규칙이 검증되지 않는다.** 미지원 타입을 보내지 않는다
 - [x] **E2E-CP-30** (결함) — **`./run_e2e.sh RC-A6`가 항상 실패한다**(client에 branch가 없다)
   - 근거: 수정 전 target-contract gate가 `rc-a*` glob이 RC-A6를 일반 client로 보내는 것과 A1~A5 명시 selector 부재를 검출했다. client selector를 `rc-a[1-5]`로 좁힌 뒤 gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.
-- [ ] **E2E-CP-31** (결함) — **`RL-D1`·`RL-C2` client scenario가 dead code**다. `main.cpp`가 부르지 않는다
+- [x] **E2E-CP-31** (결함) — **`RL-D1`·`RL-C2` client scenario가 dead code**다. `main.cpp`가 부르지 않는다
+  - 근거: 수정 전 target-contract gate가 runner 소유 검증과 중복된 RL-C2·RL-D1 client include와 파일 네 곳을 모두 검출했다. 약한 dead wrapper와 RL-C2의 도달하지 않는 branch를 제거한 뒤 client target 빌드와 gate가 통과했고, 실제 runner 소유 경로인 `./run_e2e.sh RL-C2`의 crash·복구 및 `./run_e2e.sh RL-D1`의 120회 burst가 각각 통과했다.
 - [ ] **E2E-CP-32** (결함) — **`RL-B2`(P1) 단언이 실패할 수 없다.** 500ms timeout이라 crash와 무관하게 통과
 - [ ] **E2E-CP-33** (결함) — **`RL-D5` soak가 순차 burst**이고, **`RL-D4` wire 호환이 검증되지 않는다**
 - [ ] **E2E-CP-34** (결함) — **`MON-A2`(P0)에 trigger가 없고 원리적으로 실패할 수 없다**(IMP-CP-13이 매 tick 발행)

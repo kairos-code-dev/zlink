@@ -12,10 +12,8 @@
 #include "Scenarios/rl_b5_drain_inflight_scenario.hpp"
 #include "Scenarios/rl_b6_gray_fault_scenario.hpp"
 #include "Scenarios/rl_c1_client_host_lifecycle_scenario.hpp"
-#include "Scenarios/rl_c2_topology_recovery_scenario.hpp"
 #include "Scenarios/rl_c3_node_pause_recovery_scenario.hpp"
 #include "Scenarios/rl_c4_location_store_outage_scenario.hpp"
-#include "Scenarios/rl_d1_high_fanout_scenario.hpp"
 #include "Scenarios/rl_d2_observer_fault_scenario.hpp"
 #include "Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp"
 #include "Scenarios/rl_d4_missing_request_handler_scenario.hpp"
@@ -64,8 +62,6 @@ int main (int argc, char **argv)
             rl_client::run_rl_b6_gray_fault_scenario ();
         } else if (scenario == "rl-c1") {
             rl_client::run_rl_c1_client_host_lifecycle_probe ();
-        } else if (scenario == "rl-c2") {
-            rl_client::run_rl_c2_topology_recovery_probe ();
         } else if (scenario == "rl-c3") {
             rl_client::run_rl_c3_node_pause_recovery_probe ();
         } else if (scenario == "rl-d3") {

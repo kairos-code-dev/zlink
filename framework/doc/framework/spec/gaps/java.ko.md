@@ -674,7 +674,8 @@ Config 11 전체 실행도 각 selector를
 - [ ] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 죽은 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**
 - [ ] **SMP-JV-08** (결함) — Bingo·DeliveryDispatch가 여전히 **환경변수·JVM system property**를 읽는다
 - [ ] **SMP-JV-09** (결함) — 클라이언트 self-check가 문서보다 약하다(릴리즈 게이트)
-- [ ] **SMP-JV-10** (결함) — ShoppingMall `GetOrderStateReq`가 **읽기 전용이어야 하는데 read model을 재구축**한다
+- [x] **SMP-JV-10** (결함) — ShoppingMall `GetOrderStateReq`가 **읽기 전용이어야 하는데 read model을 재구축**한다
+  - 근거: 삭제 직후 조회가 `null` 상태를 반환하고 명시적 rebuild 뒤에만 상태가 복원되도록 self-check를 강화했으며, Java ShoppingMall runner가 완료 표식까지 통과했다.
 - [ ] **E2E-JV-01** (결함) — `ObservabilityOps`가 **역할 서버도 클라이언트도 없이** 폐기된 config-8 바이너리를 빌려 쓴다
 - [ ] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
 - [ ] **E2E-JV-03** (결함) — 클라이언트 21개 중 **19개가 raw `java.net.http.HttpClient`**를 쓴다

@@ -43,7 +43,7 @@
 |------|-----------|------|------|------|
 | `.NET: Server/CommerceApi/Program.cs` | `Server/CommerceApi/src/main/java/.../commerceapi/Program.java` | server-entry | done | HTTP `/health`, `/orders/start`, `/orders/{id}`, self-check endpoint를 연다. |
 | `.NET: StartOrderUseCase` | `CommerceApiService` | application | done | 멱등 키 예약, cart/address/payment 검증, workflow route 요청을 담당한다. |
-| `.NET: GetOrderStateUseCase` | `CommerceApiService` | application | done | read model 조회와 missing projection 복구를 처리한다. |
+| `.NET: GetOrderStateUseCase` | `CommerceApiService` | application | done | read model만 조회하며 누락된 projection은 그대로 반환한다. |
 | `.NET: ZLinkOrderWorkflowRouter` | `ZLinkClient` workflow request calls | framework-adapter | done | workflow instance channel로 public request를 보낸다. |
 
 ## OrderWorkflow Role

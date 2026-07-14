@@ -54,11 +54,8 @@ public final class CommerceApiService {
     }
 
     public CompletionStage<Messages.GetOrderStateRes> getOrder(String orderId) {
-        Messages.OrderState state = store.findProjection(orderId);
-        return state != null
-            ? CompletableFuture.completedFuture(new Messages.GetOrderStateRes(state))
-            : rebuildProjection(orderId)
-                .thenApply(rebuilt -> new Messages.GetOrderStateRes(rebuilt.state()));
+        return CompletableFuture.completedFuture(
+            new Messages.GetOrderStateRes(store.findProjection(orderId)));
     }
 
     public void deleteProjection(String orderId) {

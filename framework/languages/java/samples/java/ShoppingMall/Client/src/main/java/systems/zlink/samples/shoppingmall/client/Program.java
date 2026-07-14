@@ -94,15 +94,20 @@ public final class Program {
             ensure(postRaw(
                 topology.apiAHttpUrl(),
                 "/self-check/projection/" + confirmed.orderId() + "/delete"));
-            Messages.GetOrderStateRes rebuiltByRead = get(topology.apiBHttpUrl(), "/orders/" + confirmed.orderId(),
+            Messages.GetOrderStateRes missingProjection = get(topology.apiBHttpUrl(), "/orders/" + confirmed.orderId(),
                 Messages.GetOrderStateRes.class);
-            ensure(Messages.OrderStatuses.Confirmed.equals(rebuiltByRead.state().status()));
+            ensure(missingProjection.state() == null);
             Messages.RebuildOrderProjectionRes explicitRebuild = post(
                 topology.apiAHttpUrl(),
                 "/self-check/projection/" + confirmed.orderId() + "/rebuild",
                 "",
                 Messages.RebuildOrderProjectionRes.class);
             ensure(Messages.OrderStatuses.Confirmed.equals(explicitRebuild.state().status()));
+            Messages.GetOrderStateRes rebuiltProjection = get(
+                topology.apiBHttpUrl(),
+                "/orders/" + confirmed.orderId(),
+                Messages.GetOrderStateRes.class);
+            ensure(Messages.OrderStatuses.Confirmed.equals(rebuiltProjection.state().status()));
 
             Messages.StartOrderRes scaleOut = start(
                 topology.apiBHttpUrl(),

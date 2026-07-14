@@ -285,7 +285,8 @@
 
 ### 체크리스트
 
-- [ ] **IMP-DN-08** (결함) — `zlink.fanout.received`가 **등록되지 않은 topic까지 라벨로 단다**
+- [x] **IMP-DN-08** (결함) — `zlink.fanout.received`가 **등록되지 않은 topic까지 라벨로 단다**
+  — subscription registry lookup 결과로 metric 라벨을 정해 미등록 topic은 합계만 기록한다. 관측 관련 테스트 31건, 전체 unit 630건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-09** (결함) — STREAM ingress가 client가 안 보낸 `correlation_id`를 `request_seq`로 **날조한다**
 - [x] **IMP-DN-10** (결함) — attribute로 선언한 SPOT timer 검증이 **startup이 아니라 spot 활성화 시점**
   — 등록된 Spot 타입의 스캔 timer를 host 시작에서 검증하고 runtime 생성과 같은 이름·주기·overrun 규칙을 사용한다. 관련 테스트 47건, 전체 unit 629건, sample regression 39건이 통과했다.

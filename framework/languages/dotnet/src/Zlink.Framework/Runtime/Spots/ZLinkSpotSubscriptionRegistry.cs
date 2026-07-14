@@ -140,7 +140,8 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
 
-        ZLinkRuntimeMetrics.RecordFanoutReceived(message.Topic);
+        _descriptorsByTopic.TryGetValue(message.Topic, out var descriptors);
+        ZLinkRuntimeMetrics.RecordFanoutReceived(descriptors is null ? null : message.Topic);
         var scope = CreateScope(
             header.MessageName,
             message.Topic,
@@ -150,7 +151,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
 
         scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
-        if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors))
+        if (descriptors is null)
         {
             scope.Dropped(logger, dispatchErrors, LogLevel.Debug);
             return;

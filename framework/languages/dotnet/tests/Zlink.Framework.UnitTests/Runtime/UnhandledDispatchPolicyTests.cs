@@ -32,6 +32,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal("source-rid", result.Terminal.SourceRid);
         Assert.Equal(0, result.DispatchCount);
         Assert.Equal(0, result.FanoutReceived);
+        Assert.Equal(0, result.DynamicTopicFanoutReceived);
         Assert.Empty(result.LogMessages);
     }
 
@@ -59,6 +60,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal("source-rid", result.Terminal.SourceRid);
         Assert.Equal(0, result.DispatchCount);
         Assert.True(result.FanoutReceived > 0);
+        Assert.Equal(0, result.DynamicTopicFanoutReceived);
         Assert.Empty(result.LogMessages);
     }
 
@@ -817,6 +819,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         subscriber.SetSubscription("events");
         nativeSpot.SubscribeHandler = subscriber.Subscribe;
         long fanoutReceived = 0;
+        long dynamicTopicFanoutReceived = 0;
         using var meterListener = new MeterListener
         {
             InstrumentPublished = (instrument, owner) =>
@@ -829,9 +832,10 @@ public sealed partial class UnhandledDispatchPolicyTests
         meterListener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
         {
             if (instrument.Name != "zlink.fanout.received") return;
+            Interlocked.Add(ref fanoutReceived, value);
             foreach (var tag in tags)
                 if (tag.Key == "topic" && Equals(tag.Value, "events.child"))
-                    Interlocked.Add(ref fanoutReceived, value);
+                    Interlocked.Add(ref dynamicTopicFanoutReceived, value);
         });
         meterListener.Start();
 
@@ -905,6 +909,7 @@ public sealed partial class UnhandledDispatchPolicyTests
                 error,
                 dispatchCount,
                 Interlocked.Read(ref fanoutReceived),
+                Interlocked.Read(ref dynamicTopicFanoutReceived),
                 logger.Messages.ToArray());
         }
         finally
@@ -978,6 +983,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         ZLinkMessageFlowEvent Terminal,
         int DispatchCount,
         long FanoutReceived,
+        long DynamicTopicFanoutReceived,
         IReadOnlyList<string> LogMessages);
 
     private sealed class PublishProbe

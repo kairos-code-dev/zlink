@@ -163,6 +163,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
       streamCompression: options.registration.streamCompression,
       messageSerializers: options.registration.messageSerializers,
+      flowCreationEnabled: () => this.flowCreationEnabled(),
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
         this.boundSessionRelay.actorPackets.relayActorPacket(actor, header, payload, signal),
@@ -661,6 +662,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       actorTransferRegistry: this.actorTransferRegistry,
       shutdownSignal: () => this.state?.abortController.signal,
       metrics: this.metrics,
+      flowCreationEnabled: () => this.flowCreationEnabled(),
       traceBoundSessionSend: (actorId, packetName) => {
         const flow = this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink).flow;
         flowIfEnabled(flow, ZLinkMessageFlowOutcome.Sent)?.trace({
@@ -745,6 +747,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       this.messageFlowModeCell
     );
     return this.cachedDiagnosticsContext;
+  }
+
+  private flowCreationEnabled(): boolean {
+    return this.messageFlowModeCell.mode !== ZLinkMessageFlowLogMode.Off;
   }
 
   requirePrimarySpotNode(): ZLinkBackendSpotNode {

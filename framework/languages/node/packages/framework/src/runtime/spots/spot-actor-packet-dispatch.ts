@@ -103,7 +103,11 @@ export class ZLinkSpotActorPacketDispatch {
       this.reportInvalidFrame(actorId, ZLinkDispatchMessageKind.ActorSend, error);
       throw error;
     }
-    return await runWithFlow(createInboundFlow(header.flowId, header.flowOrigin), async () => {
+    return await runWithFlow(createInboundFlow(
+      header.flowId,
+      header.flowOrigin,
+      this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    ), async () => {
       const messageKind = header.kind === ZLinkStreamMessageKind.Request
         ? ZLinkDispatchMessageKind.ActorRequest
         : ZLinkDispatchMessageKind.ActorSend;

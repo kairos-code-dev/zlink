@@ -43,6 +43,7 @@ export interface ZLinkSpotRouteDispatchStrategyOptions {
   readonly spotRouteBridges: ReadonlyMap<string, ZLinkBackendSpotRouteBridge>;
   readonly rawReplies: ZLinkSpotRouteBridgeRawReplyRegistry;
   readonly localSpotRouteDispatcher?: ZLinkLocalSpotRouteDispatcher;
+  readonly flowCreationEnabled?: () => boolean;
 }
 
 export class ZLinkSpotRouteDispatchStrategy {
@@ -110,7 +111,9 @@ export class ZLinkSpotRouteDispatchStrategy {
       message,
       undefined,
       undefined,
-      codecsForFrameworkPacket(packetName, this.options.codecs)
+      codecsForFrameworkPacket(packetName, this.options.codecs),
+      undefined,
+      this.options.flowCreationEnabled?.() ?? true
     ) as readonly Message[];
     if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)
       && await this.spotNodeTransport.send(spotRouteTarget, parts, signal)) {
@@ -150,7 +153,17 @@ export class ZLinkSpotRouteDispatchStrategy {
       );
     }
     const codecs = codecsForFrameworkPacket(packetName, this.options.codecs);
-    const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, spotRouteTarget.routerChannelId, packetName, request, timeoutMs, undefined, codecs) as readonly Message[];
+    const parts = encodeChannelEnvelopeParts(
+      ZLinkChannelMessageKind.Request,
+      spotRouteTarget.routerChannelId,
+      packetName,
+      request,
+      timeoutMs,
+      undefined,
+      codecs,
+      undefined,
+      this.options.flowCreationEnabled?.() ?? true
+    ) as readonly Message[];
     if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)) {
       const namedSpotNodeRequest = this.spotNodeTransport.request<TReply>(
         spotRouteTarget,

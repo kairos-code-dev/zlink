@@ -46,7 +46,8 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       this.codecs,
-      correlationId
+      correlationId,
+      this.dispatchServices.flowCreationEnabled()
     ) as readonly Message[];
     this.sockets.requireSubmitter(dealer).submitCommandOneWay(
       () => dealer.send(parts, ZLINK_SEND_DONT_WAIT),
@@ -80,7 +81,8 @@ export class ZLinkChannelOutboundOperations {
       timeoutMs,
       undefined,
       this.codecs,
-      correlationId
+      correlationId,
+      this.dispatchServices.flowCreationEnabled()
     ) as readonly Message[];
     this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
       surface: ZLinkDispatchErrorSurface.Channel,
@@ -157,7 +159,8 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       topic,
       this.codecs,
-      correlationId
+      correlationId,
+      this.dispatchServices.flowCreationEnabled()
     ) as readonly Message[];
     this.sockets.requireSubmitter(publisher).submitCommandOneWay(
       () => publisher.publish(topic, parts, ZLINK_SEND_DONT_WAIT),
@@ -193,7 +196,8 @@ export class ZLinkChannelOutboundOperations {
       undefined,
       undefined,
       codecsForFrameworkPacket(packetName, this.codecs),
-      correlationId
+      correlationId,
+      this.dispatchServices.flowCreationEnabled()
     ) as readonly Message[];
     this.sockets.requireSubmitter(router).submitCommandOneWay(
       () => router.send(targetNodeRid, parts, ZLINK_SEND_DONT_WAIT),
@@ -229,7 +233,8 @@ export class ZLinkChannelOutboundOperations {
       timeoutMs,
       undefined,
       codecsForFrameworkPacket(packetName, this.codecs),
-      correlationId
+      correlationId,
+      this.dispatchServices.flowCreationEnabled()
     ) as readonly Message[];
     this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
       surface: ZLinkDispatchErrorSurface.RouteMeshChannel,

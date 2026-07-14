@@ -102,7 +102,8 @@ export class ZLinkSpotRoutedFrameDispatch {
       routedBoundSessionReceiver: options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver
+      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver,
+      dispatchErrors: options.dispatchErrors
     });
     this.actorPacketRelayDispatch = new ZLinkSpotActorPacketRelayDispatch({
       resolveActor: options.resolveActor,

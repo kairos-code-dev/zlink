@@ -49,6 +49,10 @@ export class ZLinkChannelDispatchServices {
     return this.metricsValue;
   }
 
+  flowCreationEnabled(): boolean {
+    return this.outboundFlow().flowCreationEnabled();
+  }
+
   dispatchErrorReporter(errorSink: ZLinkRuntimeErrorSink): ZLinkDispatchErrorReporter {
     const existing = this.dispatchErrorReporters.get(errorSink);
     if (existing !== undefined) {

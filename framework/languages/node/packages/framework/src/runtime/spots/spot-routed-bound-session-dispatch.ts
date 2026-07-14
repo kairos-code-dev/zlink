@@ -14,6 +14,7 @@ import {
 } from './spot-route-replies';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
+import type { ZLinkDispatchErrorReporter } from '../channels';
 
 interface ZLinkSpotRoutedBoundSessionDispatchOptions {
   readonly channelCodecs: () => ZLinkChannelEnvelopeCodecRegistry | undefined;
@@ -44,6 +45,7 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
+  readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
 
 export class ZLinkSpotRoutedBoundSessionDispatch {
@@ -61,7 +63,8 @@ export class ZLinkSpotRoutedBoundSessionDispatch {
       await runWithFlow(
         createInboundFlow(
           boundSessionSend.flowId ?? boundSessionSend.envelope?.header.flowId,
-          boundSessionSend.flowOrigin ?? boundSessionSend.envelope?.header.flowOrigin
+          boundSessionSend.flowOrigin ?? boundSessionSend.envelope?.header.flowOrigin,
+          this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
         ),
         () => this.options.routedBoundSessionReceiver?.(
           boundSessionSend.actorId,

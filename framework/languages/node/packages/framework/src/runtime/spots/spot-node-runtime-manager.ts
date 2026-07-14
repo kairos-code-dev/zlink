@@ -360,7 +360,9 @@ export class ZLinkSpotNodeRuntimeManager {
       channelName,
       topic,
       packetName,
-      event
+      event,
+      undefined,
+      this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
     ) as readonly Message[];
     return bundle.submitter.submitCommand(
       () => bundle.spot.publish(topic, parts, 0),

@@ -7,23 +7,39 @@ export interface ZLinkFlowContextValue {
   readonly flowOrigin: ZLinkFlowOrigin;
 }
 
-const flowStorage = new AsyncLocalStorage<ZLinkFlowContextValue>();
+const flowStorage = new AsyncLocalStorage<ZLinkFlowContextValue | undefined>();
 
-export function currentOrCreateFlow(origin: ZLinkFlowOrigin = 'Application'): ZLinkFlowContextValue {
+export function currentOrCreateFlow(origin?: ZLinkFlowOrigin, createIfAbsent?: true): ZLinkFlowContextValue;
+export function currentOrCreateFlow(origin: ZLinkFlowOrigin, createIfAbsent: false): ZLinkFlowContextValue | undefined;
+export function currentOrCreateFlow(origin: ZLinkFlowOrigin, createIfAbsent: boolean): ZLinkFlowContextValue | undefined;
+export function currentOrCreateFlow(
+  origin: ZLinkFlowOrigin = 'Application',
+  createIfAbsent = true
+): ZLinkFlowContextValue | undefined {
   const current = flowStorage.getStore();
   if (current !== undefined) {
     return current;
+  }
+  if (!createIfAbsent) {
+    return undefined;
   }
   const created = { flowId: createFlowId(), flowOrigin: origin };
   flowStorage.enterWith(created);
   return created;
 }
 
-export function runWithFlow<T>(flow: ZLinkFlowContextValue, callback: () => T): T {
+export function runWithFlow<T>(flow: ZLinkFlowContextValue | undefined, callback: () => T): T {
   return flowStorage.run(flow, callback);
 }
 
-export function createInboundFlow(flowId?: string, flowOrigin?: ZLinkFlowOrigin): ZLinkFlowContextValue {
+export function createInboundFlow(
+  flowId?: string,
+  flowOrigin?: ZLinkFlowOrigin,
+  createIfAbsent = true
+): ZLinkFlowContextValue | undefined {
+  if (flowId === undefined && !createIfAbsent) {
+    return undefined;
+  }
   return { flowId: flowId ?? createFlowId(), flowOrigin: flowOrigin ?? 'Inbound' };
 }
 

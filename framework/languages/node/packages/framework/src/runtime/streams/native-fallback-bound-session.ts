@@ -34,6 +34,7 @@ export interface ZLinkNativeFallbackBoundSessionOptions {
   readonly requestTimeoutMs?: number;
   readonly actorId: string;
   readonly onSend?: (actorId: string, packetName: string) => void;
+  readonly flowCreationEnabled?: () => boolean;
 }
 
 export class ZLinkNativeFallbackBoundSession implements ZLinkBoundSession {
@@ -129,7 +130,10 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         message: this.message,
         boundPacketName: packetName,
         metadata: this.selectedMetadata,
-        ...currentOrCreateFlow()
+        ...(currentOrCreateFlow(
+          'Application',
+          this.options.flowCreationEnabled?.() ?? true
+        ) ?? {})
       });
       const target = {
         routerChannelId: remoteTarget.routerChannelId,

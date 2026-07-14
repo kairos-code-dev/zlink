@@ -98,6 +98,7 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly relay?: (actor: ZLinkSessionActor, header: ZLinkStreamFrameHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
+  readonly flowCreationEnabled?: () => boolean;
 }
 
 export interface ZLinkStreamPayloadCodec {

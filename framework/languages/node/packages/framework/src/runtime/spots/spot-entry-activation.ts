@@ -101,7 +101,7 @@ interface ZLinkEntrySpotActivationOptions {
 export class ZLinkEntrySpotActivation {
   private readonly serial = new ZLinkSpotSerialExecutor();
   private readonly actorPacketMailboxes = new ZLinkActorDispatchMailboxSet();
-  private readonly timers = new ZLinkSpotTimerRegistry();
+  private readonly timers: ZLinkSpotTimerRegistry;
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
   private readonly handlers = new DefaultZLinkSpotHandlerRegistry(this.actorHandlers);
   private readonly outbound: DefaultZLinkSpotOutbound;
@@ -123,6 +123,10 @@ export class ZLinkEntrySpotActivation {
       options.spotPublisherClient,
       options.routedTransport,
       options.spotRouterChannelIdForMesh ?? ((meshName) => meshName)
+    );
+    this.timers = new ZLinkSpotTimerRegistry(
+      options.metrics,
+      () => options.dispatchErrors?.flow.flowCreationEnabled() ?? true
     );
     this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.context = createEntrySpotContext({

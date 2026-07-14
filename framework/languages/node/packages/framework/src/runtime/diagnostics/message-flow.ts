@@ -116,11 +116,18 @@ export class ZLinkMessageFlowTracer {
     return MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[requiredMode(outcome)];
   }
 
+  flowCreationEnabled(): boolean {
+    return effectiveMessageFlow(this.ctx) !== ZLinkMessageFlowLogMode.Off;
+  }
+
   trace(flowInput: Omit<ZLinkMessageFlowEvent, 'effectiveMode' | 'flowId' | 'flowOrigin'> & {
     readonly effectiveMode?: ZLinkMessageFlowLogMode;
     readonly flowId?: string;
     readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
   }, defaultLogLevel: 'error' | 'warn' | 'debug' = 'error'): void {
+    if (!this.enabled(flowInput.outcome)) {
+      return;
+    }
     const root = flowInput.flowId !== undefined && flowInput.flowOrigin !== undefined
       ? { flowId: flowInput.flowId, flowOrigin: flowInput.flowOrigin }
       : currentOrCreateFlow();
@@ -129,9 +136,6 @@ export class ZLinkMessageFlowTracer {
       ...root,
       effectiveMode: flowInput.effectiveMode ?? effectiveMessageFlow(this.ctx)
     };
-    if (!this.enabled(flow.outcome)) {
-      return;
-    }
     if (
       flow.outcome !== ZLinkMessageFlowOutcome.Dropped &&
       flow.outcome !== ZLinkMessageFlowOutcome.Error &&

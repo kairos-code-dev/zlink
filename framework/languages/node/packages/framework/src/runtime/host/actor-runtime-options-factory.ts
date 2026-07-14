@@ -55,6 +55,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly shutdownSignal: () => AbortSignal | undefined;
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly traceBoundSessionSend?: (actorId: string, packetName: string) => void;
+  readonly flowCreationEnabled?: () => boolean;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -122,7 +123,8 @@ export class ZLinkActorRuntimeOptionsFactory {
         remoteActorPacketTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteActorPacketTarget,
         requestTimeoutMs: this.options.registration.requestTimeoutMs,
         actorId,
-        onSend: this.options.traceBoundSessionSend
+        onSend: this.options.traceBoundSessionSend,
+        flowCreationEnabled: this.options.flowCreationEnabled
       }),
       actorCreatedNodeRidProvider: () => this.options.primarySpotNodeOrUndefined()?.routingId,
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {

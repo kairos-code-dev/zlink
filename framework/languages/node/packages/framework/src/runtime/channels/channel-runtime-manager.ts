@@ -74,7 +74,8 @@ export class ZLinkChannelRuntimeManager {
       codecs,
       spotRouteBridges,
       rawReplies: spotRouteBridgeRawReplies,
-      localSpotRouteDispatcher: options.localSpotRouteDispatcher
+      localSpotRouteDispatcher: options.localSpotRouteDispatcher,
+      flowCreationEnabled: () => dispatchServices.flowCreationEnabled()
     });
     this.outbound = new ZLinkChannelOutboundOperations(
       this.sockets,

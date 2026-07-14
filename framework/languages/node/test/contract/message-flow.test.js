@@ -13,6 +13,7 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const { ZLinkStreamFrameMessageFactory } = require('../../packages/framework/dist/runtime/streams/stream-frame-factory');
 const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
 const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const connector = require('../../packages/stream-connector/dist');
@@ -245,6 +246,84 @@ test('MFLOW-EXT channel wire and outbound trace use the same created flow', asyn
         channelEnvelope.closeMessages(parts);
       }
     });
+  });
+});
+
+test('MFLOW-EXT Off host does not create channel or stream flow fields', async () => {
+  await new Promise((resolve, reject) => {
+    setImmediate(() => {
+      const channelParts = channelEnvelope.encodeChannelEnvelopeParts(
+        1,
+        'api',
+        'EchoRequest',
+        { value: 'ping' },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false
+      );
+      try {
+        const channelHeader = JSON.parse(Buffer.from(channelParts[0]).toString());
+        assert.equal(channelHeader.flowId, undefined);
+        assert.equal(channelHeader.flowOrigin, undefined);
+
+        let streamFrame;
+        const factory = new ZLinkStreamFrameMessageFactory({
+          flowCreationEnabled: () => false,
+          messageFactory: {
+            createTextMessage() { throw new Error('binary frame expected'); },
+            createBinaryMessage(payload) {
+              streamFrame = payload;
+              return {};
+            }
+          }
+        });
+        factory.createJsonFrameMessage(
+          streamProtocol.ZLinkStreamMessageKind.Send,
+          'Push',
+          new Map(),
+          false,
+          undefined,
+          { value: 'push' }
+        );
+        const streamHeader = streamProtocol.decodeStreamFrame(streamFrame).header;
+        assert.equal(streamHeader.flowId, undefined);
+        assert.equal(streamHeader.flowOrigin, undefined);
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        channelEnvelope.closeMessages(channelParts);
+      }
+    });
+  });
+});
+
+test('MFLOW-EXT Off host preserves an inbound ambient flow on outbound wire', () => {
+  const inbound = {
+    flowId: '018f2b63-9d4a-7abc-8def-0123456789ab',
+    flowOrigin: 'Inbound'
+  };
+  flowContext.runWithFlow(inbound, () => {
+    const parts = channelEnvelope.encodeChannelEnvelopeParts(
+      1,
+      'api',
+      'EchoRequest',
+      { value: 'ping' },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false
+    );
+    try {
+      const header = JSON.parse(Buffer.from(parts[0]).toString());
+      assert.equal(header.flowId, inbound.flowId);
+      assert.equal(header.flowOrigin, 1);
+    } finally {
+      channelEnvelope.closeMessages(parts);
+    }
   });
 });
 

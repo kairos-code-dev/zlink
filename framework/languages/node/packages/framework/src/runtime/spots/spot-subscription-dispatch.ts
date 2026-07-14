@@ -147,7 +147,11 @@ export class ZLinkSpotSubscriptionDispatch {
       flowId: envelope.header.flowId,
       flowOrigin: envelope.header.flowOrigin
     });
-    const inboundFlow = createInboundFlow(envelope.header.flowId, envelope.header.flowOrigin);
+    const inboundFlow = createInboundFlow(
+      envelope.header.flowId,
+      envelope.header.flowOrigin,
+      this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    );
     await this.options.serial.execute(() => runWithFlow(inboundFlow, async () => {
       for (const registration of registrations) {
         const handler = await createProviderInstance(

@@ -199,7 +199,11 @@ export class ZLinkStreamSessionRuntime {
         : ZLinkDispatchMessageKind.Send;
       const streamCorr = decodedHeader.correlationId ?? decodedHeader.requestSeq?.toString();
       const inboundHeader = decodedHeader;
-      await runWithFlow(createInboundFlow(inboundHeader.flowId, inboundHeader.flowOrigin), async () => {
+      await runWithFlow(createInboundFlow(
+        inboundHeader.flowId,
+        inboundHeader.flowOrigin,
+        this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+      ), async () => {
         flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
           outcome: ZLinkMessageFlowOutcome.Received,
           surface: ZLinkDispatchErrorSurface.StreamSession,

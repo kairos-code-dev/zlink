@@ -34,7 +34,10 @@ type ZLinkTimerFailureReporter = (
 export class ZLinkSpotTimerRegistry {
   private readonly timers = new Set<ZLinkTimer>();
 
-  constructor(private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {}
+  constructor(
+    private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
+    private readonly flowCreationEnabled: () => boolean = () => true
+  ) {}
 
   async add<TSpot extends ZLinkTimerOwnerSpot, THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -56,7 +59,7 @@ export class ZLinkSpotTimerRegistry {
       normalizeTimerOptions(options),
       async (tick) => {
         this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
-        const timerFlow = createInboundFlow(undefined, 'Timer');
+        const timerFlow = createInboundFlow(undefined, 'Timer', this.flowCreationEnabled());
         await serial.execute(() => runWithFlow(timerFlow, () => handler.handle(spot, tick)));
       },
       reportFailure,

@@ -135,7 +135,10 @@ export class ZLinkSpotActivationLifecycle {
       packetHandlers: this.options.spotPacketHandlers,
       subscriptionHandlers: this.options.spotSubscriptionHandlers
     });
-    const timers = new ZLinkSpotTimerRegistry(this.options.metrics);
+    const timers = new ZLinkSpotTimerRegistry(
+      this.options.metrics,
+      () => this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    );
     let nativeSpot: ZLinkBackendSpot | undefined;
     const outbound = new DefaultZLinkSpotOutbound(
       serial,

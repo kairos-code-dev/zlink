@@ -36,6 +36,7 @@ export interface ZLinkStreamFrameMessageFactoryOptions {
   readonly messageFactory?: ZLinkStreamFrameMessageFactorySource;
   readonly streamPayloadCodec?: ZLinkStreamFramePayloadCodec;
   readonly streamCompression?: ZLinkStreamCompressionOptions;
+  readonly flowCreationEnabled?: () => boolean;
 }
 
 export interface ZLinkStreamFrameMessageFactorySource {
@@ -71,7 +72,7 @@ export class ZLinkStreamFrameMessageFactory {
     payload: unknown,
     correlationId?: string
   ): Message {
-    const flow = currentOrCreateFlow();
+    const flow = currentOrCreateFlow('Application', this.options.flowCreationEnabled?.() ?? true);
     return this.createJsonFrameMessageWithHeader(
       payload,
       compressed,
@@ -85,7 +86,7 @@ export class ZLinkStreamFrameMessageFactory {
         name: packetName,
         metadata,
         correlationId,
-        ...flow
+        ...(flow ?? {})
       })
     );
   }

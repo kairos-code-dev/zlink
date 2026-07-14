@@ -37,8 +37,8 @@ export interface ZLinkChannelEnvelopeHeader {
   readonly errorCode: string | null;
   readonly errorMessage: string | null;
   readonly source?: string | null;
-  readonly flowId: string;
-  readonly flowOrigin: ZLinkFlowOrigin;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZLinkFlowOrigin;
 }
 
 export interface ZLinkChannelEnvelope {
@@ -63,10 +63,11 @@ export function encodeChannelEnvelopeParts(
   timeoutMs?: number,
   topic?: string,
   codecs?: ZLinkChannelEnvelopeCodecRegistry,
-  correlationId?: string
+  correlationId?: string,
+  createFlow = true
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
-  const flow = currentOrCreateFlow();
+  const flow = currentOrCreateFlow('Application', createFlow);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
@@ -78,7 +79,7 @@ export function encodeChannelEnvelopeParts(
     topic: topic ?? null,
     errorCode: null,
     errorMessage: null,
-    ...flow
+    ...(flow ?? {})
   };
   return [encodeChannelHeader(header), encoded.message];
 }
@@ -88,10 +89,11 @@ export function encodeChannelPublishEnvelopeParts(
   topic: string,
   packetName: string | undefined,
   payload: unknown,
-  codecs?: ZLinkChannelEnvelopeCodecRegistry
+  codecs?: ZLinkChannelEnvelopeCodecRegistry,
+  createFlow = true
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
-  const flow = currentOrCreateFlow();
+  const flow = currentOrCreateFlow('Application', createFlow);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Publish,
@@ -103,7 +105,7 @@ export function encodeChannelPublishEnvelopeParts(
     topic,
     errorCode: null,
     errorMessage: null,
-    ...flow
+    ...(flow ?? {})
   };
   return [encodeChannelHeader(header), encoded.message];
 }
@@ -257,7 +259,7 @@ function encodeJsonBytes(value: unknown): Buffer {
 function encodeChannelHeader(header: ZLinkChannelEnvelopeHeader): Buffer {
   return encodeJsonBytes({
     ...header,
-    flowOrigin: encodeFlowOrigin(header.flowOrigin)
+    flowOrigin: header.flowOrigin === undefined ? undefined : encodeFlowOrigin(header.flowOrigin)
   });
 }
 
@@ -314,6 +316,11 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
   if (contentType.trim().length === 0) {
     throw new ZLinkConfigurationException('Channel envelope contentType must not be empty.');
   }
+  const flowId = optionalFlowId(header.flowId);
+  const flowOrigin = optionalFlowOrigin(header.flowOrigin);
+  if ((flowId === undefined) !== (flowOrigin === undefined)) {
+    throw new ZLinkConfigurationException('Channel envelope flowId and flowOrigin must both be present or absent.');
+  }
   return {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
@@ -326,9 +333,17 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     errorCode: requireNullableString(header.errorCode, 'errorCode'),
     errorMessage: requireNullableString(header.errorMessage, 'errorMessage'),
     source: header.source === undefined ? undefined : requireNullableString(header.source, 'source'),
-    flowId: requireFlowId(header.flowId),
-    flowOrigin: requireFlowOrigin(header.flowOrigin)
+    flowId,
+    flowOrigin
   };
+}
+
+function optionalFlowId(value: unknown): string | undefined {
+  return value === undefined ? undefined : requireFlowId(value);
+}
+
+function optionalFlowOrigin(value: unknown): ZLinkFlowOrigin | undefined {
+  return value === undefined ? undefined : requireFlowOrigin(value);
 }
 
 function requireFlowId(value: unknown): string {

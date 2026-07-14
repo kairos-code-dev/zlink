@@ -148,7 +148,11 @@ export class ZLinkSpotRoutePacketDispatch {
     };
     try {
       let response: unknown;
-      await runWithFlow(createInboundFlow(envelope.header.flowId, envelope.header.flowOrigin), () =>
+      await runWithFlow(createInboundFlow(
+        envelope.header.flowId,
+        envelope.header.flowOrigin,
+        this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+      ), () =>
         this.options.serial.execute(async () => {
           const spot = this.options.getTarget();
           for (const registration of registrations) {

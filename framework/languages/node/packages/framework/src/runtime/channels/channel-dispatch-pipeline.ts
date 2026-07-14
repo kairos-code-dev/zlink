@@ -89,7 +89,11 @@ export class ZLinkChannelDispatchPipeline {
     }
 
     try {
-      const flow = createInboundFlow(dispatch.fields.flowId, dispatch.fields.flowOrigin);
+      const flow = createInboundFlow(
+        dispatch.fields.flowId,
+        dispatch.fields.flowOrigin,
+        this.options.dispatchErrors.flow.flowCreationEnabled()
+      );
       await runWithFlow(flow, () => this.invoke(
           dispatch.envelope,
           dispatch.codecs,
@@ -129,7 +133,11 @@ export class ZLinkChannelDispatchPipeline {
 
     let reply: unknown;
     try {
-      const flow = createInboundFlow(dispatch.fields.flowId, dispatch.fields.flowOrigin);
+      const flow = createInboundFlow(
+        dispatch.fields.flowId,
+        dispatch.fields.flowOrigin,
+        this.options.dispatchErrors.flow.flowCreationEnabled()
+      );
       reply = await runWithFlow(flow, () => this.invoke(
           dispatch.envelope,
           dispatch.codecs,

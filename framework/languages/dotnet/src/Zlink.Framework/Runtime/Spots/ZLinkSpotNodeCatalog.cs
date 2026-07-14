@@ -427,9 +427,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
             else
             {
-            if (!_spots.TryGetValue(spotRid, out activation)) return false;
-
-            if (activation.JoinedActorCount > 0) return false;
+                if (!_spots.TryGetValue(spotRid, out activation)) return false;
 
                 transaction = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
@@ -517,10 +515,15 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         try
         {
-            await CloseBeforeReleaseAsync(
-                    () => activation.CloseAsync(CancellationToken.None),
-                    () => ReleaseSpotLocationAsync(spotRid))
-                .ConfigureAwait(false);
+            if (!await activation.TryCloseIfNoActorsAsync(CancellationToken.None)
+                    .ConfigureAwait(false))
+            {
+                lock (_gate) _closing.Remove(spotRid);
+                transaction.TrySetResult(false);
+                return false;
+            }
+
+            await ReleaseSpotLocationAsync(spotRid).ConfigureAwait(false);
         }
         catch (Exception releaseFailure)
         {

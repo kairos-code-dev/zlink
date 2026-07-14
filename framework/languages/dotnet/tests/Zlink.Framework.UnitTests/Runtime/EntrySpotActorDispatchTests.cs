@@ -1177,6 +1177,47 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task CloseAsync_DoesNotCloseSpotWhenConcurrentJoinCommitsFirst()
+    {
+        var probe = new BlockingActorJoinProbe();
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(
+            node,
+            userSpotType: typeof(BlockingActorJoinSpot),
+            blockingActorJoinProbe: probe);
+        try
+        {
+            var actor = Assert.IsType<ProbeActor>(
+                (await runtime.CreateActorAsync(actorRef.ActorId, "probe")).Actor);
+            var created = await runtime.CreateAsync<BlockingActorJoinSpot>();
+            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(state.SpotNodes["entry"], "_spots");
+            var activations = GetPrivateField<Dictionary<RoutingId, ZLinkSpotActivation>>(catalog, "_spots");
+            var activation = activations[created.SpotRid];
+
+            var join = activation.JoinActorAsync(
+                    actor,
+                    ZLinkMessage.Empty,
+                    CancellationToken.None)
+                .AsTask();
+            await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var close = runtime.CloseAsync(created.SpotRid).AsTask();
+            Assert.False(close.IsCompleted);
+
+            probe.Release.TrySetResult();
+            Assert.True((await join.WaitAsync(TimeSpan.FromSeconds(5))).Accepted);
+            Assert.False(await close.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.NotNull(await catalog.GetAsync(created.SpotRid, CancellationToken.None));
+        }
+        finally
+        {
+            probe.Release.TrySetResult();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Spot_catalog_dispose_waits_for_accepted_get_or_create_and_shares_cleanup_failure()
     {
         var probe = new BlockingSpotCreateProbe();
@@ -2427,6 +2468,7 @@ public sealed partial class EntrySpotActorDispatchTests
         Type? entrySpotType = null,
         Type? userSpotType = null,
         BlockingSpotCreateProbe? blockingCreateProbe = null,
+        BlockingActorJoinProbe? blockingActorJoinProbe = null,
         bool includeActorFactory = true,
         CapturingSpotNode? pubSubOnlyNode = null)
     {
@@ -2434,6 +2476,7 @@ public sealed partial class EntrySpotActorDispatchTests
             .AddSingleton<FlowJoinProbe>()
             .AddSingleton<LocalEntryJoinProbe>()
             .AddSingleton(blockingCreateProbe ?? new BlockingSpotCreateProbe())
+            .AddSingleton(blockingActorJoinProbe ?? new BlockingActorJoinProbe())
             .AddTransient<ProbeActorFactory>()
             .AddTransient<ProbeActorRequestHandler>()
             .AddTransient<ProbeActorFlowJoinRequestHandler>()
@@ -2835,6 +2878,41 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     private sealed class BlockingSpotCreateProbe
+    {
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingActorJoinSpot(
+        IZLinkSpotContext context,
+        BlockingActorJoinProbe probe) : IZLinkSpot<ProbeActor>
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            string actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            _ = actorId;
+            _ = request;
+            _ = cancellationToken;
+            probe.Started.TrySetResult();
+            await probe.Release.Task.ConfigureAwait(false);
+            return ZLinkSpotActorJoinResult.Accept();
+        }
+
+        public ValueTask OnJoinedActorAsync(ProbeActor actor, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask OnLeaveActorAsync(ProbeActor actor, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingActorJoinProbe
     {
         public TaskCompletionSource Started { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);

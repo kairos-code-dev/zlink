@@ -224,6 +224,24 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
+    internal async ValueTask<bool> TryCloseIfNoActorsAsync(
+        CancellationToken cancellationToken)
+    {
+        var accepted = false;
+        await _serial.ExecuteLifecycleAsync(
+                async (activation, ct) =>
+                {
+                    if (activation._actors.Count > 0) return;
+
+                    accepted = true;
+                    if (Interlocked.Exchange(ref activation._closingInvoked, 1) == 0)
+                        await activation.Spot.OnClosingAsync(ct).ConfigureAwait(false);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        return accepted;
+    }
+
     private ValueTask ExecuteSerializedAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)

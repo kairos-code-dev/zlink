@@ -36,7 +36,6 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     private final TicTacToeMatch match;
     private ZLinkTimer gameTick;
     private boolean created;
-    private boolean cleanupStarted;
     private final TicTacToeGameCreatedHandler createdHandler;
     private final ObjectMapper json;
     private final Map<String, TicTacToeGameJoinReq> pendingJoins = new HashMap<>();
@@ -188,10 +187,10 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         ensureCreated();
         GameState timedOut = match.timeOutCurrentTurn(Instant.now());
         if (timedOut == null) {
-            return leaveFinishedActors(snapshot());
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         broadcast(timedOut, null);
-        return leaveFinishedActors(timedOut);
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private void ensureCreated() {
@@ -208,20 +207,6 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             .forEach(actor -> actor.context().boundSession()
                 .send(new GameStateNotify(state))
                 .submit());
-    }
-
-    private java.util.concurrent.CompletionStage<Void> leaveFinishedActors(GameState state) {
-        if (cleanupStarted || !isTerminal(state)) {
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }
-        cleanupStarted = true;
-        java.util.List<java.util.concurrent.CompletableFuture<Void>> leaves = new java.util.ArrayList<>();
-        for (PlayActor actor : List.copyOf(actors)) {
-            actor.markForDestroyAfterRoomLeave();
-            leaves.add(context.leaveActor(actor).toCompletableFuture());
-        }
-        return java.util.concurrent.CompletableFuture.allOf(
-            leaves.toArray(java.util.concurrent.CompletableFuture[]::new));
     }
 
     private void notifyPlayerJoined(

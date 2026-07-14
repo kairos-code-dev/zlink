@@ -6,6 +6,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
+game_source="Server/src/main/java/systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java"
+if grep -n 'leaveFinishedActors' "${game_source}"; then
+  echo "TicTacToe actor cleanup must be driven by LeaveGameReq, not by the timer." >&2
+  exit 1
+fi
+
 core_lib="$(cd ../../../../../.. && pwd)/core/build/lib/libzlink.so"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${core_lib}"

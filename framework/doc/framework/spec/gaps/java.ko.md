@@ -764,6 +764,8 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
   - 근거: 진행 중 leave 뒤 정상 수 요청이 timeout으로 실패하는 게이트를 확인한 뒤 조기 leave를 상태 변경 없는 동작으로 제한했으며, 같은 흐름이 `PASS TicTacToe.Java`까지 통과했다.
 - [x] **SMP-JV-28** (**버그**) — API 응답의 Play node rid를 이름 규칙으로 만들어 낸다.
   - 근거: runner의 rid를 `play-node-N`과 무관한 값으로 바꾸자 milestone 매핑 단언이 실패했으며, 설정의 endpoint/rid 쌍을 사용하도록 수정한 뒤 `PASS TicTacToe.Java`를 확인했다.
+- [x] **SMP-JV-29** (**버그**) — timer가 `LeaveGameReq` 없이 actor를 정리한다.
+  - 근거: timer cleanup 호출을 출력하며 실패하는 gate를 먼저 추가하고 timer에서 lifecycle 책임을 제거했으며, client leave만으로 두 actor destroy와 `PASS TicTacToe.Java`를 확인했다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
@@ -774,7 +776,7 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 | **SMP-JV-27** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): leave는 **게임 종료 후** 단계다 | **해결:** room 상태가 terminal일 때만 destroy 표시와 `leaveActor`를 실행한다. 진행 중 one-way leave는 응답할 오류가 없으므로 상태를 바꾸지 않으며, 바로 이어지는 정상 수가 처리되는 self-check로 이를 검증한다. |
 | **SMP-KT-07** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): `OwnerPlayEndpoint`가 **실제 room을 만든 Play endpoint와 같아야** 한다 | **Kotlin만** — `TicTacToeGameCreator.kt:15-21`이 **모든 play endpoint에 대해 round-robin**을 도는데, 그게 **이미 `CreateGameReq`를 받은 Play 서버 위에서** 돈다. ⇒ play-a에서 만든 2번째 방이 **play-b를 owner라고 광고한다.** SMP-JV-23이 owner를 play-a에 고정해 놔서 **지금은 가려져 있다** |
 | **SMP-JV-28** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): client는 API 응답의 `PlayNodes`로 매핑을 확인하므로 **샘플 설정의 내부 naming convention을 알 필요가 없다** | **해결:** `PlayNodeInfo`는 현재 Play와 peer Play의 설정에 있는 endpoint/rid 쌍으로 만들어진다. runner는 `play-node-N`과 무관한 rid를 사용해 이름 규칙을 다시 도입하면 milestone 단언이 실패하도록 한다. |
-| **SMP-JV-29** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): destroy 시퀀스는 **`LeaveGameReq`가 구동**한다 | **Java만** — `TicTacToe Game.java:183-221`의 **1초 tick**이 terminal 상태면 **`LeaveGameReq` 없이** 두 actor를 leave·destroy한다. ⇒ 릴리즈 게이트가 **타이머만으로 만족될 수 있어** 문서가 요구하는 client 구동 destroy가 **증명되지 않는다.** 게다가 tick이 `PlaceMarkRes(Won)`과 client의 `LeaveGameReq` 사이에 끼면 **간헐적 dispatch 오류**가 난다 |
+| **SMP-JV-29** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): destroy 시퀀스는 **`LeaveGameReq`가 구동**한다 | **해결:** timer는 turn timeout 상태 계산과 알림만 담당한다. actor의 destroy 표시는 terminal 상태의 `LeaveGameReq` handler에서만 설정되며, runner는 timer cleanup helper가 다시 생기면 역할 실행 전에 실패한다. |
 | **SMP-JV-30** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md): **TicTacToe만 수동 등록을 사용한다** | Java·Kotlin TicTacToe가 **`addHandlersFromPackageOf(...)`(패키지 스캔)**를 쓴다 — **SupportChat(자동 샘플)이 쓰는 것과 바이트 단위로 같은 호출**이다. ⇒ TicTacToe의 목적인 **수동 대 자동 대비가 JVM 샘플엔 존재하지 않는다** |
 | **SMP-JV-31** (미구현) | [tictactoe §10 step 12](../../common/sample/tictactoe/README.ko.md): inbound observer + `stream-inbound` marker | `grep -rn "stream-inbound"` — Java·Kotlin **둘 다 0건.** 릴리즈 게이트 12단계가 **미구현이다** |
 

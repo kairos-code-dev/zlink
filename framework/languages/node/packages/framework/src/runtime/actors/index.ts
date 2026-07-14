@@ -242,32 +242,26 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
         `Actor '${actor.actorId}' must leave its current SPOT before destroy.`
       );
     }
-    if (state.nativeActorRef === undefined) {
+    const destroyTask = state.getOrStartDestroy(entryNodeRid, async (actorRef) => {
+      if (actorRef !== undefined) {
+        await node.destroyActor(actorRef, 0, destroySignal);
+        state.markNativeActorDestroyed(actorRef);
+      }
       if (state.actorType !== undefined && state.ownsLocation) {
         await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
       }
       this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
-      this.states.delete(actor.actorId);
+      if (this.states.get(actor.actorId) === state) {
+        this.states.delete(actor.actorId);
+      }
       this.options.metrics?.change('zlink.actor.count', -1);
-      return;
-    }
-    const actorRef = state.beginDestroy(entryNodeRid);
-    if (actorRef === undefined) {
-      return;
-    }
+    });
 
     try {
-      await node.destroyActor(actorRef, 0, destroySignal);
-      if (state.actorType !== undefined && state.ownsLocation) {
-        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
-      }
-      this.options.actorDestroyedCleanup?.(actor.actorId);
-      state.clearAfterDestroy();
-      this.states.delete(actor.actorId);
-      this.options.metrics?.change('zlink.actor.count', -1);
+      await destroyTask;
     } catch (error) {
-      state.resetDestroying();
+      state.clearFailedDestroy(destroyTask);
       throw error;
     }
   }

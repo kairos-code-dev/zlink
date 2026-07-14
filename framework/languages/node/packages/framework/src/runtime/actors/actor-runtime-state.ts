@@ -51,7 +51,7 @@ export class ZLinkActorRuntimeState {
   private ownsLocationValue = false;
   private locationGenerationValue: bigint | undefined;
   private movingValue = false;
-  private destroying = false;
+  private destroyTask: Promise<void> | undefined;
 
   constructor(readonly actorId: string) {}
 
@@ -133,30 +133,36 @@ export class ZLinkActorRuntimeState {
     this.locationGenerationValue = generation;
   }
 
-  beginDestroy(entryNodeRid: RoutingId): ZLinkBackendActorRef | undefined {
-    if (this.destroying) {
-      return undefined;
+  getOrStartDestroy(
+    entryNodeRid: RoutingId,
+    destroy: (actorRef: ZLinkBackendActorRef | undefined) => Promise<void>
+  ): Promise<void> {
+    if (this.destroyTask !== undefined) {
+      return this.destroyTask;
     }
     const actorRef = this.nativeActorRefValue;
-    if (actorRef === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${this.actorId}' does not have a native Actor ref.`
-      );
-    }
-    if (!routingIdsEqual(toFrameworkRoutingId(actorRef.nodeRid), entryNodeRid)) {
+    if (actorRef !== undefined && !routingIdsEqual(toFrameworkRoutingId(actorRef.nodeRid), entryNodeRid)) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
         `Actor '${this.actorId}' is not owned by this Entry Spot.`
       );
     }
 
-    this.destroying = true;
-    return actorRef;
+    const task = Promise.resolve().then(() => destroy(actorRef));
+    this.destroyTask = task;
+    return task;
   }
 
-  resetDestroying(): void {
-    this.destroying = false;
+  markNativeActorDestroyed(actorRef: ZLinkBackendActorRef): void {
+    if (this.nativeActorRefValue === actorRef) {
+      this.nativeActorRefValue = undefined;
+    }
+  }
+
+  clearFailedDestroy(task: Promise<void>): void {
+    if (this.destroyTask === task) {
+      this.destroyTask = undefined;
+    }
     this.movingValue = false;
   }
 
@@ -285,7 +291,7 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;
     this.locationGenerationValue = undefined;
-    this.destroying = false;
+    this.destroyTask = undefined;
   }
 
   prepareForRemoteReentry(): void {
@@ -304,7 +310,7 @@ export class ZLinkActorRuntimeState {
     this.ownsLocationValue = false;
     this.locationGenerationValue = undefined;
     this.movingValue = false;
-    this.destroying = false;
+    this.destroyTask = undefined;
   }
 }
 

@@ -1744,6 +1744,89 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   ]);
 });
 
+test('DefaultZLinkActorManager shares concurrent destroy completion', async () => {
+  let releaseDestroy;
+  let destroyStarted;
+  const started = new Promise((resolve) => { destroyStarted = resolve; });
+  const release = new Promise((resolve) => { releaseDestroy = resolve; });
+  let nativeDestroyCalls = 0;
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      return { nodeRid: 'node-a', actorId, generation: 1n };
+    },
+    async destroyActor() {
+      nativeDestroyCalls += 1;
+      destroyStarted();
+      await release;
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: node
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+
+  const first = manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
+  await started;
+  let secondCompleted = false;
+  const second = manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor)
+    .then(() => { secondCompleted = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(secondCompleted, false);
+  assert.equal(nativeDestroyCalls, 1);
+  releaseDestroy();
+  await Promise.all([first, second]);
+  assert.equal(await manager.findActor('alice'), undefined);
+});
+
+test('DefaultZLinkActorManager retries cleanup without destroying the native actor twice', async () => {
+  let nativeDestroyCalls = 0;
+  let releaseCalls = 0;
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      return { nodeRid: 'node-a', actorId, generation: 1n };
+    },
+    async destroyActor() {
+      nativeDestroyCalls += 1;
+    }
+  });
+  const options = {
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: node
+  };
+  const manager = new framework.DefaultZLinkActorManager(options);
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  manager.getState('alice').markLocationOwned();
+  options.locationLifecycle = {
+    async releaseActor() {
+      releaseCalls += 1;
+      if (releaseCalls === 1) throw new Error('location release failed');
+    }
+  };
+
+  await assert.rejects(
+    () => manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor),
+    /location release failed/
+  );
+  assert.equal(manager.getState('alice').nativeActorRef, undefined);
+
+  await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
+  assert.equal(nativeDestroyCalls, 1);
+  assert.equal(releaseCalls, 2);
+  assert.equal(await manager.findActor('alice'), undefined);
+});
+
 test('DefaultZLinkActorManager adopts native actor ref before creating routed actor instance', async () => {
   const events = [];
   const targetRef = { nodeRid: 'node-a', actorId: 'alice', generation: 9n };

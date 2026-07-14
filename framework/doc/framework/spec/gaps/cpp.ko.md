@@ -489,7 +489,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 두 독립 allocator의 첫 room id가 모두 `two-player-room-1`이어서 회귀 테스트가 실패했다. allocator가 128비트 난수 기반 routing id를 내부에서 만들도록 수정한 뒤 독립 allocator 테스트, Bingo parity 테스트 7개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [x] **SMP-CP-59** (결함) — **TicTacToe entry spot이 disconnect 시 milestone observer를 정리하지 않는다.** 죽은 세션에 계속 push한다
   - 근거: 수정 전 sample parity gate가 disconnect callback의 observer 정리 누락을 검출했다. disconnect에서 actor 상태를 갱신한 뒤 milestone observer map에서도 제거하도록 수정한 뒤 TicTacToe parity 테스트 5개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
-- [ ] **SMP-CP-60** (결함) — **DeliveryDispatch Tracking이 framework `actor_directory_t` 대신 blocking 왕복을 손으로 짠다.** 샘플 트리 전체에서 `actor_directory_t` 사용 0건
+- [x] **SMP-CP-60** (결함) — **DeliveryDispatch Tracking이 framework `actor_directory_t` 대신 blocking 왕복을 손으로 짠다.** 샘플 트리 전체에서 `actor_directory_t` 사용 0건
+  - 근거: 수정 전 sample parity gate가 Tracking handler의 `resolve_spot_handle`→`request_to_spot(FindCustomerActorReq)` 수동 조회와 `actor_directory_t` 누락을 검출했다. public `actor_directory_t::find()`로 actor ref를 얻어 `actor_client_t`로 전송하도록 바꾼 뒤 Tracking target 빌드, DeliveryDispatch parity 테스트 4개, `./run_sample.sh`가 통과했다. 고객 식별자 선택 문제는 SMP-CP-55의 §0.8 결정으로 남아 있다.
 - [x] **SMP-CP-61** (결함) — **DeliveryDispatch `Tracking/Spots/`·`Tracking/Actors/`가 전부 dead code**다. ZLink spot도 actor도 없다
   - 근거: 수정 전 layout gate가 Tracking의 미생성 actor·entry spot·tracking spot 파일과 읽히지 않는 병렬 history directory를 검출했다. dead 파일과 handler의 directory 의존성을 제거하고 inventory를 실제 CustomerGateway 소유 구조로 고쳤다. outbound customer actor 전달에 필요한 spot mesh 참여는 runner 실패로 확인해 유지했다. Tracking target 빌드, DeliveryDispatch parity 테스트 3개, `./run_sample.sh`가 통과했다.
 - [x] **SMP-CP-62** (결함) — **Bingo reward pub/sub 구독이 방 teardown을 구동한다.** 문서가 "game state를 바꾸는 경로가 아니다"라고 못박은 것

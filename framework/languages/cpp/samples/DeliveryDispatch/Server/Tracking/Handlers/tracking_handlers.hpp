@@ -22,16 +22,14 @@ class delivery_status_changed_handler_t
     using reply_type = delivery_status_changed_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<evidence_store_t,
-                                          zlink::framework::route_client_t,
-                                          zlink::framework::spot_handle_resolver_t,
+                                          zlink::framework::actor_directory_t,
                                           zlink::framework::actor_client_t>;
     static constexpr const char *topic_name = "DeliveryStatusChangedReq";
 
     delivery_status_changed_handler_t (evidence_store_t &evidence,
-                                       zlink::framework::route_client_t &routes,
-                                       zlink::framework::spot_handle_resolver_t &spot_handles,
+                                       zlink::framework::actor_directory_t &actor_directory,
                                        zlink::framework::actor_client_t &actors) :
-        _evidence (evidence), _routes (routes), _spot_handles (spot_handles), _actors (actors)
+        _evidence (evidence), _actor_directory (actor_directory), _actors (actors)
     {
     }
 
@@ -40,29 +38,19 @@ class delivery_status_changed_handler_t
     {
         _evidence.append (request);
 
-        auto customer_entry_spot = co_await _spot_handles.resolve_spot_handle (
-          zlink::framework::spot_rid_t::from_string (sample_names_t::customer_spot_node));
-        if (!customer_entry_spot) {
+        auto actor_ref = co_await _actor_directory.find (sample_names_t::customer_id);
+        if (!actor_ref) {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::spot_route_not_found,
-              "customer entry spot has no live location row");
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "customer actor route was not found");
         }
-        auto found = co_await _routes
-                       .request_to_spot (*customer_entry_spot,
-                                         find_customer_actor_req_t{sample_names_t::customer_id})
-                       .async<find_customer_actor_res_t> ();
-        if (found.actor) {
-            _actors
-              .send_to_actor (found.actor->to_actor_ref (sample_names_t::customer_actor_type),
-                              delivery_status_updated_msg_t{request.delivery_id,
-                                                            sample_names_t::customer_id,
-                                                            request.status, request.courier_id,
-                                                            request.occurred_at})
-              .submit ();
-        } else {
-            std::cerr << "deliverydispatch tracking: no customer actor for delivery="
-                      << request.delivery_id << "\n";
-        }
+        _actors
+          .send_to_actor (*actor_ref,
+                          delivery_status_updated_msg_t{request.delivery_id,
+                                                        sample_names_t::customer_id,
+                                                        request.status, request.courier_id,
+                                                        request.occurred_at})
+          .submit ();
 
         std::cerr << "deliverydispatch tracking: status delivery=" << request.delivery_id
                   << " status=" << request.status << " courier=" << request.courier_id << "\n";
@@ -71,8 +59,7 @@ class delivery_status_changed_handler_t
 
   private:
     evidence_store_t &_evidence;
-    zlink::framework::route_client_t &_routes;
-    zlink::framework::spot_handle_resolver_t &_spot_handles;
+    zlink::framework::actor_directory_t &_actor_directory;
     zlink::framework::actor_client_t &_actors;
 };
 

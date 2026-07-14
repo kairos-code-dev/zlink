@@ -449,6 +449,22 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchTrackingHasNoDeadSpotModel)
       << "status handling must not maintain an unread parallel history";
 }
 
+TEST (CppFrameworkSampleParity, DeliveryDispatchTrackingUsesActorDirectory)
+{
+    const auto handler = read_file (
+      cpp_language_root ()
+      / "samples/DeliveryDispatch/Server/Tracking/Handlers/tracking_handlers.hpp");
+
+    EXPECT_NE (handler.find ("actor_directory_t"), std::string::npos)
+      << "Tracking must use the framework actor location abstraction";
+    EXPECT_NE (handler.find ("_actor_directory.find"), std::string::npos)
+      << "customer actor lookup must go through actor_directory_t";
+    EXPECT_EQ (handler.find ("request_to_spot"), std::string::npos)
+      << "Tracking must not hand-build a blocking CustomerEntry lookup hop";
+    EXPECT_EQ (handler.find ("find_customer_actor_req_t"), std::string::npos)
+      << "Tracking must not depend on the CustomerEntry lookup packet";
+}
+
 TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
 {
     const auto owner = read_file (

@@ -583,14 +583,7 @@ class channel_native_client_t
                 desired.insert (endpoint);
             }
         }
-        bool reset_required =
-          _transport && _transport->connection_version != 0
-          && _transport->connection_version != snapshot.version;
-        if (!_transport || reset_required) {
-            if (reset_required) {
-                trace_channel ("client topology changed; rotate transport");
-                drain_monitor_events (_transport);
-            }
+        if (!_transport) {
             _transport = make_transport ();
         }
         auto transport = _transport;
@@ -615,10 +608,6 @@ class channel_native_client_t
             }
         }
         transport->connection_version = snapshot.version;
-        if (reset_required) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-            drain_monitor_events (transport);
-        }
         return transport;
     }
 

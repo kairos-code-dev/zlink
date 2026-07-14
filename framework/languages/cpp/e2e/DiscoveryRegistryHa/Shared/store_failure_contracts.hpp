@@ -68,6 +68,7 @@ struct peer_row_res_t
     std::string rid;
     std::string endpoint;
     std::string owner_id;
+    bool draining = false;
 };
 
 struct socket_evidence_entry_t
@@ -180,8 +181,10 @@ inline void from_json (const nlohmann::json &json, runtime_status_res_t &value)
 
 inline void to_json (nlohmann::json &json, const peer_row_res_t &value)
 {
-    json =
-      nlohmann::json{{"rid", value.rid}, {"endpoint", value.endpoint}, {"owner_id", value.owner_id}};
+    json = nlohmann::json{{"rid", value.rid},
+                          {"endpoint", value.endpoint},
+                          {"owner_id", value.owner_id},
+                          {"draining", value.draining}};
 }
 
 inline void from_json (const nlohmann::json &json, peer_row_res_t &value)
@@ -191,6 +194,7 @@ inline void from_json (const nlohmann::json &json, peer_row_res_t &value)
     }
     json.at ("endpoint").get_to (value.endpoint);
     json.at ("owner_id").get_to (value.owner_id);
+    json.at ("draining").get_to (value.draining);
 }
 
 inline void to_json (nlohmann::json &json, const socket_evidence_entry_t &value)

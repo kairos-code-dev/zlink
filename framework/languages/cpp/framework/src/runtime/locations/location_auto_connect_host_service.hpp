@@ -311,9 +311,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             loop.store_failure_started_at.reset ();
             republish_after_store_recovery (loop);
             /* A restarted store can be empty. Give every live node one heartbeat
-             * interval to restore its local rows before removing prior targets. */
+             * interval to restore its local rows, then observe the result on the
+             * following polling tick before removing prior targets. */
             loop.reconcile_after =
-              std::chrono::steady_clock::now () + _runtime->options ().heartbeat_interval;
+              std::chrono::steady_clock::now () + _runtime->options ().heartbeat_interval
+              + _runtime->options ().polling_interval;
             return;
         }
         if (loop.reconcile_after) {
@@ -446,7 +448,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 continue;
             }
             auto target = target_t{target_key (peer), peer.node_rid, peer.role,
-                                   peer.endpoint,     peer.owner_id, peer.weight};
+                                   peer.endpoint,     peer.owner_id,
+                                   peer.draining ? 0u : peer.weight};
             desired[target.key] = std::move (target);
         }
         return desired;

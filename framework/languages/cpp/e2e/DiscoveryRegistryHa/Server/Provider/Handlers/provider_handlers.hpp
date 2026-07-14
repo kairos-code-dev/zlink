@@ -7,11 +7,18 @@
 
 #include <chrono>
 #include <csignal>
+#include <functional>
 #include <nlohmann/json.hpp>
 #include <thread>
 
 namespace zlink::framework::e2e::store_failure::provider
 {
+
+struct provider_lifecycle_control_t
+{
+    std::function<drain_result_t (std::chrono::milliseconds)> drain;
+    std::function<void ()> request_stop;
+};
 
 class profile_request_handler_t
 {
@@ -117,17 +124,60 @@ class query_status_handler_t
 class shutdown_handler_t
 {
   public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<provider_lifecycle_control_t>;
+
+    explicit shutdown_handler_t (provider_lifecycle_control_t &lifecycle) :
+        _lifecycle (lifecycle)
+    {
+    }
+
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
-        std::thread ([] {
+        auto request_stop = _lifecycle.request_stop;
+        std::thread ([request_stop = std::move (request_stop)] {
             std::this_thread::sleep_for (std::chrono::milliseconds (50));
-            std::raise (SIGTERM);
+            request_stop ();
         }).detach ();
 
         zlink::framework::http_response_t response;
         response.body = R"({"status":"stopping"})";
         return response;
     }
+
+  private:
+    provider_lifecycle_control_t &_lifecycle;
+};
+
+class drain_handler_t
+{
+  public:
+    using request_type = operation_status_t;
+    using reply_type = operation_status_t;
+    using dependency_types =
+      zlink::framework::dependency_list_t<provider_lifecycle_control_t>;
+
+    explicit drain_handler_t (provider_lifecycle_control_t &lifecycle) :
+        _lifecycle (lifecycle)
+    {
+    }
+
+    operation_status_t handle (const operation_status_t &)
+    {
+        const auto result = _lifecycle.drain (std::chrono::seconds (30));
+        const auto status = std::holds_alternative<drained_t> (result)
+                              ? std::string ("drained")
+                              : std::string ("force_stopped");
+        auto request_stop = _lifecycle.request_stop;
+        std::thread ([request_stop = std::move (request_stop)] {
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+            request_stop ();
+        }).detach ();
+        return {.status = status};
+    }
+
+  private:
+    provider_lifecycle_control_t &_lifecycle;
 };
 
 class crash_handler_t

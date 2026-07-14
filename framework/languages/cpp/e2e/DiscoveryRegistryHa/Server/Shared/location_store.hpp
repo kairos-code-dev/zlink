@@ -282,7 +282,7 @@ inline void add_redis_location_store (zlink::framework::zlink_framework_options_
     } else {
         framework.add_location_store (std::move (redis_store));
     }
-    auto locations = framework.configure_locations ();
+    auto &locations = framework.configure_locations ();
     locations.heartbeat_interval =
       std::chrono::milliseconds (env_int ("ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS", 1000));
     locations.owner_lease_ttl =

@@ -13,7 +13,7 @@
 | SF-B1 | 구현 | Redis container process를 정지한 동안 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 빈 store 재기동 후 healthy로 회복된다. |
 | SF-B2 | 구현 | Redis 정지 중 `api-b`를 새 channel endpoint에서 재기동한다. store failure grace를 넘길 때까지 기존 `api-a` 연결의 request만 성공하고, 빈 store 복구 뒤 새 endpoint row가 등록되어 `api-b`가 다시 요청을 처리한다. |
 | SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 raw Redis row는 남지만 framework의 owner lease join이 lease 만료 뒤 live peer list에서 제외하고, 이후 request는 survivor `api-a`로만 간다. |
-| SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 framework live-row reader가 lease와 row 정리를 반영해 lease TTL을 기다리지 않고 live peer list에서 제외하며, 이후 request는 `api-a`로만 간다. |
+| SF-C2 | 구현 | provider `api-b`가 공개 drain lifecycle로 `Draining=true`를 게시하고 실제 polling 전파 상한 동안 lease를 갱신한다. consumer는 연결을 유지한 채 신규 request 선택에서 `api-b`를 제외한다. terminal `drained` 뒤 owner row와 lease가 TTL 만료 전에 제거되고 process가 정상 종료된다. |
 | SF-D1 | 구현 | 두 provider 연결을 실제 request로 준비하고 장애 전부터 복구 뒤까지 traffic을 유지한다. local row 재등록과 heartbeat 유예 뒤 status가 회복되며, 두 endpoint의 Connected/Disconnected count가 늘지 않는다. |
 | SF-D2 | 구현 | 장애 전부터 지속 traffic을 흘리고 최대 성공 간격을 제한한다. Redis 정지 중 `api-b`가 crash된 뒤 `api-a` socket count는 유지되고 `api-b` Disconnected만 증가하며, owner lease join에서 dead row가 제외된다. |
 | SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
@@ -23,6 +23,10 @@
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-083121-2436565`(SF-C2), `logs/20260715-083148-2438708`(SF-D2)
+  - 의미: typed drain marker·lease 유지·신규 배정 제외·owner 정리와 topology diff의 survivor 연결 보존이 함께 통과했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-080623-2320391`(SF-A2)

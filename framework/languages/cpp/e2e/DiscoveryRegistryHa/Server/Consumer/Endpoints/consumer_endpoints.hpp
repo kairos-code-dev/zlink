@@ -141,7 +141,8 @@ class query_peers_handler_t
                 rows.push_back (
                   peer_row_res_t{.rid = peer.node_rid ? peer.node_rid->to_string () : std::string{},
                                  .endpoint = peer.endpoint,
-                                 .owner_id = peer.owner_id});
+                                 .owner_id = peer.owner_id,
+                                 .draining = peer.draining});
             }
             response.body = nlohmann::json (rows).dump ();
         }

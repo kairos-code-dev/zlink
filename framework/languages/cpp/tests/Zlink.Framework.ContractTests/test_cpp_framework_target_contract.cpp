@@ -83,6 +83,8 @@ int main ()
     const auto live_location_reader =
       read_file (root / "framework/src/runtime/locations/live_location_reader.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
+    const auto channel_outbound_exchange =
+      read_file (root / "framework/src/runtime/channels/channel_outbound_exchange.cpp");
     const auto pubsub_client_root = e2e_root / "PubSub/Client";
     const auto pubsub_client_support =
       read_file (pubsub_client_root / "Support/client_support.hpp");
@@ -105,8 +107,12 @@ int main ()
       read_file (e2e_root / "DiscoveryRegistryHa/run_e2e.sh");
     const auto store_failure_consumer =
       read_file (e2e_root / "DiscoveryRegistryHa/Server/Consumer/main.cpp");
+    const auto store_failure_provider =
+      read_file (e2e_root / "DiscoveryRegistryHa/Server/Provider/main.cpp");
     const auto store_failure_consumer_endpoints = read_file (
       e2e_root / "DiscoveryRegistryHa/Server/Consumer/Endpoints/consumer_endpoints.hpp");
+    const auto store_failure_location_store = read_file (
+      e2e_root / "DiscoveryRegistryHa/Server/Shared/location_store.hpp");
     const std::vector<std::string> pubsub_client_scenarios{
       pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
@@ -698,6 +704,10 @@ int main ()
     gate.require (location_auto_connect.find ("republish_after_store_recovery")
                     != std::string::npos,
                   "IMP-CP-06", "auto-connect recovery does not republish local rows");
+    gate.require (location_auto_connect.find (
+                    "_runtime->options ().heartbeat_interval\n              + _runtime->options ().polling_interval")
+                    != std::string::npos,
+                  "IMP-CP-06", "recovery diff races the first provider heartbeat");
     gate.require (location_auto_connect.find ("_runtime->options ().polling_interval")
                     != std::string::npos
                     && location_auto_connect.find ("sleep_for (std::chrono::milliseconds (100))")
@@ -751,6 +761,9 @@ int main ()
                     && store_failure_client.find ("SF-D2 survivor connection changed")
                          != std::string::npos,
                   "E2E-CP-40", "D1/D2 do not reject survivor disconnect/reconnect");
+    gate.require (channel_outbound_exchange.find ("client topology changed; rotate transport")
+                    == std::string::npos,
+                  "E2E-CP-40", "topology diff still reconnects every surviving endpoint");
 
     /* E2E-CP-41 — one HTTP probe maps to one framework request attempt. */
     gate.require (store_failure_consumer_endpoints.find ("request_profile_with_retry")
@@ -772,6 +785,29 @@ int main ()
                     && store_failure_client.find ("SF-A2 removed provider still served traffic")
                          != std::string::npos,
                   "E2E-CP-42", "SF-A2 does not prove polling add/remove routing");
+
+    /* E2E-CP-43 — C2 uses the public drain lifecycle and proves typed removal. */
+    gate.require (store_failure_consumer_endpoints.find (".draining = peer.draining")
+                    != std::string::npos
+                    && store_failure_client.find ("SF-C2 api-b did not publish draining=true")
+                         != std::string::npos,
+                  "E2E-CP-43", "SF-C2 drops or never asserts the typed draining marker");
+    gate.require (store_failure_provider.find ("app.drain (deadline)")
+                    != std::string::npos
+                    && store_failure_provider.find ("drain_handler_t") != std::string::npos
+                    && store_failure_client.find ("SF-C2 drain did not complete as drained")
+                         != std::string::npos,
+                  "E2E-CP-43", "SF-C2 has no framework drain terminal-result proof");
+    gate.require (app_runtime.find ("drain propagation bound") != std::string::npos
+                    && app_runtime.find ("std::chrono::seconds (5)") != std::string::npos,
+                  "E2E-CP-43", "drain removes owner rows before the polling propagation bound");
+    gate.require (store_failure_location_store.find (
+                    "auto &locations = framework.configure_locations ()")
+                    != std::string::npos,
+                  "E2E-CP-43", "Config 6 discards its configured polling interval");
+    gate.require (location_auto_connect.find ("peer.draining ? 0u : peer.weight")
+                    != std::string::npos,
+                  "E2E-CP-43", "draining channel peers remain eligible for new requests");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

@@ -1036,6 +1036,44 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         }
     }
 
+    /* Keep the typed marker and owner lease observable until every polling
+     * consumer has had one bounded opportunity to exclude this node from new
+     * assignments. Existing auto-connect sockets remain established. */
+    if (std::holds_alternative<drained_t> (result)) {
+        const bool has_auto_connect =
+          std::any_of (state.hosted_services.begin (), state.hosted_services.end (),
+                       [] (const auto &service) {
+                           return dynamic_cast<runtime::location_auto_connect_host_service_t *> (
+                                    service.get ())
+                                  != nullptr;
+                       });
+        if (has_auto_connect) {
+            try {
+                auto provider = state.services.build_provider ();
+                auto &location_runtime =
+                  provider.get_required<runtime::location_runtime_t> ();
+                const auto propagation_bound =
+                  location_runtime.options ().polling_interval + std::chrono::seconds (5)
+                  + std::chrono::milliseconds (100);
+                std::cerr << "zlink drain propagation bound polling_ms="
+                          << location_runtime.options ().polling_interval.count ()
+                          << " store_read_timeout_ms=5000 scheduler_jitter_ms=100 total_ms="
+                          << propagation_bound.count () << std::endl;
+                if (std::chrono::steady_clock::now () + propagation_bound > deadline_at) {
+                    std::this_thread::sleep_until (deadline_at);
+                    emit_state (drain_state_t::force_stopping);
+                    result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+                } else {
+                    std::this_thread::sleep_for (propagation_bound);
+                }
+            }
+            catch (...) {
+                emit_state (drain_state_t::force_stopping);
+                result = force_stopped_t{drain_force_reason_t::teardown_failed};
+            }
+        }
+    }
+
     /* Actor handoff (graceful-drain-handoff §5.2/§5.3): bounded sequential
      * passes move every locally joined actor to an eligible non-draining
      * entry-spot node; each pass refreshes the store view. No eligible target

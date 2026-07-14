@@ -13,7 +13,6 @@
 #include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
 #include "../../samples/TicTacToe/Shared/Contracts/messages.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Notifications/game_notification_publisher.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_contract_mapper.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
@@ -221,9 +220,6 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[0].packet_name, join_game_req_t::packet_name);
     EXPECT_EQ (entry_handlers[1].packet_name, observe_milestone_req_t::packet_name);
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
-
-    const auto mapped = tictactoe_game_contract_mapper_t::to_contract (projected_join.state);
-    EXPECT_EQ (mapped.room_id, created.room_id);
 
     game_notification_publisher_t publisher;
     publisher.game_state.push_back (

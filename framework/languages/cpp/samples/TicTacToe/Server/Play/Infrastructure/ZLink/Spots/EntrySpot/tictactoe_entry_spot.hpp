@@ -3,7 +3,6 @@
 
 #include "../../Actors/player_actor.hpp"
 #include "../../../../../Configuration/sample_names.hpp"
-#include "../../../../Domain/TicTacToe/tictactoe_match.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -74,7 +73,6 @@ class tictactoe_entry_spot_t : public entry_spot_t
 
     void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
-    tictactoe_match_t room{"entry-match"};
     std::vector<std::string> created_actor_ids;
     std::vector<std::string> actor_ids;
 

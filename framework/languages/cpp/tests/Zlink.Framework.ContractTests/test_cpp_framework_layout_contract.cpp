@@ -1152,12 +1152,19 @@ int main ()
       root
       / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/"
         "Notifications/game_notification_publisher.hpp");
-    ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
-                            "TicTacToeGameSpot/tictactoe_game_contract_mapper.hpp");
-    ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
-                            "TicTacToeGameSpot/tictactoe_game_models.hpp");
+    ok &= require_absent (root
+                            / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+                              "TicTacToeGameSpot/tictactoe_game_contract_mapper.hpp",
+                          "TicTacToe must not keep an identity contract mapper");
+    ok &= require_absent (root
+                            / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+                              "TicTacToeGameSpot/tictactoe_game_models.hpp",
+                          "TicTacToe must not keep an unused snapshot wrapper");
+    ok &= require_absent (
+      root
+        / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/"
+          "tictactoe_game_spot_created_handler.hpp",
+      "TicTacToe must not keep an unregistered spot-created handler");
     ok &= require_exists (root
                           / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
                             "TicTacToeGameSpot/tictactoe_game_spot.hpp");

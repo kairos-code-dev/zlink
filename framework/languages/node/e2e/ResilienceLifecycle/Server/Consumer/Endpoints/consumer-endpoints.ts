@@ -125,9 +125,13 @@ async function requestProfileFailure(
 ): Promise<RequestFailureRes> {
   try {
     await requestProfile(channel, request, timeoutMs);
-    return { failed: false, failureType: '' };
+    return { failed: false, failureType: '', failureMessage: '' };
   } catch (error) {
-    return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
+    return {
+      failed: true,
+      failureType: error instanceof Error ? error.name : 'Error',
+      failureMessage: error instanceof Error ? error.message : String(error)
+    };
   }
 }
 
@@ -137,9 +141,13 @@ async function requestMissingProfile(channel: ZLinkChannelClient, request: Missi
       .requestToChannel('profile', request)
       .timeout(5000)
       .submit<ProfileRes>();
-    return { failed: false, failureType: '' };
+    return { failed: false, failureType: '', failureMessage: '' };
   } catch (error) {
-    return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
+    return {
+      failed: true,
+      failureType: error instanceof Error ? error.name : 'Error',
+      failureMessage: error instanceof Error ? error.message : String(error)
+    };
   }
 }
 

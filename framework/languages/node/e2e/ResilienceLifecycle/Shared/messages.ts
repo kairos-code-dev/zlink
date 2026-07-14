@@ -78,6 +78,7 @@ export interface RouteMissingRes {
 export interface RequestFailureRes {
   readonly failed: boolean;
   readonly failureType: string;
+  readonly failureMessage: string;
 }
 
 export interface TimeoutRes {

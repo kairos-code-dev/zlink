@@ -22,3 +22,42 @@ test('RL-D1 drives actual fanout through many subscribers', () => {
   assert.match(scenario, /\/fanout\/publish/);
   assert.doesNotMatch(scenario, /\/profile\/request/);
 });
+
+test('RL-D4 channel replies preserve the canonical Error and Response wire headers', () => {
+  const envelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
+  const request = {
+    formatMarker: 0xf2,
+    kind: 1,
+    channelName: 'profile',
+    messageName: 'MissingProfileReq',
+    contentType: 'application/json',
+    correlationId: 'rl-d4-correlation',
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  };
+
+  const errorHeader = JSON.parse(Buffer.from(
+    envelope.encodeChannelErrorReplyParts(request, new Error('missing handler'))[0]
+  ).toString('utf8'));
+  assert.equal(errorHeader.kind, 5);
+  assert.equal(errorHeader.errorCode, 'Error');
+  assert.equal(errorHeader.errorMessage, 'missing handler');
+  assert.equal(Object.hasOwn(errorHeader, 'status'), false);
+
+  const responseHeader = JSON.parse(Buffer.from(
+    envelope.encodeChannelReplyParts(request, { value: 'ok' })[0]
+  ).toString('utf8'));
+  assert.equal(responseHeader.kind, 2);
+  assert.equal(Object.hasOwn(responseHeader, 'errorCode'), false);
+  assert.equal(Object.hasOwn(responseHeader, 'errorMessage'), false);
+  assert.equal(Object.hasOwn(responseHeader, 'status'), false);
+});
+
+test('RL-D4 checks decoded error code and message before a successful follow-up', () => {
+  const scenario = read('Client/Scenarios/rl-d4-missing-request-handler-scenario.ts');
+  assert.match(scenario, /failed\.failureType === 'Error'/);
+  assert.match(scenario, /failed\.failureMessage\.includes\(/);
+  assert.match(scenario, /followUp\.value === 'profile:fast'/);
+});

@@ -34,8 +34,8 @@ export interface ZLinkChannelEnvelopeHeader {
   readonly correlationId: string | null;
   readonly deadline: string | null;
   readonly topic: string | null;
-  readonly errorCode: string | null;
-  readonly errorMessage: string | null;
+  readonly errorCode?: string | null;
+  readonly errorMessage?: string | null;
   readonly source?: string | null;
   readonly flowId?: string;
   readonly flowOrigin?: ZLinkFlowOrigin;
@@ -125,8 +125,6 @@ export function encodeChannelReplyParts(
     correlationId: request.correlationId,
     deadline: null,
     topic: null,
-    errorCode: null,
-    errorMessage: null,
     flowId: request.flowId,
     flowOrigin: request.flowOrigin
   };
@@ -185,7 +183,7 @@ const FRAMEWORK_ERROR_KINDS = new Set<string>(Object.values(ZLinkFrameworkErrorK
 
 function decodeChannelError(header: ZLinkChannelEnvelopeHeader): Error {
   const code = header.errorCode;
-  if (code === null || code.trim().length === 0) {
+  if (code === undefined || code === null || code.trim().length === 0) {
     return new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.RequestProtocolError,
       'Channel Error reply does not contain a non-empty errorCode.'
@@ -362,8 +360,8 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     correlationId: requireNullableString(header.correlationId, 'correlationId'),
     deadline: requireNullableString(header.deadline, 'deadline'),
     topic: requireNullableString(header.topic, 'topic'),
-    errorCode: requireNullableString(header.errorCode, 'errorCode'),
-    errorMessage: requireNullableString(header.errorMessage, 'errorMessage'),
+    errorCode: header.errorCode === undefined ? null : requireNullableString(header.errorCode, 'errorCode'),
+    errorMessage: header.errorMessage === undefined ? null : requireNullableString(header.errorMessage, 'errorMessage'),
     source: header.source === undefined ? undefined : requireNullableString(header.source, 'source'),
     flowId,
     flowOrigin

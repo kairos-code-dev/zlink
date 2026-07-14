@@ -21,10 +21,10 @@ inline std::vector<stored_order_event_t> read_event_stream (const nlohmann::json
                                                             const std::string &order_id)
 {
     std::vector<stored_order_event_t> stream;
-    if (!state["events"].contains (order_id)) {
+    if (!state.contains ("events") || !state.at ("events").contains (order_id)) {
         return stream;
     }
-    for (const auto &event : state["events"][order_id]) {
+    for (const auto &event : state.at ("events").at (order_id)) {
         stream.push_back (event.get<stored_order_event_t> ());
     }
     return stream;
@@ -362,11 +362,11 @@ inline bool stop_hook_reached (const nlohmann::json &state,
                                const std::string &order_id,
                                const std::string &status)
 {
-    if (!state["testHooks"].contains ("stopAt")) {
+    if (!state.contains ("testHooks") || !state.at ("testHooks").contains ("stopAt")) {
         return false;
     }
-    const auto &stop_at = state["testHooks"]["stopAt"];
-    return stop_at.contains (order_id) && stop_at[order_id].get<std::string> () == status;
+    const auto &stop_at = state.at ("testHooks").at ("stopAt");
+    return stop_at.contains (order_id) && stop_at.at (order_id).get<std::string> () == status;
 }
 
 /* 명령 중복 제거: 같은 SourceCommandId가 이미 스트림에 있으면 진행하지 않는다. */

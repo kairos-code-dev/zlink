@@ -147,9 +147,14 @@ internal sealed partial class Spot : ISpot
             RequestReplySupport.SubmitOwnedParts(parts,
                 (ref ZlinkMsg nativePart,
                         NativeMethods.ZlinkPartFlag partFlag) =>
+                    // The reply handler belongs to the final part and only to it (see
+                    // RequestRoutedAsyncInternal): core rejects a handler on an earlier part.
                     NativeMethods.zlink_spot_request_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart,
-                        RoutedReplyCallbackHandlerPtr, userData, (int)flags,
+                        partFlag == NativeMethods.ZlinkPartFlag.Final
+                            ? RoutedReplyCallbackHandlerPtr
+                            : IntPtr.Zero,
+                        userData, (int)flags,
                         partFlag, timeoutMs));
 
             return true;

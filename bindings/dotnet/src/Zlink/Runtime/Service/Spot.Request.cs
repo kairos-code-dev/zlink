@@ -190,14 +190,18 @@ internal sealed partial class Spot : ISpot
                 ZlinkMsg nativePart = default;
                 cloned[i].MoveTo(ref nativePart);
                 var submitted = false;
+                var isFinal = i + 1 == cloned.Length;
                 try
                 {
+                    // The reply handler belongs to the final part and only to it: the staged
+                    // sequence builds the request spec from that call, and a handler on an
+                    // earlier part is rejected as EINVAL.
                     var rc = submit(ref nativePart,
-                        RoutedReplyHandlerPointer,
+                        isFinal ? RoutedReplyHandlerPointer : IntPtr.Zero,
                         GCHandle.ToIntPtr(handle),
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final,
+                        isFinal
+                            ? NativeMethods.ZlinkPartFlag.Final
+                            : NativeMethods.ZlinkPartFlag.More,
                         timeoutMs);
                     submitted = true;
                     if (rc != 0)

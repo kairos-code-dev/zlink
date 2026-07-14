@@ -34,7 +34,14 @@ std::vector<zlink::message_t> make_multipart_request ()
     return parts;
 }
 
-void assert_multipart_request_submitter_passes_callback_to_every_part (
+// The core takes the reply handler as the marker of the FINAL part: the submission that
+// carries it is the one that builds the request spec. `zlink_spot_request_*_part` rejects a
+// non-final part carrying a handler with EINVAL
+// (core/src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp,
+// validate_request_part_handler), and the socket path requires the handler on the final part.
+// A submitter that attaches the handler to every part therefore cannot send a multipart
+// request at all — which is what this asserts against.
+void assert_multipart_request_submitter_attaches_reply_handler_to_final_part_only (
   const std::vector<recorded_request_part_t> &submissions_)
 {
     assert (submissions_.size () == 3);
@@ -42,15 +49,15 @@ void assert_multipart_request_submitter_passes_callback_to_every_part (
     assert (submissions_[1].flag == ZLINK_PART_MORE);
     assert (submissions_[2].flag == ZLINK_PART_FINAL);
 
-    void *const expected_userdata = submissions_[0].userdata;
-    for (const auto &submission : submissions_) {
-        assert (submission.callback != nullptr);
-        assert (submission.userdata != nullptr);
-        assert (submission.userdata == expected_userdata);
-    }
+    assert (submissions_[0].callback == nullptr);
+    assert (submissions_[0].userdata == nullptr);
+    assert (submissions_[1].callback == nullptr);
+    assert (submissions_[1].userdata == nullptr);
+    assert (submissions_[2].callback != nullptr);
+    assert (submissions_[2].userdata != nullptr);
 }
 
-void test_multipart_request_callback_submitter_attaches_reply_handler_to_every_part ()
+void test_multipart_request_callback_submitter_attaches_reply_handler_to_final_part_only ()
 {
     std::vector<zlink::message_t> parts = make_multipart_request ();
     std::vector<recorded_request_part_t> submissions;
@@ -72,13 +79,13 @@ void test_multipart_request_callback_submitter_attaches_reply_handler_to_every_p
       });
 
     assert (submitted);
-    assert_multipart_request_submitter_passes_callback_to_every_part (submissions);
+    assert_multipart_request_submitter_attaches_reply_handler_to_final_part_only (submissions);
 
     submissions.back ().callback (ZLINK_REQUEST_NOT_FOUND, nullptr, 0, submissions.back ().userdata);
     assert (completed);
 }
 
-void test_multipart_request_awaitable_submitter_attaches_reply_handler_to_every_part ()
+void test_multipart_request_awaitable_submitter_attaches_reply_handler_to_final_part_only ()
 {
     std::vector<zlink::message_t> parts = make_multipart_request ();
     std::vector<recorded_request_part_t> submissions;
@@ -93,7 +100,7 @@ void test_multipart_request_awaitable_submitter_attaches_reply_handler_to_every_
             return ZLINK_SUBMIT_OK;
         });
 
-    assert_multipart_request_submitter_passes_callback_to_every_part (submissions);
+    assert_multipart_request_submitter_attaches_reply_handler_to_final_part_only (submissions);
 
     submissions.back ().callback (ZLINK_REQUEST_NOT_FOUND, nullptr, 0, submissions.back ().userdata);
     try {
@@ -295,8 +302,8 @@ void test_received_reply_rejects_non_none_flags ()
 
 int main ()
 {
-    test_multipart_request_callback_submitter_attaches_reply_handler_to_every_part ();
-    test_multipart_request_awaitable_submitter_attaches_reply_handler_to_every_part ();
+    test_multipart_request_callback_submitter_attaches_reply_handler_to_final_part_only ();
+    test_multipart_request_awaitable_submitter_attaches_reply_handler_to_final_part_only ();
     test_request_dealer_router_roundtrip ();
     test_request_wait_for_zero_pumps_progress ();
     test_request_router_preserves_data_recv_surface ();

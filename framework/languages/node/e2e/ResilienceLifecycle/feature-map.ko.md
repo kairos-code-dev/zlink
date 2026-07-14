@@ -27,7 +27,7 @@
 | RL-D2 | 구현 | dispatch-error observer fault를 주입하고 missing request 실패, dispatch-error evidence, observer 예외 이후 follow-up request 성공을 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D3 | 구현 | missing request handler 실패 뒤 provider dispatch-error evidence에 `packet=MissingProfileReq` marker가 남는지 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D4 | 구현 | 실제 provider/consumer 왕복에서 decoded `errorCode`/`errorMessage`, handler-missing reply-error evidence와 성공 follow-up을 검증했다. runtime wire gate는 `Error=5`, camelCase error key, `status` 부재와 error key가 없는 `Response=2`를 직접 검증한다. 로그: `logs/20260715-080129-2299877` |
-| RL-D5 | 구현 | 60 request와 60 send 혼합 burst가 정상 완료되고 request/send evidence marker가 모두 기록되는지 검증했다. 로그: `logs/20260703-211853-78546` |
+| RL-D5 | 구현 | 8개 client가 request/send를 120초 동안 지속하고, 82,213쌍 전부 성공·tail send evidence·short-lived client 정리 후 follow-up을 확인했다. 전반/후반 p95는 25ms/19ms였다. 로그: `logs/20260715-080359-2311388` |
 
 검증:
 
@@ -35,5 +35,6 @@
   - PASS: `logs/20260703-211853-78546`
   - RL-D1 실제 fanout 단독 PASS: `logs/20260715-075646-2279409`
   - RL-D4 error wire 단독 PASS: `logs/20260715-080129-2299877`
+  - RL-D5 120초 soak 단독 PASS: `logs/20260715-080359-2311388`
 - 남은 scenario: 없음
 - 미착수 scenario: 없음

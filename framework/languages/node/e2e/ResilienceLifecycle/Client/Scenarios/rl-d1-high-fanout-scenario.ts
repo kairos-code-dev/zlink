@@ -6,27 +6,27 @@ import { ensure } from '../Support/scenario-assert';
 const eventCount = 120;
 
 export async function runRlD1(options: ClientOptions): Promise<void> {
-  ensure(options.fanoutSubscriberUrls.length >= 8, 'RL-D1 requires at least eight fanout subscribers.');
+  ensure(options.consumerUrls.length >= 8, 'RL-D1 requires at least eight fanout subscribers.');
   const warmupRun = `warmup-${randomUUID().replaceAll('-', '')}`;
   for (let sequence = 1; sequence <= 40; sequence += 1) {
     await publish(options.providerAUrl, warmupRun, sequence);
   }
-  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
+  await Promise.all(options.consumerUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
     contains: `run=${warmupRun}|`,
     timeoutMilliseconds: 10_000
   })));
-  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson(url, '/evidence/clear', {})));
+  await Promise.all(options.consumerUrls.map((url) => postJson(url, '/evidence/clear', {})));
 
   const runId = randomUUID().replaceAll('-', '');
   for (let sequence = 1; sequence <= eventCount; sequence += 1) {
     await publish(options.providerAUrl, runId, sequence);
   }
-  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
+  await Promise.all(options.consumerUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
     contains: `run=${runId}|seq=${eventCount}|`,
     timeoutMilliseconds: 20_000
   })));
 
-  for (const subscriber of options.fanoutSubscriberUrls) {
+  for (const subscriber of options.consumerUrls) {
     const evidence = await getJson<string[]>(subscriber, '/evidence');
     const sequences = evidence
       .filter((line) => line.includes(`load-event|`) && line.includes(`run=${runId}|`))

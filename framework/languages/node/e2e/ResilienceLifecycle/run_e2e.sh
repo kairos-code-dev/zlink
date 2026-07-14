@@ -11,7 +11,8 @@ LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
-RL_D1_SUBSCRIBER_COUNT="${RL_D1_SUBSCRIBER_COUNT:-8}"
+RESILIENCE_CONSUMER_COUNT="${RESILIENCE_CONSUMER_COUNT:-8}"
+RL_D5_DURATION_SECONDS="${RL_D5_DURATION_SECONDS:-120}"
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -173,8 +174,8 @@ start_configured_server consumer "$CONSUMER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
-FANOUT_SUBSCRIBER_URLS=("http://127.0.0.1:$CONSUMER_HTTP_PORT")
-for index in $(seq 2 "$RL_D1_SUBSCRIBER_COUNT"); do
+CONSUMER_URLS=("http://127.0.0.1:$CONSUMER_HTTP_PORT")
+for index in $(seq 2 "$RESILIENCE_CONSUMER_COUNT"); do
   subscriber_port="$(pick_port)"
   subscriber_url="http://127.0.0.1:$subscriber_port"
   start_configured_server "consumer-$index" "$CONSUMER_MAIN" \
@@ -186,9 +187,9 @@ for index in $(seq 2 "$RL_D1_SUBSCRIBER_COUNT"); do
     --evidence-file "$LOG_DIR/consumer-$index.evidence.log" \
     --log-dir "$LOG_DIR"
   wait_health "$subscriber_url" "consumer-$index"
-  FANOUT_SUBSCRIBER_URLS+=("$subscriber_url")
+  CONSUMER_URLS+=("$subscriber_url")
 done
-FANOUT_SUBSCRIBER_URL_LIST="$(IFS=,; echo "${FANOUT_SUBSCRIBER_URLS[*]}")"
+CONSUMER_URL_LIST="$(IFS=,; echo "${CONSUMER_URLS[*]}")"
 
 node "$CLIENT_MAIN" \
   --topology-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
@@ -197,7 +198,8 @@ node "$CLIENT_MAIN" \
   --provider-b-remap-url "http://127.0.0.1:$PROVIDER_B_REMAP_HTTP_PORT" \
   --provider-b-green-url "http://127.0.0.1:$PROVIDER_B_GREEN_HTTP_PORT" \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --fanout-subscriber-urls "$FANOUT_SUBSCRIBER_URL_LIST" \
+  --consumer-urls "$CONSUMER_URL_LIST" \
+  --soak-duration-seconds "$RL_D5_DURATION_SECONDS" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --redis-container "$REDIS_CONTAINER_ID" \

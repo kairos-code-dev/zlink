@@ -16,9 +16,9 @@ test('RL-D1 drives actual fanout through many subscribers', () => {
   assert.match(provider, /enablePublisher\(options\.fanoutEndpoint\)/);
   assert.match(consumer, /enableSubscriber\(\)/);
   assert.match(consumer, /addPublishHandler\(PacketNames\.loadEvent, LoadEventHandler\)/);
-  assert.match(runner, /RL_D1_SUBSCRIBER_COUNT/);
-  assert.match(runner, /--fanout-subscriber-urls/);
-  assert.match(scenario, /options\.fanoutSubscriberUrls/);
+  assert.match(runner, /RESILIENCE_CONSUMER_COUNT/);
+  assert.match(runner, /--consumer-urls/);
+  assert.match(scenario, /options\.consumerUrls/);
   assert.match(scenario, /\/fanout\/publish/);
   assert.doesNotMatch(scenario, /\/profile\/request/);
 });
@@ -60,4 +60,21 @@ test('RL-D4 checks decoded error code and message before a successful follow-up'
   assert.match(scenario, /failed\.failureType === 'Error'/);
   assert.match(scenario, /failed\.failureMessage\.includes\(/);
   assert.match(scenario, /followUp\.value === 'profile:fast'/);
+});
+
+test('RL-D5 sustains mixed work across clients and checks drift plus cleanup', () => {
+  const scenario = read('Client/Scenarios/rl-d5-mixed-burst-scenario.ts');
+  const options = read('Client/Support/client-options.ts');
+  const runner = read('run_e2e.sh');
+
+  assert.match(runner, /RL_D5_DURATION_SECONDS="\$\{RL_D5_DURATION_SECONDS:-120\}"/);
+  assert.match(runner, /--soak-duration-seconds "\$RL_D5_DURATION_SECONDS"/);
+  assert.match(options, /soakDurationMs/);
+  assert.match(options, /soakDurationSeconds < 120/);
+  assert.match(scenario, /options\.consumerUrls\.map/);
+  assert.match(scenario, /while \(Date\.now\(\) < deadline\)/);
+  assert.match(scenario, /firstHalfP95/);
+  assert.match(scenario, /secondHalfP95/);
+  assert.match(scenario, /\/profile\/request\/new-client/);
+  assert.doesNotMatch(scenario, /Array\.from\(\{ length: 60 \}/);
 });

@@ -602,7 +602,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-61** (결함) — **`OBS-C1`(P0)이 문서가 금지한 row 삭제를 통과로 받아들이고**, create-rejection은 **무조건 PASS를 찍는다**
 - [ ] **E2E-CP-62** (결함) — **`OBS-A1`~`A4`가 판별력이 없다.** `OBS-A2`는 **C++ 전용 `outcome=` 토큰을 고정**해 IMP-CP-18을 못박는다
 - [ ] **E2E-CP-63** (결함) — **`OBS-B2`·`B3`·`B4`·`C3`가 항진명제이거나 절반만 돈다**
-- [ ] **E2E-CP-64** (결함) — **stray `e2e/DeliveryDispatch/`가 샘플의 갈라진 fork**다. **같은 wire에 계약 헤더가 둘**이고, 게이트는 fork 쪽을 돌린다
+- [x] **E2E-CP-64** (결함) — **stray `e2e/DeliveryDispatch/`가 샘플의 갈라진 fork**다. **같은 wire에 계약 헤더가 둘**이고, 게이트는 fork 쪽을 돌린다
+  - 근거: 수정 전 target-contract gate가 비계약 DeliveryDispatch e2e runner와 전용 CMake target 군을 각각 검출했다. 샘플과 공유되지 않던 fork의 tracked file 27개와 전용 executable target 9개를 제거한 뒤 CMake 재구성, target/layout contract test, CMake·runner·test 범위의 no-hit 검색이 통과했다. DeliveryDispatch 공개 예시는 `samples/DeliveryDispatch` 한 곳만 남는다.
 
 ### 상세 — 샘플
 

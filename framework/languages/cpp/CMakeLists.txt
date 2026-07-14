@@ -1389,63 +1389,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_to_actor_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_api
-    e2e/DeliveryDispatch/Server/DispatchApi/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_api PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis
-    zlink::http_client)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_center
-    e2e/DeliveryDispatch/Server/DispatchCenter/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_center PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_gateway
-    e2e/DeliveryDispatch/Server/CourierGateway/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_gateway PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_actor_node
-    e2e/DeliveryDispatch/Server/CourierActorNode/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_actor_node PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_customer_gateway
-    e2e/DeliveryDispatch/Server/CustomerGateway/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_customer_gateway PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_session
-    e2e/DeliveryDispatch/Server/CourierSession/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_session PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_tracking
-    e2e/DeliveryDispatch/Server/Tracking/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_tracking PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_probe
-    e2e/DeliveryDispatch/Probe/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_probe PRIVATE
-    zlink::framework
-    zlink::framework_locations_redis)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_client
-    e2e/DeliveryDispatch/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_client PRIVATE
-    zlink::framework
-    zlink::http_client
-    zlink::stream_connector
-    zlink::stream_e2e_client)
-
   add_executable(zlink_cpp_e2e_resilience_lifecycle_provider
     e2e/ResilienceLifecycle/Server/Provider/main.cpp)
   target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE

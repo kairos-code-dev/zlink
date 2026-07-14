@@ -405,6 +405,12 @@ int main ()
     gate.require (redis_hpp.find ("parse_offset") == std::string::npos,
                   "IMP-CP-36", "Redis location paging still treats continuation as an offset");
 
+    /* E2E-CP-64 — the sample is not duplicated as a twelfth, non-contract config. */
+    gate.require (!std::filesystem::exists (e2e_root / "DeliveryDispatch/run_e2e.sh"),
+                  "E2E-CP-64", "stray DeliveryDispatch e2e fork remains tracked");
+    gate.require (cmake.find ("zlink_cpp_e2e_delivery_dispatch") == std::string::npos,
+                  "E2E-CP-64", "stray DeliveryDispatch e2e targets remain buildable");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

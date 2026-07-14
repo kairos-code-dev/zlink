@@ -5,8 +5,10 @@
 
 #include <zlink/framework.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
@@ -86,8 +88,24 @@ inline void record_spot_event (server::evidence_store_t &evidence,
 inline void record_location_event (server::evidence_store_t &evidence,
                                    const zlink::framework::location_event_payload_t &event)
 {
+    std::vector<std::string> nodes;
+    for (const auto &entry : event.topology) {
+        if (entry.node_rid) {
+            nodes.push_back (entry.node_rid->to_string ());
+        }
+    }
+    std::sort (nodes.begin (), nodes.end ());
+    nodes.erase (std::unique (nodes.begin (), nodes.end ()), nodes.end ());
+    std::string node_list;
+    for (const auto &node : nodes) {
+        if (!node_list.empty ()) {
+            node_list += ",";
+        }
+        node_list += node;
+    }
     evidence.add ("monitor-location|source=" + event.source_name
                   + "|kind=" + location_kind_name (event.event)
+                  + "|nodes=" + node_list
                   + "|topology=" + std::to_string (event.topology.size ())
                   + "|summary=" + std::to_string (event.service_summary.size ())
                   + "|healthy="

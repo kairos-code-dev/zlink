@@ -52,7 +52,7 @@ store를 공유하고, location runtime monitoring source가 topology/status/ser
 | Scenario | C++ 대응 | 상태 |
 |----------|----------|------|
 | `MON-A1` | `Client/Scenarios/mon_a1_socket_events_scenario.hpp` | done |
-| `MON-A2` | `Client/Scenarios/mon_a2_location_events_scenario.hpp` | done |
+| `MON-A2` | `Client/Scenarios/mon_a2_location_events_scenario.hpp`; `Server/Service/Handlers/service_event_recorders.hpp`; `run_e2e.sh`의 svc-a→svc-b 시작 순서 | done — 실제 svc-b payload와 안정 구간 무중복 검증 |
 | `MON-A3` | `Client/Scenarios/mon_a3_spot_events_scenario.hpp` | done |
 | `MON-A4` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | done |
 | `MON-A5` | `Client/Scenarios/mon_a5_fixed_kinds_scenario.hpp` | done |

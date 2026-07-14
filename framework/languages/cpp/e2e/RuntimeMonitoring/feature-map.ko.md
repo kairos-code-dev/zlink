@@ -11,7 +11,7 @@ client role로 구성된다. 별도 registry role은 없다. client role은 `.NE
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | `MON-A1` | 구현 | trigger role이 service A로 transient profile request를 보내고, service role이 native socket monitor에서 발행되는 `Connected`, `ConnectionReady`, `Disconnected` event와 remote address evidence를 수집한다. |
-| `MON-A2` | 구현 | service role의 `location-runtime` source가 Redis location store 기반 `TopologyChanged`와 `ServiceSummaryChanged` evidence를 수집한다. |
+| `MON-A2` | 구현 | runner가 svc-a 다음 svc-b를 시작해 peer location row를 실제로 바꾼다. svc-a의 `location-runtime` source가 낸 `TopologyChanged` payload에 `svc-b` node rid가 포함되고 `ServiceSummaryChanged`가 함께 발생하는지 확인한다. 이후 500ms 안정 구간에는 같은 snapshot event가 다시 발행되지 않아야 한다. |
 | `MON-A3` | 구현 | service role이 Redis location store로 발견한 SPOT mesh peer를 연결하고, native peer snapshot 변화의 `PeersChanged`, `/spot/create` 뒤 `SubjectsChanged`, failing timer의 `TimerHandlerFailed` event를 evidence로 수집한다. |
 | `MON-A4` | 구현 | service drain/restore 중 public runtime option 변경으로 발행되는 socket `PeerAdmissionChanged` event, admin evidence, location runtime `TopologyChanged` evidence를 검증한다. |
 | `MON-A5` | 구현 | trigger role이 invalid handshake를 service channel에 보내고, service role이 `HandshakeFailed` 또는 대응 socket transition을 수집한다. location runtime `StatusChanged`, spot `StatusChanged`, 실제 failing timer의 `TimerStoppedAfterUnhandledException` evidence도 함께 검증한다. |

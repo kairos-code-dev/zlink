@@ -51,11 +51,17 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/gateway-flow.log")
                 .traceLabel("java-sm-gateway");
-            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
-                .setRoutingId(RoutingId.from(gatewayRid));
+            boolean spotOnly = "true".equalsIgnoreCase(
+                Env.get("ZLINK_JAVA_E2E_SPOT_ONLY", ""));
+            if (spotOnly) {
+                System.out.println("[topology] role=gateway route_mesh=disabled");
+            } else {
+                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+                    .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
+                    .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
+                    .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
+                    .setRoutingId(RoutingId.from(gatewayRid));
+            }
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);

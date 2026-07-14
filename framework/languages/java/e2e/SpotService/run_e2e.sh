@@ -308,6 +308,7 @@ start_gateway() {
   ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
   ZLINK_JAVA_E2E_MULTI_A_HTTP_ENDPOINT="${MULTI_HTTP_A}" \
   ZLINK_JAVA_E2E_MULTI_B_HTTP_ENDPOINT="${MULTI_HTTP_B}" \
+  ZLINK_JAVA_E2E_SPOT_ONLY="${SPOT_ONLY_MODE}" \
   ZLINK_JAVA_E2E_SM_G1_READY_FILE="${log_dir}/sm-g1-ready" \
   ZLINK_JAVA_E2E_SM_G1_CRASHED_FILE="${log_dir}/sm-g1-crashed" \
   ZLINK_JAVA_E2E_SM_G1_FAILED_FILE="${log_dir}/sm-g1-failed" \
@@ -385,7 +386,9 @@ wait_named_server() {
       wait_port play-b-http "${HTTP_B}"
       ;;
     gateway)
-      wait_port gateway-route "${ROUTE_CLIENT}"
+      if [[ "${SPOT_ONLY_MODE}" != "true" ]]; then
+        wait_port gateway-route "${ROUTE_CLIENT}"
+      fi
       wait_port gateway-spot "${SPOT_CLIENT}"
       wait_port gateway-http "${HTTP_GATEWAY}"
       ;;
@@ -530,6 +533,14 @@ for role in "${ORDERED_SERVER_ROLES[@]}"; do
   wait_named_server "$role"
 done
 sleep 2
+if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
+  for role in gateway multi-node-a multi-node-b; do
+    if ! grep -Fq "[topology] role=${role} route_mesh=disabled" "${log_dir}/${role}.stdout.log"; then
+      echo "SM-F6 ${role} still registers RouteMesh" >&2
+      exit 1
+    fi
+  done
+fi
 
 run_client_mode() {
   local mode="$1"

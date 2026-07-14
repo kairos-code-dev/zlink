@@ -88,6 +88,8 @@ public final class Program {
                     .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                     .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
                     .setRoutingId(RoutingId.from(nodeRid));
+            } else {
+                System.out.println("[topology] role=" + nodeRid + " route_mesh=disabled");
             }
         };
     }

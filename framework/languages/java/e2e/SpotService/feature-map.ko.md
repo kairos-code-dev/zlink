@@ -136,7 +136,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   확인한다. Java play role은 channel handler와 spot node가 한 프로세스에 함께 있으므로 프로세스
   kill 대신 `ZLinkSpotManager.close`를 거치는 public 관리 표면으로 spot routing 사용/중단을
   검증한다.
-- `SM-F6`: multi-node role을 RouteMesh 없이 SpotMesh만 등록한 mode로 시작하고, source spot의
+- `SM-F6`: gateway와 multi-node 역할 두 개를 모두 RouteMesh 없이 SpotMesh만 등록한 mode로 시작한다.
+  runner는 세 역할의 `route_mesh=disabled` marker를 client 실행 전에 확인한다. source spot의
   public `SpotRefResolver` / `ZLinkSpotOutbound` 경로가 remote target spot request/send에 도달하는지
   확인한다. 같은 구성에서 public `ZLinkActorManager` / `ZLinkActorClient`로 만든 actor가 remote
   target spot에 join하고 target node evidence가 남는지도 확인한다.

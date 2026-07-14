@@ -13,8 +13,10 @@
 | TA-B3 route not connected | caller 서버의 `/request-ref`가 존재하지 않는 node RID를 가진 ref를 호출해 `ROUTE_NOT_CONNECTED`를 확인한다. 이후 정상 actor id 기반 호출이 성공하는지도 확인한다. |
 
 `run_e2e.sh`는 Redis, actor owner 서버, caller 서버, session gateway 두 개와 client runner를 모두
-실행한다. 각 gateway는 별도 Spot endpoint와 stream endpoint를 사용한다. 실행 환경에서 Docker를 쓸 수
-없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를 지정한다.
+실행한다. 각 gateway는 actor owner와 분리된 프로세스에서 별도 Spot endpoint와 stream endpoint를
+사용하며 RouteMesh를 등록하지 않는다. 따라서 원격 actor bind와 호출은 SpotMesh와 location store
+발견만으로 연결된다. 실행 환경에서 Docker를 쓸 수 없으면
+`ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를 지정한다.
 
 client runner는 caller 응답만 보지 않고 actor 서버의 `/evidence`도 읽는다. 이 확인은 성공 scenario가
 실제 actor handler까지 도달했는지, 그리고 TA-B1 missing actor 호출이 actor handler에 도달하지 않았는지

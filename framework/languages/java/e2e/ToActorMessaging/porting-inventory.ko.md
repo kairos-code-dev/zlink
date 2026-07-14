@@ -14,6 +14,7 @@
 | `Server/Actor` | `Server/Actor/src/main/java/.../actor/Program.java` | implemented |
 | `Server/Caller` | `Server/Caller/src/main/java/.../caller/Program.java` | implemented |
 | session gateway x2 | `Server/Session/src/main/java/.../session/Program.java`를 서로 다른 Spot·stream endpoint로 두 번 실행 | implemented |
+| route mesh 없음 × session/spot 분리 | actor owner와 두 session gateway를 별도 프로세스로 실행하고, 세 역할 모두 SpotMesh와 location store만 등록 | implemented |
 | `Client` | `Client/src/main/java/.../client/Program.java` | implemented: caller response와 actor evidence를 함께 검증 |
 | Track A TA-A1..TA-A4 | 실제 stream connector bind, bind 전후 push, 공개 API unbind, actor destroy를 Java client와 역할별 evidence로 검증 | implemented |
 | Track B TA-B1..TA-B3 | Java client failure/success assertions | partial: TA-B2/TA-B3는 public `ActorRef` 직접 호출과 actor evidence 부재를 검증한다. TA-B1은 E2E-JV-15의 runtime error-kind blocker로 open이다. |

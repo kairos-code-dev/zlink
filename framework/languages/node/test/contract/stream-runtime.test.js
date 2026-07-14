@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const {
@@ -1285,7 +1286,7 @@ test('session actor relay sends header and payload through managed stream Sessio
   assert.equal(socket.boundActorSends[1].sessionRid, 'backend-rid');
   assert.equal(socket.boundActorSends[1].actorId, 'actor-a');
   assert.equal(socket.boundActorSends[1].parts.length, 2);
-  const header = connector.ZlinkStreamHeaderCodec.decode(socket.boundActorSends[1].parts[0].bytes);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(socket.boundActorSends[1].parts[0].bytes);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
   assert.equal(header.name, 'Move');
   assert.equal(new TextDecoder().decode(socket.boundActorSends[1].parts[1].bytes), '{"x":1}');
@@ -1564,7 +1565,7 @@ test('runtime host relays bound remote actor send through route channel without 
   assert.equal(routeSends[0].packetName, '__zlink.actor.packet.relay');
   assert.equal(routeSends[0].request.packetName, '__zlink.actor.packet.relay');
   assert.equal(routeSends[0].request.actorId, 'actor-remote-send');
-  const header = connector.ZlinkStreamHeaderCodec.decode(Buffer.from(routeSends[0].request.header, 'base64'));
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(Buffer.from(routeSends[0].request.header, 'base64'));
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
   assert.equal(header.name, 'LeaveGameMsg');
   assert.deepEqual(JSON.parse(Buffer.from(routeSends[0].request.payload, 'base64').toString()), { roomId: 'room-1' });
@@ -1601,7 +1602,7 @@ test('runtime host completes local bound actor request without native SessionRel
         spotRid,
         actorId,
         returnResponse,
-        header: connector.ZlinkStreamHeaderCodec.decode(bytesOf(parts[0])),
+        header: protocolCodecs.ZlinkStreamHeaderCodec.decode(bytesOf(parts[0])),
         payload: JSON.parse(new TextDecoder().decode(bytesOf(parts[1])))
       });
       return { joined: true };
@@ -2509,9 +2510,9 @@ function binaryMessageFactory() {
 }
 
 function decodeFrame(bytes) {
-  const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(bytes);
   return {
-    header: connector.ZlinkStreamHeaderCodec.decode(frame.header),
+    header: protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header),
     payload: frame.payload
   };
 }

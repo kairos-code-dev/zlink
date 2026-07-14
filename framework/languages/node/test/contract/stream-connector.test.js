@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
 test('stream connector exposes dotnet-shaped enums factory and default options', () => {
   const instance = connector.zlinkStreamConnectorFactory.create({
@@ -29,26 +30,26 @@ test('stream header and frame codec follow dotnet binary layout', () => {
     metadata
   };
 
-  const encodedHeader = connector.ZlinkStreamHeaderCodec.encode(header);
+  const encodedHeader = protocolCodecs.ZlinkStreamHeaderCodec.encode(header);
   assert.deepEqual([...encodedHeader.slice(0, 4)], [0xf2, 2, 1, 3]);
   assert.equal(encodedHeader[12], 4);
 
-  const decodedHeader = connector.ZlinkStreamHeaderCodec.decode(encodedHeader);
+  const decodedHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(encodedHeader);
   assert.equal(decodedHeader.kind, connector.ZlinkStreamMessageKind.Request);
   assert.equal(decodedHeader.codec, connector.ZlinkStreamCodec.Json);
   assert.equal(decodedHeader.requestSeq, 7n);
   assert.equal(decodedHeader.name, 'Join');
   assert.equal(decodedHeader.metadata.get('trace'), 'abc');
 
-  const frame = connector.ZlinkStreamFrameCodec.encode(encodedHeader, new Uint8Array([1, 2, 3]));
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.encode(encodedHeader, new Uint8Array([1, 2, 3]));
   assert.equal((frame[0] << 8) | frame[1], encodedHeader.length);
   assert.equal(frame[5], 3);
-  const decodedFrame = connector.ZlinkStreamFrameCodec.decode(frame);
+  const decodedFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(frame);
   assert.deepEqual([...decodedFrame.payload], [1, 2, 3]);
 });
 
 test('stream connector rejects outbound metadata above the fixed 1024-byte limit', async () => {
-  assert.doesNotThrow(() => connector.ZlinkStreamHeaderCodec.encode({
+  assert.doesNotThrow(() => protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Send,
     codec: connector.ZlinkStreamCodec.Raw,
     flags: connector.ZlinkStreamHeaderFlags.HasMetadata,
@@ -95,8 +96,8 @@ test('stream connector send builder writes a dotnet-compatible send frame once',
     .submit();
 
   assert.equal(transportFactory.connection.frames.length, 1);
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
   assert.equal(header.name, 'Ready');
   assert.equal(header.metadata.get('trace'), 'send-1');
@@ -171,8 +172,8 @@ test('stream connector default compression uses LZ4 before transport write', asy
     payload: body
   }).packetName('Compressed').compress().submit();
 
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal((header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
   assert.deepEqual([...unpickleLz4(frame.payload)], [...body]);
 });
@@ -209,8 +210,8 @@ test('stream connector compressed sends write dotnet LZ4-pickled payloads', asyn
     payload: body
   }).packetName('Compressed').compress().submit();
 
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal((header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
   assert.deepEqual([...unpickleLz4(frame.payload)], [...body]);
 });
@@ -251,12 +252,12 @@ test('stream connector custom compression codec handles outbound and inbound pay
     payload: body
   }).packetName('CustomSend').compress().submit();
 
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   assert.equal(frame.payload[0], marker);
 
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -292,8 +293,8 @@ test('stream connector custom decompression result is checked against receive li
   });
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -325,15 +326,15 @@ test('stream connector request resolves when dispatch reads matching response fr
     .timeout(1000)
     .submitEncoded();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   assert.equal(instance.pendingDispatchCount, 1);
   assert.equal(requestHeader.kind, connector.ZlinkStreamMessageKind.Request);
   assert.equal(requestHeader.requestSeq, 1n);
 
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Response,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -365,10 +366,10 @@ test('stream connector rejects a response whose packet name differs from its req
     .packetName('Join')
     .timeout(1000)
     .submitEncoded();
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Raw,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -398,8 +399,8 @@ test('stream connector reports a response whose request sequence has no pending 
   });
 
   await instance.connect();
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Raw,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -429,10 +430,10 @@ test('stream connector decodes correlated Error JSON and validates its packet na
     .packetName('Join')
     .timeout(1000)
     .submitEncoded();
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Error,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -465,10 +466,10 @@ test('stream connector rejects malformed correlated Error JSON', async () => {
     .packetName('Join')
     .timeout(1000)
     .submitEncoded();
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Error,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -499,10 +500,10 @@ test('stream connector rejects a correlated Error whose packet name differs from
     .packetName('Join')
     .timeout(1000)
     .submitEncoded();
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Error,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -549,11 +550,11 @@ test('stream connector inbound observer sees response before pending request com
     .timeout(1000)
     .submitEncoded();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Response,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -595,8 +596,8 @@ test('stream connector inbound observer sees send and control frames', async () 
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.None,
@@ -607,8 +608,8 @@ test('stream connector inbound observer sees send and control frames', async () 
     )
   );
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Control,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.None,
@@ -645,8 +646,8 @@ test('stream connector inbound observer metadata snapshot cannot change handler 
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.HasMetadata,
@@ -750,11 +751,11 @@ test('stream connector inbound observer overflow reports observer-dropped and re
       .timeout(1000)
       .submitEncoded();
 
-    const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[index]);
-    const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+    const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[index]);
+    const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
     transportFactory.connection.pushFrame(
-      connector.ZlinkStreamFrameCodec.encode(
-        connector.ZlinkStreamHeaderCodec.encode({
+      protocolCodecs.ZlinkStreamFrameCodec.encode(
+        protocolCodecs.ZlinkStreamHeaderCodec.encode({
           kind: connector.ZlinkStreamMessageKind.Response,
           codec: connector.ZlinkStreamCodec.Json,
           flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -849,11 +850,11 @@ test('stream connector received-message cap does not block request response fram
     .packetName('Lookup')
     .timeout(1000)
     .submitEncoded();
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Response,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -892,12 +893,12 @@ test('stream connector request resolves compressed response payloads', async () 
     .timeout(1000)
     .submitEncoded();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   const compressedPayload = Uint8Array.from(Buffer.from('40551F41010047504141414141', 'hex'));
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Response,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq | connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -933,11 +934,11 @@ test('stream connector rejects compressed response payloads above receive limit'
     .timeout(1000)
     .submitEncoded();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Response,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq | connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -973,8 +974,8 @@ test('stream connector dispatch invokes typed handlers for send frames', async (
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasMetadata,
@@ -1009,8 +1010,8 @@ test('stream connector dispatch decompresses send frames for handlers', async ()
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -1040,8 +1041,8 @@ test('stream connector publishes decompression error for compressed frames when 
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
@@ -1071,7 +1072,7 @@ test('stream connector dispatch publishes decode errors for invalid header frame
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
       new TextEncoder().encode('invalid-header'),
       new TextEncoder().encode('payload')
     )
@@ -1096,8 +1097,8 @@ test('stream connector dispatch publishes uncorrelated remote error packets', as
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Error,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.None,
@@ -1129,8 +1130,8 @@ test('stream connector publishes remote errors whose request sequence has no pen
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Error,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -1163,8 +1164,8 @@ test('stream connector reports malformed Error JSON with no pending request as a
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Error,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -1198,8 +1199,8 @@ test('stream connector dispatch publishes user callback failures without throwin
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Send,
         codec: connector.ZlinkStreamCodec.Json,
         flags: connector.ZlinkStreamHeaderFlags.None,
@@ -1230,14 +1231,14 @@ test('stream connector rejects reserved packet names for user handlers', () => {
 
 test('DRAIN-018 session-closing exposes ServerDrain before disconnected callback', async () => {
   const payload = Uint8Array.from([1, 4, 0, 0]);
-  const header = connector.ZlinkStreamHeaderCodec.encode({
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Control,
     codec: connector.ZlinkStreamCodec.Raw,
     flags: connector.ZlinkStreamHeaderFlags.None,
     name: 'session-closing',
     metadata: connector.ZlinkStreamMetadataMap.empty
   });
-  const frame = connector.ZlinkStreamFrameCodec.encode(header, payload);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.encode(header, payload);
   let delivered = false;
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'ws://127.0.0.1:7998',
@@ -1274,8 +1275,8 @@ test('stream connector dispatch replies to heartbeat ping control frames with po
 
   await instance.connect();
   transportFactory.connection.pushFrame(
-    connector.ZlinkStreamFrameCodec.encode(
-      connector.ZlinkStreamHeaderCodec.encode({
+    protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
         kind: connector.ZlinkStreamMessageKind.Control,
         codec: connector.ZlinkStreamCodec.Raw,
         flags: connector.ZlinkStreamHeaderFlags.None,
@@ -1287,8 +1288,8 @@ test('stream connector dispatch replies to heartbeat ping control frames with po
   );
 
   await instance.dispatch();
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
   assert.equal(header.name, '$zlink.heartbeat.pong');
 });
@@ -1325,8 +1326,8 @@ test('stream connector heartbeat loop sends ping control frames after connect', 
   });
 
   await instance.connect();
-  const frame = connector.ZlinkStreamFrameCodec.decode(await transportFactory.connection.nextWrite());
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(await transportFactory.connection.nextWrite());
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
   assert.equal(header.name, '$zlink.heartbeat.ping');
   await instance.close();
@@ -1487,8 +1488,8 @@ test('stream connector concurrent close shares cleanup and remains closed when t
 test('stream connector pong write failure disconnects instead of reporting a decode error', async () => {
   const connection = new MemoryConnection();
   connection.write = async (frame) => {
-    const decoded = connector.ZlinkStreamFrameCodec.decode(frame);
-    const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
+    const decoded = protocolCodecs.ZlinkStreamFrameCodec.decode(frame);
+    const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decoded.header);
     if (header.name === '$zlink.heartbeat.pong') {
       throw new Error('pong write failed');
     }
@@ -1503,8 +1504,8 @@ test('stream connector pong write failure disconnects instead of reporting a dec
   const errors = [];
   instance.onErrorReceived((error) => errors.push(error.code));
   await instance.connect();
-  connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Control,
       codec: connector.ZlinkStreamCodec.Raw,
       flags: connector.ZlinkStreamHeaderFlags.None,
@@ -1596,8 +1597,8 @@ test('late successful dispatch from an old connection is discarded after reconne
   reads[0].reject(new Error('disconnect old connection'));
   await assert.rejects(first, /disconnect old connection|Stream dispatch failed/);
   await instance.connect();
-  reads[1].resolve(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  reads[1].resolve(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Raw,
       flags: connector.ZlinkStreamHeaderFlags.None,
@@ -1667,8 +1668,8 @@ test('stream connector heartbeat send failure closes transport and fails pending
   const connection = new MemoryConnection();
   const originalWrite = connection.write.bind(connection);
   connection.write = async (frame) => {
-    const decoded = connector.ZlinkStreamFrameCodec.decode(frame);
-    const header = connector.ZlinkStreamHeaderCodec.decode(decoded.header);
+    const decoded = protocolCodecs.ZlinkStreamFrameCodec.decode(frame);
+    const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decoded.header);
     if (header.kind === connector.ZlinkStreamMessageKind.Control) {
       throw new Error('injected heartbeat write failure');
     }
@@ -1728,8 +1729,8 @@ async function waitFor(predicate, timeoutMs) {
 }
 
 function sendFrame(name, payload) {
-  return connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  return protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Raw,
       flags: connector.ZlinkStreamHeaderFlags.None,

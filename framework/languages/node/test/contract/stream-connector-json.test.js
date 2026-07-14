@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const json = connector;
 
 test('stream connector json codec encodes and decodes json payloads', () => {
@@ -35,8 +36,8 @@ test('stream connector json codec writes json payload frame through connector', 
   await instance.connect();
   instance.send(new Ready()).metadata('trace', 'json-1').submit();
 
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.codec, connector.ZlinkStreamCodec.Json);
   assert.equal(header.name, 'Ready');
   assert.equal(header.metadata.get('trace'), 'json-1');
@@ -59,8 +60,8 @@ test('stream connector close drains submitted one-way send writes', async () => 
   transportFactory.connection.releaseWrites();
   await closing;
 
-  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.name, 'Ready');
   assert.equal(transportFactory.connection.closed, true);
 });
@@ -75,10 +76,10 @@ test('stream connector json codec decodes reply payload through connector', asyn
   await instance.connect();
   const pending = instance.request(new Join()).timeout(1000).submit();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -107,10 +108,10 @@ test('stream connector json codec decodes plain-object request replies through c
     .timeout(1000)
     .submit();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -138,8 +139,8 @@ test('stream connector json codec dispatches typed payloads through connector', 
   });
 
   await instance.connect();
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.None,
@@ -166,8 +167,8 @@ test('stream connector json codec wait resolves matching typed payload', async (
     .timeout(1000)
     .where((message) => message.payload.notice === 2)
     .submit();
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.None,
@@ -176,8 +177,8 @@ test('stream connector json codec wait resolves matching typed payload', async (
     }),
     new TextEncoder().encode('{"notice":1}')
   ));
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.None,
@@ -206,8 +207,8 @@ test('stream connector json codec wait uses connector request timeout by default
     .waitFor('Notice')
     .where((message) => message.payload.notice === 3)
     .submit();
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.None,

@@ -69,6 +69,14 @@ test('framework public root does not expose direct runtime start hosts', () => {
   assert.deepEqual(exposed, []);
 });
 
+test('stream connector public root does not expose raw frame or header codecs', () => {
+  const connector = require('../../packages/stream-connector/dist');
+  const exposed = ['ZlinkStreamFrameCodec', 'ZlinkStreamHeaderCodec']
+    .filter((name) => name in connector);
+
+  assert.deepEqual(exposed, []);
+});
+
 test('monitoring options expose only common-spec socket location and Spot sources', () => {
   const contracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),

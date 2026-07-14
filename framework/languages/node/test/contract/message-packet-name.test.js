@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const framework = require('../../packages/framework/dist/internal');
 
 test('class instance payload supplies packetName to channel send envelopes', async () => {
@@ -82,8 +83,8 @@ test('class instance payload supplies packetName to stream send calls', async ()
   context.client.send(new Ready(true)).submit();
 
   assert.equal(written.length, 1);
-  const frame = connector.ZlinkStreamFrameCodec.decode(written[0]);
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(written[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.name, 'Ready');
 });
 

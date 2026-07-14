@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
 test('DRAIN-001/012 drain is shared, changes readiness, and publishes terminal state', async () => {
   const events = [];
@@ -94,8 +95,8 @@ test('DRAIN-018 managed stream writes session-closing before disconnecting peer'
   }, 'session-1');
   await stream.closeForDrain();
   assert.deepEqual(order, ['send', 'disconnect']);
-  const decodedFrame = connector.ZlinkStreamFrameCodec.decode(frame);
-  const header = connector.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
+  const decodedFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(frame);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
   assert.equal(header.name, 'session-closing');
   assert.deepEqual([...decodedFrame.payload], [1, 4, 0, 12, ...Buffer.from('server drain')]);

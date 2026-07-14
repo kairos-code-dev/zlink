@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
 let browserEntry;
 
@@ -121,8 +122,8 @@ test('explicit browser flow propagation does not leak into unrelated outbound wo
       .submit();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const headers = connection.frames.map((frame) => browserEntry.ZlinkStreamHeaderCodec.decode(
-      browserEntry.ZlinkStreamFrameCodec.decode(frame).header
+    const headers = connection.frames.map((frame) => protocolCodecs.ZlinkStreamHeaderCodec.decode(
+      protocolCodecs.ZlinkStreamFrameCodec.decode(frame).header
     ));
     assert.equal(headers[0].flowId, inboundFlow.flowId);
     assert.equal(headers[0].flowOrigin, inboundFlow.flowOrigin);
@@ -197,8 +198,8 @@ class FakeWebSocket {
   }
 
   send(data) {
-    const frame = browserEntry.ZlinkStreamFrameCodec.decode(data);
-    const header = browserEntry.ZlinkStreamHeaderCodec.decode(frame.header);
+    const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(data);
+    const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
     const response = encodeFrame({
       kind: browserEntry.ZlinkStreamMessageKind.Response,
       codec: browserEntry.ZlinkStreamCodec.Raw,
@@ -261,8 +262,8 @@ class MemoryConnection {
 }
 
 function encodeFrame(header, payload) {
-  return browserEntry.ZlinkStreamFrameCodec.encode(
-    browserEntry.ZlinkStreamHeaderCodec.encode({
+  return protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       ...header,
       metadata: browserEntry.ZlinkStreamMetadataMap.empty
     }),

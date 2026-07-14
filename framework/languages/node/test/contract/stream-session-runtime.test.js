@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const backend = require('../../packages/framework/dist/runtime/backend');
@@ -47,7 +48,7 @@ test('ConnectionReady before the first packet keeps the native routing id for re
       socket,
       bindingRuntime,
       monitor: { onEvent(handler) { monitorHandler = handler; } },
-      headerDecoder: (header) => connector.ZlinkStreamHeaderCodec.decode(header.data()),
+      headerDecoder: (header) => protocolCodecs.ZlinkStreamHeaderCodec.decode(header.data()),
       sessionFactory(context) {
         return {
           context,
@@ -651,8 +652,8 @@ test('stream session runtime replies to dispatch errors without session onError 
 
   assert.deepEqual(errors, [['sink', 'dispatch failed']]);
   assert.equal(socket.sent.length, 1);
-  const frame = connector.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
   assert.equal(header.requestSeq, 7n);
   assert.equal(header.name, 'Move');
@@ -687,8 +688,8 @@ test('stream session runtime keeps request streams open after route disconnect e
 
   assert.deepEqual(socket.disconnects, []);
   assert.equal(socket.sent.length, 1);
-  const frame = connector.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
-  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
   assert.equal(header.requestSeq, 9n);
   assert.equal(header.name, 'YieldShutdownScenarioReq');
@@ -893,7 +894,7 @@ test('stream session node runtime receives framed packets from public binding st
     runtime = new framework.ZLinkStreamSessionNodeRuntime({
       socket,
       bindingRuntime,
-      headerDecoder: (header) => connector.ZlinkStreamHeaderCodec.decode(header.data()),
+      headerDecoder: (header) => protocolCodecs.ZlinkStreamHeaderCodec.decode(header.data()),
       sessionFactory(sessionContext) {
         return {
           context: sessionContext,
@@ -917,7 +918,7 @@ test('stream session node runtime receives framed packets from public binding st
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');
     const response = once(client, 'data').then(([chunk]) => chunk);
-    const requestHeader = connector.ZlinkStreamHeaderCodec.encode({
+    const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Request,
       codec: connector.ZlinkStreamCodec.Json,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -925,7 +926,7 @@ test('stream session node runtime receives framed packets from public binding st
       name: 'NativeHeader',
       metadata: connector.ZlinkStreamMetadataMap.empty
     });
-    client.write(connector.ZlinkStreamFrameCodec.encode(
+    client.write(protocolCodecs.ZlinkStreamFrameCodec.encode(
       requestHeader,
       new TextEncoder().encode('"NativePayload"')
     ));
@@ -936,10 +937,10 @@ test('stream session node runtime receives framed packets from public binding st
     assert.equal(typeof received.sessionId, 'string');
     assert.equal(received.sessionId.length > 0, true);
     assert.equal(received.routingId, received.sessionId);
-    const responseFrame = connector.ZlinkStreamFrameCodec.decode(
+    const responseFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(
       await withTimeout(response, 1000, 'native stream session reply')
     );
-    const responseHeader = connector.ZlinkStreamHeaderCodec.decode(responseFrame.header);
+    const responseHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(responseFrame.header);
     assert.equal(responseHeader.kind, connector.ZlinkStreamMessageKind.Response);
     assert.equal(responseHeader.requestSeq, 7n);
     assert.equal(new TextDecoder().decode(responseFrame.payload), '"NativeReply"');

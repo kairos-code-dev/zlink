@@ -8,6 +8,7 @@ const { pathToFileURL } = require('node:url');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
 const protobuf = require('../../packages/framework-codec-protobuf/dist');
 const protobufFramework = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
@@ -35,10 +36,10 @@ test('stream connector messagepack codec decodes replies through connector', asy
   await instance.connect();
   const pending = instance.request(new Join()).timeout(1000).submit();
 
-  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.MessagePack,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -80,8 +81,8 @@ test('stream connector protobuf codec dispatches typed payloads through connecto
   });
 
   await instance.connect();
-  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
-    connector.ZlinkStreamHeaderCodec.encode({
+  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+    protocolCodecs.ZlinkStreamHeaderCodec.encode({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Protobuf,
       flags: connector.ZlinkStreamHeaderFlags.None,

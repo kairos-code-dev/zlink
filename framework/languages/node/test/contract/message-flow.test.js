@@ -17,6 +17,7 @@ const { ZLinkStreamFrameMessageFactory } = require('../../packages/framework/dis
 const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
 const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const connector = require('../../packages/stream-connector/dist');
+const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
 const {
   ZLinkMessageFlowTracer,
@@ -332,7 +333,7 @@ test('MFLOW-010 stream correlation_id round-trips byte-identically across framew
   const requestSeq = 7n;
   const name = 'EchoRequest';
 
-  const connectorBytes = connector.ZlinkStreamHeaderCodec.encode({
+  const connectorBytes = protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Request,
     codec: connector.ZlinkStreamCodec.Json,
     flags: connector.ZlinkStreamHeaderFlags.None,
@@ -358,7 +359,7 @@ test('MFLOW-010 stream correlation_id round-trips byte-identically across framew
   });
   assert.deepEqual(Buffer.from(frameworkBytes), Buffer.from(connectorBytes));
 
-  const connectorDecoded = connector.ZlinkStreamHeaderCodec.decode(frameworkBytes);
+  const connectorDecoded = protocolCodecs.ZlinkStreamHeaderCodec.decode(frameworkBytes);
   assert.equal(connectorDecoded.correlationId, correlationId);
 
   assert.notEqual((frameworkDecoded.flags & 0x08), 0, 'HasCorrelationId flag must be set');
@@ -368,7 +369,7 @@ test('MFLOW-010b correlation id survives alongside metadata (no offset overlap)'
   const correlationId = 'deadbeef';
   const metadata = connector.ZlinkStreamMetadataMap.empty.withMany([['tenant', 'acme'], ['trace', 'on']]);
 
-  const bytes = connector.ZlinkStreamHeaderCodec.encode({
+  const bytes = protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Request,
     codec: connector.ZlinkStreamCodec.Json,
     flags: connector.ZlinkStreamHeaderFlags.None,
@@ -377,7 +378,7 @@ test('MFLOW-010b correlation id survives alongside metadata (no offset overlap)'
     metadata,
     correlationId
   });
-  const roundTripped = connector.ZlinkStreamHeaderCodec.decode(bytes);
+  const roundTripped = protocolCodecs.ZlinkStreamHeaderCodec.decode(bytes);
   assert.equal(roundTripped.correlationId, correlationId);
   assert.equal(roundTripped.metadata.get('tenant'), 'acme');
   assert.equal(roundTripped.metadata.get('trace'), 'on');
@@ -401,8 +402,8 @@ test('MFLOW-010c stream frame prefix and payload round-trip across framework and
   const payload = Buffer.from(JSON.stringify({ ok: true }));
 
   const frameworkFrame = streamProtocol.encodeStreamFrame(header, payload);
-  const connectorFrame = connector.ZlinkStreamFrameCodec.decode(frameworkFrame);
-  const connectorHeader = connector.ZlinkStreamHeaderCodec.decode(connectorFrame.header);
+  const connectorFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(frameworkFrame);
+  const connectorHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(connectorFrame.header);
 
   assert.equal(connectorHeader.name, 'FullFrame');
   assert.equal(connectorHeader.requestSeq, 11n);
@@ -410,7 +411,7 @@ test('MFLOW-010c stream frame prefix and payload round-trip across framework and
   assert.equal(connectorHeader.correlationId, 'corr-frame');
   assert.deepEqual(Buffer.from(connectorFrame.payload), payload);
   assert.deepEqual(
-    Buffer.from(connector.ZlinkStreamFrameCodec.encode(connectorFrame.header, connectorFrame.payload)),
+    Buffer.from(protocolCodecs.ZlinkStreamFrameCodec.encode(connectorFrame.header, connectorFrame.payload)),
     Buffer.from(frameworkFrame)
   );
 });
@@ -423,13 +424,13 @@ test('MFLOW-010d framework and connector reject duplicate stream metadata keys',
     /metadata key is duplicated/i
   );
   assert.throws(
-    () => connector.ZlinkStreamHeaderCodec.decode(duplicateHeader),
+    () => protocolCodecs.ZlinkStreamHeaderCodec.decode(duplicateHeader),
     /Duplicate metadata key/i
   );
 });
 
 test('MFLOW-011 control packets reject a correlation id', () => {
-  assert.throws(() => connector.ZlinkStreamHeaderCodec.encode({
+  assert.throws(() => protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Control,
     codec: connector.ZlinkStreamCodec.Raw,
     flags: connector.ZlinkStreamHeaderFlags.None,
@@ -442,7 +443,7 @@ test('MFLOW-011 control packets reject a correlation id', () => {
 
 test('MFLOW-EXT-005/006 stream flow fields use mandatory marker and reject old or unknown formats', () => {
   const flowId = '018f2b63-9d4a-7abc-8def-0123456789ab';
-  const encoded = connector.ZlinkStreamHeaderCodec.encode({
+  const encoded = protocolCodecs.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Send,
     codec: connector.ZlinkStreamCodec.Json,
     flags: connector.ZlinkStreamHeaderFlags.None,
@@ -457,10 +458,10 @@ test('MFLOW-EXT-005/006 stream flow fields use mandatory marker and reject old o
   assert.equal(decoded.flowId, flowId);
   assert.equal(decoded.flowOrigin, 'Application');
 
-  assert.throws(() => connector.ZlinkStreamHeaderCodec.decode(encoded.subarray(1)), /format marker/i);
+  assert.throws(() => protocolCodecs.ZlinkStreamHeaderCodec.decode(encoded.subarray(1)), /format marker/i);
   const unknownFlag = Uint8Array.from(encoded);
   unknownFlag[3] |= 0x20;
-  assert.throws(() => connector.ZlinkStreamHeaderCodec.decode(unknownFlag), /unknown mandatory|unknown stream header flag/i);
+  assert.throws(() => protocolCodecs.ZlinkStreamHeaderCodec.decode(unknownFlag), /unknown mandatory|unknown stream header flag/i);
 });
 
 function duplicateMetadataHeaderBytes() {

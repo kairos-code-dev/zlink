@@ -238,6 +238,48 @@ test('drain actor handoff delegates target choice to the location placement owne
   assert.deepEqual(joins, ['node-target']);
 });
 
+test('drain hands off actors and Spots before closing existing stream sessions', async () => {
+  class PlayerActor {}
+  const order = [];
+  const registration = framework.createFrameworkRegistration({
+    spotNodes: [{
+      name: 'play',
+      router: { bind: 'tcp://127.0.0.1:1' },
+      actorFactories: { Player: PlayerActor }
+    }]
+  });
+  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  host.locationOwner.createRefResolver = () => ({
+    async selectActorPlacement() {
+      order.push('actor-placement');
+      return 'node-target';
+    }
+  });
+  host.setActorManager({
+    snapshotStates: () => [drainActorState(() => {
+      order.push('actor-handoff');
+      return { status: 'accepted' };
+    })]
+  });
+  host.setSpotManager({
+    retainsActorDuringDrain() { return false; },
+    async drainForShutdown() { order.push('spot-drain'); }
+  });
+  host.streamRuntime = {
+    async notifyServerDrain() { order.push('session-close'); }
+  };
+  host.stop = async () => { order.push('runtime-stop'); };
+
+  assert.deepEqual(await host.drain(1000), { kind: 'drained' });
+  assert.deepEqual(order, [
+    'actor-placement',
+    'actor-handoff',
+    'spot-drain',
+    'session-close',
+    'runtime-stop'
+  ]);
+});
+
 test('drain retries placement failures until the shared deadline instead of reporting marker failure', async () => {
   class PlayerActor {}
   const registration = framework.createFrameworkRegistration({

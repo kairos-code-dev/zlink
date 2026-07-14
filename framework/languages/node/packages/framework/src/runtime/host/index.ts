@@ -484,7 +484,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       throw new ZLinkDrainingStatePublishError(error);
     }
     await this.publishDrainState('Draining');
-    await this.streamRuntime?.notifyServerDrain();
     const handedOffActorIds = new Set<string>();
     while (!await this.handoffActorsForDrain(handedOffActorIds, signal)) {
       await waitForDrainRetry(
@@ -494,6 +493,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       );
     }
     await this.drainSpots(signal);
+    await this.streamRuntime?.notifyServerDrain();
     await this.stop();
   }
 

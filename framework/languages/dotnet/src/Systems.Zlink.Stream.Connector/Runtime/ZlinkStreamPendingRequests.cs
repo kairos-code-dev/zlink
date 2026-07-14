@@ -29,14 +29,8 @@ internal sealed class ZlinkStreamPendingRequests
             || !_pending.TryRemove(requestSeq.Value, out var pending))
             return false;
 
-        if (!string.Equals(pending.PacketName, header.Name, StringComparison.Ordinal))
-        {
-            pending.Fail(new ZlinkStreamError(
-                ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Response packet name does not match the pending request."));
-            return true;
-        }
-
+        // Stream connector spec 5.2: a pending request is matched by request_seq alone. The reply's
+        // packet name is informational, so a differing name must not drop an otherwise valid reply.
         pending.Complete(new ZlinkStreamPendingCompletion(
             header,
             frame,

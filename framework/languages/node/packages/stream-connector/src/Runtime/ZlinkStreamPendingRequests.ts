@@ -59,30 +59,24 @@ export class ZlinkStreamPendingRequests {
     return { requestSeq, promise };
   }
 
-  resolve(requestSeq: bigint, packetName: string, value: ZlinkStreamEncodedPayload): boolean {
+  /* stream connector spec §5.2: a pending request is matched by request_seq alone. The reply's
+   * packet name is informational, so a differing name must not drop an otherwise valid reply. */
+  resolve(requestSeq: bigint, _packetName: string, value: ZlinkStreamEncodedPayload): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;
     }
     this.active.delete(requestSeq);
-    if (pending.packetName !== packetName) {
-      pending.reject(packetNameMismatch(pending.packetName, packetName));
-      return true;
-    }
     pending.resolve(value);
     return true;
   }
 
-  reject(requestSeq: bigint, packetName: string, error: ZlinkStreamError): boolean {
+  reject(requestSeq: bigint, _packetName: string, error: ZlinkStreamError): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;
     }
     this.active.delete(requestSeq);
-    if (pending.packetName !== packetName) {
-      pending.reject(packetNameMismatch(pending.packetName, packetName));
-      return true;
-    }
     pending.reject(error);
     return true;
   }
@@ -102,11 +96,4 @@ export class ZlinkStreamPendingRequests {
       pending.reject(error);
     }
   }
-}
-
-function packetNameMismatch(expected: string, actual: string): ZlinkStreamError {
-  return {
-    code: ZlinkStreamErrorCode.FrameDecodeFailed,
-    message: `Reply packet name '${actual}' does not match request packet name '${expected}'.`
-  };
 }

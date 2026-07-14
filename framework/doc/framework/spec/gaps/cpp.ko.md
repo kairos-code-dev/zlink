@@ -398,7 +398,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 ### 체크리스트 — 샘플
 
 - [ ] **SMP-CP-01** (결함) — SupportChat의 **릴리스 게이트가 위조**돼 있다. framework를 거치지 않는 in-memory 도메인 단언이 `verified`를 찍는다
-- [ ] **SMP-CP-02** (결함) — Bingo에서 **2번째 참가자가 `GameStartedNotify`를 영원히 못 받는다**
+- [x] **SMP-CP-02** (결함) — Bingo에서 **2번째 참가자가 `GameStartedNotify`를 영원히 못 받는다**
+  - 근거: 수정 전 두 번째 client 대기가 `client2 game started wait failed`로 실패했다. joining actor를 기존 참가자 broadcast에서 제외한 뒤 완료된 join lifecycle의 bound session으로 보상하고, 원격 commit이 callback 전에 gateway ref를 갱신하도록 수정한 뒤 spot runtime 회귀 테스트와 `./run_sample.sh`가 통과했다.
 - [ ] **SMP-CP-03** (결함) — TicTacToe가 **스펙 근거 0인 public API**(`add_spot_resolver`)를 샘플에서 쓴다
 - [ ] **SMP-CP-04** (결함) — TicTacToe 발행 메시지에 `Msg` 접미어(`PlayerWinMilestoneMsg`)
 - [ ] **SMP-CP-05** (결함) — TicTacToe가 문서에 없는 push(`GameEndedNotify`)를 추가로 쏜다
@@ -436,7 +437,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 **아래는 §Client 검증 흐름(릴리스 게이트)을 번호 단계별로 걸어 나온 것이다.
 게이트가 약해서 위의 버그들이 통과해 왔다.**
 
-- [ ] **SMP-CP-31** (결함) — **Bingo 게이트가 SMP-CP-02를 구조적으로 잡을 수 없다.** client1만 start를 기다리고 `status`도 안 본다
+- [x] **SMP-CP-31** (결함) — **Bingo 게이트가 SMP-CP-02를 구조적으로 잡을 수 없다.** client1만 start를 기다리고 `status`도 안 본다
+  - 근거: 두 player client 모두 typed wait로 start push를 받고 각 state의 room id와 `Running` 상태를 단언하게 했다. 강화된 게이트가 수정 전 client2 누락을 검출했고 수정 후 `./run_sample.sh`가 `bingo full client/server self-check completed`로 통과했다.
 - [ ] **SMP-CP-32** (결함) — **GameQuest 멱등성 단언이 `>=`라 실패할 수 없다.** 중복 증가해도 통과한다
 - [ ] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
 - [ ] **SMP-CP-34** (결함) — **Bingo 게이트 5·7·8·9·11단계가 문서보다 약하다**

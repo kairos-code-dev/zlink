@@ -411,6 +411,11 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
             throw std::runtime_error ("joined-failed");
         }
         joined_state = actor.state;
+        if (push_on_joined) {
+            actor.context.bound_session ()
+              .send (zlink::framework::message_t::from (std::string ("joined")))
+              .submit ();
+        }
         if (lifecycle_probe) {
             lifecycle_probe->record ("joined");
         }
@@ -491,6 +496,7 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
     bool joined_entered = false;
     bool fail_leave = false;
     bool fail_joined = false;
+    bool push_on_joined = false;
     std::shared_ptr<stateful_lifecycle_probe_t> lifecycle_probe;
     std::function<bool ()> joined_reentry_probe;
     bool joined_reentry_ok = false;
@@ -2262,13 +2268,26 @@ int main ()
     }
     auto stateful_left =
       stateful_source_runtime.leave_actor_for_remote_transfer (stateful_join.value ().actor);
+    zlink::framework::detail::actor_gateway_runtime_t stateful_target_gateway;
+    stateful_target_gateway.bind_serializers (manual_serializers);
+    bool joined_push_received = false;
+    stateful_target_gateway.bind_session_sink (
+      stateful_join.value ().actor,
+      [&joined_push_received] (std::string, const zlink::message_t &) {
+          joined_push_received = true;
+          return zlink::framework::task_t<void> (
+            zlink::framework::result_t<void>::success ());
+      });
+    stateful_target_spot->push_on_joined = true;
     stateful_target_spot->block_next_joined ();
     auto stateful_commit_future = std::async (
       std::launch::async, [&stateful_target_runtime, &stateful_join, &stateful_target,
+                           &stateful_target_gateway,
                            state = std::move (stateful_transfer.value ().state)] () mutable {
           return stateful_target_runtime.commit_remote_actor_to_spot (
             "stateful-transfer-1", stateful_join.value ().actor, stateful_target.spot_rid,
-            std::move (state));
+            std::move (state),
+            stateful_target_gateway.actor_context (stateful_join.value ().actor));
       });
     if (!stateful_left || !stateful_admitted || !stateful_admitted.value ().accepted
         || !stateful_target_spot->wait_until_joined (std::chrono::seconds (1))) {
@@ -2300,6 +2319,9 @@ int main ()
     auto stateful_committed = stateful_commit_future.get ();
     if (!stateful_committed) {
         return 157;
+    }
+    if (!joined_push_received) {
+        return 204;
     }
     stateful_location = stateful_location_store
                           .resolve_actor (zlink::framework::actor_location_key_t{"stateful-actor"})

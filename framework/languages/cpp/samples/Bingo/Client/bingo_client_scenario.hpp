@@ -104,6 +104,8 @@ class bingo_client_scenario_t
                 .to_future ("client1 joined notify wait failed");
             auto client1_started_future = client1.wait_for<game_started_notify_t> ().to_future (
               "client1 game started wait failed");
+            auto client2_started_future = client2.wait_for<game_started_notify_t> ().to_future (
+              "client2 game started wait failed");
             const auto match_request = match_bingo_req_t{bingo_sample_modes_t::two_player};
             auto client2_match =
               co_await client2.request (match_request).async<match_bingo_res_t> ();
@@ -113,6 +115,7 @@ class bingo_client_scenario_t
             ensure (client2_auth.actor_node_rid != client2_match.room_owner_node_rid);
             auto client1_joined = client1_joined_future.get ();
             auto client1_started = client1_started_future.get ();
+            auto client2_started = client2_started_future.get ();
             auto client2_self_join =
               client2.wait_for<player_joined_notify_t> ()
                 .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
@@ -137,6 +140,9 @@ class bingo_client_scenario_t
 
             trace ("wait game started");
             ensure (client1_started.state.room_id == room_id);
+            ensure (client1_started.state.status == bingo_room_status_t::running);
+            ensure (client2_started.state.room_id == room_id);
+            ensure (client2_started.state.status == bingo_room_status_t::running);
             ensure (client2_match.state.room_id == room_id);
 
             bool player_stop_observing_rejected = false;

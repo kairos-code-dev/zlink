@@ -133,6 +133,7 @@ class bingo_room_spot_t : public spot_t
         if (state.players.size () == 2) {
             game_started_notify_t started{state};
             send_to_players (started, actor.actor.actor_id);
+            actor.push (started);
         }
     }
 

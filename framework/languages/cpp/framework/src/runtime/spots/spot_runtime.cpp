@@ -4,6 +4,7 @@
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
@@ -3144,6 +3145,14 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     try {
         if (admission->second.on_actor_joined
             && !target.run_serial_sync ("spot-actor-transfer-joined", [&] {
+                   const auto updated =
+                     actor_gateway_runtime_t (actor_context._state).update_actor_ref (committed);
+                   if (!updated) {
+                       throw framework_exception_t (
+                         updated.error_kind (),
+                         updated.error () ? updated.error ()->what ()
+                                          : "target actor gateway ref update failed");
+                   }
                    admission->second.on_actor_joined (target.spot_instance.get (), actor.get ());
                })) {
             node_lock.lock ();

@@ -310,6 +310,15 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - 공통 문서의 메시지 계약은 언어 중립 schema로 읽는다. 언어별 샘플은 record,
   class, struct, interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드와
   의미를 구현한다.
+- **enum·상태 값은 wire에서 이름 있는 문자열로 직렬화한다. 정수 ordinal로 보내지 않는다.**
+  이름 있는 값(`Assigned`, `Delivered`, `Won`, `Draw` 등)을 정의한 필드는 그 이름 그대로
+  wire를 탄다. 언어의 enum 타입이 기본적으로 정수로 직렬화되면(예: C# enum, 문자열
+  컨버터 미등록) **그 언어에서 명시적으로 문자열 인코딩을 등록해야 한다.** 정수 ordinal은
+  값 하나가 중간에 추가되면 순서가 밀려 **다른 언어 소비자를 조용히 깨뜨리고**, 로그에서
+  읽을 수도 없다. 이 규칙은 모든 샘플·모든 언어에 적용한다.
+- **nullable 필드는 값이 없으면 wire에서 키를 생략하거나 `null`을 싣되, 그 처리를 언어 간에
+  맞춘다.** 한 언어가 `null`을 싣는데 다른 언어의 디코더가 "키 없음"만 처리하면 교차 언어에서
+  터진다. 문서가 `Field?`로 표시한 것만 nullable이고, 표시 없는 필드는 항상 실린다.
 - channel, route, stream, actor, Spot 경계를 넘는 wire message는 이름 있는 계약으로
   둔다. Python `dict` 나 Node.js object literal 처럼 동적 객체를 쉽게 만들 수 있는
   언어에서도 호출 지점에 `{ ... }` 를 바로 쓰거나 packet name 문자열을 흩어 놓지

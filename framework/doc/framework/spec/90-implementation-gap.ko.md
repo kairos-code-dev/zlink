@@ -599,6 +599,49 @@ C++ 샘플 감사에서 나왔지만 **C++만의 문제가 아니다.** `.NET` �
 그 다음 각 언어 샘플에서 SMP-X1을 채운다. 순서를 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어
 **샘플이 보여 주려던 대비 자체가 사라진다.** SMP-X2·SMP-X3는 `yield`와 무관하므로 독립적으로 닫는다.
 
+### 13.4 계약 결정 (2026-07-15 확정) — 각 언어는 이 결정대로 구현한다
+
+**아래 네 결정은 확정됐다. 각 언어 에이전트는 재론하지 말고 그대로 구현한다.**
+근거는 POSD(호출자 복잡성·정보 은닉·거짓 계약 금지)와 공통 spec이다. **"다른 언어에 있으니
+그게 맞다"는 근거가 아니다** — 아래 여러 항목에서 기준선인 `.NET`이 틀린 쪽이었다.
+
+| 결정 | 확정 내용 | 각 언어가 할 일 |
+|------|-----------|-----------------|
+| **D1. DeliveryStatus 표현** (SMP-X4 일부) | **wire에 이름 있는 문자열**(`"Assigned"` 등). 정수 ordinal 금지 — 값 추가 시 순서가 밀려 교차 언어를 조용히 깬다 | `.NET`: C# enum에 문자열 컨버터 등록. **나머지 언어는 이미 맞음** |
+| **D2. `BindCourierSessionRes.Actor`** (SMP-X4 일부) | **framework의 `ActorRefSnapshot` 전체**(`nodeRid`+`actorId`+`generation`). 샘플이 자기 축약 타입을 정의하지 않는다 | `.NET`: `{nodeRid}`만 담은 `CourierActorBindingSnapshot`을 제거하고 framework 타입 사용. 나머지 확인 |
+| **D3. `DeliveryStatusChangedReq.CustomerId`** (SMP-X4 일부) | **계약에 `CustomerId`를 추가**한다(문서 수정 완료, deliverydispatch:326). 이 필드가 없어서 C++이 `"customer-1"`을 하드코딩한 버그(SMP-CP-55)가 났다 | 모든 언어: `DeliveryStatusChangedReq`에 `CustomerId` 추가, Tracking이 그걸로 고객 actor를 찾게 한다. 하드코딩 제거 |
+| **D4. GameQuest wire** (SMP-X5) | **전부 문서(gamequest.ko.md)대로.** `QuestProgress.Version: int64` **유지**, 필드 이름 **`LastSourceEventId`**, `GameplayMsg`는 **one-way** | `.NET`: `Version` 추가, `LastEventId`→`LastSourceEventId`, `ApplyGameplayEventReq`(request)→one-way `GameplayMsg`. C++: envelope wrapper를 문서의 flat `GameplayMsg`로. 계약에 없는 request 7종·event 이름 drift 정리 |
+| **D5. 원격 actor 생성·join** (E2E-DN-03 / Config 10) | **새 public API를 만들지 않는다.** 원격 노드에서 actor를 생성·join하는 기능은 **의도적으로 제거됐다** — 모호한 소유권 상황을 막으려고 **actor 생성·join 책임을 그 actor를 소유하는 노드에 고정**했다. transfer는 기존 drain/handoff 계약([54](server/54-graceful-drain-handoff.ko.md))으로만 표현한다 | 각 언어: Config 10에서 "분리된 transfer controller가 원격 actor를 spawn"하는 형태를 **만들지 않는다.** e2e 기대치를 "노드가 자기 actor를 소유·생성한다"에 맞춘다. private API·raw frame 우회 금지 |
+| **D6. 바인딩 옵션** (IMP-DN-14/16 등) | **바인딩 라이브러리에 빠진 공개 옵션 API를 추가**한다(제거 아님). framework가 노출한 옵션을 바인딩이 무시하면 **거짓 계약**(설정했는데 no-op)이라 없느니만 못하다. **스펙 근거가 없는 옵션만** framework에서 제거 | [§13.5 바인딩 갱신 절차](#135-바인딩-옵션-추가-절차-각-언어-공통)를 따른다 |
+
+**D1~D4는 wire 계약이라 [§0.8](../gaps/cpp.ko.md#08-이-문서의-경계--네가-혼자-결정하면-안-되는-것)의 1단계였지만,
+이제 결정이 내려졌으므로 각 언어의 2단계(구현) 작업이다.** 각 언어 gap 문서의 해당 행에서 이 결정을
+참조해 닫는다.
+
+### 13.5 바인딩 옵션 추가 절차 (각 언어 공통)
+
+**framework가 공개한 옵션을 바인딩이 노출하지 않아 앱이 설정하지 못하는 갭**(예: `.NET`의
+IMP-DN-14 `HandshakeInterval`, IMP-DN-16 SpotNode publisher linger·subscriber receive timeout)은
+아래 순서로 닫는다. framework 코드에서 우회하지 않는다.
+
+```
+1. bindings/<lang>/ 의 공개 표면에 빠진 옵션 API를 추가한다.
+   — 스펙에 근거가 있는 옵션만. 근거 없는 옵션은 추가하지 말고 framework 계약에서 제거한다.
+   — getter만 있고 실제로 안 먹는 "거짓 계약"을 만들지 않는다. 설정하면 실제로 동작해야 한다.
+2. bindings/<lang> 패키지 버전을 올린다(patch/minor).
+3. 로컬 패키지 저장소에 배포한다.
+   — dotnet: 로컬 NuGet feed에 nupkg push
+   — node:   npm pack → 로컬 tarball, 또는 로컬 registry
+   — java/kotlin: mavenLocal() 에 publishToMavenLocal
+   — cpp:   ODR 특성상 헤더/타깃 참조 갱신(별도 패키지 배포 없음)
+4. framework/languages/<lang> 의 바인딩 참조를 새 버전으로 올린다.
+5. 그 옵션을 실제로 설정하고 동작이 바뀌는지 확인하는 테스트를 추가한다
+   — 설정 전/후로 소켓·spot 동작이 달라지는 것을 관측한다. getter 값만 확인하지 않는다.
+6. 갭 문서 해당 행을 [x]로 닫고 버전·커밋을 근거로 남긴다.
+```
+
+이 절차는 이전에 http-client를 5언어에 통일할 때 쓴 것과 같은 방식이다(로컬 배포 → 소비자 상향).
+
 ## 14. 문서 소유권 중복 (스펙 트리 정리 후 잔여)
 
 spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 문서가 소유하는** 자리다. 계약이

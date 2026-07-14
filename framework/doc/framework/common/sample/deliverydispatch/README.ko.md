@@ -323,7 +323,7 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
-| `DeliveryStatusChangedReq` | DispatchWorker module -> Tracking server | `DeliveryId`, `Status`, `CourierId`, `OccurredAt` | 상태 event를 Tracking 서버에 기록한다. |
+| `DeliveryStatusChangedReq` | DispatchWorker module -> Tracking server | `DeliveryId`, `CustomerId`, `Status`, `CourierId`, `OccurredAt` | 상태 event를 Tracking 서버에 기록한다. `CustomerId`는 Tracking이 `DeliveryStatusUpdatedMsg`를 **어느 고객 actor에게** 보낼지 정하는 값이다 — 이 필드가 없으면 Tracking이 고객을 out-of-band로 추측해야 하고(하드코딩), 그건 계약 위반이다. |
 | `DeliveryStatusChangedRes` | Tracking server -> DispatchWorker module | `DeliveryId`, `Status` | Tracking 서버가 상태 event를 처리했음을 반환한다. |
 | `DeliveryStatusUpdatedMsg` | Tracking server -> CustomerEntrySpot module | `DeliveryId`, `CustomerId`, `Status`, `CourierId`, `OccurredAt` | Tracking 서버가 기록한 상태 변경을 고객 actor에게 전달한다(응답 없는 one-way send). |
 | `FindCustomerActorReq` | CustomerGateway server -> actor directory/discovery | `CustomerId` | customer id에 연결된 기존 고객 actor 위치가 있는지 찾는다. |

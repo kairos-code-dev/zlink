@@ -44,7 +44,7 @@ snapshot을 함께 갱신해야 한다.
 | server | `52-message-flow-tracing.ko.md` | `0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108` |
 | server | `53-flow-correlation.ko.md` | `077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c` |
 | server | `54-graceful-drain-handoff.ko.md` | `822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f` |
-| . | `90-implementation-gap.ko.md` | `17a3a3181fa401190aba904c6ab7d075c8bf1599e1833835eb9825abe6fbc637` |
+| . | `90-implementation-gap.ko.md` | `47f1f8bb19f76cfbeb82da3ac52707818b6caf6928c9427e63abf53c541a222c` |
 | . | `README.ko.md` | `8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595` |
 | server/languages/node | `01-system-structure.ko.md` | `5a9134273d25fb8f8ca7ef503e7a4dc06139852cd0e559564c06f93cda55231a` |
 | server/languages/node | `02-handler-interfaces.ko.md` | `705be40bf9f33e803aa775e42dd7a5e9ab7fc8b7df079ef807d04bd3b6179447` |

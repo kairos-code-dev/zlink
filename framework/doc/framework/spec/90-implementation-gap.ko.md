@@ -727,30 +727,37 @@ C++ 감사가 더 깊이 팠더니 이게 나왔다. **버그와 그것을 놓�
 
 ### 15.5 계약 설계 결함 — 타입이 실수를 막아 주지 못한다
 
-**샘플 감사에서 나왔지만 샘플의 문제가 아니다. C++ framework 계약 자체의 문제다.**
+**기준선은 제대로 했다. 세 언어가 그 안전장치를 풀었고, 그중 하나가 실제로 버그를 냈다.**
 
-```cpp
-template <typename TReply> struct actor_join_accepted_t { actor_ref_t actor; TReply reply; };
-template <typename TReply> struct actor_join_rejected_t {                    TReply reply; };
-```
+actor join의 결과는 **수락 아니면 거절**이다. 계약([23 §3.3](server/23-spot-actor.ko.md))상 거절된
+join의 reply를 성공 응답으로 되돌려 주면 안 된다. **그 규칙을 타입으로 강제할 수 있다** —
+거절 대안에서 reply를 꺼내는 코드가 **컴파일되지 않게** 하면 된다.
 
-**두 대안이 모두 `.reply`를 갖는다.** 그래서
+| 언어 | 타입 모양 | 분기 없이 reply 접근이 컴파일되나 | 샘플 |
+|------|-----------|-----------------------------------|------|
+| **`.NET`** | `abstract record`가 **`Reply`를 노출하지 않는다.** `Accepted`/`Rejected`만 갖는다 | **아니오** — 패턴 매칭이 강제된다 | 안전 |
+| Java | `sealed interface`가 **`TReply reply()`를 선언한다** | **예** — `result.reply()`가 그냥 컴파일된다 | 샘플은 `instanceof`로 분기한다(**잠재 위험**) |
+| Kotlin | Java 타입을 공유한다 | 예 | 샘플은 `as?`로 분기한다 |
+| Node | union의 **양쪽 갈래에 `reply`가 있다** | **예** — TS가 공통 속성 접근을 허용한다 | 미확인 |
+| **C++** | `accepted_t`·`rejected_t` **양쪽 struct에 `.reply`가 있다** | **예** — 제네릭 람다가 양쪽에 컴파일된다 | **버그** |
+
+**C++에서 실제로 터졌다.**
 
 ```cpp
 std::visit ([] (const auto &value) { return value.reply; }, joined);   // 양쪽에 컴파일된다
 ```
 
-가 **거절이든 수락이든 reply를 그대로 돌려준다.** C++ Bingo와 TicTacToe의 join handler가 실제로
-이 형태이고, **거절된 join을 정상 성공 응답으로 클라이언트에 보낸다**([gaps/cpp](gaps/cpp.ko.md)
-SMP-CP-51). 같은 샘플의 다른 handler 3곳은 `get_if`/`holds_alternative`로 제대로 분기한다 —
-**일관성이 없다는 것은 타입이 실수를 막아 주지 못한다는 뜻이다.**
+Bingo와 TicTacToe의 join handler가 이 형태라 **거절된 join을 정상 성공 응답으로 클라이언트에
+보낸다**([gaps/cpp](gaps/cpp.ko.md) SMP-CP-51). 같은 샘플의 다른 handler 3곳은 `get_if`로 제대로
+분기한다 — **일관성이 없다는 것은 타입이 실수를 막아 주지 못한다는 뜻이다.**
 
-**고쳐야 할 것:** join 결과 variant는 **분기 없이는 reply를 읽을 수 없게** 생겨야 한다. 거절
-대안에서 reply를 꺼내는 코드가 **컴파일되지 않아야** 한다(이름을 다르게 하거나, 거절 대안이
-reply 대신 거절 사유를 들거나). [23 §3.3](server/23-spot-actor.ko.md)의 admission 계약을
-**타입으로 강제**하는 것이 목적이다.
+**고쳐야 할 것:** `.NET`의 모양을 정본으로 삼는다. **공통 상위 타입에서 reply 접근자를 없앤다.**
+Java는 `sealed interface`에서 `reply()` 선언을 빼고, Node는 union 갈래의 이름을 다르게 하거나
+거절 갈래가 reply 대신 **거절 사유**를 들게 한다. C++은 `rejected_t`의 멤버 이름을 바꾼다.
 
-**다른 언어도 같은 형태인지 확인해야 한다** — 아직 대조하지 않았다.
+**이 항목이 감사의 방법론을 하나 보여 준다** — 동작이 아니라 **타입의 모양을 언어 간에 대조**하면
+"아직 안 터졌지만 터질 수 있는 것"이 보인다. Java와 Node는 지금은 멀쩡하지만 **다음 handler를
+쓰는 사람이 C++과 같은 실수를 하는 것을 아무것도 막지 못한다.**
 
 ### 15.6 판정이 필요한 항목 — 스펙끼리 충돌한다
 

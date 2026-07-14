@@ -31,6 +31,7 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import type { ZLinkStoreLocationResolvers } from '../locations';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 
 export interface ZLinkActorClientOptions {
   readonly nodeProvider: () => ZLinkBackendSpotNode | undefined;
@@ -225,6 +226,7 @@ class DefaultZLinkActorRequestCall implements ZLinkActorRequestCall {
   private packet?: string;
   private timeoutMs?: number;
   private executed = false;
+  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly submitter: <TReply>(
@@ -251,6 +253,15 @@ class DefaultZLinkActorRequestCall implements ZLinkActorRequestCall {
   }
 
   submit<TReply>(signal?: AbortSignal): Promise<TReply> {
+    return this.execute<TReply>(signal);
+  }
+
+  yield<TReply>(signal?: AbortSignal): Promise<TReply> {
+    const pending = this.execute<TReply>(signal);
+    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
+  }
+
+  private execute<TReply>(signal?: AbortSignal): Promise<TReply> {
     ensureSingleSubmit(this.executed);
     this.executed = true;
     throwIfAborted(signal);

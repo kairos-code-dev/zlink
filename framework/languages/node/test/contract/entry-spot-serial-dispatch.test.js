@@ -295,7 +295,7 @@ test('detached request continuation re-enters the entry spot serial line', async
   ]);
 });
 
-test('gated request await inside an entry turn completes without overlapping the next callback', async () => {
+test('request submit keeps the entry turn until its reply completes', async () => {
   const events = [];
   const channelClient = {
     requestToChannel(_channelName, request) {
@@ -324,9 +324,11 @@ test('gated request await inside an entry turn completes without overlapping the
   const next = serial.execute(() => {
     events.push('next');
   });
+  await delay(2);
+  assert.deepEqual(events, ['handler:start', 'request:ping']);
   await Promise.all([gated, next]);
 
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
+  assert.deepEqual(events, ['handler:start', 'request:ping', 'handler:reply:ping', 'next']);
 });
 
 test('yield request await inside an entry turn releases the serial line until reply resumes it', async () => {
@@ -354,7 +356,7 @@ test('yield request await inside an entry turn releases the serial line until re
 
   const yielded = serial.execute(async () => {
     events.push('handler:start');
-    const reply = await outbound.requestToChannel('api', 'ping').submit();
+    const reply = await outbound.requestToChannel('api', 'ping').yield();
     events.push(`handler:${reply}`);
   });
   const next = serial.execute(() => {
@@ -404,7 +406,7 @@ test('runWorker promise continuation re-enters the owning spot serial executor',
   assert.deepEqual(events, ['busy:start', 'work', 'completed:42:executing=true', 'busy:end']);
 });
 
-test('runWorker submit supports the gated awaitable path inside a handler turn', async () => {
+test('runWorker submit keeps the current Spot turn until worker completion', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -424,10 +426,10 @@ test('runWorker submit supports the gated awaitable path inside a handler turn',
   });
   await Promise.all([gated, next]);
 
-  assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
+  assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
 });
 
-test('runWorker submit releases the current Spot turn until worker completion resumes it', async () => {
+test('runWorker yield releases the current Spot turn until worker completion resumes it', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -443,7 +445,7 @@ test('runWorker submit releases the current Spot turn until worker completion re
     const result = await context.runWorker(async () => {
       await workGate;
       return 'done';
-    }).submit();
+    }).yield();
     events.push(`handler:${result}`);
   });
   const next = serial.execute(() => {
@@ -554,7 +556,7 @@ test('runWorker work failure surfaces as WorkerFailed wrapping the cause', async
   );
 });
 
-test('runWorker call accepts only one submit', async () => {
+test('runWorker call accepts only one terminator', async () => {
   const worker = new framework.ZLinkSpotWorkerRuntime({ maxThreads: 1, maxQueueLength: 16 });
   const serial = new framework.ZLinkSpotSerialExecutor();
 
@@ -564,10 +566,19 @@ test('runWorker call accepts only one submit', async () => {
     () => submitFirst.submit(),
     (error) =>
       error instanceof framework.ZLinkConfigurationException
-      && /only once/.test(error.message)
+      && /only one terminator/.test(error.message)
   );
   assert.equal(await submitted, 'done');
 
+  const yieldFirst = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
+  const yielded = yieldFirst.yield();
+  assert.throws(
+    () => yieldFirst.submit(),
+    (error) =>
+      error instanceof framework.ZLinkConfigurationException
+      && /only one terminator/.test(error.message)
+  );
+  assert.equal(await yielded, 'done');
 });
 
 test('detached runWorker completion observes entry spot state mutated after submission', async () => {
@@ -640,7 +651,7 @@ test('runWorker contract documentation does not claim CPU thread offload', () =>
 
   assert.equal(runWorkerDocs.length >= 2, true);
   for (const doc of runWorkerDocs) {
-    assert.match(doc, /does not provide CPU thread offload/);
+    assert.match(doc, /does not\s+provide CPU thread offload/);
     assert.match(doc, /deferral/);
   }
   // No declaration or doc-comment may claim the closure runs on a worker

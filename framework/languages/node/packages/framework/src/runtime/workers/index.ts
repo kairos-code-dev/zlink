@@ -150,8 +150,8 @@ export interface ZLinkSpotSerialLike {
 /**
  * `runWorker(...)` builder bound to one owning Spot serial executor.
  *
- * `submit()` automatically suspends a captured Spot turn and resumes its
- * continuation through the owning serial queue.
+ * Awaiting `submit()` keeps a captured Spot turn. Awaiting `yield()` suspends
+ * that turn and resumes its continuation through the owning serial queue.
  */
 export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   private selectedTimeoutMs: number | undefined;
@@ -176,13 +176,21 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
     return this.yieldTurn === undefined
       ? deliverOnSerial(this.serial, pending)
+      : pending;
+  }
+
+  yield(signal?: AbortSignal): Promise<T> {
+    this.claimTerminator();
+    const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
+    return this.yieldTurn === undefined
+      ? deliverOnSerial(this.serial, pending)
       : this.yieldTurn.yieldPromise(pending);
   }
 
   private claimTerminator(): void {
     if (this.terminatorSelected) {
       throw new ZLinkConfigurationException(
-        'A runWorker call can submit only once.'
+        'A runWorker call can select only one terminator.'
       );
     }
     this.terminatorSelected = true;

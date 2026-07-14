@@ -218,7 +218,7 @@ test('actor join and one-way calls expose only their target terminators', () => 
   const actorJoinEntrySpotCall = declarationBody(actorContracts, 'ZLinkActorJoinEntrySpotCall');
 
   assert.equal(actorJoinCall.includes('submit<TReply'), true);
-  assert.equal(actorJoinCall.includes('yield<TReply'), false);
+  assert.match(actorJoinCall, /yield<TReply = unknown>\(signal\?: AbortSignal\): Promise<ZLinkActorJoinResult<TReply>>/);
   assert.equal(actorContracts.includes('ZLinkActorYieldJoinCall'), false);
   assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorJoinCall'), true);
   assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorJoinCall'), true);
@@ -412,6 +412,7 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   assert.equal(actorRequestCall.includes('packetName('), false);
   assert.match(actorRequestCall, /timeout\(timeoutMs: number\): this/);
   assert.match(actorRequestCall, /submit<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
+  assert.match(actorRequestCall, /yield<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
   assert.match(directory, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
   assert.match(directory, /ensure\(\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
   assert.match(placement, /readonly preferredNodeRid\?: RoutingId/);

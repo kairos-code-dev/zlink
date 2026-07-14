@@ -801,6 +801,57 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   replyMessage.close();
 });
 
+test('actor join submit keeps the Spot turn while yield releases it', async () => {
+  const events = [];
+  let releaseJoin;
+  const joinGate = () => new Promise((resolve) => { releaseJoin = resolve; });
+  let pendingJoin = joinGate();
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: {
+      async joinSpot() {
+        await pendingJoin;
+        return {
+          accepted: true,
+          actor: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n }
+        };
+      }
+    }
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  const serial = new framework.ZLinkSpotSerialExecutor();
+
+  const held = serial.execute(async () => {
+    events.push('submit:start');
+    await actor.context.joinSpot('room-b').submit();
+    events.push('submit:end');
+  });
+  const afterHeld = serial.execute(() => events.push('submit:next'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ['submit:start']);
+  releaseJoin();
+  await Promise.all([held, afterHeld]);
+  assert.deepEqual(events, ['submit:start', 'submit:end', 'submit:next']);
+
+  pendingJoin = joinGate();
+  const yielded = serial.execute(async () => {
+    events.push('yield:start');
+    await actor.context.joinSpot('room-c').yield();
+    events.push('yield:end');
+  });
+  const duringYield = serial.execute(() => events.push('yield:next'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events.slice(-2), ['yield:start', 'yield:next']);
+  releaseJoin();
+  await Promise.all([yielded, duringYield]);
+  assert.deepEqual(events.slice(-3), ['yield:start', 'yield:next', 'yield:end']);
+});
+
 test('local actor join publishes committed location only after joined callback completes', async () => {
   const events = [];
   const actor = { actorId: 'alice' };

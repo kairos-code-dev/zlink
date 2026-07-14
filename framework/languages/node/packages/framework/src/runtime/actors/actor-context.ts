@@ -30,6 +30,7 @@ import type {
   ZLinkActorBoundSessionFactory,
   ZLinkActorJoinCoordinator
 } from './actor-runtime-contracts';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
@@ -108,6 +109,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
 
 class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs: number | undefined;
+  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -125,6 +127,15 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   }
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    return await this.execute<TReply>(signal);
+  }
+
+  async yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const pending = this.execute<TReply>(signal);
+    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
+  }
+
+  private async execute<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     const requestMessage = this.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
@@ -150,6 +161,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
   private timeoutMs: number | undefined;
+  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -167,6 +179,15 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
   }
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    return await this.execute<TReply>(signal);
+  }
+
+  async yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const pending = this.execute<TReply>(signal);
+    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
+  }
+
+  private async execute<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     const requestMessage = this.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);

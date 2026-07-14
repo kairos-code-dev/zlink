@@ -331,7 +331,7 @@ test('ZLinkRouteClient applies route channel request timeout before registration
       timeoutMs: 3000
     }
   ]);
-  assert.equal('yield' in client.requestToNode('route', 'target', { id: 8 }), false);
+  assert.equal('yield' in client.requestToNode('route', 'target', { id: 8 }), true);
 });
 
 test('route packet dispatcher sends channel envelopes to route handlers before Spot bridge fallback', async () => {

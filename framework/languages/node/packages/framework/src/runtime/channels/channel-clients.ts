@@ -18,6 +18,7 @@ import type {
   ZLinkSpotPublisherClientTransport
 } from './channel-transports';
 import { throwIfAborted } from '../abort';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import {
   requestToSpotHandle,
   sendToSpotHandle,
@@ -255,6 +256,7 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
 
 class DefaultZLinkRequestCall implements ZLinkRequestCall {
   private timeoutMs?: number;
+  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly validate: () => void,
@@ -275,6 +277,17 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
     throwIfAborted(signal);
     this.validate();
     return this.submitter<TReply>(undefined, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
+  }
+
+  async yield<TReply>(signal?: AbortSignal): Promise<TReply> {
+    throwIfAborted(signal);
+    this.validate();
+    const pending = this.submitter<TReply>(
+      undefined,
+      this.timeoutMs ?? this.defaultRequestTimeoutMs,
+      signal
+    );
+    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
   }
 }
 

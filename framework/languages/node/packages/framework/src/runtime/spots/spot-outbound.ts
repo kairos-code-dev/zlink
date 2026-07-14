@@ -146,15 +146,20 @@ function wrapFireAndForgetPacketCall(
 }
 
 function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCall): ZLinkRequestCall {
+  const begin = <TReply>(signal?: AbortSignal) =>
+    startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
   return {
     timeout(timeoutMs: number) {
       inner.timeout(timeoutMs);
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
-      const insideCurrentTurn = serial.isCurrentTurn;
-      const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
-      return insideCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
+      const pending = begin<TReply>(signal);
+      return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
+    },
+    yield<TReply>(signal?: AbortSignal) {
+      const pending = begin<TReply>(signal);
+      return serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
     }
   };
 }
@@ -217,9 +222,12 @@ function wrapRoutedSpotRequestCall(
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
-      const insideCurrentTurn = serial.isCurrentTurn;
       const pending = begin<TReply>(signal);
-      return insideCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
+      return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
+    },
+    yield<TReply>(signal?: AbortSignal) {
+      const pending = begin<TReply>(signal);
+      return serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
     }
   };
 }

@@ -49,21 +49,17 @@ export class BrowserStreamTransportFactory implements ZlinkStreamTransportFactor
     const socket = new WebSocketConstructor(options.endpoint);
     socket.binaryType = 'arraybuffer';
     await waitForOpen(socket, options.connectTimeoutMs, signal);
-    return new BrowserWebSocketConnection(socket, options.maxReceivePayloadSize);
+    return new BrowserWebSocketConnection(socket);
   }
 }
 
 export class BrowserWebSocketConnection implements ZlinkStreamConnection {
   private readonly messages: Uint8Array[] = [];
-  private queuedBytes = 0;
   private closed = false;
   private error: Error | undefined;
   private readWaiter: (() => void) | undefined;
 
-  constructor(
-    private readonly socket: BrowserWebSocket,
-    private readonly maxReceivePayloadSize: number
-  ) {
+  constructor(private readonly socket: BrowserWebSocket) {
     socket.addEventListener('message', this.onMessage);
     socket.addEventListener('close', this.onClose);
     socket.addEventListener('error', this.onError);
@@ -86,7 +82,6 @@ export class BrowserWebSocketConnection implements ZlinkStreamConnection {
     for (;;) {
       const message = this.messages.shift();
       if (message !== undefined) {
-        this.queuedBytes -= message.length;
         return message;
       }
       if (this.error !== undefined) {
@@ -116,11 +111,7 @@ export class BrowserWebSocketConnection implements ZlinkStreamConnection {
   private readonly onMessage = (event: BrowserWebSocketEventMap['message']): void => {
     try {
       const message = toUint8Array(event.data);
-      if (message.length > this.maxReceivePayloadSize || this.queuedBytes + message.length > this.maxReceivePayloadSize) {
-        throw connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'WebSocket message exceeds MaxReceivePayloadSize.');
-      }
       this.messages.push(message);
-      this.queuedBytes += message.length;
     } catch (cause) {
       this.error = cause instanceof Error
         ? cause

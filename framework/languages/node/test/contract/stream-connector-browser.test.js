@@ -68,6 +68,45 @@ test('package root dispatches every stream frame in one native WebSocket message
   }
 });
 
+test('browser transport retains many unread payload-sized messages without disconnecting', async () => {
+  const originalWebSocket = globalThis.WebSocket;
+  const originalCrypto = globalThis.crypto;
+  globalThis.WebSocket = FakeWebSocket;
+  globalThis.crypto = crypto.webcrypto;
+
+  try {
+    const instance = browserEntry.zlinkStreamConnectorFactory.create({
+      endpoint: 'wss://browser.example.test/stream',
+      heartbeat: { enabled: false }
+    });
+    let received = 0;
+    instance.on('Backlog', () => { received += 1; });
+    await instance.connect();
+
+    const frame = encodeFrame({
+      kind: browserEntry.ZlinkStreamMessageKind.Send,
+      codec: browserEntry.ZlinkStreamCodec.Raw,
+      flags: browserEntry.ZlinkStreamHeaderFlags.None,
+      name: 'Backlog'
+    }, 'x'.repeat(2048));
+    for (let index = 0; index < 40; index += 1) {
+      FakeWebSocket.last.emit('message', { data: exactArrayBuffer(frame) });
+    }
+
+    assert.equal(FakeWebSocket.last.closed, false);
+    for (let index = 0; index < 40; index += 1) {
+      await instance.dispatch();
+    }
+    assert.equal(received, 40);
+    await instance.close();
+  } finally {
+    if (originalWebSocket === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = originalWebSocket;
+    if (originalCrypto === undefined) delete globalThis.crypto;
+    else globalThis.crypto = originalCrypto;
+  }
+});
+
 test('browser close waits for the WebSocket close event', async () => {
   const originalWebSocket = globalThis.WebSocket;
   const originalCrypto = globalThis.crypto;

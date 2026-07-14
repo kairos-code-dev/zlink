@@ -5,12 +5,14 @@ import type {
 } from '../../Contracts';
 import {
   ZlinkStreamCodec,
+  ZlinkStreamErrorCode,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadataMap
 } from '../../Contracts';
 import { ZlinkStreamHeaderFlags } from '../../Contracts/ZlinkStreamEnums';
 import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
 import type { ZlinkFlowOrigin } from '../../Contracts';
+import { connectorError } from '../ZlinkStreamSupport';
 import {
   compressPayload,
   decompressIfNeeded
@@ -64,7 +66,13 @@ export class ZlinkStreamFrameProtocol {
     readonly header: ZlinkStreamHeader;
     readonly payload: Uint8Array;
   }[] {
-    return splitZlinkStreamFrames(chunk).map((frame) => this.decode(frame));
+    return splitZlinkStreamFrames(chunk).map((frame) => {
+      const decoded = this.decode(frame);
+      if (decoded.payload.length > this.options.maxReceivePayloadSize) {
+        throw connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'Payload exceeds MaxReceivePayloadSize.');
+      }
+      return decoded;
+    });
   }
 
   decodePayload(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {

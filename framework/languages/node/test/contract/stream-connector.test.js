@@ -309,6 +309,26 @@ test('stream connector custom decompression result is checked against receive li
   assert.deepEqual(errors, [connector.ZlinkStreamErrorCode.DecompressionFailed]);
 });
 
+test('stream connector applies the receive limit to each decoded frame payload', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'ws://127.0.0.1:19000',
+    transportFactory,
+    maxReceivePayloadSize: 1
+  });
+  const errors = [];
+  let received = false;
+  instance.onErrorReceived((error) => { errors.push(error.code); });
+  instance.on('TooLarge', () => { received = true; });
+  await instance.connect();
+  transportFactory.connection.pushFrame(sendFrame('TooLarge', 'bb'));
+
+  await instance.dispatch();
+
+  assert.deepEqual(errors, [connector.ZlinkStreamErrorCode.FrameTooLarge]);
+  assert.equal(received, false);
+});
+
 test('stream connector request resolves when dispatch reads matching response frame', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({

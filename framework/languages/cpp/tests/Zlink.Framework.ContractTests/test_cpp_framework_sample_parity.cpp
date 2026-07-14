@@ -1160,6 +1160,21 @@ TEST (CppFrameworkSampleParity, SampleRunnersBuildBeforeStartingRedis)
     }
 }
 
+TEST (CppFrameworkSampleParity, SupportChatReleaseGateUsesThePublicClient)
+{
+    const auto runner = read_file (
+      cpp_language_root () / "samples/SupportChat/run_sample.sh");
+
+    EXPECT_NE (runner.find ("sample_cpp_framework_supportchat_client\" --stream-endpoint"),
+               std::string::npos)
+      << "SupportChat release gate must execute the public stream client";
+    EXPECT_EQ (runner.find ("\"$BIN_DIR/sample_cpp_framework_supportchat_probe\""),
+               std::string::npos)
+      << "SupportChat release gate must not execute the in-memory server story probe";
+    EXPECT_EQ (runner.find ("supportchat server-invariants=verified"), std::string::npos)
+      << "SupportChat release gate must not accept the forged probe marker";
+}
+
 /* 샘플은 codec을 직접 짜지 않는다. protobuf payload는 protoc이 만든 message로 옮겨 싣고,
  * 직렬화는 codec extension이 한다. 손으로 varint를 쓰거나 JSON을 protobuf인 척 포장하는 것은
  * 금지다. connector의 payload 훅(to_stream_payload)은 그 message로 위임할 때만 쓴다. */

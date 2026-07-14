@@ -402,7 +402,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 ### 체크리스트 — 샘플
 
-- [ ] **SMP-CP-01** (결함) — SupportChat의 **릴리스 게이트가 위조**돼 있다. framework를 거치지 않는 in-memory 도메인 단언이 `verified`를 찍는다
+- [x] **SMP-CP-01** (결함) — SupportChat의 **릴리스 게이트가 위조**돼 있다. framework를 거치지 않는 in-memory 도메인 단언이 `verified`를 찍는다
+  - 근거: 수정 전 contract gate가 runner의 in-memory Probe 실행과 위조된 server-invariants marker를 검출했다. Probe를 릴리스 게이트에서 제거하고 실제 stream client의 request·push·reconnect·idle-close 단언만 성공 기준으로 남긴 뒤 gate와 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
 - [x] **SMP-CP-02** (결함) — Bingo에서 **2번째 참가자가 `GameStartedNotify`를 영원히 못 받는다**
   - 근거: 수정 전 두 번째 client 대기가 `client2 game started wait failed`로 실패했다. joining actor를 기존 참가자 broadcast에서 제외한 뒤 완료된 join lifecycle의 bound session으로 보상하고, 원격 commit이 callback 전에 gateway ref를 갱신하도록 수정한 뒤 spot runtime 회귀 테스트와 `./run_sample.sh`가 통과했다.
 - [ ] **SMP-CP-03** (결함) — TicTacToe가 **스펙 근거 0인 public API**(`add_spot_resolver`)를 샘플에서 쓴다

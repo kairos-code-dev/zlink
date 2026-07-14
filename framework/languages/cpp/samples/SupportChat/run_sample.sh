@@ -207,13 +207,6 @@ wait_port session-actor-route "$(port_of "$SUPPORTCHAT_SESSION_ACTOR_ROUTE")"
 wait_port support-actor-route "$(port_of "$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE")"
 wait_port support-http "$(port_of "$SUPPORTCHAT_SUPPORT_HTTP_URL")"
 
-"$BIN_DIR/sample_cpp_framework_supportchat_probe" --support-http-url "$SUPPORTCHAT_SUPPORT_HTTP_URL" >"$LOG_DIR/probe.log" 2>&1 || {
-  dump_logs
-  exit 1
-}
-grep -q "supportchat server-invariants=verified" "$LOG_DIR/probe.log"
-grep -q "topology=ready" "$LOG_DIR/probe.log"
-
 "$BIN_DIR/sample_cpp_framework_supportchat_client" --stream-endpoint "$SUPPORTCHAT_SESSION_STREAM" >"$LOG_DIR/client.log" 2>&1 || {
   dump_logs
   exit 1

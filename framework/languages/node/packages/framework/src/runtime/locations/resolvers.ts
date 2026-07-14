@@ -121,16 +121,26 @@ export class ZLinkStoreLocationResolvers implements
   }
 
   async resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<ResolvedSpotHandle | undefined> {
-    const row = await this.resolveSpotRowInMeshes(spotRid, this.options.spotMeshNames ?? [], signal);
-    if (row === undefined) {
-      return undefined;
+    const meshNames = this.options.spotMeshNames ?? [];
+    const row = await this.resolveSpotRowInMeshes(spotRid, meshNames, signal);
+    if (row !== undefined) {
+      return {
+        meshName: row.meshName,
+        nodeRid: String(row.nodeRid),
+        spotRid: String(row.spotRid),
+        spotKind: row.spotKind
+      };
     }
-    return {
-      meshName: row.meshName,
-      nodeRid: String(row.nodeRid),
-      spotRid: String(row.spotRid),
-      spotKind: row.spotKind
-    };
+    const entrySpot = await resolveEntrySpotPeerInMeshes(this, spotRid, meshNames, signal);
+    if (entrySpot !== undefined) {
+      return {
+        meshName: entrySpot.meshName,
+        nodeRid: String(entrySpot.nodeRid),
+        spotRid: String(entrySpot.nodeRid),
+        spotKind: ZLinkSpotKind.Entry
+      };
+    }
+    return undefined;
   }
 
   async resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined> {
@@ -256,26 +266,41 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         spotKind: row.spotKind
       };
     }
-    for (const meshName of this.meshNames) {
-      const peers = await this.rows.listLivePeers({
-        autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
-        meshName,
-        nodeRid: spotRid,
-        role: ZLinkLocationRole.Spot
-      }, signal);
-      const peer = peers.find((candidate) => routingIdsEqual(candidate.nodeRid, spotRid));
-      if (peer?.nodeRid !== undefined) {
-        return {
-          routerChannelId: this.routerChannelIdForMesh(meshName),
-          targetNodeRid: peer.nodeRid,
-          spotRid: peer.nodeRid,
-          spotKind: ZLinkSpotKind.Entry
-        };
-      }
+    const entrySpot = await resolveEntrySpotPeerInMeshes(this.rows, spotRid, this.meshNames, signal);
+    if (entrySpot !== undefined) {
+      return {
+        routerChannelId: this.routerChannelIdForMesh(entrySpot.meshName),
+        targetNodeRid: entrySpot.nodeRid,
+        spotRid: entrySpot.nodeRid,
+        spotKind: ZLinkSpotKind.Entry
+      };
     }
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotRouteNotFound,
       `SPOT '${spotRid}' has no live location row in any registered spot mesh.`
     );
   }
+}
+
+async function resolveEntrySpotPeerInMeshes(
+  rows: Pick<ZLinkStoreLocationResolvers, 'listLivePeers'>,
+  spotRid: RoutingId,
+  meshNames: readonly string[],
+  signal?: AbortSignal
+): Promise<{ readonly meshName: string; readonly nodeRid: RoutingId } | undefined> {
+  for (const meshName of meshNames) {
+    const peers = await rows.listLivePeers({
+      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      meshName,
+      nodeRid: spotRid,
+      role: ZLinkLocationRole.Spot
+    }, signal);
+    const peer = peers.find((candidate) =>
+      candidate.nodeRid !== undefined && routingIdsEqual(candidate.nodeRid, spotRid)
+    );
+    if (peer?.nodeRid !== undefined) {
+      return { meshName, nodeRid: peer.nodeRid };
+    }
+  }
+  return undefined;
 }

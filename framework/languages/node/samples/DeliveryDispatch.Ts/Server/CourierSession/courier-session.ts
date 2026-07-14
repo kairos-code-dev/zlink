@@ -1,17 +1,18 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import { courierActorNodeRid, SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { ZLINK_ACTOR_CLIENT, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import { courierActorNodeRid, SampleTimings } from '../../Shared/Configuration/sample-names';
 import { actorRefFromMessage, bindCourier, ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
 import type {
   ActorRef,
   ZLinkActorClient,
   ZLinkMessage,
   ZLinkLocationStore,
-  ZLinkRouteClient,
   ZLinkSession,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext,
-  ZLinkSessionFactory
+  ZLinkSessionFactory,
+  ZLinkSpotHandleResolver,
+  ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type {
   BindCourierRes,
@@ -22,7 +23,8 @@ import type {
 class CourierSession implements ZLinkSession {
   constructor(
     readonly context: ZLinkSessionContext,
-    private readonly routes: ZLinkRouteClient,
+    private readonly spotHandles: ZLinkSpotHandleResolver,
+    private readonly spotOutbound: ZLinkSpotOutbound,
     private readonly actors: ZLinkActorClient,
     private readonly locations: ZLinkLocationStore
   ) {}
@@ -58,12 +60,10 @@ class CourierSession implements ZLinkSession {
       console.error(`deliverydispatch courier-session: found existing courier=${courierId}`);
       return found.actorRef;
     }
-    const ensured = await this.routes
-      .requestToNode(
-        SampleNames.courierActorNodeRouteChannel,
-        courierActorNodeRid(courierId),
-        ensureCourierActor(courierId)
-      )
+    const entrySpot = await this.spotHandles.resolveSpotHandle(courierActorNodeRid(courierId));
+    if (entrySpot === undefined) throw new Error(`Courier entry spot was not found for '${courierId}'.`);
+    const ensured = await this.spotOutbound
+      .requestToSpot(entrySpot, ensureCourierActor(courierId))
       .timeout(SampleTimings.requestTimeout)
       .submit<EnsureCourierActorRes>();
     return actorRefFromMessage(ensured.actor);
@@ -72,13 +72,14 @@ class CourierSession implements ZLinkSession {
 
 class CourierSessionFactory implements ZLinkSessionFactory<CourierSession> {
   constructor(
-    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient,
+    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
     @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
   ) {}
 
   async create(context: ZLinkSessionContext): Promise<CourierSession> {
-    return new CourierSession(context, this.routes, this.actors, this.locations);
+    return new CourierSession(context, this.spotHandles, this.spotOutbound, this.actors, this.locations);
   }
 }
 

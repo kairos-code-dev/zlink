@@ -4,7 +4,7 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CourierActorDirectory, CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
-import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler, OfferDeliveryActorNodeHandler } from './offer-delivery-handler';
+import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler, OfferDeliveryEntrySpotHandler } from './offer-delivery-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -20,14 +20,10 @@ function createCourierActorNodeModule(options: CourierOptions) {
   class CourierActorNodeModule {}
   const directory = new CourierActorDirectory();
   const nodeRid = options.courierId === 'courier-a' ? 'courier-node-1' : 'courier-node-2';
-  const endpointKey = options.courierId === 'courier-a'
-    ? 'courierActorNode1RouteEndpoint'
-    : 'courierActorNode2RouteEndpoint';
   const spotEndpointKey = options.courierId === 'courier-a'
     ? 'courierActorNode1SpotEndpoint'
     : 'courierActorNode2SpotEndpoint';
   const configuration = createDeliveryDispatchConfigurationModule([
-    endpointKey,
     spotEndpointKey,
     'redisEndpoint',
     'redisKeyPrefix',
@@ -41,7 +37,6 @@ function createCourierActorNodeModule(options: CourierOptions) {
         imports: [configuration],
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => {
-          const endpoint = config[endpointKey];
           const spotEndpoint = config[spotEndpointKey];
           const builder = zlinkFramework();
           builder.configureDispatch()
@@ -51,10 +46,6 @@ function createCourierActorNodeModule(options: CourierOptions) {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
-              .enableRouter(endpoint)
-              .routingId(nodeRid)
-              .addHandlerGroup('courier-actor-node')
             .addClientServerChannel(SampleNames.dispatchChannel)
               .enableClient()
             .addSpotMesh(SampleNames.courierActorSpotMesh)
@@ -69,7 +60,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
       { provide: CourierActorDirectory, useValue: directory },
       CourierActorFactory,
       CourierEntrySpot,
-      OfferDeliveryActorNodeHandler,
+      OfferDeliveryEntrySpotHandler,
       EnsureCourierActorHandler,
       CourierActorBindHandler,
       CourierActorSessionBindHandler,

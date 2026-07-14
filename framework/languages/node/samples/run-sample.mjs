@@ -274,9 +274,8 @@ async function runDeliveryDispatch(ctx) {
   const sample = {
     dispatchApiHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
     dispatchEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
+    dispatchSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
     courierStreamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    courierActorNode1RouteEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    courierActorNode2RouteEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
     courierActorNode1SpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
     courierActorNode2SpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
     trackingEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
@@ -295,8 +294,8 @@ async function runDeliveryDispatch(ctx) {
     ['tracking', 'dist/Server/Tracking/main.js', sample.trackingEndpoint],
     ['customer-gateway', 'dist/Server/Session/main.js', sample.sessionStreamEndpoint],
     ['courier-session', 'dist/Server/CourierSession/main.js', sample.courierStreamEndpoint],
-    ['courier-spot-node1', 'dist/Server/Courier/node1-main.js', sample.courierActorNode1RouteEndpoint],
-    ['courier-spot-node2', 'dist/Server/Courier/node2-main.js', sample.courierActorNode2RouteEndpoint],
+    ['courier-spot-node1', 'dist/Server/Courier/node1-main.js', sample.courierActorNode1SpotEndpoint],
+    ['courier-spot-node2', 'dist/Server/Courier/node2-main.js', sample.courierActorNode2SpotEndpoint],
     ['dispatch', 'dist/Server/Dispatch/main.js', sample.dispatchEndpoint]
   ]) {
     await ctx.start(role, entry, ['--config', configPath]);
@@ -308,10 +307,9 @@ async function runDeliveryDispatch(ctx) {
     '--key-prefix', `${sample.redisKeyPrefix}location`,
     '--peer', 'client-server', 'deliverydispatch.dispatch', 'router', sample.dispatchEndpoint,
     '--peer', 'client-server', 'deliverydispatch.tracking', 'router', sample.trackingEndpoint,
-    '--peer', 'route-mesh', 'delivery-couriers', 'router',
-      sample.courierActorNode1RouteEndpoint, sample.courierActorNode2RouteEndpoint,
     '--peer', 'spot-mesh', 'delivery-couriers', 'spot',
-      sample.courierSessionSpotEndpoint, sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint,
+      sample.dispatchSpotEndpoint, sample.courierSessionSpotEndpoint,
+      sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint,
     '--peer', 'spot-mesh', 'delivery-customers', 'spot',
       sample.sessionSpotRouterEndpoint, sample.trackingSpotEndpoint
   ]);

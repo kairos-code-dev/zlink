@@ -1,6 +1,6 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, zlinkEntrySpotActorRequestHandler, zlinkEntrySpotActorSendHandler, zlinkRequestHandler, zlinkSendHandler } from '@zlink-systems/nestjs';
-import { courierActorNodeRid, SampleNames } from '../../Shared/Configuration/sample-names';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, zlinkEntrySpotActorRequestHandler, zlinkEntrySpotActorSendHandler, zlinkEntrySpotPacketHandler } from '@zlink-systems/nestjs';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import {
   EnsureCourierActorReq,
   OfferDeliveryMsg,
@@ -8,19 +8,19 @@ import {
   actorRefForMessage,
   actorRefFromMessage
 } from '../../Shared/Contracts/messages';
-import type { ZLinkActorClient, ZLinkActorManager, ZLinkRequestHandler, ZLinkSendContext, ZLinkSendHandler } from '@zlink-systems/framework';
+import type { ZLinkActorClient, ZLinkActorManager, ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, EnsureCourierActorRes } from '../../Shared/Contracts/messages';
 import { CourierActor, CourierActorDirectory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
 
-@zlinkSendHandler('courier-actor-node', PacketNames.offerDelivery)
-class OfferDeliveryActorNodeHandler implements ZLinkSendHandler<OfferDeliveryMsg> {
+@zlinkEntrySpotPacketHandler({ entrySpot: () => CourierEntrySpot, packetName: PacketNames.offerDelivery })
+class OfferDeliveryEntrySpotHandler implements ZLinkSpotPacketHandler<CourierEntrySpot, OfferDeliveryMsg> {
   constructor(
     private readonly directory: CourierActorDirectory,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient
   ) {}
 
-  async handle(request: OfferDeliveryMsg, context: ZLinkSendContext): Promise<void> {
+  async handle(_spot: CourierEntrySpot, request: OfferDeliveryMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     const actor = this.directory.require(request.courierId);
     this.actors.sendToActor(
@@ -36,20 +36,16 @@ class OfferDeliveryActorNodeHandler implements ZLinkSendHandler<OfferDeliveryMsg
   }
 }
 
-@zlinkRequestHandler('courier-actor-node', PacketNames.ensureCourierActor)
-class EnsureCourierActorHandler implements ZLinkRequestHandler<EnsureCourierActorReq, EnsureCourierActorRes> {
+@zlinkEntrySpotPacketHandler({ entrySpot: () => CourierEntrySpot, packetName: PacketNames.ensureCourierActor })
+class EnsureCourierActorHandler implements ZLinkSpotRequestHandler<CourierEntrySpot, EnsureCourierActorReq, EnsureCourierActorRes> {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     private readonly directory: CourierActorDirectory
   ) {}
-  async handle(request: EnsureCourierActorReq): Promise<EnsureCourierActorRes> {
-    await this.actors.getOrCreate(request.courierId, SampleNames.courierActorType, request);
+  async handle(_spot: CourierEntrySpot, request: EnsureCourierActorReq): Promise<EnsureCourierActorRes> {
+    const actor = await this.actors.getOrCreate(request.courierId, SampleNames.courierActorType, request);
     const active = this.directory.require(request.courierId);
-    const joined = await active.context.joinEntrySpot(courierActorNodeRid(request.courierId), request).submit();
-    if (joined.status !== 'accepted') {
-      throw new Error(`Courier '${request.courierId}' could not join its entry spot.`);
-    }
-    const actorRef = actorRefForMessage(joined.actor);
+    const actorRef = actorRefForMessage(actor);
     active.setActorRef(actorRef);
     return { courierId: request.courierId, actor: actorRef };
   }
@@ -105,7 +101,7 @@ class CourierActorDecisionHandler {
 }
 
 export {
-  OfferDeliveryActorNodeHandler,
+  OfferDeliveryEntrySpotHandler,
   EnsureCourierActorHandler,
   CourierActorOfferHandler,
   CourierActorBindHandler,

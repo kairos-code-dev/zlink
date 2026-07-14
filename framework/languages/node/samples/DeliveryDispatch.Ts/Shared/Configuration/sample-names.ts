@@ -1,6 +1,5 @@
 const SampleNames = {
   dispatchChannel: 'deliverydispatch.dispatch',
-  courierActorNodeRouteChannel: 'delivery-couriers',
   courierActorSpotMesh: 'delivery-couriers',
   courierStreamNode: 'delivery-courier-stream',
   trackingChannel: 'deliverydispatch.tracking',

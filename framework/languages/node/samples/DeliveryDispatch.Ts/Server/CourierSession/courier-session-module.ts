@@ -35,8 +35,6 @@ function createCourierSessionModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
-              .enableClient()
             .addStreamNode(SampleNames.courierStreamNode)
               .bind(config.courierStreamEndpoint)
               .registerSession(CourierSessionFactory)

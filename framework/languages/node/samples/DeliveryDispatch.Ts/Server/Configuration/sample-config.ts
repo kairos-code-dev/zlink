@@ -5,10 +5,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 type DeliveryDispatchServerConfig = {
   dispatchApiHttpUrl: string;
   dispatchEndpoint: string;
+  dispatchSpotEndpoint: string;
   courierStreamEndpoint: string;
   courierSessionSpotEndpoint: string;
-  courierActorNode1RouteEndpoint: string;
-  courierActorNode2RouteEndpoint: string;
   courierActorNode1SpotEndpoint: string;
   courierActorNode2SpotEndpoint: string;
   trackingEndpoint: string;

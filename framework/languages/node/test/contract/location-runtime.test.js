@@ -431,7 +431,7 @@ test('location spot route resolver bridges internal routed transport', async () 
   );
 });
 
-test('location spot route resolver resolves Entry Spots from live Spot peer rows', async () => {
+test('location resolvers resolve Entry Spots from live Spot peer rows', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const runtime = runtimeFor(store, { ownerId: 'owner-a' });
   await runtime.start(rid('node-a'));
@@ -459,7 +459,16 @@ test('location spot route resolver resolves Entry Spots from live Spot peer rows
     generation: 0n,
     updatedAt: new Date(0)
   }, framework.ZLinkLocationWriteIntent.NewClaim);
-  const resolver = new internal.ZLinkLocationSpotRouteResolver(resolversFor(store), ['play']);
+  const resolvers = resolversFor(store);
+  const handle = await resolvers.resolveSpotHandle(rid('node-a'));
+  assert.notEqual(handle, undefined);
+  const handleTarget = await internal.resolveSpotHandle(handle);
+  assert.equal(handleTarget.meshName, 'play');
+  assert.equal(handleTarget.nodeRid, String(rid('node-a')));
+  assert.equal(handleTarget.spotRid, String(rid('node-a')));
+  assert.equal(handleTarget.spotKind, framework.ZLinkSpotKind.Entry);
+
+  const resolver = new internal.ZLinkLocationSpotRouteResolver(resolvers, ['play']);
 
   const address = await resolver.resolve(rid('node-a'));
   assert.equal(address.routerChannelId, 'play');

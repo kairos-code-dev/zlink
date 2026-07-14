@@ -16,6 +16,7 @@ function createDispatchCenterModule() {
   class DispatchCenterModule {}
   const configuration = createDeliveryDispatchConfigurationModule([
     'dispatchEndpoint',
+    'dispatchSpotEndpoint',
     'redisEndpoint',
     'redisKeyPrefix',
     'logDir',
@@ -40,10 +41,10 @@ function createDispatchCenterModule() {
             .addClientServerChannel(SampleNames.dispatchChannel)
               .enableServer(config.dispatchEndpoint)
               .addHandlerGroup('dispatch')
-            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
-              .enableClient()
             .addClientServerChannel(SampleNames.trackingChannel)
               .enableClient()
+            .addSpotMesh(SampleNames.courierActorSpotMesh)
+              .enableRouter(config.dispatchSpotEndpoint, 'dispatch-center')
             .build();
         }
       })

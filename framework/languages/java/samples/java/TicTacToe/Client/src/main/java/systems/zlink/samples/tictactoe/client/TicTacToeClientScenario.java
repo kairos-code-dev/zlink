@@ -139,6 +139,7 @@ public final class TicTacToeClientScenario {
             ensure(options.xActorId().equals(hostMove1Notify.state().lastMoveActorId()));
             ensure(Integer.valueOf(0).equals(hostMove1Notify.state().lastMoveCell()));
 
+            guest.send(new LeaveGameReq(game.roomId())).submit();
             var hostSawGuestMove1 = host
                 .waitFor(GameStateNotify.class)
                 .where(GameStateNotify.class,

@@ -18,7 +18,7 @@
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
 | `.NET: Client/Program.cs` | `Client/src/main/java/.../client/Program.java` | client-entry | done | API URL과 timeout을 읽고 self-check scenario를 실행한다. |
-| `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/java/.../client/TicTacToeClientScenario.java` | validation | done | 연속 room의 owner round-robin과 고유 ID, 가득 찬 room의 join 거절, host/guest/observer stream 연결, 인증, join, move, win, milestone push를 검증한다. |
+| `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/java/.../client/TicTacToeClientScenario.java` | validation | done | 연속 room의 owner round-robin과 고유 ID, 가득 찬 room의 join 거절, 진행 중 leave 무시, host/guest/observer stream 연결, 인증, join, move, win, milestone push를 검증한다. |
 | common: client는 API 응답의 Play endpoint 사용 | `TicTacToeClientScenario.java` | validation | done | client 설정에 Play endpoint를 미리 넣지 않고 API 응답의 endpoint 목록으로 연결한다. |
 | common: push 대기는 connector public wait API 사용 | `TicTacToeClientScenario.java` | validation | done | `PlayerJoinedNotify`, `GameStateNotify`, `WinMilestoneNotify`를 typed wait path로 기다린다. |
 

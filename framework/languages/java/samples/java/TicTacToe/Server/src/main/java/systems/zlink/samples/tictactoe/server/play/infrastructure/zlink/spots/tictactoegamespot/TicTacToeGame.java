@@ -263,6 +263,9 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         if (!this.roomId.equals(roomId)) {
             throw new IllegalStateException("leave request room id does not match game room");
         }
+        if (!isTerminal(snapshot())) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
         actor.markForDestroyAfterRoomLeave();
         return context.leaveActor(actor);
     }

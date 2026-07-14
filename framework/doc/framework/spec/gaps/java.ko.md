@@ -758,6 +758,8 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
   - 근거: 동일 API의 연속 생성 두 건이 서로 다른 Play와 서로 다른 room ID를 반환하도록 self-check를 추가했으며, 수정 전 단언 실패와 수정 후 `PASS TicTacToe.Java`를 확인했다.
 - [x] **SMP-JV-24** (**버그**) — 거절된 room join을 성공처럼 커밋한다.
   - 근거: 세 번째 actor의 typed rejection이 성공 응답으로 바뀌는 실패 게이트를 확인한 뒤 `Accepted`에서만 actor 상태를 갱신하도록 수정했고, `PASS TicTacToe.Java`를 확인했다.
+- [x] **SMP-JV-27** (**버그**) — 게임 진행 중 leave가 actor를 제거한다.
+  - 근거: 진행 중 leave 뒤 정상 수 요청이 timeout으로 실패하는 게이트를 확인한 뒤 조기 leave를 상태 변경 없는 동작으로 제한했으며, 같은 흐름이 `PASS TicTacToe.Java`까지 통과했다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
@@ -765,7 +767,7 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 | **SMP-JV-24** (**버그**) | [tictactoe §16](../../common/sample/tictactoe/README.ko.md): 조건을 만족하지 못하면 **join을 거부하거나 오류 response를 반환해야 한다** | **해결:** room이 가득 찬 경우 상태를 담은 typed rejection을 반환하고, entry handler는 `Accepted` 결과에서만 actor의 room 소속을 갱신한다. 세 번째 actor의 request가 오류로 끝나는 self-check가 rejection 분기를 직접 검증한다. |
 | **SMP-JV-25** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md) | SupportChat Java가 `connectRouter(...)`를 **두 곳에서** 쓴다(`support/Program.java:82-84`, `session/Program.java:64-66`). **Kotlin은 안 쓴다 — Kotlin이 맞다.** ⇒ 자동 연결이 회귀해도 Java SupportChat은 **초록으로 남는다.** 절대 규칙이 막으려던 바로 그 실패다 |
 | **SMP-JV-26** (**버그**) | [tictactoe §4](../../common/sample/tictactoe/README.ko.md): payload codec은 **JSON**이다. **MessagePack이나 Protobuf로 바꾸지 않는다** | Java·Kotlin 모두 `ZLinkMessagePackCodec`을 등록한다. ⇒ **JSON 경로의 정본 예제가 JSON을 안 쓴다** |
-| **SMP-JV-27** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): leave는 **게임 종료 후** 단계다 | `TicTacToe Game.java:258-264` — `LeaveGameReq`에 **상태·소속 가드가 `roomId` 일치 하나뿐**이다. 게다가 `onLeaveActor`는 **push 목록만** 지우고 **도메인의 `players` 슬롯은 안 지운다.** ⇒ 게임 중에 guest가 나가면 actor는 파괴되는데 match는 **여전히 두 명이라 믿는다.** 다음 수 뒤 `nextTurn`이 **존재하지 않는 actor**를 가리키고, 방은 15초 turn timeout까지 **멈춘다.** 나간 쪽은 오류도 못 받고, 남은 쪽은 **알림도 못 받는다** |
+| **SMP-JV-27** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): leave는 **게임 종료 후** 단계다 | **해결:** room 상태가 terminal일 때만 destroy 표시와 `leaveActor`를 실행한다. 진행 중 one-way leave는 응답할 오류가 없으므로 상태를 바꾸지 않으며, 바로 이어지는 정상 수가 처리되는 self-check로 이를 검증한다. |
 | **SMP-KT-07** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): `OwnerPlayEndpoint`가 **실제 room을 만든 Play endpoint와 같아야** 한다 | **Kotlin만** — `TicTacToeGameCreator.kt:15-21`이 **모든 play endpoint에 대해 round-robin**을 도는데, 그게 **이미 `CreateGameReq`를 받은 Play 서버 위에서** 돈다. ⇒ play-a에서 만든 2번째 방이 **play-b를 owner라고 광고한다.** SMP-JV-23이 owner를 play-a에 고정해 놔서 **지금은 가려져 있다** |
 | **SMP-JV-28** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): client는 API 응답의 `PlayNodes`로 매핑을 확인하므로 **샘플 설정의 내부 naming convention을 알 필요가 없다** | `TicTacToeGameCreator.java:28-32` — rid를 **`"play-node-" + (index+1)`로 만들어 낸다.** 진짜 rid는 config에 있다. ⇒ config의 rid 이름만 바꿔도 **서버는 계속 `play-node-1`을 광고하고 milestone push는 진짜 rid를 실어** 클라이언트 단언이 **코드 수정 없이 깨진다.** 계약이 금지한 바로 그것이다 |
 | **SMP-JV-29** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): destroy 시퀀스는 **`LeaveGameReq`가 구동**한다 | **Java만** — `TicTacToe Game.java:183-221`의 **1초 tick**이 terminal 상태면 **`LeaveGameReq` 없이** 두 actor를 leave·destroy한다. ⇒ 릴리즈 게이트가 **타이머만으로 만족될 수 있어** 문서가 요구하는 client 구동 destroy가 **증명되지 않는다.** 게다가 tick이 `PlaceMarkRes(Won)`과 client의 `LeaveGameReq` 사이에 끼면 **간헐적 dispatch 오류**가 난다 |

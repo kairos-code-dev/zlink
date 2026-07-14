@@ -155,6 +155,21 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (second_joined.reply->decode<bingo_room_join_res_t> ().state.players.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, BingoRoomGameCopyOwnsItsPlayerState)
+{
+    using namespace zlink::samples::bingo;
+
+    bingo_room_game_t room ("copy-room");
+    (void) room.join ("player-1", "Player 1");
+    (void) room.join ("player-2", "Player 2");
+    auto projected = room;
+
+    (void) projected.submit_card ("player-1", {1, 2, 3, 4, 5, 6, 7, 8, 9});
+
+    EXPECT_TRUE (room.snapshot ().players[0].card.empty ());
+    EXPECT_EQ (projected.snapshot ().players[0].card.size (), 9U);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

@@ -14,15 +14,9 @@ namespace zlink::samples::bingo
 class bingo_room_game_t
 {
   public:
-    bingo_room_game_t ()
-    {
-        _game.attach_players (&_state.players);
-    }
+    bingo_room_game_t () = default;
 
-    explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)}
-    {
-        _game.attach_players (&_state.players);
-    }
+    explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)} {}
 
     player_joined_notify_t join (std::string actor_id, std::string display_name)
     {
@@ -53,7 +47,7 @@ class bingo_room_game_t
         if (_state.status != bingo_room_status_t::running) {
             throw std::runtime_error ("bingo room is not running");
         }
-        _game.submit_card (actor_id, numbers);
+        _game.submit_card (_state.players, actor_id, numbers);
         return {_state};
     }
 

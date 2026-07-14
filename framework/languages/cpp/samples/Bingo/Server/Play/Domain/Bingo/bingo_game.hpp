@@ -17,9 +17,11 @@ namespace zlink::samples::bingo
 class bingo_game_t
 {
   public:
-    void submit_card (const std::string &actor_id, const std::vector<int> &numbers)
+    void submit_card (std::vector<bingo_player_state_t> &players,
+                      const std::string &actor_id,
+                      const std::vector<int> &numbers)
     {
-        auto &player = find_player (actor_id);
+        auto &player = find_player (players, actor_id);
         if (!player.card.empty ()) {
             throw std::runtime_error ("bingo card has already been submitted");
         }
@@ -69,21 +71,19 @@ class bingo_game_t
         return number_drawn_notify_t{state.room_id, state.draw_seq, number, state};
     }
 
-    void attach_players (std::vector<bingo_player_state_t> *players) noexcept { _players = players; }
-
   private:
-    bingo_player_state_t &find_player (const std::string &actor_id)
+    static bingo_player_state_t &find_player (std::vector<bingo_player_state_t> &players,
+                                              const std::string &actor_id)
     {
-        auto player = std::find_if (_players->begin (), _players->end (), [&] (const auto &entry) {
+        auto player = std::find_if (players.begin (), players.end (), [&] (const auto &entry) {
             return entry.actor_id == actor_id;
         });
-        if (player == _players->end ()) {
+        if (player == players.end ()) {
             throw std::runtime_error ("bingo player is not in the room");
         }
         return *player;
     }
 
-    std::vector<bingo_player_state_t> *_players = nullptr;
     int _next_draw = 1;
 };
 

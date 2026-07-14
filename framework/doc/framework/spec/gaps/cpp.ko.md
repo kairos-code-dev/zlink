@@ -490,7 +490,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-62** (결함) — **Bingo reward pub/sub 구독이 방 teardown을 구동한다.** 문서가 "game state를 바꾸는 경로가 아니다"라고 못박은 것
 - [x] **SMP-CP-63** (결함) — **TicTacToe에 도달 불가능한 status를 검사하는 dead code**가 있다(`"playing"`·`"ended"`는 존재하지 않는 값)
   - 근거: 수정 전 layout gate가 미사용 snapshot wrapper·항등 mapper·미등록 created handler 세 파일을 검출했다. 해당 cluster와 EntrySpot의 미사용 match를 제거한 뒤 no-hit 검색, layout/sample parity gate, `./run_sample.sh`가 모두 통과했다.
-- [ ] **SMP-CP-64** (결함) — **Bingo `bingo_room_game_t`가 자기 멤버를 가리키는 raw 포인터를 갖고 복사된다**(rule-of-five 위반)
+- [x] **SMP-CP-64** (결함) — **Bingo `bingo_room_game_t`가 자기 멤버를 가리키는 raw 포인터를 갖고 복사된다**(rule-of-five 위반)
+  - 근거: 수정 전 복사 독립성 회귀 테스트에서 복사본 카드 제출이 원본 player를 변경하고 복사본은 변경하지 않는 aliasing을 재현했다. `bingo_game_t`가 player vector 포인터를 저장하지 않도록 바꾼 뒤 회귀 테스트와 `./run_sample.sh`가 통과했다.
 
 ### 체크리스트 — E2E
 
@@ -627,7 +628,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 | **SMP-CP-61** | [deliverydispatch:196,215](../../common/sample/deliverydispatch/README.ko.md): Tracking = "**tracking channel server, evidence store**" — spot도 actor도 없다 | `Tracking/Spots/DeliveryTrackingSpot/delivery_tracking_spot.hpp:12-108`은 **평범한 클래스**이고 `_history`를 **읽는 곳이 없다.** `delivery_spot_directory.hpp:14-79`는 DI 싱글턴으로 등록돼(`Tracking/main.cpp:112`) **한 번 쓰이고 한 번도 안 읽힌다**(`require()` 호출 0건). `Tracking/Spots/EntrySpot/customer_entry_spot.hpp:9-12`와 `Tracking/Actors/customer_actor.hpp:11-25`는 **어디서도 인스턴스화되지 않는다** — 진짜는 `CustomerGateway/main.cpp:111,70`에 있다. `customer_actor_t::snapshot()`(`:18-21`)은 node rid `"tracking-spot"`·generation `1`짜리 **가짜 `actor_ref_snapshot_t`를 지어낸다.** 게다가 `Tracking/main.cpp:119-122`가 `add_spot_mesh(customer_actor_discovery)`를 `enable_router`+`enable_pub_sub`로 등록하는데 **spot도 entry spot도 actor factory도 0개**다 |
 | **SMP-CP-62** | [bingo:1140](../../common/sample/bingo/README.ko.md) §14: "`BingoRewardAcquiredEvent`는 **game state를 바꾸는 경로가 아니다**". 문서의 subscribe 경로는 **observer push 전용**이다 | `Spots/BingoRoomSpot/Handlers/bingo_reward_acquired_event_handler.hpp:12-15` — **owner 방이 자기가 발행한** `BingoRewardAcquiredMsg`를 받으면 `co_await leave_finished_actors()`를 돌린다. `.NET`은 `spot.AnnounceRewardAsync(...)`만 부르고 teardown은 draw-timer handler에만 둔다. (C++에선 `bingo_room_draw_timer_handler.hpp:23`이 이미 `cleanup_started`를 세워서 보통은 no-op이지만, **topic에 물린 두 번째 미문서화 lifecycle 트리거**다) |
 | **SMP-CP-63** | 상태값은 계약이 고정한다 | 도달 불가능한 `"playing"`·`"ended"` 술어를 가진 snapshot wrapper, 항등 contract mapper, 미등록 created handler, EntrySpot의 미사용 match를 제거했다. 실제 상태 판단은 `tictactoe_match_t`와 `tictactoe_status_t` 한 경로에만 남는다. |
-| **SMP-CP-64** | — | `Domain/Bingo/bingo_room_game.hpp:17-25` — 생성자가 `_game.attach_players(&_state.players)`로 **자기 멤버를 가리키는 raw 포인터**를 저장한다(`bingo_game.hpp:68,82`). **복사/이동 생성자를 선언하지 않았다.** 그런데 `bingo_room_spot.hpp:83`이 `auto projected = _game;`로 **복사한다** ⇒ 복사본의 `_game._players`가 **살아 있는 spot의 `_state.players`**를 가리킨다. 지금은 복사본에서 `join()`/`snapshot()`만 불러(둘 다 `_players`를 역참조 안 함) **잠복 상태**지만, 복사본에 `submit_card()`/`draw_next()`가 닿는 순간 **live room을 덮어쓰고**, aggregate를 move하면 **dangling**이다 |
+| **SMP-CP-64** | — | `bingo_game_t`의 player raw pointer와 `attach_players()`를 제거했다. 카드 제출은 room aggregate가 소유한 player vector를 호출 인자로 전달하므로 `bingo_room_game_t`의 기본 복사·이동이 독립된 state를 유지한다. |
 
 ### 메시지 계약 3자 대조 (문서 ↔ C++ ↔ `.NET`)
 

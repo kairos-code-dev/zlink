@@ -33,10 +33,9 @@ int main (int argc, char **argv)
         if (!options.redis_endpoint.empty ()) {
             rm::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
             channel.enable_client ();
-        } else {
-            for (const auto &endpoint : options.provider_endpoints) {
-                channel.enable_client (endpoint);
-            }
+        }
+        for (const auto &endpoint : options.provider_endpoints) {
+            channel.enable_client (endpoint);
         }
         if (!options.http_endpoint.empty ()) {
             framework.http ()

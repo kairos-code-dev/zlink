@@ -575,7 +575,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 교체 전부터 유지되는 consumer와 peer-row 조회 부재를 검출했다. 별도 location store consumer를 v1과 함께 시작해 같은 HTTP 표면을 전후에 사용하고, 공용 runtime-query handler가 rid `api-a`의 row가 p2 하나로 수렴했는지 확인한 직후 20개 request를 보낸다. provider/consumer/client target 빌드와 gate가 통과했고, `./run_e2e.sh RM-A4`에서 v1 1건과 v2 20건의 instance id·evidence를 확인했다.
 - [x] **E2E-CP-24** (결함) — **`RM-B2`(P0)가 문서가 금지한 "죽은 endpoint 반복 timeout"을 삼킨다.** scale-in 중 트래픽이 0
   - 근거: 수정 전 target-contract gate가 동시 transition request와 persistent consumer 부재 및 `catch (...)` 재시도를 검출했다. store consumer에서 16개 bounded slow request를 동시에 시작한 뒤 runner가 `api-b`를 정상 종료하고, 모든 future를 정상 provider reply 또는 명시한 public error로 회수하도록 바꿨다. row 제거 뒤 retry settle 구간은 삭제하고 즉시 20개 request가 `api-a`로만 가는지 확인한다. client target 빌드, gate, `./run_e2e.sh RM-B2`가 통과했다.
-- [ ] **E2E-CP-25** (결함) — **`RM-A2`(P0)가 manual-vs-auto 우선순위를 전혀 검증하지 않는다**
+- [x] **E2E-CP-25** (결함) — **`RM-A2`(P0)가 manual-vs-auto 우선순위를 전혀 검증하지 않는다**
+  - 근거: 수정 전 E2E gate가 별도 manual channel과 persistent consumer·in-flight 검증 부재를 검출했고, builder unit gate는 manual→discovery 조합에서 종료 코드 73으로 실패했다. `enable_client()`와 `enable_client(endpoint)`가 호출 순서와 무관하게 discovery와 manual endpoint를 함께 보존하도록 기존 builder 합성을 고쳤다. RM-A2는 같은 channel의 manual `api-a` request가 auto `api-b` 추가 중에도 완료되고 이후 두 endpoint가 모두 사용되는지 확인한다. builder unit은 종료 코드 0, consumer/client 빌드와 `./run_e2e.sh RM-A2`는 통과했다.
 - [ ] **E2E-CP-26** (미구현) — **Config 1·5 어디에서도 public error kind를 분류하지 않는다.** 초과 payload 거절이 timeout과 구분 불가
 - [ ] **E2E-CP-27** (결함) — **`RC-A1`·`RC-A2`(P0)가 `RC-A3`와 완전히 같은 등록 호출**이다. config의 변주 축이 0개
 - [ ] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다

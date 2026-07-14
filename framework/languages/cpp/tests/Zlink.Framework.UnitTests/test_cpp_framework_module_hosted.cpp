@@ -580,6 +580,12 @@ int main ()
     options.add_client_server_channel ("profile-channel")
       .enable_client ("tcp://127.0.0.1:9109")
       .enable_client ("tcp://127.0.0.1:9110");
+    options.add_client_server_channel ("manual-then-discovery")
+      .enable_client ("tcp://127.0.0.1:9113")
+      .enable_client ();
+    options.add_client_server_channel ("discovery-then-manual")
+      .enable_client ()
+      .enable_client ("tcp://127.0.0.1:9114");
     options.add_route_mesh ("route-channel")
       .enable_server ("tcp://127.0.0.1:9112")
       .set_routing_id (zlink::routing_id_t::from ("route-node"))
@@ -1351,7 +1357,27 @@ int main ()
     const auto profile_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "profile-channel"; });
-    if (channels.size () != 4 || api_channel == channels.end () || play_channel == channels.end ()
+    const auto manual_then_discovery =
+      std::find_if (channels.begin (), channels.end (), [] (const auto &channel) {
+          return channel.name == "manual-then-discovery";
+      });
+    const auto discovery_then_manual =
+      std::find_if (channels.begin (), channels.end (), [] (const auto &channel) {
+          return channel.name == "discovery-then-manual";
+      });
+    if (manual_then_discovery == channels.end () || !manual_then_discovery->client.discovery
+        || manual_then_discovery->client.connect_endpoints.size () != 1
+        || manual_then_discovery->client.connect_endpoints.front ()
+             != "tcp://127.0.0.1:9113") {
+        return 73;
+    }
+    if (discovery_then_manual == channels.end () || !discovery_then_manual->client.discovery
+        || discovery_then_manual->client.connect_endpoints.size () != 1
+        || discovery_then_manual->client.connect_endpoints.front ()
+             != "tcp://127.0.0.1:9114") {
+        return 74;
+    }
+    if (channels.size () != 6 || api_channel == channels.end () || play_channel == channels.end ()
         || event_channel == channels.end () || profile_channel == channels.end ()
         || !api_channel->server.enabled
         || api_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9103"

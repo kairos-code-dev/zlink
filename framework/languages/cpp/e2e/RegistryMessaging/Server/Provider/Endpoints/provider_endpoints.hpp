@@ -98,27 +98,6 @@ class http_profile_request_handler_t
     zlink::framework::channel_client_t &_channels;
 };
 
-class http_manual_profile_request_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
-    using request_type = profile_req_t;
-    using reply_type = profile_res_t;
-
-    explicit http_manual_profile_request_handler_t (zlink::framework::channel_client_t &channels) :
-        _channels (channels)
-    {
-    }
-
-    profile_res_t handle (const profile_req_t &request)
-    {
-        return request_profile_with_retry (_channels, "registry.messaging.api.manual", request);
-    }
-
-  private:
-    zlink::framework::channel_client_t &_channels;
-};
-
 class http_profile_command_handler_t
 {
   public:

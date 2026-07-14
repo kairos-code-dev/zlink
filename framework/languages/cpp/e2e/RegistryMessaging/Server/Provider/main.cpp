@@ -103,8 +103,6 @@ int main (int argc, char **argv)
                   zlink::byte_size_t::bytes (static_cast<std::int64_t> (*options.max_message_size)));
             }
             channel.use_handler_group (e2e::handler_group);
-            framework.add_client_server_channel ("registry.messaging.api.manual")
-              .enable_client (options.api_endpoint);
         }
         if (!options.route_endpoint.empty ()) {
             auto route = framework.add_route_mesh (e2e::route_channel)
@@ -126,7 +124,6 @@ int main (int argc, char **argv)
               .map_health ("/health")
               .map_get<rm_provider::evidence_handler_t> ("/evidence")
               .map_post<rm_provider::http_profile_request_handler_t> ("/profile/request")
-              .map_post<rm_provider::http_manual_profile_request_handler_t> ("/profile/manual")
               .map_post<rm_provider::http_profile_command_handler_t> ("/profile/command")
               .map_post<rm_provider::http_route_request_handler_t> ("/profile/route/request")
               .map_post<rm_provider::http_route_missing_handler_t> ("/profile/route/missing")

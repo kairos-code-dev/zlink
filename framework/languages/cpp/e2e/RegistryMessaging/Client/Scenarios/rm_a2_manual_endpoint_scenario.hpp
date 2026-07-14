@@ -4,7 +4,10 @@
 
 #include "../Support/client_support.hpp"
 
+#include <future>
 #include <iostream>
+#include <set>
+#include <thread>
 
 namespace zlink::framework::e2e::registry_messaging::client
 {
@@ -12,11 +15,56 @@ namespace zlink::framework::e2e::registry_messaging::client
 inline void run_rm_a2_manual_endpoint_scenario ()
 {
     const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto consumer_url = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
     auto reply = post_json<profile_req_t, profile_res_t> (
-      provider_a_url, "/profile/manual", profile_req_t{.value = "rm-a2"});
+      consumer_url, "/profile/request", profile_req_t{.value = "rm-a2"});
     ensure (reply.value == "profile:rm-a2", "RM-A2 reply payload mismatch");
     ensure (reply.provider_rid == "api-a",
             "RM-A2 did not use the requested provider endpoint");
+
+    auto inflight = std::async (std::launch::async, [&consumer_url] {
+        return post_json<profile_req_t, profile_res_t> (
+          consumer_url, "/profile/request", profile_req_t{.value = "slow"},
+          std::chrono::seconds (3));
+    });
+    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
+    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    const auto inflight_reply = inflight.get ();
+    ensure (inflight_reply.provider_rid == "api-a" && inflight_reply.value == "profile:slow",
+            "RM-A2 manual in-flight request was disrupted by auto reconcile");
+
+    auto location_client = zlink::http_client::client_t::create ()
+                             .base_url (consumer_url)
+                             .timeout (std::chrono::milliseconds (1000))
+                             .build ();
+    std::set<std::string> location_rids;
+    const auto row_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    do {
+        location_rids.clear ();
+        const auto rows = location_client.get ("/locations/peers").fetch<nlohmann::json> ();
+        for (const auto &row : rows) {
+            if (row.value ("mesh_name", "") == api_channel
+                && row.value ("role", "") == "router") {
+                location_rids.insert (row.value ("node_rid", ""));
+            }
+        }
+        if (!(location_rids.contains ("api-a") && location_rids.contains ("api-b"))) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+    } while (!(location_rids.contains ("api-a") && location_rids.contains ("api-b"))
+             && std::chrono::steady_clock::now () < row_deadline);
+    ensure (location_rids.contains ("api-a") && location_rids.contains ("api-b"),
+            "RM-A2 auto reconcile did not discover both providers");
+
+    std::set<std::string> routed_rids;
+    for (int index = 0; index < 80 && routed_rids.size () < 2; ++index) {
+        const auto routed = post_json<profile_req_t, profile_res_t> (
+          consumer_url, "/profile/request",
+          profile_req_t{.value = "rm-a2-after-" + std::to_string (index)});
+        routed_rids.insert (routed.provider_rid);
+    }
+    ensure (routed_rids.contains ("api-a") && routed_rids.contains ("api-b"),
+            "RM-A2 manual and auto endpoints were not both retained");
     wait_evidence_contains (provider_a_url, "ProfileReq", "rm-a2", std::chrono::seconds (10));
     std::cout << "scenario RM-A2 passed\n";
 }

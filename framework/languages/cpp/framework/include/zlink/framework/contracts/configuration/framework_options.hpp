@@ -387,10 +387,6 @@ class client_server_channel_builder_t
     {
         _client_enabled = true;
         _client_uses_discovery = true;
-        auto connections = client_connections ();
-        for (const auto &endpoint : connections.list_connections ()) {
-            connections.disconnect (endpoint);
-        }
         apply_channel ();
         return *this;
     }
@@ -399,7 +395,6 @@ class client_server_channel_builder_t
     {
         detail::require_non_blank (endpoint, "client/server client endpoint is required");
         _client_enabled = true;
-        _client_uses_discovery = false;
         client_connections ().connect (std::move (endpoint));
         apply_channel ();
         return *this;
@@ -532,10 +527,11 @@ class client_server_channel_builder_t
                   if (client_peer_weight) {
                       client.peer_weight (*client_peer_weight);
                   }
-                  if (!client_uses_discovery) {
-                      for (const auto &endpoint : client_endpoints) {
-                          client.connect (endpoint);
-                      }
+                  for (const auto &endpoint : client_endpoints) {
+                      client.connect (endpoint);
+                  }
+                  if (client_uses_discovery) {
+                      (void) channel.enable_client ();
                   }
               }
           });

@@ -417,10 +417,27 @@ case "$SCENARIO" in
 esac
 
 if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
+  if ! rg -q 'std::async' "$SCRIPT_DIR/Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp" \
+    || ! rg -q 'ZLINK_CPP_E2E_SINGLE_CONSUMER_URL' \
+      "$SCRIPT_DIR/Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp"; then
+    echo "RM-A2 contract gate failed: manual and auto endpoints do not share one channel" >&2
+    exit 1
+  fi
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
   API_A_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-a2 rm-a2 env
+  start_consumer manual-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" "$REDIS_ENDPOINT"
+  SINGLE_CONSUMER_PID="$LAST_PID"
+  READY="$LOG_DIR/rm-a2-ready"
+  CONTINUE="$LOG_DIR/rm-a2-continue"
+  run_client rm-a2 rm-a2 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  A2_CLIENT_PID="$!"
+  wait_marker "$READY"
+  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  touch "$CONTINUE"
+  wait "$A2_CLIENT_PID"
   cat "$LOG_DIR/client-rm-a2.stdout.log"
   exit 0
 fi

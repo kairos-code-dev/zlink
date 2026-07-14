@@ -135,6 +135,10 @@ int main ()
     const auto spot_service_runner = read_file (e2e_root / "SpotService/run_e2e.sh");
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
+    const auto registration_codec_client =
+      read_file (e2e_root / "RegistrationCodec/Client/main.cpp");
+    const auto registration_codec_a6 = read_file (
+      e2e_root / "RegistrationCodec/Client/Scenarios/rc_a6_invalid_registration_scenario.hpp");
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
     const auto transfer_runner = read_file (e2e_root / "SpotActorTransfer/run_e2e.sh");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
@@ -504,6 +508,21 @@ int main ()
                   "E2E-CP-55",
                   "ST-D1 does not observe actor packet routing across the delayed local commit");
 
+    /* E2E-CP-15 — RC-A6 owns its startup-failure assertions in a client scenario. */
+    gate.require (!registration_codec_a6.empty ()
+                    && registration_codec_client.find (
+                         "rc_a6_invalid_registration_scenario.hpp")
+                         != std::string::npos
+                    && registration_codec_client.find ("run_invalid_registration_scenario")
+                         != std::string::npos,
+                  "E2E-CP-15", "RC-A6 has no executable client scenario");
+    gate.require (registration_codec_runner.find ("run_invalid()") == std::string::npos
+                    && registration_codec_runner.find ("grep -q") == std::string::npos
+                    && registration_codec_runner.find ("ZLINK_CPP_E2E_INVALID_SERVER_EXE")
+                         != std::string::npos,
+                  "E2E-CP-15",
+                  "RegistrationCodec runner still owns RC-A6 result assertions");
+
     /* E2E-CP-16 — the default SpotService gate includes the implemented SM-D2 P0 scenario. */
     const auto all_scenarios = spot_service_runner.find ("for scenario in");
     const auto all_scenarios_end = spot_service_runner.find ("; do", all_scenarios);
@@ -539,11 +558,11 @@ int main ()
                     != std::string::npos,
                   "E2E-CP-18", "SM-E1 does not assert send message-flow error evidence");
 
-    /* E2E-CP-30 — RC-A6 is a startup-negative path, not a client scenario. */
+    /* E2E-CP-30 — the explicit client selector includes every RC-A scenario. */
     gate.require (registration_codec_runner.find ("== rc-a*") == std::string::npos,
-                  "E2E-CP-30", "RegistrationCodec routes RC-A6 through the client glob");
-    gate.require (registration_codec_runner.find ("== rc-a[1-5]") != std::string::npos,
-                  "E2E-CP-30", "RegistrationCodec client selector does not name RC-A1 through A5");
+                  "E2E-CP-30", "RegistrationCodec routes RC-A scenarios through a broad glob");
+    gate.require (registration_codec_runner.find ("== rc-a[1-6]") != std::string::npos,
+                  "E2E-CP-30", "RegistrationCodec client selector does not name RC-A1 through A6");
 
     /* E2E-CP-48 — submit-only publish produces no publisher dispatch-error marker. */
     gate.require (pubsub_runner.find ("publisher dispatch negative passed") != std::string::npos,

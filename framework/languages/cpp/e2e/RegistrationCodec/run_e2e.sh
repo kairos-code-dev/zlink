@@ -120,24 +120,6 @@ wait_port() {
   return 1
 }
 
-run_invalid() {
-  local mode="$1"
-  local expected="$2"
-  if ZLINK_CPP_E2E_INVALID_MODE="$mode" \
-    ZLINK_CPP_E2E_API_ENDPOINT="$INVALID" \
-    ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$INVALID_SERVER" >"$LOG_DIR/invalid-$mode.stdout.log" 2>"$LOG_DIR/invalid-$mode.stderr.log"; then
-    echo "invalid mode $mode unexpectedly succeeded" >&2
-    return 1
-  fi
-  if ! grep -q "$expected" "$LOG_DIR/invalid-$mode.stderr.log"; then
-    echo "invalid mode $mode did not report expected validation error: $expected" >&2
-    cat "$LOG_DIR/invalid-$mode.stderr.log" >&2
-    return 1
-  fi
-  echo "scenario RC-A6 $mode passed"
-}
-
 ZLINK_CPP_E2E_API_ENDPOINT="$API" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -163,11 +145,13 @@ wait_port codec-requester-http "$REQUESTER_HTTP"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == rc-a[1-5] || "$SCENARIO_LOWER" == rc-b[1-4] ]]; then
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == rc-a[1-6] || "$SCENARIO_LOWER" == rc-b[1-4] ]]; then
   ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
   ZLINK_CPP_E2E_API_ENDPOINT="$API" \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
+  ZLINK_CPP_E2E_INVALID_SERVER_EXE="$INVALID_SERVER" \
+  ZLINK_CPP_E2E_INVALID_ENDPOINT="$INVALID" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   cat "$LOG_DIR/client.stdout.log"
 fi
@@ -181,10 +165,4 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   cat "$LOG_DIR/client-b5.stdout.log"
 fi
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "rc-a6" ]]; then
-  run_invalid duplicate "duplicate handler registration"
-  run_invalid wrong-group "maps handler group 'registration-codec' with an incompatible handler kind"
-  run_invalid unsupported-channel "server must map a request or send handler group"
-  echo "scenario RC-A6 passed"
-fi
 echo "registration-codec e2e result=passed"

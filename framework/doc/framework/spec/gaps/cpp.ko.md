@@ -555,7 +555,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
   - 근거: 수정 전 target-contract gate가 `SpotActorTransfer/feature-map.ko.md` 부재로 실패했다. 공통 Config 10의 스무 시나리오를 모두 행으로 두고, 현재 runner와 기존 gap에 근거해 각 상태를 `deferred`로 기록했다. 역할 배치 차이와 약한 단언을 완료로 표시하지 않았으며, 문서 추가 뒤 target-contract gate와 runner 문법 검사가 통과했다.
 - [ ] **E2E-CP-14** (미구현) — **§3.1 "route mesh 없음 × 분리 배치" 조합이 아예 만들어지지 않는다**
-- [ ] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
+- [x] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
+  - 근거: 수정 전 target-contract gate가 RC-A6 client scenario 부재와 shell의 종료·stderr 판정을 각각 검출했다. client scenario가 세 invalid server process를 bounded startup window 안에서 직접 실행하고 비정상 종료와 정확한 validation 오류를 판정하도록 옮겼다. client target 빌드, gate, `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 검증이 통과했다.
 - [x] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**
   - 근거: 수정 전 target-contract gate가 SpotService `all` 목록의 `SM-D2` 누락을 검출했다. 기본 scenario inventory에 `SM-D2`를 추가한 뒤 gate와 `./run_e2e.sh SM-D2`의 client·play-a·play-b·session-a evidence 검증이 모두 통과했다.
 - [x] **E2E-CP-17** (결함) — **`SM-F5`가 자기 계약의 정반대를 단언한다.** Spot을 닫지 않고 "살아 있음"을 확인한다
@@ -574,7 +575,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다
 - [ ] **E2E-CP-29** (미구현) — **`RC-B4`(P0)의 JSON fallback 규칙이 검증되지 않는다.** 미지원 타입을 보내지 않는다
 - [x] **E2E-CP-30** (결함) — **`./run_e2e.sh RC-A6`가 항상 실패한다**(client에 branch가 없다)
-  - 근거: 수정 전 target-contract gate가 `rc-a*` glob이 RC-A6를 일반 client로 보내는 것과 A1~A5 명시 selector 부재를 검출했다. client selector를 `rc-a[1-5]`로 좁힌 뒤 gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.
+  - 근거: 수정 전 target-contract gate가 `rc-a*` glob과 RC-A6 client branch 부재를 검출했다. 처음에는 selector를 A1~A5로 좁혔고, E2E-CP-15에서 RC-A6 process lifecycle을 client scenario로 옮길 때 명시 selector를 A1~A6으로 확장했다. gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.
 - [x] **E2E-CP-31** (결함) — **`RL-D1`·`RL-C2` client scenario가 dead code**다. `main.cpp`가 부르지 않는다
   - 근거: 수정 전 target-contract gate가 runner 소유 검증과 중복된 RL-C2·RL-D1 client include와 파일 네 곳을 모두 검출했다. 약한 dead wrapper와 RL-C2의 도달하지 않는 branch를 제거한 뒤 client target 빌드와 gate가 통과했고, 실제 runner 소유 경로인 `./run_e2e.sh RL-C2`의 crash·복구 및 `./run_e2e.sh RL-D1`의 120회 burst가 각각 통과했다.
 - [x] **E2E-CP-32** (결함) — **`RL-B2`(P1) 단언이 실패할 수 없다.** 500ms timeout이라 crash와 무관하게 통과

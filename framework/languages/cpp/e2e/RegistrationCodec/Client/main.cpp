@@ -6,6 +6,7 @@
 #include "Scenarios/manual_registration_scenario.hpp"
 #include "Scenarios/rc_a4_di_lifecycle_scenario.hpp"
 #include "Scenarios/rc_a5_filter_ordering_scenario.hpp"
+#include "Scenarios/rc_a6_invalid_registration_scenario.hpp"
 #include "Scenarios/rc_b1_json_codec_scenario.hpp"
 #include "Scenarios/rc_b2_protobuf_codec_scenario.hpp"
 #include "Scenarios/rc_b3_messagepack_codec_scenario.hpp"
@@ -51,6 +52,10 @@ int main (int argc, char **argv)
             if (wants ("rc-a5")) {
                 ran = true;
                 rc_client::run_filter_ordering_scenario ();
+            }
+            if (wants ("rc-a6")) {
+                ran = true;
+                rc_client::run_invalid_registration_scenario ();
             }
             if (wants ("rc-b1") || wants ("rc-b2") || wants ("rc-b3")) {
                 const auto roundtrip = rc_client::post_empty<rc::codec_roundtrip_scenario_res_t> (

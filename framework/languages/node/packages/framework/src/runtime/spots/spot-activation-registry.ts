@@ -13,6 +13,7 @@ import {
 import type { ZLinkSpotActivation } from './spot-activation-state';
 import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError } from '../abort';
+import { ZLinkSpotLifecycleMetrics } from './spot-lifecycle-metrics';
 export { ZLinkSpotActivation } from './spot-activation-state';
 
 interface PendingSpotActivation {
@@ -38,8 +39,11 @@ export class ZLinkSpotActivationRegistry {
   private readonly closing = new Map<string, ZLinkSpotCloseOperation>();
   private readonly failedClose = new Set<string>();
   private readonly emptyWaiters = new Set<() => void>();
+  private readonly lifecycleMetrics: ZLinkSpotLifecycleMetrics;
 
-  constructor(private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {}
+  constructor(metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {
+    this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(metrics);
+  }
 
   allocateSpotRid(): RoutingId {
     let spotRid: RoutingId;
@@ -101,8 +105,7 @@ export class ZLinkSpotActivationRegistry {
       );
     }
     this.activations.set(key, activation);
-    this.metrics?.change('zlink.spot.count', 1, { kind: 'user' });
-    this.metrics?.count('zlink.spot.created', 1, { kind: 'user' });
+    this.lifecycleMetrics.opened('user');
   }
 
   startClose(
@@ -129,8 +132,7 @@ export class ZLinkSpotActivationRegistry {
           this.closing.delete(key);
           if (completed || resourcesReleased(activation)) {
             this.activations.delete(key);
-            this.metrics?.change('zlink.spot.count', -1, { kind: 'user' });
-            this.metrics?.count('zlink.spot.closed', 1, { kind: 'user' });
+            this.lifecycleMetrics.closed('user');
             this.failedClose.delete(key);
           } else {
             this.failedClose.add(key);

@@ -68,6 +68,7 @@ import type {
   ZLinkSpotActorHandoffRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
+import { ZLinkSpotLifecycleMetrics } from './spot-lifecycle-metrics';
 
 interface ZLinkEntrySpotActivationOptions {
   readonly entrySpotType: Type<ZLinkEntrySpot>;
@@ -106,6 +107,7 @@ export class ZLinkEntrySpotActivation {
   private readonly handlers = new DefaultZLinkSpotHandlerRegistry(this.actorHandlers);
   private readonly outbound: DefaultZLinkSpotOutbound;
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  private readonly lifecycleMetrics: ZLinkSpotLifecycleMetrics;
   private initialized = false;
   private disposed = false;
   private actorDispatch?: ZLinkSpotActorJoinDispatch;
@@ -128,6 +130,7 @@ export class ZLinkEntrySpotActivation {
       options.metrics,
       () => options.dispatchErrors?.flow.flowCreationEnabled() ?? true
     );
+    this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(options.metrics);
     this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.context = createEntrySpotContext({
       nativeSpotRid: options.nativeSpot.routingId,
@@ -203,8 +206,7 @@ export class ZLinkEntrySpotActivation {
     await this.serial.execute(() => this.entrySpot.onInitialize?.());
     this.attachActorJoinDispatch();
     this.initialized = true;
-    this.options.metrics?.change('zlink.spot.count', 1, { kind: 'entry' });
-    this.options.metrics?.count('zlink.spot.created', 1, { kind: 'entry' });
+    this.lifecycleMetrics.opened('entry');
   }
 
   async dispose(): Promise<void> {
@@ -225,8 +227,7 @@ export class ZLinkEntrySpotActivation {
     await cleanup(() => this.timers.dispose());
     await cleanup(() => this.options.nativeSpot.dispose());
     if (this.initialized) {
-      this.options.metrics?.change('zlink.spot.count', -1, { kind: 'entry' });
-      this.options.metrics?.count('zlink.spot.closed', 1, { kind: 'entry' });
+      this.lifecycleMetrics.closed('entry');
     }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, 'Entry Spot cleanup failed.');

@@ -8,6 +8,7 @@ pids=()
 REDIS_CONTAINER=""
 BASE_REDIS_CONTAINER=""
 REDIS_PROXY_PID=""
+REDIS_DELAY_CONTROL_FILE=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -141,25 +142,59 @@ start_redis_container() {
   if [[ -n "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
     local proxy_port
     proxy_port="$(reserve_ports 1)"
+    REDIS_DELAY_CONTROL_FILE="${log_dir}/redis-delay-ms"
     python3 - "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}" "${proxy_port}" \
+      "${REDIS_DELAY_CONTROL_FILE}" \
       >"${log_dir}/redis-proxy.stdout.log" 2>"${log_dir}/redis-proxy.stderr.log" <<'PY' &
+import pathlib
 import socket
 import sys
 import threading
+import time
 
 target = sys.argv[1]
 listen_port = int(sys.argv[2])
+delay_path = pathlib.Path(sys.argv[3])
+delay_path.write_text("0", encoding="utf-8")
 if target.startswith("tcp://"):
     target = target[len("tcp://"):]
 host, port_text = target.rsplit(":", 1)
 target_addr = (host, int(port_text))
 
-def pump(source, destination):
+class ConnectionDelay:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.request_buffer = b""
+        self.pending_peer_list_responses = 0
+
+    def note_request(self, data):
+        with self.lock:
+            self.request_buffer = (self.request_buffer + data)[-4096:]
+            upper = self.request_buffer.upper()
+            if b"SMEMBERS" in upper and b":KEYS:PEER" in upper:
+                self.pending_peer_list_responses += 1
+                self.request_buffer = b""
+
+    def take_peer_list_response(self):
+        with self.lock:
+            if self.pending_peer_list_responses == 0:
+                return False
+            self.pending_peer_list_responses -= 1
+            return True
+
+def pump(source, destination, connection_delay, request_direction=False):
     try:
         while True:
             data = source.recv(65536)
             if not data:
                 return
+            if request_direction:
+                connection_delay.note_request(data)
+            elif connection_delay.take_peer_list_response():
+                delay = int(delay_path.read_text(encoding="utf-8").strip() or "0")
+                if delay > 0:
+                    print(f"redis proxy peer-list response delay milliseconds={delay}", flush=True)
+                    time.sleep(delay / 1000.0)
             destination.sendall(data)
     except OSError:
         return
@@ -186,8 +221,15 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         except OSError:
             client.close()
             continue
-        threading.Thread(target=pump, args=(client, upstream), daemon=True).start()
-        threading.Thread(target=pump, args=(upstream, client), daemon=True).start()
+        connection_delay = ConnectionDelay()
+        threading.Thread(
+            target=pump,
+            args=(client, upstream, connection_delay, True),
+            daemon=True).start()
+        threading.Thread(
+            target=pump,
+            args=(upstream, client, connection_delay, False),
+            daemon=True).start()
 PY
     REDIS_PROXY_PID="$!"
     ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${proxy_port}"
@@ -309,6 +351,7 @@ start_consumer() {
   ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
   ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
   ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
+  ZLINK_JAVA_E2E_STORE_DELAY_CONTROL_FILE="${REDIS_DELAY_CONTROL_FILE}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(consumer_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
@@ -769,11 +812,15 @@ fi
 
 if should_run SF-E1; then
 start_redis_container
+ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS=5000
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+SF_E1_PROXY_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${SF_E1_PROXY_ENDPOINT}"
 start_consumer "consumer-SF-E1" "${CONSUMER_HTTP}" delay
 sleep 2
 ZLINK_JAVA_E2E_SCENARIO="SF-E1" \
@@ -785,6 +832,8 @@ ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-SF-E1.stdout.log" 2>"${log_dir}/client-SF-E1.stderr.log"
 cat "${log_dir}/client-SF-E1.stdout.log"
+grep -q "redis proxy peer-list response delay milliseconds=1200" \
+  "${log_dir}/redis-proxy.stdout.log"
 stop_all
 stop_redis_container
 fi

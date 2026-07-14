@@ -13,6 +13,7 @@ public record ConsumerOptions(
     long pollingMillis,
     long storeFailureGraceMillis,
     String storeMode,
+    String storeDelayControlFile,
     String logDir) {
     public static ConsumerOptions fromEnv() {
         return new ConsumerOptions(
@@ -26,6 +27,7 @@ public record ConsumerOptions(
             Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_POLLING_MS", "500")),
             Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS", "6000")),
             Env.get("ZLINK_JAVA_E2E_LOCATION_STORE_MODE", "stamp"),
+            Env.get("ZLINK_JAVA_E2E_STORE_DELAY_CONTROL_FILE"),
             Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
     }
 }

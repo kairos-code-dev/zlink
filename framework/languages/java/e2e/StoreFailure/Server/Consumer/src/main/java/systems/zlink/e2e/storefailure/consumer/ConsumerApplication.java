@@ -41,19 +41,18 @@ public final class ConsumerApplication {
     }
 
     @Bean
-    LocationStoreDelayState locationStoreDelayState() {
-        return new LocationStoreDelayState();
+    LocationStoreDelayState locationStoreDelayState(ConsumerOptions options) {
+        return new LocationStoreDelayState(options.storeDelayControlFile());
     }
 
     @Bean
-    ZLinkLocationStore locationStore(ConsumerOptions options, LocationStoreDelayState delayState) {
+    ZLinkLocationStore locationStore(ConsumerOptions options) {
         ZLinkRedisLocationStore redisStore = new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
             .setConnectionString(options.redisLocationEndpoint())
             .setKeyPrefix(options.locationKeyPrefix())
             .setCommandTimeout(Duration.ofMillis(options.redisCommandTimeoutMillis())));
         return switch (options.storeMode()) {
             case "polling" -> new PollingOnlyLocationStore(redisStore);
-            case "delay" -> new DelayableLocationStore(redisStore, delayState);
             default -> redisStore;
         };
     }

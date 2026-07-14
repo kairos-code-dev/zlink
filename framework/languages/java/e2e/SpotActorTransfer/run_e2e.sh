@@ -39,6 +39,10 @@ PIDS=()
 PID_A=""
 PID_B=""
 PID_C=""
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
 mkdir -p "${LOG_DIR}"
 
 cleanup() {
@@ -54,6 +58,13 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
+   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
+  echo "SpotActorTransfer must use 3s readiness and 5s route settle limits" >&2
+  exit 1
+fi
 
 read -r ROUTER_A_PORT ROUTER_B_PORT ROUTER_C_PORT HTTP_A_PORT HTTP_B_PORT HTTP_C_PORT STREAM_A_PORT STREAM_B_PORT STREAM_C_PORT <<<"$(python3 - <<'PY'
 import socket
@@ -111,16 +122,15 @@ start_node() {
 wait_http() {
   local url="$1"
   local pid="$2"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if curl --silent --fail --max-time 2 "${url}/health" >/dev/null; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --silent --fail --max-time 1 "${url}/health" >/dev/null; then
       return 0
     fi
     if ! kill -0 "${pid}" >/dev/null 2>&1; then
       echo "Node process ${pid} exited before ${url} became healthy" >&2
       return 1
     fi
-    sleep 0.2
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${url}" >&2
   return 1
@@ -146,7 +156,7 @@ start_node actor-b "${ROUTER_B_PORT}" "${HTTP_B_PORT}" "${STREAM_B_PORT}"
 wait_http "http://127.0.0.1:${HTTP_B_PORT}" "${PID_B}"
 start_node actor-c "${ROUTER_C_PORT}" "${HTTP_C_PORT}" "${STREAM_C_PORT}"
 wait_http "http://127.0.0.1:${HTTP_C_PORT}" "${PID_C}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 run_client() {
   ZLINK_JAVA_E2E_NODE_A_HTTP="http://127.0.0.1:${HTTP_A_PORT}" \

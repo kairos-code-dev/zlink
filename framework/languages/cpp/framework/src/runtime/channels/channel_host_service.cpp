@@ -6,6 +6,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/channel_socket_options.hpp"
+#include "runtime/channels/socket_monitor_event.hpp"
 
 #include <zlink.hpp>
 
@@ -269,27 +270,6 @@ class channel_host_service_t::server_loop_t
         return _applied_peer_weight && _applied_peer_weight->value () == 0;
     }
 
-    static std::optional<socket_event_kind_t> map_monitor_event (zlink::monitor_event event)
-    {
-        switch (event) {
-            case zlink::monitor_event::connected:
-            case zlink::monitor_event::accepted:
-                return socket_event_kind_t::connected;
-            case zlink::monitor_event::connection_ready:
-                return socket_event_kind_t::connection_ready;
-            case zlink::monitor_event::disconnected:
-                return socket_event_kind_t::disconnected;
-            case zlink::monitor_event::closed:
-                return socket_event_kind_t::closed;
-            case zlink::monitor_event::handshake_failed_no_detail:
-            case zlink::monitor_event::handshake_failed_protocol:
-            case zlink::monitor_event::handshake_failed_auth:
-                return socket_event_kind_t::handshake_failed;
-            default:
-                return std::nullopt;
-        }
-    }
-
     void drain_monitor_events ()
     {
         if (!_monitor.valid ()) {
@@ -306,7 +286,7 @@ class channel_host_service_t::server_loop_t
             if (!event) {
                 return;
             }
-            const auto kind = map_monitor_event (event->event);
+            const auto kind = detail::map_socket_monitor_event (event->event);
             if (!kind) {
                 continue;
             }

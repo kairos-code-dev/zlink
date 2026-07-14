@@ -20,9 +20,8 @@
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
 
-inline int run_service_host (int argc,
-                             char **argv,
-                             std::optional<std::string> monitor_profile = std::nullopt)
+inline int
+run_service_host (int argc, char **argv, std::optional<std::string> monitor_profile = std::nullopt)
 {
     const auto read_options = read_service_options ();
     auto options = read_options;
@@ -31,8 +30,8 @@ inline int run_service_host (int argc,
     }
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
-        auto evidence = std::make_unique<server::evidence_store_t> (options.rid,
-                                                                    options.evidence_file);
+        auto evidence =
+          std::make_unique<server::evidence_store_t> (options.rid, options.evidence_file);
         auto *evidence_ptr = evidence.get ();
         framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
         server::add_redis_location_store (framework, options.redis_endpoint,
@@ -57,8 +56,7 @@ inline int run_service_host (int argc,
         monitoring.add_socket_events (channel_server_source);
         if (options.monitor_profile == "socket-filter") {
             monitoring.add_socket_events (
-              profile_channel,
-              {zlink::framework::socket_event_kind_t::connection_ready});
+              profile_channel, {zlink::framework::socket_event_kind_t::connection_ready});
         } else {
             monitoring.add_socket_events (profile_channel);
         }
@@ -66,15 +64,15 @@ inline int run_service_host (int argc,
         monitoring.add_location_events ("location-runtime", std::chrono::milliseconds (100));
         monitoring.on<zlink::framework::socket_event_payload_t> (
           [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-              record_socket_event (*evidence_ptr, event);
+              server::record_socket_event (*evidence_ptr, event);
           });
         monitoring.on<zlink::framework::location_event_payload_t> (
           [evidence_ptr] (const zlink::framework::location_event_payload_t &event) {
-              record_location_event (*evidence_ptr, event);
+              server::record_location_event (*evidence_ptr, event);
           });
         monitoring.on<zlink::framework::spot_event_payload_t> (
           [evidence_ptr] (const zlink::framework::spot_event_payload_t &event) {
-              record_spot_event (*evidence_ptr, event);
+              server::record_spot_event (*evidence_ptr, event);
           });
         if (options.monitor_profile == "throwing") {
             monitoring.on<zlink::framework::socket_event_payload_t> (

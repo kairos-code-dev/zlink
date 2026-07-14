@@ -88,6 +88,13 @@ int main ()
       read_file (pubsub_client_root / "Scenarios/fanout_basic_delivery_scenario.hpp");
     const auto pubsub_slow_scenario =
       read_file (pubsub_client_root / "Scenarios/slow_subscriber_scenario.hpp");
+    const auto runtime_monitoring_runner = read_file (e2e_root / "RuntimeMonitoring/run_e2e.sh");
+    const auto runtime_monitoring_a4 = read_file (
+      e2e_root / "RuntimeMonitoring/Client/Scenarios/mon_a4_availability_transition_scenario.hpp");
+    const auto runtime_monitoring_d1 = read_file (
+      e2e_root / "RuntimeMonitoring/Client/Scenarios/mon_d1_failure_recovery_scenario.hpp");
+    const auto runtime_monitoring_recorders = read_file (
+      e2e_root / "RuntimeMonitoring/Server/Shared/monitoring_event_recorders.hpp");
     const std::vector<std::string> pubsub_client_scenarios{
       pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
@@ -641,6 +648,23 @@ int main ()
                   "E2E-CP-33", "RL-D5 fake soak remains selectable by the client");
     gate.require (resilience_runner.find ("should_run RL-D5") == std::string::npos,
                   "E2E-CP-33", "RL-D5 fake soak remains in the config runner");
+
+    /* E2E-CP-35 — MON-A4/MON-D1 prove named transitions rather than event counts. */
+    gate.require (runtime_monitoring_recorders.find ("|routes=") != std::string::npos,
+                  "E2E-CP-35", "location evidence does not identify RID-to-endpoint routes");
+    gate.require (runtime_monitoring_runner.find ("MON_D1_CYCLES=2") != std::string::npos,
+                  "E2E-CP-35", "MON-D1 does not execute two crash/restart cycles");
+    gate.require (runtime_monitoring_a4.find ("kind=Disconnected") != std::string::npos
+                    && runtime_monitoring_a4.find ("kind=Connected") != std::string::npos
+                    && runtime_monitoring_a4.find ("kind=ConnectionReady") != std::string::npos,
+                  "E2E-CP-35", "MON-A4 does not assert the socket failover transitions");
+    gate.require (runtime_monitoring_a4.find ("old_service_channel_endpoint")
+                    != std::string::npos
+                    && runtime_monitoring_a4.find ("new_service_channel_endpoint")
+                         != std::string::npos,
+                  "E2E-CP-35", "MON-A4 does not tie evidence to old and new endpoints");
+    gate.require (runtime_monitoring_d1.find ("verify_down_up_cycles") != std::string::npos,
+                  "E2E-CP-35", "MON-D1 does not verify each ordered down/up transition");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

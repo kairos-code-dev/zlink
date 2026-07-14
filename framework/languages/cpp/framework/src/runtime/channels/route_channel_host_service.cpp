@@ -3,9 +3,11 @@
 #include "runtime/channels/route_channel_host_service.hpp"
 
 #include "runtime/backend/native_route_backend.hpp"
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
+#include "runtime/channels/socket_monitor_event.hpp"
 
 #include <zlink.hpp>
 
@@ -62,6 +64,7 @@ class route_channel_host_service_t::route_loop_t
                   std::shared_ptr<detail::route_internal_packet_dispatcher_t> internal_packets,
                   std::atomic_bool &stop) :
         _manager (detail::channel_runtime_manager_t::from (bus)),
+        _channel_runtime (detail::channel_runtime_t::from (bus)),
         _runtime (&_manager.get_route_channel (route_channel_id)),
         _route_channel_id (std::move (route_channel_id)),
         _internal_packets (std::move (internal_packets)),
@@ -86,7 +89,8 @@ class route_channel_host_service_t::route_loop_t
         if (_runtime->routing_id ()) {
             _router->set_routing_id (*_runtime->routing_id ());
         }
-        _monitor = _router->monitor_open (zlink::monitor_event::connection_ready
+        _monitor = _router->monitor_open (zlink::monitor_event::connected
+                                          | zlink::monitor_event::connection_ready
                                           | zlink::monitor_event::disconnected);
         if (!_runtime->bind_endpoint ().empty ()) {
             try {
@@ -429,6 +433,12 @@ class route_channel_host_service_t::route_loop_t
             if (!event) {
                 return;
             }
+            const auto kind = detail::map_socket_monitor_event (event->event);
+            if (kind) {
+                _channel_runtime.publish_socket_event (
+                  _route_channel_id, *kind, event->local_addr, event->remote_addr,
+                  static_cast<std::uint32_t> (event->event), event->value);
+            }
             if (!event->routing_id) {
                 continue;
             }
@@ -661,6 +671,7 @@ class route_channel_host_service_t::route_loop_t
     }
 
     detail::channel_runtime_manager_t _manager;
+    detail::channel_runtime_t _channel_runtime;
     detail::route_channel_runtime_t *_runtime;
     std::string _route_channel_id;
     detail::no_route_internal_packet_dispatcher_t _no_internal_packets;

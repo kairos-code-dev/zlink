@@ -13,12 +13,12 @@ client role로 구성된다. 별도 registry role은 없다. client role은 `.NE
 | `MON-A1` | 구현 | trigger role이 service A로 transient profile request를 보내고, service role이 native socket monitor에서 발행되는 `Connected`, `ConnectionReady`, `Disconnected` event와 remote address evidence를 수집한다. |
 | `MON-A2` | 구현 | runner가 svc-a 다음 svc-b를 시작해 peer location row를 실제로 바꾼다. svc-a의 `location-runtime` source가 낸 `TopologyChanged` payload에 `svc-b` node rid가 포함되고 `ServiceSummaryChanged`가 함께 발생하는지 확인한다. 이후 500ms 안정 구간에는 같은 snapshot event가 다시 발행되지 않아야 한다. |
 | `MON-A3` | 구현 | service role이 Redis location store로 발견한 SPOT mesh peer를 연결하고, native peer snapshot 변화의 `PeersChanged`, `/spot/create` 뒤 `SubjectsChanged`, failing timer의 `TimerHandlerFailed` event를 evidence로 수집한다. |
-| `MON-A4` | 구현 | service drain/restore 중 public runtime option 변경으로 발행되는 socket `PeerAdmissionChanged` event, admin evidence, location runtime `TopologyChanged` evidence를 검증한다. |
+| `MON-A4` | 구현 | runner가 `svc-a`를 강제 종료하고 같은 RID를 다른 channel endpoint로 재시작한다. 지속 discovery client가 이전 endpoint의 `Disconnected`와 새 endpoint의 `Connected`·`ConnectionReady`를 순서대로 수집하고, location payload의 ready RID·endpoint 교체도 확인한다. 이어서 drain/restore 각각이 새 `PeerAdmissionChanged`를 발생시키는지 검증한다. |
 | `MON-A5` | 구현 | trigger role이 invalid handshake를 service channel에 보내고, service role이 `HandshakeFailed` 또는 대응 socket transition을 수집한다. location runtime `StatusChanged`, spot `StatusChanged`, 실제 failing timer의 `TimerStoppedAfterUnhandledException` evidence도 함께 검증한다. |
 | `MON-B1` | 구현 | filtered service role이 socket event kind filter를 `ConnectionReady`에 적용하고, 해당 event만 evidence에 남는지 검증한다. |
 | `MON-B2` | 구현 | trigger role의 validation endpoint가 C++ public builder의 중복 socket source, 비양수 location interval, missing spot/socket source framework 적용 검증을 실행하고 client가 결과를 단언한다. |
 | `MON-C1` | 구현 | throwing service mode가 monitoring handler 예외를 발생시키고, runtime이 `monitoring-event-dispatch` stderr marker를 남기며 trigger role의 후속 messaging request가 계속 성공하는지 검증한다. |
-| `MON-D1` | 구현 | runner가 filtered service를 `/shutdown`으로 중지한 뒤 같은 endpoint로 재시작하고, client가 trigger HTTP endpoint를 통해 restarted service evidence와 restart 이후 location runtime topology continuity evidence를 검증한다. |
+| `MON-D1` | 구현 | runner가 filtered service를 두 번 강제 종료하고 같은 endpoint로 재시작한다. 지속 observer가 각 cycle의 location route down/up payload를 순서대로 수집하며, 마지막 재시작 뒤 request가 성공하는지 검증한다. |
 
 ## 유지 기준
 
@@ -33,6 +33,12 @@ client role로 구성된다. 별도 registry role은 없다. client role은 `.NE
 
 ## 검증
 
+- 2026-07-15:
+  - `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-064803-2026580`
+  - 의미: MON-A4의 같은 RID endpoint 교체와 socket·location 전이, MON-D1의 두 crash/restart
+    cycle별 down/up 전이를 포함해 전체 scenario가 같은 gate에서 통과했다.
 - 2026-07-08:
   - `timeout 560s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과

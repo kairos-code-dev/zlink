@@ -17,8 +17,6 @@ esac
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
-HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -35,17 +33,17 @@ mkdir -p "$LOG_DIR"
 
 echo "log_dir=$LOG_DIR"
 
-read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER <<<"$(python3 - <<'PY'
+read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW CHANNEL_REMAP SPOT_ROUTER_REMAP SPOT_PUB_REMAP HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER HTTP_SERVICE_REMAP <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 ports = []
-for _ in range(13):
+for _ in range(17):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:9]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:13]))
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:12]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[12:17]))
 for s in sockets:
     s.close()
 PY
@@ -74,17 +72,17 @@ cleanup() {
   local code=$?
   local cleanup_failed=0
   local status
-  for pid in "${PIDS[@]:-}"; do
+  for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  for pid in "${PIDS[@]:-}"; do
+  for pid in "${PIDS[@]}"; do
     set +e
     wait "$pid" >/dev/null 2>&1
     status=$?
     set -e
-    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "137" && "$status" != "143" ]]; then
       echo "cleanup process $pid exited unexpectedly with status $status" >&2
       cleanup_failed=1
     fi
@@ -137,48 +135,107 @@ wait_port_closed() {
   return 1
 }
 
-stop_service_http() {
-  local endpoint="$1"
-  python3 - "$endpoint" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+crash_service() {
+  local pid="$1"
+  local name="$2"
+  local endpoint="$3"
+  kill -KILL "$pid"
+  wait "$pid" >/dev/null 2>&1 || true
+  wait_port_closed "$name" "$endpoint"
+}
+
+request_profile() {
+  local marker="$1"
+  python3 - "$HTTP_TRIGGER" "$marker" <<'PY'
+import json
 import sys
 import urllib.request
 
-base = sys.argv[1]
-timeout_seconds = float(sys.argv[2])
-request = urllib.request.Request(f"{base}/shutdown", data=b"", method="POST")
-try:
-    urllib.request.urlopen(request, timeout=timeout_seconds).read()
-except Exception:
-    pass
+base, marker = sys.argv[1:]
+body = json.dumps({"value": "availability", "marker": marker}).encode()
+request = urllib.request.Request(
+    f"{base}/profile/request",
+    data=body,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status >= 400:
+        raise RuntimeError(f"profile request failed with status {response.status}")
 PY
 }
 
-ZLINK_CPP_E2E_RID=svc-a \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_SERVICE" \
-ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_SERVICE" \
-ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_SERVICE" \
-ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/service.evidence.log" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$SERVICE" >"$LOG_DIR/service.stdout.log" 2>"$LOG_DIR/service.stderr.log" &
-PIDS+=("$!")
-wait_port service "$HTTP_SERVICE"
+wait_trigger_route_state() {
+  local rid="$1"
+  local endpoint="$2"
+  python3 - "$HTTP_TRIGGER" "$rid" "$endpoint" <<'PY'
+import json
+import sys
+import time
+import urllib.request
 
-ZLINK_CPP_E2E_RID=svc-b \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
-ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
-ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
-ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered.evidence.log" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$FILTERED_SERVICE" >"$LOG_DIR/filtered.stdout.log" 2>"$LOG_DIR/filtered.stderr.log" &
-FILTERED_PID="$!"
-PIDS+=("$FILTERED_PID")
-wait_port filtered-service "$HTTP_FILTERED"
+base, rid, endpoint = sys.argv[1:]
+deadline = time.monotonic() + 25
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{base}/evidence", timeout=2) as response:
+        entries = json.load(response)
+    topology = next(
+        (entry for entry in reversed(entries)
+         if "monitor-location|" in entry and "kind=TopologyChanged|" in entry),
+        "",
+    )
+    present = f"{rid}@" in topology
+    if endpoint == "absent" and not present:
+        break
+    if endpoint != "absent" and f"{rid}@{endpoint}" in topology:
+        break
+    time.sleep(0.1)
+else:
+    raise RuntimeError(f"latest trigger route did not reach {rid}@{endpoint}")
+PY
+}
+
+start_service_a() {
+  local channel_endpoint="$1"
+  local router_endpoint="$2"
+  local pub_endpoint="$3"
+  local http_endpoint="$4"
+  local label="$5"
+  ZLINK_CPP_E2E_RID=svc-a \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
+  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$channel_endpoint" \
+  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$router_endpoint" \
+  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$pub_endpoint" \
+  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/$label.evidence.log" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$SERVICE" >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
+  SERVICE_PID="$!"
+  PIDS+=("$SERVICE_PID")
+  wait_port "$label" "$http_endpoint"
+}
+
+start_service_b() {
+  local label="$1"
+  ZLINK_CPP_E2E_RID=svc-b \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
+  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
+  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
+  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
+  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/$label.evidence.log" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$FILTERED_SERVICE" >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
+  FILTERED_PID="$!"
+  PIDS+=("$FILTERED_PID")
+  wait_port "$label" "$HTTP_FILTERED"
+}
+
+start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
+  "$HTTP_SERVICE" service
+start_service_b filtered
 
 ZLINK_CPP_E2E_RID=svc-throw \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_THROW" \
@@ -208,7 +265,7 @@ wait_port trigger "$HTTP_TRIGGER"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" != "mon-d1" ]]; then
+if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
   ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
   ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
@@ -226,24 +283,43 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   fi
 fi
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
-  stop_service_http "$HTTP_FILTERED"
-  wait "$FILTERED_PID" >/dev/null 2>&1 || true
-  wait_port_closed filtered-service "$HTTP_FILTERED"
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-a4" ]]; then
+  OLD_SERVICE_CHANNEL="$CHANNEL"
+  request_profile mon-a4-before-remap
+  crash_service "$SERVICE_PID" service "$HTTP_SERVICE"
+  wait_trigger_route_state svc-a absent
 
-  ZLINK_CPP_E2E_RID=svc-b \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
-  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
-  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered-restart.evidence.log" \
+  CHANNEL="$CHANNEL_REMAP"
+  SPOT_ROUTER_SERVICE="$SPOT_ROUTER_REMAP"
+  SPOT_PUB_SERVICE="$SPOT_PUB_REMAP"
+  HTTP_SERVICE="$HTTP_SERVICE_REMAP"
+  start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
+    "$HTTP_SERVICE" service-remap
+  wait_trigger_route_state svc-a "$CHANNEL"
+  request_profile mon-a4-after-remap
+
+  ZLINK_CPP_E2E_SCENARIO=mon-a4 \
+  ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
+  ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
+  ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
+  ZLINK_CPP_E2E_OLD_SERVICE_CHANNEL_ENDPOINT="$OLD_SERVICE_CHANNEL" \
+  ZLINK_CPP_E2E_NEW_SERVICE_CHANNEL_ENDPOINT="$CHANNEL" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$FILTERED_SERVICE" >"$LOG_DIR/filtered-restart.stdout.log" 2>"$LOG_DIR/filtered-restart.stderr.log" &
-  FILTERED_RESTART_PID="$!"
-  PIDS+=("$FILTERED_RESTART_PID")
-  wait_port filtered-service-restart "$HTTP_FILTERED"
+    "$CLIENT" \
+    >"$LOG_DIR/client-a4.stdout.log" 2>"$LOG_DIR/client-a4.stderr.log"
+
+  cat "$LOG_DIR/client-a4.stdout.log"
+  grep -q "scenario MON-A4 passed" "$LOG_DIR/client-a4.stdout.log"
+fi
+
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
+  MON_D1_CYCLES=2
+  for cycle in $(seq 1 "$MON_D1_CYCLES"); do
+    crash_service "$FILTERED_PID" "filtered-service-cycle-$cycle" "$HTTP_FILTERED"
+    wait_trigger_route_state svc-b absent
+    start_service_b "filtered-restart-$cycle"
+    wait_trigger_route_state svc-b "$CHANNEL_FILTERED"
+  done
 
   ZLINK_CPP_E2E_SCENARIO=mon-d1 \
 ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \

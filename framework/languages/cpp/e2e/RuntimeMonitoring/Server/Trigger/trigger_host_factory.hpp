@@ -6,9 +6,11 @@
 
 #include "../Shared/evidence_store.hpp"
 #include "../Shared/location_store.hpp"
+#include "../Shared/monitoring_event_recorders.hpp"
 
 #include <zlink/framework.hpp>
 
+#include <chrono>
 #include <memory>
 
 namespace zlink::framework::e2e::runtime_monitoring::trigger
@@ -17,14 +19,24 @@ namespace zlink::framework::e2e::runtime_monitoring::trigger
 inline void configure_trigger_host (zlink::framework::zlink_framework_options_t &framework,
                                     const trigger_options_t &options)
 {
-    auto evidence =
-      std::make_unique<server::evidence_store_t> (options.rid, options.evidence_file);
+    auto evidence = std::make_unique<server::evidence_store_t> (options.rid, options.evidence_file);
+    auto *evidence_ptr = evidence.get ();
     framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
     framework.services ().add_singleton<trigger_options_t> (
       std::make_unique<trigger_options_t> (options));
-    server::add_redis_location_store (framework, options.redis_endpoint,
-                                      options.redis_key_prefix);
+    server::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
     framework.add_client_server_channel (profile_channel).enable_client ();
+    framework.monitoring ().add_socket_events (profile_channel);
+    framework.monitoring ().add_location_events ("location-runtime",
+                                                 std::chrono::milliseconds (100));
+    framework.monitoring ().on<zlink::framework::socket_event_payload_t> (
+      [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
+          server::record_socket_event (*evidence_ptr, event);
+      });
+    framework.monitoring ().on<zlink::framework::location_event_payload_t> (
+      [evidence_ptr] (const zlink::framework::location_event_payload_t &event) {
+          server::record_location_event (*evidence_ptr, event);
+      });
     if (!options.http_endpoint.empty ()) {
         framework.http ()
           .listen (options.http_endpoint)
@@ -40,10 +52,8 @@ inline void configure_trigger_host (zlink::framework::zlink_framework_options_t 
           .map_post<duplicate_source_validation_handler_t> (
             "/validation/registration/duplicate-source")
           .map_post<interval_validation_handler_t> ("/validation/registration/interval")
-          .map_post<missing_spot_validation_handler_t> (
-            "/validation/registration/missing-spot")
-          .map_post<missing_socket_validation_handler_t> (
-            "/validation/registration/missing-socket")
+          .map_post<missing_spot_validation_handler_t> ("/validation/registration/missing-spot")
+          .map_post<missing_socket_validation_handler_t> ("/validation/registration/missing-socket")
           .map_post<handshake_failure_handler_t> ("/socket/handshake-failure");
     }
 }
@@ -52,10 +62,9 @@ inline int run_trigger_host (int argc, char **argv)
 {
     const auto options = read_trigger_options ();
     auto app = zlink::framework::app_t::create ();
-    app.add_zlink_framework (
-      [&] (zlink::framework::zlink_framework_options_t &framework) {
-          configure_trigger_host (framework, options);
-      });
+    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
+        configure_trigger_host (framework, options);
+    });
     return app.run (argc, argv);
 }
 

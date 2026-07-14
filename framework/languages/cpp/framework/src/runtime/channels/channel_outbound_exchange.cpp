@@ -4,6 +4,7 @@
 
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/channel_socket_options.hpp"
+#include "runtime/channels/socket_monitor_event.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
@@ -298,8 +299,9 @@ class channel_native_client_t
     using endpoint_provider_t = std::function<channel_endpoint_snapshot_t ()>;
 
     channel_native_client_t (std::string channel_name,
-                             const channel_capability_snapshot_t &client) :
-        _channel_name (std::move (channel_name)), _client (client)
+                             const channel_capability_snapshot_t &client,
+                             channel_runtime_t runtime) :
+        _channel_name (std::move (channel_name)), _client (client), _runtime (std::move (runtime))
     {
         initialize_transport ();
     }
@@ -502,6 +504,9 @@ class channel_native_client_t
             }
             socket->channel_name (channel_name);
             socket->options ().immediate (true);
+            monitor = socket->monitor_open (zlink::monitor_event::connected
+                                            | zlink::monitor_event::connection_ready
+                                            | zlink::monitor_event::disconnected);
             poller.add (*socket, zlink::poll_event_flag_t::pollcompletion, 1);
         }
 
@@ -510,6 +515,11 @@ class channel_native_client_t
         void close_noexcept () noexcept
         {
             if (socket) {
+                try {
+                    monitor.close ();
+                }
+                catch (...) {
+                }
                 try {
                     poller.close ();
                 }
@@ -534,6 +544,7 @@ class channel_native_client_t
 
         std::unique_ptr<zlink::context_t> context;
         std::unique_ptr<zlink::dealer_socket_t> socket;
+        zlink::socket_monitor_t monitor;
         zlink::poller_t poller;
         std::set<std::string> connected;
         std::uint64_t connection_version = 0;
@@ -578,6 +589,7 @@ class channel_native_client_t
         if (!_transport || reset_required) {
             if (reset_required) {
                 trace_channel ("client topology changed; rotate transport");
+                drain_monitor_events (_transport);
             }
             _transport = make_transport ();
         }
@@ -605,8 +617,40 @@ class channel_native_client_t
         transport->connection_version = snapshot.version;
         if (reset_required) {
             std::this_thread::sleep_for (std::chrono::milliseconds (100));
+            drain_monitor_events (transport);
         }
         return transport;
+    }
+
+    void drain_monitor_events (const std::shared_ptr<transport_t> &transport)
+    {
+        if (!transport || !transport->monitor.valid ()) {
+            return;
+        }
+        std::lock_guard transport_lock (transport->mutex);
+        drain_monitor_events_locked (*transport);
+    }
+
+    void drain_monitor_events_locked (transport_t &transport)
+    {
+        for (;;) {
+            std::optional<zlink::monitor_event_t> event;
+            try {
+                event = transport.monitor.recv (zlink::recv_flags_t::dontwait);
+            }
+            catch (...) {
+                return;
+            }
+            if (!event) {
+                return;
+            }
+            const auto kind = map_socket_monitor_event (event->event);
+            if (kind) {
+                _runtime.publish_socket_event (
+                  _channel_name, *kind, event->local_addr, event->remote_addr,
+                  static_cast<std::uint32_t> (event->event), event->value);
+            }
+        }
     }
 
     void pump_request_progress (const std::shared_ptr<transport_t> &transport)
@@ -617,6 +661,7 @@ class channel_native_client_t
         std::lock_guard transport_lock (transport->mutex);
         zlink::poll_event_t event;
         (void) transport->poller.wait (&event, 1, std::chrono::milliseconds (0));
+        drain_monitor_events_locked (*transport);
     }
 
     void initialize_transport ()
@@ -631,6 +676,7 @@ class channel_native_client_t
 
     std::string _channel_name;
     channel_capability_snapshot_t _client;
+    channel_runtime_t _runtime;
     std::shared_ptr<transport_t> _transport;
     std::mutex _operation_mutex;
     std::mutex _mutex;
@@ -853,7 +899,8 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                 std::lock_guard lock (_state->mutex);
                 auto &slot = _state->native_clients[channel_name];
                 if (!slot) {
-                    slot = std::make_shared<channel_native_client_t> (channel_name, *client);
+                    slot = std::make_shared<channel_native_client_t> (channel_name, *client,
+                                                                      runtime);
                 }
                 native_client = slot;
             }
@@ -1012,7 +1059,8 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
                 }
                 auto &slot = _state->native_clients[channel_name];
                 if (!slot) {
-                    slot = std::make_shared<channel_native_client_t> (channel_name, *client);
+                    slot = std::make_shared<channel_native_client_t> (
+                      channel_name, *client, channel_runtime_t (_state));
                 }
                 native_client = slot;
             }

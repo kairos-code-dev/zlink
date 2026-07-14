@@ -43,7 +43,7 @@ int run_scenarios (const client_options_t &client_options)
         if (wants ("mon-a5")) {
             rm_client::run_mon_a5_fixed_kinds_scenario (client_options);
         }
-        if (wants ("mon-a4")) {
+        if (scenario == "mon-a4") {
             rm_client::run_mon_a4_availability_transition_scenario (client_options);
         }
         if (wants ("mon-b1")) {
@@ -55,8 +55,8 @@ int run_scenarios (const client_options_t &client_options)
         if (wants ("mon-b2")) {
             rm_client::run_mon_b2_registration_validation_scenario (client_options);
         }
-        if (!wants ("mon-a1") && !wants ("mon-a2") && !wants ("mon-a3") && !wants ("mon-a5") &&
-            !wants ("mon-a4") && !wants ("mon-b1") && !wants ("mon-c1") && !wants ("mon-b2")) {
+        if (!wants ("mon-a1") && !wants ("mon-a2") && !wants ("mon-a3") && !wants ("mon-a5")
+            && !wants ("mon-a4") && !wants ("mon-b1") && !wants ("mon-c1") && !wants ("mon-b2")) {
             throw std::runtime_error ("unknown RuntimeMonitoring scenario: " + scenario);
         }
     }

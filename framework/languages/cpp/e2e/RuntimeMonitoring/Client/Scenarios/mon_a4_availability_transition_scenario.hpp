@@ -13,48 +13,79 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline bool mon_a4_contains_nonzero_location_event (const std::vector<std::string> &entries,
-                                                    const std::string &kind,
-                                                    const std::string &zero_marker)
+inline std::size_t mon_a4_find_after (const std::vector<std::string> &entries,
+                                      const std::string &needle,
+                                      std::size_t start)
 {
-    for (const auto &entry : entries) {
-        if (contains (entry, kind) && !contains (entry, zero_marker)) {
-            return true;
+    for (auto index = start; index < entries.size (); ++index) {
+        if (contains (entries[index], needle)) {
+            return index;
         }
     }
-    return false;
+    throw std::runtime_error ("MON-A4 ordered evidence missing: " + needle);
+}
+
+inline void mon_a4_wait_for_new_event (const std::string &base_url,
+                                       const std::string &needle,
+                                       std::size_t baseline_size)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    do {
+        const auto entries = fetch_evidence (base_url);
+        if (entries.size () > baseline_size) {
+            for (auto index = baseline_size; index < entries.size (); ++index) {
+                if (contains (entries[index], needle)) {
+                    return;
+                }
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    } while (std::chrono::steady_clock::now () < deadline);
+    throw std::runtime_error ("MON-A4 transition evidence missing after action: " + needle);
 }
 
 inline void run_mon_a4_availability_transition_scenario (const client_options_t &options)
 {
+    ensure (!options.old_service_channel_endpoint.empty ()
+              && !options.new_service_channel_endpoint.empty (),
+            "MON-A4 runner did not provide failover endpoints");
+
+    const auto trigger_entries = wait_evidence_contains (
+      options.trigger_url, "kind=ConnectionReady|remote=" + options.new_service_channel_endpoint,
+      std::chrono::milliseconds (10000));
+    const auto disconnected = mon_a4_find_after (
+      trigger_entries, "kind=Disconnected|remote=" + options.old_service_channel_endpoint, 0);
+    const auto connected = mon_a4_find_after (
+      trigger_entries, "kind=Connected|remote=" + options.new_service_channel_endpoint,
+      disconnected + 1);
+    mon_a4_find_after (trigger_entries,
+                       "kind=ConnectionReady|remote=" + options.new_service_channel_endpoint,
+                       connected + 1);
+
+    const auto location_entries = wait_evidence_contains (
+      options.filtered_service_url, "svc-a@" + options.new_service_channel_endpoint,
+      std::chrono::milliseconds (10000));
+    const auto old_route =
+      mon_a4_find_after (location_entries, "svc-a@" + options.old_service_channel_endpoint, 0);
+    mon_a4_find_after (location_entries, "svc-a@" + options.new_service_channel_endpoint,
+                       old_route + 1);
+
     auto http = zlink::http_client::client_t::create ()
                   .base_url (options.service_url)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
 
+    auto service_entries = fetch_evidence (options.service_url);
     auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();
     ensure (drained && drained.value ().status < 400, "MON-A4 drain admin call failed");
-    auto drain_entries =
-      wait_evidence_contains (options.service_url,
-                              "admin|rid=svc-a|action=server-weight|weight=0",
-                              std::chrono::milliseconds (10000));
-    ensure (any_contains (drain_entries, "kind=PeerAdmissionChanged"),
-            "MON-A4 drain socket admission evidence missing");
+    mon_a4_wait_for_new_event (options.service_url, "kind=PeerAdmissionChanged",
+                               service_entries.size ());
 
+    service_entries = fetch_evidence (options.service_url);
     auto restored = http.post ("/admin/server-weight?weight=100").submit_raw ().result ();
     ensure (restored && restored.value ().status < 400, "MON-A4 restore admin call failed");
-    auto restore_entries =
-      wait_evidence_contains (options.service_url,
-                              "admin|rid=svc-a|action=server-weight|weight=100",
-                              std::chrono::milliseconds (10000));
-    ensure (count_contains (restore_entries, "kind=PeerAdmissionChanged") >= 2,
-            "MON-A4 restore socket admission evidence missing");
-    const auto location_entries = wait_evidence_count_at_least (
-      options.service_url, "monitor-location|source=location-runtime|kind=TopologyChanged", 2,
-      std::chrono::milliseconds (10000));
-    ensure (mon_a4_contains_nonzero_location_event (location_entries, "kind=TopologyChanged",
-                                                   "topology=0"),
-            "MON-A4 location topology transition evidence missing");
+    mon_a4_wait_for_new_event (options.service_url, "kind=PeerAdmissionChanged",
+                               service_entries.size ());
     std::cout << "scenario MON-A4 passed\n";
 }
 

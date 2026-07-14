@@ -22,16 +22,11 @@ type AuthenticatedPlayer = PlayerInfo & {
   push(payload: unknown): void;
 };
 
-type PlayEntrySpotLike = {
-  observeMilestone(actor: unknown): Promise<unknown>;
-};
-
 type PlaySessionDependencies = {
   apiClient: ZLinkChannelClient;
   actorManager: {
     getOrCreate(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
   };
-  entrySpot: PlayEntrySpotLike;
 };
 
 type PlaySessionHeader = {
@@ -81,10 +76,6 @@ class PlaySession implements ZLinkSession {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before play packets.');
     }
-    if (header.name === PacketNames.observeMilestoneReq) {
-      await this.observeMilestone(header);
-      return;
-    }
     throw new Error(`Unsupported play stream packet '${header.name}'.`);
   }
 
@@ -115,22 +106,11 @@ class PlaySession implements ZLinkSession {
     this.context.client.reply(authenticateRes(authenticated.player)).submit();
   }
 
-  async observeMilestone(header: PlaySessionHeader): Promise<void> {
-    void header;
-    if (this.actor === null) {
-      throw new Error('AuthenticateReq is required before ObserveMilestoneReq.');
-    }
-    console.log(`actor: ObserveMilestoneReq received. actor=${this.actor.actorId}`);
-    const result = await this.dependencies.entrySpot.observeMilestone(this.actor);
-    this.context.client.reply(result).submit();
-    console.log(`actor: ObserveMilestoneReq completed. actor=${this.actor.actorId}`);
-  }
-
   private async relayToActor(playHeader: PlaySessionHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before actor packets.');
     }
-    if (this.actor.roomId === undefined && playHeader.name !== PacketNames.joinGameReq) {
+    if (this.actor.roomId === undefined && requiresRoomMembership(playHeader.name)) {
       throw new Error('JoinGameReq is required before actor packets.');
     }
     const sessionActor = this.sessionActor ?? this.context.actors.find(this.actor.actorId);
@@ -142,6 +122,11 @@ class PlaySession implements ZLinkSession {
 }
 
 function shouldRelayToActor(packetName: string): boolean {
+  return packetName === PacketNames.observeMilestoneReq ||
+    requiresRoomMembership(packetName);
+}
+
+function requiresRoomMembership(packetName: string): boolean {
   return packetName === PacketNames.placeMarkReq ||
     packetName === PacketNames.leaveGameReq;
 }

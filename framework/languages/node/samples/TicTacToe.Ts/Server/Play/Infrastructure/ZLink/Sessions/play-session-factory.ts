@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
-import { MilestoneObserverRegistry, PlayEntrySpot } from '../Spots/EntrySpot/play-entry-spot';
 import { PlaySession } from './play-session';
 import type {
   ActorRef,
@@ -16,8 +15,7 @@ type PlayActorManager = {
 class PlaySessionFactory implements ZLinkSessionFactory<PlaySessionType> {
   constructor(
     private readonly actorManager: PlayActorManager,
-    private readonly apiClient: ZLinkChannelClient,
-    private readonly milestoneObservers: MilestoneObserverRegistry
+    private readonly apiClient: ZLinkChannelClient
   ) {
     this.actorManager = actorManager;
     this.apiClient = apiClient;
@@ -26,14 +24,12 @@ class PlaySessionFactory implements ZLinkSessionFactory<PlaySessionType> {
   async create(context: ZLinkSessionContext): Promise<PlaySessionType> {
     return new PlaySession({
       apiClient: this.apiClient,
-      actorManager: this.actorManager,
-      entrySpot: new PlayEntrySpot(this.milestoneObservers)
+      actorManager: this.actorManager
     }, context);
   }
 }
 
 Inject(ZLINK_ACTOR_MANAGER)(PlaySessionFactory, undefined, 0);
 Inject(ZLINK_CHANNEL_CLIENT)(PlaySessionFactory, undefined, 1);
-Inject(MilestoneObserverRegistry)(PlaySessionFactory, undefined, 2);
 
 export { PlaySessionFactory };

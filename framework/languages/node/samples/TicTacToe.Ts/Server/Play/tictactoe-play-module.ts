@@ -8,6 +8,7 @@ import { PlayActorFactory } from './Infrastructure/ZLink/Actors/play-actor-facto
 import { PlayActor } from './Infrastructure/ZLink/Actors/play-actor';
 import { PlayActorTransferAdapter } from './Infrastructure/ZLink/Actors/play-actor-transfer-adapter';
 import { PlayActorJoinGameHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler';
+import { PlayActorObserveMilestoneHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-observe-milestone-handler';
 import { PlayActorLeaveGameHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-leave-game-handler';
 import { PlayActorPlaceMarkHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-place-mark-handler';
 import { PlayerWinMilestoneEventHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/player-win-milestone-event-handler';
@@ -91,6 +92,7 @@ function createTicTacToePlayModule() {
       MilestoneObserverRegistry,
       PlayEntrySpot,
       PlayActorJoinGameHandler,
+      PlayActorObserveMilestoneHandler,
       PlayActorLeaveGameHandler,
       PlayActorPlaceMarkHandler,
       PlayerWinMilestoneEventHandler,

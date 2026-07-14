@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
+import { PlayActorObserveMilestoneHandler } from './Handlers/play-actor-observe-milestone-handler';
 import { PlayActor } from '../../Actors/play-actor';
 import { observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
@@ -12,6 +13,7 @@ import type {
 } from '@zlink-systems/framework';
 import type {
   JoinGameRes,
+  ObserveMilestoneRes,
   PlayerInfo,
   PlayerWinMilestoneEvent,
   TicTacToeGameJoinReq,
@@ -50,6 +52,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
 
   configure(): void {
     this.context.handlers.addActorPacket(PlayActorJoinGameHandler, PlayActor);
+    this.context.handlers.addActorPacket(PlayActorObserveMilestoneHandler, PlayActor);
     this.context.handlers.addSubscribe(PlayerWinMilestoneEventHandler, SampleNames.playerMilestoneTopic);
   }
 
@@ -73,7 +76,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     return reply as JoinGameRes;
   }
 
-  async observeMilestone(actor: PlayEntrySpotActor): Promise<unknown> {
+  async observeMilestone(actor: PlayEntrySpotActor): Promise<ObserveMilestoneRes> {
     this.milestoneObservers.subscribe(actor);
     return observeMilestoneRes(true);
   }

@@ -684,6 +684,7 @@ Config 11 전체 실행도 각 selector를
 - [ ] **E2E-JV-05** (결함) — readiness가 최대 **20배**(60초). `ROUTE_SETTLE`이 **Java runner 전부에 없다**
 - [ ] **E2E-JV-06** (결함) — 시나리오 파일이 **12줄 껍데기**이고 본문이 532줄 god-context에 있다
 - [ ] **E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다
+  - 재검증 중단: provider 재시작과 survivor-only gate를 추가하면 기존 runner에서는 `api-b` 응답을 잡아 red가 된다. grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작해도 consumer가 새 연결을 만들고 `sf-b2-restarted` 요청을 전달했다. E2E만 고치면 영구 실패하므로 Java runtime 범위가 필요하다.
 - [x] **E2E-JV-08** (결함) — `feature-map` 누락, `YieldDispatch`에 **`run_e2e.sh`가 없어** 실행 불가
   - 근거: 없는 `SpotActorTransfer/feature-map.ko.md`를 요구한 파일 gate가 실패했다. 새 feature-map은 공통 Config 10, Java runner와 같은 20개 ID를 가지며, E2E-JV-17·18의 알려진 증거 결함은 부분 구현으로 남겼다. `YieldDispatch`는 Git 추적 파일이 0건이므로 이 항목의 구현 대상이 아님을 다시 확인했다.
 
@@ -693,7 +694,7 @@ Config 11 전체 실행도 각 selector를
 |----|------|----------------|
 | **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | Bingo·SupportChat·DeliveryDispatch·ShoppingMall·GameQuest에 `connectRouter`/`connectPeerPub`가 **29곳**(`.NET`·Node는 **0**). 인자 없는 `.enableClient()` overload가 **같은 파일에서 이미 쓰이고 있다** — 피할 수 있는 호출들이다. **[갭 인덱스 §13.2]가 "연결 축은 규약과 일치한다"고 적고 있었는데 거짓이었고, 정정했다** |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | `addSpotMesh` **0건**(Java·Kotlin 모두). 소유권을 **클라이언트 측 해시**로 흉내낸다(`SampleTopology.java:42-47`). `.NET`엔 `QuestMission`·`GameApi` 양쪽에 있다 |
-| **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | 두 언어 모두 요청을 `grace + 2×heartbeat` 동안 돌리고 unhealthy 상태를 기다릴 뿐, **장애 중 provider를 재시작하지도, 새 connect가 억제되는지 단언하지도 않는다.** SF-B1이 이미 SF-B2가 보는 것을 전부 본다. 게다가 그 시간을 **[IMP-JV-33]으로 읽는 곳이 0인 `storeFailureGrace`**에서 계산한다 — **죽은 옵션으로 시간을 재는 시나리오다** |
+| **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | **재검증 중단:** 기존 SF-B2 뒤에 survivor-only gate를 붙이면 계속 실행 중인 `api-b` 응답을 잡아 예상대로 실패한다. 이어 grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작했지만, consumer가 새 outbound 연결을 만들고 `sf-b2-restarted` 요청을 `api-b`에 전달했다. 이는 gate 누락뿐 아니라 Java runtime 계약 위반이다. **선택지:** (1) 허용 범위를 `zlink-framework-core`까지 넓혀 store failure grace 초과 시 reconnect/new connect를 억제한 뒤 provider 재시작 gate를 정식으로 넣는다. (2) 현재 범위를 유지하고 이 항목을 open으로 남긴다. |
 
 ### 샘플 상세
 

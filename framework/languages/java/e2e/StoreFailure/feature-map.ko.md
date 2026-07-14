@@ -27,8 +27,10 @@
 - `SF-B1`: runner가 전용 Redis 컨테이너를 pause한 동안 기존 consumer 연결의 request가 계속
   성공하고, public runtime status가 store unhealthy와 owner lease heartbeat failure를 보여준 뒤
   unpause 후 healthy로 복구되는지 확인한다.
-- `SF-B2`: Redis outage를 store failure grace보다 길게 유지하면서 기존 연결 request가 계속
-  성공하는지 확인하고, outage status와 recovery 후 provider row 복구를 public endpoint로 검증한다.
+- `SF-B2`(부분 구현): Redis outage를 store failure grace보다 길게 유지하면서 기존 연결 request가
+  계속 성공하는지 확인하고, outage status와 recovery 후 provider row 복구를 public endpoint로
+  검증한다. grace 초과 뒤 재시작한 provider로 새 outbound 연결을 만들지 않는다는 단언은
+  E2E-JV-07의 Java runtime 결함 때문에 아직 추가하지 못했다.
 - `SF-C1`: `api-b`를 SIGKILL해 row 제거 없이 종료시킨 뒤, owner lease 만료 후 public peer list에서
   `api-b`가 제외되고 consumer request가 survivor인 `api-a`로만 빠르게 처리되는지 확인한다.
 - `SF-C2`: provider HTTP `/shutdown`으로 `api-b`를 정상 종료시킨 뒤, owner lease TTL을 기다리지
@@ -47,7 +49,7 @@
 
 ## 남은 항목
 
-- 없음: Config 6의 Java Redis location store scenario는 `all` runner로 검증한다.
+- `SF-B2`: E2E-JV-07에서 grace 초과 뒤 provider 재시작과 신규 outbound 연결 억제를 추적한다.
 
 ## 검증
 

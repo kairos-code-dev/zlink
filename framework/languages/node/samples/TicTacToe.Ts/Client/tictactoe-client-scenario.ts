@@ -93,19 +93,18 @@ class TicTacToeClientScenario {
       console.log('observer-subscription=verified');
 
       // 3. Host joins by explicit RoomId
+      const client1SelfJoin = watchForUnexpectedMessage(
+        client1,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.player.actorId,
+        signal
+      );
       const client1Join = await client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
       ensure(() => stateOf(client1Join).roomId === game.roomId);
       ensure(() => stateOf(client1Join).status === GameStatus.WaitingForPlayers);
       ensure(() => stateOf(client1Join).xActorId === client1Auth.player.actorId);
       ensure(() => stateOf(client1Join).oActorId === null);
       ensure(() => stateOf(client1Join).board === '.........');
-      await expectNoMessage(
-        client1,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.player.actorId,
-        signal
-      );
-
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
         .where((message) => message.payload.actorId === client2Auth.player.actorId)
@@ -116,19 +115,18 @@ class TicTacToeClientScenario {
         .submit(signal);
 
       // 4-6. Guest joins by the same RoomId.
+      const client2SelfJoin = watchForUnexpectedMessage(
+        client2,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.player.actorId,
+        signal
+      );
       const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
       ensure(() => stateOf(client2Join).roomId === game.roomId);
       ensure(() => stateOf(client2Join).status === GameStatus.InProgress);
       ensure(() => stateOf(client2Join).oActorId === client2Auth.player.actorId);
       ensure(() => stateOf(client2Join).xActorId === client1Auth.player.actorId);
       ensure(() => stateOf(client2Join).nextTurn === GameMarks.x);
-      await expectNoMessage(
-        client2,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.player.actorId,
-        signal
-      );
-
       const [client1Joined, client1Running] = await Promise.all([
         client1SawClient2Join,
         client1RunningState
@@ -140,11 +138,13 @@ class TicTacToeClientScenario {
       ensure(() => client1Joined.payload.mark === GameMarks.o);
       ensure(() => stateOf(client1Joined.payload).status === GameStatus.InProgress);
       ensure(() => client1Running.payload.state.nextTurn === GameMarks.x);
+      await client1SelfJoin.assertAbsent();
 
       // 7. Each move response is matched with the opponent notify.
       const client2SawMove1 = waitState(client2, 0, signal);
       const client1Move1 = await client1.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client1Move1), (await client2SawMove1).payload.state);
+      await client2SelfJoin.assertAbsent();
       ensure(() => stateOf(client1Move1).board === 'X........');
       ensure(() => stateOf(client1Move1).nextTurn === GameMarks.o);
       requireLastMove(stateOf(client1Move1), client1Auth.player.actorId, 0);
@@ -227,32 +227,35 @@ function waitState(
     .submit(signal);
 }
 
-async function expectNoMessage<TPayload>(
+function watchForUnexpectedMessage<TPayload>(
   client: ZlinkStreamConnector,
   packetName: string,
   predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
   signal?: AbortSignal
-): Promise<void> {
-  try {
-    await client
-      .waitFor<TPayload>(packetName)
-      .where(predicate)
-      .timeout(25)
-      .submit(signal);
-  } catch (error) {
-    if (isRequestTimeout(error)) {
-      return;
+): { assertAbsent(): Promise<void> } {
+  const controller = new AbortController();
+  const waitSignal = signal === undefined
+    ? controller.signal
+    : AbortSignal.any([signal, controller.signal]);
+  const observed = client
+    .waitFor<TPayload>(packetName)
+    .where(predicate)
+    .submit(waitSignal)
+    .then(
+      () => true,
+      (error) => {
+        if (controller.signal.aborted && signal?.aborted !== true) return false;
+        throw error;
+      }
+    );
+  return {
+    async assertAbsent(): Promise<void> {
+      controller.abort();
+      if (await observed) {
+        throw new Error(`Unexpected stream message '${packetName}'.`);
+      }
     }
-    throw error;
-  }
-  throw new Error(`Unexpected stream message '${packetName}'.`);
-}
-
-function isRequestTimeout(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'error' in error
-    && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
+  };
 }
 
 function createPlayerClient(endpoint: string, name: string, observedClients: Set<string>): ZlinkStreamConnector {

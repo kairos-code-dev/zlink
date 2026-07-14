@@ -397,6 +397,14 @@ int main ()
                     != std::string::npos,
                   "IMP-CP-37", "actor writes still add the C++-only mesh hash field");
 
+    /* IMP-CP-36 — paged location lists preserve the Redis SSCAN cursor. */
+    gate.require (redis_hpp.find ("\"SSCAN\"") != std::string::npos,
+                  "IMP-CP-36", "Redis location paging does not use SSCAN");
+    gate.require (redis_hpp.find ("parse_scan_state") != std::string::npos,
+                  "IMP-CP-36", "Redis location paging does not preserve cursor state");
+    gate.require (redis_hpp.find ("parse_offset") == std::string::npos,
+                  "IMP-CP-36", "Redis location paging still treats continuation as an offset");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

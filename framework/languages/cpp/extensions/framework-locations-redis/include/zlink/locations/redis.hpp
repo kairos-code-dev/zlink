@@ -1355,29 +1355,39 @@ class redis_location_store_t final : public location_store_t,
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
         return _worker.submit<location_page_t<TRow>> (
           [this, kind, filter = std::move (filter), page, decode = std::move (decode)] () mutable {
-            std::vector<std::string> row_keys;
-            std::optional<std::string> continuation;
-            auto all_keys = redis_get (
-              client ().smembers<std::vector<std::string>> (
-                detail::redis_location_key_schema_t::keys_key (_options.key_prefix, kind)));
-            const auto offset = parse_offset (page.continuation_token);
-            const auto page_size =
-              page.page_size > 0 ? static_cast<std::size_t> (page.page_size) : all_keys.size ();
-            for (std::size_t i = offset; i < all_keys.size () && row_keys.size () < page_size; ++i) {
-                row_keys.push_back (std::move (all_keys[i]));
-            }
-            const auto next = offset + row_keys.size ();
-            if (next < all_keys.size ()) {
-                continuation = std::to_string (next);
-            }
-
             location_page_t<TRow> result;
-            result.continuation_token = std::move (continuation);
-            for (const auto &row_key : row_keys) {
+            auto scan = parse_scan_state (page.continuation_token);
+            const auto limited = page.page_size > 0;
+            const auto page_size = limited ? static_cast<std::size_t> (page.page_size) : 0;
+            const auto set_key =
+              detail::redis_location_key_schema_t::keys_key (_options.key_prefix, kind);
+            while (!limited || result.items.size () < page_size) {
+                if (scan.pending_keys.empty ()) {
+                    if (scan.started && scan.cursor == 0) {
+                        break;
+                    }
+                    const auto remaining = limited ? page_size - result.items.size () : 100;
+                    const auto reply = redis_get (
+                      client ().command<std::tuple<std::string, std::vector<std::string>>> (
+                        "SSCAN", set_key, std::to_string (scan.cursor), "COUNT",
+                        std::to_string (std::max<std::size_t> (1, remaining))));
+                    scan.cursor = std::stoull (std::get<0> (reply));
+                    scan.started = true;
+                    scan.pending_keys = std::move (std::get<1> (reply));
+                    if (scan.pending_keys.empty ()) {
+                        continue;
+                    }
+                }
+
+                auto row_key = std::move (scan.pending_keys.back ());
+                scan.pending_keys.pop_back ();
                 auto row = load_row<TRow> (kind, row_key, decode);
                 if (row && matches (*row, filter)) {
                     result.items.push_back (std::move (*row));
                 }
+            }
+            if (!scan.pending_keys.empty () || scan.cursor != 0) {
+                result.continuation_token = encode_scan_state (scan);
             }
             return result;
           });
@@ -1494,17 +1504,36 @@ class redis_location_store_t final : public location_store_t,
     }
 
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-    static std::size_t parse_offset (const std::optional<std::string> &value)
+    struct redis_scan_state_t
     {
-        if (!value) {
-            return 0;
+        unsigned long long cursor = 0;
+        bool started = false;
+        std::vector<std::string> pending_keys;
+    };
+
+    static redis_scan_state_t parse_scan_state (const std::optional<std::string> &token)
+    {
+        if (!token) {
+            return {};
         }
         try {
-            return static_cast<std::size_t> (std::stoull (*value));
+            const auto json = nlohmann::json::parse (*token);
+            redis_scan_state_t state;
+            state.cursor = std::stoull (json.at ("cursor").get<std::string> ());
+            state.started = true;
+            state.pending_keys = json.at ("pending").get<std::vector<std::string>> ();
+            return state;
         }
         catch (...) {
-            return 0;
+            return {};
         }
+    }
+
+    static std::string encode_scan_state (const redis_scan_state_t &state)
+    {
+        return nlohmann::json{{"cursor", std::to_string (state.cursor)},
+                              {"pending", state.pending_keys}}
+          .dump ();
     }
 #endif
 

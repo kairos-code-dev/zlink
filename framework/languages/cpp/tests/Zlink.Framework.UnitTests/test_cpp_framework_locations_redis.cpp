@@ -399,6 +399,74 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
 #endif
 }
 
+TEST (ZLinkFrameworkLocationsRedis, PagedActorListUsesOpaqueRedisScanCursor)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    const auto options = find_redis_options ();
+    if (!options) {
+        GTEST_SKIP () << "Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT to enable";
+    }
+
+    redis_location_store_t store (*options);
+    ASSERT_TRUE (store
+                   .renew_owner_lease ("scan-owner", zlink::routing_id_t::from ("scan-node"),
+                                       std::chrono::seconds (10))
+                   .result ()
+                   .has_value ());
+
+    std::vector<std::string> expected;
+    for (int index = 0; index < 25; ++index) {
+        const auto actor_id = "scan-actor-" + std::to_string (index);
+        const auto is_player = index % 2 == 0;
+        const auto actor_type = is_player ? "player" : "npc";
+        auto claim = store.update_actor (
+          actor_location_t{.actor_id = actor_id,
+                           .actor_type = actor_type,
+                           .actor_ref = std::nullopt,
+                           .node_rid = zlink::routing_id_t::from ("scan-node"),
+                           .spot_mesh_name = "play",
+                           .owner_id = "scan-owner"},
+          zlink::framework::location_write_intent_t::new_claim);
+        ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
+        if (is_player) {
+            expected.push_back (actor_id);
+        }
+    }
+
+    std::vector<std::string> actual;
+    std::optional<std::string> continuation;
+    int page_count = 0;
+    do {
+        auto page = store.list_actors (
+          zlink::framework::actor_location_filter_t{.actor_type = "player"},
+          zlink::framework::location_page_request_t{.page_size = 3,
+                                                    .continuation_token = continuation});
+        ASSERT_TRUE (page.result ().has_value ());
+        EXPECT_LE (page.result ().value ().items.size (), 3u);
+        for (const auto &actor : page.result ().value ().items) {
+            actual.push_back (actor.actor_id);
+        }
+        continuation = page.result ().value ().continuation_token;
+        if (continuation) {
+            const auto token = nlohmann::json::parse (*continuation);
+            EXPECT_TRUE (token.at ("cursor").is_string ());
+            EXPECT_TRUE (token.at ("pending").is_array ());
+        }
+        ++page_count;
+        ASSERT_LT (page_count, 50);
+    } while (continuation);
+
+    std::sort (expected.begin (), expected.end ());
+    std::sort (actual.begin (), actual.end ());
+    EXPECT_EQ (expected, actual);
+    EXPECT_GT (page_count, 1);
+    (void) store.remove_all_by_owner ("scan-owner");
+    (void) store.remove_owner_lease ("scan-owner");
+#endif
+}
+
 TEST (ZLinkFrameworkLocationsRedis, CrossLanguageWritesRowsForDotnetToRead)
 {
 #if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)

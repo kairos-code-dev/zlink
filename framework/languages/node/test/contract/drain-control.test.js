@@ -82,6 +82,24 @@ test('drain distinguishes marker publication failure from later teardown failure
   });
 });
 
+test('drain retries transient marker publication failures within the shared deadline', async () => {
+  const registration = framework.createFrameworkRegistration({
+    locations: { options: { pollingIntervalMs: 1 } }
+  });
+  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  let attempts = 0;
+  host.locationOwner.runtime = {
+    async publishDraining() {
+      attempts += 1;
+      return attempts >= 2;
+    }
+  };
+  host.stop = async () => {};
+
+  assert.deepEqual(await host.drain(100), { kind: 'drained' });
+  assert.equal(attempts, 2);
+});
+
 test('DRAIN-018 managed stream writes session-closing before disconnecting peer', async () => {
   const order = [];
   let frame;

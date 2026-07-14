@@ -121,6 +121,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private readonly metrics: ZLinkRuntimeMetrics;
   private ready = true;
   private drainOperation?: Promise<ZLinkDrainResult>;
+  private drainingMarkerPublished = false;
   private readonly drainedWaiters: Array<(result: ZLinkDrainResult) => void> = [];
   private drainMetricState = 'serving';
   private drainStartedAt?: bigint;
@@ -456,16 +457,18 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       );
       const outcome = await Promise.race([graceful, timeout]);
       if (outcome.kind === 'timeout') {
-        return await this.forceStopDrain('DeadlineExceeded');
+        return await this.forceStopDrain(
+          this.drainingMarkerPublished ? 'DeadlineExceeded' : 'DrainingStatePublishFailed'
+        );
       }
       if (outcome.kind === 'failed') {
+        if (outcome.error instanceof ZLinkDrainingStatePublishError) {
+          return await this.forceStopDrain('DrainingStatePublishFailed');
+        }
         if (deadline.signal.aborted) {
           return await this.forceStopDrain('DeadlineExceeded');
         }
-        const reason = outcome.error instanceof ZLinkDrainingStatePublishError
-          ? 'DrainingStatePublishFailed'
-          : 'TeardownFailed';
-        return await this.forceStopDrain(reason);
+        return await this.forceStopDrain('TeardownFailed');
       }
       const result = { kind: 'drained' } as const;
       await this.publishDrainState('Drained', result);
@@ -477,9 +480,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   private async performGracefulDrain(signal: AbortSignal): Promise<void> {
     try {
-      if (this.locationOwner.currentRuntime !== undefined && !await this.locationOwner.currentRuntime.publishDraining()) {
-        throw new Error('Failed to publish draining peer rows.');
+      const runtime = this.locationOwner.currentRuntime;
+      while (runtime !== undefined && !await runtime.publishDraining(signal)) {
+        await waitForDrainRetry(
+          this.options.registration.locations.options.pollingIntervalMs
+            ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+          signal
+        );
       }
+      this.drainingMarkerPublished = true;
     } catch (error) {
       throw new ZLinkDrainingStatePublishError(error);
     }

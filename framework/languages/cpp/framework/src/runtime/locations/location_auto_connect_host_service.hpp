@@ -179,6 +179,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::function<void (const target_t &)> connect_target;
         std::function<void (const target_t &)> disconnect_target;
         std::size_t discovered = 0;
+        bool store_unavailable = false;
+        std::optional<std::chrono::steady_clock::time_point> reconcile_after;
         std::thread thread;
     };
 
@@ -277,7 +279,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             catch (...) {
                 trace_error (loop.local, "unknown");
             }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+            std::this_thread::sleep_for (_runtime->options ().polling_interval);
         }
     }
 
@@ -293,8 +295,24 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                      .value ();
         }
         catch (...) {
+            loop.store_unavailable = true;
             _runtime->record_store_error ();
             throw;
+        }
+        if (loop.store_unavailable) {
+            loop.store_unavailable = false;
+            republish_after_store_recovery (loop);
+            /* A restarted store can be empty. Give every live node one heartbeat
+             * interval to restore its local rows before removing prior targets. */
+            loop.reconcile_after =
+              std::chrono::steady_clock::now () + _runtime->options ().heartbeat_interval;
+            return;
+        }
+        if (loop.reconcile_after) {
+            if (std::chrono::steady_clock::now () < *loop.reconcile_after) {
+                return;
+            }
+            loop.reconcile_after.reset ();
         }
         observe_discovered (loop, rows);
         auto desired = compute_desired (loop.local, rows);
@@ -367,6 +385,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 trace_publish (row, "renewed");
             }
         }
+    }
+
+    void republish_after_store_recovery (loop_t &loop)
+    {
+        if (!loop.local_row) {
+            return;
+        }
+        loop.local_published = false;
+        publish_local (loop);
     }
 
     std::uint32_t current_local_weight (const local_t &local) const

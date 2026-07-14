@@ -83,7 +83,7 @@ void polling_fallback (const options_t &options)
 
 void fail_static (const options_t &options)
 {
-    sf_client::docker ("pause");
+    sf_client::stop_store ();
     try {
         sf_client::drive_requests (options.consumer_url, "sf-b1", options.lease_ttl * 7 / 10,
                                    "SF-B1");
@@ -93,10 +93,10 @@ void fail_static (const options_t &options)
           options.heartbeat * 8, "SF-B1 outage status was not visible");
     }
     catch (...) {
-        sf_client::docker ("unpause");
+        sf_client::restart_store ();
         throw;
     }
-    sf_client::docker ("unpause");
+    sf_client::restart_store ();
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
@@ -106,7 +106,7 @@ void fail_static (const options_t &options)
 
 void grace_exceeded (const options_t &options)
 {
-    sf_client::docker ("pause");
+    sf_client::stop_store ();
     try {
         sf_client::drive_requests (options.consumer_url, "sf-b2", options.grace + options.heartbeat * 2,
                                    "SF-B2");
@@ -114,10 +114,10 @@ void grace_exceeded (const options_t &options)
         sf_client::ensure (!status.store_healthy, "SF-B2 outage was not visible after grace");
     }
     catch (...) {
-        sf_client::docker ("unpause");
+        sf_client::restart_store ();
         throw;
     }
-    sf_client::docker ("unpause");
+    sf_client::restart_store ();
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
@@ -158,9 +158,9 @@ void graceful_removal (const options_t &options)
 
 void short_recovery (const options_t &options)
 {
-    sf_client::docker ("pause");
+    sf_client::stop_store ();
     std::this_thread::sleep_for (options.lease_ttl / 2);
-    sf_client::docker ("unpause");
+    sf_client::restart_store ();
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
@@ -171,11 +171,11 @@ void short_recovery (const options_t &options)
 
 void long_recovery (const options_t &options)
 {
-    sf_client::docker ("pause");
+    sf_client::stop_store ();
     sf_client::post_empty (options.provider_b_url, "/admin/crash");
     sf_client::wait_down (options.provider_b_url);
     std::this_thread::sleep_for (options.lease_ttl + options.heartbeat);
-    sf_client::docker ("unpause");
+    sf_client::restart_store ();
 
     sf_client::wait_peers (
       options.consumer_url,
@@ -199,7 +199,7 @@ void status_transition (const options_t &options)
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
       options.heartbeat * 8, "SF-D3 initial status was not healthy");
-    sf_client::docker ("pause");
+    sf_client::stop_store ();
     try {
         sf_client::wait_status (
           options.consumer_url,
@@ -210,10 +210,10 @@ void status_transition (const options_t &options)
           options.heartbeat * 10, "SF-D3 outage status was not visible");
     }
     catch (...) {
-        sf_client::docker ("unpause");
+        sf_client::restart_store ();
         throw;
     }
-    sf_client::docker ("unpause");
+    sf_client::restart_store ();
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) {

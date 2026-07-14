@@ -96,13 +96,35 @@ inline void wait_down (const std::string &base_url)
     throw std::runtime_error ("node did not go down: " + base_url);
 }
 
-inline void docker (const std::string &verb)
+inline std::string redis_container ()
 {
     const auto container = env_or ("ZLINK_CPP_E2E_REDIS_CONTAINER");
     ensure (!container.empty (), "ZLINK_CPP_E2E_REDIS_CONTAINER is required");
-    const auto command = "docker " + verb + " " + container + " >/dev/null";
+    return container;
+}
+
+inline void docker_action (const std::string &action)
+{
+    const auto container = redis_container ();
+    const auto command = "docker " + action + " " + container + " >/dev/null";
     const auto code = std::system (command.c_str ());
-    ensure (code == 0, "docker " + verb + " failed for " + container);
+    ensure (code == 0, "docker " + action + " failed for " + container);
+}
+
+inline void stop_store () { docker_action ("stop -t 0"); }
+
+inline void restart_store ()
+{
+    docker_action ("restart");
+    const auto container = redis_container ();
+    const auto command = "docker exec " + container + " redis-cli ping >/dev/null 2>&1";
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (std::system (command.c_str ()) == 0) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    }
+    throw std::runtime_error ("Redis did not become ready after docker restart");
 }
 
 inline runtime_status_res_t get_status (const std::string &base_url)

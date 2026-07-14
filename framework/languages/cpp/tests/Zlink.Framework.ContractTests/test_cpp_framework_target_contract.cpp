@@ -95,6 +95,12 @@ int main ()
       e2e_root / "RuntimeMonitoring/Client/Scenarios/mon_d1_failure_recovery_scenario.hpp");
     const auto runtime_monitoring_recorders = read_file (
       e2e_root / "RuntimeMonitoring/Server/Shared/monitoring_event_recorders.hpp");
+    const auto store_failure_client =
+      read_file (e2e_root / "DiscoveryRegistryHa/Client/main.cpp");
+    const auto store_failure_support =
+      read_file (e2e_root / "DiscoveryRegistryHa/Client/Support/client_support.hpp");
+    const auto store_failure_runner =
+      read_file (e2e_root / "DiscoveryRegistryHa/run_e2e.sh");
     const std::vector<std::string> pubsub_client_scenarios{
       pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
@@ -665,6 +671,32 @@ int main ()
                   "E2E-CP-35", "MON-A4 does not tie evidence to old and new endpoints");
     gate.require (runtime_monitoring_d1.find ("verify_down_up_cycles") != std::string::npos,
                   "E2E-CP-35", "MON-D1 does not verify each ordered down/up transition");
+
+    /* E2E-CP-37 — store outage scenarios stop and restart Redis instead of pausing it. */
+    gate.require (store_failure_client.find ("docker (\"pause\")") == std::string::npos
+                    && store_failure_client.find ("docker (\"unpause\")")
+                         == std::string::npos,
+                  "E2E-CP-37", "StoreFailure still uses pause/unpause outage simulation");
+    gate.require (store_failure_support.find ("stop_store") != std::string::npos
+                    && store_failure_support.find ("restart_store") != std::string::npos
+                    && store_failure_support.find ("stop -t 0") != std::string::npos,
+                  "E2E-CP-37", "StoreFailure has no stop/restart process-control boundary");
+    gate.require (store_failure_runner.find ("127.0.0.1:${redis_port}:6379")
+                    != std::string::npos,
+                  "E2E-CP-37", "Redis restart can change the published host port");
+
+    /* IMP-CP-06 — recovery re-registers local rows before applying disconnect diff. */
+    gate.require (location_auto_connect.find ("reconcile_after") != std::string::npos
+                    && location_auto_connect.find ("heartbeat_interval") != std::string::npos,
+                  "IMP-CP-06", "auto-connect recovery has no heartbeat defer boundary");
+    gate.require (location_auto_connect.find ("republish_after_store_recovery")
+                    != std::string::npos,
+                  "IMP-CP-06", "auto-connect recovery does not republish local rows");
+    gate.require (location_auto_connect.find ("_runtime->options ().polling_interval")
+                    != std::string::npos
+                    && location_auto_connect.find ("sleep_for (std::chrono::milliseconds (100))")
+                         == std::string::npos,
+                  "IMP-CP-06", "auto-connect still ignores the configured polling interval");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

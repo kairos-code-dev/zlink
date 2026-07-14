@@ -10,17 +10,24 @@
 |----------|------|------|
 | SF-A1 | 구현 | Redis location store가 정상일 때 provider 2개가 live peer row로 보이고, consumer request가 provider에 도달하며 consumer/provider runtime status가 healthy로 보인다. |
 | SF-A2 | 구현 | C++ Redis store는 watch 없이 polling 경로로 동작한다. status의 `watch_enabled=false`와 provider shutdown 뒤 peer row 제거를 public `/query/*` endpoint로 검증한다. |
-| SF-B1 | 구현 | Redis container pause 중 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 unpause 후 healthy로 회복된다. |
-| SF-B2 | 구현 | store failure grace를 넘긴 Redis outage 중에도 기존 연결 request는 계속 성공하고, unpause 후 provider rows와 status가 회복된다. |
+| SF-B1 | 구현 | Redis container process를 정지한 동안 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 빈 store 재기동 후 healthy로 회복된다. |
+| SF-B2 | 구현 | store failure grace를 넘긴 Redis outage 중에도 기존 연결 request는 계속 성공하고, 빈 store 재기동 후 provider rows와 status가 회복된다. |
 | SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 stale row가 owner lease 만료 뒤 live peer list에서 제외되고 이후 request는 survivor `api-a`로만 간다. |
 | SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 lease TTL을 기다리지 않고 live peer list에서 제거되고 이후 request는 `api-a`로만 간다. |
-| SF-D1 | 구현 | lease TTL보다 짧은 Redis outage 뒤 status가 healthy로 회복되고 request가 계속 성공한다. |
-| SF-D2 | 구현 | Redis outage 중 provider `api-b`가 crash된 뒤 recovery 시 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
-| SF-D3 | 구현 | runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
+| SF-D1 | 구현 | lease TTL보다 짧게 Redis를 정지하고 빈 store로 재기동한 뒤 local row 재등록과 heartbeat 유예를 거쳐 status가 healthy로 회복되고 request가 계속 성공한다. |
+| SF-D2 | 구현 | Redis 정지 중 provider `api-b`가 crash된 뒤 빈 store 재기동 시 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
+| SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
 | SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-071009-2105356`(SF-B1), `logs/20260715-071020-2106423`(SF-B2),
+    `logs/20260715-071113-2109371`(SF-D1), `logs/20260715-071126-2110473`(SF-D2),
+    `logs/20260715-071144-2111560`(SF-D3)
+  - 의미: 고정 host port의 Redis를 실제 정지·재기동해 빈 store 복구 조건을 만들고,
+    local row 재등록과 heartbeat 유예 뒤 전체 Config 6 scenario가 통과했다.
 - 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260703-212414-2415`, `logs/20260703-212420-3257`,

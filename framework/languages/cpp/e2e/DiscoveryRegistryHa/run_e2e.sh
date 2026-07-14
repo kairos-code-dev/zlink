@@ -53,6 +53,16 @@ normalize_scenario() {
   esac
 }
 
+pick_loopback_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
 SCENARIO="$(normalize_scenario "$SCENARIO")"
 
 if [[ "$SCENARIO" == "all" ]]; then
@@ -91,8 +101,10 @@ PY
   }
   trap cleanup_all EXIT
 
+  redis_port="$(pick_loopback_port)"
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-cpp-e2e-discoveryregistryha-all" "redis:7-alpine"
+    "zlink-redis-cpp-e2e-discoveryregistryha-all" "redis:7-alpine" \
+    "127.0.0.1:${redis_port}:6379"
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
 
@@ -290,16 +302,6 @@ wait_port() {
   return 1
 }
 
-pick_port() {
-  python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
-
 wait_tcp() {
   local host="$1"
   local port="$2"
@@ -334,8 +336,10 @@ elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   echo "External Redis endpoint is not supported by the C++ DiscoveryRegistryHa e2e runner." >&2
   exit 2
 else
+  redis_port="$(pick_loopback_port)"
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-cpp-e2e-discoveryregistryha" "redis:7-alpine"
+    "zlink-redis-cpp-e2e-discoveryregistryha" "redis:7-alpine" \
+    "127.0.0.1:${redis_port}:6379"
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   REDIS_OWNED=1
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"

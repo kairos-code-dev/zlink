@@ -3,7 +3,6 @@
 
 #include "../../Configuration/evidence_store.hpp"
 #include "../../Configuration/sample_names.hpp"
-#include "../Spots/DeliveryTrackingSpot/delivery_spot_directory.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -25,17 +24,14 @@ class delivery_status_changed_handler_t
       zlink::framework::dependency_list_t<evidence_store_t,
                                           zlink::framework::route_client_t,
                                           zlink::framework::spot_handle_resolver_t,
-                                          zlink::framework::actor_client_t,
-                                          delivery_spot_directory_t>;
+                                          zlink::framework::actor_client_t>;
     static constexpr const char *topic_name = "DeliveryStatusChangedReq";
 
     delivery_status_changed_handler_t (evidence_store_t &evidence,
                                        zlink::framework::route_client_t &routes,
                                        zlink::framework::spot_handle_resolver_t &spot_handles,
-                                       zlink::framework::actor_client_t &actors,
-                                       delivery_spot_directory_t &directory) :
-        _evidence (evidence), _routes (routes), _spot_handles (spot_handles), _actors (actors),
-        _directory (directory)
+                                       zlink::framework::actor_client_t &actors) :
+        _evidence (evidence), _routes (routes), _spot_handles (spot_handles), _actors (actors)
     {
     }
 
@@ -43,7 +39,6 @@ class delivery_status_changed_handler_t
     handle (const delivery_status_changed_req_t &request)
     {
         _evidence.append (request);
-        _directory.get_or_create (request.delivery_id).record (request);
 
         auto customer_entry_spot = co_await _spot_handles.resolve_spot_handle (
           zlink::framework::spot_rid_t::from_string (sample_names_t::customer_spot_node));
@@ -79,7 +74,6 @@ class delivery_status_changed_handler_t
     zlink::framework::route_client_t &_routes;
     zlink::framework::spot_handle_resolver_t &_spot_handles;
     zlink::framework::actor_client_t &_actors;
-    delivery_spot_directory_t &_directory;
 };
 
 } // namespace zlink::samples::deliverydispatch

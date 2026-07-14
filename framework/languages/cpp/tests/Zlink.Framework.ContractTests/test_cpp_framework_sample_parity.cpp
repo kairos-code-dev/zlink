@@ -432,6 +432,23 @@ TEST (CppFrameworkSampleParity, TicTacToeOwnsTurnTimeoutLifecycle)
       << "timeout must have the shared terminal status used by the reference sample";
 }
 
+TEST (CppFrameworkSampleParity, DeliveryDispatchTrackingHasNoDeadSpotModel)
+{
+    const auto tracking =
+      cpp_language_root () / "samples/DeliveryDispatch/Server/Tracking";
+    EXPECT_FALSE (std::filesystem::exists (tracking / "Actors"))
+      << "Tracking does not own customer actors";
+    EXPECT_FALSE (std::filesystem::exists (tracking / "Spots"))
+      << "Tracking is a channel server and evidence store, not a spot node";
+
+    const auto main = read_file (tracking / "main.cpp");
+    const auto handlers = read_file (tracking / "Handlers/tracking_handlers.hpp");
+    EXPECT_NE (main.find ("add_spot_mesh"), std::string::npos)
+      << "Tracking still needs mesh participation for outbound customer actor delivery";
+    EXPECT_EQ (handlers.find ("delivery_spot_directory_t"), std::string::npos)
+      << "status handling must not maintain an unread parallel history";
+}
+
 TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
 {
     const auto owner = read_file (

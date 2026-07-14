@@ -6,7 +6,6 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
 #include "Handlers/tracking_handlers.hpp"
-#include "Spots/DeliveryTrackingSpot/delivery_spot_directory.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -24,7 +23,6 @@ int main (int argc, char **argv)
           .trace_log_file (configuration.flow_log_path ())
           .trace_label ("deliverydispatch-tracking");
         options.services ().add_singleton<evidence_store_t> (std::make_unique<evidence_store_t> (configuration.evidence_path ()));
-        options.services ().add_singleton<delivery_spot_directory_t> ();
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)

@@ -65,7 +65,7 @@ export class DefaultZLinkRuntimeEventPublisher implements ZLinkRuntimeEventPubli
         await handler.handle(event);
       } catch (error) {
         console.error('[monitoring-event-dispatch]', error);
-        return;
+        continue;
       }
     }
   }

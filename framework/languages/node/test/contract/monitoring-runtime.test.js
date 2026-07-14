@@ -3,6 +3,22 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 
+test('runtime event publisher continues after a monitoring handler fails', async () => {
+  const events = [];
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle() { throw new Error('handler failed'); } });
+  publisher.register({ async handle(event) { events.push(event); } });
+  const originalError = console.error;
+  console.error = () => undefined;
+  try {
+    await publisher.publish({ sourceName: 'runtime', timestamp: new Date(), event: 'test' });
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(events.length, 1);
+});
+
 test('socket monitoring source maps backend raw events into framework typed events', async () => {
   const events = [];
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();

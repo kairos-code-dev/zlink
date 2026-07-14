@@ -689,178 +689,19 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
-### 12.1 STREAM connector 수신 큐 overflow (Java)
+### 12.1~12.19 언어별 표면 차이 → 언어별 문서로 옮겼다
 
-**미충족(Java).** [32 §10](stream-connector/32-stream-connector.ko.md)은 수신 메시지 큐가 가득 차면 **새로 도착한
-메시지를 버리고** `ReceivedMessageDropped`를 보고하도록 규정한다. 기본 상한은 1024다.
+기준선 대조로 찾은 **언어별 표면 차이**는 각 언어의 갭 문서가 소유한다(§16).
 
-**근본 원인은 수신 저장소의 구조가 다르다는 것이다.** 기준선은 handler 조회와 무관한 **독립
-unread-history**에 수신 메시지를 먼저 기록한다. handler 호출은 그와 별개로 진행되고, `waitFor`가
-history에서 메시지를 꺼내며, `receivedCount`는 history에 남은 수를 읽는다. Java는 그런 history가
-없고 **manual dispatch callback 큐**를 그 자리에 쓴다. 그래서 다음이 전부 어긋난다.
+| 언어 | 항목 |
+|------|------|
+| [`.NET`](gaps/dotnet.ko.md) | §12.7 |
+| [Java](gaps/java.ko.md) | §12.1~12.4 · §12.8~12.10 · §12.12·12.13 · §12.15~12.19 |
+| [Kotlin](gaps/kotlin.ko.md) | §12.3 · §12.14 · §12.19 |
+| [Node](gaps/node.ko.md) | §12.5 · §12.6 · §12.11 |
+| [C++](gaps/cpp.ko.md) | §12.2 |
 
-- overflow 시 **가장 오래된 항목을 버린다.** 기준선은 새로 도착한 메시지를 버린다.
-- 수신 큐 기본 상한이 `Integer.MAX_VALUE`라 이 경로가 평소 발화하지 않는다.
-- drop 시 오류를 발생시키지 않아 **메시지가 조용히 유실된다.** `ZLinkStreamErrorCode`에
-  `RECEIVED_MESSAGE_DROPPED`가 없다.
-- **등록된 handler가 없는 메시지는 보관되지 않고 즉시 버려진다.** 기준선은 history에 남긴다.
-- **`waitFor`가 이미 도착한 메시지를 소비하지 못한다.** `submit()` 시점에 일회성 handler를 걸기
-  때문에 그 이전에 온 메시지는 영영 못 받는다.
-- **`receivedCount`의 의미가 다르다.** unread-history의 메시지 수가 아니라 manual 큐에 남은
-  callback 수다.
-- **`AUTO`(= `Immediate`) 모드에서는 큐 자체를 쓰지 않아** 수신 한도가 적용되지 않는다.
-
-독립 unread-history를 도입해야 위 항목이 함께 해소된다.
-
-### 12.2 actor join admission이 선택 사항 (Java, C++)
-
-**미충족(Java, C++).** [22 §8](server/22-actor-model.ko.md)과 [23 §12](server/23-spot-actor.ko.md)는 actor join
-admission을 **필수 등록 축**으로 규정한다. `.NET`은 이를 default 구현 없는 interface member로 두어
-구현 누락 자체가 불가능하다.
-
-Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이다. C++은 duck typing으로 존재할
-때만 호출하며, 일반 spot에서 없으면 **거절**로 대체한다. 두 경우 모두 admission을 빠뜨리면
-컴파일과 시작은 통과하고 **모든 actor join이 조용히 거절**되는 실패 모드가 생긴다.
-
-### 12.3 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
-
-**계약 위반(Java).** 다음 두 표면은 공통 스펙에 근거가 없고 다른 언어에도 없다.
-
-- connector `disconnect()` / `reconnect()` — [32 §6](stream-connector/32-stream-connector.ko.md)의 연결 lifecycle
-  표면은 connect / close / dispatch 셋뿐이며, 재연결은 자동 reconnect 옵션이 담당한다.
-  **Kotlin wrapper(`ZLinkKotlinStreamConnector`)도 같은 두 메서드를 그대로 위임 노출한다.**
-- **`connect()`가 진행 중인 연결 시도를 기다리지 않는다.** `Connecting`이나 `Reconnecting`
-  상태에서 다시 호출하면 기존 시도를 기다리지 않고 새 연결 시도를 시작하며, 예약된 reconnect
-  작업은 scheduler에 그대로 남는다. 계약은 진행 중인 시도의 결과를 기다리는 것이다
-  ([32 §6](stream-connector/32-stream-connector.ko.md)).
-- `ZLinkActorPlacement(preferredNodeRid, routeMesh)` — [22 §4](server/22-actor-model.ko.md)와
-  [31 §10.2](server/31-session-actor-dispatch.ko.md)는 remote node를 직접 지정하는 actor 생성 표면을 두지
-  않는다고 규정한다.
-
-### 12.4 connector 호출별 packet name override (Java)
-
-**미충족(Java).** [32 §5](stream-connector/32-stream-connector.ko.md)는 호출자가 명시한 packet name이 타입 기반
-기본 이름보다 우선한다고 규정한다. Java connector의 send/request call에는 `packetName(...)`이 없다.
-
-### 12.5 spot 메시징 표면 누락 (Node)
-
-**미충족(Node).** 두 항목이다.
-
-- route client에 `sendToSpot` / `requestToSpot`가 없다. spot node가 아닌 외부 client가 spot handle로
-  spot에 메시지를 보낼 수 없다([20 §6](server/20-spot-messaging.ko.md), [24 §3](server/24-spot-address-messaging.ko.md)).
-- spot 전송이 handle을 한 번 resolve한 뒤 그대로 보내고 끝난다. [24 §4](server/24-spot-address-messaging.ko.md)가
-  요구하는 **stale 실패 감지 → handle 갱신 → request 1회 재전송**이 없다.
-
-### 12.6 session handler registry 키 (Node)
-
-**미충족(Node).** [31 §10.2](server/31-session-actor-dispatch.ko.md)의 session handler registry는 packet
-name을 키로 dispatch해야 한다. Node 구현은 **handler 클래스 이름**을 키로 저장하므로 wire의 packet
-name과 우연히 일치하지 않으면 영구 미매치가 된다. 중복 등록 검출과 `Configure()` 등록 창 강제도
-없다.
-
-### 12.7 metric drop reason 라벨 도달 불가 (`.NET`)
-
-**미충족(`.NET`).** [51 §4.4](server/51-runtime-metrics.ko.md)의 `zlink.channel.messages.dropped`는
-`no_handler`, `decode_error`, `backpressure`, `stale_route` 네 라벨을 규정한다. 현재 `.NET`
-런타임에서 실제로 방출되는 값은 `no_handler` 하나뿐이다 — decode 실패 경로가 drop metric을
-기록하지 않고, `backpressure`와 `stale_route` 사유를 넘기는 호출부가 없다.
-
-### 12.8 monitoring 표면 (Java)
-
-**미충족(Java).** 세 항목이다.
-
-- runtime event 모델이 **sealed 계층이 아니라 flat record + kind enum**이다. 기준선은 event 종류마다
-  필요한 payload만 필수 인자로 갖는 sealed hierarchy이며, [00 §5](00-public-contract-governance.ko.md)의
-  "같은 상태를 kind와 nullable 값 두 축으로 표현하지 않는다"에 해당한다. Java 언어 스펙이 고정한 목표
-  선언(`ZLinkLocationRuntimeEvent` / `ZLinkSpotEvent` sealed interface + permitted record)을 따라야 한다.
-- `ZLinkMonitoringOptions`에 `addLocationPeerEvents` / `addLocationSpotEvents` /
-  `addLocationActorEvents` / `addLocationRouteEvents` 4개가 없다.
-- `ZLinkRuntimeEventHandler.handle`이 `void`를 반환해 비동기 handler를 표현할 수 없다. 계약은
-  `CompletionStage<Void>`다.
-
-### 12.9 spot 전송 표면에 channel 이름을 함께 받는다 (Java)
-
-**계약 위반(Java).** [24 §3](server/24-spot-address-messaging.ko.md)은 "handle이 전송 mesh를 소유하므로
-caller가 route channel을 함께 고르지 않는다"고 규정한다. Java `ZLinkRouteClient.sendToSpot` /
-`requestToSpot`은 `(channelName, SpotHandle, message)`를 받아 caller가 mesh를 다시 고르게 만든다.
-계약은 `(SpotHandle, message)`다.
-
-### 12.10 connector transport enum 부재 (Java)
-
-**미충족(Java).** Java 언어 스펙이 고정한 `ZLinkStreamTransport`(`TCP`/`TLS`/`WEB_SOCKET`/
-`WEB_SOCKET_SECURE`)가 구현에 없다. 지원 transport 집합을 공개 계약으로 관찰할 수 없다.
-
-### 12.11 location event kind 이름 (Node)
-
-**미충족(Node).** [40 §9](server/40-location-runtime.ko.md)와 [50 §3.1](server/50-runtime-monitoring.ko.md)이 고정한
-location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChanged`,
-`ServiceSummaryChanged`, **`StoreFailure`**, `StoreRecovered`다. `.NET`, Java, C++은 이 이름을
-쓰는데 Node 구현만 `StoreUnavailable`을 쓴다. 닫힌 enum의 멤버 이름은 관측 데이터의 안정 키이므로
-언어마다 다를 수 없다.
-
-### 12.12 connector dispatch mode 이름 (Java)
-
-**미충족(Java).** [32 §7](stream-connector/32-stream-connector.ko.md)이 고정한 dispatch mode의 닫힌 집합은
-`Manual`(기본)과 `Immediate`다. Java는 `AUTO`/`MANUAL`을 쓴다. 닫힌 enum의 멤버 이름은 관측·설정
-데이터의 안정 키이므로 언어마다 다를 수 없다 — close reason과 error code는 이미 공통 이름을
-SNAKE_CASE로 1:1 사상하고 있어 dispatch mode만 예외인 상태다.
-
-**이름만의 문제가 아니다.** 두 가지 동작이 더 어긋난다.
-
-- **`MANUAL`에서도 connection-state와 disconnected callback이 dispatch queue를 우회해** lifecycle
-  스레드에서 직접 실행된다. 계약은 manual mode에서 모든 사용자 callback이 `dispatch()` 호출
-  문맥에서 실행되는 것이다.
-- **message callback이 반환한 `CompletionStage`를 기다리지 않는다.** 그래서
-  `dispatch().submit()`이 callback 완료 전에 끝난다. 기준선은 callback 완료까지 기다린다.
-
-### 12.13 connector inbound observer option 부재 (Java)
-
-**미충족(Java).** [32 §10](stream-connector/32-stream-connector.ko.md)은 inbound observer 통지 큐(기본 1024개)와
-payload preview 한도(기본 0바이트)를 option으로 조절한다고 규정한다. Java
-`ZLinkStreamConnectorOptions`에는 `maxInboundObserverNotifications`와
-`maxInboundObserverPayloadPreviewBytes`가 없어 그 한도를 관찰하거나 조절할 수 없다.
-
-### 12.14 Kotlin option helper가 수신 한도를 되돌린다 (Kotlin)
-
-**미충족(Kotlin).** Kotlin의 compression option helper가 options를 복사할 때
-`maxReceivedMessages`를 전달하지 않는 constructor overload를 골라, 사용자가 지정한 값을
-`Integer.MAX_VALUE`로 되돌린다. wrapper는 buffering 정책을 바꾸면 안 되며 모든 option 값을
-보존해야 한다([languages/java/03 §13](stream-connector/languages/java/03-stream-connector.ko.md)).
-
-### 12.15 예외 정규화 부재 (Java)
-
-**미충족(Java).** 기준선은 connector의 비동기 실패를 `ZLinkStreamErrorCode`를 담은 공통 예외
-타입으로 정규화해, 호출자가 실패 원인을 닫힌 집합으로 판별할 수 있게 한다. Java는 raw
-`TimeoutException`, `IllegalStateException`, `IllegalArgumentException`을 그대로 던져 오류 코드를
-잃는다([32 §9](stream-connector/32-stream-connector.ko.md)).
-
-### 12.16 metadata 총 크기 한도 미검사 (Java)
-
-**미충족(Java).** [32 §4](stream-connector/32-stream-connector.ko.md)는 metadata 블록의 **총합 1024바이트** 한도를
-규정한다. Java wire codec은 항목 수와 개별 key/value 길이만 검사하고 총합을 검사하지 않아, 한도를
-넘는 프레임을 만들 수 있다.
-
-### 12.17 correlated Error 처리 (Java)
-
-**미충족(Java).** request sequence가 붙은 `Error` 프레임은 그 request의 완료로만 매핑해야 한다.
-Java는 매핑 자체는 하지만(`pendingRequests.fail(...)`), **그 전에 stream-level error callback으로도
-발행해 같은 오류가 두 번 전달된다.** 또 error payload의 JSON 객체를 파싱하지 않아 서버가 보낸 오류
-상세를 잃는다.
-
-### 12.18 flow_id 미전파 (Java)
-
-**미충족(Java).** [53 §6](server/53-flow-correlation.ko.md)은 inbound callback 안에서 시작한 send/request가
-그 inbound의 `flow_id`를 이어받도록 규정한다. Java connector는 매 호출마다 새 UUIDv7을 만들어
-flow가 경계에서 끊긴다.
-
-### 12.19 typed 표면 경계 (Java, Kotlin)
-
-**미충족.** 두 항목이다.
-
-- Java `send(Object)`가 raw `ZLinkStreamEncodedPayload`도 그대로 받아 typed 경로에서 처리한다.
-  raw payload는 raw 표면이 소유해야 한다.
-- Kotlin wrapper에 목표 계약에 없는 request `await<T>()` overload 2개(typed·raw)가 있다. 목표
-  선언에 없는 공개 표면은 두지 않는다.
+**아래 §12.20~§12.24는 전 언어 공통 계약 갭이라 여기 남긴다.**
 
 ### 12.20 응답에 packet name을 싣는다 (전 언어)
 
@@ -1135,3 +976,58 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 **판정 기준은 "누가 그 바이트를 만드는가"다.** connector가 생성·인코딩하는 것은 32가 소유하고,
 서버가 관측·해석하는 의미만 5x가 갖는다. 지금은 두 문서가 같은 header layout을 각각 적고 있어,
 한쪽만 고치면 조용히 갈라진다.
+
+## 15. 구현 감사 — 스펙과 코드를 직접 대조해 발굴한 갭
+
+§12는 **언어 간 표면 대조**로 찾은 차이다. 이 절은 다르다 — **스펙 문장 하나하나를 코드에서
+찾아 읽고** 어긋난 자리를 기록했다. 그래서 **기준선인 `.NET`에서도 갭이 나왔다.** 다른 언어를
+`.NET`에 맞추는 것만으로는 잡히지 않는 것들이다.
+
+**모든 항목은 코드 인용으로 뒷받침한다.** 근거 없는 추정은 싣지 않는다.
+**상세는 언어별 갭 문서(§16)가 소유한다.**
+
+### 15.1 대조한 축과 남은 축
+
+| 대조함 | 아직 안 함 |
+|---|---|
+| 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 | 00 · 10 · 11 · 25 · 12(HTTP client) · 32(connector) · 50~53 |
+
+**남은 축을 대조하기 전에는 이 목록이 완전하다고 말할 수 없다.** 감사는 **새 갭이 나오지 않을
+때까지** 반복한다.
+
+### 15.2 라운드 1 결과 (2026-07-14)
+
+| 언어 | 발굴 | 그중 결함 | 문서 |
+|------|------|-----------|------|
+| `.NET` (기준선) | **7** | 7 | [gaps/dotnet](gaps/dotnet.ko.md) |
+| Java / Kotlin | **10** | 6 | [gaps/java](gaps/java.ko.md) |
+| Node | **10** | 6 | [gaps/node](gaps/node.ko.md) |
+| C++ | **11** | 6 | [gaps/cpp](gaps/cpp.ko.md) |
+
+**기준선에서 7건이 나온 것이 이번 라운드의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
+언어를 맞추는 방식으로는 이 7건이 **영원히 안 보인다.**
+
+### 15.3 교차 언어 — 같은 결함이 여러 구현에 있다
+
+| ID | 결함 | 어디 |
+|----|------|------|
+| **IMP-X1** | **pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다.** [40 §2.3](server/40-location-runtime.ko.md)은 miss로 취급하라고 요구한다 | Java · C++ |
+| **IMP-X2** | **location event source가 없다.** [40 §9](server/40-location-runtime.ko.md)의 `location-peer/spot/actor/route`와 `StoreFailure`/`StoreRecovered` | Java · C++ · Node |
+| **IMP-X3** | **startup validation이 [20 §8](server/20-spot-messaging.ko.md)·[30 §7.2](server/30-stream-session.ko.md)의 설정 오류를 통과시킨다.** "모든 설정 오류는 host 시작 전에 실패한다"가 계약 | **네 언어 모두** |
+| **IMP-X4** | **location store read에 5초 취소 상한이 없다.** [54 §3.4](server/54-graceful-drain-handoff.ko.md)가 framework 내부 정책으로 고정 | `.NET` · Java — **기준선에도 없는 구멍** |
+
+## 16. 언어별 갭 체크리스트
+
+**언어별 갭은 아래 문서가 소유한다.** 각 문서는 체크리스트이며, **계약이 아니라 작업 목록**이다.
+
+| 언어 | 문서 | 항목 수 |
+|------|------|---------|
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 15 |
+| Java | [gaps/java](gaps/java.ko.md) | 33 |
+| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | 8 |
+| Node.js | [gaps/node](gaps/node.ko.md) | 20 |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) | 20 |
+
+각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
+**언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어
+체크리스트가 참조한다.

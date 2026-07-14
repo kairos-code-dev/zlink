@@ -165,7 +165,7 @@ G4/G7에서 재감사한다. "현재 코드가 이미 있음"은 유지 근거�
 077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c server/53-flow-correlation.ko.md
 06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6 05-framework-api.ko.md
 822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f server/54-graceful-drain-handoff.ko.md
-257c63fe8b9159a7b37cf335836e8b076c94db3ea22bae0abff69d1d8f65d698 90-implementation-gap.ko.md
+125804135ae6cc74c0b6c6e44296662d0aa7cae3157fa8c883d3415aa0aa95a9 90-implementation-gap.ko.md
 df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0 02-interaction-model.ko.md
 dfa08a0db46f59bcd107347c9f02256ff023d7c64c3f8caac42772c37d7b058b server/40-location-runtime.ko.md
 f84d4a035cd773d6fe8aa0096151909e92be0743b57445dd51e5b38eeab9376c server/41-location-store-redis.ko.md

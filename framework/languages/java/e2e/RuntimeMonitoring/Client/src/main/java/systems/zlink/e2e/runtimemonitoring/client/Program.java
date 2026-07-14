@@ -17,23 +17,25 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        TriggerScenarioClient trigger = new TriggerScenarioClient(Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP"));
-        String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
-        if (!"all".equals(scenario)) {
-            runOne(scenario, trigger);
+        try (TriggerScenarioClient trigger = new TriggerScenarioClient(
+                Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP"))) {
+            String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
+            if (!"all".equals(scenario)) {
+                runOne(scenario, trigger);
+                System.out.println("monitoring e2e result=passed");
+                return;
+            }
+            MonA1SocketEventsScenario.run(trigger);
+            MonA2LocationEventsScenario.run(trigger);
+            MonA3SpotEventsScenario.run(trigger);
+            MonA4AvailabilityTransitionScenario.run(trigger);
+            MonA5FixedKindsScenario.run(trigger);
+            MonB1KindFilterScenario.run(trigger);
+            MonB2RegistrationValidationScenario.run(trigger);
+            MonC1DispatchFailureScenario.run(trigger);
+            MonD1FailureRecoveryScenario.run(trigger);
             System.out.println("monitoring e2e result=passed");
-            return;
         }
-        MonA1SocketEventsScenario.run(trigger);
-        MonA2LocationEventsScenario.run(trigger);
-        MonA3SpotEventsScenario.run(trigger);
-        MonA4AvailabilityTransitionScenario.run(trigger);
-        MonA5FixedKindsScenario.run(trigger);
-        MonB1KindFilterScenario.run(trigger);
-        MonB2RegistrationValidationScenario.run(trigger);
-        MonC1DispatchFailureScenario.run(trigger);
-        MonD1FailureRecoveryScenario.run(trigger);
-        System.out.println("monitoring e2e result=passed");
     }
 
     private static void runOne(String scenario, TriggerScenarioClient trigger) {

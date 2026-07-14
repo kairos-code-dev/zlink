@@ -30,6 +30,10 @@ if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
   echo "RuntimeMonitoring must use 3s readiness and 5s route settle limits" >&2
   exit 1
 fi
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Client/src/main/java --glob '*.java'; then
+  echo "RuntimeMonitoring client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

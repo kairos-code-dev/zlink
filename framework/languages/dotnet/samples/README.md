@@ -55,10 +55,10 @@ Manual server runs should prefer a config file over long endpoint argument
 lists:
 
 ```bash
-dotnet run --project TicTacToe/Server -- play-a --config ./appsettings.play-a.json
-dotnet run --project TicTacToe/Server -- play-b --config ./appsettings.play-b.json
-dotnet run --project TicTacToe/Server -- api-a --config ./appsettings.api-a.json
-dotnet run --project TicTacToe/Server -- api-b --config ./appsettings.api-b.json
+dotnet run --project TicTacToe/Server.Play -- --config ./appsettings.play-a.json
+dotnet run --project TicTacToe/Server.Play -- --config ./appsettings.play-b.json
+dotnet run --project TicTacToe/Server.Api -- --config ./appsettings.api-a.json
+dotnet run --project TicTacToe/Server.Api -- --config ./appsettings.api-b.json
 ```
 
 The runner remains responsible for process orchestration. Server role code

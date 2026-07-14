@@ -61,11 +61,15 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("sleep 2", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("local assembly=\"${SCRIPT_DIR}/Server/bin/Debug/net8.0/TicTacToe.Server.dll\"",
+        Assert.Contains("${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll",
             shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("dotnet \"${assembly}\" \"${mode}\" --config \"${config_file}\"", shellRunner,
+        Assert.Contains("${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll",
+            shellRunner,
             StringComparison.Ordinal);
+        Assert.Contains("dotnet \"${assembly}\" --config \"${config_file}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("local mode=", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet run --no-build --project \"${SCRIPT_DIR}/Server/TicTacToe.Server.csproj\"",
             shellRunner,
             StringComparison.Ordinal);
@@ -241,10 +245,10 @@ public sealed partial class RegressionTests
         Assert.Contains("two Play roles", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("manual endpoint", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("Redis room routes", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("play-a --config ./appsettings.play-a.json", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("play-b --config ./appsettings.play-b.json", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("api-a --config ./appsettings.api-a.json", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("api-b --config ./appsettings.api-b.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Server.Play -- --config ./appsettings.play-a.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Server.Play -- --config ./appsettings.play-b.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Server.Api -- --config ./appsettings.api-a.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Server.Api -- --config ./appsettings.api-b.json", samplesReadme, StringComparison.Ordinal);
         Assert.DoesNotContain("temporary appsettings.json", samplesReadme, StringComparison.Ordinal);
         Assert.DoesNotContain("-- play --config ./appsettings.json", samplesReadme, StringComparison.Ordinal);
         Assert.DoesNotContain("-- api --config ./appsettings.json", samplesReadme, StringComparison.Ordinal);

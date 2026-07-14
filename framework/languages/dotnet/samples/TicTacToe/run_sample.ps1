@@ -119,23 +119,23 @@ try {
 
     Wait-SampleTcpEndpoint "redis" "tcp://$redisEndpoint"
 
-    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("play-a", "--config", $playAConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-a-stream" $playAEndpoint
     Wait-SampleTcpEndpoint "play-a-channel" $playAChannelEndpoint
     Wait-SampleTcpEndpoint "play-a-spot" $spotAEndpoint
     Wait-SampleTcpEndpoint "play-a-spot-pubsub" $spotAPubSubEndpoint
 
-    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("play-b", "--config", $playBConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-b-stream" $playBEndpoint
     Wait-SampleTcpEndpoint "play-b-channel" $playBChannelEndpoint
     Wait-SampleTcpEndpoint "play-b-spot" $spotBEndpoint
     Wait-SampleTcpEndpoint "play-b-spot-pubsub" $spotBPubSubEndpoint
 
-    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("api-a", "--config", $apiAConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-a-http" $apiABindUrl
     Wait-SampleTcpEndpoint "api-a-channel" $apiAChannelEndpoint
 
-    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("api-b", "--config", $apiBConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-b-http" $apiBBindUrl
     Wait-SampleTcpEndpoint "api-b-channel" $apiBChannelEndpoint
 

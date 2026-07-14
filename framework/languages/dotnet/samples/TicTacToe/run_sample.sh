@@ -194,10 +194,9 @@ wait_log_contains() {
 
 start_server() {
   local name="$1"
-  local mode="$2"
+  local assembly="$2"
   local config_file="$3"
-  local assembly="${SCRIPT_DIR}/Server/bin/Debug/net8.0/TicTacToe.Server.dll"
-  dotnet "${assembly}" "${mode}" --config "${config_file}" >"${LOG_DIR}/${name}.log" 2>&1 &
+  dotnet "${assembly}" --config "${config_file}" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
@@ -205,23 +204,23 @@ dotnet build "${SCRIPT_DIR}/TicTacToe.sln" --maxcpucount:1
 
 wait_port redis "tcp://${REDIS_ENDPOINT}"
 
-start_server play-a play-a "${PLAY_A_CONFIG_FILE}"
+start_server play-a "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_A_CONFIG_FILE}"
 wait_port play-a-stream "${PLAY_A_ENDPOINT}"
 wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot "${SPOT_A_ENDPOINT}"
 wait_port play-a-spot-pubsub "${SPOT_A_PUBSUB_ENDPOINT}"
 
-start_server play-b play-b "${PLAY_B_CONFIG_FILE}"
+start_server play-b "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-stream "${PLAY_B_ENDPOINT}"
 wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot "${SPOT_B_ENDPOINT}"
 wait_port play-b-spot-pubsub "${SPOT_B_PUBSUB_ENDPOINT}"
 
-start_server api-a api-a "${API_A_CONFIG_FILE}"
+start_server api-a "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_A_CONFIG_FILE}"
 wait_port api-a-http "${API_A_BIND_URL}"
 wait_port api-a-channel "${API_A_CHANNEL_ENDPOINT}"
 
-start_server api-b api-b "${API_B_CONFIG_FILE}"
+start_server api-b "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_B_CONFIG_FILE}"
 wait_port api-b-http "${API_B_BIND_URL}"
 wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 

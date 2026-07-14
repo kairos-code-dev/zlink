@@ -56,18 +56,18 @@ server and client use the same protocol contract. The reusable client flow lives
 in [`Client`](Client); the sample runner starts the server roles and then
 runs that client as the self-check.
 
-The server executable supports one role per process. The runner uses the
-four explicit modes below:
+The API and Play roles use separate executable projects. Each process receives
+only its role-specific configuration file:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play-a --config ./appsettings.play-a.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play-b --config ./appsettings.play-b.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api-a --config ./appsettings.api-a.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api-b --config ./appsettings.api-b.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Play -- --config ./appsettings.play-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Play -- --config ./appsettings.play-b.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Api -- --config ./appsettings.api-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Api -- --config ./appsettings.api-b.json
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client
 ```
 
-The server reads `Sample` settings from the config file through
+Each role reads `Sample` settings from the config file through
 `Microsoft.Extensions.Configuration`. The runner writes temporary role-specific
 settings, starts `play-a`, `play-b`, `api-a`, and `api-b` with `--config`, waits
 for stream, channel, Spot route, Spot pub/sub, HTTP, and Redis endpoints, and

@@ -181,6 +181,19 @@ TEST (CppFrameworkSampleParity, BingoRewardSubscriptionDoesNotDriveRoomCleanup)
     EXPECT_NE (handler.find ("bingo_reward_announced_notify_t"), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, BingoRoomClosesAfterItsLastActorLeaves)
+{
+    const auto room = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/"
+        "bingo_room_spot.hpp");
+
+    EXPECT_NE (room.find ("if (actors.empty () && observers.empty ())"), std::string::npos)
+      << "Bingo room must close only after both player and observer occupancy are empty";
+    EXPECT_NE (room.find ("(void) _context.close ()"), std::string::npos)
+      << "Bingo room must request spot closure after its last actor leaves";
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

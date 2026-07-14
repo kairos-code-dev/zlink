@@ -481,7 +481,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 진행 중 leave가 상대에게 `GameEndedNotify`를 보내 bounded negative가 실패했다. domain이 final 상태와 참가자 여부를 검증하도록 수정한 뒤 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-55** (**버그**) — **DeliveryDispatch Tracking이 고객을 `"customer-1"`로 하드코딩**한다. 계약에 `customer_id`가 없다
   - §0.8 중단: C++만 고치면 공유 wire가 달라진다. 선택지 A는 `DeliveryStatusChangedReq`에 `CustomerId`를 추가해 모든 언어가 전달하게 하는 것이고, 선택지 B는 Tracking이 생성 시점부터 `DeliveryId → CustomerId` 관계를 저장해 상태 변경 메시지에 고객 필드를 싣지 않는 것이다. 공통 계약에서 한 방식을 결정한 뒤 구현해야 한다.
-- [ ] **SMP-CP-56** (결함) — **Bingo room Spot이 절대 닫히지 않는다.** `close()` 호출이 0건이고 observer 방 timer가 **프로세스 수명 내내** 돈다
+- [x] **SMP-CP-56** (결함) — **Bingo room Spot이 절대 닫히지 않는다.** `close()` 호출이 0건이고 observer 방 timer가 **프로세스 수명 내내** 돈다
+  - 근거: 수정 전 sample parity gate가 마지막 actor 이탈 뒤 빈 player·observer 방의 종료 요청이 없음을 검출했다. `on_leave_actor`가 두 점유 집합이 모두 비면 `close()`를 요청하도록 수정한 뒤 Bingo parity 테스트 6개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [ ] **SMP-CP-57** (결함) — **TicTacToe game Spot에 timer가 없다.** 문서가 요구한 turn timeout이 통째로 미구현
 - [ ] **SMP-CP-58** (결함) — **Bingo room id가 프로세스별 카운터**라 두 Play 노드가 **같은 spot rid**를 만든다
 - [ ] **SMP-CP-59** (결함) — **TicTacToe entry spot이 disconnect 시 milestone observer를 정리하지 않는다.** 죽은 세션에 계속 push한다

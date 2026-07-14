@@ -142,6 +142,9 @@ class bingo_room_spot_t : public spot_t
         actors.erase (actor.actor.actor_id);
         observers.erase (actor.actor.actor_id);
         _game.leave (actor.actor.actor_id);
+        if (actors.empty () && observers.empty ()) {
+            (void) _context.close ();
+        }
     }
 
     void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }

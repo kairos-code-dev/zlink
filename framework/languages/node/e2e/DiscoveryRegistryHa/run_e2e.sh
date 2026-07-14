@@ -3,13 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
-ZLINK_E2E_RID_FROM_NAME=1
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -89,7 +87,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_PORT="${REDIS_ENDPOINT##*:}"
 REDIS_KEY_PREFIX="store-failure:node:$RUN_ID"
@@ -99,6 +97,13 @@ LOCATION_PROBE_MAIN="$ROOT_DIR/Server/LocationProbe/dist/Server/LocationProbe/ma
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+
+start_configured_server() {
+  local name="$1"; local main="$2"; shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
 
 start_topology() {
   local with_provider_b="${1:-yes}"
@@ -117,7 +122,7 @@ start_topology() {
   PROVIDER_B_URL="http://127.0.0.1:$provider_b_http_port"
   PROVIDER_B_CHANNEL_PORT="$provider_b_channel_port"
 
-  start_server reg-1 "$LOCATION_PROBE_MAIN" \
+  start_configured_server reg-1 "$LOCATION_PROBE_MAIN" \
     --rid reg-1 \
     --probe-id 1 \
     --http-url "$LOCATION_PROBE_URL" \
@@ -126,7 +131,7 @@ start_topology() {
     --log-dir "$LOG_DIR"
   wait_health "$LOCATION_PROBE_URL" reg-1
 
-  start_server api-a "$PROVIDER_MAIN" \
+  start_configured_server api-a "$PROVIDER_MAIN" \
     --rid api-a \
     --http-url "$PROVIDER_A_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -140,7 +145,7 @@ start_topology() {
     start_provider_b
   fi
 
-  start_server consumer "$CONSUMER_MAIN" \
+  start_configured_server consumer "$CONSUMER_MAIN" \
     --http-url "$CONSUMER_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
@@ -150,7 +155,7 @@ start_topology() {
 }
 
 start_provider_b() {
-  start_server api-b "$PROVIDER_MAIN" \
+  start_configured_server api-b "$PROVIDER_MAIN" \
     --rid api-b \
     --http-url "$PROVIDER_B_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -269,7 +274,7 @@ run_sf_d3() {
   docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null
   REDIS_CONTAINER_ID=""
   wait_location_unhealthy "$CONSUMER_URL" consumer
-  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" "redis:7.2-alpine"
   wait_tcp redis "tcp://$REDIS_ENDPOINT"
   wait "$client_pid"
 }

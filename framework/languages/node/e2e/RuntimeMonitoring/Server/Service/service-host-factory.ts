@@ -9,8 +9,9 @@ import {
   zlinkFramework
 } from '@zlink-systems/nestjs';
 import { PacketNames, RuntimeMonitoringNames } from '../../Shared/messages';
-import { parseServiceOptions } from './Configuration/service-options';
-import type { ServiceOptions } from './Configuration/service-options';
+import { validateServiceOptions } from './Configuration/service-options';
+import type { ServiceOptions, ServiceRoleOptions } from './Configuration/service-options';
+import { MONITORING_OPTIONS, createMonitoringConfigurationModule } from '../../configuration';
 import { createServiceEndpoints } from './Endpoints/service-endpoints';
 import {
   FailingTimerHandler,
@@ -25,14 +26,13 @@ import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, monitoringLocationOptions } from '../../Shared/location-store';
 
-export async function startServiceHost(args: readonly string[]): Promise<void> {
-  const options = parseServiceOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startServiceHost(role: ServiceRoleOptions = {}): Promise<void> {
   let stopping = false;
 
-  const ServiceModule = createServiceModule(options, evidence);
+  const ServiceModule = createServiceModule(role);
   const app = await NestFactory.createApplicationContext(ServiceModule, { logger: false, abortOnError: false });
+  const options = app.get(MONITORING_OPTIONS, { strict: false }) as ServiceOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
   const server = await startHttpServer(
     options.httpUrl,
@@ -46,13 +46,18 @@ export async function startServiceHost(args: readonly string[]): Promise<void> {
   await app.close();
 }
 
-function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): Function {
+function createServiceModule(role: ServiceRoleOptions): Function {
   class ServiceModule {}
+  const configuration = createMonitoringConfigurationModule((value) => validateServiceOptions(value, role));
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [MONITORING_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServiceOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -90,14 +95,16 @@ function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): 
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [MONITORING_OPTIONS], useFactory: (value: unknown) => {
+        const options = value as ServiceOptions; return new EvidenceStore(options.rid, options.evidenceFile);
+      } },
       FailingTimerHandler,
       MonitoringEntrySpot,
       ProfileRequestHandler,
       SocketEventRecorder,
       SpotEventRecorder,
       LocationRuntimeEventRecorder,
-      ...(options.throwMonitor ? [ThrowingSocketEventRecorder] : [])
+      ...(role.throwMonitor === true ? [ThrowingSocketEventRecorder] : [])
     ]
   })(ServiceModule);
   return ServiceModule;

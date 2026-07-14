@@ -11,8 +11,9 @@ import {
 import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
-import { parseServerOptions } from './Configuration/server-options';
+import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
+import { REGISTRY_MESSAGING_OPTIONS, createRegistryMessagingConfigurationModule } from '../../configuration';
 import { createProviderEndpoints } from './Endpoints/provider-endpoints';
 import {
   EvidenceDispatchErrorObserver,
@@ -24,14 +25,13 @@ import {
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startProviderHost(args: readonly string[]): Promise<void> {
-  const options = parseServerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startProviderHost(): Promise<void> {
   let stopping = false;
 
-  const ProviderModule = createProviderModule(options, evidence);
+  const ProviderModule = createProviderModule();
   const app = await NestFactory.createApplicationContext(ProviderModule, { logger: false, abortOnError: false });
+  const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ServerOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, createProviderEndpoints(evidence, channel, route, () => { stopping = true; }));
@@ -43,13 +43,18 @@ export async function startProviderHost(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-function createProviderModule(options: ServerOptions, evidence: EvidenceStore): Function {
+function createProviderModule(): Function {
   class ProviderModule {}
+  const configuration = createRegistryMessagingConfigurationModule(validateServerOptions);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [REGISTRY_MESSAGING_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -95,7 +100,9 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [REGISTRY_MESSAGING_OPTIONS], useFactory: (value: unknown) => {
+        const options = value as ServerOptions; return new EvidenceStore(options.rid, options.evidenceFile);
+      } },
       EvidenceDispatchErrorObserver,
       PayloadRequestHandler,
       ProfileCommandHandler,

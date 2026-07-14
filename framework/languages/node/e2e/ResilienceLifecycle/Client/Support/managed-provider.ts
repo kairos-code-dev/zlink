@@ -17,15 +17,19 @@ export interface ProviderStartOptions {
 
 export function startProvider(options: ProviderStartOptions): ManagedProcess {
   fs.mkdirSync(options.logDir, { recursive: true });
+  const config = path.join(options.logDir, `${options.name}.config.json`);
+  fs.writeFileSync(config, `${JSON.stringify({ e2e: {
+    rid: options.rid,
+    httpUrl: options.httpUrl,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
+    channelEndpoint: options.channelEndpoint,
+    evidenceFile: path.join(options.logDir, options.evidenceFileName),
+    logDir: options.logDir
+  } }, null, 2)}\n`, { mode: 0o600 });
   const child = spawn(process.execPath, [
     options.providerMain,
-    '--rid', options.rid,
-    '--http-url', options.httpUrl,
-    '--redis-endpoint', options.redisEndpoint,
-    '--redis-key-prefix', options.redisKeyPrefix,
-    '--channel-endpoint', options.channelEndpoint,
-    '--evidence-file', path.join(options.logDir, options.evidenceFileName),
-    '--log-dir', options.logDir
+    '--config', config
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout?.pipe(fs.createWriteStream(path.join(options.logDir, `${options.name}.stdout.log`)));
   child.stderr?.pipe(fs.createWriteStream(path.join(options.logDir, `${options.name}.stderr.log`)));

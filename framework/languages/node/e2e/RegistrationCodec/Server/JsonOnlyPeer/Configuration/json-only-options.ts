@@ -6,28 +6,27 @@ export interface JsonOnlyOptions {
   readonly evidenceFile?: string;
 }
 
-export function parseJsonOnlyOptions(args: readonly string[]): JsonOnlyOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+export function validateJsonOnlyOptions(value: unknown): JsonOnlyOptions {
+  const values = asObject(value);
   return {
-    rid: values.get('rid') ?? 'json-only-peer',
-    httpUrl: required(values, 'http-url'),
-    logDir: values.get('log-dir') ?? 'logs',
-    channelEndpoint: required(values, 'channel-endpoint'),
-    evidenceFile: values.get('evidence-file')
+    rid: optional(values, 'rid') ?? 'json-only-peer',
+    httpUrl: required(values, 'httpUrl'),
+    logDir: optional(values, 'logDir') ?? 'logs',
+    channelEndpoint: required(values, 'channelEndpoint'),
+    evidenceFile: optional(values, 'evidenceFile')
   };
 }
 
-function required(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
+function asObject(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error("Configuration section 'e2e' must be an object.");
+  return value as Record<string, unknown>;
+}
+function optional(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+function required(values: Record<string, unknown>, name: string): string {
+  const value = optional(values, name);
+  if (value === undefined) throw new Error(`Configuration value 'e2e.${name}' must be a non-empty string.`);
   return value;
 }

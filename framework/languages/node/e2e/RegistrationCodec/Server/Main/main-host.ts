@@ -20,7 +20,8 @@ import {
   ProtobufEchoReq,
   RegistrationCodecNames
 } from '../../Shared/messages';
-import { parseServerOptions, type ServerOptions } from './Configuration/server-options';
+import { validateServerOptions, type ServerOptions } from './Configuration/server-options';
+import { REGISTRATION_CODEC_OPTIONS, createRegistrationCodecConfigurationModule } from '../../configuration';
 import { createMainEndpoints } from './Endpoints/main-endpoints';
 import { createOperationalEndpoints } from './Endpoints/operational-endpoints';
 import {
@@ -50,14 +51,13 @@ export interface MainHostOptions {
   readonly duplicate?: boolean;
 }
 
-export async function startMainHost(args: readonly string[], hostOptions: MainHostOptions = {}): Promise<void> {
-  const options = parseServerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startMainHost(hostOptions: MainHostOptions = {}): Promise<void> {
   let stopping = false;
 
-  const MainModule = createMainModule(options, evidence, hostOptions);
+  const MainModule = createMainModule(hostOptions);
   const app = await NestFactory.createApplicationContext(MainModule, { logger: false, abortOnError: false });
+  const options = app.get(REGISTRATION_CODEC_OPTIONS, { strict: false }) as ServerOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const server = await startHttpServer(options.httpUrl, [
     ...createOperationalEndpoints(evidence, () => { stopping = true; }),
@@ -71,13 +71,19 @@ export async function startMainHost(args: readonly string[], hostOptions: MainHo
   await app.close();
 }
 
-function createMainModule(options: ServerOptions, evidence: EvidenceStore, hostOptions: MainHostOptions): Function {
+function createMainModule(hostOptions: MainHostOptions): Function {
   class MainModule {}
+  const configuration = createRegistrationCodecConfigurationModule(validateServerOptions);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [REGISTRATION_CODEC_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .codecs()
@@ -121,7 +127,14 @@ function createMainModule(options: ServerOptions, evidence: EvidenceStore, hostO
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      {
+        provide: EvidenceStore,
+        inject: [REGISTRATION_CODEC_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          return new EvidenceStore(options.rid, options.evidenceFile);
+        }
+      },
       EchoAutoRequestHandler,
       EchoAutoCommandHandler,
       EchoAttrRequestHandler,

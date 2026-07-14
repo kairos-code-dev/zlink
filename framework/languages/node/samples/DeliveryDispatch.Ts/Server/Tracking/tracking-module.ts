@@ -7,22 +7,36 @@ import {
   DeliveryStatusChangedHandler
 } from './Handlers/tracking-handlers';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
+import {
+  DELIVERYDISPATCH_SAMPLE_CONFIG,
+  createDeliveryDispatchConfigurationModule
+} from '../Configuration/sample-config';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
-function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: EvidenceStore) {
+function createTrackingModule() {
   class TrackingModule {}
-  const locationStore = createDeliveryDispatchLocationStore(config);
+  const configuration = createDeliveryDispatchConfigurationModule([
+    'trackingEndpoint',
+    'trackingSpotEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir',
+    'workDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-tracking.log`)
+            .traceLogFile(`${config.logDir}/flow-tracking.log`)
             .traceLabel('tracking');
-          builder.addLocationStore(locationStore);
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
             .addClientServerChannel(SampleNames.trackingChannel)
@@ -35,8 +49,16 @@ function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: Ev
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
-      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
+      {
+        provide: EvidenceStore,
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => new EvidenceStore(config.workDir)
+      },
+      {
+        provide: 'DELIVERYDISPATCH_LOCATION_STORE',
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
+      },
       DeliveryStatusChangedHandler
     ]
   })(TrackingModule);

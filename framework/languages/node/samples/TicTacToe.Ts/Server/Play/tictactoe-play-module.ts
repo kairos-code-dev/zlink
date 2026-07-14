@@ -20,33 +20,38 @@ import { PlaySessionFactory } from './Infrastructure/ZLink/Sessions/play-session
 import { PLAY_STREAM_ENDPOINT } from './play-tokens';
 import {
   createTicTacToeLocationStore,
-  RedisRoomRouteStore,
-  TICTACTOE_SAMPLE_CONFIG
+  RedisRoomRouteStore
 } from '../Configuration/redis-room-route-store';
-function createTicTacToePlayModule(config: {
-  apiEndpoints: string[];
-  playEndpoint: string;
-  playEndpoints: string[];
-  playSpotEndpoint: string;
-  playSpotPubSubEndpoint: string;
-  playStreamEndpoint: string;
-  redisEndpoint: string;
-  redisKeyPrefix: string;
-  playSpotNodeRid: string;
-  peerPlaySpotNodeRid: string;
-  peerPlaySpotEndpoint: string;
-  peerPlaySpotPubEndpoint: string;
-}) {
+import { TICTACTOE_SAMPLE_CONFIG, createTicTacToeConfigurationModule } from '../Configuration/sample-config';
+import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
+function createTicTacToePlayModule() {
   class TicTacToePlayModule {}
+  const configuration = createTicTacToeConfigurationModule([
+    'apiEndpoints',
+    'playEndpoint',
+    'playSpotEndpoint',
+    'playSpotPubSubEndpoint',
+    'playStreamEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'playSpotNodeRid',
+    'peerPlaySpotNodeRid',
+    'peerPlaySpotEndpoint',
+    'peerPlaySpotPubEndpoint',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [TICTACTOE_SAMPLE_CONFIG],
+        useFactory: (config: TicTacToeSampleConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-play-${config.playSpotNodeRid}.log`)
+            .traceLogFile(`${config.logDir}/flow-play-${config.playSpotNodeRid}.log`)
             .traceLabel(config.playSpotNodeRid);
           builder.addLocationStore(createTicTacToeLocationStore(config));
           return builder
@@ -72,8 +77,11 @@ function createTicTacToePlayModule(config: {
       })
     ],
     providers: [
-      { provide: TICTACTOE_SAMPLE_CONFIG, useValue: config },
-      { provide: PLAY_STREAM_ENDPOINT, useValue: config.playStreamEndpoint },
+      {
+        provide: PLAY_STREAM_ENDPOINT,
+        inject: [TICTACTOE_SAMPLE_CONFIG],
+        useFactory: (config: TicTacToeSampleConfig) => config.playStreamEndpoint
+      },
       RedisRoomRouteStore,
       { provide: TICTACTOE_GAME_ROOM_PROVISIONER, useClass: ZLinkTicTacToeGameRoomProvisioner },
       TicTacToeGameCreator,

@@ -54,12 +54,6 @@ class OrderStore {
     fs.mkdirSync(this.ordersDir, { recursive: true });
   }
 
-  static fromEnvironment(): OrderStore {
-    const workDir = process.env.SHOPPINGMALL_WORK_DIR ?? path.join(process.cwd(), '.shoppingmall-work');
-    fs.mkdirSync(workDir, { recursive: true });
-    return new OrderStore(workDir);
-  }
-
   seedSelfCheck(): { seeded: boolean } {
     return this.updateCommerce((data) => {
       data.carts['cart-success'] = { lines: [{ sku: 'sku-normal', quantity: 2 }], amount: 120, currency: 'USD' };

@@ -11,21 +11,21 @@ import {
 } from '@zlink-systems/nestjs';
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
-import { parseTriggerOptions } from './Configuration/trigger-options';
+import { validateTriggerOptions } from './Configuration/trigger-options';
 import type { TriggerOptions } from './Configuration/trigger-options';
+import { MONITORING_OPTIONS, createMonitoringConfigurationModule } from '../../configuration';
 import { createTriggerEndpoints, requestProfile } from './Endpoints/trigger-endpoints';
 import { TriggerSocketEventRecorder } from './Handlers/trigger-event-recorders';
 import { EvidenceStore } from '../Service/Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startTriggerHost(args: readonly string[]): Promise<void> {
-  const options = parseTriggerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(path.join(options.logDir, 'trigger.evidence.log'));
+export async function startTriggerHost(): Promise<void> {
   let stopping = false;
 
-  const TriggerModule = createTriggerModule(options, evidence);
+  const TriggerModule = createConfiguredTriggerModule();
   const app = await NestFactory.createApplicationContext(TriggerModule, { logger: false, abortOnError: false });
+  const options = app.get(MONITORING_OPTIONS, { strict: false }) as TriggerOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const server = await startHttpServer(
     options.httpUrl,
@@ -39,13 +39,31 @@ export async function startTriggerHost(args: readonly string[]): Promise<void> {
   await app.close();
 }
 
+function createConfiguredTriggerModule(): Function {
+  class TriggerModule {}
+  const configuration = createMonitoringConfigurationModule(validateTriggerOptions);
+  Module({
+    imports: [configuration, ZLinkModule.forRootFactory({
+      imports: [configuration], inject: [MONITORING_OPTIONS],
+      useFactory: (value: unknown) => buildTriggerFramework(value as TriggerOptions)
+    })],
+    providers: [
+      { provide: EvidenceStore, inject: [MONITORING_OPTIONS], useFactory: (value: unknown) => {
+        const options = value as TriggerOptions; return new EvidenceStore('trigger', path.join(options.logDir, 'trigger.evidence.log'));
+      } },
+      TriggerSocketEventRecorder
+    ]
+  })(TriggerModule);
+  return TriggerModule;
+}
+
 async function requestWithTransientHost(
   options: TriggerOptions,
   request: ProfileReq,
   channelEndpoint = options.serviceChannelEndpoint
 ): Promise<ProfileRes> {
   const traceLabel = `trigger-${request.marker}`;
-  const evidence = new EvidenceStore(path.join(options.logDir, `${traceLabel}.evidence.log`));
+  const evidence = new EvidenceStore(traceLabel, path.join(options.logDir, `${traceLabel}.evidence.log`));
   const TriggerModule = createTriggerModule(options, evidence, traceLabel, channelEndpoint);
   const app = await NestFactory.createApplicationContext(TriggerModule, { logger: false, abortOnError: false });
   try {
@@ -71,23 +89,7 @@ function createTriggerModule(
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => {
-          const builder = zlinkFramework();
-          builder
-            .configureDispatch()
-              .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-              .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)
-              .traceLabel(traceLabel);
-
-          builder.addClientServerChannel(RuntimeMonitoringNames.channel)
-            .enableClient([channelEndpoint]);
-          return {
-            ...builder.build(),
-            monitoring: {
-              socket: [{ sourceName: RuntimeMonitoringNames.channelClientSource }]
-            }
-          };
-        }
+        useFactory: () => buildTriggerFramework(options, traceLabel, channelEndpoint)
       })
     ],
     providers: [
@@ -96,6 +98,15 @@ function createTriggerModule(
     ]
   })(TriggerModule);
   return TriggerModule;
+}
+
+function buildTriggerFramework(options: TriggerOptions, traceLabel = 'trigger', channelEndpoint = options.serviceChannelEndpoint) {
+  fs.mkdirSync(options.logDir, { recursive: true });
+  const builder = zlinkFramework();
+  builder.configureDispatch().messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+    .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`).traceLabel(traceLabel);
+  builder.addClientServerChannel(RuntimeMonitoringNames.channel).enableClient([channelEndpoint]);
+  return { ...builder.build(), monitoring: { socket: [{ sourceName: RuntimeMonitoringNames.channelClientSource }] } };
 }
 
 async function waitForTransientChannelReady(evidence: EvidenceStore): Promise<void> {

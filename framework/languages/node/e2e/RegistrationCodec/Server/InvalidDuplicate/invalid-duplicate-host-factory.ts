@@ -4,23 +4,28 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames, RegistrationCodecNames } from '../../Shared/messages';
-import { parseInvalidDuplicateOptions, type InvalidDuplicateOptions } from './Configuration/invalid-duplicate-options';
+import { validateInvalidDuplicateOptions, type InvalidDuplicateOptions } from './Configuration/invalid-duplicate-options';
+import { REGISTRATION_CODEC_OPTIONS, createRegistrationCodecConfigurationModule } from '../../configuration';
 import { DuplicateEchoRequestHandler } from './Handlers/duplicate-handlers';
 
-export async function startInvalidDuplicate(args: readonly string[]): Promise<void> {
-  const options = parseInvalidDuplicateOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const InvalidDuplicateModule = createInvalidDuplicateModule(options);
+export async function startInvalidDuplicate(): Promise<void> {
+  const InvalidDuplicateModule = createInvalidDuplicateModule();
   const app = await NestFactory.createApplicationContext(InvalidDuplicateModule, { logger: false, abortOnError: false });
   await app.close();
 }
 
-function createInvalidDuplicateModule(options: InvalidDuplicateOptions): Function {
+function createInvalidDuplicateModule(): Function {
   class InvalidDuplicateModule {}
+  const configuration = createRegistrationCodecConfigurationModule(validateInvalidDuplicateOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [REGISTRATION_CODEC_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as InvalidDuplicateOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createShoppingMallLocationStore, shoppingMallLocationOptions } from '../Configuration/location-store';
+import { SHOPPINGMALL_SAMPLE_CONFIG, createShoppingMallConfigurationModule } from '../Configuration/sample-config';
 import type { ShoppingMallServerConfig } from '../Configuration/sample-config';
 import { OrderStore } from '../Shared/Store/order-store';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
@@ -16,17 +17,30 @@ import { OrderWorkflowSpot } from './Infrastructure/ZLink/Spots/OrderWorkflowSpo
 import { ShoppingMallTopologyReadyHandler } from './Infrastructure/ZLink/Spots/OrderWorkflowSpot/Handlers/topology-ready-handler';
 import { SHOPPINGMALL_ROLE } from './order-workflow-tokens';
 
-function createShoppingMallWorkflowModule(role: string, config: ShoppingMallServerConfig): Function {
+function createShoppingMallWorkflowModule(role: string): Function {
   class ShoppingMallWorkflowModule {}
+  const configuration = createShoppingMallConfigurationModule([
+    role === SampleNames.workflowA ? 'workflowAHttpUrl' : 'workflowBHttpUrl',
+    role === SampleNames.workflowA ? 'workflowAChannelEndpoint' : 'workflowBChannelEndpoint',
+    role === SampleNames.workflowA ? 'workflowASpotEndpoint' : 'workflowBSpotEndpoint',
+    role === SampleNames.workflowA ? 'workflowASpotPubEndpoint' : 'workflowBSpotPubEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir',
+    'workDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [SHOPPINGMALL_SAMPLE_CONFIG],
+        useFactory: (config: ShoppingMallServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.SHOPPINGMALL_LOG_DIR ?? 'logs'}/flow-${role}.log`)
+            .traceLogFile(`${config.logDir}/flow-${role}.log`)
             .traceLabel(role);
           builder.addLocationStore(createShoppingMallLocationStore(config));
           Object.assign(builder.configureLocations(), shoppingMallLocationOptions());
@@ -46,7 +60,11 @@ function createShoppingMallWorkflowModule(role: string, config: ShoppingMallServ
     ],
     providers: [
       { provide: SHOPPINGMALL_ROLE, useValue: role },
-      { provide: OrderStore, useFactory: () => OrderStore.fromEnvironment() },
+      {
+        provide: OrderStore,
+        inject: [SHOPPINGMALL_SAMPLE_CONFIG],
+        useFactory: (config: ShoppingMallServerConfig) => new OrderStore(config.workDir)
+      },
       OrderWorkflowService,
       StartOrderWorkflowRouteHandler,
       PrepareInventoryEffectRouteHandler,

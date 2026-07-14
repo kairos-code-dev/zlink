@@ -4,26 +4,22 @@ export interface InvalidDuplicateOptions {
   readonly channelEndpoint: string;
 }
 
-export function parseInvalidDuplicateOptions(args: readonly string[]): InvalidDuplicateOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+export function validateInvalidDuplicateOptions(value: unknown): InvalidDuplicateOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error("Configuration section 'e2e' must be an object.");
+  const values = value as Record<string, unknown>;
   return {
-    rid: values.get('rid') ?? 'invalid-duplicate',
-    logDir: values.get('log-dir') ?? 'logs',
-    channelEndpoint: required(values, 'channel-endpoint')
+    rid: optional(values, 'rid') ?? 'invalid-duplicate',
+    logDir: optional(values, 'logDir') ?? 'logs',
+    channelEndpoint: required(values, 'channelEndpoint')
   };
 }
 
-function required(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
+function optional(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+function required(values: Record<string, unknown>, name: string): string {
+  const value = optional(values, name);
+  if (value === undefined) throw new Error(`Configuration value 'e2e.${name}' must be a non-empty string.`);
   return value;
 }

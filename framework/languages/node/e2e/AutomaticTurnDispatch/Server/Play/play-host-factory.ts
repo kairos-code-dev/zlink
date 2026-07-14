@@ -7,7 +7,9 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
-import { parsePlayOptions } from './Configuration/play-options';
+import { createAutomaticTurnConfigurationModule } from '../../configuration';
+import { PLAY_OPTIONS, validatePlayOptions } from './Configuration/play-options';
+import type { PlayOptions } from './Configuration/play-options';
 import { HoldCommandHandler, ProbeCommandHandler, WorkerAwaitCommandHandler, AwaitCommandHandler, AwaitRequestHandler } from './Handlers/basic-spot-handlers';
 import {
   BindAwaitActorsControlHandler,
@@ -34,21 +36,24 @@ import {
 } from './Spots/await-actors';
 import { AwaitProbeSpot } from './Spots/await-probe-spot';
 
-export async function startPlayHost(args: readonly string[]): Promise<void> {
-  const options = parsePlayOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-  const locationStore = new ZLinkRedisLocationStore({
-    url: `redis://${options.redisEndpoint}`,
-    keyPrefix: options.redisKeyPrefix
-  });
+export async function startPlayHost(): Promise<void> {
   let stopping = false;
+  const configuration = createAutomaticTurnConfigurationModule(PLAY_OPTIONS, validatePlayOptions);
 
   class PlayModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [PLAY_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as PlayOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
+          const locationStore = new ZLinkRedisLocationStore({
+            url: `redis://${options.redisEndpoint}`,
+            keyPrefix: options.redisKeyPrefix
+          });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -84,8 +89,16 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
-      { provide: YIELD_PLAY_NODE_RID, useValue: options.rid },
+      {
+        provide: EvidenceStore,
+        inject: [PLAY_OPTIONS],
+        useFactory: (options: PlayOptions) => new EvidenceStore(options.rid, options.evidenceFile)
+      },
+      {
+        provide: YIELD_PLAY_NODE_RID,
+        inject: [PLAY_OPTIONS],
+        useFactory: (options: PlayOptions) => options.rid
+      },
       EnsureSpotControlHandler,
       BindAwaitActorsControlHandler,
       AwaitEvidenceControlHandler,
@@ -118,6 +131,8 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   })(PlayModule);
 
   const app = await NestFactory.createApplicationContext(PlayModule, { logger: false, abortOnError: false });
+  const options = app.get<PlayOptions>(PLAY_OPTIONS);
+  const evidence = app.get(EvidenceStore);
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'play', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -135,5 +150,4 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
-  await locationStore.dispose();
 }

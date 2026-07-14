@@ -5,19 +5,19 @@ import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { EchoJsonReq, PacketNames, RegistrationCodecNames } from '../../Shared/messages';
-import { parseJsonOnlyOptions, type JsonOnlyOptions } from './Configuration/json-only-options';
+import { validateJsonOnlyOptions, type JsonOnlyOptions } from './Configuration/json-only-options';
+import { REGISTRATION_CODEC_OPTIONS, createRegistrationCodecConfigurationModule } from '../../configuration';
 import { createOperationalEndpoints } from './Endpoints/operational-endpoints';
 import { JsonOnlyEchoRequestHandler } from './Handlers/json-only-handlers';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startJsonOnlyPeer(args: readonly string[]): Promise<void> {
-  const options = parseJsonOnlyOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startJsonOnlyPeer(): Promise<void> {
   let stopping = false;
-  const PeerModule = createJsonOnlyModule(options, evidence);
+  const PeerModule = createJsonOnlyModule();
   const app = await NestFactory.createApplicationContext(PeerModule, { logger: false, abortOnError: false });
+  const options = app.get(REGISTRATION_CODEC_OPTIONS, { strict: false }) as JsonOnlyOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const server = await startHttpServer(options.httpUrl, [
     ...createOperationalEndpoints(evidence, () => { stopping = true; }),
@@ -39,12 +39,18 @@ export async function startJsonOnlyPeer(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-function createJsonOnlyModule(options: JsonOnlyOptions, evidence: EvidenceStore): Function {
+function createJsonOnlyModule(): Function {
   class JsonOnlyModule {}
+  const configuration = createRegistrationCodecConfigurationModule(validateJsonOnlyOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [REGISTRATION_CODEC_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as JsonOnlyOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -60,7 +66,14 @@ function createJsonOnlyModule(options: JsonOnlyOptions, evidence: EvidenceStore)
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      {
+        provide: EvidenceStore,
+        inject: [REGISTRATION_CODEC_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as JsonOnlyOptions;
+          return new EvidenceStore(options.rid, options.evidenceFile);
+        }
+      },
       JsonOnlyEchoRequestHandler
     ]
   })(JsonOnlyModule);

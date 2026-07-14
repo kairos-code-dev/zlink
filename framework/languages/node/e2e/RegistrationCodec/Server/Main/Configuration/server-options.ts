@@ -6,33 +6,31 @@ export interface ServerOptions {
   readonly evidenceFile?: string;
 }
 
-export function parseServerOptions(args: readonly string[], defaultRid = 'reg-codec-node'): ServerOptions {
-  const values = parseArgs(args);
+export function validateServerOptions(value: unknown, defaultRid = 'reg-codec-node'): ServerOptions {
+  const values = objectValues(value);
   return {
-    rid: values.get('rid') ?? defaultRid,
-    httpUrl: values.get('http-url') ?? 'http://127.0.0.1:0',
-    logDir: values.get('log-dir') ?? 'logs',
-    channelEndpoint: required(values, 'channel-endpoint'),
-    evidenceFile: values.get('evidence-file')
+    rid: optional(values, 'rid') ?? defaultRid,
+    httpUrl: optional(values, 'httpUrl') ?? 'http://127.0.0.1:0',
+    logDir: optional(values, 'logDir') ?? 'logs',
+    channelEndpoint: required(values, 'channelEndpoint'),
+    evidenceFile: optional(values, 'evidenceFile')
   };
 }
 
-export function parseArgs(args: readonly string[]): Map<string, string> {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    values.set(key.slice(2), args[++i]);
+function objectValues(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error("Configuration section 'e2e' must be an object.");
   }
-  return values;
+  return value as Record<string, unknown>;
 }
 
-export function required(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
+function optional(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function required(values: Record<string, unknown>, name: string): string {
+  const value = optional(values, name);
+  if (value === undefined) throw new Error(`Configuration value 'e2e.${name}' must be a non-empty string.`);
   return value;
 }

@@ -3,15 +3,16 @@ import { NestFactory } from '@nestjs/core';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoSessionModule } from './bingo-session-module';
 import { BingoSession } from './Sessions/bingo-session';
-import { loadSampleConfig } from '../Configuration/sample-config';
+import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import type { BingoSampleConfig } from '../Configuration/sample-config';
 
 async function bootstrap(): Promise<void> {
-  const config = loadSampleConfig();
-  const BingoSessionModule = createBingoSessionModule(config);
+  const BingoSessionModule = createBingoSessionModule();
   const app = await NestFactory.createApplicationContext(BingoSessionModule, {
     logger: false,
     abortOnError: false
   });
+  const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',

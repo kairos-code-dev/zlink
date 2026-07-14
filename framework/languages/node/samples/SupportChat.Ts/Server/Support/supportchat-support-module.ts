@@ -26,19 +26,30 @@ import {
   SetAgentAvailableHandler
 } from './Infrastructure/ZLink/Spots/EntrySpot/support-entry-handlers';
 import { SupportEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/support-entry-spot';
+import { SUPPORT_CHAT_CONFIG, createSupportChatConfigurationModule } from '../Configuration/sample-config';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
 
-function createSupportChatSupportModule(config: SupportChatServerConfig) {
+function createSupportChatSupportModule() {
   class SupportChatSupportModule {}
+  const configuration = createSupportChatConfigurationModule([
+    'supportChannelEndpoint',
+    'supportSpotEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [SUPPORT_CHAT_CONFIG],
+        useFactory: (config: SupportChatServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-support.log`)
+            .traceLogFile(`${config.logDir}/flow-support.log`)
             .traceLabel('support');
           builder.addLocationStore(createSupportChatLocationStore(config));
           Object.assign(builder.configureLocations(), supportChatLocationOptions());

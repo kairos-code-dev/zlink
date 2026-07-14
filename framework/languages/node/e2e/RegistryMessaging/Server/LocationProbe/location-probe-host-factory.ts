@@ -1,14 +1,21 @@
 import fs from 'node:fs';
+import { Module } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { createRedisLocationStore } from '../../Shared/location-store';
-import { parseServerOptions } from './Configuration/server-options';
+import { validateServerOptions, type ServerOptions } from './Configuration/server-options';
+import { REGISTRY_MESSAGING_OPTIONS, createRegistryMessagingConfigurationModule } from '../../configuration';
 import { createLocationProbeEndpoints } from './Endpoints/location-probe-endpoints';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startLocationProbeHost(args: readonly string[]): Promise<void> {
-  const options = parseServerOptions(args);
+export async function startLocationProbeHost(): Promise<void> {
+  class LocationProbeModule {}
+  const configuration = createRegistryMessagingConfigurationModule(validateServerOptions);
+  Module({ imports: [configuration] })(LocationProbeModule);
+  const app = await NestFactory.createApplicationContext(LocationProbeModule, { logger: false, abortOnError: false });
+  const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ServerOptions;
   fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
   const store = createRedisLocationStore(options);
   let stopping = false;
 
@@ -24,4 +31,5 @@ export async function startLocationProbeHost(args: readonly string[]): Promise<v
     await store.dispose();
   } catch {
   }
+  await app.close();
 }

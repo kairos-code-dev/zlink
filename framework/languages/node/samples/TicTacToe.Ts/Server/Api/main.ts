@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import * as http from 'node:http';
 import { NestFactory } from '@nestjs/core';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
-import { loadSampleConfig } from '../Configuration/sample-config';
+import { TICTACTOE_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
 import { createTicTacToeApiModule, getCreateGameEndpoint } from './tictactoe-api-module';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
@@ -12,12 +13,12 @@ type HttpEndpoint = {
 };
 
 async function main(): Promise<void> {
-  const config = loadSampleConfig();
-  const TicTacToeApiModule = createTicTacToeApiModule(config);
+  const TicTacToeApiModule = createTicTacToeApiModule();
   const apiApp = await NestFactory.createApplicationContext(TicTacToeApiModule, {
     logger: false,
     abortOnError: false
   });
+  const config = apiApp.get<TicTacToeSampleConfig>(TICTACTOE_SAMPLE_CONFIG);
   const createGameReq = getCreateGameEndpoint(apiApp);
 
   const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {

@@ -3,20 +3,20 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-full}"
-if [[ "${ZLINK_ATD_CHILD_RUN:-0}" != "1" && ("$SCENARIO" == "full" || "$SCENARIO" == "all") ]]; then
+CHILD_RUN="${2:-}"
+if [[ "$CHILD_RUN" != "--child-run" && ("$SCENARIO" == "full" || "$SCENARIO" == "all") ]]; then
   for child_scenario in \
     ATD-A1 ATD-A2 ATD-A3 ATD-A4 \
     ATD-B1 ATD-B2 ATD-B3 \
     ATD-C1 ATD-C2 ATD-C3 \
     ATD-D1 ATD-D2 ATD-D3 ATD-D4 \
     ATD-E1 ATD-E2 ATD-E3 ATD-E5; do
-    ZLINK_ATD_CHILD_RUN=1 "$0" "$child_scenario"
+    "$0" "$child_scenario" --child-run
   done
   echo "await-dispatch e2e result=passed"
   exit 0
@@ -30,6 +30,15 @@ if [[ "$CLIENT_SCENARIO" == "all" ]]; then
   CLIENT_SCENARIO="full"
 fi
 mkdir -p "$LOG_DIR"
+
+start_configured_server() {
+  local name="$1"
+  local main="$2"
+  shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
 
 needs_secondary_play() {
   case "$CLIENT_SCENARIO" in
@@ -172,7 +181,7 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run AutomaticTurnDispatch because it provisions a dedicated Redis location store." >&2
   exit 1
 fi
-start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="await-dispatch:node:${RUN_ID}:location"
 wait_tcp redis "tcp://$REDIS_ENDPOINT" 600
@@ -247,14 +256,14 @@ PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CLIENT_ENTRY="$ROOT_DIR/Client/main.ts"
 
-start_server delay-a "$DELAY_MAIN" \
+start_configured_server delay-a "$DELAY_MAIN" \
   --rid delay-a \
   --http-url "$DELAY_URL" \
   --delay-endpoint "$DELAY_ENDPOINT" \
   --evidence-file "$LOG_DIR/delay-a.evidence.log"
 DELAY_A_PID="${pids[-1]}"
 
-start_server delay-b "$DELAY_MAIN" \
+start_configured_server delay-b "$DELAY_MAIN" \
   --rid delay-b \
   --http-url "$DELAY_B_URL" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
@@ -264,7 +273,7 @@ wait_health "$DELAY_URL" delay-a "$DELAY_A_PID"
 wait_health "$DELAY_B_URL" delay-b "$DELAY_B_PID"
 
 if needs_secondary_play; then
-  start_server play-b "$PLAY_MAIN" \
+  start_configured_server play-b "$PLAY_MAIN" \
     --rid play-b \
     --http-url "$PLAY_B_URL" \
     --control-endpoint "$PLAY_B_CONTROL" \
@@ -287,7 +296,7 @@ if needs_secondary_play; then
   PLAY_A_PEER_ARGS+=(--peer-spot-route-endpoint "$PLAY_B_SPOT_ROUTE")
 fi
 
-start_server play-a "$PLAY_MAIN" \
+start_configured_server play-a "$PLAY_MAIN" \
   --rid "$PRIMARY_PLAY_RID" \
   --http-url "$PLAY_URL" \
   --control-endpoint "$PLAY_CONTROL" \
@@ -311,7 +320,7 @@ if needs_secondary_play; then
   PLAY_SPOT_ROUTE_ENDPOINTS="$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE"
 fi
 
-start_server session-a "$SESSION_MAIN" \
+start_configured_server session-a "$SESSION_MAIN" \
   --rid session-a \
   --http-url "$SESSION_URL" \
   --control-router-endpoint "$SESSION_CONTROL" \
@@ -330,7 +339,7 @@ wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
 
 SESSION_B_PID=""
 if needs_secondary_session; then
-  start_server session-b "$SESSION_MAIN" \
+  start_configured_server session-b "$SESSION_MAIN" \
     --rid session-b \
     --http-url "$SESSION_B_URL" \
     --control-router-endpoint "$SESSION_B_CONTROL" \
@@ -390,7 +399,7 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
     terminate_gracefully session-b "$SESSION_B_PID" "$SESSION_B_URL"
   fi
 
-  start_server play-a "$PLAY_MAIN" \
+  start_configured_server play-a "$PLAY_MAIN" \
     --rid "$PRIMARY_PLAY_RID" \
     --http-url "$PLAY_URL" \
     --control-endpoint "$PLAY_CONTROL" \
@@ -407,7 +416,7 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
   PLAY_A_PID="${pids[-1]}"
   wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
 
-  start_server session-a "$SESSION_MAIN" \
+  start_configured_server session-a "$SESSION_MAIN" \
     --rid session-a \
     --http-url "$SESSION_URL" \
     --control-router-endpoint "$SESSION_CONTROL" \
@@ -425,7 +434,7 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
   wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
 
   if [[ "$CLIENT_SCENARIO" != "ATD-E3" ]]; then
-    start_server session-b "$SESSION_MAIN" \
+    start_configured_server session-b "$SESSION_MAIN" \
       --rid session-b \
       --http-url "$SESSION_B_URL" \
       --control-router-endpoint "$SESSION_B_CONTROL" \

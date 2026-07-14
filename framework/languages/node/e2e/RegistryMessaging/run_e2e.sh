@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
@@ -42,7 +41,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="location-messaging:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
@@ -73,7 +72,14 @@ WORKFLOW_MAIN="$ROOT_DIR/Server/Workflow/dist/Server/Workflow/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server location-probe "$LOCATION_PROBE_MAIN" \
+start_configured_server() {
+  local name="$1"; local main="$2"; shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
+
+start_configured_server location-probe "$LOCATION_PROBE_MAIN" \
   --rid location-probe \
   --http-url "http://127.0.0.1:$LOCATION_PROBE_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -81,7 +87,7 @@ start_server location-probe "$LOCATION_PROBE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$LOCATION_PROBE_HTTP_PORT" location-probe
 
-start_server api-a "$PROVIDER_MAIN" \
+start_configured_server api-a "$PROVIDER_MAIN" \
   --rid api-a \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -95,7 +101,7 @@ start_server api-a "$PROVIDER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
 
-start_server api-b "$PROVIDER_MAIN" \
+start_configured_server api-b "$PROVIDER_MAIN" \
   --rid api-b \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -109,7 +115,7 @@ start_server api-b "$PROVIDER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
-start_server workflow-a "$WORKFLOW_MAIN" \
+start_configured_server workflow-a "$WORKFLOW_MAIN" \
   --rid workflow-a \
   --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -119,7 +125,7 @@ start_server workflow-a "$WORKFLOW_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
 
-start_server direct-consumer "$CONSUMER_MAIN" \
+start_configured_server direct-consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
   --provider-endpoint "$API_B" \
@@ -127,21 +133,21 @@ start_server direct-consumer "$CONSUMER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" direct-consumer
 
-start_server single-consumer "$CONSUMER_MAIN" \
+start_configured_server single-consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
   --trace-label single-consumer \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" single-consumer
 
-start_server backpressure-consumer "$CONSUMER_MAIN" \
+start_configured_server backpressure-consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
   --trace-label backpressure-consumer \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
 
-start_server location-consumer "$CONSUMER_MAIN" \
+start_configured_server location-consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \

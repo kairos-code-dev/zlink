@@ -5,18 +5,18 @@ import { ZLinkMessageFlowLogMode, type ZLinkLocationRuntimeQuery, type ZLinkChan
 import { ZLINK_CHANNEL_CLIENT, ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { ChannelNames } from '../../Shared/messages';
 import { createRedisLocationStore, storeFailureLocationOptions } from '../../Shared/location-store';
-import { parseConsumerOptions } from './Configuration/consumer-options';
+import { validateConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
+import { DISCOVERY_OPTIONS, createDiscoveryConfigurationModule } from '../../configuration';
 import { createConsumerEndpoints } from './Endpoints/consumer-endpoints';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startConsumerHost(args: readonly string[]): Promise<void> {
-  const options = parseConsumerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
+export async function startConsumerHost(): Promise<void> {
   let stopping = false;
 
-  const ConsumerModule = createConsumerModule(options);
+  const ConsumerModule = createConsumerModule();
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
+  const options = app.get(DISCOVERY_OPTIONS, { strict: false }) as ConsumerOptions;
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(options.httpUrl, createConsumerEndpoints(channel, locationQuery, () => { stopping = true; }));
@@ -27,12 +27,17 @@ export async function startConsumerHost(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-function createConsumerModule(options: ConsumerOptions): Function {
+function createConsumerModule(): Function {
   class ConsumerModule {}
+  const configuration = createDiscoveryConfigurationModule(validateConsumerOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [DISCOVERY_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ConsumerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()

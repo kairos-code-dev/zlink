@@ -5,6 +5,7 @@ import {
   QuestReadModelStore
 } from '../../Shared/Store/quest-progress-store';
 import { PlayerQuestAggregate, QuestDomain } from '../Domain/quest-domain';
+import { GAMEQUEST_INSTANCE_ID } from '../../Configuration/tokens';
 import type {
   GameplayEventEnvelope,
   QuestProgress,
@@ -24,7 +25,8 @@ class QuestEventProcessor {
   constructor(
     @Inject(GameplayStateStore) private readonly gameplay: GameplayStateStore,
     @Inject(QuestEventStore) private readonly events: QuestEventStore,
-    @Inject(QuestReadModelStore) private readonly readModel: QuestReadModelStore
+    @Inject(QuestReadModelStore) private readonly readModel: QuestReadModelStore,
+    @Inject(GAMEQUEST_INSTANCE_ID) private readonly missionName: string
   ) {}
 
   process(event: GameplayEventEnvelope, aggregate: PlayerQuestAggregate): QuestProcessingResult {
@@ -57,7 +59,7 @@ class QuestEventProcessor {
     changedQuestIds: string[],
     completedQuestIds: string[]
   ): QuestProcessingResult {
-    this.events.append(playerId, proposed, process.env.GAMEQUEST_MISSION_NAME ?? 'unknown-owner');
+    this.events.append(playerId, proposed, this.missionName);
     const stored = this.events.read(playerId);
     const aggregate = PlayerQuestAggregate.from(stored);
     const projection = this.readModel.project(playerId, stored);

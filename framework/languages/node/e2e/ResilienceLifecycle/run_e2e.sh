@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
@@ -115,7 +114,7 @@ API_B="tcp://127.0.0.1:$API_B_PORT"
 API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
 API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
-start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="resilience-lifecycle:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
@@ -125,7 +124,14 @@ PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server topology-probe "$TOPOLOGY_PROBE_MAIN" \
+start_configured_server() {
+  local name="$1"; local main="$2"; shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
+
+start_configured_server topology-probe "$TOPOLOGY_PROBE_MAIN" \
   --rid topology-probe \
   --http-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -133,7 +139,7 @@ start_server topology-probe "$TOPOLOGY_PROBE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" topology-probe
 
-start_server api-a "$PROVIDER_MAIN" \
+start_configured_server api-a "$PROVIDER_MAIN" \
   --rid api-a \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -143,7 +149,7 @@ start_server api-a "$PROVIDER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
 
-start_server api-b "$PROVIDER_MAIN" \
+start_configured_server api-b "$PROVIDER_MAIN" \
   --rid api-b \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -153,7 +159,7 @@ start_server api-b "$PROVIDER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
-start_server consumer "$CONSUMER_MAIN" \
+start_configured_server consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \

@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import { Module, type DynamicModule } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
 interface ShoppingMallServerConfig {
   readonly apiAHttpUrl: string;
   readonly apiBHttpUrl: string;
@@ -11,32 +15,66 @@ interface ShoppingMallServerConfig {
   readonly workflowBSpotPubEndpoint: string;
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
+  readonly logDir: string;
+  readonly workDir: string;
 }
 
-function loadSampleConfig(): ShoppingMallServerConfig {
+const SHOPPINGMALL_SAMPLE_CONFIG = Symbol.for('SHOPPINGMALL_SAMPLE_CONFIG');
+class ShoppingMallConfigurationModule {}
+Module({})(ShoppingMallConfigurationModule);
+
+function createShoppingMallConfigurationModule(
+  requiredKeys: readonly (keyof ShoppingMallServerConfig)[]
+): DynamicModule {
+  const configPath = readConfigPath(process.argv.slice(2));
   return {
-    apiAHttpUrl: requireEnv('SHOPPINGMALL_API_A_HTTP'),
-    apiBHttpUrl: requireEnv('SHOPPINGMALL_API_B_HTTP'),
-    workflowAHttpUrl: requireEnv('SHOPPINGMALL_WORKFLOW_A_HTTP'),
-    workflowBHttpUrl: requireEnv('SHOPPINGMALL_WORKFLOW_B_HTTP'),
-    workflowAChannelEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT'),
-    workflowBChannelEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT'),
-    workflowASpotEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT'),
-    workflowBSpotEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT'),
-    workflowASpotPubEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_A_SPOT_PUB_ENDPOINT'),
-    workflowBSpotPubEndpoint: requireEnv('SHOPPINGMALL_WORKFLOW_B_SPOT_PUB_ENDPOINT'),
-    redisEndpoint: requireEnv('SHOPPINGMALL_REDIS_ENDPOINT'),
-    redisKeyPrefix: process.env.SHOPPINGMALL_REDIS_KEY_PREFIX ?? 'shoppingmall:node:'
+    module: ShoppingMallConfigurationModule,
+    imports: [ConfigModule.forRoot({
+      cache: true,
+      ignoreEnvFile: true,
+      isGlobal: false,
+      load: [() => ({ sample: readSampleConfig(configPath) })],
+      skipProcessEnv: true,
+      validatePredefined: false
+    })],
+    providers: [{
+      provide: SHOPPINGMALL_SAMPLE_CONFIG,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => validateSampleConfig(config.get('sample'), requiredKeys)
+    }],
+    exports: [SHOPPINGMALL_SAMPLE_CONFIG]
   };
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.length === 0) {
-    throw new Error(`${name} is required.`);
+function readConfigPath(args: readonly string[]): string {
+  const index = args.indexOf('--config');
+  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
+    throw new Error('--config <path> is required.');
   }
-  return value;
+  return args[index + 1];
 }
 
-export { loadSampleConfig };
+function readSampleConfig(configPath: string): unknown {
+  const document = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { sample?: unknown };
+  if (document.sample === undefined) throw new Error("Configuration section 'sample' is required.");
+  return document.sample;
+}
+
+function validateSampleConfig(
+  value: unknown,
+  requiredKeys: readonly (keyof ShoppingMallServerConfig)[]
+): ShoppingMallServerConfig {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error("Configuration section 'sample' must be an object.");
+  }
+  const config = value as Record<string, unknown>;
+  for (const key of requiredKeys) {
+    if (typeof config[key] !== 'string' || (config[key] as string).length === 0) {
+      throw new Error(`Configuration value 'sample.${key}' must be a non-empty string.`);
+    }
+  }
+  return config as unknown as ShoppingMallServerConfig;
+}
+
+export { SHOPPINGMALL_SAMPLE_CONFIG, createShoppingMallConfigurationModule };
 export type { ShoppingMallServerConfig };

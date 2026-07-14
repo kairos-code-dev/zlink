@@ -107,7 +107,8 @@ class DeliveryDispatchClientScenario {
     ensure(() => created.deliveryId === deliveryId);
     const offered = await offerA;
     ensure(() => offered.payload.courierId === 'courier-a');
-    courierA.send(new CourierDecisionMsg(deliveryId, 'courier-a', true))
+    ensure(() => offered.payload.attempt === 1);
+    courierA.send(new CourierDecisionMsg(deliveryId, 'courier-a', offered.payload.attempt, true))
       .packetName(PacketNames.courierDecision)
       .submit();
     const notifications = await Promise.all(statusWaits);
@@ -129,7 +130,7 @@ class DeliveryDispatchClientScenario {
     const reassignedOffer = courierB.waitFor<OfferDeliveryNotify>(PacketNames.offerDeliveryNotify)
       .where((message) => message.payload.deliveryId === deliveryId)
       .submit(signal);
-    const statuses = ['Assigned', 'Reassigned', 'Accepted', 'Delivered'] as const;
+    const statuses = ['Assigned', 'Reassigned', 'Accepted', 'PickedUp', 'Delivered'] as const;
     const arrivals: string[] = [];
     const statusWaits = statuses.map((status) => customer.waitFor<DeliveryStatusNotify>(PacketNames.deliveryStatusNotify)
       .where((message) => message.payload.deliveryId === deliveryId && message.payload.status === status)
@@ -155,9 +156,14 @@ class DeliveryDispatchClientScenario {
     ensure(() => created.deliveryId === deliveryId);
     const firstOffer = await timedOutOffer;
     ensure(() => firstOffer.payload.courierId === 'courier-a');
+    ensure(() => firstOffer.payload.attempt === 1);
     const secondOffer = await reassignedOffer;
     ensure(() => secondOffer.payload.courierId === 'courier-b');
-    courierB.send(new CourierDecisionMsg(deliveryId, 'courier-b', true))
+    ensure(() => secondOffer.payload.attempt === 2);
+    courierA.send(new CourierDecisionMsg(deliveryId, 'courier-a', firstOffer.payload.attempt, true))
+      .packetName(PacketNames.courierDecision)
+      .submit();
+    courierB.send(new CourierDecisionMsg(deliveryId, 'courier-b', secondOffer.payload.attempt, true))
       .packetName(PacketNames.courierDecision)
       .submit();
 

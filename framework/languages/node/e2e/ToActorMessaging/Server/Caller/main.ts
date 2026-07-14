@@ -7,17 +7,23 @@ import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
-import { parseServerOptions } from '../Support/options';
+import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
+import type { ServerOptions } from '../../configuration';
 
-const options = parseServerOptions(process.argv.slice(2), 'caller');
-fs.mkdirSync(options.logDir, { recursive: true });
+let options: ServerOptions;
 let stopping = false;
 
 class CallerModule {}
+const configuration = createToActorConfigurationModule();
 Module({
   imports: [
+    configuration,
     ZLinkModule.forRootFactory({
-      useFactory: () => {
+      imports: [configuration],
+      inject: [TO_ACTOR_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        fs.mkdirSync(options.logDir, { recursive: true });
         const builder = zlinkFramework();
         builder.addLocationStore(createRedisLocationStore({
           redisEndpoint: options.redisEndpoint,

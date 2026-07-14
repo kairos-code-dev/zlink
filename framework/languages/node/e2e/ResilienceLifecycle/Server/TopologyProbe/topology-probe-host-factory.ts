@@ -3,20 +3,20 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
 import { ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { parseServerOptions } from './Configuration/server-options';
+import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
+import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../configuration';
 import { createTopologyProbeEndpoints } from './Endpoints/topology-probe-endpoints';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
-export async function startTopologyProbeHost(args: readonly string[]): Promise<void> {
-  const options = parseServerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startTopologyProbeHost(): Promise<void> {
   let stopping = false;
-  const TopologyProbeModule = createTopologyProbeModule(options);
+  const TopologyProbeModule = createTopologyProbeModule();
   const app = await NestFactory.createApplicationContext(TopologyProbeModule, { logger: false, abortOnError: false });
+  const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ServerOptions;
+  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
   const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(
     options.httpUrl,
@@ -29,12 +29,17 @@ export async function startTopologyProbeHost(args: readonly string[]): Promise<v
   await app.close();
 }
 
-function createTopologyProbeModule(options: ServerOptions): Function {
+function createTopologyProbeModule(): Function {
   class TopologyProbeModule {}
+  const configuration = createResilienceConfigurationModule(validateServerOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [RESILIENCE_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder.addLocationStore(createRedisLocationStore({
             redisEndpoint: options.redisEndpoint,

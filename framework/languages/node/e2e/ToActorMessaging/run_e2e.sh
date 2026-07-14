@@ -3,13 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
+START_ORDER="${2:-forward}"
 mkdir -p "$LOG_DIR"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 
 pick_port() {
   node "$NODE_ROOT/e2e/port-picker.js"
@@ -89,8 +88,17 @@ start_server() {
   pids+=("$!")
 }
 
+start_configured_server() {
+  local name="$1"
+  local main="$2"
+  shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
+
 ordered_roles() {
-  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+  python3 - "$START_ORDER" "$@" <<'PY'
 import random
 import sys
 
@@ -103,10 +111,10 @@ elif mode == "reverse":
 elif mode.startswith("shuffle:"):
     seed_text = mode.split(":", 1)[1]
     if seed_text == "":
-        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+        raise SystemExit("start order shuffle requires a seed")
     random.Random(int(seed_text)).shuffle(roles)
 else:
-    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+    raise SystemExit(f"unsupported start order={mode!r}")
 for role in roles:
     print(role)
 PY
@@ -115,7 +123,7 @@ PY
 start_role() {
   case "$1" in
     actor)
-      start_server actor "$ACTOR_MAIN" \
+      start_configured_server actor "$ACTOR_MAIN" \
         --rid to-actor-owner \
         --http-url "$ACTOR_URL" \
         --redis-endpoint "$REDIS_ENDPOINT" \
@@ -126,7 +134,7 @@ start_role() {
         --log-dir "$LOG_DIR"
       ;;
     caller)
-      start_server caller "$CALLER_MAIN" \
+      start_configured_server caller "$CALLER_MAIN" \
         --rid to-actor-caller \
         --http-url "$CALLER_URL" \
         --redis-endpoint "$REDIS_ENDPOINT" \
@@ -136,7 +144,7 @@ start_role() {
         --log-dir "$LOG_DIR"
       ;;
     session)
-      start_server session "$SESSION_MAIN" \
+      start_configured_server session "$SESSION_MAIN" \
         --rid to-actor-session \
         --http-url "$SESSION_URL" \
         --stream-endpoint "$SESSION_STREAM_ENDPOINT" \
@@ -160,7 +168,7 @@ wait_role() {
 }
 
 echo "log_dir=$LOG_DIR"
-echo "start_order=$E2E_START_ORDER"
+echo "start_order=$START_ORDER"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Server/Actor" && npm run build >/dev/null)
@@ -168,16 +176,12 @@ echo "start_order=$E2E_START_ORDER"
 (cd "$ROOT_DIR/Server/Session" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Client" && npm run build >/dev/null)
 
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-else
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
-    exit 1
-  fi
-  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required." >&2
+  exit 1
 fi
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 REDIS_KEY_PREFIX="to-actor-messaging:node:$RUN_ID"
 

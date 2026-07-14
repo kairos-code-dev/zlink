@@ -6,32 +6,47 @@ import { CourierActorDirectory, CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
 import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler, OfferDeliveryActorNodeHandler } from './offer-delivery-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
+import {
+  DELIVERYDISPATCH_SAMPLE_CONFIG,
+  createDeliveryDispatchConfigurationModule
+} from '../Configuration/sample-config';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 type CourierOptions = {
   courierId: string;
 };
 
-function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, options: CourierOptions) {
+function createCourierActorNodeModule(options: CourierOptions) {
   class CourierActorNodeModule {}
   const directory = new CourierActorDirectory();
-  CourierActorFactory.useDirectory(directory);
-  const endpoint = options.courierId === 'courier-a'
-    ? config.courierActorNode1RouteEndpoint
-    : config.courierActorNode2RouteEndpoint;
-  const spotEndpoint = options.courierId === 'courier-a'
-    ? config.courierActorNode1SpotEndpoint
-    : config.courierActorNode2SpotEndpoint;
   const nodeRid = options.courierId === 'courier-a' ? 'courier-node-1' : 'courier-node-2';
+  const endpointKey = options.courierId === 'courier-a'
+    ? 'courierActorNode1RouteEndpoint'
+    : 'courierActorNode2RouteEndpoint';
+  const spotEndpointKey = options.courierId === 'courier-a'
+    ? 'courierActorNode1SpotEndpoint'
+    : 'courierActorNode2SpotEndpoint';
+  const configuration = createDeliveryDispatchConfigurationModule([
+    endpointKey,
+    spotEndpointKey,
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => {
+          const endpoint = config[endpointKey];
+          const spotEndpoint = config[spotEndpointKey];
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-${nodeRid}.log`)
+            .traceLogFile(`${config.logDir}/flow-${nodeRid}.log`)
             .traceLabel(nodeRid);
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
@@ -40,6 +55,8 @@ function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, opti
               .enableRouter(endpoint)
               .routingId(nodeRid)
               .addHandlerGroup('courier-actor-node')
+            .addClientServerChannel(SampleNames.dispatchChannel)
+              .enableClient()
             .addSpotMesh(SampleNames.courierActorSpotMesh)
               .enableRouter(spotEndpoint, nodeRid)
               .addEntrySpot(CourierEntrySpot)

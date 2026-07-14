@@ -8,31 +8,34 @@ export class ServerProcessLauncher {
   constructor(private readonly options: ClientOptions) {}
 
   startSubscriber(name: string, httpUrl: string, evidenceFile: string): DynamicProcess {
+    const config = this.writeConfig(name, {
+      rid: name,
+      httpUrl,
+      publisherEndpoint: this.options.publisherEndpoint,
+      evidenceFile: path.join(this.options.logDir, evidenceFile),
+      logDir: this.options.logDir,
+      handlerDelayMs: 0
+    });
     return this.start(
       name,
       this.options.subscriberMain,
-      [
-        '--rid', name,
-        '--http-url', httpUrl,
-        '--publisher-endpoint', this.options.publisherEndpoint,
-        '--evidence-file', path.join(this.options.logDir, evidenceFile),
-        '--log-dir', this.options.logDir
-      ],
+      ['--config', config],
       httpUrl
     );
   }
 
   startPublisher(): DynamicProcess {
+    const config = this.writeConfig('pub-restart', {
+      rid: 'pub-a',
+      httpUrl: this.options.publisherUrl,
+      publisherEndpoint: this.options.publisherEndpoint,
+      evidenceFile: path.join(this.options.logDir, 'pub-restart.evidence.log'),
+      logDir: this.options.logDir
+    });
     return this.start(
       'pub-restart',
       this.options.publisherMain,
-      [
-        '--rid', 'pub-a',
-        '--http-url', this.options.publisherUrl,
-        '--publisher-endpoint', this.options.publisherEndpoint,
-        '--evidence-file', path.join(this.options.logDir, 'pub-restart.evidence.log'),
-        '--log-dir', this.options.logDir
-      ],
+      ['--config', config],
       this.options.publisherUrl
     );
   }
@@ -40,12 +43,18 @@ export class ServerProcessLauncher {
   private start(name: string, mainPath: string, args: readonly string[], httpUrl: string): DynamicProcess {
     fs.mkdirSync(this.options.logDir, { recursive: true });
     const child = spawn(process.execPath, [mainPath, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ZLINK_E2E_RID: args[1] ?? name }
+      stdio: ['ignore', 'pipe', 'pipe']
     });
     child.stdout?.pipe(fs.createWriteStream(path.join(this.options.logDir, `${name}.stdout.log`)));
     child.stderr?.pipe(fs.createWriteStream(path.join(this.options.logDir, `${name}.stderr.log`)));
     return new DynamicProcess(child, httpUrl);
+  }
+
+  private writeConfig(name: string, e2e: Record<string, unknown>): string {
+    fs.mkdirSync(this.options.logDir, { recursive: true });
+    const config = path.join(this.options.logDir, `${name}.config.json`);
+    fs.writeFileSync(config, `${JSON.stringify({ e2e }, null, 2)}\n`, { mode: 0o600 });
+    return config;
   }
 }
 

@@ -84,26 +84,31 @@ class AssignDeliveryMsg {
   ) {}
 }
 
-class OfferDeliveryReq {
+class OfferDeliveryMsg {
   constructor(
     readonly courierId: string,
     readonly deliveryId: string,
+    readonly attempt: number,
     readonly pickupAddress: string,
     readonly dropoffAddress: string
   ) {}
 }
 
-type OfferDeliveryRes = {
-  deliveryId: string;
-  courierId: string;
-  accepted: boolean;
-  reason?: string;
-};
+class OfferDeliveryResultMsg {
+  constructor(
+    readonly deliveryId: string,
+    readonly courierId: string,
+    readonly attempt: number,
+    readonly accepted: boolean,
+    readonly reason?: string
+  ) {}
+}
 
 class OfferDeliveryNotify {
   constructor(
     readonly courierId: string,
     readonly deliveryId: string,
+    readonly attempt: number,
     readonly pickupAddress: string,
     readonly dropoffAddress: string
   ) {}
@@ -113,6 +118,7 @@ class CourierDecisionMsg {
   constructor(
     readonly deliveryId: string,
     readonly courierId: string,
+    readonly attempt: number,
     readonly accepted: boolean,
     readonly reason?: string
   ) {}
@@ -182,9 +188,9 @@ const PacketNames = {
   customerActorFound: 'FindCustomerActorRes',
   ensureCustomerActor: 'EnsureCustomerActorReq',
   customerActorEnsured: 'EnsureCustomerActorRes',
-  offerDelivery: 'OfferDeliveryReq',
+  offerDelivery: 'OfferDeliveryMsg',
   offerDeliveryNotify: 'OfferDeliveryNotify',
-  offerDeliveryResult: 'OfferDeliveryRes',
+  offerDeliveryResult: 'OfferDeliveryResultMsg',
   courierDecision: 'CourierDecisionMsg',
   serverAssertionReq: 'ServerAssertionReq',
   serverAssertionRes: 'ServerAssertionRes',
@@ -250,8 +256,14 @@ function ensureCustomerActor(customerId: string): EnsureCustomerActorReq {
   return new EnsureCustomerActorReq(customerId);
 }
 
-function offerDelivery(courierId: string, deliveryId: string, pickupAddress: string, dropoffAddress: string): OfferDeliveryReq {
-  return new OfferDeliveryReq(courierId, deliveryId, pickupAddress, dropoffAddress);
+function offerDelivery(
+  courierId: string,
+  deliveryId: string,
+  attempt: number,
+  pickupAddress: string,
+  dropoffAddress: string
+): OfferDeliveryMsg {
+  return new OfferDeliveryMsg(courierId, deliveryId, attempt, pickupAddress, dropoffAddress);
 }
 
 function subscribeDelivery(deliveryId: string): SubscribeDeliveryReq {
@@ -270,7 +282,8 @@ export {
   FindCourierActorReq,
   EnsureCourierActorReq,
   AssignDeliveryMsg,
-  OfferDeliveryReq,
+  OfferDeliveryMsg,
+  OfferDeliveryResultMsg,
   DeliveryStatusChangedReq,
   CourierDecisionMsg,
   PacketNames,
@@ -300,7 +313,6 @@ export type {
   DeliveryStatusChangedRes,
   EnsureCourierActorRes,
   FindCourierActorRes,
-  OfferDeliveryRes,
   ServerAssertionReq,
   ServerAssertionRes,
   SubscribeDeliveryRes

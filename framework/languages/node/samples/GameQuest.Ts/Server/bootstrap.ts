@@ -1,82 +1,47 @@
 import 'reflect-metadata';
 import http from 'node:http';
 import { NestFactory } from '@nestjs/core';
-import { loadSampleConfig } from './Configuration/sample-config';
 import { createGameApiModule } from './GameApi/game-api-module';
 import { startGameApiServer } from './GameApi/game-api-server';
 import { createQuestMissionModule } from './QuestMission/gamequest-quest-module';
-import { RegistryModule } from './Registry/registry-module';
 import { QuestEventStore } from './Shared/Store/quest-progress-store';
 import { PlayerQuestSpotProvisioner } from './QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner';
 import { GAMEQUEST_LOCATION_STORE } from './Configuration/tokens';
+import { GAMEQUEST_SAMPLE_CONFIG } from './Configuration/sample-config';
+import type { GameQuestServerConfig } from './Configuration/sample-config';
 import type { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 
-async function main(): Promise<void> {
-  const config = loadSampleConfig();
-  const role = readOption('--role') ?? process.env.GAMEQUEST_ROLE ?? 'api-a';
-  if (role !== 'api-a' && role !== 'api-b' && role !== 'mission-a' && role !== 'mission-b') {
-    throw new Error(`Unknown GameQuest role '${role}'.`);
-  }
-  void RegistryModule;
+type GameQuestRole = 'api-a' | 'api-b' | 'mission-a' | 'mission-b';
 
+async function bootstrapGameQuest(role: GameQuestRole): Promise<void> {
   const isApi = role === 'api-a' || role === 'api-b';
-  if (isApi) process.env.GAMEQUEST_API_NAME = role;
-  else process.env.GAMEQUEST_MISSION_NAME = role;
-  const app = await NestFactory.createApplicationContext(
-    isApi ? createGameApiModule(config, role) : createQuestMissionModule(config, role), {
+  const moduleType = isApi ? createGameApiModule(role) : createQuestMissionModule(role);
+  const app = await NestFactory.createApplicationContext(moduleType, {
     logger: false,
     abortOnError: true
   });
-
+  const config = app.get<GameQuestServerConfig>(GAMEQUEST_SAMPLE_CONFIG);
   const httpServer = isApi
     ? await startGameApiServer(app, config, role)
     : await startMissionSelfCheckServer(config, role, app.get(PlayerQuestSpotProvisioner));
 
   process.stdout.write(`${JSON.stringify({ event: 'ready', role })}\n`);
-  await waitForShutdown();
-  await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-  await closeNestRuntime(app);
-  await app.get<ZLinkRedisLocationStore>(GAMEQUEST_LOCATION_STORE).dispose();
-}
-
-function readOption(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : undefined;
-}
-
-async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
-    await container.close();
-  } catch (error) {
-    const candidate = error as { name?: string; code?: number };
-    if (candidate.name === 'CloseError' && (candidate.code === 0 || candidate.code === 401)) {
-      return;
-    }
-    throw error;
+    await waitForShutdown();
+  } finally {
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    await closeNestRuntime(app);
+    await app.get<ZLinkRedisLocationStore>(GAMEQUEST_LOCATION_STORE).dispose();
   }
 }
 
-function waitForShutdown(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const keepAlive = setInterval(() => undefined, 1000);
-    const stop = () => {
-      clearInterval(keepAlive);
-      resolve();
-    };
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
-  });
-}
-
 function startMissionSelfCheckServer(
-  config: ReturnType<typeof loadSampleConfig>,
+  config: GameQuestServerConfig,
   role: 'mission-a' | 'mission-b',
   playerQuests: PlayerQuestSpotProvisioner
 ): Promise<http.Server> {
   const store = new QuestEventStore(config.workDir);
-  const missionUrl = role === 'mission-a'
-    ? process.env.GAMEQUEST_MISSION_A_HTTP ?? 'http://127.0.0.1:31213'
-    : process.env.GAMEQUEST_MISSION_B_HTTP ?? 'http://127.0.0.1:31214';
+  const missionUrl = role === 'mission-a' ? config.missionAHttpUrl : config.missionBHttpUrl;
   const url = new URL(missionUrl);
   const server = http.createServer(async (request, response) => {
     const ownerMatch = request.url?.match(/^\/self-check\/owner\/([^/]+)\/close$/);
@@ -111,9 +76,27 @@ function sendJson(response: http.ServerResponse, statusCode: number, body: unkno
   response.end(JSON.stringify(body));
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+function waitForShutdown(): Promise<void> {
+  return new Promise((resolve) => {
+    const keepAlive = setInterval(() => undefined, 60_000);
+    const stop = (): void => {
+      clearInterval(keepAlive);
+      resolve();
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+}
 
-export {};
+async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
+  try {
+    await container.close();
+  } catch (error) {
+    const candidate = error as { name?: string; code?: number };
+    if (candidate.name === 'CloseError' && [0, 401].includes(candidate.code ?? -1)) return;
+    throw error;
+  }
+}
+
+export { bootstrapGameQuest };
+export type { GameQuestRole };

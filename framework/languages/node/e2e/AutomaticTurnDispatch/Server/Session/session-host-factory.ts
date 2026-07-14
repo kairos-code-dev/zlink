@@ -14,7 +14,9 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
-import { parseSessionOptions } from './Configuration/session-options';
+import { createAutomaticTurnConfigurationModule } from '../../configuration';
+import { SESSION_OPTIONS, validateSessionOptions } from './Configuration/session-options';
+import type { SessionOptions } from './Configuration/session-options';
 import { AwaitSessionFactory } from './Handlers/await-session';
 
 class AwaitSessionEntrySpot implements ZLinkEntrySpot {
@@ -31,21 +33,24 @@ class AwaitSessionEntrySpot implements ZLinkEntrySpot {
   async onLeaveActor(actor: ZLinkActor): Promise<void> { void actor; }
 }
 
-export async function startSessionHost(args: readonly string[]): Promise<void> {
-  const options = parseSessionOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-  const locationStore = new ZLinkRedisLocationStore({
-    url: `redis://${options.redisEndpoint}`,
-    keyPrefix: options.redisKeyPrefix
-  });
+export async function startSessionHost(): Promise<void> {
   let stopping = false;
+  const configuration = createAutomaticTurnConfigurationModule(SESSION_OPTIONS, validateSessionOptions);
 
   class SessionModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [SESSION_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as SessionOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
+          const locationStore = new ZLinkRedisLocationStore({
+            url: `redis://${options.redisEndpoint}`,
+            keyPrefix: options.redisKeyPrefix
+          });
           const builder = zlinkFramework();
           builder
             .addLocationStore(locationStore)
@@ -76,13 +81,19 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      {
+        provide: EvidenceStore,
+        inject: [SESSION_OPTIONS],
+        useFactory: (options: SessionOptions) => new EvidenceStore(options.rid, options.evidenceFile)
+      },
       AwaitSessionEntrySpot,
       AwaitSessionFactory
     ]
   })(SessionModule);
 
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
+  const options = app.get<SessionOptions>(SESSION_OPTIONS);
+  const evidence = app.get(EvidenceStore);
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'session', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -100,5 +111,4 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
-  await locationStore.dispose();
 }

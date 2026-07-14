@@ -6,20 +6,20 @@ import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-system
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
-import { parseServerOptions } from './Configuration/server-options';
+import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
+import { REGISTRY_MESSAGING_OPTIONS, createRegistryMessagingConfigurationModule } from '../../configuration';
 import { createWorkflowEndpoints } from './Endpoints/workflow-endpoints';
 import { EvidenceDispatchErrorObserver, WorkflowRequestHandler } from './Handlers/workflow-handlers';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startWorkflowHost(args: readonly string[]): Promise<void> {
-  const options = parseServerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startWorkflowHost(): Promise<void> {
   let stopping = false;
-  const WorkflowModule = createWorkflowModule(options, evidence);
+  const WorkflowModule = createWorkflowModule();
   const app = await NestFactory.createApplicationContext(WorkflowModule, { logger: false, abortOnError: false });
+  const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ServerOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const server = await startHttpServer(options.httpUrl, createWorkflowEndpoints(evidence, channel, () => { stopping = true; }));
 
@@ -30,12 +30,17 @@ export async function startWorkflowHost(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-function createWorkflowModule(options: ServerOptions, evidence: EvidenceStore): Function {
+function createWorkflowModule(): Function {
   class WorkflowModule {}
+  const configuration = createRegistryMessagingConfigurationModule(validateServerOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [REGISTRY_MESSAGING_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -60,7 +65,9 @@ function createWorkflowModule(options: ServerOptions, evidence: EvidenceStore): 
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [REGISTRY_MESSAGING_OPTIONS], useFactory: (value: unknown) => {
+        const options = value as ServerOptions; return new EvidenceStore(options.rid, options.evidenceFile);
+      } },
       EvidenceDispatchErrorObserver,
       WorkflowRequestHandler
     ]

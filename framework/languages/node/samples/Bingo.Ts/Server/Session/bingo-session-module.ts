@@ -5,29 +5,34 @@ import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framewor
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { BingoSessionFactory } from './Sessions/bingo-session';
 import { SampleNames } from '../Configuration/sample-names';
-import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
-function createBingoSessionModule(endpoints: {
-  sessionEndpoint: string;
-  sessionRouteEndpoint: string;
-  sessionSpotEndpoint: string;
-  sessionSpotNodeRid: string;
-  redisEndpoint: string;
-  redisKeyPrefix: string;
-} & Partial<BingoSampleConfig>) {
+function createBingoSessionModule() {
   class BingoSessionModule {}
+  const configuration = createBingoConfigurationModule([
+    'sessionEndpoint',
+    'sessionRouteEndpoint',
+    'sessionSpotEndpoint',
+    'sessionSpotNodeRid',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [BINGO_SAMPLE_CONFIG],
+        useFactory: (endpoints: BingoSampleConfig) => {
           const builder = zlinkFramework();
           builder.options({ metrics: { meterProvider: bingoMeterProvider } });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)
+            .traceLogFile(`${endpoints.logDir}/flow-session.log`)
             .traceLabel('session');
           builder.addLocationStore(createBingoLocationStore(endpoints));
           Object.assign(builder.configureLocations(), bingoLocationOptions());
@@ -49,7 +54,6 @@ function createBingoSessionModule(endpoints: {
       })
     ],
     providers: [
-      { provide: BINGO_SAMPLE_CONFIG, useValue: endpoints },
       BingoSessionFactory,
       SessionAuthenticator
     ]

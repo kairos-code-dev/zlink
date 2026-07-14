@@ -6,12 +6,9 @@ class EvidenceStore {
   private readonly events: DeliveryStatusChangedReq[] = [];
   private readonly filePath: string | undefined;
 
-  constructor() {
-    const workDir = process.env.DELIVERYDISPATCH_WORK_DIR;
+  constructor(workDir?: string) {
     this.filePath = workDir === undefined ? undefined : path.join(workDir, 'deliverydispatch-evidence.jsonl');
-    if (this.filePath !== undefined) {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    }
+    if (this.filePath !== undefined) fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
   }
 
   append(event: DeliveryStatusChangedReq): void {

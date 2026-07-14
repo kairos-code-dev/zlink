@@ -1,20 +1,38 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_MANAGER, zlinkEntrySpotActorRequestHandler, zlinkEntrySpotActorSendHandler, zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, zlinkEntrySpotActorRequestHandler, zlinkEntrySpotActorSendHandler, zlinkRequestHandler, zlinkSendHandler } from '@zlink-systems/nestjs';
 import { courierActorNodeRid, SampleNames } from '../../Shared/Configuration/sample-names';
-import { EnsureCourierActorReq, OfferDeliveryReq, PacketNames, actorRefForMessage } from '../../Shared/Contracts/messages';
-import type { ZLinkActorManager, ZLinkRequestContext, ZLinkRequestHandler } from '@zlink-systems/framework';
-import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, EnsureCourierActorRes, OfferDeliveryRes } from '../../Shared/Contracts/messages';
+import {
+  EnsureCourierActorReq,
+  OfferDeliveryMsg,
+  PacketNames,
+  actorRefForMessage,
+  actorRefFromMessage
+} from '../../Shared/Contracts/messages';
+import type { ZLinkActorClient, ZLinkActorManager, ZLinkRequestHandler, ZLinkSendContext, ZLinkSendHandler } from '@zlink-systems/framework';
+import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, EnsureCourierActorRes } from '../../Shared/Contracts/messages';
 import { CourierActor, CourierActorDirectory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
 
-@zlinkRequestHandler('courier-actor-node', PacketNames.offerDelivery)
-class OfferDeliveryActorNodeHandler implements ZLinkRequestHandler<OfferDeliveryReq, OfferDeliveryRes> {
-  constructor(private readonly directory: CourierActorDirectory) {}
+@zlinkSendHandler('courier-actor-node', PacketNames.offerDelivery)
+class OfferDeliveryActorNodeHandler implements ZLinkSendHandler<OfferDeliveryMsg> {
+  constructor(
+    private readonly directory: CourierActorDirectory,
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient
+  ) {}
 
-  async handle(request: OfferDeliveryReq, context: ZLinkRequestContext): Promise<OfferDeliveryRes> {
+  async handle(request: OfferDeliveryMsg, context: ZLinkSendContext): Promise<void> {
     void context;
     const actor = this.directory.require(request.courierId);
-    return await actor.offer(request);
+    this.actors.sendToActor(
+      actorRefFromMessage(actor.actorReference()),
+      new OfferDeliveryMsg(
+        request.courierId,
+        request.deliveryId,
+        request.attempt,
+        request.pickupAddress,
+        request.dropoffAddress
+      )
+    ).submit();
   }
 }
 
@@ -37,14 +55,14 @@ class EnsureCourierActorHandler implements ZLinkRequestHandler<EnsureCourierActo
   }
 }
 
-@zlinkEntrySpotActorRequestHandler({
+@zlinkEntrySpotActorSendHandler({
   entrySpot: () => CourierEntrySpot,
   actor: () => CourierActor,
   packetName: PacketNames.offerDelivery
 })
 class CourierActorOfferHandler {
-  async handle(_spot: CourierEntrySpot, actor: CourierActor, _context: unknown, request: OfferDeliveryReq): Promise<OfferDeliveryRes> {
-    return await actor.offer(request);
+  async handle(_spot: CourierEntrySpot, actor: CourierActor, _context: unknown, request: OfferDeliveryMsg): Promise<void> {
+    await actor.offer(request);
   }
 }
 
@@ -82,7 +100,7 @@ class CourierActorSessionBindHandler {
 })
 class CourierActorDecisionHandler {
   async handle(_spot: CourierEntrySpot, actor: CourierActor, _context: unknown, decision: CourierDecisionMsg): Promise<void> {
-    actor.decide(decision);
+    await actor.decide(decision);
   }
 }
 

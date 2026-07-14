@@ -5,21 +5,25 @@ import { AuthenticatePlayerHandler } from './Handlers/authenticate-player-handle
 import { CreateGameEndpoint } from './Handlers/create-game-http-handler';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
-function createTicTacToeApiModule(config: {
-  apiEndpoints: string[];
-  apiIndex: number;
-  playChannelEndpoints: string[];
-}) {
+import { TICTACTOE_SAMPLE_CONFIG, createTicTacToeConfigurationModule } from '../Configuration/sample-config';
+import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
+function createTicTacToeApiModule() {
   class TicTacToeApiModule {}
+  const configuration = createTicTacToeConfigurationModule([
+    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playChannelEndpoints', 'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [TICTACTOE_SAMPLE_CONFIG],
+        useFactory: (config: TicTacToeSampleConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-api-${config.apiIndex}.log`)
+            .traceLogFile(`${config.logDir}/flow-api-${config.apiIndex}.log`)
             .traceLabel(`api-${config.apiIndex}`);
           return builder
           .addClientServerChannel(SampleNames.apiChannel)

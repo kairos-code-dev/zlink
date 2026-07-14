@@ -3,13 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 source "$NODE_ROOT/e2e/redis-container.sh"
 
 SCENARIO="${1:-all}"
-if [[ "${ZLINK_SPOT_TRANSFER_CHILD_RUN:-0}" != "1" && "$SCENARIO" == "all" ]]; then
+CHILD_RUN="${2:-}"
+if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
   for child_scenario in all-core ST-F3; do
-    ZLINK_SPOT_TRANSFER_CHILD_RUN=1 "$0" "$child_scenario"
+    "$0" "$child_scenario" --child-run
   done
   echo "spot-actor-transfer e2e result=passed"
   exit 0
@@ -99,7 +99,8 @@ trap cleanup EXIT
 
 start_node() {
   local rid="$1" url="$2" router="$3" pubsub="$4"
-  node "$ACTOR_NODE_MAIN" \
+  local config="$LOG_DIR/$rid.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -107,14 +108,16 @@ start_node() {
     --router-endpoint "$router" \
     --pubsub-endpoint "$pubsub" \
     --evidence-file "$LOG_DIR/$rid.evidence.log" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  node "$ACTOR_NODE_MAIN" --config "$config" \
     >>"$LOG_DIR/$rid.stdout.log" 2>>"$LOG_DIR/$rid.stderr.log" &
   pids+=("$!")
 }
 
 start_session() {
   local rid="$1" url="$2" router="$3" pubsub="$4" stream="$5"
-  node "$SESSION_MAIN" \
+  local config="$LOG_DIR/$rid.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -123,7 +126,8 @@ start_session() {
     --pubsub-endpoint "$pubsub" \
     --stream-endpoint "$stream" \
     --evidence-file "$LOG_DIR/$rid.evidence.log" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  node "$SESSION_MAIN" --config "$config" \
     >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   pids+=("$!")
   wait_health "$url" "$rid" "${pids[-1]}"
@@ -167,16 +171,12 @@ echo "log_dir=$LOG_DIR"
 (cd "$ROOT_DIR/Server/Session" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Client" && npm run build >/dev/null)
 
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-else
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
-    exit 1
-  fi
-  start_redis_container "zlink-redis-node-spot-transfer-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run SpotActorTransfer." >&2
+  exit 1
 fi
+start_redis_container "zlink-redis-node-spot-transfer-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 REDIS_KEY_PREFIX="spot-actor-transfer:node:$RUN_ID"
 

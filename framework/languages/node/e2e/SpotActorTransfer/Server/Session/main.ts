@@ -19,9 +19,15 @@ import {
 } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { EvidenceStore } from '../Support/evidence-store';
+import {
+  SPOT_ACTOR_TRANSFER_OPTIONS,
+  createSpotActorTransferConfigurationModule,
+  validateServerOptions
+} from '../../configuration';
+import type { ServerOptions } from '../../configuration';
 
-const options = parseOptions(process.argv.slice(2));
-const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+let options: ServerOptions;
+let evidence: EvidenceStore;
 let stopping = false;
 process.once('SIGINT', () => { stopping = true; });
 process.once('SIGTERM', () => { stopping = true; });
@@ -68,10 +74,22 @@ class GatewaySessionFactory implements ZLinkSessionFactory<GatewaySession> {
 }
 
 class SessionModule {}
+const configuration = createSpotActorTransferConfigurationModule(
+  SPOT_ACTOR_TRANSFER_OPTIONS,
+  validateServerOptions
+);
 Module({
   imports: [
+    configuration,
     ZLinkModule.forRootFactory({
-      useFactory: () => {
+      imports: [configuration],
+      inject: [SPOT_ACTOR_TRANSFER_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        if (options.streamEndpoint === undefined) {
+          throw new Error("Configuration value 'e2e.streamEndpoint' is required for the session host.");
+        }
+        evidence = new EvidenceStore(options.rid, options.evidenceFile);
         const builder = zlinkFramework();
         builder.addLocationStore(new ZLinkRedisLocationStore({
           url: `redis://${options.redisEndpoint}`,
@@ -110,41 +128,6 @@ async function main(): Promise<void> {
   while (!stopping) await new Promise((resolve) => setTimeout(resolve, 100));
   await closeHttpServer(server);
   await app.close();
-}
-
-function parseOptions(args: readonly string[]): {
-  rid: string;
-  httpUrl: string;
-  redisEndpoint: string;
-  redisKeyPrefix: string;
-  routerEndpoint: string;
-  pubSubEndpoint: string;
-  streamEndpoint: string;
-  evidenceFile: string;
-  logDir: string;
-} {
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const value = args[index + 1];
-    if (value === undefined) throw new Error(`Missing value for '${args[index]}'.`);
-    values.set(args[index].replace(/^--/, ''), value);
-  }
-  const get = (key: string): string => {
-    const value = values.get(key);
-    if (value === undefined) throw new Error(`--${key} is required.`);
-    return value;
-  };
-  return {
-    rid: get('rid'),
-    httpUrl: get('http-url'),
-    redisEndpoint: get('redis-endpoint'),
-    redisKeyPrefix: get('redis-key-prefix'),
-    routerEndpoint: get('router-endpoint'),
-    pubSubEndpoint: get('pubsub-endpoint'),
-    streamEndpoint: get('stream-endpoint'),
-    evidenceFile: get('evidence-file'),
-    logDir: get('log-dir')
-  };
 }
 
 main().catch((error: unknown) => {

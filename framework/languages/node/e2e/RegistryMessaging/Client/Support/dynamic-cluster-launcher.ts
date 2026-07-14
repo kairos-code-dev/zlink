@@ -34,13 +34,11 @@ export class DynamicClusterLauncher {
       const locationProbe = launcher.startServer(
         `${scenarioName}-location-probe`,
         options.locationProbeMain,
-        [
-          '--rid', `${scenarioName}-location-probe`,
-          '--http-url', locationProbeHttp,
-          '--redis-endpoint', options.redisEndpoint,
-          '--redis-key-prefix', `${options.redisKeyPrefix}:${scenarioName}`,
-          '--log-dir', options.logDir
-        ],
+        {
+          rid: `${scenarioName}-location-probe`, httpUrl: locationProbeHttp,
+          redisEndpoint: options.redisEndpoint, redisKeyPrefix: `${options.redisKeyPrefix}:${scenarioName}`,
+          logDir: options.logDir
+        },
         locationProbeHttp,
         undefined
       );
@@ -60,17 +58,11 @@ export class DynamicClusterLauncher {
       process = this.startServer(
         name,
         this.providerMain,
-        [
-          '--rid', rid,
-          '--http-url', httpUrl,
-          '--redis-endpoint', this.redisEndpoint,
-          '--redis-key-prefix', this.redisKeyPrefix,
-          '--channel-endpoint', channelEndpoint,
-          '--route-endpoint', await pickEndpoint(),
-          '--weight', weight.toString(),
-          '--evidence-file', path.join(this.logDir, `${name}.evidence.log`),
-          '--log-dir', this.logDir
-        ],
+        {
+          rid, httpUrl, redisEndpoint: this.redisEndpoint, redisKeyPrefix: this.redisKeyPrefix,
+          channelEndpoint, routeEndpoint: await pickEndpoint(), routePeers: [], weight,
+          maxMessageSize: 0, evidenceFile: path.join(this.logDir, `${name}.evidence.log`), logDir: this.logDir
+        },
         httpUrl,
         channelEndpoint
       );
@@ -103,8 +95,11 @@ export class DynamicClusterLauncher {
     this.processes.length = 0;
   }
 
-  private startServer(name: string, mainPath: string, args: readonly string[], httpUrl: string, channelEndpoint?: string): DynamicProcess {
-    const child = spawn(process.execPath, [mainPath, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  private startServer(name: string, mainPath: string, e2e: Record<string, unknown>, httpUrl: string, channelEndpoint?: string): DynamicProcess {
+    const config = path.join(this.logDir, `${name}.config.json`);
+    fs.mkdirSync(this.logDir, { recursive: true });
+    fs.writeFileSync(config, `${JSON.stringify({ e2e }, null, 2)}\n`, { mode: 0o600 });
+    const child = spawn(process.execPath, [mainPath, '--config', config], { stdio: ['ignore', 'pipe', 'pipe'] });
     fs.mkdirSync(this.logDir, { recursive: true });
     child.stdout?.pipe(fs.createWriteStream(path.join(this.logDir, `${name}.stdout.log`)));
     child.stderr?.pipe(fs.createWriteStream(path.join(this.logDir, `${name}.stderr.log`)));

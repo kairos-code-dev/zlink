@@ -7,24 +7,38 @@ import { CustomerActorDirectory, CustomerActorFactory } from './customer-actor';
 import { CustomerEntrySpot } from './customer-entry-spot';
 import { CustomerStatusHandler } from './customer-status-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
+import {
+  DELIVERYDISPATCH_SAMPLE_CONFIG,
+  createDeliveryDispatchConfigurationModule
+} from '../Configuration/sample-config';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
-function createSessionModule(config: DeliveryDispatchServerConfig) {
+function createSessionModule() {
   class SessionModule {}
   const directory = new CustomerActorDirectory();
-  const locationStore = createDeliveryDispatchLocationStore(config);
   CustomerActorFactory.useDirectory(directory);
+  const configuration = createDeliveryDispatchConfigurationModule([
+    'sessionSpotRouterEndpoint',
+    'sessionSpotNodeRid',
+    'sessionStreamEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-customer-gateway.log`)
+            .traceLogFile(`${config.logDir}/flow-customer-gateway.log`)
             .traceLabel('customer-gateway');
-          builder.addLocationStore(locationStore);
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
             .addSpotMesh(SampleNames.customerActorSpotMesh)
@@ -40,8 +54,16 @@ function createSessionModule(config: DeliveryDispatchServerConfig) {
     ],
     providers: [
       { provide: CustomerActorDirectory, useValue: directory },
-      { provide: 'DELIVERYDISPATCH_CUSTOMER_SPOT_RID', useValue: config.sessionSpotNodeRid },
-      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
+      {
+        provide: 'DELIVERYDISPATCH_CUSTOMER_SPOT_RID',
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => config.sessionSpotNodeRid
+      },
+      {
+        provide: 'DELIVERYDISPATCH_LOCATION_STORE',
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
+      },
       CustomerSessionFactory,
       CustomerActorFactory,
       CustomerEntrySpot,

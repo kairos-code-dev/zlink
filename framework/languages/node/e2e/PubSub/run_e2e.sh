@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
@@ -61,8 +60,15 @@ start_server() {
   local main="$2"
   shift
   shift
-  ZLINK_E2E_RID="$name" node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
+}
+
+start_configured_server() {
+  local name="$1"; local main="$2"; shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
 }
 
 echo "log_dir=$LOG_DIR"
@@ -90,7 +96,7 @@ PUBLISHER_MAIN="$ROOT_DIR/Server/Publisher/dist/Server/Publisher/main.js"
 SUBSCRIBER_MAIN="$ROOT_DIR/Server/Subscriber/dist/Server/Subscriber/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server pub-a "$PUBLISHER_MAIN" \
+start_configured_server pub-a "$PUBLISHER_MAIN" \
   --rid pub-a \
   --http-url "$PUB_URL" \
   --publisher-endpoint "$PUB_ENDPOINT" \
@@ -104,7 +110,7 @@ for sub in 1 2 3; do
   if [[ "$sub" == "3" ]]; then
     extra_args+=(--handler-delay-ms 3000)
   fi
-  start_server "sub-$sub" "$SUBSCRIBER_MAIN" \
+  start_configured_server "sub-$sub" "$SUBSCRIBER_MAIN" \
     --rid "sub-$sub" \
     --http-url "${!url_var}" \
     --publisher-endpoint "$PUB_ENDPOINT" \

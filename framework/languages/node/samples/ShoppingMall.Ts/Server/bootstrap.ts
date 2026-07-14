@@ -4,7 +4,7 @@ import { URL } from 'node:url';
 import { NestFactory } from '@nestjs/core';
 import type { ZLinkLocationRuntimeQuery, ZLinkSpotHandleResolver, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
 import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { loadSampleConfig, type ShoppingMallServerConfig } from './Configuration/sample-config';
+import { SHOPPINGMALL_SAMPLE_CONFIG } from './Configuration/sample-config';
 import { createCommerceApiServer } from './CommerceApi/commerce-api-server';
 import { createShoppingMallCommerceApiModule } from './CommerceApi/commerce-api-module';
 import { OrderWorkflowRouterPort } from './CommerceApi/Application/order-workflow-router-port';
@@ -14,22 +14,24 @@ import { OrderStore } from './Shared/Store/order-store';
 import { SampleNames } from '../Shared/Configuration/sample-names';
 import { ShoppingMallTopologyReadyReq } from '../Shared/Contracts/messages';
 import { OrderWorkflowSpot } from './OrderWorkflow/Infrastructure/ZLink/Spots/OrderWorkflowSpot/order-workflow-spot';
+import type { ShoppingMallServerConfig } from './Configuration/sample-config';
 
-const role = readArg('--role') ?? SampleNames.apiA;
-const config = loadSampleConfig();
-const endpoint = endpointForRole(role, config);
-const listenUrl = new URL(endpoint);
+type ShoppingMallRole = 'api-a' | 'api-b' | 'workflow-a' | 'workflow-b';
 
-async function main(): Promise<void> {
-  const moduleType = isWorkflowRole(role)
-    ? createShoppingMallWorkflowModule(role, config)
-    : createShoppingMallCommerceApiModule(role, config);
+async function bootstrapShoppingMall(role: ShoppingMallRole): Promise<void> {
+  const workflow = isWorkflowRole(role);
+  const moduleType = workflow
+    ? createShoppingMallWorkflowModule(role)
+    : createShoppingMallCommerceApiModule(role);
   const app = await NestFactory.createApplicationContext(moduleType, {
     logger: false,
     abortOnError: false
   });
-  const server = isWorkflowRole(role)
-    ? createHealthServer(role, {
+  const config = app.get<ShoppingMallServerConfig>(SHOPPINGMALL_SAMPLE_CONFIG);
+  const endpoint = endpointForRole(role, config);
+  const listenUrl = new URL(endpoint);
+  const server = workflow
+    ? createHealthServer(role, endpoint, {
         locations: app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }),
         spots: app.get(ZLINK_SPOT_MANAGER, { strict: false }),
         spotRefs: app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }),
@@ -43,24 +45,27 @@ async function main(): Promise<void> {
       app.get(OrderWorkflowRouterPort, { strict: false })
     );
 
-  server.listen(Number(listenUrl.port), listenUrl.hostname, () => {
-    console.log(`shoppingmall ${role} listening ${endpoint}`);
-  });
-  process.on('SIGINT', () => {
-    server.close(() => {
-      void app.close().finally(() => process.exit(0));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(Number(listenUrl.port), listenUrl.hostname, () => {
+      server.off('error', reject);
+      console.log(`shoppingmall ${role} listening ${endpoint}`);
+      resolve();
     });
   });
+  await waitForShutdown();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await app.close();
 }
 
-function createHealthServer(roleName: string, dependencies: {
+function createHealthServer(roleName: string, baseEndpoint: string, dependencies: {
   locations: ZLinkLocationRuntimeQuery;
   spots: ZLinkSpotManager;
   spotRefs: ZLinkSpotHandleResolver;
   outbound: ZLinkSpotOutbound;
 }): http.Server {
   return http.createServer(async (request, response) => {
-    const url = new URL(request.url ?? '/', endpoint);
+    const url = new URL(request.url ?? '/', baseEndpoint);
     if (request.method === 'GET' && url.pathname === '/health') {
       try {
         const status = await dependencies.locations.getStatus();
@@ -87,32 +92,27 @@ function createHealthServer(roleName: string, dependencies: {
   });
 }
 
-function endpointForRole(roleName: string, values: ShoppingMallServerConfig): string {
-  if (roleName === SampleNames.apiA) {
-    return values.apiAHttpUrl;
-  }
-  if (roleName === SampleNames.apiB) {
-    return values.apiBHttpUrl;
-  }
-  if (roleName === SampleNames.workflowA) {
-    return values.workflowAHttpUrl;
-  }
-  if (roleName === SampleNames.workflowB) {
-    return values.workflowBHttpUrl;
-  }
-  throw new Error(`Unknown ShoppingMall role '${roleName}'.`);
+function endpointForRole(role: ShoppingMallRole, config: ShoppingMallServerConfig): string {
+  if (role === SampleNames.apiA) return config.apiAHttpUrl;
+  if (role === SampleNames.apiB) return config.apiBHttpUrl;
+  if (role === SampleNames.workflowA) return config.workflowAHttpUrl;
+  return config.workflowBHttpUrl;
 }
 
-function isWorkflowRole(roleName: string): boolean {
-  return roleName === SampleNames.workflowA || roleName === SampleNames.workflowB;
+function isWorkflowRole(role: ShoppingMallRole): boolean {
+  return role === SampleNames.workflowA || role === SampleNames.workflowB;
 }
 
-function readArg(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+function waitForShutdown(): Promise<void> {
+  return new Promise((resolve) => {
+    const keepAlive = setInterval(() => undefined, 60_000);
+    const stop = (): void => {
+      clearInterval(keepAlive);
+      resolve();
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+export { bootstrapShoppingMall };

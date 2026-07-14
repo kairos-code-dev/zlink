@@ -5,18 +5,18 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
-import { parseConsumerOptions } from './Configuration/consumer-options';
+import { validateConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
+import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../configuration';
 import { createConsumerEndpoints, requestProfile } from './Endpoints/consumer-endpoints';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
-export async function startConsumerHost(args: readonly string[]): Promise<void> {
-  const options = parseConsumerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
+export async function startConsumerHost(): Promise<void> {
   let stopping = false;
-  const ConsumerModule = createConsumerModule(options);
+  const ConsumerModule = createConfiguredConsumerModule();
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
+  const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ConsumerOptions;
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const server = await startHttpServer(
     options.httpUrl,
@@ -28,6 +28,22 @@ export async function startConsumerHost(args: readonly string[]): Promise<void> 
   }
   await closeHttpServer(server);
   await app.close();
+}
+
+function createConfiguredConsumerModule(): Function {
+  class ConsumerModule {}
+  const configuration = createResilienceConfigurationModule(validateConsumerOptions);
+  Module({
+    imports: [
+      configuration,
+      ZLinkModule.forRootFactory({
+        imports: [configuration],
+        inject: [RESILIENCE_OPTIONS],
+        useFactory: (value: unknown) => buildFramework(value as ConsumerOptions)
+      })
+    ]
+  })(ConsumerModule);
+  return ConsumerModule;
 }
 
 async function requestWithNewClient(options: ConsumerOptions, request: ProfileReq): Promise<ProfileRes> {
@@ -49,29 +65,27 @@ function createConsumerModule(options: ConsumerOptions, traceLabel = options.tra
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => {
-          const builder = zlinkFramework();
-          builder
-            .configureDispatch()
-              .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-              .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)
-              .traceLabel(traceLabel);
-
-          const profile = builder.addClientServerChannel('profile');
-          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
-            builder.addLocationStore(createRedisLocationStore({
-              redisEndpoint: options.redisEndpoint,
-              redisKeyPrefix: options.redisKeyPrefix
-            }));
-            Object.assign(builder.configureLocations(), resilienceLocationOptions());
-            profile.enableClient();
-          } else {
-            profile.enableClient(options.providerEndpoints);
-          }
-          return builder.build();
-        }
+        useFactory: () => buildFramework(options, traceLabel)
       })
     ]
   })(ConsumerModule);
   return ConsumerModule;
+}
+
+function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabel) {
+  fs.mkdirSync(options.logDir, { recursive: true });
+  const builder = zlinkFramework();
+  builder.configureDispatch()
+    .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+    .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)
+    .traceLabel(traceLabel);
+  const profile = builder.addClientServerChannel('profile');
+  if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+    builder.addLocationStore(createRedisLocationStore({ redisEndpoint: options.redisEndpoint, redisKeyPrefix: options.redisKeyPrefix }));
+    Object.assign(builder.configureLocations(), resilienceLocationOptions());
+    profile.enableClient();
+  } else {
+    profile.enableClient(options.providerEndpoints);
+  }
+  return builder.build();
 }

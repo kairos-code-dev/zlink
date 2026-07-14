@@ -4,20 +4,27 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
 import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
 import { SupportChatSessionFactory } from './Sessions/supportchat-session';
+import { SUPPORT_CHAT_CONFIG, createSupportChatConfigurationModule } from '../Configuration/sample-config';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
 
-function createSupportChatSessionModule(config: SupportChatServerConfig) {
+function createSupportChatSessionModule() {
   class SupportChatSessionModule {}
-  const locationStore = createSupportChatLocationStore(config);
+  const configuration = createSupportChatConfigurationModule([
+    'sessionSpotEndpoint', 'sessionStreamEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [SUPPORT_CHAT_CONFIG],
+        useFactory: (config: SupportChatServerConfig) => {
+          const locationStore = createSupportChatLocationStore(config);
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-session.log`)
+            .traceLogFile(`${config.logDir}/flow-session.log`)
             .traceLabel('session');
           builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), supportChatLocationOptions());
@@ -36,7 +43,11 @@ function createSupportChatSessionModule(config: SupportChatServerConfig) {
       })
     ],
     providers: [
-      { provide: 'SUPPORTCHAT_LOCATION_STORE', useValue: locationStore },
+      {
+        provide: 'SUPPORTCHAT_LOCATION_STORE',
+        inject: [SUPPORT_CHAT_CONFIG],
+        useFactory: (config: SupportChatServerConfig) => createSupportChatLocationStore(config)
+      },
       SupportChatSessionFactory
     ]
   })(SupportChatSessionModule);

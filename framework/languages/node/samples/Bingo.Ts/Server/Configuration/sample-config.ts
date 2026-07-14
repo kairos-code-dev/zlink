@@ -1,4 +1,6 @@
 import * as fs from 'node:fs';
+import { Module, type DynamicModule } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 type BingoSampleConfig = {
   sessionEndpoint: string;
   sessionRouteEndpoint: string;
@@ -13,39 +15,65 @@ type BingoSampleConfig = {
   apiEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
+  logDir: string;
 };
 
 const BINGO_SAMPLE_CONFIG = Symbol.for('BINGO_SAMPLE_CONFIG');
+class BingoConfigurationModule {}
+Module({})(BingoConfigurationModule);
 
-function loadSampleConfig(): BingoSampleConfig {
-  const configPath = process.env.ZLINK_SAMPLE_CONFIG;
-  if (configPath !== undefined && configPath.length > 0) {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8')).sample;
-  }
+function createBingoConfigurationModule(requiredKeys: readonly (keyof BingoSampleConfig)[]): DynamicModule {
+  const configPath = readConfigPath(process.argv.slice(2));
   return {
-    sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT'),
-    sessionRouteEndpoint: requireEnv('BINGO_SESSION_ROUTE_ENDPOINT'),
-    sessionSpotEndpoint: requireEnv('BINGO_SESSION_SPOT_ENDPOINT'),
-    sessionSpotNodeRid: process.env.BINGO_SESSION_SPOT_NODE_RID ?? 'bingo-session-node',
-    preferredPlayNodeRid: process.env.BINGO_PREFERRED_PLAY_NODE_RID ?? '',
-    playEndpoint: requireEnv('BINGO_PLAY_ENDPOINT'),
-    playRouteEndpoint: requireEnv('BINGO_PLAY_ROUTE_ENDPOINT'),
-    playSpotEndpoint: requireEnv('BINGO_PLAY_SPOT_ENDPOINT'),
-    playSpotPubSubEndpoint: requireEnv('BINGO_PLAY_SPOT_PUBSUB_ENDPOINT'),
-    playSpotNodeRid: process.env.BINGO_PLAY_SPOT_NODE_RID ?? 'bingo-play-node',
-    apiEndpoint: requireEnv('BINGO_API_ENDPOINT'),
-    redisEndpoint: requireEnv('BINGO_REDIS_ENDPOINT'),
-    redisKeyPrefix: process.env.BINGO_REDIS_KEY_PREFIX ?? 'bingo:node:'
+    module: BingoConfigurationModule,
+    imports: [
+      ConfigModule.forRoot({
+        cache: true,
+        ignoreEnvFile: true,
+        isGlobal: false,
+        load: [() => ({ sample: readSampleConfig(configPath) })],
+        skipProcessEnv: true,
+        validatePredefined: false
+      })
+    ],
+    providers: [{
+      provide: BINGO_SAMPLE_CONFIG,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => validateSampleConfig(config.get('sample'), requiredKeys)
+    }],
+    exports: [BINGO_SAMPLE_CONFIG]
   };
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.length === 0) {
-    throw new Error(`${name} is required.`);
+function readConfigPath(args: readonly string[]): string {
+  const index = args.indexOf('--config');
+  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
+    throw new Error('--config <path> is required.');
   }
-  return value;
+  return args[index + 1];
 }
 
-export { BINGO_SAMPLE_CONFIG, loadSampleConfig };
+function readSampleConfig(configPath: string): unknown {
+  const document = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { sample?: unknown };
+  if (document.sample === undefined) throw new Error("Configuration section 'sample' is required.");
+  return document.sample;
+}
+
+function validateSampleConfig(
+  value: unknown,
+  requiredKeys: readonly (keyof BingoSampleConfig)[]
+): BingoSampleConfig {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error("Configuration section 'sample' must be an object.");
+  }
+  const config = value as Record<string, unknown>;
+  for (const key of requiredKeys) {
+    if (typeof config[key] !== 'string' || (config[key] as string).length === 0) {
+      throw new Error(`Configuration value 'sample.${key}' must be a non-empty string.`);
+    }
+  }
+  return config as BingoSampleConfig;
+}
+
+export { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule };
 export type { BingoSampleConfig };

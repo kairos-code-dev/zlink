@@ -33,11 +33,11 @@ import {
 } from '../../Shared/messages';
 import { EvidenceStore } from './evidence-store';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
-import { parseServerOptions } from '../Support/options';
+import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
+import type { ServerOptions } from '../../configuration';
 
-const options = parseServerOptions(process.argv.slice(2), 'actor');
-fs.mkdirSync(options.logDir, { recursive: true });
-const evidence = new EvidenceStore(options.evidenceFile ?? path.join(options.logDir, 'actor.evidence.log'));
+let options: ServerOptions;
+let evidence: EvidenceStore;
 let stopping = false;
 
 class TestActor implements ZLinkActor {
@@ -112,10 +112,17 @@ class PushHandler {
 }
 
 class ActorModule {}
+const configuration = createToActorConfigurationModule();
 Module({
   imports: [
+    configuration,
     ZLinkModule.forRootFactory({
-      useFactory: () => {
+      imports: [configuration],
+      inject: [TO_ACTOR_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        fs.mkdirSync(options.logDir, { recursive: true });
+        evidence = new EvidenceStore(options.evidenceFile ?? path.join(options.logDir, 'actor.evidence.log'));
         const builder = zlinkFramework();
         builder
           .addLocationStore(createRedisLocationStore({

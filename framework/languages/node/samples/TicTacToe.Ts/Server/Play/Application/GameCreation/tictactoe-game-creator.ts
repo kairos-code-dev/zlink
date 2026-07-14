@@ -2,7 +2,7 @@ import { Inject } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { createGameRes } from '../../../../Shared/Contracts/messages';
 import { SampleDefaults } from '../../../Configuration/sample-settings';
-import { TICTACTOE_SAMPLE_CONFIG } from '../../../Configuration/redis-room-route-store';
+import { TICTACTOE_SAMPLE_CONFIG } from '../../../Configuration/sample-config';
 import type {
   CreateGameRes
 } from '../../../../Shared/Contracts/messages';

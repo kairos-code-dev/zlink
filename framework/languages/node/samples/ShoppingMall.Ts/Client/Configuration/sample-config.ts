@@ -5,9 +5,16 @@ interface ShoppingMallSampleConfig {
 
 function loadSampleConfig(): ShoppingMallSampleConfig {
   return {
-    apiAHttpUrl: process.env.SHOPPINGMALL_API_A_HTTP ?? 'http://127.0.0.1:45121',
-    apiBHttpUrl: process.env.SHOPPINGMALL_API_B_HTTP ?? 'http://127.0.0.1:45122'
+    apiAHttpUrl: requireOption('--api-a-http'),
+    apiBHttpUrl: requireOption('--api-b-http')
   };
+}
+
+function requireOption(name: string): string {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  if (value === undefined || value.startsWith('--')) throw new Error(`${name} <url> is required.`);
+  return value;
 }
 
 export { loadSampleConfig };

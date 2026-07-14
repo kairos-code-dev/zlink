@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
-import { GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
+import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
+import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
 import {
   GameplayStateStore,
   QuestEventStore,
@@ -30,45 +31,74 @@ import {
 } from './Infrastructure/ZLink/quest-owner-route-handlers';
 import type { GameQuestServerConfig } from '../Configuration/sample-config';
 
-function createQuestMissionModule(config: GameQuestServerConfig, instanceId: 'mission-a' | 'mission-b') {
+function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
   class GameQuestQuestModule {}
-  const routeEndpoint = instanceId === 'mission-a' ? config.missionAEndpoint : config.missionBEndpoint;
-  const spotEndpoint = instanceId === 'mission-a' ? config.missionASpotEndpoint : config.missionBSpotEndpoint;
-  const spotRouterEndpoint = instanceId === 'mission-a'
-    ? config.missionASpotRouterEndpoint
-    : config.missionBSpotRouterEndpoint;
+  const routeEndpointKey = instanceId === 'mission-a' ? 'missionAEndpoint' : 'missionBEndpoint';
+  const spotEndpointKey = instanceId === 'mission-a' ? 'missionASpotEndpoint' : 'missionBSpotEndpoint';
+  const spotRouterEndpointKey = instanceId === 'mission-a'
+    ? 'missionASpotRouterEndpoint'
+    : 'missionBSpotRouterEndpoint';
   const missionRid = questMissionInstanceRid(instanceId);
-  const locationStore = createGameQuestLocationStore(config);
+  const configuration = createGameQuestConfigurationModule([
+    routeEndpointKey,
+    spotEndpointKey,
+    spotRouterEndpointKey,
+    instanceId === 'mission-a' ? 'missionAHttpUrl' : 'missionBHttpUrl',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir',
+    'workDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [GAMEQUEST_SAMPLE_CONFIG],
+        useFactory: (config: GameQuestServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.GAMEQUEST_LOG_DIR ?? 'logs'}/flow-${instanceId}.log`)
+            .traceLogFile(`${config.logDir}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
-          builder.addLocationStore(locationStore);
+          builder.addLocationStore(createGameQuestLocationStore(config));
           Object.assign(builder.configureLocations(), gameQuestLocationOptions());
           return builder
             .addRouteMeshChannel(SampleNames.questMissionRouteChannel)
-              .enableRouter(routeEndpoint)
+              .enableRouter(config[routeEndpointKey])
               .routingId(missionRid)
               .addHandlerGroup('quest-owner')
             .addSpotMesh(SampleNames.playerQuestSpotMesh)
-              .enableRouter(spotRouterEndpoint, missionRid)
-              .enablePubSub(spotEndpoint, missionRid)
+              .enableRouter(config[spotRouterEndpointKey], missionRid)
+              .enablePubSub(config[spotEndpointKey], missionRid)
               .addSpotFactory(PlayerQuestSpot)
             .build();
         }
       })
     ],
     providers: [
-      { provide: GameplayStateStore, useFactory: () => new GameplayStateStore(config.workDir) },
-      { provide: QuestEventStore, useFactory: () => new QuestEventStore(config.workDir) },
-      { provide: QuestReadModelStore, useFactory: () => new QuestReadModelStore(config.workDir) },
-      { provide: GAMEQUEST_LOCATION_STORE, useValue: locationStore },
+      { provide: GAMEQUEST_INSTANCE_ID, useValue: instanceId },
+      {
+        provide: GameplayStateStore,
+        inject: [GAMEQUEST_SAMPLE_CONFIG],
+        useFactory: (config: GameQuestServerConfig) => new GameplayStateStore(config.workDir)
+      },
+      {
+        provide: QuestEventStore,
+        inject: [GAMEQUEST_SAMPLE_CONFIG],
+        useFactory: (config: GameQuestServerConfig) => new QuestEventStore(config.workDir)
+      },
+      {
+        provide: QuestReadModelStore,
+        inject: [GAMEQUEST_SAMPLE_CONFIG],
+        useFactory: (config: GameQuestServerConfig) => new QuestReadModelStore(config.workDir)
+      },
+      {
+        provide: GAMEQUEST_LOCATION_STORE,
+        inject: [GAMEQUEST_SAMPLE_CONFIG],
+        useFactory: (config: GameQuestServerConfig) => createGameQuestLocationStore(config)
+      },
       { provide: QuestOwnerRouter, useFactory: () => new QuestOwnerRouter(missionRid) },
       QuestEventProcessor,
       PlayerQuestNotifier,

@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
@@ -66,8 +65,17 @@ start_server() {
   local main="$2"
   shift
   shift
-  ZLINK_E2E_RID="$name" node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
+}
+
+start_configured_server() {
+  local name="$1"
+  local main="$2"
+  shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
 }
 
 echo "log_dir=$LOG_DIR"
@@ -103,7 +111,7 @@ JSON_ONLY_MAIN="$ROOT_DIR/Server/JsonOnlyPeer/dist/Server/JsonOnlyPeer/main.js"
 CODEC_REQUESTER_MAIN="$ROOT_DIR/Server/CodecRequester/dist/Server/CodecRequester/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server reg-codec-node "$MAIN_MAIN" \
+start_configured_server reg-codec-node "$MAIN_MAIN" \
   --rid reg-codec-node \
   --http-url "$MAIN_URL" \
   --channel-endpoint "$MAIN_CHANNEL" \
@@ -111,7 +119,7 @@ start_server reg-codec-node "$MAIN_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$MAIN_URL" reg-codec-node
 
-start_server json-only-peer "$JSON_ONLY_MAIN" \
+start_configured_server json-only-peer "$JSON_ONLY_MAIN" \
   --rid json-only-peer \
   --http-url "$JSON_ONLY_URL" \
   --channel-endpoint "$JSON_ONLY_CHANNEL" \
@@ -119,12 +127,18 @@ start_server json-only-peer "$JSON_ONLY_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$JSON_ONLY_URL" json-only-peer
 
-start_server codec-requester "$CODEC_REQUESTER_MAIN" \
+start_configured_server codec-requester "$CODEC_REQUESTER_MAIN" \
   --rid codec-requester \
   --http-url "$CODEC_REQUESTER_URL" \
   --target-endpoint "$JSON_ONLY_CHANNEL" \
   --log-dir "$LOG_DIR"
 wait_health "$CODEC_REQUESTER_URL" codec-requester
+
+INVALID_CONFIG="$LOG_DIR/invalid-duplicate.config.json"
+node "$ROOT_DIR/write-config.mjs" "$INVALID_CONFIG" \
+  --rid invalid-duplicate \
+  --channel-endpoint "$INVALID_CHANNEL" \
+  --log-dir "$LOG_DIR"
 
 node "$CLIENT_MAIN" \
   --scenario "$SCENARIO" \
@@ -132,8 +146,7 @@ node "$CLIENT_MAIN" \
   --json-only-url "$JSON_ONLY_URL" \
   --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-main "$INVALID_MAIN" \
-  --invalid-http-url "$INVALID_URL" \
-  --invalid-channel-endpoint "$INVALID_CHANNEL" \
+  --invalid-config "$INVALID_CONFIG" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

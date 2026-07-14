@@ -46,7 +46,7 @@ const emptyReadModel = (): ReadModelState => ({ projections: [], evidence: [] })
 
 class GameplayStateStore {
   private readonly partitions: JsonPartitionStore<GameplayState>;
-  constructor(workDir = process.env.GAMEQUEST_WORK_DIR ?? '.gamequest-work') {
+  constructor(workDir: string) {
     this.partitions = new JsonPartitionStore(path.join(workDir, 'gameplay-state'), emptyGameplay);
   }
 
@@ -90,7 +90,7 @@ class GameplayStateStore {
 
 class QuestEventStore {
   private readonly partitions: JsonPartitionStore<QuestEventState>;
-  constructor(workDir = process.env.GAMEQUEST_WORK_DIR ?? '.gamequest-work') {
+  constructor(workDir: string) {
     this.partitions = new JsonPartitionStore(path.join(workDir, 'quest-events'), emptyEvents);
   }
 
@@ -141,7 +141,7 @@ class QuestEventStore {
 
 class QuestReadModelStore {
   private readonly partitions: JsonPartitionStore<ReadModelState>;
-  constructor(workDir = process.env.GAMEQUEST_WORK_DIR ?? '.gamequest-work') {
+  constructor(workDir: string) {
     this.partitions = new JsonPartitionStore(path.join(workDir, 'quest-read-model'), emptyReadModel);
   }
 

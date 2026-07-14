@@ -1,16 +1,26 @@
-import { OfferDeliveryNotify } from '../../Shared/Contracts/messages';
-import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, DeliveryDispatchActorRef, OfferDeliveryReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
-import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory } from '@zlink-systems/framework';
+import { Inject, Injectable } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { OfferDeliveryNotify, OfferDeliveryResultMsg } from '../../Shared/Contracts/messages';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
+import type { BindCourierReq, BindCourierRes, BindCourierSessionReq, BindCourierSessionRes, CourierDecisionMsg, DeliveryDispatchActorRef, OfferDeliveryMsg } from '../../Shared/Contracts/messages';
+import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory, ZLinkChannelClient } from '@zlink-systems/framework';
 
 class CourierActor implements ZLinkActor {
-  private readonly pending = new Map<string, (decision: CourierDecisionMsg) => void>();
   private actorRef: DeliveryDispatchActorRef | undefined;
   private sessionRoute: string | undefined;
 
-  constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
+  constructor(
+    readonly actorId: string,
+    readonly context: ZLinkActorContext,
+    private readonly channels: ZLinkChannelClient
+  ) {}
 
   setActorRef(actorRef: DeliveryDispatchActorRef): void {
     this.actorRef = actorRef;
+  }
+
+  actorReference(): DeliveryDispatchActorRef {
+    return this.requireActorRef();
   }
 
   bindSession(request: BindCourierReq): BindCourierRes {
@@ -34,32 +44,27 @@ class CourierActor implements ZLinkActor {
     };
   }
 
-  async offer(request: OfferDeliveryReq): Promise<OfferDeliveryRes> {
-    const decision = new Promise<CourierDecisionMsg>((resolve) => {
-      this.pending.set(request.deliveryId, resolve);
-    });
-    this.context.boundSession.send(new OfferDeliveryNotify(
+  async offer(request: OfferDeliveryMsg): Promise<void> {
+    await this.context.boundSession.send(new OfferDeliveryNotify(
       request.courierId,
       request.deliveryId,
+      request.attempt,
       request.pickupAddress,
       request.dropoffAddress
     )).submit();
-    const resolved = await decision;
-    return {
-      deliveryId: resolved.deliveryId,
-      courierId: resolved.courierId,
-      accepted: resolved.accepted,
-      reason: resolved.reason
-    };
   }
 
-  decide(decision: CourierDecisionMsg): void {
-    const pending = this.pending.get(decision.deliveryId);
-    if (pending === undefined) {
-      return;
-    }
-    this.pending.delete(decision.deliveryId);
-    pending(decision);
+  async decide(decision: CourierDecisionMsg): Promise<void> {
+    await this.channels.sendToChannel(
+      SampleNames.dispatchChannel,
+      new OfferDeliveryResultMsg(
+        decision.deliveryId,
+        decision.courierId,
+        decision.attempt,
+        decision.accepted,
+        decision.reason
+      )
+    ).submit();
   }
 
   private requireActorRef(): DeliveryDispatchActorRef {
@@ -80,13 +85,16 @@ class CourierActorDirectory {
   }
 }
 
+@Injectable()
 class CourierActorFactory implements ZLinkActorFactory {
-  private static directory: CourierActorDirectory | undefined;
-  static useDirectory(directory: CourierActorDirectory): void { this.directory = directory; }
+  constructor(
+    private readonly directory: CourierActorDirectory,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+  ) {}
+
   async create(actorId: string, context: ZLinkActorContext): Promise<CourierActor> {
-    const actor = new CourierActor(actorId, context);
-    if (CourierActorFactory.directory === undefined) throw new Error('CourierActorDirectory is not configured.');
-    CourierActorFactory.directory.add(actor);
+    const actor = new CourierActor(actorId, context, this.channels);
+    this.directory.add(actor);
     return actor;
   }
 }

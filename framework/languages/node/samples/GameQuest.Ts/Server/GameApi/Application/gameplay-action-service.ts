@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { GameplayDomain } from '../Domain/gameplay-domain';
 import { GameplayEventPublisher } from '../Infrastructure/ZLink/gameplay-event-publisher';
 import { GameplayStateStore } from '../../Shared/Store/quest-progress-store';
+import { GAMEQUEST_INSTANCE_ID } from '../../Configuration/tokens';
 import type {
   CollectItemReq,
   CollectItemRes,
@@ -19,11 +20,10 @@ import type {
 
 @Injectable()
 class GameplayActionService {
-  private readonly apiName = process.env.GAMEQUEST_API_NAME ?? 'api';
-
   constructor(
     @Inject(GameplayStateStore) private readonly store: GameplayStateStore,
-    @Inject(GameplayEventPublisher) private readonly publisher: GameplayEventPublisher
+    @Inject(GameplayEventPublisher) private readonly publisher: GameplayEventPublisher,
+    @Inject(GAMEQUEST_INSTANCE_ID) private readonly apiName: string
   ) {}
 
   async killMonster(request: KillMonsterReq): Promise<{ response: KillMonsterRes; projection: QuestProgress[]; completedQuestId?: string }> {

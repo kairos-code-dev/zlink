@@ -4,33 +4,46 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
-import { parseDelayOptions } from './Configuration/delay-options';
+import { createAutomaticTurnConfigurationModule } from '../../configuration';
+import { DELAY_OPTIONS, validateDelayOptions } from './Configuration/delay-options';
+import type { DelayOptions } from './Configuration/delay-options';
 import { DelayHandler } from './Handlers/delay-handler';
 
-export async function startDelayHost(args: readonly string[]): Promise<void> {
-  const options = parseDelayOptions(args);
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+export async function startDelayHost(): Promise<void> {
   let stopping = false;
+  const configuration = createAutomaticTurnConfigurationModule(DELAY_OPTIONS, validateDelayOptions);
 
   class DelayModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        imports: [configuration],
+        inject: [DELAY_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as DelayOptions;
+          return zlinkFramework()
           .addClientServerChannel(AutomaticTurnDispatchNames.delayChannel)
             .enableServer(options.delayEndpoint)
             .routingId(options.rid)
             .addRequestHandler('DelayReq', DelayHandler)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      {
+        provide: EvidenceStore,
+        inject: [DELAY_OPTIONS],
+        useFactory: (options: DelayOptions) => new EvidenceStore(options.rid, options.evidenceFile)
+      },
       DelayHandler
     ]
   })(DelayModule);
 
   const app = await NestFactory.createApplicationContext(DelayModule, { logger: false });
+  const options = app.get<DelayOptions>(DELAY_OPTIONS);
+  const evidence = app.get(EvidenceStore);
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'delay', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },

@@ -5,27 +5,23 @@ export interface CodecRequesterOptions {
   readonly targetEndpoint: string;
 }
 
-export function parseCodecRequesterOptions(args: readonly string[]): CodecRequesterOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+export function validateCodecRequesterOptions(value: unknown): CodecRequesterOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error("Configuration section 'e2e' must be an object.");
+  const values = value as Record<string, unknown>;
   return {
-    rid: values.get('rid') ?? 'codec-requester',
-    httpUrl: required(values, 'http-url'),
-    logDir: values.get('log-dir') ?? 'logs',
-    targetEndpoint: required(values, 'target-endpoint')
+    rid: optional(values, 'rid') ?? 'codec-requester',
+    httpUrl: required(values, 'httpUrl'),
+    logDir: optional(values, 'logDir') ?? 'logs',
+    targetEndpoint: required(values, 'targetEndpoint')
   };
 }
 
-function required(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
+function optional(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+function required(values: Record<string, unknown>, name: string): string {
+  const value = optional(values, name);
+  if (value === undefined) throw new Error(`Configuration value 'e2e.${name}' must be a non-empty string.`);
   return value;
 }

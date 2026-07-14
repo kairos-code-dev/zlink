@@ -12,7 +12,8 @@ const SampleNames = {
 
 const SampleTimings = {
   requestTimeout: 10000,
-  dispatchTimeout: 2000,
+  offerDecisionTimeout: 700,
+  offerSweepInterval: 50,
   clientTimeout: 30000
 } as const;
 

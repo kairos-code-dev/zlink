@@ -2,15 +2,16 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
-import { loadSampleConfig } from '../Configuration/sample-config';
+import { TICTACTOE_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
 import { createTicTacToePlayModule } from './tictactoe-play-module';
 async function main(): Promise<void> {
-  const config = loadSampleConfig();
-  const TicTacToePlayModule = createTicTacToePlayModule(config);
+  const TicTacToePlayModule = createTicTacToePlayModule();
   const channelApp = await NestFactory.createApplicationContext(TicTacToePlayModule, {
     logger: false,
     abortOnError: false
   });
+  const config = channelApp.get<TicTacToeSampleConfig>(TICTACTOE_SAMPLE_CONFIG);
   const runtime = channelApp.get(ZLINK_FRAMEWORK_RUNTIME) as unknown as {
     spotNodeRuntime?: {
       primaryNode?: {

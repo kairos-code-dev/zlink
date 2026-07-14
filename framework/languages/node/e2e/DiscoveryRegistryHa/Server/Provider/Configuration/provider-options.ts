@@ -1,4 +1,4 @@
-import { parseArgs, required } from '../../LocationProbe/Configuration/location-probe-options';
+import { objectValues, optionalString, requiredString } from '../../../configuration';
 
 export interface ProviderOptions {
   readonly rid: string;
@@ -10,15 +10,15 @@ export interface ProviderOptions {
   readonly evidenceFile?: string;
 }
 
-export function parseProviderOptions(args: readonly string[]): ProviderOptions {
-  const values = parseArgs(args);
+export function validateProviderOptions(value: unknown): ProviderOptions {
+  const values = objectValues(value);
   return {
-    rid: values.get('rid') ?? 'api-a',
-    httpUrl: values.get('http-url') ?? 'http://127.0.0.1:0',
-    logDir: values.get('log-dir') ?? 'logs',
-    redisEndpoint: required(values, 'redis-endpoint'),
-    redisKeyPrefix: required(values, 'redis-key-prefix'),
-    channelEndpoint: required(values, 'channel-endpoint'),
-    evidenceFile: values.get('evidence-file')
+    rid: optionalString(values, 'rid') ?? 'api-a',
+    httpUrl: optionalString(values, 'httpUrl') ?? 'http://127.0.0.1:0',
+    logDir: optionalString(values, 'logDir') ?? 'logs',
+    redisEndpoint: requiredString(values, 'redisEndpoint'),
+    redisKeyPrefix: requiredString(values, 'redisKeyPrefix'),
+    channelEndpoint: requiredString(values, 'channelEndpoint'),
+    evidenceFile: optionalString(values, 'evidenceFile')
   };
 }

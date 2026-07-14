@@ -18,29 +18,35 @@ import { RedisBingoMatchQueue } from './Infrastructure/ZLink/Matchmaking/redis-b
 import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allocator';
 import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queue';
 import { SampleNames } from '../Configuration/sample-names';
-import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configuration/sample-config';
+import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
-function createBingoPlayModule(config: {
-	  playEndpoint: string;
-	  playRouteEndpoint: string;
-	  playSpotEndpoint: string;
-	  playSpotPubSubEndpoint: string;
-  playSpotNodeRid: string;
-  redisEndpoint: string;
-  redisKeyPrefix: string;
-}) {
+function createBingoPlayModule() {
   class BingoPlayModule {}
+  const configuration = createBingoConfigurationModule([
+    'playEndpoint',
+    'playRouteEndpoint',
+    'playSpotEndpoint',
+    'playSpotPubSubEndpoint',
+    'playSpotNodeRid',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   zlinkModule(__dirname, {
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [BINGO_SAMPLE_CONFIG],
+        useFactory: (config: BingoSampleConfig) => {
           const builder = zlinkFramework();
           builder.options({ metrics: { meterProvider: bingoMeterProvider } });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-play.log`)
+            .traceLogFile(`${config.logDir}/flow-play.log`)
             .traceLabel('play');
           builder.addLocationStore(createBingoLocationStore(config));
           Object.assign(builder.configureLocations(), bingoLocationOptions());
@@ -66,10 +72,11 @@ function createBingoPlayModule(config: {
       })
     ],
     providers: [
-      { provide: BINGO_SAMPLE_CONFIG, useValue: config },
       {
         provide: BINGO_MATCH_QUEUE,
-        useFactory: () => new RedisBingoMatchQueue(config.redisEndpoint, config.redisKeyPrefix)
+        inject: [BINGO_SAMPLE_CONFIG],
+        useFactory: (config: BingoSampleConfig) =>
+          new RedisBingoMatchQueue(config.redisEndpoint, config.redisKeyPrefix)
       },
       AllocateBingoRoomHandler,
       EnsurePlayerActorHandler,

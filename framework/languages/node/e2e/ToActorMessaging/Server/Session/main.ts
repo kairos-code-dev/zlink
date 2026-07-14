@@ -14,13 +14,10 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames, type ActorPushReq, type BindActorReq, type BindActorRes } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
-import { parseServerOptions } from '../Support/options';
+import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
+import type { ServerOptions } from '../../configuration';
 
-const options = parseServerOptions(process.argv.slice(2), 'session');
-if (options.streamEndpoint === undefined) {
-  throw new Error('--stream-endpoint is required for the session role.');
-}
-fs.mkdirSync(options.logDir, { recursive: true });
+let options: ServerOptions;
 let stopping = false;
 
 class ToActorSession implements ZLinkSession {
@@ -65,10 +62,19 @@ class ToActorSessionFactory implements ZLinkSessionFactory<ToActorSession> {
 }
 
 class SessionModule {}
+const configuration = createToActorConfigurationModule();
 Module({
   imports: [
+    configuration,
     ZLinkModule.forRootFactory({
-      useFactory: () => {
+      imports: [configuration],
+      inject: [TO_ACTOR_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        if (options.streamEndpoint === undefined) {
+          throw new Error("Configuration value 'e2e.streamEndpoint' is required for the session host.");
+        }
+        fs.mkdirSync(options.logDir, { recursive: true });
         const builder = zlinkFramework();
         builder.addLocationStore(createRedisLocationStore({
           redisEndpoint: options.redisEndpoint,

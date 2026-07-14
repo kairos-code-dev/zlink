@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import { Module, type DynamicModule } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
 type DeliveryDispatchServerConfig = {
   dispatchApiHttpUrl: string;
   dispatchEndpoint: string;
@@ -14,40 +18,68 @@ type DeliveryDispatchServerConfig = {
   sessionSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
+  logDir: string;
+  workDir: string;
 };
 
-function loadSampleConfig(): DeliveryDispatchServerConfig {
+const DELIVERYDISPATCH_SAMPLE_CONFIG = Symbol.for('DELIVERYDISPATCH_SAMPLE_CONFIG');
+class DeliveryDispatchConfigurationModule {}
+Module({})(DeliveryDispatchConfigurationModule);
+
+function createDeliveryDispatchConfigurationModule(
+  requiredKeys: readonly (keyof DeliveryDispatchServerConfig)[]
+): DynamicModule {
+  const configPath = readConfigPath(process.argv.slice(2));
   return {
-    dispatchApiHttpUrl: process.env.DELIVERYDISPATCH_API_HTTP ?? 'http://127.0.0.1:31083',
-    dispatchEndpoint: process.env.DELIVERYDISPATCH_CENTER_ROUTE ?? 'tcp://127.0.0.1:31084',
-    courierStreamEndpoint: process.env.DELIVERYDISPATCH_COURIER_STREAM ?? 'ws://127.0.0.1:31086',
-    courierSessionSpotEndpoint: process.env.DELIVERYDISPATCH_COURIER_SESSION_SPOT ?? 'tcp://127.0.0.1:31098',
-    courierActorNode1RouteEndpoint: process.env.DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE ?? 'tcp://127.0.0.1:31087',
-    courierActorNode2RouteEndpoint: process.env.DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE ?? 'tcp://127.0.0.1:31088',
-    courierActorNode1SpotEndpoint: process.env.DELIVERYDISPATCH_COURIER_ACTOR_NODE1_SPOT ?? 'tcp://127.0.0.1:31089',
-    courierActorNode2SpotEndpoint: process.env.DELIVERYDISPATCH_COURIER_ACTOR_NODE2_SPOT ?? 'tcp://127.0.0.1:31090',
-    trackingEndpoint: process.env.DELIVERYDISPATCH_TRACKING_ROUTE ?? 'tcp://127.0.0.1:31091',
-    trackingSpotEndpoint: process.env.DELIVERYDISPATCH_TRACKING_SPOT ?? 'tcp://127.0.0.1:31094',
-    sessionStreamEndpoint: process.env.DELIVERYDISPATCH_SESSION_STREAM ?? 'ws://127.0.0.1:31095',
-    sessionSpotRouterEndpoint: process.env.DELIVERYDISPATCH_SESSION_SPOT_ROUTER ?? 'tcp://127.0.0.1:31096',
-    sessionSpotNodeRid: process.env.DELIVERYDISPATCH_SESSION_SPOT_NODE_RID ?? 'delivery-session-node',
-    redisEndpoint: requireEnv('DELIVERYDISPATCH_REDIS_ENDPOINT'),
-    redisKeyPrefix: process.env.DELIVERYDISPATCH_REDIS_KEY_PREFIX ?? 'deliverydispatch:node:'
+    module: DeliveryDispatchConfigurationModule,
+    imports: [
+      ConfigModule.forRoot({
+        cache: true,
+        ignoreEnvFile: true,
+        isGlobal: false,
+        load: [() => ({ sample: readSampleConfig(configPath) })],
+        skipProcessEnv: true,
+        validatePredefined: false
+      })
+    ],
+    providers: [{
+      provide: DELIVERYDISPATCH_SAMPLE_CONFIG,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => validateSampleConfig(config.get('sample'), requiredKeys)
+    }],
+    exports: [DELIVERYDISPATCH_SAMPLE_CONFIG]
   };
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.length === 0) {
-    throw new Error(`${name} is required.`);
+function readConfigPath(args: readonly string[]): string {
+  const index = args.indexOf('--config');
+  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
+    throw new Error('--config <path> is required.');
   }
-  return value;
+  return args[index + 1];
 }
 
-export {
-  loadSampleConfig
-};
+function readSampleConfig(configPath: string): unknown {
+  const document = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { sample?: unknown };
+  if (document.sample === undefined) throw new Error("Configuration section 'sample' is required.");
+  return document.sample;
+}
 
-export type {
-  DeliveryDispatchServerConfig
-};
+function validateSampleConfig(
+  value: unknown,
+  requiredKeys: readonly (keyof DeliveryDispatchServerConfig)[]
+): DeliveryDispatchServerConfig {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error("Configuration section 'sample' must be an object.");
+  }
+  const config = value as Record<string, unknown>;
+  for (const key of requiredKeys) {
+    if (typeof config[key] !== 'string' || (config[key] as string).length === 0) {
+      throw new Error(`Configuration value 'sample.${key}' must be a non-empty string.`);
+    }
+  }
+  return config as DeliveryDispatchServerConfig;
+}
+
+export { DELIVERYDISPATCH_SAMPLE_CONFIG, createDeliveryDispatchConfigurationModule };
+export type { DeliveryDispatchServerConfig };

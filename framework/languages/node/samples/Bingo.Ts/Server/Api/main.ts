@@ -2,14 +2,15 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoApiModule } from './bingo-api-module';
-import { loadSampleConfig } from '../Configuration/sample-config';
+import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import type { BingoSampleConfig } from '../Configuration/sample-config';
 async function bootstrap(): Promise<void> {
-  const config = loadSampleConfig();
-  const BingoApiModule = createBingoApiModule(config);
+  const BingoApiModule = createBingoApiModule();
   const app = await NestFactory.createApplicationContext(BingoApiModule, {
     logger: false,
     abortOnError: false
   });
+  const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',

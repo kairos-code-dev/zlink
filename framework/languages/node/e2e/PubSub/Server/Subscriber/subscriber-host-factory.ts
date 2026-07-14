@@ -4,20 +4,20 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
-import { parseSubscriberOptions, SUBSCRIBER_OPTIONS, type SubscriberOptions } from './Configuration/subscriber-options';
+import { validateSubscriberOptions, SUBSCRIBER_OPTIONS, type SubscriberOptions } from './Configuration/subscriber-options';
+import { PUBSUB_OPTIONS, createPubSubConfigurationModule } from '../../configuration';
 import { createSubscriberEndpoints } from './Endpoints/operational-endpoints';
 import { EvidenceDispatchErrorObserver, EventMsgHandler } from './Handlers/event-msg-handler';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startSubscriberHost(args: readonly string[]): Promise<void> {
-  const options = parseSubscriberOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
+export async function startSubscriberHost(): Promise<void> {
   let stopping = false;
 
-  const SubscriberModule = createSubscriberModule(options, evidence);
+  const SubscriberModule = createSubscriberModule();
   const app = await NestFactory.createApplicationContext(SubscriberModule, { logger: false, abortOnError: false });
+  const options = app.get(PUBSUB_OPTIONS, { strict: false }) as SubscriberOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const server = await startHttpServer(options.httpUrl, createSubscriberEndpoints(evidence, () => { stopping = true; }));
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -26,12 +26,18 @@ export async function startSubscriberHost(args: readonly string[]): Promise<void
   await app.close();
 }
 
-function createSubscriberModule(options: SubscriberOptions, evidence: EvidenceStore): Function {
+function createSubscriberModule(): Function {
   class SubscriberModule {}
+  const configuration = createPubSubConfigurationModule(validateSubscriberOptions);
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [PUBSUB_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as SubscriberOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -48,8 +54,15 @@ function createSubscriberModule(options: SubscriberOptions, evidence: EvidenceSt
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
-      { provide: SUBSCRIBER_OPTIONS, useValue: options },
+      {
+        provide: EvidenceStore,
+        inject: [PUBSUB_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as SubscriberOptions;
+          return new EvidenceStore(options.rid, options.evidenceFile);
+        }
+      },
+      { provide: SUBSCRIBER_OPTIONS, useExisting: PUBSUB_OPTIONS },
       EventMsgHandler,
       EvidenceDispatchErrorObserver
     ]

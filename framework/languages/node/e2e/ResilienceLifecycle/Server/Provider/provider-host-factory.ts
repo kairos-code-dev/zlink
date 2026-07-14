@@ -10,8 +10,9 @@ import {
 } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
 import { PacketNames } from '../../Shared/messages';
-import { parseServerOptions } from './Configuration/server-options';
+import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
+import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../configuration';
 import { createProviderEndpoints } from './Endpoints/provider-endpoints';
 import {
   EvidenceDispatchErrorObserver,
@@ -24,15 +25,14 @@ import { FaultState } from './Infrastructure/fault-state';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
-export async function startProviderHost(args: readonly string[]): Promise<void> {
-  const options = parseServerOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.evidenceFile);
-  const fault = new FaultState();
+export async function startProviderHost(): Promise<void> {
   let stopping = false;
 
-  const ProviderModule = createProviderModule(options, evidence, fault);
+  const ProviderModule = createProviderModule();
   const app = await NestFactory.createApplicationContext(ProviderModule, { logger: false, abortOnError: false });
+  const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ServerOptions;
+  const evidence = app.get(EvidenceStore, { strict: false });
+  const fault = app.get(FaultState, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
   const server = await startHttpServer(options.httpUrl, createProviderEndpoints(
@@ -50,13 +50,18 @@ export async function startProviderHost(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-function createProviderModule(options: ServerOptions, evidence: EvidenceStore, fault: FaultState): Function {
+function createProviderModule(): Function {
   class ProviderModule {}
+  const configuration = createResilienceConfigurationModule(validateServerOptions);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration], inject: [RESILIENCE_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ServerOptions;
+          fs.mkdirSync(options.logDir, { recursive: true });
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -86,8 +91,10 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore, f
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
-      { provide: FaultState, useValue: fault },
+      { provide: EvidenceStore, inject: [RESILIENCE_OPTIONS], useFactory: (value: unknown) => {
+        const options = value as ServerOptions; return new EvidenceStore(options.rid, options.evidenceFile);
+      } },
+      FaultState,
       EvidenceDispatchErrorObserver,
       PayloadRequestHandler,
       ProfileCommandHandler,

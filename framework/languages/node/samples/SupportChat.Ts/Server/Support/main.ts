@@ -1,11 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { createSupportChatSupportModule } from './supportchat-support-module';
-import { loadSampleConfig } from '../Configuration/sample-config';
 import { waitForShutdown } from '../runtime-support';
 
 async function main(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(createSupportChatSupportModule(loadSampleConfig()), {
+  const app = await NestFactory.createApplicationContext(createSupportChatSupportModule(), {
     logger: false,
     abortOnError: false
   });

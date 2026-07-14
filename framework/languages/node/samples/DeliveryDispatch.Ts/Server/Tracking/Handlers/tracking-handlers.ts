@@ -28,7 +28,7 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
     if (customerActor === undefined) {
       throw new Error(`Customer actor '${request.customerId}' was not registered in the location store.`);
     }
-    await this.actors.sendToActor(customerActor, new DeliveryStatusUpdatedMsg(
+    this.actors.sendToActor(customerActor, new DeliveryStatusUpdatedMsg(
       request.deliveryId,
       request.customerId,
       request.status,

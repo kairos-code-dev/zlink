@@ -1,10 +1,8 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { TicTacToeGameSpot } from './Spots/TicTacToeGameSpot/tictactoe-game-spot';
-import {
-  RedisRoomRouteStore,
-  TICTACTOE_SAMPLE_CONFIG
-} from '../../../Configuration/redis-room-route-store';
+import { RedisRoomRouteStore } from '../../../Configuration/redis-room-route-store';
+import { TICTACTOE_SAMPLE_CONFIG } from '../../../Configuration/sample-config';
 import { SampleNames } from '../../../Configuration/sample-settings';
 import type { ZLinkSpotManager } from '@zlink-systems/framework';
 import type { TicTacToeSampleConfig } from '../../../Configuration/sample-config';

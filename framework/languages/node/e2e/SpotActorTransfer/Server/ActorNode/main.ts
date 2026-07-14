@@ -63,11 +63,15 @@ import {
 } from '../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
-import { parseServerOptions } from '../Support/options';
+import {
+  SPOT_ACTOR_TRANSFER_OPTIONS,
+  createSpotActorTransferConfigurationModule,
+  validateServerOptions
+} from '../../configuration';
+import type { ServerOptions } from '../../configuration';
 
-const options = parseServerOptions(process.argv.slice(2));
-fs.mkdirSync(options.logDir, { recursive: true });
-const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+let options: ServerOptions;
+let evidence: EvidenceStore;
 let domainState: DomainStateStore;
 let joinedGates: GateStore;
 let transferGates: GateStore;
@@ -430,10 +434,23 @@ class ActorHandoffEvidenceRecorder implements ZLinkRuntimeEventHandler<ActorHand
 }
 
 class ActorNodeModule {}
+const configuration = createSpotActorTransferConfigurationModule(
+  SPOT_ACTOR_TRANSFER_OPTIONS,
+  validateServerOptions
+);
 Module({
   imports: [
+    configuration,
     ZLinkModule.forRootFactory({
-      useFactory: () => {
+      imports: [configuration],
+      inject: [SPOT_ACTOR_TRANSFER_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        fs.mkdirSync(options.logDir, { recursive: true });
+        evidence = new EvidenceStore(options.rid, options.evidenceFile);
+        domainState = new DomainStateStore(options.logDir);
+        joinedGates = new GateStore();
+        transferGates = new GateStore();
         const builder = zlinkFramework();
         builder.addLocationStore(new ZLinkRedisLocationStore({
           url: `redis://${options.redisEndpoint}`,
@@ -667,10 +684,6 @@ class DomainStateStore {
     return Number(fs.readFileSync(path.join(this.directory, `domain-${actorId}.state`), 'utf8'));
   }
 }
-
-domainState = new DomainStateStore(options.logDir);
-joinedGates = new GateStore();
-transferGates = new GateStore();
 
 main().catch((error: unknown) => {
   console.error(error);

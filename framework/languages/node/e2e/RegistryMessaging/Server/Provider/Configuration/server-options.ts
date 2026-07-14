@@ -14,45 +14,30 @@ export interface ServerOptions {
   readonly maxMessageSize: number;
 }
 
-export function parseServerOptions(args: readonly string[], defaultRole = 'provider'): ServerOptions {
-  const values = new Map<string, string>();
-  const routePeers: string[] = [];
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
-    }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    const value = args[++i];
-    if (key === '--route-peer') {
-      routePeers.push(value);
-    } else {
-      values.set(key.slice(2), value);
-    }
-  }
-
-  const rid = values.get('rid') ?? 'node';
-  process.env.ZLINK_E2E_RID = rid;
+export function validateServerOptions(value: unknown, defaultRole = 'provider'): ServerOptions {
+  const values = objectValues(value);
+  const rid = optionalString(values, 'rid') ?? 'node';
+  const routePeers = Array.isArray(values.routePeers)
+    ? values.routePeers.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : [];
   return {
     role: defaultRole,
-    httpUrl: values.get('http-url') ?? 'http://127.0.0.1:0',
-    logDir: values.get('log-dir') ?? '/tmp/zlink-node-e2e-log',
-    evidenceFile: values.get('evidence-file'),
+    httpUrl: optionalString(values, 'httpUrl') ?? 'http://127.0.0.1:0',
+    logDir: optionalString(values, 'logDir') ?? '/tmp/zlink-node-e2e-log',
+    evidenceFile: optionalString(values, 'evidenceFile'),
     rid,
-    redisEndpoint: values.get('redis-endpoint'),
-    redisKeyPrefix: values.get('redis-key-prefix'),
-    channelEndpoint: values.get('channel-endpoint'),
-    manualClientEndpoint: values.get('manual-client-endpoint'),
-    routeEndpoint: values.get('route-endpoint'),
+    redisEndpoint: optionalString(values, 'redisEndpoint'),
+    redisKeyPrefix: optionalString(values, 'redisKeyPrefix'),
+    channelEndpoint: optionalString(values, 'channelEndpoint'),
+    manualClientEndpoint: optionalString(values, 'manualClientEndpoint'),
+    routeEndpoint: optionalString(values, 'routeEndpoint'),
     routePeers,
-    weight: parseWeight(values.get('weight')),
-    maxMessageSize: parseMaxMessageSize(values.get('max-message-size'))
+    weight: parseWeight(values.weight),
+    maxMessageSize: parseMaxMessageSize(values.maxMessageSize)
   };
 }
 
-function parseWeight(value: string | undefined): number {
+function parseWeight(value: unknown): number {
   if (value === undefined) {
     return 100;
   }
@@ -63,7 +48,7 @@ function parseWeight(value: string | undefined): number {
   return weight;
 }
 
-function parseMaxMessageSize(value: string | undefined): number {
+function parseMaxMessageSize(value: unknown): number {
   if (value === undefined) {
     return 0;
   }
@@ -73,3 +58,4 @@ function parseMaxMessageSize(value: string | undefined): number {
   }
   return size;
 }
+import { objectValues, optionalString } from '../../../configuration';

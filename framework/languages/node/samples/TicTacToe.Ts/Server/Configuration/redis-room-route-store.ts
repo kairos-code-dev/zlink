@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createClient } from 'redis';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import { TICTACTOE_SAMPLE_CONFIG } from './sample-config';
 import type { TicTacToeSampleConfig } from './sample-config';
 import type { OnModuleDestroy } from '@nestjs/common';
 import type { RedisClientType } from 'redis';
-
-const TICTACTOE_SAMPLE_CONFIG = Symbol.for('TICTACTOE_SAMPLE_CONFIG');
 
 type RoomRoute = {
   roomId: string;
@@ -91,7 +90,6 @@ function routeKey(config: TicTacToeSampleConfig, roomId: string): string {
 
 export {
   createTicTacToeLocationStore,
-  RedisRoomRouteStore,
-  TICTACTOE_SAMPLE_CONFIG
+  RedisRoomRouteStore
 };
 export type { RoomRoute };

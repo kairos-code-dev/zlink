@@ -6,12 +6,7 @@ import { ensure } from '../Support/scenario-assert';
 export async function runRcA6(options: ClientOptions): Promise<void> {
   const output = await expectStartupFailure(
     options.invalidMain,
-    [
-      '--rid', 'invalid-duplicate',
-      '--http-url', options.invalidHttpUrl,
-      '--channel-endpoint', options.invalidChannelEndpoint,
-      '--log-dir', options.logDir
-    ],
+    ['--config', options.invalidConfig],
     options.logDir,
     'invalid-duplicate'
   );

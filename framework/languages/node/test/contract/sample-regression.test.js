@@ -24,10 +24,24 @@ const topologySamples = [
   'ShoppingMall.Ts'
 ];
 
-test('node samples define required files and use only common sample documents', () => {
+test('node samples define required runners and keep scenario contracts in common documents', () => {
   const missing = [];
-  if (fs.existsSync(path.join(samplesRoot, 'README.ko.md'))) {
-    missing.push('samples/README.ko.md must not duplicate the common sample specification');
+  const samplesReadme = path.join(samplesRoot, 'README.ko.md');
+  if (!fs.existsSync(samplesReadme)) {
+    missing.push('samples/README.ko.md');
+  } else {
+    const readme = fs.readFileSync(samplesReadme, 'utf8');
+    for (const requiredText of [
+      '../../../doc/framework/common/sample/README.ko.md',
+      'npm run browser:install',
+      './samples/run_samples.sh',
+      './samples/run_samples.ps1',
+      'Bingo.Ts/Client/bingo-client-scenario.ts'
+    ]) {
+      if (!readme.includes(requiredText)) {
+        missing.push(`samples/README.ko.md missing '${requiredText}'`);
+      }
+    }
   }
   for (const sample of requiredSamples) {
     for (const relative of ['package.json', 'run_sample.sh', 'run_sample.ps1']) {
@@ -153,7 +167,12 @@ test('node topology samples implement the common sample role layout', () => {
     'DeliveryDispatch.Ts': [
       'Client/deliverydispatch-client-scenario.ts',
       'Client/main.ts',
-      'Server/main.ts',
+      'Server/Dispatch/main.ts',
+      'Server/Tracking/main.ts',
+      'Server/Session/main.ts',
+      'Server/CourierSession/main.ts',
+      'Server/Courier/node1-main.ts',
+      'Server/Courier/node2-main.ts',
       'Server/Courier/courier-actor.ts',
       'Server/Courier/courier-entry-spot.ts',
       'Server/Courier/courier-module.ts',
@@ -172,7 +191,11 @@ test('node topology samples implement the common sample role layout', () => {
     'GameQuest.Ts': [
       'Client/gamequest-client-scenario.ts',
       'Client/main.ts',
-      'Server/main.ts',
+      'Server/bootstrap.ts',
+      'Server/ApiA/main.ts',
+      'Server/ApiB/main.ts',
+      'Server/MissionA/main.ts',
+      'Server/MissionB/main.ts',
       'Server/GameApi/game-api-module.ts',
       'Server/GameApi/game-api-server.ts',
       'Server/GameApi/Application/gameplay-action-service.ts',
@@ -189,7 +212,11 @@ test('node topology samples implement the common sample role layout', () => {
     'ShoppingMall.Ts': [
       'Client/shoppingmall-client-scenario.ts',
       'Client/main.ts',
-      'Server/main.ts',
+      'Server/bootstrap.ts',
+      'Server/ApiA/main.ts',
+      'Server/ApiB/main.ts',
+      'Server/WorkflowA/main.ts',
+      'Server/WorkflowB/main.ts',
       'Server/Shared/Store/order-store.ts',
       'Shared/Configuration/sample-names.ts',
       'Shared/Contracts/messages.ts'
@@ -435,8 +462,19 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   const names = readSample('DeliveryDispatch.Ts', 'Shared/Configuration/sample-names.ts');
   const trackingModule = readSample('DeliveryDispatch.Ts', 'Server/Tracking/tracking-module.ts');
   const sessionModule = readSample('DeliveryDispatch.Ts', 'Server/Session/session-module.ts');
-  const serverMain = readSample('DeliveryDispatch.Ts', 'Server/main.ts');
+  const dispatchWorker = readSample('DeliveryDispatch.Ts', 'Server/DispatchCenter/dispatch-worker.ts');
+  const offerHandler = readSample('DeliveryDispatch.Ts', 'Server/Courier/offer-delivery-handler.ts');
+  const messages = readSample('DeliveryDispatch.Ts', 'Shared/Contracts/messages.ts');
+  const serverEntries = [
+    'Server/Dispatch/main.ts',
+    'Server/Tracking/main.ts',
+    'Server/Session/main.ts',
+    'Server/CourierSession/main.ts',
+    'Server/Courier/node1-main.ts',
+    'Server/Courier/node2-main.ts'
+  ].map((file) => readSample('DeliveryDispatch.Ts', file)).join('\n');
   const runSample = fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'run_sample.sh'), 'utf8');
+  const sharedRunner = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
 
   assert.match(clientScenario, /BrowserHttpClient/);
   assert.match(clientScenario, /\.fetch<CreateDeliveryRes>\(\)/);
@@ -461,19 +499,23 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(customerSession, /resolveActor\(\{ actorId: CustomerId \}\)/);
   assert.match(names, /courierActorNodeRouteChannel: 'delivery-couriers'/);
   assert.match(names, /courierActorSpotMesh: 'delivery-couriers'/);
-  assert.match(serverMain, /NestFactory\.createApplicationContext/);
-  for (const role of ['tracking', 'customer-gateway', 'courier-session', 'courier-spot-node1', 'courier-spot-node2', 'dispatch']) {
-    assert.match(serverMain, new RegExp(`role === '${role}'`));
-  }
-  assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE/);
-  assert.match(runSample, /DELIVERYDISPATCH_SESSION_STREAM/);
-  assert.match(runSample, /ws:\/\/127\.0\.0\.1/);
-  assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE="tcp:\/\/127\.0\.0\.1/);
+  assert.match(serverEntries, /NestFactory\.createApplicationContext/);
+  assert.match(messages, /class OfferDeliveryMsg/);
+  assert.match(messages, /class OfferDeliveryResultMsg/);
+  assert.doesNotMatch(messages, /\bOfferDeliveryReq\b|\bOfferDeliveryRes\b/);
+  assert.match(dispatchWorker, /offerDecisionTimeout/);
+  assert.match(dispatchWorker, /sweepExpiredOffers/);
+  assert.match(dispatchWorker, /current\.attempt !== result\.attempt/);
+  assert.match(offerHandler, /@zlinkSendHandler\('courier-actor-node', PacketNames\.offerDelivery\)/);
+  assert.match(offerHandler, /@zlinkEntrySpotActorSendHandler/);
+  assert.match(runSample, /run-sample\.mjs" DeliveryDispatch\.Ts/);
+  assert.match(sharedRunner, /dispatchEndpoint/);
+  assert.match(sharedRunner, /sessionStreamEndpoint/);
+  assert.match(sharedRunner, /'--config', configPath/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SAMPLE_ENDPOINT|support::request_line/);
-  assert.doesNotMatch(serverMain, /courier-gateway/);
-  assert.doesNotMatch(serverMain, /role === 'dispatch-api'|role === 'dispatch-center'|role === 'session'/);
+  assert.doesNotMatch(serverEntries, /--role|process\.env|courier-gateway/);
   assert.doesNotMatch(names, /deliverydispatch\.courier/);
-  assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
+  assert.doesNotMatch(serverEntries, /SAMPLE_ENDPOINT/);
 });
 
 test('GameQuest TypeScript sample uses framework channel topology', () => {
@@ -509,9 +551,10 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
     'Server/QuestMission/Infrastructure/ZLink/quest-owner-route-handlers.ts'
   );
   const questStore = readSample('GameQuest.Ts', 'Server/Shared/Store/quest-progress-store.ts');
-  const serverMain = readSample('GameQuest.Ts', 'Server/main.ts');
+  const serverMain = readSample('GameQuest.Ts', 'Server/bootstrap.ts');
   const runSample = fs.readFileSync(path.join(samplesRoot, 'GameQuest.Ts', 'run_sample.sh'), 'utf8');
   const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, 'GameQuest.Ts', 'run_sample.ps1'), 'utf8');
+  const sharedRunner = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
 
   assert.match(clientMain, /BrowserHttpClientFactory\.create\(config\.apiAHttpUrl\)/);
   assert.match(clientMain, /zlinkStreamConnectorFactory\.create/);
@@ -533,7 +576,7 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(gameplayPublisher, /\.sendToNode\(SampleNames\.questMissionRouteChannel/);
   assert.match(gameplayPublisher, /\.submit\(\)/);
   assert.match(apiModule, /zlinkFramework\(\)/);
-  assert.match(apiModule, /\.enableRouter\(actorSpotEndpoint, apiRid\)/);
+  assert.match(apiModule, /\.enableRouter\(config\[actorSpotEndpointKey\], apiRid\)/);
   assert.match(questModule, /QuestEventProcessor/);
   assert.match(apiModule, /\.addSpotMesh\(SampleNames\.playerQuestSpotMesh\)/);
   assert.match(apiModule, /\.addEntrySpot\(GameQuestEntrySpot\)/);
@@ -581,34 +624,15 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(clientScenario, /invalid-negative-count/);
   assert.match(questDomain, /QuestStatuses/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
-  assert.match(serverMain, /role !== 'api-a' && role !== 'api-b' && role !== 'mission-a' && role !== 'mission-b'/);
-  assert.match(serverMain, /createGameApiModule\(config, role\)/);
-  assert.match(runSample, /start_role mission-a/);
-  assert.match(runSample, /start_role mission-b/);
-  assert.match(runSample, /start_role api-a/);
-  assert.match(runSample, /start_role api-b/);
-  assert.match(runSample, /wait_transport_endpoint mission-a "\$\{GAMEQUEST_MISSION_A_ROUTE\}"/);
-  assert.match(runSample, /GAMEQUEST_MISSION_A_ROUTE="ipc:\/\//);
-  assert.match(runSample, /wait_http api-a "\$\{GAMEQUEST_API_A_HTTP\}"/);
-  assert.match(runSample, /GAMEQUEST_API_A_HTTP/);
-  assert.match(runSample, /GAMEQUEST_API_B_HTTP/);
-  assert.match(runSample, /GAMEQUEST_API_A_STREAM/);
-  assert.match(runSample, /GAMEQUEST_API_B_STREAM/);
-  assert.match(runSample, /GAMEQUEST_LOG_DIR/);
-  assert.match(runSample, /grep -Rq "packet=GameplayMsg" "\$\{GAMEQUEST_LOG_DIR\}"/);
-  assert.match(runSample, /grep -Rq "surface=spotActor\.\*packet=QuestCompletedNotify" "\$\{GAMEQUEST_LOG_DIR\}"/);
-  assert.match(runSamplePs1, /@\("mission-a", "mission-b", "api-a", "api-b"\)/);
-  assert.match(runSamplePs1, /ForEach-Object \{ Start-Role \$_/);
-  assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_A_HTTP/);
-  assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_B_HTTP/);
-  assert.match(runSamplePs1, /if \(\$LASTEXITCODE -ne 0\) \{ throw "GameQuest client scenario failed" \}/);
-  assert.match(runSamplePs1, /GAMEQUEST_LOG_DIR/);
-  assert.match(runSamplePs1, /@\("create"/);
-  assert.match(runSamplePs1, /"redis-cli", "PING"/);
-  assert.doesNotMatch(runSamplePs1, /ready\.length >= 2/);
-  assert.match(runSample, /GAMEQUEST_API_A_STREAM="ws:\/\/127\.0\.0\.1/);
-  assert.match(runSample, /GAMEQUEST_MISSION_A_ROUTE="ipc:\/\/\$\{WORK_DIR\}/);
-  assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
+  assert.match(serverMain, /createGameApiModule\(role\)/);
+  assert.match(serverMain, /GAMEQUEST_SAMPLE_CONFIG/);
+  assert.match(runSample, /run-sample\.mjs" GameQuest\.Ts/);
+  assert.match(runSamplePs1, /run-sample\.mjs.*GameQuest\.Ts/);
+  for (const text of ['mission-a', 'mission-b', 'api-a', 'api-b', 'apiAHttpUrl', 'apiBHttpUrl']) {
+    assert.match(sharedRunner, new RegExp(text));
+  }
+  assert.doesNotMatch(sharedRunner, /grep[^\n]*(?:GameplayMsg|QuestCompletedNotify)/);
+  assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT|process\.env|--role/);
 });
 
 test('ShoppingMall TypeScript sample uses framework channel topology', () => {
@@ -644,9 +668,10 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   const orderEvents = readSample('ShoppingMall.Ts', 'Server/Shared/Domain/order-events.ts');
   const workflowModule = readSample('ShoppingMall.Ts', 'Server/OrderWorkflow/shoppingmall-workflow-module.ts');
   const orderStore = readSample('ShoppingMall.Ts', 'Server/Shared/Store/order-store.ts');
-  const serverMain = readSample('ShoppingMall.Ts', 'Server/main.ts');
+  const serverMain = readSample('ShoppingMall.Ts', 'Server/bootstrap.ts');
   const runSample = fs.readFileSync(path.join(samplesRoot, 'ShoppingMall.Ts', 'run_sample.sh'), 'utf8');
   const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, 'ShoppingMall.Ts', 'run_sample.ps1'), 'utf8');
+  const sharedRunner = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
 
   assert.match(clientMain, /ZLinkHttpClient\.create\(config\.apiAHttpUrl\)/);
   assert.match(clientMain, /ZLinkHttpClient\.create\(config\.apiBHttpUrl\)/);
@@ -686,7 +711,7 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(orderDomain, /class OrderAggregate/);
   assert.match(orderEvents, /interface StoredOrderEvent/);
   assert.match(orderEvents, /payload: readonly number\[\]/);
-  assert.match(orderStore, /SHOPPINGMALL_WORK_DIR/);
+  assert.match(orderStore, /constructor\(workDir: string\)/);
   assert.match(orderStore, /class ExpectedVersionConflict/);
   assert.match(orderStore, /interrupted after inventory effect/);
   assert.match(orderStore, /overlap writer rejected/);
@@ -694,28 +719,15 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
   assert.match(serverMain, /SampleNames\.workflowA/);
   assert.match(serverMain, /SampleNames\.apiB/);
-  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT/);
-  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT/);
-  assert.match(runSample, /SHOPPINGMALL_API_A_HTTP/);
-  assert.match(runSample, /SHOPPINGMALL_API_B_HTTP/);
-  assert.match(runSample, /start_role workflow-a/);
-  assert.match(runSample, /start_role workflow-b/);
-  assert.match(runSample, /start_role api-a/);
-  assert.match(runSample, /start_role api-b/);
-  assert.match(runSample, /wait_http api-a "\$\{SHOPPINGMALL_API_A_HTTP\}"/);
-  assert.match(runSample, /wait_http api-b "\$\{SHOPPINGMALL_API_B_HTTP\}"/);
-  assert.match(runSamplePs1, /@\("workflow-a", "workflow-b", "api-a", "api-b"\)/);
-  assert.match(runSamplePs1, /ForEach-Object \{ Start-Role \$_/);
-  assert.match(runSamplePs1, /Wait-Http -Url \$env:SHOPPINGMALL_API_A_HTTP/);
-  assert.match(runSamplePs1, /Wait-Http -Url \$env:SHOPPINGMALL_API_B_HTTP/);
-  assert.match(commerceApiModule, /SHOPPINGMALL_LOG_DIR/);
-  assert.match(workflowModule, /SHOPPINGMALL_LOG_DIR/);
-  assert.match(runSample, /SHOPPINGMALL_LOG_DIR/);
-  assert.match(runSamplePs1, /SHOPPINGMALL_LOG_DIR/);
-  assert.match(runSamplePs1, /"redis-cli", "ping"/);
-  assert.match(runSamplePs1, /@\("create"/);
-  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
-  assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
+  assert.match(runSample, /run-sample\.mjs" ShoppingMall\.Ts/);
+  assert.match(runSamplePs1, /run-sample\.mjs.*ShoppingMall\.Ts/);
+  for (const text of ['workflow-a', 'workflow-b', 'api-a', 'api-b', 'apiAHttpUrl', 'apiBHttpUrl']) {
+    assert.match(sharedRunner, new RegExp(text));
+  }
+  assert.match(commerceApiModule, /config\.logDir/);
+  assert.match(workflowModule, /config\.logDir/);
+  assert.match(sharedRunner, /logDir: ctx\.logDir/);
+  assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT|process\.env|--role/);
 });
 
 test('common-spec TypeScript clients do not import server modules', () => {
@@ -831,8 +843,8 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
     [client, 'PASS TicTacToe.Ts'],
     [api, 'TicTacToeApiModule'],
     [play, 'TicTacToePlayModule'],
-    [runSamples, 'TicTacToe.Ts/run_sample.sh'],
-    [runSamples, 'run_sample.sh']
+    [runSamples, 'TicTacToe.Ts'],
+    [runSamples, 'runner="${SCRIPT_DIR}/${sample}/run_sample.sh"']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -916,8 +928,8 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     [api, 'async function bootstrap'],
     [session, 'async function bootstrap'],
     [play, 'async function bootstrap'],
-    [runSamples, 'Bingo.Ts/run_sample.sh'],
-    [runSamples, 'run_sample.sh']
+    [runSamples, 'Bingo.Ts'],
+    [runSamples, 'runner="${SCRIPT_DIR}/${sample}/run_sample.sh"']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -1036,29 +1048,17 @@ test('node topology samples run server roles as separate processes over TCP rout
     ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_A_ENDPOINT'],
     ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_B_ENDPOINT']
   ];
-  const clientEndpointEnvs = new Set([
-    'TICTACTOE_PLAY_A_STREAM_ENDPOINT',
-    'TICTACTOE_PLAY_B_STREAM_ENDPOINT',
-    'TICTACTOE_API_HTTP_ENDPOINT',
-    'BINGO_SESSION_A_ENDPOINT',
-    'BINGO_SESSION_B_ENDPOINT'
-  ]);
-
-  for (const [sample, serverRelative, endpointEnv] of cases) {
+  for (const [sample, serverRelative] of cases) {
     const serverEntry = path.join(samplesRoot, sample, serverRelative);
-    const runSample = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
-    const clientEntry = path.join(samplesRoot, sample, 'Client', 'main.ts');
+    const runSample = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
     const serverContent = fs.readFileSync(serverEntry, 'utf8');
-    const clientContent = fs.readFileSync(clientEntry, 'utf8');
 
     assert.equal(fs.existsSync(serverEntry), true);
-    assert.match(serverContent, /loadSampleConfig|forRootFactory/);
-    assert.match(runSample, new RegExp(escapeRegExp(endpointEnv)));
-    assert.match(runSample, /ZLINK_SAMPLE_CONFIG/);
-    assert.match(runSample, /start_server/);
-    if (clientEndpointEnvs.has(endpointEnv)) {
-      assert.match(clientContent, /loadSampleConfig/);
-    }
+    assert.match(serverContent, /SAMPLE_CONFIG|forRootFactory|create[A-Za-z]+Module/);
+    assert.match(runSample, /tcp:\/\/127\.0\.0\.1:\$\{await ctx\.port\(\)\}/);
+    assert.match(runSample, /writeConfig\(/);
+    assert.match(runSample, /'--config'/);
+    assert.match(runSample, /ctx\.start\(/);
   }
 });
 
@@ -1077,7 +1077,7 @@ test('node topology samples do not use stdin command protocol as messaging', () 
 test('node samples do not hide readiness with sleeps or pre-ready pings', () => {
   const violations = [];
   const allowedTimingFiles = new Set([
-    'samples/Bingo.Ts/Client/drain-match-probe.ts',
+    'samples/run-sample.mjs',
     'samples/Bingo.Ts/run_sample.ps1',
     'samples/Bingo.Ts/run_sample.sh',
     'samples/DeliveryDispatch.Ts/Client/deliverydispatch-client-scenario.ts',
@@ -1106,22 +1106,11 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
   assert.deepEqual(violations, []);
 });
 
-test('node top-level sample runner only retries transient port binding failures', () => {
+test('node top-level sample runner only invokes selected samples in order', () => {
   const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
-  const violations = [
-    /\bretry sample\b/,
-    /\brun_sample\s*\(/
-  ]
-    .filter((pattern) => pattern.test(runSamples))
-    .map((pattern) => pattern.source);
-
-  assert.deepEqual(violations, []);
-  assert.match(runSamples, /BIND_RETRY_PATTERN=.*EADDRINUSE/);
-  assert.match(runSamples, /BIND_RETRY_PATTERN=.*Address already in use/);
-  assert.match(runSamples, /BIND_RETRY_PATTERN=.*errno=98/);
-  assert.match(runSamples, /for attempt in 1 2 3/);
-  assert.match(runSamples, /if ! grep -Eq "\$\{BIND_RETRY_PATTERN\}" "\$\{output\}"; then[\s\S]*return "\$\{status\}"/);
-  assert.match(runSamples, /node sample transient bind failure; retrying/);
+  assert.match(runSamples, /for sample in "\$\{samples\[@\]\}"/);
+  assert.match(runSamples, /"\$\{runner\}"/);
+  assert.doesNotMatch(runSamples, /node --test|retry|sleep|grep/);
 });
 
 test('node RegistryMessaging e2e endpoints do not hide local routing failures with retry loops', () => {
@@ -1809,7 +1798,7 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
     const actor = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.actor), 'utf8');
     const entrySpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.entrySpot), 'utf8');
     const userSpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.userSpot), 'utf8');
-    const runSample = fs.readFileSync(path.join(samplesRoot, sample.sample, 'run_sample.sh'), 'utf8');
+    const runSample = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
 
     for (const [label, content, text] of [
       ['actor', actor, 'destroyAfterEntrySpotJoin'],
@@ -1835,147 +1824,34 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
   assert.deepEqual(missing, []);
 });
 
-test('node sample runners own server process orchestration', () => {
-  const missing = [];
-  for (const sample of topologySamples) {
-    const runSample = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
-    const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
-    const client = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'main.ts'), 'utf8');
-    const roleRunner = sample === 'DeliveryDispatch.Ts' || sample === 'GameQuest.Ts' || sample === 'ShoppingMall.Ts';
-    const clientCommand = sample === 'ShoppingMall.Ts'
-      ? 'node "${SCRIPT_DIR}/dist/Client/main.js"'
-      : 'scripts/browser-e2e/run-sample.mjs';
-    const shellRequired = roleRunner
-      ? [
-          'start_role',
-          sample === 'DeliveryDispatch.Ts'
-            ? 'wait_port'
-            : sample === 'GameQuest.Ts'
-              ? 'wait_transport_endpoint'
-              : 'wait_tcp_endpoint',
-          'trap cleanup EXIT',
-          clientCommand
-        ]
-      : sample === 'SupportChat.Ts'
-        ? [
-            'start_server',
-            'wait_tcp',
-            'trap cleanup EXIT',
-            clientCommand
-          ]
-      : [
-          'start_server',
-          'wait_port',
-          'trap cleanup EXIT',
-          clientCommand
-        ];
-    for (const text of shellRequired) {
-      if (!runSample.includes(text)) {
-        missing.push(`${sample}:${text}`);
-      }
-    }
-    const browserPsCommand = 'scripts/browser-e2e/run-sample.mjs';
-    const psRequired = sample === 'DeliveryDispatch.Ts'
-      ? [
-          'Start-Role',
-          'Wait-Http',
-          'DELIVERYDISPATCH_COURIER_STREAM',
-          'DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE',
-          'DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE',
-          browserPsCommand
-        ]
-      : sample === 'ShoppingMall.Ts'
-      ? [
-          'Start-Role',
-          'Wait-Topology',
-          'SHOPPINGMALL_API_A_HTTP',
-          'SHOPPINGMALL_API_B_HTTP',
-          'SHOPPINGMALL_WORKFLOW_A_ENDPOINT',
-          'SHOPPINGMALL_WORKFLOW_B_ENDPOINT',
-          'dist/Client/main.js'
-        ]
-      : sample === 'GameQuest.Ts'
-        ? [
-            'Start-Role',
-            'Wait-Topology',
-            'GAMEQUEST_API_A_HTTP',
-            'GAMEQUEST_API_B_HTTP',
-            'GAMEQUEST_MISSION_A_ROUTE',
-            'GAMEQUEST_MISSION_B_ROUTE',
-            browserPsCommand
-          ]
-      : sample === 'SupportChat.Ts'
-        ? [
-            'Start-Server',
-            'Wait-Tcp',
-            browserPsCommand
-          ]
-      : [
-          'Start-Server',
-          'Wait-Port',
-          browserPsCommand
-        ];
-    for (const text of psRequired) {
-      if (!runSamplePs1.includes(text)) {
-        missing.push(`${sample}:ps1:${text}`);
-      }
-    }
-    if (!client.includes('loadSampleConfig')) {
-      missing.push(`${sample}:loadSampleConfig`);
-    }
-    if (/child_process|spawn\(|fork\(|execFile/.test(client)) {
-      missing.push(`${sample}:client starts server process`);
-    }
-  }
+test('node sample wrappers delegate orchestration to one shared runner', () => {
+  const sharedRunner = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
+  assert.match(sharedRunner, /const sampleDefinitions =/);
+  assert.match(sharedRunner, /scripts\/browser-e2e\/run-sample\.mjs/);
+  assert.match(sharedRunner, /dist\/Client\/main\.js/);
 
-  assert.deepEqual(missing, []);
-});
-
-test('node sample runners isolate Redis and application ports without Docker volumes', () => {
-  const violations = [];
-  const redisHelper = fs.readFileSync(path.join(workspaceRoot, 'e2e/redis-container.sh'), 'utf8');
-  for (const [label, pattern] of [
-    ['redis-helper:publish-deadline', /redis_container_endpoint\(\)[\s\S]*deadline=/],
-    ['redis-helper:publish-wait', /redis_container_endpoint\(\)[\s\S]*while \(\( SECONDS < deadline \)\)/],
-    ['redis-helper:published-host-port', /redis_container_endpoint\(\)[\s\S]*HostPort/],
-    ['redis-helper:reachable-host-port', /redis_container_endpoint\(\)[\s\S]*\/dev\/tcp\/127\.0\.0\.1/]
-  ]) {
-    if (!pattern.test(redisHelper)) {
-      violations.push(label);
-    }
-  }
   for (const sample of topologySamples) {
     const shell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
     const powershell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
+    const client = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'main.ts'), 'utf8');
 
-    for (const [label, content, pattern] of [
-      ['sh:dedicated-redis-helper', shell, /source .*e2e\/redis-container\.sh/],
-      ['sh:dedicated-redis-create', shell, /start_redis_container/],
-      ['sh:redis-cleanup', shell, /docker rm -fv/],
-      ['ps1:dynamic-app-ports', powershell, /TcpListener/],
-      ['ps1:docker-timeout', powershell, /Invoke-Docker|WaitForExit\(/],
-      ['ps1:redis-tmpfs', powershell, /--tmpfs["',\s]+\/data/],
-      ['ps1:dynamic-redis-port', powershell, /127\.0\.0\.1::6379/],
-      ['ps1:redis-running', powershell, /State\.Running/],
-      ['ps1:redis-pong', powershell, /redis-cli[\s\S]*PONG/],
-      ['ps1:redis-cleanup', powershell, /rm["',\s]+-f["',\s]+-v/]
-    ]) {
-      if (!pattern.test(content)) {
-        violations.push(`${sample}:${label}`);
-      }
-    }
-    if (/127\.0\.0\.1:\d{4,5}/.test(powershell)) {
-      violations.push(`${sample}:ps1:fixed-application-port`);
-    }
+    assert.match(shell, new RegExp(`run-sample\\.mjs" ${escapeRegExp(sample)}`));
+    assert.match(powershell, new RegExp(`run-sample\\.mjs.*${escapeRegExp(sample)}`));
+    assert.doesNotMatch(shell, /docker|grep|start_role|start_server|wait_port/);
+    assert.doesNotMatch(powershell, /docker|Select-String|Start-Role|Start-Server|Wait-Port/i);
+    assert.match(client, /loadSampleConfig/);
+    assert.doesNotMatch(client, /child_process|spawn\(|fork\(|execFile/);
   }
-  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts', 'SupportChat.Ts']) {
-    const shell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
-    if (!/print_failure_logs/.test(shell) || !/tail -n 80/.test(shell)) {
-      violations.push(`${sample}:sh:hidden-role-failure`);
-    }
-  }
+});
 
-  assert.deepEqual(violations, []);
+test('node shared sample runner isolates Redis and application ports without Docker volumes', () => {
+  const runner = fs.readFileSync(path.join(samplesRoot, 'run-sample.mjs'), 'utf8');
+
+  assert.match(runner, /'create', '--name', name, '--tmpfs', '\/data', '-p', '127\.0\.0\.1::6379'/);
+  assert.match(runner, /docker'\), \['rm', '-fv', redisContainer\]/);
+  assert.match(runner, /reserveBrowserSafePort/);
+  assert.match(runner, /printLogs\(\)/);
+  assert.doesNotMatch(runner, /127\.0\.0\.1:\d{4,5}/);
 });
 
 test('framework aggregate runners never remove Redis containers or processes owned by another run', () => {
@@ -2024,10 +1900,10 @@ test('node top-level sample runners execute every maintained sample', () => {
   const missing = [];
 
   for (const sample of requiredSamples) {
-    if (!shellRunner.includes(`${sample}/run_sample.sh`)) {
+    if (!shellRunner.includes(sample)) {
       missing.push(`sh:${sample}`);
     }
-    if (!powershellRunner.includes(`${sample}/run_sample.ps1`)) {
+    if (!powershellRunner.includes(sample)) {
       missing.push(`ps1:${sample}`);
     }
   }
@@ -2086,7 +1962,6 @@ test('node run_samples.sh executes every sample self-check', () => {
     encoding: 'utf8'
   });
 
-  assert.match(output, /node actor lifecycle sample gate completed/);
   for (const sample of requiredSamples) {
     assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
   }
@@ -2167,9 +2042,6 @@ function findUnreachableSampleTypeScriptFiles() {
       }
     }
   }
-  // The Bingo runner invokes this second public stream client after Play A enters drain.
-  add(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'drain-match-probe.ts'));
-
   while (queue.length > 0) {
     const file = queue.shift();
     const content = fs.readFileSync(file, 'utf8');

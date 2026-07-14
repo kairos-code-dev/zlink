@@ -4,22 +4,35 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CourierSessionFactory } from './courier-session';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
+import {
+  DELIVERYDISPATCH_SAMPLE_CONFIG,
+  createDeliveryDispatchConfigurationModule
+} from '../Configuration/sample-config';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
-function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
+function createCourierSessionModule() {
   class CourierSessionModule {}
-  const locationStore = createDeliveryDispatchLocationStore(config);
+  const configuration = createDeliveryDispatchConfigurationModule([
+    'courierStreamEndpoint',
+    'courierSessionSpotEndpoint',
+    'redisEndpoint',
+    'redisKeyPrefix',
+    'logDir'
+  ]);
 
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-courier-session.log`)
+            .traceLogFile(`${config.logDir}/flow-courier-session.log`)
             .traceLabel('courier-session');
-          builder.addLocationStore(locationStore);
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
             .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
@@ -34,7 +47,11 @@ function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
       })
     ],
     providers: [
-      { provide: 'DELIVERYDISPATCH_LOCATION_STORE', useValue: locationStore },
+      {
+        provide: 'DELIVERYDISPATCH_LOCATION_STORE',
+        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
+        useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
+      },
       CourierSessionFactory
     ]
   })(CourierSessionModule);

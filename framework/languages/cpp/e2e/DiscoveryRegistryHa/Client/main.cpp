@@ -20,6 +20,10 @@ struct options_t
     std::string consumer_url = sf_client::env_or ("ZLINK_CPP_SF_CONSUMER_URL");
     std::string provider_a_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_URL");
     std::string provider_b_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_URL");
+    std::string replacement_provider_url =
+      sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL");
+    std::string replacement_provider_endpoint =
+      sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_ENDPOINT");
     std::chrono::milliseconds heartbeat{
       sf_client::env_int ("ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS", 1000)};
     std::chrono::milliseconds lease_ttl{
@@ -108,8 +112,14 @@ void grace_exceeded (const options_t &options)
 {
     sf_client::stop_store ();
     try {
-        sf_client::drive_requests (options.consumer_url, "sf-b2", options.grace + options.heartbeat * 2,
-                                   "SF-B2");
+        sf_client::wait_ready (options.replacement_provider_url);
+        const auto replies = sf_client::drive_requests (
+          options.consumer_url, "sf-b2", options.grace + options.heartbeat * 2, "SF-B2");
+        sf_client::ensure (
+          std::none_of (replies.begin (), replies.end (), [] (const auto &reply) {
+              return reply.provider_rid == "api-b";
+          }),
+          "SF-B2 replacement provider served before recovery");
         const auto status = sf_client::get_status (options.consumer_url);
         sf_client::ensure (!status.store_healthy, "SF-B2 outage was not visible after grace");
     }
@@ -122,6 +132,27 @@ void grace_exceeded (const options_t &options)
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
       options.heartbeat * 10, "SF-B2 status did not recover");
+    sf_client::wait_peers (
+      options.consumer_url,
+      [&options] (const auto &peers) {
+          return std::any_of (peers.begin (), peers.end (), [&options] (const auto &peer) {
+              return peer.rid == "api-b"
+                     && peer.endpoint == options.replacement_provider_endpoint;
+          });
+      },
+      options.lease_ttl + options.polling * 12,
+      "SF-B2 replacement provider row did not appear after recovery");
+    bool replacement_used = false;
+    const auto deadline = std::chrono::steady_clock::now () + options.heartbeat * 8;
+    for (int index = 0; std::chrono::steady_clock::now () < deadline; ++index) {
+        const auto reply = sf_client::request_profile (
+          options.consumer_url, sf_client::unique_marker ("sf-b2-recovered-" + std::to_string (index)));
+        if (reply.provider_rid == "api-b") {
+            replacement_used = true;
+            break;
+        }
+    }
+    sf_client::ensure (replacement_used, "SF-B2 replacement provider was not used after recovery");
     std::cout << "scenario SF-B2 passed\n";
 }
 

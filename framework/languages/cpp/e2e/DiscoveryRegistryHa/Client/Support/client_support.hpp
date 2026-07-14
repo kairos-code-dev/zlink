@@ -96,6 +96,17 @@ inline void wait_down (const std::string &base_url)
     throw std::runtime_error ("node did not go down: " + base_url);
 }
 
+inline void wait_ready (const std::string &base_url)
+{
+    for (int i = 0; i < 120; ++i) {
+        if (try_get_health (base_url)) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("node did not become ready: " + base_url);
+}
+
 inline std::string redis_container ()
 {
     const auto container = env_or ("ZLINK_CPP_E2E_REDIS_CONTAINER");

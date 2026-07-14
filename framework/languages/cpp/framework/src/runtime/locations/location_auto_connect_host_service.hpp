@@ -179,7 +179,9 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::function<void (const target_t &)> connect_target;
         std::function<void (const target_t &)> disconnect_target;
         std::size_t discovered = 0;
+        std::map<std::string, target_t> last_desired;
         bool store_unavailable = false;
+        std::optional<std::chrono::steady_clock::time_point> store_failure_started_at;
         std::optional<std::chrono::steady_clock::time_point> reconcile_after;
         std::thread thread;
     };
@@ -295,12 +297,17 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                      .value ();
         }
         catch (...) {
+            if (!loop.store_failure_started_at) {
+                loop.store_failure_started_at = std::chrono::steady_clock::now ();
+            }
             loop.store_unavailable = true;
+            retry_pending_targets (loop);
             _runtime->record_store_error ();
             throw;
         }
         if (loop.store_unavailable) {
             loop.store_unavailable = false;
+            loop.store_failure_started_at.reset ();
             republish_after_store_recovery (loop);
             /* A restarted store can be empty. Give every live node one heartbeat
              * interval to restore its local rows before removing prior targets. */
@@ -316,6 +323,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         }
         observe_discovered (loop, rows);
         auto desired = compute_desired (loop.local, rows);
+        loop.last_desired = desired;
         trace_scan (loop.local, rows.size (), desired.size ());
         for (const auto &[key, target] : desired) {
             const auto found = loop.active.find (key);
@@ -394,6 +402,23 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         }
         loop.local_published = false;
         publish_local (loop);
+    }
+
+    void retry_pending_targets (loop_t &loop)
+    {
+        if (!loop.store_failure_started_at
+            || _runtime->options ().store_failure_grace <= std::chrono::milliseconds::zero ()
+            || std::chrono::steady_clock::now () - *loop.store_failure_started_at
+                 > _runtime->options ().store_failure_grace) {
+            return;
+        }
+        for (const auto &[key, target] : loop.last_desired) {
+            if (loop.active.contains (key)) {
+                continue;
+            }
+            connect (loop, target);
+            loop.active[key] = target;
+        }
     }
 
     std::uint32_t current_local_weight (const local_t &local) const

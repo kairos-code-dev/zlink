@@ -698,6 +698,23 @@ int main ()
                          == std::string::npos,
                   "IMP-CP-06", "auto-connect still ignores the configured polling interval");
 
+    /* E2E-CP-38 — grace is consumed and SF-B2 introduces a replacement target. */
+    gate.require (location_auto_connect.find ("store_failure_started_at") != std::string::npos
+                    && location_auto_connect.find ("store_failure_grace") != std::string::npos
+                    && location_auto_connect.find ("retry_pending_targets")
+                         != std::string::npos,
+                  "E2E-CP-38", "store_failure_grace is not consumed by auto-connect");
+    gate.require (store_failure_runner.find ("SF_B2_REPLACEMENT") != std::string::npos
+                    && store_failure_runner.find ("API_B_REPLACEMENT") != std::string::npos,
+                  "E2E-CP-38", "SF-B2 does not restart a provider on a replacement endpoint");
+    gate.require (store_failure_client.find ("replacement_provider_url")
+                    != std::string::npos
+                    && store_failure_client.find ("SF-B2 replacement provider served before recovery")
+                         != std::string::npos
+                    && store_failure_client.find ("SF-B2 replacement provider was not used after recovery")
+                         != std::string::npos,
+                  "E2E-CP-38", "SF-B2 does not prove new outbound suppression and recovery");
+
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
                     != std::string::npos,

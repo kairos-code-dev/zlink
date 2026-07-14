@@ -11,7 +11,7 @@
 | SF-A1 | 구현 | Redis location store가 정상일 때 provider 2개가 live peer row로 보이고, consumer request가 provider에 도달하며 consumer/provider runtime status가 healthy로 보인다. |
 | SF-A2 | 구현 | C++ Redis store는 watch 없이 polling 경로로 동작한다. status의 `watch_enabled=false`와 provider shutdown 뒤 peer row 제거를 public `/query/*` endpoint로 검증한다. |
 | SF-B1 | 구현 | Redis container process를 정지한 동안 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 빈 store 재기동 후 healthy로 회복된다. |
-| SF-B2 | 구현 | store failure grace를 넘긴 Redis outage 중에도 기존 연결 request는 계속 성공하고, 빈 store 재기동 후 provider rows와 status가 회복된다. |
+| SF-B2 | 구현 | Redis 정지 중 `api-b`를 새 channel endpoint에서 재기동한다. store failure grace를 넘길 때까지 기존 `api-a` 연결의 request만 성공하고, 빈 store 복구 뒤 새 endpoint row가 등록되어 `api-b`가 다시 요청을 처리한다. |
 | SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 stale row가 owner lease 만료 뒤 live peer list에서 제외되고 이후 request는 survivor `api-a`로만 간다. |
 | SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 lease TTL을 기다리지 않고 live peer list에서 제거되고 이후 request는 `api-a`로만 간다. |
 | SF-D1 | 구현 | lease TTL보다 짧게 Redis를 정지하고 빈 store로 재기동한 뒤 local row 재등록과 heartbeat 유예를 거쳐 status가 healthy로 회복되고 request가 계속 성공한다. |
@@ -21,6 +21,11 @@
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-072318-2155219`(SF-B2), 단독 검증은 `logs/20260715-072705-2167572`
+  - 의미: store 장애 중 새 endpoint로 재기동한 provider가 grace 초과와 store 복구 전에는
+    요청을 처리하지 않고, 복구 뒤 새 row를 통해 요청을 처리했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-071009-2105356`(SF-B1), `logs/20260715-071020-2106423`(SF-B2),

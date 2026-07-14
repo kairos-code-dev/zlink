@@ -19,7 +19,7 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 | `Client/Program.cs` | `Client/main.cpp` | client-entry | done | SF-A1~SF-D3 scenario 선택과 public HTTP probe driver가 있다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp` | client-support | done | env parsing, HTTP GET/POST, Redis process 정지·재기동과 readiness 확인, peer/status wait helper가 있다. |
 | `Client/Support/SfProbe.cs` | `Client/Support/client_support.hpp` | client-support | done | `/query/status`, `/query/peers`, `/profile/request`, `/health` 기반 probe를 제공한다. |
-| `Client/Support/StoreFailureProcessManager.cs` | `run_e2e.sh`, `Client/Support/client_support.hpp` | runner/client-support | done | runner가 provider/consumer와 고정 loopback host port의 Redis container를 시작하고, client가 public HTTP와 Docker stop/restart로 장애를 만든다. |
+| `Client/Support/StoreFailureProcessManager.cs` | `run_e2e.sh`, `Client/Support/client_support.hpp` | runner/client-support | done | runner가 provider/consumer와 고정 loopback host port의 Redis container를 시작한다. SF-B2에서는 Redis 정지를 확인한 뒤 `api-b`를 새 channel endpoint에서 재기동한다. client는 public HTTP와 Docker stop/restart로 장애와 복구를 제어한다. |
 | `Client/Scenarios/*.cs` | `Client/main.cpp` | scenario | done | C++은 scenario 함수를 한 파일에 둔다. SF-A1, SF-A2, SF-B1, SF-B2, SF-C1, SF-C2, SF-D1, SF-D2, SF-D3, SF-E1을 구현했다. |
 | `Client/Scenarios/SfE1StoreDelayNonBlockingScenario.cs` | `Client/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp`, `Server/Shared/location_store.hpp` | scenario | done | consumer store delay admin endpoint와 E2E 전용 delayable location store wrapper로 store read 지연을 주입하고, 지연 중 application request p99와 지연 해제 뒤 recovery request를 검증한다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/main.cpp` | provider-role | done | Redis location store, client-server channel server, runtime status endpoint, evidence endpoint, shutdown/crash endpoint를 구성한다. |
@@ -41,6 +41,11 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-072318-2155219`(SF-B2), 단독 검증은 `logs/20260715-072705-2167572`
+  - 의미: SF-B2가 장애 중 새 endpoint의 provider 재기동, grace 초과 전 구간의 기존 연결 유지,
+    복구 전 신규 연결 억제와 복구 후 신규 연결을 실제 요청으로 검증했다.
 - 2026-07-03: `cmake --build framework/languages/cpp/build-redis-vcpkg --target zlink_cpp_e2e_store_failure_provider zlink_cpp_e2e_store_failure_consumer zlink_cpp_e2e_store_failure_client -j2`
   - 결과: 통과
 - 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`

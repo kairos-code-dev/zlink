@@ -20,7 +20,7 @@ public sealed class ZLinkHttpClientBuilder
     private int _followRedirects;
     private long _maxResponseBodySize = 16 * 1024 * 1024;
     private string? _proxy;
-    private string? _proxyAuthorization;
+    private (string User, string Password)? _proxyCredentials;
     private int _retryAttempts;
     private TimeSpan _timeout = TimeSpan.FromMilliseconds(3000);
     private string? _trustCertificateFile;
@@ -138,7 +138,7 @@ public sealed class ZLinkHttpClientBuilder
     public ZLinkHttpClientBuilder ProxyBasicAuth(string user, string password)
     {
         HttpClientText.RequireNonBlank(user, "HTTP client proxy auth user is required");
-        _proxyAuthorization = HttpClientText.BasicAuthorization(user, password);
+        _proxyCredentials = (user, password);
         return this;
     }
 
@@ -172,7 +172,7 @@ public sealed class ZLinkHttpClientBuilder
             RetryAttempts = _retryAttempts,
             Cookies = _cookies,
             Proxy = _proxy,
-            ProxyAuthorization = _proxyAuthorization,
+            ProxyCredentials = _proxyCredentials,
             Compression = _compression
         };
 

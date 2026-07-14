@@ -295,7 +295,8 @@
   — 등록된 Spot 타입의 스캔 timer를 host 시작에서 검증하고 runtime 생성과 같은 이름·주기·overrun 규칙을 사용한다. 관련 테스트 47건, 전체 unit 629건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-11** (결함) — connector가 **짝 없는 `Response`/`Error`를 수신 큐에 적재**한다
   — pending 매칭이 끝난 뒤 짝 없는 `Response`는 폐기하고 짝 없는 `Error`는 `RemoteError`로 전달한다. 두 실패 게이트, connector 전체 130건, framework unit 634건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-12** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘리고**, CONNECT는 인증 없이 나간다
+- [x] **IMP-DN-12** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘리고**, CONNECT는 인증 없이 나간다
+  — proxy user/password는 transport options에 보존해 `WebProxy.Credentials`로만 설정하고 origin request header에는 추가하지 않는다. 누출·인증 실패 게이트 2건, HTTP client 전체 56건, framework unit 636건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-13** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다
   — frame sender가 압축 여부와 관계없이 실제 wire payload가 확정된 뒤 송신 한도를 검사한다. 압축 축소·확대 실패 게이트 2건, connector 전체 132건, framework unit 634건, sample regression 39건이 통과했다.
 
@@ -307,7 +308,7 @@
 | **IMP-DN-09** | [52 §9](../server/52-message-flow-tracing.ko.md): `correlation_id`는 **보내는 client가 생성**하고 **server는 echo만** 한다. **서버는 ingress에서 생성하지 않는다** | 재검증에서 `ZLinkStreamSessionRuntime` 2곳뿐 아니라 session context와 actor/Entry/Spot dispatch 6곳도 `CorrelationId ?? RequestSeq`를 사용한다는 사실을 확인했다. `request_seq`는 연결별 값이라 서로 다른 세션을 같은 `corr`로 합친다. 여덟 fallback을 모두 제거해 wire correlation이 없으면 downstream 관측에도 correlation이 없다 |
 | **IMP-DN-10** | [25 §4.1](../server/25-stage-wrapper-on-spot.ko.md): 빈 이름·`period ≤ 0`·`catch-up ≤ 0`은 **host 시작 또는 등록 시점**의 설정 오류 | `ZLinkScannedSpotHandlers.cs:86-90` — scanner가 `[ZLinkSpotTimerHandler(name, 0)]`을 **검증 없이** descriptor로 만든다. 검사는 `ZLinkSpotTimerRegistry.cs:48-60`(**활성화 시점**)에만 있다. ⇒ host는 healthy로 기동하고 **첫 방 생성부터 전부 실패**한다. Java는 startup scan에서 잡는다 |
 | **IMP-DN-11** | [32 §10.1·§9](../stream-connector/32-stream-connector.ko.md): response·error·heartbeat는 **수신 한도에 넣지 않는다**. request id가 부합하지 않는 error는 `RemoteError` | pending request와 매칭되지 않은 `Response`는 application 수신 큐에 넣지 않고 폐기한다. 매칭되지 않은 `Error`는 request sequence 유무와 관계없이 `RemoteError` 표면으로 전달한다 |
-| **IMP-DN-12** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md): proxy 인증 정보는 **대상 서버로 새지 않아야 한다**(**CONNECT tunnel 요청에만** 실림) | `Zlink.HttpClient/Runtime/RequestPerformer.cs:132-133` — `Proxy-Authorization`을 **매 요청 메시지 헤더**에 붙인다. `https://` 대상이면 그 헤더는 **CONNECT 터널 안쪽을 타고 원본 서버까지 간다.** 정작 `HttpTransportFactory.cs:27-31`의 `new WebProxy(...)`에는 **credential이 없어서 CONNECT 자체는 인증 없이** 나간다. ⇒ proxy 인증은 407로 실패하고, **그 자격증명은 엉뚱한 서버 손에 들어간다.** C++·Node는 올바르다 |
+| **IMP-DN-12** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md): proxy 인증 정보는 **대상 서버로 새지 않아야 한다**(**CONNECT tunnel 요청에만** 실림) | proxy credential은 request header 조립에서 제거하고 `HttpTransportFactory`가 만드는 `WebProxy.Credentials`에만 설정한다. 따라서 proxy 인증은 CONNECT/평문 proxy 요청에서 transport가 처리하며 origin request message에는 노출되지 않는다 |
 | **IMP-DN-13** | [32 §4.7](../stream-connector/32-stream-connector.ko.md): 한도는 payload 바이트에만 적용하며 **압축을 쓰면 압축된 payload 기준**이다 | frame sender가 선택적 압축을 먼저 끝내고 실제 wire payload 길이를 한 번 검사한다. 압축으로 한도 아래가 된 payload는 허용하고 커스텀 codec 결과가 한도를 넘으면 transport write 전에 거부한다 |
 
 ## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합

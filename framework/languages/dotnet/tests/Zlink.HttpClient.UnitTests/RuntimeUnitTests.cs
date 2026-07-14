@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 using System.IO.Compression;
+using System.Net;
 using System.Text;
 using Xunit;
 using Zlink.Framework.Contracts.Errors;
@@ -156,6 +157,66 @@ public sealed class RuntimeUnitTests
         var stripped = HttpHeaderLookup.Without(headers, "content-length", "content-encoding");
         Assert.False(stripped.ContainsKey("CONTENT-LENGTH"));
         Assert.Equal("keep", stripped["x-marker"]);
+    }
+
+    [Fact]
+    public async Task Proxy_credentials_are_not_added_to_origin_request_headers()
+    {
+        var handler = new CapturingRequestHandler();
+        using var httpClient = new System.Net.Http.HttpClient(handler);
+        var options = CreateProxyOptions();
+        var performer = new RequestPerformer(options, new CookieJar(), httpClient);
+        var request = new HttpRequestSpec
+        {
+            Method = ZLinkHttpMethod.Get,
+            Target = "/resource",
+            Headers = new Dictionary<string, string>()
+        };
+
+        _ = await performer.PerformAsync(request, CancellationToken.None);
+
+        Assert.Null(handler.ProxyAuthorization);
+    }
+
+    [Fact]
+    public void Proxy_credentials_are_configured_on_transport_proxy()
+    {
+        using var transport = HttpTransportFactory.Create(CreateProxyOptions());
+
+        var proxy = Assert.IsType<WebProxy>(transport.Handler.Proxy);
+        var credentials = Assert.IsType<NetworkCredential>(proxy.Credentials);
+        Assert.Equal("proxy-user", credentials.UserName);
+        Assert.Equal("proxy-password", credentials.Password);
+    }
+
+    private static HttpClientOptions CreateProxyOptions()
+    {
+        return new HttpClientOptions
+        {
+            BaseUrl = "https://origin.test",
+            Headers = new Dictionary<string, string>(),
+            Codecs = new HttpClientCodecRegistry(),
+            Proxy = "http://proxy.test:3128",
+            ProxyCredentials = ("proxy-user", "proxy-password")
+        };
+    }
+
+    private sealed class CapturingRequestHandler : HttpMessageHandler
+    {
+        public string? ProxyAuthorization { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            ProxyAuthorization = request.Headers.TryGetValues("Proxy-Authorization", out var values)
+                ? values.Single()
+                : null;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([])
+            });
+        }
     }
 
     private static byte[] GzipBytes(byte[] input)

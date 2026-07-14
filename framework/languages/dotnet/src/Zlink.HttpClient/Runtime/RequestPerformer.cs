@@ -129,9 +129,6 @@ internal sealed class RequestPerformer(
 
         if (options.Compression) message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
 
-        if (options.ProxyAuthorization is not null && options.Proxy is not null)
-            message.Headers.TryAddWithoutValidation("Proxy-Authorization", options.ProxyAuthorization);
-
         ApplyHeaders(message, options.Headers, keepAuthorization);
         ApplyHeaders(message, requestHeaders, keepAuthorization);
 

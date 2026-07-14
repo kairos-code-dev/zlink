@@ -27,7 +27,10 @@ internal static class HttpTransportFactory
         if (options.Proxy is not null)
         {
             handler.UseProxy = true;
-            handler.Proxy = new WebProxy(options.Proxy);
+            var proxy = new WebProxy(options.Proxy);
+            if (options.ProxyCredentials is { } credentials)
+                proxy.Credentials = new NetworkCredential(credentials.User, credentials.Password);
+            handler.Proxy = proxy;
         }
         else
         {

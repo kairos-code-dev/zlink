@@ -32,7 +32,7 @@ internal sealed class HttpClientOptions
 
     public string? Proxy { get; init; }
 
-    public string? ProxyAuthorization { get; init; }
+    public (string User, string Password)? ProxyCredentials { get; init; }
 
     public bool Compression { get; init; }
 }

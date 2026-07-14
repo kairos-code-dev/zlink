@@ -92,6 +92,10 @@ if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
   echo "ObservabilityOps must use 3s readiness and 5s route settle limits" >&2
   exit 1
 fi
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Trigger/src/main/java --glob '*.java'; then
+  echo "ObservabilityOps trigger must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 reserve_ports() {
   python3 - <<'PY'

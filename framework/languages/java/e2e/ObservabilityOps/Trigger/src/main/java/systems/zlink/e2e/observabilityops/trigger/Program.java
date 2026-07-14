@@ -14,11 +14,10 @@ import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.file.Path;
 import java.util.List;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import systems.zlink.httpclient.RawHttpResponse;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 /** Sends a real unknown packet so the Session runtime emits received and error flow events. */
 public final class Program {
@@ -150,8 +149,21 @@ public final class Program {
         })) {
             connector.connect().submit().toCompletableFuture().join();
             probeLifecycle(connector);
-            HttpRequest request = HttpRequest.newBuilder(URI.create(drainUrl)).GET().build();
-            HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
+            URI target = URI.create(drainUrl);
+            String baseUrl = target.getScheme() + "://" + target.getRawAuthority();
+            String path = target.getRawPath();
+            if (target.getRawQuery() != null) {
+                path += "?" + target.getRawQuery();
+            }
+            RawHttpResponse response = ZLinkHttpClient.create(baseUrl)
+                .get(path)
+                .submitRaw()
+                .toCompletableFuture()
+                .join();
+            if (response.status() < 200 || response.status() >= 300) {
+                throw new IllegalStateException(
+                    "drain request returned " + response.status() + ": " + response.body());
+            }
             String closeReason = disconnected.get(15, TimeUnit.SECONDS);
             new ObjectMapper().writeValue(output.toFile(), Map.of("closeReason", closeReason));
         } finally {

@@ -454,8 +454,9 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 이 작업의 범위는 이 장부 외의 공통 spec과 갭 인덱스를 읽기 전용으로 제한하므로,
 결정 선택지는 여기에 기록하고 공통 문서는 수정하지 않았다.
 
-- **IMP-DN-03** — core의 send-ready 알림은 공개 `.NET` binding에 노출되지 않는다. 선택지는
-  binding에 대기 가능한 send-ready 공개 API를 추가해 bounded pending queue가 사용하게 하거나,
+- **IMP-DN-03** — 일반 socket의 send-ready는 공개됐지만 bound-session 전송을 담당하는
+  `ISpotNode.SendBoundSession()`의 send-ready는 공개 `.NET` binding에 없다. 선택지는 binding에
+  이 전송 경로의 send-ready 공개 API를 추가해 bounded pending queue가 사용하게 하거나,
   pending queue 계약을 바꾸는 것이다. 재시도·sleep·blocking send는 정본이 금지하므로 선택지가 아니다.
 - **IMP-DN-14** — socket config 중 `HandshakeInterval`만 공개 binding에서 설정할 수 없다.
   선택지는 binding에 해당 option을 추가하거나 framework 공개 config에서 이 항목을 제거하도록

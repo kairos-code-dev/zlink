@@ -15,7 +15,7 @@ import {
   compressPayload,
   decompressIfNeeded
 } from './Compression/ZlinkStreamCompressionCodec';
-import { ZlinkStreamFrameCodec } from './ZlinkStreamFrameCodec';
+import { splitZlinkStreamFrames, ZlinkStreamFrameCodec } from './ZlinkStreamFrameCodec';
 import { buildHeader, ZlinkStreamHeaderCodec } from './ZlinkStreamHeaderCodec';
 
 export const ZLINK_STREAM_HEARTBEAT_PING = '$zlink.heartbeat.ping';
@@ -58,6 +58,13 @@ export class ZlinkStreamFrameProtocol {
       header: ZlinkStreamHeaderCodec.decode(frame.header),
       payload: frame.payload
     };
+  }
+
+  decodeFrames(chunk: Uint8Array): readonly {
+    readonly header: ZlinkStreamHeader;
+    readonly payload: Uint8Array;
+  }[] {
+    return splitZlinkStreamFrames(chunk).map((frame) => this.decode(frame));
   }
 
   decodePayload(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {

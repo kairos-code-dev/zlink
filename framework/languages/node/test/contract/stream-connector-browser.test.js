@@ -25,7 +25,7 @@ test('package root rejects tcp and tls immediately', () => {
   }
 });
 
-test('package root uses the native WebSocket API for request reply and push', async () => {
+test('package root dispatches every stream frame in one native WebSocket message', async () => {
   const originalWebSocket = globalThis.WebSocket;
   const originalCrypto = globalThis.crypto;
   globalThis.WebSocket = FakeWebSocket;
@@ -36,7 +36,8 @@ test('package root uses the native WebSocket API for request reply and push', as
       endpoint: 'wss://browser.example.test/stream',
       heartbeat: { enabled: false }
     });
-    const pushed = new Promise((resolve) => instance.on('BrowserPush', resolve));
+    const pushed = [];
+    instance.on('BrowserPush', (message) => pushed.push(new TextDecoder().decode(message.payload.payload)));
 
     await instance.connect();
     assert.equal(FakeWebSocket.last.url, 'wss://browser.example.test/stream');
@@ -49,9 +50,7 @@ test('package root uses the native WebSocket API for request reply and push', as
 
     await instance.dispatch();
     assert.equal(new TextDecoder().decode((await pending).payload), 'reply');
-
-    await instance.dispatch();
-    assert.equal(new TextDecoder().decode((await pushed).payload.payload), 'push');
+    assert.deepEqual(pushed, ['progress', 'completed']);
     await instance.close();
     assert.equal(FakeWebSocket.last.closed, true);
   } finally {
@@ -207,15 +206,20 @@ class FakeWebSocket {
       requestSeq: header.requestSeq,
       name: header.name
     }, 'reply');
-    const push = encodeFrame({
+    const progress = encodeFrame({
       kind: browserEntry.ZlinkStreamMessageKind.Send,
       codec: browserEntry.ZlinkStreamCodec.Raw,
       flags: browserEntry.ZlinkStreamHeaderFlags.None,
       name: 'BrowserPush'
-    }, 'push');
+    }, 'progress');
+    const completed = encodeFrame({
+      kind: browserEntry.ZlinkStreamMessageKind.Send,
+      codec: browserEntry.ZlinkStreamCodec.Raw,
+      flags: browserEntry.ZlinkStreamHeaderFlags.None,
+      name: 'BrowserPush'
+    }, 'completed');
     queueMicrotask(() => {
-      this.emit('message', { data: exactArrayBuffer(response) });
-      this.emit('message', { data: exactArrayBuffer(push) });
+      this.emit('message', { data: exactArrayBuffer(concatenate(response, progress, completed)) });
     });
   }
 
@@ -268,4 +272,14 @@ function encodeFrame(header, payload) {
 
 function exactArrayBuffer(bytes) {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+function concatenate(...chunks) {
+  const combined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return combined;
 }

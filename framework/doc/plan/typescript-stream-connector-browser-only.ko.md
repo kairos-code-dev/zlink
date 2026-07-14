@@ -159,20 +159,18 @@ browser TypeScript connector를 한 문서에 함께 두고 있다. 이 파일�
 
 ### 5.3 비동기 flow 계약 결정
 
-현재 `BrowserZlinkFlowContext`는 handler가 반환한 Promise가 끝날 때까지 connector instance의
-현재 flow를 유지한다. 이 방식은 같은 instance에서 실행되는 관련 없는 callback에 inbound flow를
-노출할 수 있으므로 그대로 완료 처리하지 않는다.
-
-G1에서 최소 두 설계를 비교한다.
+G1에서는 다음 두 설계를 비교했다.
 
 1. handler와 후속 send/request 호출에 flow context를 명시적으로 전달하고 ambient context에
    의존하지 않는 계약
 2. 브라우저에서 지원되는 표준 또는 검증된 runtime을 사용해 비동기 작업별 context를 격리하는 계약
 
-호출자가 알아야 하는 상태와 public signature가 더 적고, unrelated callback 격리를 실제
-Chromium에서 증명할 수 있는 설계를 선택한다. 전역 Promise, timer와 event callback을 monkey
-patch하는 방식은 사용하지 않는다. 선택한 계약을 `53-flow-correlation.ko.md`와 TypeScript public
-interface에 먼저 반영한 뒤 runtime과 E2E를 구현한다.
+첫 번째 설계를 선택했다. inbound message와 관련된 outbound만 call builder의
+`flowFrom(message)`로 flow를 명시적으로 전달한다. 이 메서드를 호출하지 않은 send/request는
+`origin=application`인 새 flow를 사용한다. 따라서 connector instance에 ambient flow를 유지하지
+않고도 관련 없는 callback을 격리한다. 전역 Promise, timer와 event callback을 monkey patch하지
+않는다. 이 계약은 `53-flow-correlation.ko.md`와 TypeScript public interface에 반영했으며, 실제
+Chromium에서 관련 outbound의 flow 유지와 동시 callback의 새 application flow를 검증했다.
 
 ### 5.4 사용자 guide
 

@@ -51,9 +51,9 @@ export class ZlinkStreamReceiveDispatcher {
     if (frameBytes === undefined) {
       return { available: false, inbound: false };
     }
-    let frame: ReturnType<ZlinkStreamFrameProtocol['decode']>;
+    let frames: ReturnType<ZlinkStreamFrameProtocol['decodeFrames']>;
     try {
-      frame = this.protocol.decode(frameBytes);
+      frames = this.protocol.decodeFrames(frameBytes);
     } catch (cause) {
       await this.events.publishError(
         toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Frame decode failed.'),
@@ -61,19 +61,21 @@ export class ZlinkStreamReceiveDispatcher {
       );
       return { available: true, inbound: false };
     }
-    try {
-      await this.dispatch(connection, frame.header, frame.payload, signal);
-    } catch (cause) {
-      if (
-        frame.header.kind === ZlinkStreamMessageKind.Control &&
-        frame.header.name === ZLINK_STREAM_HEARTBEAT_PING
-      ) {
-        throw cause;
+    for (const frame of frames) {
+      try {
+        await this.dispatch(connection, frame.header, frame.payload, signal);
+      } catch (cause) {
+        if (
+          frame.header.kind === ZlinkStreamMessageKind.Control &&
+          frame.header.name === ZLINK_STREAM_HEARTBEAT_PING
+        ) {
+          throw cause;
+        }
+        await this.events.publishError(
+          toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Frame dispatch failed.'),
+          signal
+        );
       }
-      await this.events.publishError(
-        toStreamError(cause, ZlinkStreamErrorCode.FrameDecodeFailed, 'Frame dispatch failed.'),
-        signal
-      );
     }
     return { available: true, inbound: true };
   }

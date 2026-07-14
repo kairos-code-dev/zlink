@@ -23,8 +23,10 @@ class BrowserTestSession {
       throw new Error(`Unsupported browser test packet '${dispatch.packetName}'.`);
     }
     const request = payload.decode(Object);
+    process.stdout.write(`${JSON.stringify({ event: 'dispatch', value: request.value })}\n`);
     this.context.client.send(new EchoPush(request.value)).submit();
     this.context.client.reply({ value: request.value }).submit();
+    process.stdout.write(`${JSON.stringify({ event: 'replied', value: request.value })}\n`);
   }
 }
 

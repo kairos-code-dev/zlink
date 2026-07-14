@@ -32,10 +32,7 @@ test('actual Chromium uses ws/wss, explicit flow, reconnect, drain, and browser 
     ]);
     await page.evaluate((endpoint) => window.browserConnectorTest.connect(endpoint), `ws://127.0.0.1:${wsPort}`);
     const explicitFlowId = '019f5c16-14f8-7701-9438-753e036a9b94';
-    assert.deepEqual(await page.evaluate(
-      ([value, flow]) => window.browserConnectorTest.request(value, flow),
-      ['plain-ws', explicitFlowId]
-    ), { value: 'plain-ws' });
+    assert.deepEqual(await requestFromPage(page, 'plain-ws', wsServer, explicitFlowId), { value: 'plain-ws' });
     const flowState = await page.evaluate(() => window.browserConnectorTest.state());
     assert(flowState.observations.some((row) => row.flowId === explicitFlowId));
 
@@ -43,18 +40,14 @@ test('actual Chromium uses ws/wss, explicit flow, reconnect, drain, and browser 
     await page.waitForFunction(() => window.browserConnectorTest.state().connectionState !== 'connected', null, { timeout: 10_000 });
     wsServer = await startStreamServer(`ws://127.0.0.1:${wsPort}`);
     await page.waitForFunction(() => window.browserConnectorTest.state().connectionState === 'connected', null, { timeout: 10_000 });
-    assert.deepEqual(await page.evaluate(
-      () => window.browserConnectorTest.request('after-reconnect')
-    ), { value: 'after-reconnect' });
+    assert.deepEqual(await requestFromPage(page, 'after-reconnect', wsServer), { value: 'after-reconnect' });
 
     await assert.rejects(
       () => untrustedPage.evaluate((endpoint) => window.browserConnectorTest.connect(endpoint), `wss://127.0.0.1:${wssPort}`),
       /connect|WebSocket|transport/i
     );
     await securePage.evaluate((endpoint) => window.browserConnectorTest.connect(endpoint), `wss://127.0.0.1:${wssPort}`);
-    assert.deepEqual(await securePage.evaluate(
-      () => window.browserConnectorTest.request('secure-wss')
-    ), { value: 'secure-wss' });
+    assert.deepEqual(await requestFromPage(securePage, 'secure-wss', wssServer), { value: 'secure-wss' });
 
     await stopStreamServer(wsServer);
     await page.waitForFunction(() => {
@@ -120,6 +113,7 @@ function startStreamServer(endpoint, cert, privateKey) {
       if (!output.includes('"event":"ready"')) return;
       clearTimeout(timer);
       child.stdout.off('data', check);
+      child.capturedOutput = () => output;
       resolve(child);
     };
     child.stdout.on('data', check);
@@ -130,6 +124,18 @@ function startStreamServer(endpoint, cert, privateKey) {
       }
     });
   });
+}
+
+async function requestFromPage(page, value, server, explicitFlowId) {
+  try {
+    return await page.evaluate(
+      ([requestValue, flow]) => window.browserConnectorTest.request(requestValue, flow),
+      [value, explicitFlowId]
+    );
+  } catch (error) {
+    error.message += `\nstream server output for '${value}':\n${server.capturedOutput?.() ?? '<unavailable>'}`;
+    throw error;
+  }
 }
 
 async function stopStreamServer(child) {

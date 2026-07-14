@@ -250,7 +250,6 @@ lines.push(
   '  let offset = 0;',
   '  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }',
   '  return result;',
-  '}',
-  ''
+  '}'
 );
 fs.writeFileSync(outputPath, `${lines.join('\n')}\n`);

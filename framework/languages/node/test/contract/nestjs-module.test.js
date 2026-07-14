@@ -64,6 +64,12 @@ function fakeSpotRouteBridge(calls, reply) {
   };
 }
 
+let ipcEndpointSequence = 0;
+function uniqueIpcEndpoint(label) {
+  ipcEndpointSequence += 1;
+  return `ipc://${path.join(os.tmpdir(), `zlink-node-nest-${process.pid}-${ipcEndpointSequence}-${label}.sock`)}`;
+}
+
 function createNoopMonitoringAdapter() {
   return {
     openSocketMonitor() {
@@ -896,7 +902,7 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
 });
 
 test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () => {
-  const spotEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = uniqueIpcEndpoint('spot-factory');
   class SpotDependency {
     constructor() {
       this.marker = 'spot-di';
@@ -931,7 +937,7 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
 });
 
 test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
-  const spotEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = uniqueIpcEndpoint('entry-spot');
   class EntryDependency {
     constructor() {
       this.initialized = false;
@@ -966,7 +972,7 @@ test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
 });
 
 test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () => {
-  const spotEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = uniqueIpcEndpoint('actor-factory');
   class ActorDependency {
     constructor() {
       this.marker = 'actor-di';
@@ -1005,8 +1011,8 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
 });
 
 test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from NestJS providers', async () => {
-  const spotEndpoint = await reserveTcpEndpoint();
-  const spotPubSubEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = uniqueIpcEndpoint('handler-router');
+  const spotPubSubEndpoint = uniqueIpcEndpoint('handler-pubsub');
   class PlayerActor {}
   class EntrySpot {}
   class RoomSpot {}
@@ -1615,7 +1621,7 @@ test('ZLinkModule.forRoot exposes SpotHandle resolvers from location stores', as
 });
 
 test('ZLinkModule.forRootFactory exposes capability providers through the real NestJS app context', async () => {
-  const spotEndpoint = await reserveTcpEndpoint();
+  const spotEndpoint = uniqueIpcEndpoint('async-capabilities');
   class AsyncSpot {
     constructor(context) {
       this.context = context;

@@ -36,7 +36,7 @@ snapshot을 함께 갱신해야 한다.
 | common | `25-stage-wrapper-on-spot.ko.md` | `d837409648b996bf010ac1c9509f24d3679d58948006c121eff61963ddc01c3c` |
 | common | `30-stream-session.ko.md` | `fde5faaec066875870711a8f52d5fbfb543f80ddc102b83917eae3b6fc47b0fd` |
 | common | `31-session-actor-dispatch.ko.md` | `4dac9b99fd195db97cf3f9bc375749311b7bbfac69e31749fbb203ad79a2ea8a` |
-| common | `32-stream-connector.ko.md` | `120235ca9f94d5e2431f79c2a618ff089d44ebc74698e0144a2f6429c3a1403d` |
+| common | `32-stream-connector.ko.md` | `d4a31891d52aef16cb76af2f6c51149c8a5eff8f3b7b05486cff0680659aa56e` |
 | common | `40-location-runtime.ko.md` | `e5f0140d6f37cb592be91d989005983192705970efcf9f5e2defbd75083416a6` |
 | common | `41-location-store-redis.ko.md` | `253e1a9fdd6ab9041a4158f09c64b6a36e4a55d5d019b3627397c4870ff1f210` |
 | common | `50-runtime-monitoring.ko.md` | `7c9fc83fc43202fae89864a8870b646ad788c7e49f85c4b3c5ec785274b49a94` |
@@ -44,7 +44,7 @@ snapshot을 함께 갱신해야 한다.
 | common | `52-message-flow-tracing.ko.md` | `516df0e441d62169b57ae642d8e9301778c8d8e8ac7a849a9703bd7c02f6731e` |
 | common | `53-flow-correlation.ko.md` | `e897e8f98cdffb4f430f714ff6cf0cd47b1e7049cca9653f56fdb605d92a1696` |
 | common | `54-graceful-drain-handoff.ko.md` | `4b9d03746a5601bc468f6df7c1c9995d5f761572f515f92e39eb0834c62a6602` |
-| common | `90-implementation-gap.ko.md` | `cb5e9a1fa449b095b87747b4fdf193ffc6abc790d2482d15208cdeb0019618df` |
+| common | `90-implementation-gap.ko.md` | `478d9040b7e39c33ecf8b99f6995301b4f7a7557150b0739b88614d1167bffcb` |
 | common | `README.ko.md` | `a7e2944d4f73accc42e4efe35f7758048361ab6fb584ffaab61fbf5d3749950e` |
 | node | `01-system-structure.ko.md` | `cf0e84a121a6c8b22244aa9fbfb5e5ba16c54648ad9b78eaf64a80801c795121` |
 | node | `02-handler-interfaces.ko.md` | `b8a10ef906f4ad0f2a2821122df6d08f219b225ae45cb61871154d8b92d488c3` |

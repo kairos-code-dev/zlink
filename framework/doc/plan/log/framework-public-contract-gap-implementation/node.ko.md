@@ -26,4 +26,11 @@
 | 2026-07-13 | G2 | 작업 tree | one-way `submit()`의 runtime/queue 동기 수락 계약 회귀 수정 | 0 | PASS | runtime 미시작, queue full, 즉시 transport 오류가 동기 예외이며 `channel-client.test.js` 69/69 PASS |
 | 2026-07-13 | G0 | 작업 tree | binding 중앙 pin, lock, 설치 graph를 9.0.1로 정렬 | 0 | PASS | archive SHA-256 `f0d15bac...19f31e`; `npm ls @zlink-systems/zlink --all`에서 9.0.1 단일 resolve |
 | 2026-07-13 | G6 | 작업 tree | 보완한 `npm run verify:cross-language` | 0 | PASS | fanout, route-mesh, STREAM session-closing, Redis row의 Node↔`.NET` 양방향 13개 marker PASS |
-| 2026-07-13 | G4/G7 | 작업 tree | adversarial 재검토 finding 수정 | 0 | 진행 | 정식 spec/guide 정렬과 review manifest 기록 완료; 별도 read-only 최종 reviewer 판정 대기 |
+| 2026-07-14 | G4 | 작업 tree | browser/runtime 변경 후 DDD/POSD adversarial 재검토 | 0 | PASS | coalesced frame 분리, session actor binding 교체와 publish readiness가 기존 책임 경계 안에 있으며 `NO DDD/POSD FINDINGS` |
+| 2026-07-14 | G6 | 작업 tree | `./e2e/run_e2e_all.sh` | 0 | PASS | config 1~11의 공통 scenario 181개, aggregate `total PASS (1135s)`; ST-F3와 SM-C4 수정 후 전체 재실행 |
+| 2026-07-14 | G6 | 작업 tree | Chromium 집중 반복 검증 | 0 | PASS | GameQuest 20/20, SpotActorTransfer ST-F3 10/10, SpotService SM-C4 10/10 |
+| 2026-07-14 | G3 | 작업 tree | `npm run verify:coverage` | 0 | PASS | all files lines 82.67%, branches 81.98%, functions 82.51% |
+| 2026-07-14 | G3 | 작업 tree | `npm run verify:ci` | 0 | PASS | build, typecheck, lint와 CI 대상 contract/unit/integration 전체 PASS |
+| 2026-07-14 | G1/G7 | 작업 tree | `./scripts/verify_packaged_contract.sh` | 0 | PASS | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |
+| 2026-07-14 | G7 | 작업 tree | `npm run verify:release` | 0 | PASS | ABI, P0, sample, Node 20/22 runtime matrix와 cross-language 13개 marker PASS |
+| 2026-07-14 | G4/G7 | 작업 tree | 최종 contract, package와 source 재검토 | 0 | PASS | browser-only connector와 framework gap 범위에 미해결 finding 없음; Node.js G0~G7 완료 |

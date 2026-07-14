@@ -467,7 +467,8 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   }
   assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE/);
   assert.match(runSample, /DELIVERYDISPATCH_SESSION_STREAM/);
-  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.match(runSample, /ws:\/\/127\.0\.0\.1/);
+  assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE="tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.doesNotMatch(serverMain, /courier-gateway/);
   assert.doesNotMatch(serverMain, /role === 'dispatch-api'|role === 'dispatch-center'|role === 'session'/);
@@ -586,7 +587,8 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(runSample, /start_role mission-b/);
   assert.match(runSample, /start_role api-a/);
   assert.match(runSample, /start_role api-b/);
-  assert.match(runSample, /wait_tcp_endpoint mission-a "\$\{GAMEQUEST_MISSION_A_ROUTE\}"/);
+  assert.match(runSample, /wait_transport_endpoint mission-a "\$\{GAMEQUEST_MISSION_A_ROUTE\}"/);
+  assert.match(runSample, /GAMEQUEST_MISSION_A_ROUTE="ipc:\/\//);
   assert.match(runSample, /wait_http api-a "\$\{GAMEQUEST_API_A_HTTP\}"/);
   assert.match(runSample, /GAMEQUEST_API_A_HTTP/);
   assert.match(runSample, /GAMEQUEST_API_B_HTTP/);
@@ -604,7 +606,8 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(runSamplePs1, /@\("create"/);
   assert.match(runSamplePs1, /"redis-cli", "PING"/);
   assert.doesNotMatch(runSamplePs1, /ready\.length >= 2/);
-  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.match(runSample, /GAMEQUEST_API_A_STREAM="ws:\/\/127\.0\.0\.1/);
+  assert.match(runSample, /GAMEQUEST_MISSION_A_ROUTE="ipc:\/\/\$\{WORK_DIR\}/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
@@ -1845,7 +1848,11 @@ test('node sample runners own server process orchestration', () => {
     const shellRequired = roleRunner
       ? [
           'start_role',
-          sample === 'DeliveryDispatch.Ts' ? 'wait_port' : 'wait_tcp_endpoint',
+          sample === 'DeliveryDispatch.Ts'
+            ? 'wait_port'
+            : sample === 'GameQuest.Ts'
+              ? 'wait_transport_endpoint'
+              : 'wait_tcp_endpoint',
           'trap cleanup EXIT',
           clientCommand
         ]
@@ -1926,6 +1933,17 @@ test('node sample runners own server process orchestration', () => {
 
 test('node sample runners isolate Redis and application ports without Docker volumes', () => {
   const violations = [];
+  const redisHelper = fs.readFileSync(path.join(workspaceRoot, 'e2e/redis-container.sh'), 'utf8');
+  for (const [label, pattern] of [
+    ['redis-helper:publish-deadline', /redis_container_endpoint\(\)[\s\S]*deadline=/],
+    ['redis-helper:publish-wait', /redis_container_endpoint\(\)[\s\S]*while \(\( SECONDS < deadline \)\)/],
+    ['redis-helper:published-host-port', /redis_container_endpoint\(\)[\s\S]*HostPort/],
+    ['redis-helper:reachable-host-port', /redis_container_endpoint\(\)[\s\S]*\/dev\/tcp\/127\.0\.0\.1/]
+  ]) {
+    if (!pattern.test(redisHelper)) {
+      violations.push(label);
+    }
+  }
   for (const sample of topologySamples) {
     const shell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
     const powershell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
@@ -1948,6 +1966,12 @@ test('node sample runners isolate Redis and application ports without Docker vol
     }
     if (/127\.0\.0\.1:\d{4,5}/.test(powershell)) {
       violations.push(`${sample}:ps1:fixed-application-port`);
+    }
+  }
+  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts', 'SupportChat.Ts']) {
+    const shell = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
+    if (!/print_failure_logs/.test(shell) || !/tail -n 80/.test(shell)) {
+      violations.push(`${sample}:sh:hidden-role-failure`);
     }
   }
 

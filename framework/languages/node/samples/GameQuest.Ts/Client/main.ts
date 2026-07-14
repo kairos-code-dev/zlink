@@ -55,6 +55,9 @@ function createClient(endpoint: string, name: string): ZlinkStreamConnector {
       `bytes=${observation.payloadLength}`
     );
   });
+  client.onErrorReceived((error) => {
+    console.error(`stream-error sample=GameQuest client=${name} code=${error.code} message=${error.message}`);
+  });
   return client;
 }
 

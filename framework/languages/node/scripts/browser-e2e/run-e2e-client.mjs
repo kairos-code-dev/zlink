@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { listenOnBrowserSafeLoopbackPort } from './browser-safe-listen.mjs';
 
 const separator = process.argv.indexOf('--');
 const entry = process.argv[2];
@@ -41,10 +42,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-await new Promise((resolve, reject) => {
-  server.once('error', reject);
-  server.listen(0, '127.0.0.1', resolve);
-});
+await listenOnBrowserSafeLoopbackPort(server);
 
 const browser = await chromium.launch({ headless: true });
 try {

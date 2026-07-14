@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { listenOnBrowserSafeLoopbackPort } from './browser-safe-listen.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, '../..');
@@ -192,13 +193,7 @@ function requireEnv(name) {
 }
 
 function listen(server) {
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
+  return listenOnBrowserSafeLoopbackPort(server);
 }
 
 function close(server) {

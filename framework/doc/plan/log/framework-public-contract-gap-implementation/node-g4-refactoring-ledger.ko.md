@@ -130,4 +130,12 @@ WebSocket message에 넣는 결정적 contract test와 실제 Chromium GameQuest
 등록한다. native unbind가 발생하지 않는 결정적 contract test와 실제 Chromium `ST-F3` 10회 연속
 실행으로 packet 누락이 해소됐는지 확인했다.
 
+다음 전체 E2E 재검증에서는 publish-only gateway의 HTTP health가 SPOT pub/sub peer 연결 전에도 준비
+완료를 반환해, 시작 직후 publish가 연결되지 않은 socket에서 유실되는 시간 결합을 확인했다. 임의
+대기나 시험 publish를 반복하는 방법과 정식 runtime monitoring의 peer 상태를 readiness로 사용하는
+방법을 비교해 후자를 선택했다. gateway health는 `SpotMesh` peer가 `Connected` 상태인 경우에만 준비
+완료를 반환한다. 따라서 fixture가 transport 안정화 시간을 추측하지 않고 framework가 제공하는 연결
+상태를 사용한다. 실제 Chromium `SM-C4`를 10회 연속 실행해 publish-only gateway의 event가 구독
+spot에 도달하고 미구독 spot에는 전달되지 않는지 확인했다.
+
 최종 판정: **NO DDD/POSD FINDINGS**

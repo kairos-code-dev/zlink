@@ -72,9 +72,9 @@ export class ZLinkSessionActorCoordinator {
     const previous = this.routes.route(actorRef.actorId);
     const reuseActor = previous?.context === context ? previous.actor : undefined;
     const previousRef = previous?.actor.ref;
-    if (previous !== undefined) {
+    const replacesSameNativeBinding = previous?.context === context;
+    if (previous !== undefined && !replacesSameNativeBinding) {
       await this.unbindNativeActor(previous.context, actorRef.actorId, signal);
-      this.routes.unbind(actorRef.actorId, previous.context, previous.bindingToken);
     }
     let replacementBound = false;
     try {
@@ -83,23 +83,27 @@ export class ZLinkSessionActorCoordinator {
       this.relayRemoteBoundSessionBind(context, actorRef);
     } catch (error) {
       const rollbackErrors: unknown[] = [];
-      if (replacementBound) {
+      if (replacementBound && !replacesSameNativeBinding) {
         await this.unbindNativeActor(context, actorRef.actorId).catch((rollbackError) => {
           rollbackErrors.push(rollbackError);
         });
       }
-      if (previous !== undefined && previousRef !== undefined) {
+      if (
+        previous !== undefined
+        && previousRef !== undefined
+      ) {
         try {
           await this.bindNativeActor(previous.context, previousRef);
           try {
             this.relayRemoteBoundSessionBind(previous.context, previousRef);
           } catch (relayError) {
-            await this.unbindNativeActor(previous.context, previousRef.actorId).catch((unbindError) => {
-              rollbackErrors.push(unbindError);
-            });
+            if (!replacesSameNativeBinding) {
+              await this.unbindNativeActor(previous.context, previousRef.actorId).catch((unbindError) => {
+                rollbackErrors.push(unbindError);
+              });
+            }
             throw relayError;
           }
-          this.routes.bind(previous.context, previous.actor, previous.bindingToken);
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
         }
@@ -116,6 +120,9 @@ export class ZLinkSessionActorCoordinator {
     const bindingToken = reuseActor?.bindingToken ?? createBindingToken();
     const sessionActor = reuseActor ?? new DefaultZLinkSessionActor(this.sessionActorRuntime, actorRef, bindingToken);
     sessionActor.updateRef(actorRef);
+    if (previous !== undefined) {
+      this.routes.unbind(actorRef.actorId, previous.context, previous.bindingToken);
+    }
     this.routes.bind(context, sessionActor, bindingToken);
     return sessionActor;
   }

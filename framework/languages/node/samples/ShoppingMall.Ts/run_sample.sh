@@ -15,7 +15,20 @@ PIDS=()
 REDIS_CONTAINER_ID=""
 source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
+print_failure_logs() {
+  local file
+  for file in "${LOG_DIR}"/*.log; do
+    [[ -f "${file}" ]] || continue
+    printf '===== %s =====\n' "${file}" >&2
+    tail -n 80 "${file}" >&2
+  done
+}
+
 cleanup() {
+  local exit_status=$?
+  if [[ "${exit_status}" != "0" ]]; then
+    print_failure_logs
+  fi
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     kill -INT "${pid}" >/dev/null 2>&1 || true
@@ -47,6 +60,7 @@ cleanup() {
   else
     [[ -n "${SHOPPINGMALL_RUN_DIR:-}" ]] || rm -rf "${RUN_DIR}"
   fi
+  return "${exit_status}"
 }
 trap cleanup EXIT
 

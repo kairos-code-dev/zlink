@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { listenOnBrowserSafeLoopbackPort } from './browser-safe-listen.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, '../..');
@@ -29,10 +30,7 @@ async function createBrowserConnectorDriver(options = {}) {
     response.writeHead(200, { 'content-type': 'text/html' });
     response.end('<script type="module" src="/client.mjs"></script>');
   });
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
+  await listenOnBrowserSafeLoopbackPort(server);
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ ignoreHTTPSErrors: options.ignoreHTTPSErrors === true });
   const page = await context.newPage();

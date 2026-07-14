@@ -48,11 +48,13 @@ run_required_sample() {
       return 0
     fi
     if ! grep -Eq "${BIND_RETRY_PATTERN}" "${output}"; then
+      cat "${output}" >&2
       rm -f "${output}"
       echo "sample ${name} failed with status ${status}" >&2
       return "${status}"
     fi
     if [[ "${attempt}" == "3" ]]; then
+      cat "${output}" >&2
       rm -f "${output}"
       echo "sample ${name} failed with status ${status}" >&2
       return "${status}"

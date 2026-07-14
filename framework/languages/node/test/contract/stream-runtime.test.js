@@ -1350,6 +1350,66 @@ test('session actor relay waits for an in-progress ownership refresh', async () 
   }
 });
 
+test('bound-session response keeps its stream route during an ownership refresh', async () => {
+  const socket = new FakeStreamSocket();
+  const written = [];
+  let unbindCount = 0;
+  socket.send = (_sessionRid, message) => {
+    written.push(bytesOf(message));
+    return true;
+  };
+  socket.unbindActor = async () => { unbindCount += 1; };
+  let bindCount = 0;
+  let releaseRefresh;
+  const refreshCanFinish = new Promise((resolve) => { releaseRefresh = resolve; });
+  let refreshStarted;
+  const refreshDidStart = new Promise((resolve) => { refreshStarted = resolve; });
+  socket.bindActor = async function bindActor(sessionRid, actor, timeoutMs) {
+    bindCount += 1;
+    if (bindCount === 2) {
+      refreshStarted();
+      await refreshCanFinish;
+    }
+    this.boundActors.push({ sessionRid, actor, timeoutMs });
+  };
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext(
+    new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session')
+  );
+  await context.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    generation: 1n
+  });
+
+  const refreshing = runtime.refreshActor({
+    nodeRid: 'node-b',
+    actorId: 'actor-a',
+    generation: 2n
+  });
+  await refreshDidStart;
+
+  assert.equal(runtime.sendLocalBoundSessionResponse(
+    'actor-a',
+    'Match',
+    7n,
+    { accepted: true },
+    new Map(),
+    false
+  ), true);
+  assert.equal(written.length, 1);
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.requestSeq, 7n);
+
+  releaseRefresh();
+  await refreshing;
+  assert.equal(context.actors.find('actor-a').ref.nodeRid, 'node-b');
+  assert.equal(unbindCount, 0);
+});
+
 test('runtime host relays bound remote actor request through route channel and completes local stream response', async () => {
   const actorRef = { nodeRid: 'play-node', actorId: 'actor-remote', generation: 7n };
   const routeRequests = [];
@@ -1877,7 +1937,6 @@ test('stream session actor changed-ref bind failure restores the previous native
   assert.equal(nativeRef.generation, 1n);
   assert.deepEqual(operations, [
     'bind:node-a:1',
-    'unbind:actor-rollback',
     'bind:node-b:2',
     'bind:node-a:1'
   ]);

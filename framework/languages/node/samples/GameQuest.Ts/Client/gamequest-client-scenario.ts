@@ -89,9 +89,7 @@ class GameQuestClientScenario {
     ensure(() => firstHerbPush.payload.progress.currentCount === 1);
     console.log('gamequest-concurrent-owners=completed');
 
-    const completeFirstHunt = apiAStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.FirstHunt)
-      .submit(signal);
+    const completeFirstHunt = waitForQuestCompletion(apiAStream, QuestIds.FirstHunt, signal);
     await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'), Object)
       .packetName(PacketNames.killMonsterReq)
       .submit<KillMonsterRes>(signal);
@@ -114,9 +112,7 @@ class GameQuestClientScenario {
     ensure(() => afterCompletion.eventId === 'player-alice-kill-4');
     await expectNoPush(apiAStream, PacketNames.questCompletedNotify, signal);
 
-    const auctionComplete = apiAStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.OpenAuction)
-      .submit(signal);
+    const auctionComplete = waitForQuestCompletion(apiAStream, QuestIds.OpenAuction, signal);
     const auction = await apiAStream.request(unlockFeatureReq('player-alice', 'auction', 'unlock-auction'), Object)
       .packetName(PacketNames.unlockFeatureReq)
       .submit<UnlockFeatureRes>(signal);
@@ -149,9 +145,7 @@ class GameQuestClientScenario {
     const beforeTutorial = await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
     ensure(() => beforeTutorial.every((progress) => progress.questId !== QuestIds.RuinsExplorer));
 
-    const tutorialCompleted = apiBReconnectStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.TutorialPath)
-      .submit(signal);
+    const tutorialCompleted = waitForQuestCompletion(apiBReconnectStream, QuestIds.TutorialPath, signal);
     const tutorial = await apiBReconnectStream.request(completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'), Object)
       .packetName(PacketNames.completeMissionReq)
       .submit<CompleteMissionRes>(signal);
@@ -169,9 +163,7 @@ class GameQuestClientScenario {
     ensure(() => ruinsBeforeFinalStep.currentCount === 1);
     ensure(() => ruinsBeforeFinalStep.status === QuestStatuses.Active);
     console.log('gamequest-rehydrate=completed');
-    const ruinsCompleted = apiBReconnectStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.RuinsExplorer)
-      .submit(signal);
+    const ruinsCompleted = waitForQuestCompletion(apiBReconnectStream, QuestIds.RuinsExplorer, signal);
     const ruins = await apiBReconnectStream.request(enterAreaReq('player-alice', 'ruins', 'enter-ruins'), Object)
       .packetName(PacketNames.enterAreaReq)
       .submit<EnterAreaRes>(signal);
@@ -188,9 +180,7 @@ class GameQuestClientScenario {
     );
     ensure(() => bobProgress.some((p) => p.questId === QuestIds.HerbGathering && p.currentCount === 1));
 
-    const herbCompleted = apiBStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.HerbGathering)
-      .submit(signal);
+    const herbCompleted = waitForQuestCompletion(apiBStream, QuestIds.HerbGathering, signal);
     const onlineItem = await apiBStream.request(collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'), Object)
       .packetName(PacketNames.collectItemReq)
       .submit<CollectItemRes>(signal);
@@ -200,9 +190,7 @@ class GameQuestClientScenario {
     ensure(() => herbPush.payload.rewardGranted);
     ensure(() => herbPush.payload.progress.status === QuestStatuses.RewardGranted);
 
-    const bobAuctionCompleted = apiBStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.OpenAuction)
-      .submit(signal);
+    const bobAuctionCompleted = waitForQuestCompletion(apiBStream, QuestIds.OpenAuction, signal);
     await apiBStream.request(unlockFeatureReq('player-bob', 'auction', 'bob-unlock-auction'), Object)
       .packetName(PacketNames.unlockFeatureReq)
       .submit<UnlockFeatureRes>(signal);
@@ -235,9 +223,7 @@ class GameQuestClientScenario {
     }
     const bobMissed = await apiB.post('/self-check/gameplay/kill-without-publish/player-bob').submitRaw();
     ensure(() => bobMissed.status >= 200 && bobMissed.status < 300);
-    const bobReconcileCompleted = apiBStream.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
-      .where((message) => message.payload.progress.questId === QuestIds.FirstHunt)
-      .submit(signal);
+    const bobReconcileCompleted = waitForQuestCompletion(apiBStream, QuestIds.FirstHunt, signal);
     const bobSync = await apiBStream.request(syncQuestProgressReq('player-bob'), Object)
       .packetName(PacketNames.syncQuestProgressReq)
       .submit<SyncQuestProgressRes>(signal);
@@ -262,6 +248,20 @@ class GameQuestClientScenario {
     const assertion = await waitForServerAssertion(apiA, signal);
     ensure(() => assertion.passed);
     console.log('gamequest-server-evidence=completed');
+  }
+}
+
+async function waitForQuestCompletion(
+  connector: ZlinkStreamConnector,
+  questId: string,
+  signal?: AbortSignal
+): Promise<{ payload: QuestCompletedNotify }> {
+  try {
+    return await connector.waitFor<QuestCompletedNotify>(PacketNames.questCompletedNotify)
+      .where((message) => message.payload.progress.questId === questId)
+      .submit(signal);
+  } catch (cause) {
+    throw new Error(`Quest completion notification was not received for '${questId}'.`, { cause });
   }
 }
 

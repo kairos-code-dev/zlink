@@ -175,10 +175,11 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | 1 | `.NET` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
 | 2 | Java | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 | 3 | Kotlin | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
-| 4 | Node.js | [x] | [x] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | browser flow와 G5 수정 및 반복 재검토 진행 |
+| 4 | Node.js | [x] | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 완료 |
 | 5 | C++ | [x] | [x] | [x] | [x] | [ ] | [x] | [ ] | [ ] | 진행 |
 
-현재 Java, Node.js, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
+현재 Java, Kotlin, C++ 작업을 언어별 gate에 따라 독립적으로 진행한다. Node.js는 모든 gate를
+완료했다. 완료한 gate의 상세 finding, 명령과 검증 결과는 해당 언어의
 계약 ledger, G4 finding ledger와 구현 로그에서 확인한다.
 
 `53-flow-correlation.ko.md`, `51-runtime-metrics.ko.md`, `54-graceful-drain-handoff.ko.md`와 Config 11도

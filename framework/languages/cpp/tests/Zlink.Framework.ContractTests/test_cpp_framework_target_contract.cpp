@@ -265,6 +265,8 @@ int main ()
                   "run_e2e_all.sh does not register Config 10 SpotActorTransfer");
     gate.require (runner.find ("DeliveryDispatch") == std::string::npos, "CPP-G0-E2E-003",
                   "run_e2e_all.sh registers the non-contract DeliveryDispatch fork");
+    gate.require (runner.find ("already bound") != std::string::npos, "CPP-G0-E2E-003",
+                  "run_e2e_all.sh omits the common transient bind error token");
 
     /* CPP-G0-E2E-004 — ST-A1 verifies lifecycle evidence in contract order. */
     gate.require (transfer_client.find ("assert_evidence_sequence") != std::string::npos,

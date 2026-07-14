@@ -431,7 +431,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-25** (결함) — **Domain이 이미 내린 판정을 Infrastructure가 다시 내린다**(SupportChat idle/close, Bingo join notify)
 - [ ] **SMP-CP-26** (결함) — **runner 3개가 framework 동작 knob(`ZLINK_CPP_AUTO_CONNECT_TRACE`)을 export**하고, Bingo는 그 덕에 생긴 로그로 self-check한다
 - [ ] **SMP-CP-27** (결함) — **runner 4개가 빌드 전에 Redis container를 띄운다**
-- [ ] **SMP-CP-28** (결함) — **통합 runner의 transient-bind 패턴이 `already bound` 토큰을 빠뜨린다**
+- [x] **SMP-CP-28** (결함) — **통합 runner의 transient-bind 패턴이 `already bound` 토큰을 빠뜨린다**
+  - 근거: 수정 전 target-contract gate가 공통 transient bind 토큰 누락을 검출했다. 재시도 정규식에 `already bound`를 추가한 뒤 shell 매칭 확인, runner 문법 검사, target-contract gate가 모두 통과했다.
 - [ ] **SMP-CP-29** (결함) — **계약에 없는 wire 메시지 5종**(TicTacToe·DeliveryDispatch·GameQuest·ShoppingMall)
 - [ ] **SMP-CP-30** (결함) — **GameQuest event store가 프로세스 로컬 맵**이라 재시작 복구를 증명하지 못한다
 

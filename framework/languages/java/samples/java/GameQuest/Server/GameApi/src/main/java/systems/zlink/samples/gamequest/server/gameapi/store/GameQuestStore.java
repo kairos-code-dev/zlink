@@ -3,26 +3,22 @@ package systems.zlink.samples.gamequest.server.gameapi.store;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
+import systems.zlink.samples.gamequest.server.configuration.GameplayStateStore;
 import systems.zlink.samples.gamequest.server.configuration.RedisSampleStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class GameQuestStore implements AutoCloseable {
     private final RedisSampleStore shared;
+    private final GameplayStateStore gameplay;
     private final Map<String, List<Messages.QuestProgress>> projections = new HashMap<>();
-    private final Map<String, Set<String>> completedMissions = new HashMap<>();
-    private final Map<String, Set<String>> unlockedFeatures = new HashMap<>();
-    private final Map<String, Set<String>> enteredAreas = new HashMap<>();
-    private final Map<String, Map<String, Integer>> kills = new HashMap<>();
-    private final Map<String, Map<String, Integer>> items = new HashMap<>();
 
     public GameQuestStore(SampleTopology topology) {
         shared = new RedisSampleStore(topology);
+        gameplay = new GameplayStateStore(topology);
     }
 
     public synchronized void bind(String playerId, String apiName) {
@@ -34,20 +30,7 @@ public final class GameQuestStore implements AutoCloseable {
     }
 
     public synchronized void recordGameplay(Messages.GameplayMsg event) {
-        switch (event.eventType()) {
-            case "kill" -> kills.computeIfAbsent(event.playerId(), ignored -> new HashMap<>())
-                .merge(event.value(), event.count(), Integer::sum);
-            case "collect" -> items.computeIfAbsent(event.playerId(), ignored -> new HashMap<>())
-                .merge(event.value(), event.count(), Integer::sum);
-            case "mission" -> completedMissions.computeIfAbsent(event.playerId(), ignored -> new HashSet<>())
-                .add(event.value());
-            case "feature" -> unlockedFeatures.computeIfAbsent(event.playerId(), ignored -> new HashSet<>())
-                .add(event.value());
-            case "area" -> enteredAreas.computeIfAbsent(event.playerId(), ignored -> new HashSet<>())
-                .add(event.value());
-            default -> {
-            }
-        }
+        gameplay.record(event);
     }
 
     public synchronized void mergeProjection(String playerId, List<Messages.QuestProgress> projection) {
@@ -71,7 +54,7 @@ public final class GameQuestStore implements AutoCloseable {
     }
 
     public synchronized Messages.QuestProgress rebuildProjection(String playerId, String questId) {
-        int current = items.getOrDefault(playerId, Map.of()).getOrDefault("healing-herb", 0);
+        int current = gameplay.itemCount(playerId, "healing-herb");
         int required = Messages.QuestIds.HerbGathering.equals(questId) ? 5 : 3;
         Messages.QuestProgress rebuilt = new Messages.QuestProgress(
             playerId,
@@ -88,33 +71,11 @@ public final class GameQuestStore implements AutoCloseable {
     }
 
     public synchronized void addUnpublishedKill(String playerId) {
-        kills.computeIfAbsent(playerId, ignored -> new HashMap<>())
-            .merge("wolf", 1, Integer::sum);
-    }
-
-    public synchronized int wolfKills(String playerId) {
-        return kills.getOrDefault(playerId, Map.of()).getOrDefault("wolf", 0);
+        gameplay.incrementKill(playerId, "wolf", 1);
     }
 
     public synchronized Messages.GetGameplaySnapshotRes snapshot(String playerId) {
-        List<Messages.KillCountSnapshot> killCounts = kills.getOrDefault(playerId, Map.of())
-            .entrySet()
-            .stream()
-            .map(entry -> new Messages.KillCountSnapshot(entry.getKey(), null, entry.getValue()))
-            .toList();
-        List<Messages.ItemCountSnapshot> itemCounts = items.getOrDefault(playerId, Map.of())
-            .entrySet()
-            .stream()
-            .map(entry -> new Messages.ItemCountSnapshot(entry.getKey(), entry.getValue()))
-            .toList();
-        return new Messages.GetGameplaySnapshotRes(
-            playerId,
-            killCounts,
-            itemCounts,
-            new ArrayList<>(completedMissions.getOrDefault(playerId, Set.of())),
-            new ArrayList<>(unlockedFeatures.getOrDefault(playerId, Set.of())),
-            new ArrayList<>(enteredAreas.getOrDefault(playerId, Set.of())),
-            killCounts.size() + itemCounts.size());
+        return gameplay.snapshot(playerId);
     }
 
     public synchronized Messages.GameQuestServerAssertRes assertState() {
@@ -184,6 +145,7 @@ public final class GameQuestStore implements AutoCloseable {
 
     @Override
     public void close() {
+        gameplay.close();
         shared.close();
     }
 

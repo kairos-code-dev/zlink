@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import systems.zlink.samples.gamequest.server.configuration.GameplayStateStore;
 import systems.zlink.samples.gamequest.server.configuration.RedisSampleStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain;
@@ -16,6 +17,7 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 public final class QuestStore implements AutoCloseable {
     private final QuestDomain domain = new QuestDomain();
     private final RedisSampleStore shared;
+    private final GameplayStateStore gameplay;
     private final Map<String, List<Messages.QuestProgress>> projections = new HashMap<>();
     private final Map<String, String> eventIdsByIdempotency = new HashMap<>();
     private final List<Messages.StoredQuestEvent> events = new ArrayList<>();
@@ -23,6 +25,7 @@ public final class QuestStore implements AutoCloseable {
 
     public QuestStore(SampleTopology topology) {
         shared = new RedisSampleStore(topology);
+        gameplay = new GameplayStateStore(topology);
     }
 
     public synchronized Messages.QuestProcessingRes apply(Messages.GameplayMsg event) {
@@ -50,7 +53,8 @@ public final class QuestStore implements AutoCloseable {
             false);
     }
 
-    public synchronized Messages.SyncQuestProgressRes sync(String playerId, int firstHuntCount) {
+    public synchronized Messages.SyncQuestProgressRes sync(String playerId) {
+        int firstHuntCount = gameplay.killCount(playerId, "wolf");
         List<Messages.QuestProgress> projection = copyProjection(playerId);
         Messages.QuestProgress firstHunt = projection.stream()
             .filter(progress -> progress.questId().equals(Messages.QuestIds.FirstHunt))
@@ -154,6 +158,7 @@ public final class QuestStore implements AutoCloseable {
 
     @Override
     public void close() {
+        gameplay.close();
         shared.close();
     }
 

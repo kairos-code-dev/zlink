@@ -137,16 +137,17 @@ public final class GameQuestClientScenario {
                 && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
 
         ensure(postRaw(options.apiBHttpEndpoint(), "/self-check/gameplay/kill-without-publish/player-alice"));
+        ensure(postRaw(options.apiBHttpEndpoint(), "/self-check/gameplay/kill-without-publish/player-alice"));
         Messages.SyncQuestProgressRes sync = apiAStream
             .request(new Messages.SyncQuestProgressReq("player-alice"))
             .submit(Messages.SyncQuestProgressRes.class).toCompletableFuture().join();
         ensure(sync.updatedQuests().stream().anyMatch(progress ->
-            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() >= 4));
+            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() == 5));
         Messages.GetQuestProgressRes reconciled = apiBStream
             .request(new Messages.GetQuestProgressReq("player-alice"))
             .submit(Messages.GetQuestProgressRes.class).toCompletableFuture().join();
         ensure(reconciled.activeQuests().stream().anyMatch(progress ->
-            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() >= 4));
+            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() == 5));
 
         apiAStream.close().submit().toCompletableFuture().join();
 

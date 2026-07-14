@@ -71,7 +71,11 @@ class tictactoe_entry_spot_t : public entry_spot_t
         observers.erase (actor.actor_id);
     }
 
-    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    void on_disconnect_actor (const player_actor_t &actor)
+    {
+        actor.mark_disconnected ();
+        observers.erase (actor.actor_id);
+    }
 
     std::vector<std::string> created_actor_ids;
     std::vector<std::string> actor_ids;

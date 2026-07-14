@@ -378,6 +378,22 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     }
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
+{
+    const auto entry = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/"
+        "tictactoe_entry_spot.hpp");
+    const auto disconnect = entry.find ("void on_disconnect_actor");
+    ASSERT_NE (disconnect, std::string::npos);
+    const auto callback_end = entry.find ("std::vector<std::string> created_actor_ids", disconnect);
+    ASSERT_NE (callback_end, std::string::npos);
+
+    EXPECT_NE (entry.substr (disconnect, callback_end - disconnect).find ("observers.erase"),
+               std::string::npos)
+      << "disconnect must remove the actor from milestone notification targeting";
+}
+
 TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
 {
     const auto owner = read_file (

@@ -146,8 +146,13 @@ int main ()
       read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
     const auto resilience_client =
       read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
+    const auto resilience_feature_map =
+      read_file (e2e_root / "ResilienceLifecycle/feature-map.ko.md");
+    const auto resilience_runner = read_file (e2e_root / "ResilienceLifecycle/run_e2e.sh");
     const auto resilience_b2 = read_file (
       e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp");
+    const auto messaging_test =
+      read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
     const auto spot_service_f5 = read_file (
@@ -621,6 +626,21 @@ int main ()
     gate.require (resilience_b2.find (".timeout (std::chrono::milliseconds (5000))")
                     != std::string::npos,
                   "E2E-CP-32", "RL-B2 has no outer deadline longer than its channel deadline");
+
+    /* E2E-CP-33 — RL-D4 owns raw error-envelope proof; RL-D5 must not report a burst as soak. */
+    gate.require (messaging_test.find ("\"errorCode\":\"handler_not_found\"")
+                    != std::string::npos,
+                  "E2E-CP-33", "RL-D4 has no raw camelCase errorCode assertion");
+    gate.require (messaging_test.find ("\"errorMessage\":\"missing handler\"")
+                    != std::string::npos,
+                  "E2E-CP-33", "RL-D4 has no raw camelCase errorMessage assertion");
+    gate.require (resilience_feature_map.find ("| `RL-D5` | deferred |")
+                    != std::string::npos,
+                  "E2E-CP-33", "RL-D5 still reports a sequential burst as implemented soak");
+    gate.require (resilience_client.find ("rl-d5") == std::string::npos,
+                  "E2E-CP-33", "RL-D5 fake soak remains selectable by the client");
+    gate.require (resilience_runner.find ("should_run RL-D5") == std::string::npos,
+                  "E2E-CP-33", "RL-D5 fake soak remains in the config runner");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

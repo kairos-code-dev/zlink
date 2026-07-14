@@ -17,7 +17,6 @@
 #include "Scenarios/rl_d2_observer_fault_scenario.hpp"
 #include "Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp"
 #include "Scenarios/rl_d4_missing_request_handler_scenario.hpp"
-#include "Scenarios/rl_d5_mixed_burst_scenario.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -68,8 +67,6 @@ int main (int argc, char **argv)
             rl_client::run_rl_d3_dispatch_error_evidence_scenario ();
         } else if (scenario == "rl-d4") {
             rl_client::run_rl_d4_missing_request_handler_scenario ();
-        } else if (scenario == "rl-d5") {
-            rl_client::run_rl_d5_mixed_burst_scenario ();
         } else {
             throw std::runtime_error ("unknown scenario " + scenario);
         }

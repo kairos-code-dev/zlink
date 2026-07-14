@@ -106,6 +106,46 @@ int main ()
             return 14;
         }
 
+        zlink::framework::runtime::messaging::envelope_header_t wire_error_header;
+        wire_error_header.kind = zlink::framework::runtime::messaging::message_kind_t::error;
+        wire_error_header.channel_name = "profile";
+        wire_error_header.message_name = "MissingProfileReq";
+        wire_error_header.correlation_id = "request-2";
+        wire_error_header.error_code = "handler_not_found";
+        wire_error_header.error_message = "missing handler";
+        const auto wire_error_json = envelope_codec.encode_header (wire_error_header).to_string ();
+        if (wire_error_json.find (R"("kind":5)") == std::string::npos
+            || wire_error_json.find (R"("errorCode":"handler_not_found")")
+                 == std::string::npos
+            || wire_error_json.find (R"("errorMessage":"missing handler")")
+                 == std::string::npos
+            || wire_error_json.find (R"("status")") != std::string::npos) {
+            return 53;
+        }
+        const auto decoded_wire_error = envelope_codec.decode_header (
+          zlink::message_t::from (wire_error_json));
+        if (!decoded_wire_error
+            || decoded_wire_error.value ().kind
+                 != zlink::framework::runtime::messaging::message_kind_t::error
+            || decoded_wire_error.value ().error_code != "handler_not_found"
+            || decoded_wire_error.value ().error_message != "missing handler") {
+            return 54;
+        }
+
+        zlink::framework::runtime::messaging::envelope_header_t wire_response_header;
+        wire_response_header.kind = zlink::framework::runtime::messaging::message_kind_t::response;
+        wire_response_header.channel_name = "profile";
+        wire_response_header.message_name = "ProfileReq";
+        wire_response_header.correlation_id = "request-3";
+        const auto wire_response_json =
+          envelope_codec.encode_header (wire_response_header).to_string ();
+        if (wire_response_json.find (R"("kind":2)") == std::string::npos
+            || wire_response_json.find (R"("errorCode":null)") == std::string::npos
+            || wire_response_json.find (R"("errorMessage":null)") == std::string::npos
+            || wire_response_json.find (R"("status")") != std::string::npos) {
+            return 55;
+        }
+
         zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
         const auto not_connected = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::not_connected, "profile request");

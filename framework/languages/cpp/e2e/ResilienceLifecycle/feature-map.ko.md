@@ -28,9 +28,9 @@
 | `RL-D1` | 구현 | runner가 Consumer HTTP `/profile/request`로 120개 request burst를 만들고 provider evidence에서 `rl-d1-` marker가 남는지 검증한다. |
 | `RL-D2` | 구현 | observer fault 중 missing request가 `HandlerNotFound`로 분류되고 `handler_missing:reply_error` evidence가 남으며, 이후 messaging이 계속 동작하는지 검증한다. |
 | `RL-D3` | 구현 | Consumer HTTP의 missing request가 `HandlerNotFound`로 분류되고 provider flow log에 `handler_missing`/`reply_error` marker가 남는지 검증한다. |
-| `RL-D4` | 구현 | Consumer HTTP의 missing request가 `HandlerNotFound`인 public failure payload를 반환하고 provider dispatch error evidence가 남는지 검증한다. |
-| `RL-D5` | 구현 | `rl_d5_mixed_burst_scenario.hpp`가 Consumer HTTP `/profile/request`와 `/profile/command`로 request/send mixed burst를 실행하고 provider evidence에서 request/send marker가 남는지 검증한다. 최신 full 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-D5 passed`. |
-| Consumer role smoke | 구현 | runner가 전용 Consumer HTTP role을 띄우고 `/profile/request`, `/profile/request/manual`, `/profile/request/manual-b`, `/profile/request/new-client`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/topology`, `/topology/wait`으로 provider request, established manual request, transient client host request, timeout cleanup, missing request/send, 정상 command 흐름, location store topology 조회를 확인한다. Redis location store 전환 뒤 최신 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-C4 passed`, `scenario RL-D5 passed`, `resilience-lifecycle e2e result=passed`. |
+| `RL-D4` | 구현 | 실제 provider/consumer E2E는 missing request의 `HandlerNotFound` public failure와 provider dispatch error evidence를 확인한다. runtime unit gate는 같은 channel error reply의 raw header에서 `Error=5`, camelCase `errorCode`/`errorMessage`, `status` 부재와 성공 `Response=2`를 직접 검증한다. |
+| `RL-D5` | deferred | 공통 문서가 요구하는 동시 다수 client, 수 분 지속, request/send 혼합, latency drift 관측을 제공하는 soak harness가 없다. 기존 120회 순차 mixed burst는 이 계약을 검증하지 못하므로 scenario PASS 경로에서 제거했다. |
+| Consumer role smoke | 구현 | runner가 전용 Consumer HTTP role을 띄우고 `/profile/request`, `/profile/request/manual`, `/profile/request/manual-b`, `/profile/request/new-client`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/topology`, `/topology/wait`으로 provider request, established manual request, transient client host request, timeout cleanup, missing request/send, 정상 command 흐름, location store topology 조회를 확인한다. |
 
 ## 완료 기준
 
@@ -48,7 +48,8 @@
   registry evidence store, registry fault state, registry handler는 현재 C++ 경로에서 제거했다.
   Profile request/reply/send DTO는 `.NET`식 marker 필드를 지원하며, marker가 비어 있는 기존 scenario는
   value 또는 command id를 evidence marker로 계속 사용한다.
-- Consumer role은 `RL-B1`, `RL-C1`, `RL-C2`, `RL-C3`, `RL-D1`, `RL-D3`, `RL-D4`, `RL-D5`까지 scenario 검증 경로로 넓혔다.
-  RL-D4/RL-D5는 shell-only 검증에서 전용 client scenario header 경로로 옮겼다.
+- Consumer role은 `RL-B1`, `RL-C1`, `RL-C2`, `RL-C3`, `RL-D1`, `RL-D3`, `RL-D4`까지 scenario 검증 경로로 넓혔다.
+  RL-D4는 전용 client scenario와 raw envelope unit gate를 함께 사용한다. RL-D5는 지속 부하
+  harness가 마련될 때까지 `deferred`다.
   `/profile/request/new-client`는 요청마다 transient client host를 만들고 별도 `storm-...-flow.log`를
   남긴다.

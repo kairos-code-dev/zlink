@@ -44,7 +44,7 @@ C++ runner가 같은 의미로 담당한다.
 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | scenario | done | provider observer fault mode를 켠 뒤 missing request dispatch error evidence, observer exception isolation, follow-up request evidence를 검증한다. |
 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp`; `run_e2e.sh`, `Server/Consumer/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | HTTP-only client와 runner가 Consumer HTTP `/profile/request/missing`, `/profile/command/missing`, `/profile/request`를 호출하고 provider flow log에서 missing request/send marker를 검증한다. |
 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl_d4_missing_request_handler_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request/missing`을 호출하고 public failure payload와 provider dispatch error evidence를 검증한다. |
-| `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl_d5_mixed_burst_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request`와 `/profile/command`로 request/send mixed burst workload를 만들고 provider evidence에서 request/send marker가 남는지 검증한다. |
+| `Client/Scenarios/RlD5MixedBurstScenario.cs` | — | scenario | deferred | 동시 다수 client, 수 분 지속, request/send 혼합, latency drift 관측을 갖춘 soak harness가 없어 공통 문서 규칙대로 보류한다. 이전 순차 mixed burst는 canonical RL-D5로 인정하지 않는다. |
 | `Server/Provider/ResilienceLifecycle.Provider.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | provider role target이 추가됐다. |
 | `Server/Provider/Program.cs` | `Server/Provider/main.cpp` | server-role | done | provider role 진입점이 있다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/provider_host_factory.hpp`, `Server/Provider/main.cpp` | server-role | done | provider framework, discovery, channel/route/http endpoint, handler group wiring은 factory header로 분리했고 main은 진입점과 logging만 담당한다. |
@@ -54,7 +54,7 @@ C++ runner가 같은 의미로 담당한다.
 | `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider_handlers.hpp` | handler | done | request/send/slow handler가 있고, provider fault state가 `gray`일 때 gray request 실패와 `ProfileFault` evidence를 기록한다. |
 | `Server/Consumer/ResilienceLifecycle.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | consumer role target이 추가됐다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | server-role | done | consumer role 진입점이 있고, ResilienceLifecycle 전용 consumer configuration/endpoint wrapper를 사용한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer_host_factory.hpp`, `Server/Consumer/main.cpp`, `Server/Consumer/Configuration/consumer_options.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | server-role | done | long-running consumer HTTP host가 `/health`, `/profile/request`, `/profile/request/manual`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/profile/request/new-client` endpoint를 제공한다. `/profile/request/new-client`는 `.NET`처럼 요청마다 새 client host를 만들고 별도 flow log를 남긴다. option 읽기, endpoint handler, host wiring은 ResilienceLifecycle 전용 파일로 분리했고, endpoint handler는 ResilienceLifecycle marker contract를 보존한다. runner는 smoke, RL-B1, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D3, RL-D4, RL-D5에서 이 HTTP 경로를 사용한다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer_host_factory.hpp`, `Server/Consumer/main.cpp`, `Server/Consumer/Configuration/consumer_options.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | server-role | done | long-running consumer HTTP host가 `/health`, `/profile/request`, `/profile/request/manual`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/profile/request/new-client` endpoint를 제공한다. `/profile/request/new-client`는 `.NET`처럼 요청마다 새 client host를 만들고 별도 flow log를 남긴다. option 읽기, endpoint handler, host wiring은 ResilienceLifecycle 전용 파일로 분리했고, endpoint handler는 ResilienceLifecycle marker contract를 보존한다. runner는 smoke, RL-B1, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D3, RL-D4에서 이 HTTP 경로를 사용한다. |
 
 ## Scenario ID 대응
 
@@ -78,10 +78,13 @@ C++ runner가 같은 의미로 담당한다.
 | `RL-D1` | `run_e2e.sh`; `Server/Consumer/Endpoints/consumer_endpoints.hpp` | done |
 | `RL-D2` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | done |
 | `RL-D3` | `run_e2e.sh`; `Server/Consumer/main.cpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp` | done |
-| `RL-D4` | `Client/Scenarios/rl_d4_missing_request_handler_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | done |
-| `RL-D5` | `Client/Scenarios/rl_d5_mixed_burst_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | done |
+| `RL-D4` | `Client/Scenarios/rl_d4_missing_request_handler_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh`; `test_cpp_framework_messaging.cpp` | done |
+| `RL-D5` | — | deferred — 지속 부하 harness 대기 |
 
 ## 검증
+
+> 아래 과거 로그의 `RL-D5 passed`는 당시 120회 순차 mixed burst 결과다. 공통 문서가 요구하는
+> 지속 soak proof가 아니므로 현재 완료 근거로 사용하지 않는다.
 
 - 2026-07-08: `timeout 560s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh all`
   - 결과: 통과, exit 0

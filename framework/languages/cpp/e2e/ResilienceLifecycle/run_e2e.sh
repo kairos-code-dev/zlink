@@ -1105,7 +1105,7 @@ if should_run RL-C4 rl-c4; then
   stop_pid "$API_A_PID"
 fi
 
-if should_run RL-D1 rl-d1 RL-D4 rl-d4 RL-D5 rl-d5; then
+if should_run RL-D1 rl-d1 RL-D4 rl-d4; then
   stop_pid "$API_B_PID"
   stop_pid "$API_A_PID"
   start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
@@ -1122,11 +1122,6 @@ if should_run RL-D1 rl-d1 RL-D4 rl-d4 RL-D5 rl-d5; then
     run_client rl-d4 rl-d4 env
     grep -q "scenario RL-D4 passed" "$LOG_DIR/client-rl-d4.stdout.log"
     echo "scenario RL-D4 passed"
-  fi
-  if should_run RL-D5 rl-d5; then
-    run_client rl-d5 rl-d5 env
-    grep -q "scenario RL-D5 passed" "$LOG_DIR/client-rl-d5.stdout.log"
-    echo "scenario RL-D5 passed"
   fi
   stop_pid "$API_B_PID"
   stop_pid "$API_A_PID"

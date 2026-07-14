@@ -35,8 +35,7 @@ public final class TrackingServerApplication {
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
-                    + "/flow-tracking.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-tracking.log")
                 .traceLabel("tracking");
             options.addHandlersFromPackageOf(TrackingServerApplication.class);
             ZLinkSpotNodeBuilder trackingSpot = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);

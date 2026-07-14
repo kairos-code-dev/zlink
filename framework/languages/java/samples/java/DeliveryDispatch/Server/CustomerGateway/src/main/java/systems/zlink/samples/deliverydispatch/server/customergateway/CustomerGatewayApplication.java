@@ -37,8 +37,7 @@ public final class CustomerGatewayApplication {
             options.addHandlersFromPackageOf(CustomerGatewayApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
-                    + "/flow-customer-gateway.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-customer-gateway.log")
                 .traceLabel("customer-gateway");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
             node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)

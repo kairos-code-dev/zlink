@@ -33,13 +33,12 @@ public final class CourierSpotNodeApplication {
     @Bean
     ZLinkFrameworkConfigurer courierSpotNodeFramework() {
         return options -> {
-            String node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1");
+            String node = SampleTopology.CourierNode;
             NodeOptions selected = NodeOptions.resolve(node);
             options.addHandlersFromPackageOf(CourierSpotNodeApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
-                    + "/flow-courier-" + node + ".log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
             ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             spotNode.enableRouter(selected.routerEndpoint())

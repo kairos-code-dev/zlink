@@ -52,7 +52,7 @@ public final class PlayServerApplication {
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-play.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-play.log")
                 .traceLabel("play");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.configureLocations();

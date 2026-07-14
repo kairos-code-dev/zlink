@@ -37,8 +37,7 @@ public final class DispatchServerApplication {
             options.addHandlersFromPackageOf(DispatchServerApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
-                    + "/flow-dispatch.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-dispatch.log")
                 .traceLabel("dispatch");
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();

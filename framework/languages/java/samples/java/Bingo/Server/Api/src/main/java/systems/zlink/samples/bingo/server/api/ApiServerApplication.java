@@ -35,7 +35,7 @@ public final class ApiServerApplication {
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-api.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-api.log")
                 .traceLabel("api");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(ApiServerApplication.class);

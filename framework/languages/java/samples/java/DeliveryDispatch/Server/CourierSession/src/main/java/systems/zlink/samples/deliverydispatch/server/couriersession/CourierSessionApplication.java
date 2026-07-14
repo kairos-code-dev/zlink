@@ -36,8 +36,7 @@ public final class CourierSessionApplication {
             options.addHandlersFromPackageOf(CourierSessionApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
-                    + "/flow-courier-session.log")
+                .traceLogFile(SampleTopology.LogDirectory + "/flow-courier-session.log")
                 .traceLabel("courier-session");
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();

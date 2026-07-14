@@ -16,6 +16,7 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
+        SampleTopology.configure(args);
         ZLinkStreamConnector client1 = createClient(SampleTopology.SessionAStreamEndpoint);
         ZLinkStreamConnector client2 = createClient(SampleTopology.SessionBStreamEndpoint);
         ZLinkStreamConnector observer = createClient(SampleTopology.SessionBStreamEndpoint);

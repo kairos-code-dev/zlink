@@ -10,16 +10,16 @@
 | `.NET: Bingo.csproj` | `build.gradle.kts` | build | done | Java 루트는 하위 role project를 묶는다. |
 | `.NET: Bingo.sln` | `standalone.settings.gradle.kts` | build | done | standalone 실행 시 framework build를 composite build로 참조한다. |
 | `.NET: README.md` | `README.md` | docs | done | Java 실행 방식과 Redis 준비 책임을 설명한다. |
-| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Api 2개, Session 2개, Play 2개, Client를 실제 process로 실행하고 위치 정보는 Redis store에 둔다. |
-| `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Windows runner도 같은 role 구성과 Redis endpoint 계약을 사용한다. |
+| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Api 2개, Session 2개, Play 2개, Client를 실제 process로 실행한다. 실행별 설정은 properties 파일로 전달하고 위치 정보는 Redis store에 둔다. |
+| `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Windows runner도 같은 role 구성과 properties 설정 계약을 사용한다. |
 | `.NET: Client/Bingo.Client.csproj` | `Client/build.gradle.kts` | build | done | Client role project. |
 | `.NET: Client/Program.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/Program.java` | client-entry | done | 세 stream connector를 만들고 scenario에 넘긴다. |
 | `.NET: Client/BingoClientScenario.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/BingoClientScenario.java` | client-scenario | done | 인증과 matching을 검증하고, 자기 join 알림이 없다는 점을 typed callback으로 계수한다. card 제출 응답의 9칸 상태, 양쪽 draw state, 종료, reward, stop-observe도 직접 확인한다. |
 | `.NET: Client/Configuration/SampleNames.cs` | `Client/src/main/java/systems/zlink/samples/bingo/client/configuration/SampleNames.java` | client-config | done | packet 이름과 sample marker를 client에서 사용한다. |
 | `.NET: Server/Configuration/Bingo.Server.Configuration.csproj` | `Server/Configuration/build.gradle.kts` | build | done | 서버 공통 설정 project. |
-| `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/*` role logs + `BINGO_LOG_DIR` | server-evidence | done | Java는 role별 application에서 flow log를 남기고 runner가 `message flow` marker를 확인한다. |
+| `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/*` role logs + `SampleTopology.LogDirectory` | server-evidence | done | Java는 role별 application에서 flow log를 남기고 runner가 `message flow` marker를 확인한다. 로그 경로는 실행별 properties 파일에 기록한다. |
 | `.NET: Server/Configuration/SampleNames.cs` | `Server/Configuration/src/main/java/systems/zlink/samples/bingo/server/configuration/SampleNames.java` | server-config | done | role, service, packet 이름을 공유한다. |
-| `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/src/main/java/systems/zlink/samples/bingo/server/configuration/SampleTopology.java` | server-config | done | endpoint와 Redis 설정을 system property에서 읽는다. |
+| `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/src/main/java/systems/zlink/samples/bingo/server/configuration/SampleTopology.java` | server-config | done | 각 프로세스가 `--config`로 받은 properties 파일에서 endpoint, Redis, role과 로그 경로를 시작 시 한 번 읽는다. |
 | location store 설정 | `Server/Configuration/src/main/java/systems/zlink/samples/bingo/server/configuration/SampleLocationStore.java` | server-config | done | 공식 Redis location store extension을 생성하고 sample Redis prefix 아래에서 위치 정보를 분리한다. |
 | `.NET: Server/Api/Bingo.Server.Api.csproj` | `Server/Api/build.gradle.kts` | build | done | Api role project. |
 | `.NET: Server/Api/Program.cs` | `Server/Api/src/main/java/systems/zlink/samples/bingo/server/api/Program.java` | server-entry | done | Api role 단독 entry point. |
@@ -91,3 +91,5 @@
 ## 검증
 
 - `nice -n 15 timeout 720s ./run_sample.sh` 통과: `bingo full client/server self-check completed`
+- `pwsh -NoProfile -File ./run_sample.ps1` 통과: 같은 properties 설정으로 Api·Session·Play 각 2개와 Client를 실제 실행했다.
+- `System.getProperty`·`System.getenv` 애플리케이션 코드 금지 gate와 JVM system property 주입 부재 검사를 통과했다.

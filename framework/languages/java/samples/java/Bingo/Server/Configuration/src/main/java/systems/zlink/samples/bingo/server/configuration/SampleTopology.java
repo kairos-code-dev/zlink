@@ -1,61 +1,67 @@
 package systems.zlink.samples.bingo.server.configuration;
 
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
+
 public final class SampleTopology {
-    public static final String ApiChannelEndpoint =
-        property("apiChannelEndpoint", "tcp://127.0.0.1:47103");
-    public static final String ApiAChannelEndpoint =
-        property("apiAChannelEndpoint", ApiChannelEndpoint);
-    public static final String ApiBChannelEndpoint =
-        property("apiBChannelEndpoint", "tcp://127.0.0.1:47117");
-    public static final String PlayChannelEndpoint =
-        property("playChannelEndpoint", "tcp://127.0.0.1:47104");
-    public static final String PlayAChannelEndpoint =
-        property("playAChannelEndpoint", PlayChannelEndpoint);
-    public static final String PlayBChannelEndpoint =
-        property("playBChannelEndpoint", "tcp://127.0.0.1:47118");
-    public static final String SessionSpotEndpoint =
-        property("sessionSpotEndpoint", "tcp://127.0.0.1:47105");
-    public static final String SessionRouterEndpoint =
-        property("sessionRouterEndpoint", "tcp://127.0.0.1:47106");
-    public static final String SessionASpotEndpoint =
-        property("sessionASpotEndpoint", SessionSpotEndpoint);
-    public static final String SessionBSpotEndpoint =
-        property("sessionBSpotEndpoint", "tcp://127.0.0.1:47119");
-    public static final String SessionARouterEndpoint =
-        property("sessionARouterEndpoint", SessionRouterEndpoint);
-    public static final String SessionBRouterEndpoint =
-        property("sessionBRouterEndpoint", "tcp://127.0.0.1:47120");
-    public static final String PlaySpotEndpoint =
-        property("playSpotEndpoint", "tcp://127.0.0.1:47110");
-    public static final String PlaySpotRouterEndpoint =
-        property("playSpotRouterEndpoint", "tcp://127.0.0.1:47111");
-    public static final String PlayASpotEndpoint =
-        property("playASpotEndpoint", PlaySpotEndpoint);
-    public static final String PlayBSpotEndpoint =
-        property("playBSpotEndpoint", "tcp://127.0.0.1:47121");
-    public static final String PlayASpotRouterEndpoint =
-        property("playASpotRouterEndpoint", PlaySpotRouterEndpoint);
-    public static final String PlayBSpotRouterEndpoint =
-        property("playBSpotRouterEndpoint", "tcp://127.0.0.1:47122");
-    public static final String StreamEndpoint =
-        property("streamEndpoint", "tcp://127.0.0.1:47114");
-    public static final String SessionAStreamEndpoint =
-        property("sessionAStreamEndpoint", StreamEndpoint);
-    public static final String SessionBStreamEndpoint =
-        property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125");
-    public static final String RedisEndpoint = requiredProperty("redisEndpoint");
-    public static final String RedisKeyPrefix =
-        property("redisKeyPrefix", "bingo:java:");
-    public static final String ApiNode = property("apiNode", "a");
-    public static final String PlayNode = property("playNode", "a");
-    public static final String SessionNode = property("sessionNode", "a");
-    public static final String SessionARouterRid = property("sessionARouterRid", "1101");
-    public static final String SessionBRouterRid = property("sessionBRouterRid", "1102");
-    public static final String PlayANodeRid = property("playANodeRid", "2201");
-    public static final String PlayBNodeRid = property("playBNodeRid", "2202");
-    public static final String PlayRid = property("playRid", PlayBNodeRid);
+    public static String ApiAChannelEndpoint;
+    public static String ApiBChannelEndpoint;
+    public static String PlayAChannelEndpoint;
+    public static String PlayBChannelEndpoint;
+    public static String SessionASpotEndpoint;
+    public static String SessionBSpotEndpoint;
+    public static String SessionARouterEndpoint;
+    public static String SessionBRouterEndpoint;
+    public static String PlayASpotEndpoint;
+    public static String PlayBSpotEndpoint;
+    public static String PlayASpotRouterEndpoint;
+    public static String PlayBSpotRouterEndpoint;
+    public static String SessionAStreamEndpoint;
+    public static String SessionBStreamEndpoint;
+    public static String RedisEndpoint;
+    public static String RedisKeyPrefix;
+    public static String ApiNode;
+    public static String PlayNode;
+    public static String SessionNode;
+    public static String SessionARouterRid;
+    public static String SessionBRouterRid;
+    public static String PlayANodeRid;
+    public static String PlayBNodeRid;
+    public static String PlayRid;
+    public static String LogDirectory;
 
     private SampleTopology() {
+    }
+
+    public static void configure(String[] args) {
+        Properties properties = load(args);
+        ApiAChannelEndpoint = value(properties, "apiAChannelEndpoint", "tcp://127.0.0.1:47103");
+        ApiBChannelEndpoint = value(properties, "apiBChannelEndpoint", "tcp://127.0.0.1:47117");
+        PlayAChannelEndpoint = value(properties, "playAChannelEndpoint", "tcp://127.0.0.1:47104");
+        PlayBChannelEndpoint = value(properties, "playBChannelEndpoint", "tcp://127.0.0.1:47118");
+        SessionASpotEndpoint = value(properties, "sessionASpotEndpoint", "tcp://127.0.0.1:47105");
+        SessionBSpotEndpoint = value(properties, "sessionBSpotEndpoint", "tcp://127.0.0.1:47119");
+        SessionARouterEndpoint = value(properties, "sessionARouterEndpoint", "tcp://127.0.0.1:47106");
+        SessionBRouterEndpoint = value(properties, "sessionBRouterEndpoint", "tcp://127.0.0.1:47120");
+        PlayASpotEndpoint = value(properties, "playASpotEndpoint", "tcp://127.0.0.1:47110");
+        PlayBSpotEndpoint = value(properties, "playBSpotEndpoint", "tcp://127.0.0.1:47121");
+        PlayASpotRouterEndpoint = value(properties, "playASpotRouterEndpoint", "tcp://127.0.0.1:47111");
+        PlayBSpotRouterEndpoint = value(properties, "playBSpotRouterEndpoint", "tcp://127.0.0.1:47122");
+        SessionAStreamEndpoint = value(properties, "sessionAStreamEndpoint", "tcp://127.0.0.1:47114");
+        SessionBStreamEndpoint = value(properties, "sessionBStreamEndpoint", "tcp://127.0.0.1:47125");
+        RedisEndpoint = required(properties, "redisEndpoint");
+        RedisKeyPrefix = value(properties, "redisKeyPrefix", "bingo:java:");
+        ApiNode = value(properties, "apiNode", "a");
+        PlayNode = value(properties, "playNode", "a");
+        SessionNode = value(properties, "sessionNode", "a");
+        SessionARouterRid = value(properties, "sessionARouterRid", "1101");
+        SessionBRouterRid = value(properties, "sessionBRouterRid", "1102");
+        PlayANodeRid = value(properties, "playANodeRid", "2201");
+        PlayBNodeRid = value(properties, "playBNodeRid", "2202");
+        PlayRid = value(properties, "playRid", PlayBNodeRid);
+        LogDirectory = required(properties, "logDirectory");
     }
 
     public static String selectedApiChannelEndpoint() {
@@ -106,19 +112,28 @@ public final class SampleTopology {
         return "b".equals(SessionNode) ? SessionBStreamEndpoint : SessionAStreamEndpoint;
     }
 
-    private static String property(String name, String defaultValue) {
-        return System.getProperty("zlink.samples.bingo." + name, defaultValue);
+    private static Properties load(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: <role> --config <path>");
+        }
+        Properties properties = new Properties();
+        try (Reader reader = Files.newBufferedReader(Path.of(args[1]))) {
+            properties.load(reader);
+            return properties;
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not load Bingo sample config.", error);
+        }
     }
 
-    // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
-    // an isolated container; require the endpoint so a stray direct run never
-    // silently falls back to a developer's local Redis.
-    private static String requiredProperty(String name) {
-        String value = System.getProperty("zlink.samples.bingo." + name);
+    private static String value(Properties properties, String name, String fallback) {
+        String value = properties.getProperty(name);
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static String required(Properties properties, String name) {
+        String value = properties.getProperty(name);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                "System property 'zlink.samples.bingo." + name + "' is required; run the sample via "
-                    + "run_sample.sh/run_sample.ps1, which provisions an isolated Redis container.");
+            throw new IllegalArgumentException("Missing Bingo sample config: " + name);
         }
         return value;
     }

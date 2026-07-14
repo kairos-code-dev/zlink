@@ -7,14 +7,20 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
+if rg -n 'System\.(getProperty|getenv)' Server Client --glob '*.java'; then
+  echo "Bingo application code must use sample config files" >&2
+  exit 1
+fi
+
 pids=()
 redis_container_id=""
 log_dir="build/sample-logs"
-export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
+flow_log_dir="$(pwd)/logs"
+config_dir="build/sample-config"
 export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
-mkdir -p "${log_dir}" "${BINGO_LOG_DIR}"
+mkdir -p "${log_dir}" "${flow_log_dir}" "${config_dir}"
 rm -f "${log_dir}"/*.log
-rm -f "${BINGO_LOG_DIR}"/*.log
+rm -f "${flow_log_dir}"/*.log "${config_dir}"/*.properties
 
 print_logs() {
   local status="$1"
@@ -88,7 +94,44 @@ BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
 wait_port "${redis_host}" "${redis_port}"
-common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
+write_config() {
+  local path="$1" role_key="$2" role_value="$3"
+  cat >"$path" <<EOF
+apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port}
+apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port}
+playAChannelEndpoint=tcp://${play_a_host}:${play_a_port}
+playBChannelEndpoint=tcp://${play_b_host}:${play_b_port}
+sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
+sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
+sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port}
+sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port}
+playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
+playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
+playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
+playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
+sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
+sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
+redisEndpoint=${BINGO_REDIS_ENDPOINT}
+redisKeyPrefix=${bingo_redis_key_prefix}
+logDirectory=${flow_log_dir}
+${role_key}=${role_value}
+EOF
+  chmod 0600 "$path"
+}
+session_a_config="${config_dir}/session-a.properties"
+session_b_config="${config_dir}/session-b.properties"
+api_a_config="${config_dir}/api-a.properties"
+api_b_config="${config_dir}/api-b.properties"
+play_a_config="${config_dir}/play-a.properties"
+play_b_config="${config_dir}/play-b.properties"
+client_config="${config_dir}/client.properties"
+write_config "$session_a_config" sessionNode a
+write_config "$session_b_config" sessionNode b
+write_config "$api_a_config" apiNode a
+write_config "$api_b_config" apiNode b
+write_config "$play_a_config" playNode a
+write_config "$play_b_config" playNode b
+write_config "$client_config" clientNode client
 
 build_framework_jars
 rm -rf \
@@ -101,17 +144,17 @@ gradle_run \
   :Server:Api:installDist \
   :Server:Play:installDist \
   :Client:installDist
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.sessionNode=a" "$(app_bin Server/Session Session)" >"${log_dir}/session-a.log" 2>&1 &
+"$(app_bin Server/Session Session)" --config "$session_a_config" >"${log_dir}/session-a.log" 2>&1 &
 pids+=("$!")
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.sessionNode=b" "$(app_bin Server/Session Session)" >"${log_dir}/session-b.log" 2>&1 &
+"$(app_bin Server/Session Session)" --config "$session_b_config" >"${log_dir}/session-b.log" 2>&1 &
 pids+=("$!")
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.apiNode=a" "$(app_bin Server/Api Api)" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server/Api Api)" --config "$api_a_config" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.apiNode=b" "$(app_bin Server/Api Api)" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server/Api Api)" --config "$api_b_config" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.playNode=a -Dzlink.samples.bingo.playRid=2201" "$(app_bin Server/Play Play)" >"${log_dir}/play-a.log" 2>&1 &
+"$(app_bin Server/Play Play)" --config "$play_a_config" >"${log_dir}/play-a.log" 2>&1 &
 pids+=("$!")
-JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.playNode=b -Dzlink.samples.bingo.playRid=2202" "$(app_bin Server/Play Play)" >"${log_dir}/play-b.log" 2>&1 &
+"$(app_bin Server/Play Play)" --config "$play_b_config" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${session_a_router_host}" "${session_a_router_port}"
 wait_port "${stream_a_host}" "${stream_a_port}"
@@ -124,12 +167,12 @@ wait_port "${play_a_spot_host}" "${play_a_spot_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
-JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1
 
 grep -q "bingo=completed" "${log_dir}/client.log"
 grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${log_dir}/client.log"
-grep -Rq "message flow" "${BINGO_LOG_DIR}"
+grep -Rq "message flow" "${flow_log_dir}"
 grep -Eq "zlink metric .*name=zlink\.stream\.connections\.active" "${log_dir}"/session-*.log
 grep -Eq "zlink metric .*name=zlink\.spot\.queue\.depth" "${log_dir}"/play-*.log
 

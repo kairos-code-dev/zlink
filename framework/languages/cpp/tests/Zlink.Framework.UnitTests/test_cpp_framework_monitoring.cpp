@@ -59,7 +59,6 @@ int main ()
                           {zlink::framework::socket_event_kind_t::connection_ready})
       .add_location_events ("location", 1s)
       .add_spot_events ("stage-node", 1s)
-      .add_spot_timer_events ("spot-timer")
       .add_stream_events ("game.stream")
       .add_actor_events ("game.actor")
       .on_trace ([&] (const zlink::framework::runtime_event_base_t &event) {
@@ -98,7 +97,7 @@ int main ()
         })
       .on<zlink::framework::spot_event_payload_t> (
         [&] (const zlink::framework::spot_event_payload_t &event) {
-            if (event.source_name == "spot-timer"
+            if (event.source_name == "stage-node"
                 && event.event
                      == zlink::framework::spot_event_kind_t::timer_stopped_after_unhandled_exception
                 && event.timer_diagnostic && event.timer_diagnostic->exception_message == "boom") {
@@ -248,7 +247,7 @@ int main ()
       zlink::framework::runtime_event_base_t{"game.actor"},
       zlink::framework::actor_event_kind_t::unbound, "player", "bob", "session-2", "closed"});
     runtime.publish_timer_failure (
-      "spot-timer", zlink::framework::spot_rid_t::from_string ("stage-rid"),
+      "stage-node", zlink::framework::spot_rid_t::from_string ("stage-rid"),
       zlink::framework::timer_failure_event_t{
         "heartbeat", std::type_index (typeid (timer_handler_t)), 7, true, "boom"});
     runtime.publish_timer_failure (

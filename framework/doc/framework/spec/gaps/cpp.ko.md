@@ -307,7 +307,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
   - 근거: 수정 전 10ms polling 회귀에서 동일 snapshot의 status·topology·service summary가 75ms 동안 각각 8회 발행됐다. host가 직전 의미 상태를 보존하고 관측 시각과 row 순서를 제외한 diff가 있는 event 종류만 발행하도록 바꿨다. 유휴 중 각 1회, store health 변경 뒤 status만 정확히 1회 추가됨을 확인했고 monitoring test와 store location resolver 전체 26개 테스트가 통과했다.
 - [x] **IMP-CP-14** (결함) — 등록한 location polling 간격에 **숨은 1초 상한**이 걸린다
   - 근거: 수정 전 1.3초 interval 회귀 테스트에서 location query가 1.1초 안에 두 번 호출되어 실패했다. polling interval 계산이 숨은 1초 초기값 대신 검증된 첫 source interval에서 최소값을 구하도록 바꾼 뒤 monitoring 대상 4개와 store location resolver 전체 26개 테스트가 통과했다.
-- [ ] **IMP-CP-15** (결함) — 스펙이 정한 **spot source가 timer 실패 이벤트를 내지 못한다**
+- [x] **IMP-CP-15** (결함) — 스펙이 정한 **spot source가 timer 실패 이벤트를 내지 못한다**
+  - 근거: 수정 전 unit gate에서 계약 밖 `add_spot_timer_events` 등록을 제거하자 spot source로 발행한 stopped timer event가 누락되어 종료 코드 2로 실패했다. 별도 public 축과 runtime state를 제거하고 timer failure를 기존 `add_spot_events` source로 통합했다. monitoring unit, public header/target contract, RuntimeMonitoring service/client build와 실제 `MON-A3`·`MON-A5`가 통과했다.
 - [ ] **IMP-CP-16** (미구현) — 계기 8개 결측
 - [ ] **IMP-CP-17** (결함) — `add_spot_events(name, interval)`의 **interval을 읽는 곳이 없다**
 - [x] **IMP-CP-18** (결함) — 폴백 로그가 `phase=` 대신 **`outcome=`**을 쓴다
@@ -576,7 +577,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-33** (결함) — **`RL-D5` soak가 순차 burst**이고, **`RL-D4` wire 호환이 검증되지 않는다**
 - [ ] **E2E-CP-34** (결함) — **`MON-A2`(P0)에 trigger가 없고 원리적으로 실패할 수 없다**(IMP-CP-13이 매 tick 발행)
 - [ ] **E2E-CP-35** (결함) — **`MON-D1`·`MON-A4`가 전이가 아니라 카운터를 센다.** `MON-A1`은 `RoutingId`를 아예 기록하지 않는다
-- [ ] **E2E-CP-36** (결함) — **`MON-A3`·`MON-A5`가 스펙에 없는 source로만 timer를 관측**해 IMP-CP-15를 **가린다**
+- [x] **E2E-CP-36** (결함) — **`MON-A3`·`MON-A5`가 스펙에 없는 source로만 timer를 관측**해 IMP-CP-15를 **가린다**
+  - 근거: RuntimeMonitoring service에서 계약 밖 timer source 등록을 제거하고 기존 spot source 하나로 handler 실패와 예외 후 중단 event를 받도록 바꿨다. 단독 `MON-A5`가 앞선 A3의 spot 생성에 의존해 실패하는 것도 재현해, A5가 공개 `/spot/create`로 자기 timer 전제 조건을 만들도록 수정했다. `MON-A3`와 `MON-A5` 단독 runner가 각각 통과했다.
 
 **Config 6은 IMP-CP-06·IMP-CP-35를 "못 잡는" 게 아니라 잡을 수 없게 배치돼 있다.
 아래 9건이 그 구조다.**

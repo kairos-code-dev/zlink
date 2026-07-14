@@ -157,14 +157,6 @@ monitoring_builder_t &monitoring_builder_t::add_spot_events (std::string source_
     return *this;
 }
 
-monitoring_builder_t &monitoring_builder_t::add_spot_timer_events (std::string source_name)
-{
-    validate_source_name (source_name, "spot timer");
-    ensure_unique_source (_state->spot_timer_sources, source_name, "spot timer");
-    _state->spot_timer_sources.push_back (std::move (source_name));
-    return *this;
-}
-
 monitoring_builder_t &monitoring_builder_t::add_stream_events (std::string source_name)
 {
     validate_source_name (source_name, "stream");
@@ -352,7 +344,7 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
                                                   spot_rid_t spot_rid,
                                                   timer_failure_event_t failure) const
 {
-    if (!contains_source (_state->spot_timer_sources, source_name)) {
+    if (!contains_source (_state->spot_sources, source_name)) {
         return;
     }
     auto event_kind = failure.stopped ? spot_event_kind_t::timer_stopped_after_unhandled_exception

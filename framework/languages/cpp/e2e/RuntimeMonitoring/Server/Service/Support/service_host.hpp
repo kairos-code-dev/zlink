@@ -63,7 +63,6 @@ inline int run_service_host (int argc,
             monitoring.add_socket_events (profile_channel);
         }
         monitoring.add_spot_events (spot_node, std::chrono::milliseconds (100));
-        monitoring.add_spot_timer_events (spot_node);
         monitoring.add_location_events ("location-runtime", std::chrono::milliseconds (100));
         monitoring.on<zlink::framework::socket_event_payload_t> (
           [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {

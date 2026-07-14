@@ -14,6 +14,15 @@ namespace zlink::framework::e2e::runtime_monitoring::client
 
 inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
 {
+    auto service = zlink::http_client::client_t::create ()
+                     .base_url (options.service_url)
+                     .timeout (std::chrono::milliseconds (1000))
+                     .build ();
+    // The stopping timer belongs to a user Spot, so this scenario creates the
+    // public application resource whose failure event it observes.
+    auto created = service.post ("/spot/create").submit_raw ().result ();
+    ensure (created && created.value ().status < 400, "MON-A5 spot create call failed");
+
     if (!options.trigger_url.empty ()) {
         auto trigger = zlink::http_client::client_t::create ()
                          .base_url (options.trigger_url)

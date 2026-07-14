@@ -31,7 +31,6 @@ class monitoring_runtime_state_t
     std::vector<socket_monitoring_source_registration_t> socket_sources;
     std::vector<monitoring_source_registration_t> location_sources;
     std::vector<monitoring_source_registration_t> spot_sources;
-    std::vector<std::string> spot_timer_sources;
     std::vector<std::string> stream_sources;
     std::vector<std::string> actor_sources;
     bool runtime_metrics_enabled = false;

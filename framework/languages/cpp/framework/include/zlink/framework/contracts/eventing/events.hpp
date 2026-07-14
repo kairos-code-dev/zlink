@@ -243,7 +243,6 @@ class monitoring_builder_t
                                                std::chrono::milliseconds interval);
     monitoring_builder_t &add_spot_events (std::string source_name,
                                            std::chrono::milliseconds interval);
-    monitoring_builder_t &add_spot_timer_events (std::string source_name);
     monitoring_builder_t &add_stream_events (std::string source_name);
     monitoring_builder_t &add_actor_events (std::string source_name);
     monitoring_builder_t &on_trace (std::function<void (const runtime_event_base_t &)> hook);

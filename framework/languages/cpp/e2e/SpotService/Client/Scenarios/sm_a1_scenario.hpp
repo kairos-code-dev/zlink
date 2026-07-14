@@ -6,6 +6,7 @@
 
 #include <zlink/http_client.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -78,6 +79,29 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
     }
     if (created.actor_id != "alice" || created.display_name != "Alice" || created.level != 7) {
         throw std::runtime_error ("SM-A1 join payload mismatch");
+    }
+
+    auto location_raw = api.get ("/locations/spots").submit_raw ().result ();
+    if (!location_raw) {
+        throw std::runtime_error (location_raw.error () ? location_raw.error ()->what ()
+                                                        : "SM-A1 location query failed");
+    }
+    if (location_raw.value ().status >= 400) {
+        throw std::runtime_error ("SM-A1 location query HTTP status "
+                                  + std::to_string (location_raw.value ().status) + ": "
+                                  + location_raw.value ().body);
+    }
+    const auto rows = nlohmann::json::parse (location_raw.value ().body);
+    const auto expected = std::find_if (rows.begin (), rows.end (), [&] (const auto &row) {
+        return row.value ("mesh_name", "") == spot_mesh
+               && row.value ("spot_rid", "") == created.spot_rid
+               && row.value ("spot_type", "") == user_spot
+               && row.value ("node_rid", "") == created.owner_node_rid
+               && row.value ("spot_kind", "") == "user"
+               && !row.value ("owner_id", "").empty () && row.value ("generation", 0) > 0;
+    });
+    if (expected == rows.end ()) {
+        throw std::runtime_error ("SM-A1 spot location row mismatch: " + rows.dump ());
     }
 }
 

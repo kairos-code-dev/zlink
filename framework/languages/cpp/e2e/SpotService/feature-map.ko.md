@@ -19,7 +19,8 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 ## 구현됨
 
 - `SM-A1`: entry spot join과 `.NET`식 lifecycle context group의 spot create로 user spot 생성과
-  reply spot id를 검증한다.
+  reply spot id를 검증한다. 독립 실행에서는 공개 `location_runtime_query_t`가 조회한 row의
+  mesh, spot id와 타입, owner node, kind, owner, generation도 함께 검증한다.
 - `SM-A2`: 같은 user spot에 연속 상태 변경 request를 보내 누적 상태와 순서를 검증하고,
   `.NET`식 lifecycle context group에서는 앞선 SM-A4/F1/F2 state evidence가 보존되는지 확인한다.
 - `SM-A3`: route client가 `target_node_rid`와 특정 `spot_rid_t`를 함께 지정해 원격 user spot으로

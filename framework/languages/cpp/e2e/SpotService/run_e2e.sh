@@ -1358,6 +1358,16 @@ run_focused_from_all() {
 }
 
 if [[ "$SCENARIO" == "SM-A1" || "$SCENARIO" == "sm-a1" ]]; then
+  if ! rg -q 'list_spot_locations' \
+      "$SCRIPT_DIR/Server/Play/Endpoints/operational_endpoints.hpp"; then
+    echo "SM-A1 contract gate failed: server does not query spot location rows" >&2
+    exit 1
+  fi
+  if ! rg -q 'spot location row mismatch' \
+      "$SCRIPT_DIR/Client/Scenarios/sm_a1_scenario.hpp"; then
+    echo "SM-A1 contract gate failed: client does not validate the spot location row" >&2
+    exit 1
+  fi
   ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"

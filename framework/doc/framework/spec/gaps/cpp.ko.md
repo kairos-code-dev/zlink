@@ -565,7 +565,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 SM-E1 블록의 missing request `reply_error`와 missing send `drop` flow 단언 부재를 각각 검출했다. target node인 `play-b-flow.log`에서 `MissingSpotReq`·`MissingSpotMsg`의 surface·reason·action을 검사하도록 바꾼 뒤 gate와 `./run_e2e.sh SM-E1`의 client·server evidence가 모두 통과했다.
 - [ ] **E2E-CP-19** (결함) — **`SM-F4`(P0)가 request 절반만 본다.** send drop·failure counter·flow 분류가 없다
   - 재검증: live `spot_handle_t`를 보관하고 target Spot을 닫은 뒤 같은 handle로 request/send를 보내는 실패 게이트를 실제 runner에서 시험했다. request는 명확한 route error가 아니라 timeout이 되었고 send는 target observer에 도달하지 않았다. 이는 E2E 단언만의 문제가 아니라 location event·주기 갱신이 없는 IMP-CP-03의 handle registry 결함과 같은 원인이므로 두 항목을 같은 묶음에서 고쳐야 한다. per-call store lookup이나 테스트 전용 fixed handle로 우회하지 않는다.
-- [ ] **E2E-CP-20** (미구현) — **`SM-A1`(P0)이 spot location row 조회를 하지 않는다.** config 전체에 location runtime query가 0건
+- [x] **E2E-CP-20** (미구현) — **`SM-A1`(P0)이 spot location row 조회를 하지 않는다.** config 전체에 location runtime query가 0건
+  - 근거: 수정 전 target-contract gate가 server의 `list_spot_locations` 호출과 client의 row 단언 부재를 각각 검출했다. play server의 운영 endpoint가 공개 `location_runtime_query_t`를 주입받아 user Spot row를 조회하고, client가 생성 직후 mesh·spot id·spot type·owner node·kind·owner·generation을 확인하도록 바꿨다. play/client target 빌드, gate, Redis location store를 사용하는 `./run_e2e.sh SM-A1`의 client·server evidence가 모두 통과했다.
 - [ ] **E2E-CP-21** (결함) — **"수렴 직후 첫 요청"이 10초 retry 루프에 가려져 관측 불가**
 - [ ] **E2E-CP-22** (결함) — **start-order 축이 11개 config 중 9개에서 no-op**이다. 같은 실행을 3번 반복한다
 - [ ] **E2E-CP-23** (결함) — **`RM-A4`(P0) failover가 실제로 일어나지 않는다.** 새 프로세스에 직접 물어본다

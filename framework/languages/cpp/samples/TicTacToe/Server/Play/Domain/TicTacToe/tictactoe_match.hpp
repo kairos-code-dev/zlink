@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -15,8 +17,10 @@ namespace zlink::samples::tictactoe
 class tictactoe_match_t
 {
   public:
-    explicit tictactoe_match_t (std::string room_id) :
-        _state{.room_id = std::move (room_id)}
+    explicit tictactoe_match_t (
+      std::string room_id,
+      std::chrono::steady_clock::duration turn_timeout = std::chrono::seconds (15)) :
+        _state{.room_id = std::move (room_id)}, _turn_timeout (turn_timeout)
     {
     }
 
@@ -40,6 +44,7 @@ class tictactoe_match_t
         if (_state.o_actor_id.empty ()) {
             _state.o_actor_id = actor_id;
             _state.status = tictactoe_status_t::in_progress;
+            reset_turn_deadline ();
             return {_state};
         }
         if (actor_id == _state.o_actor_id) {
@@ -77,14 +82,35 @@ class tictactoe_match_t
         } else {
             _state.next_turn = actor_id == _state.x_actor_id ? tictactoe_marks_t::o
                                                              : tictactoe_marks_t::x;
+            reset_turn_deadline ();
         }
         return _state;
+    }
+
+    bool tick ()
+    {
+        if (_state.status != tictactoe_status_t::in_progress || !_turn_deadline
+            || std::chrono::steady_clock::now () < *_turn_deadline) {
+            return false;
+        }
+        const auto timed_out_actor = _state.next_turn == tictactoe_marks_t::x
+                                       ? _state.x_actor_id
+                                       : _state.o_actor_id;
+        _state.status = tictactoe_status_t::turn_timed_out;
+        _state.winner = timed_out_actor == _state.x_actor_id ? _state.o_actor_id
+                                                              : _state.x_actor_id;
+        _state.next_turn.clear ();
+        _state.last_move_actor_id = timed_out_actor;
+        _state.last_move_cell = -1;
+        _turn_deadline.reset ();
+        return true;
     }
 
     void ensure_can_leave (const std::string &actor_id) const
     {
         if (_state.status != tictactoe_status_t::won
-            && _state.status != tictactoe_status_t::draw) {
+            && _state.status != tictactoe_status_t::draw
+            && _state.status != tictactoe_status_t::turn_timed_out) {
             throw std::runtime_error ("cannot leave before the game reaches a final state");
         }
         if (actor_id != _state.x_actor_id && actor_id != _state.o_actor_id) {
@@ -95,6 +121,11 @@ class tictactoe_match_t
     const tictactoe_state_t &snapshot () const noexcept { return _state; }
 
   private:
+    void reset_turn_deadline ()
+    {
+        _turn_deadline = std::chrono::steady_clock::now () + _turn_timeout;
+    }
+
     bool has_winner (char mark) const
     {
         static constexpr std::array<std::array<int, 3>, 8> lines{{
@@ -115,6 +146,8 @@ class tictactoe_match_t
     }
 
     tictactoe_state_t _state;
+    std::chrono::steady_clock::duration _turn_timeout;
+    std::optional<std::chrono::steady_clock::time_point> _turn_deadline;
 };
 
 } // namespace zlink::samples::tictactoe

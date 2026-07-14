@@ -483,7 +483,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - §0.8 중단: C++만 고치면 공유 wire가 달라진다. 선택지 A는 `DeliveryStatusChangedReq`에 `CustomerId`를 추가해 모든 언어가 전달하게 하는 것이고, 선택지 B는 Tracking이 생성 시점부터 `DeliveryId → CustomerId` 관계를 저장해 상태 변경 메시지에 고객 필드를 싣지 않는 것이다. 공통 계약에서 한 방식을 결정한 뒤 구현해야 한다.
 - [x] **SMP-CP-56** (결함) — **Bingo room Spot이 절대 닫히지 않는다.** `close()` 호출이 0건이고 observer 방 timer가 **프로세스 수명 내내** 돈다
   - 근거: 수정 전 sample parity gate가 마지막 actor 이탈 뒤 빈 player·observer 방의 종료 요청이 없음을 검출했다. `on_leave_actor`가 두 점유 집합이 모두 비면 `close()`를 요청하도록 수정한 뒤 Bingo parity 테스트 6개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
-- [ ] **SMP-CP-57** (결함) — **TicTacToe game Spot에 timer가 없다.** 문서가 요구한 turn timeout이 통째로 미구현
+- [x] **SMP-CP-57** (결함) — **TicTacToe game Spot에 timer가 없다.** 문서가 요구한 turn timeout이 통째로 미구현
+  - 근거: 수정 전 sample parity gate가 game timer 등록, domain tick, `TurnTimedOut` 상태가 모두 없음을 검출했다. match가 15초 `steady_clock` deadline과 timeout 상태 전이를 소유하고 Spot timer handler가 변경된 state를 room actor에게 전달하도록 구현한 뒤 timeout domain 회귀 테스트, TicTacToe parity 테스트 7개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [x] **SMP-CP-58** (결함) — **Bingo room id가 프로세스별 카운터**라 두 Play 노드가 **같은 spot rid**를 만든다
   - 근거: 수정 전 두 독립 allocator의 첫 room id가 모두 `two-player-room-1`이어서 회귀 테스트가 실패했다. allocator가 128비트 난수 기반 routing id를 내부에서 만들도록 수정한 뒤 독립 allocator 테스트, Bingo parity 테스트 7개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [x] **SMP-CP-59** (결함) — **TicTacToe entry spot이 disconnect 시 milestone observer를 정리하지 않는다.** 죽은 세션에 계속 push한다

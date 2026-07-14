@@ -48,6 +48,7 @@ struct tictactoe_status_t
     static constexpr const char *in_progress = "InProgress";
     static constexpr const char *won = "Won";
     static constexpr const char *draw = "Draw";
+    static constexpr const char *turn_timed_out = "TurnTimedOut";
 };
 
 struct authenticate_req_t

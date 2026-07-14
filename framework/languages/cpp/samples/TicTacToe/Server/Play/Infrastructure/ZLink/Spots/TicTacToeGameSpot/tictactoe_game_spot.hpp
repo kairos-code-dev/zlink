@@ -22,6 +22,14 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
+class tictactoe_game_spot_t;
+
+class tictactoe_game_timer_handler_t
+{
+  public:
+    task_t<void> handle (tictactoe_game_spot_t &spot, const timer_tick_t &tick) const;
+};
+
 class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 {
   public:
@@ -44,6 +52,15 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         static_cast<tictactoe_match_t &> (*this) = tictactoe_match_t (room_id);
         return spot_create_response_t::accept ();
     }
+
+    void on_initialize ()
+    {
+        using namespace std::chrono_literals;
+        _game_timer =
+          _context.add_timer<tictactoe_game_timer_handler_t> ("game-tick", 1s);
+    }
+
+    void on_closing () { _game_timer.cancel (); }
 
     spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const message_t &request_message)
@@ -112,6 +129,10 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     game_notification_publisher_t publisher;
 
   private:
+    friend class tictactoe_game_timer_handler_t;
+
+    task_t<void> handle_game_tick (const timer_tick_t &);
+
     template <typename TNotify>
     void send_to_other_actors (const std::string &source_actor_id, const TNotify &notify)
     {
@@ -151,9 +172,11 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_info_t> players;
     std::map<std::string, tictactoe_game_join_req_t> _pending_joins;
+    framework::timer_t _game_timer;
 };
 
 } // namespace zlink::samples::tictactoe
 
 #include "Handlers/play_actor_leave_game_handler.hpp"
 #include "Handlers/play_actor_place_mark_handler.hpp"
+#include "Handlers/tictactoe_game_timer_handler.hpp"

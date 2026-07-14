@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -292,6 +293,26 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
+{
+    using namespace zlink::samples::tictactoe;
+
+    tictactoe_match_t match ("timeout-room", std::chrono::steady_clock::duration::zero ());
+    (void) match.join ("player-x", "timeout-room");
+    (void) match.join ("player-o", "timeout-room");
+
+    ASSERT_TRUE (match.tick ());
+    const auto &state = match.snapshot ();
+    EXPECT_EQ (state.status, tictactoe_status_t::turn_timed_out);
+    EXPECT_EQ (state.winner, "player-o");
+    EXPECT_EQ (state.last_move_actor_id, "player-x");
+    EXPECT_EQ (state.last_move_cell, -1);
+    EXPECT_TRUE (state.next_turn.empty ());
+    EXPECT_FALSE (match.tick ());
+    EXPECT_NO_THROW (match.ensure_can_leave ("player-x"));
+    EXPECT_NO_THROW (match.ensure_can_leave ("player-o"));
+}
+
 TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
 {
     using namespace zlink::samples::deliverydispatch;
@@ -392,6 +413,23 @@ TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
     EXPECT_NE (entry.substr (disconnect, callback_end - disconnect).find ("observers.erase"),
                std::string::npos)
       << "disconnect must remove the actor from milestone notification targeting";
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeOwnsTurnTimeoutLifecycle)
+{
+    const auto root = cpp_language_root () / "samples/TicTacToe/Server/Play";
+    const auto spot = read_file (
+      root / "Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp");
+    const auto match = read_file (root / "Domain/TicTacToe/tictactoe_match.hpp");
+    const auto messages = read_file (
+      cpp_language_root () / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+
+    EXPECT_NE (spot.find ("add_timer<tictactoe_game_timer_handler_t>"), std::string::npos)
+      << "game spot must register the turn timeout timer";
+    EXPECT_NE (match.find ("tick ("), std::string::npos)
+      << "match domain must own timeout state transitions";
+    EXPECT_NE (messages.find ("TurnTimedOut"), std::string::npos)
+      << "timeout must have the shared terminal status used by the reference sample";
 }
 
 TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)

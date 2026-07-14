@@ -1443,6 +1443,13 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
                                .role = location_role_t::router,
                                .endpoint = "inproc://route-remote",
                                .weight = 42});
+    seed_peer (*store, "owner-route-invalid-dealer",
+               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
+                               .mesh_name = "route.mesh",
+                               .node_rid = zlink::routing_id_t::from ("route-dealer-peer"),
+                               .role = location_role_t::dealer,
+                               .endpoint = "inproc://route-invalid-dealer",
+                               .weight = 100});
 
     zlink::framework::zlink_builder_t zlink;
     zlink.route_channel ("route.mesh")
@@ -1471,9 +1478,21 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
         return std::find (connections.begin (), connections.end (), "inproc://route-remote")
                != connections.end ();
     }));
+    EXPECT_TRUE (wait_until ([&] {
+        const auto rows = store->list_peers ({}).result ().value ();
+        return std::any_of (rows.begin (), rows.end (), [] (const auto &row) {
+            return row.owner_id == "owner-route-local"
+                   && row.auto_connect_type == location_auto_connect_type_t::route_mesh
+                   && row.mesh_name == "route.mesh" && row.role == location_role_t::router
+                   && row.endpoint.empty ();
+        });
+    }));
     auto connected = route.list_connections ();
     EXPECT_NE (connected.end (),
                std::find (connected.begin (), connected.end (), "inproc://route-manual"));
+    EXPECT_EQ (connected.end (),
+               std::find (connected.begin (), connected.end (),
+                          "inproc://route-invalid-dealer"));
 
     ASSERT_EQ (1, store->remove_all_by_owner ("owner-route-remote").result ().value ());
     EXPECT_TRUE (wait_until ([&] {
@@ -1485,6 +1504,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
     }));
 
     service.stop ();
+    ASSERT_EQ (1,
+               store->remove_all_by_owner ("owner-route-invalid-dealer").result ().value ());
     EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
     runtime->stop ();
 }

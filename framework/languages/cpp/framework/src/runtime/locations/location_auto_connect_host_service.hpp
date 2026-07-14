@@ -120,7 +120,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             const bool endpointless_client = route.bind_endpoint ().empty ();
             if (endpointless_client) {
                 add_loop (local_t{location_auto_connect_type_t::route_mesh,
-                                  route.router_channel_id (), location_role_t::dealer, route_rid,
+                                  route.router_channel_id (), location_role_t::router, route_rid,
                                   {}, 100},
                           nullptr, connect_route, disconnect_route);
             }
@@ -403,7 +403,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     {
         switch (type) {
             case location_auto_connect_type_t::route_mesh:
-                return role == location_role_t::router || role == location_role_t::dealer;
+                return role == location_role_t::router;
             case location_auto_connect_type_t::client_server:
                 return role == location_role_t::router || role == location_role_t::dealer;
             case location_auto_connect_type_t::dealer_mesh:
@@ -436,10 +436,6 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             case location_auto_connect_type_t::fanout:
                 return local.role == location_role_t::sub && peer.role == location_role_t::pub;
             case location_auto_connect_type_t::route_mesh:
-                if (local.role == location_role_t::dealer) {
-                    return peer.role == location_role_t::router
-                           && local_is_initiator (local, peer);
-                }
                 return local.role == location_role_t::router && peer.role == location_role_t::router
                        && local_is_initiator (local, peer);
             case location_auto_connect_type_t::dealer_mesh:

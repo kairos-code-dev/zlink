@@ -232,7 +232,8 @@
 - [ ] **IMP-CP-02** (결함) — 31
 - [ ] **IMP-CP-03** (결함) — 24 §3
 - [ ] **IMP-CP-04** (미구현) — 20 §8·30 §7.2
-- [ ] **IMP-CP-05** (결함) — 40 §2.1·02 §4
+- [x] **IMP-CP-05** (결함) — 40 §2.1·02 §4
+  - 근거: 수정 전 실제 auto-connect 회귀 테스트에서 endpoint 없는 RouteMesh local row를 `Router`로 찾지 못해 실패했다. endpoint 유무와 관계없이 local role을 `Router`로 게시하고 RouteMesh discovery에서 `Dealer` peer를 거부하도록 모델을 바로잡은 뒤, endpoint 없는 local row와 잘못된 dealer peer 거부를 확인하는 회귀, route initiator ordering 시나리오, location resolver 전체 ctest와 target-contract gate가 통과했다.
 - [ ] **IMP-CP-06** (결함) — 40 §8.2·§6.1
 - [ ] **IMP-CP-07** (결함) — 40 §2.3·§5.1
 - [x] **IMP-CP-08** (미구현) — 30 §6

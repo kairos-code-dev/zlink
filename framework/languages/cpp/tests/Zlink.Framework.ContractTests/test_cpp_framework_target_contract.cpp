@@ -76,6 +76,8 @@ int main ()
     const auto spot_runtime = read_file (root / "framework/src/runtime/spots/spot_runtime.cpp");
     const auto stream_host =
       read_file (root / "framework/src/runtime/streams/stream_host_service.cpp");
+    const auto location_auto_connect =
+      read_file (root / "framework/src/runtime/locations/location_auto_connect_host_service.hpp");
     gate_t gate;
 
     for (const auto &required :
@@ -122,6 +124,23 @@ int main ()
     gate.require (stream_host.find ("_runtime.dispatch_error (") != std::string::npos,
                   "IMP-CP-08",
                   "STREAM host does not dispatch a session transport failure callback");
+
+    /* IMP-CP-05 — every RouteMesh store row uses the Router role. */
+    const auto route_role_begin = location_auto_connect.find (
+      "case location_auto_connect_type_t::route_mesh:");
+    const auto route_role_end = location_auto_connect.find (
+      "case location_auto_connect_type_t::client_server:", route_role_begin);
+    const auto route_role_block =
+      route_role_begin != std::string::npos && route_role_end != std::string::npos
+        ? location_auto_connect.substr (route_role_begin, route_role_end - route_role_begin)
+        : std::string ();
+    gate.require (location_auto_connect.find (
+                    "route.router_channel_id (), location_role_t::dealer")
+                    == std::string::npos,
+                  "IMP-CP-05", "endpointless RouteMesh member still publishes a dealer row");
+    gate.require (!route_role_block.empty ()
+                    && route_role_block.find ("location_role_t::dealer") == std::string::npos,
+                  "IMP-CP-05", "RouteMesh discovery still accepts dealer rows");
 
     /* CPP-G0-ASYNC-001 — one-way terminators return void. */
     gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",

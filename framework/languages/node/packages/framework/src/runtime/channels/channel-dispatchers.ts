@@ -175,7 +175,7 @@ export class ZLinkChannelRequestDispatcher {
       writeError: error => this.submitReply(
         appendParts(
           router.reply(received.routingId, requestSeq),
-          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+          encodeChannelErrorReplyParts(envelope.header, error)
         ),
         signal
       )
@@ -437,7 +437,7 @@ export class ZLinkRoutePacketDispatcher {
       writeError: error => this.submitReply(
         appendParts(
           router.reply(received.routingId, requestSeq),
-          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+          encodeChannelErrorReplyParts(envelope.header, error)
         )
       )
     });

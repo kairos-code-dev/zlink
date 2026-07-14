@@ -349,7 +349,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [x] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
   - 근거: 수정 전 contract gate가 one-way send의 request timeout 재사용과 독립된 1000ms 기본 부재를 모두 검출했다. send backpressure 기본을 1000ms로 분리하고 명시적 timeout만 우선하도록 수정한 뒤 gate와 channel messaging unit binary가 통과했다.
 - [ ] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
-- [ ] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
+- [x] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
+  - 근거: 수정 전 target-contract gate가 runtime에서 읽히지 않는 `include_native_diagnostics` public option을 검출했다. 계약에 없는 setter·getter·storage와 이를 효과가 있는 것처럼 확인하던 test 기대를 제거한 뒤 target/header contract test와 module-hosted unit test가 통과했다.
 - [x] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**
   - 근거: 수정 전 구조 게이트가 `close_erased()`의 callback 상태 전이가 `callback_mutex` 밖에서 수행됨을 검출했다. depth 확인·close 요청 기록과 `close_now()`의 요청 초기화를 기존 `callback_mutex`로 보호하고, 별도 스레드의 callback을 barrier로 유지한 채 close가 callback 종료까지 Spot을 보존하는 회귀 테스트를 추가했다. spot timer/runtime ctest 2개가 통과했다.
 - [ ] **IMP-CP-35** (결함) — framework runtime에 **owner-lease join이 아예 없다.** store에 떠넘겼다

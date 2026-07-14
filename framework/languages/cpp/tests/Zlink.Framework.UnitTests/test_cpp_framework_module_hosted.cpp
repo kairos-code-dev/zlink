@@ -566,8 +566,7 @@ int main ()
     dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
     dispatch.message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_sample_rate (0.5)
-      .include_message_sizes (true)
-      .include_native_diagnostics (true);
+      .include_message_sizes (true);
     options.add_client_server_channel ("api-channel")
       .enable_server ("tcp://127.0.0.1:9103")
       .enable_client ()
@@ -689,8 +688,7 @@ int main ()
         || options_dispatch.diagnostics.message_flow ()
              != zlink::framework::message_flow_log_mode_t::key_transitions
         || options_dispatch.diagnostics.sample_rate () != 0.5
-        || !options_dispatch.diagnostics.include_message_sizes ()
-        || !options_dispatch.diagnostics.include_native_diagnostics ()) {
+        || !options_dispatch.diagnostics.include_message_sizes ()) {
         return 21;
     }
     bool invalid_dispatch_failed = false;

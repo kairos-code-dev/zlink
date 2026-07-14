@@ -71,7 +71,6 @@ class dispatch_diagnostics_options_t
     message_flow_log_mode_t message_flow () const noexcept { return _message_flow; }
     double sample_rate () const noexcept { return _sample_rate; }
     bool include_message_sizes () const noexcept { return _include_message_sizes; }
-    bool include_native_diagnostics () const noexcept { return _include_native_diagnostics; }
     const std::optional<std::string> &log_file () const noexcept { return _log_file; }
     const std::optional<std::string> &label () const noexcept { return _label; }
     const std::shared_ptr<std::atomic<message_flow_log_mode_t>> &live_mode () const noexcept
@@ -93,7 +92,6 @@ class dispatch_diagnostics_options_t
     message_flow_log_mode_t _message_flow = message_flow_log_mode_t::errors_only;
     double _sample_rate = 1.0;
     bool _include_message_sizes = true;
-    bool _include_native_diagnostics = false;
     // When set, tracing/error logs go to this dedicated file (separated from app
     // logs). Empty = shared app logger (or std::clog if no sink).
     std::optional<std::string> _log_file;
@@ -248,12 +246,6 @@ struct dispatch_options_t
     dispatch_options_t &include_message_sizes (bool include)
     {
         diagnostics._include_message_sizes = include;
-        return *this;
-    }
-
-    dispatch_options_t &include_native_diagnostics (bool include)
-    {
-        diagnostics._include_native_diagnostics = include;
         return *this;
     }
 

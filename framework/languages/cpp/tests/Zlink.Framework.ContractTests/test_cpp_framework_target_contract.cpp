@@ -342,6 +342,10 @@ int main ()
     gate.require (cmake.find ("zlink_framework_extension_metrics") == std::string::npos,
                   "IMP-CP-28", "unsupported metrics extension target remains public");
 
+    /* IMP-CP-33 — do not accept a diagnostics option that has no runtime effect. */
+    gate.require (execution_hpp.find ("include_native_diagnostics") == std::string::npos,
+                  "IMP-CP-33", "no-op include_native_diagnostics remains public");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

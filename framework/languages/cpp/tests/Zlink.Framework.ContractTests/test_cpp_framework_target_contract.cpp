@@ -752,6 +752,16 @@ int main ()
                          != std::string::npos,
                   "E2E-CP-40", "D1/D2 do not reject survivor disconnect/reconnect");
 
+    /* E2E-CP-41 — one HTTP probe maps to one framework request attempt. */
+    gate.require (store_failure_consumer_endpoints.find ("request_profile_with_retry")
+                    == std::string::npos
+                    && store_failure_consumer_endpoints.find ("std::chrono::seconds (30)")
+                         == std::string::npos
+                    && store_failure_consumer_endpoints.find (
+                         "sleep_for (std::chrono::milliseconds (100))")
+                         == std::string::npos,
+                  "E2E-CP-41", "consumer still masks routing failures with an internal retry loop");
+
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
                     != std::string::npos,

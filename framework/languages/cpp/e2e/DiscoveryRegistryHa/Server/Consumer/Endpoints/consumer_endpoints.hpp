@@ -16,27 +16,6 @@
 namespace zlink::framework::e2e::store_failure::consumer
 {
 
-inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
-                                                 const profile_req_t &request)
-{
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
-    std::string last_error = "profile request failed";
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto call = channels.request (api_channel, request)
-                      .timeout (std::chrono::milliseconds (5000))
-                      .async<profile_res_t> ();
-        const auto &reply = call.result ();
-        if (reply) {
-            return reply.value ();
-        }
-        if (reply.error ()) {
-            last_error = reply.error ()->what ();
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
-    }
-    throw std::runtime_error ("timed out waiting for profile routing: " + last_error);
-}
-
 class profile_request_handler_t
 {
   public:
@@ -52,7 +31,15 @@ class profile_request_handler_t
 
     profile_res_t handle (const profile_req_t &request)
     {
-        return request_profile_with_retry (_channels, request);
+        auto call = _channels.request (api_channel, request)
+                      .timeout (std::chrono::milliseconds (5000))
+                      .async<profile_res_t> ();
+        const auto &reply = call.result ();
+        if (!reply) {
+            throw std::runtime_error (
+              reply.error () ? reply.error ()->what () : "profile request failed");
+        }
+        return reply.value ();
     }
 
   private:

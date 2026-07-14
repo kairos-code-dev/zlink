@@ -19,8 +19,14 @@
 | SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
 | SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
 
+표준 `/profile/request`는 내부 retry 없이 5초 제한의 framework request 한 번만 실행한다. 따라서 각 scenario의 request 성공은 늦은 재시도로 복구된 결과가 아니라 해당 시점 연결의 실제 결과다.
+
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-080111-2298217`(SF-D1), `logs/20260715-080125-2299402`(SF-D2)
+  - 의미: consumer 내부 retry를 제거한 단일 request 경로에서도 지속 traffic과 복구 검증이 통과했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-075540-2274183`(SF-D1), `logs/20260715-075554-2275628`(SF-D2)

@@ -121,10 +121,6 @@ void trace_connector_write (const connector_state_t &state,
 
 result_t<void> validate_packet_limits (const connector_state_t &state, const packet_t &packet)
 {
-    if (packet.payload.size () > state.options.max_send_payload_size) {
-        return result_t<void>::failure (error_code_t::frame_too_large,
-                                        "stream connector payload is too large");
-    }
     if (metadata_codec_t::encoded_size (packet.metadata) > max_metadata_size) {
         return result_t<void>::failure (error_code_t::validation_failed,
                                         "stream connector metadata is too large");

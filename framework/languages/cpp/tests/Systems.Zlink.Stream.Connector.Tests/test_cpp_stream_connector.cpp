@@ -804,11 +804,13 @@ int main ()
         return 67;
     }
     std::atomic_bool compressed_send_seen{false};
+    std::atomic_bool compressible_large_send_seen{false};
     std::atomic_bool uncompressed_send_seen{false};
-    joining_thread_t server_thread ([&server, &compressed_send_seen, &uncompressed_send_seen] {
+    joining_thread_t server_thread ([&server, &compressed_send_seen, &compressible_large_send_seen,
+                                     &uncompressed_send_seen] {
         int handled = 0;
         std::string buffer;
-        while (handled < 3) {
+        while (handled < 4) {
             zlink::received_t inbound;
             if (server.recv (inbound) != 0) {
                 return;
@@ -818,6 +820,11 @@ int main ()
                 if (frame->header.kind == zlink::stream_connector::message_kind_t::send
                     && frame->compressed && frame->payload == "{}") {
                     compressed_send_seen = true;
+                }
+                if (frame->header.kind == zlink::stream_connector::message_kind_t::send
+                    && frame->compressed && frame->header.name == "compressible.large"
+                    && frame->payload == std::string (128, 'a')) {
+                    compressible_large_send_seen = true;
                 }
                 if (frame->header.kind == zlink::stream_connector::message_kind_t::send
                     && !frame->compressed && frame->header.name == "login.uncompressed"
@@ -1033,6 +1040,20 @@ int main ()
         || runtime.sent_packets ()[0].codec != zlink::stream_connector::codec_t::json
         || runtime.sent_packets ()[0].metadata.values.at ("trace") != "t1") {
         return 5;
+    }
+    connector
+      .send (zlink::stream_connector::packet_t{
+        "compressible.large", {}, zlink::stream_connector::codec_t::raw, false,
+        zlink::message_t::from (std::string (128, 'a'))})
+      .compress ()
+      .submit ();
+    const bool compressible_large_send_accepted = runtime.sent_packets ().size () == 2;
+    if (!compressible_large_send_accepted) {
+        connector
+          .send (zlink::stream_connector::packet_t{
+            "compressible.fallback", {}, zlink::stream_connector::codec_t::raw, false,
+            zlink::message_t::from (std::string ("ok"))})
+          .submit ();
     }
     {
         // Async sends/requests ride the shared runner (write strand + posted
@@ -1445,6 +1466,9 @@ int main ()
     server_thread.join ();
     if (!compressed_send_seen || !uncompressed_send_seen) {
         return 27;
+    }
+    if (!compressible_large_send_accepted || !compressible_large_send_seen) {
+        return 179;
     }
 
     int compressed_dispatch_count = 0;

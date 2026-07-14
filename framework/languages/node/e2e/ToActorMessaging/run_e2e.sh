@@ -217,6 +217,7 @@ wait_topology
 node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
   --actor-url "$ACTOR_URL" \
   --caller-url "$CALLER_URL" \
+  --session-url "$SESSION_URL" \
   --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \
   --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

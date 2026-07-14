@@ -7,7 +7,8 @@ import {
   type ActorPushNotify,
   type ActorRefSnapshot,
   type BindActorReq,
-  type BindActorRes
+  type BindActorRes,
+  type SessionBindingSnapshot
 } from '../Shared/messages';
 import {
   zlinkStreamConnectorFactory,
@@ -20,6 +21,7 @@ import { browserE2eArgs, browserE2eFetch, runBrowserE2e } from '../../browser-cl
 interface ClientOptions {
   readonly actorUrl: string;
   readonly callerUrl: string;
+  readonly sessionUrl: string;
   readonly sessionStreamEndpoint: string;
   readonly scenario: string;
 }
@@ -55,10 +57,13 @@ async function runTaA1(options: ClientOptions): Promise<void> {
   const taA1 = await ensureActor(options, 'ta-a1');
   const taA1Session = await bindActor(options, taA1.actor);
   try {
+    const a1Before = await bindingSnapshot(options, 'ta-a1');
     await assertBoundPush(taA1Session, 'TA-A1-push-before-no-bind', 'ta-a1', 'a1-push-before');
     await assertCall(options, 'TA-A1-send', 'ta-a1', taA1.actor, 'a1-send', 'sent', true);
     await assertCall(options, 'TA-A1-request', 'ta-a1', taA1.actor, 'a1-request', 'reply:a1-request', false);
     await assertBoundPush(taA1Session, 'TA-A1-push-after-no-bind', 'ta-a1', 'a1-push-after');
+    const a1After = await bindingSnapshot(options, 'ta-a1');
+    assertSameBinding(a1Before, a1After, 'TA-A1');
   } finally {
     await taA1Session.close();
   }
@@ -72,8 +77,12 @@ async function runTaA1(options: ClientOptions): Promise<void> {
 
 async function runTaA2(options: ClientOptions): Promise<void> {
   const taA2 = await ensureActor(options, 'ta-a2');
+  const a2Before = await bindingSnapshot(options, 'ta-a2');
+  assertUnbound(a2Before, 'TA-A2 before no-bind calls');
   await assertCall(options, 'TA-A2-unbound-send', 'ta-a2', taA2.actor, 'a2-send', 'sent', true);
   await assertCall(options, 'TA-A2-unbound-request', 'ta-a2', taA2.actor, 'a2-request', 'reply:a2-request', false);
+  const a2After = await bindingSnapshot(options, 'ta-a2');
+  assertUnbound(a2After, 'TA-A2 after no-bind calls');
   const evidence = await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`);
   requireEvidence(evidence, 'TA-A2-unbound-send', 'send');
   requireEvidence(evidence, 'TA-A2-unbound-request', 'request');
@@ -82,10 +91,15 @@ async function runTaA2(options: ClientOptions): Promise<void> {
 
 async function runTaA3(options: ClientOptions): Promise<void> {
   const taA3 = await ensureActor(options, 'ta-a3');
+  const a3Before = await bindingSnapshot(options, 'ta-a3');
+  assertUnbound(a3Before, 'TA-A3 before no-bind calls');
   await assertCall(options, 'TA-A3-before-bind-send', 'ta-a3', taA3.actor, 'a3-before-send', 'sent', true);
   await assertCall(options, 'TA-A3-before-bind-request', 'ta-a3', taA3.actor, 'a3-before-request', 'reply:a3-before-request', false);
+  assertUnbound(await bindingSnapshot(options, 'ta-a3'), 'TA-A3 after no-bind calls');
   const taA3Session = await bindActor(options, taA3.actor);
   try {
+    const a3After = await bindingSnapshot(options, 'ta-a3');
+    assertBound(a3After, 'TA-A3 after bind');
     await assertCall(options, 'TA-A3-after-bind-send', 'ta-a3', taA3.actor, 'a3-send', 'sent', true);
     await assertCall(options, 'TA-A3-after-bind-request', 'ta-a3', taA3.actor, 'a3-request', 'reply:a3-request', false);
     await assertBoundPush(taA3Session, 'TA-A3-after-bind-push', 'ta-a3', 'a3-push');
@@ -173,6 +187,31 @@ async function bindActor(options: ClientOptions, actor: ActorRefSnapshot): Promi
   requireCondition(reply.generation === actor.generation, `bind ${actor.actorId} generation mismatch.`);
   requireCondition(reply.boundCount >= 1, `bind ${actor.actorId} did not bind any actor.`);
   return client;
+}
+
+async function bindingSnapshot(options: ClientOptions, actorId: string): Promise<SessionBindingSnapshot> {
+  return await postJson<SessionBindingSnapshot>(`${options.sessionUrl}/bindings/snapshot`, { actorId });
+}
+
+function assertBound(snapshot: SessionBindingSnapshot, label: string): void {
+  requireCondition(
+    snapshot.sessionIds.length === 1 && snapshot.sessionIds[0]?.trim().length > 0,
+    `${label} bound-session snapshot is empty.`
+  );
+}
+
+function assertUnbound(snapshot: SessionBindingSnapshot, label: string): void {
+  requireCondition(snapshot.sessionIds.length === 0, `${label} unexpectedly created a bound session.`);
+}
+
+function assertSameBinding(
+  before: SessionBindingSnapshot,
+  after: SessionBindingSnapshot,
+  label: string
+): void {
+  assertBound(before, `${label} before no-bind calls`);
+  assertBound(after, `${label} after no-bind calls`);
+  requireCondition(before.sessionIds[0] === after.sessionIds[0], `${label} changed the bound session.`);
 }
 
 async function assertBoundPush(
@@ -283,6 +322,7 @@ function parseClientOptions(args: readonly string[]): ClientOptions {
   return {
     actorUrl: values.get('actor-url') ?? 'http://127.0.0.1:0',
     callerUrl: values.get('caller-url') ?? 'http://127.0.0.1:0',
+    sessionUrl: values.get('session-url') ?? 'http://127.0.0.1:0',
     sessionStreamEndpoint: values.get('session-stream-endpoint') ?? 'ws://127.0.0.1:0',
     scenario: values.get('scenario') ?? 'all'
   };

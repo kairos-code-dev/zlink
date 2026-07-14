@@ -12,13 +12,42 @@ import {
 } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { PacketNames, type ActorPushReq, type BindActorReq, type BindActorRes } from '../../Shared/messages';
+import {
+  PacketNames,
+  type ActorPushReq,
+  type BindActorReq,
+  type BindActorRes,
+  type SessionBindingSnapshot
+} from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
 import type { ServerOptions } from '../../configuration';
 
 let options: ServerOptions;
 let stopping = false;
+
+class SessionBindingRegistry {
+  private readonly sessionByActor = new Map<string, string>();
+
+  bind(actorId: string, sessionId: string): void {
+    this.sessionByActor.set(actorId, sessionId);
+  }
+
+  disconnect(sessionId: string): void {
+    for (const [actorId, boundSessionId] of this.sessionByActor) {
+      if (boundSessionId === sessionId) {
+        this.sessionByActor.delete(actorId);
+      }
+    }
+  }
+
+  snapshot(actorId: string): SessionBindingSnapshot {
+    const sessionId = this.sessionByActor.get(actorId);
+    return { actorId, sessionIds: sessionId === undefined ? [] : [sessionId] };
+  }
+}
+
+const sessionBindings = new SessionBindingRegistry();
 
 class ToActorSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}
@@ -31,6 +60,7 @@ class ToActorSession implements ZLinkSession {
         nodeRid: request.actor.nodeRid,
         generation: BigInt(request.actor.generation)
       }, signal);
+      sessionBindings.bind(request.actor.actorId, this.context.sessionId);
       this.context.client.reply({
         actorId: request.actor.actorId,
         nodeRid: request.actor.nodeRid,
@@ -51,6 +81,10 @@ class ToActorSession implements ZLinkSession {
     }
 
     throw new Error(`Unsupported session packet '${dispatch.packetName}'.`);
+  }
+
+  async onDisconnected(): Promise<void> {
+    sessionBindings.disconnect(this.context.sessionId);
   }
 }
 
@@ -106,6 +140,11 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok' }) },
+    {
+      method: 'POST',
+      path: '/bindings/snapshot',
+      handle: (body) => sessionBindings.snapshot((body as { readonly actorId: string }).actorId)
+    },
     { method: 'POST', path: '/shutdown', handle: () => { stopping = true; return { status: 'stopping' }; } }
   ]);
 

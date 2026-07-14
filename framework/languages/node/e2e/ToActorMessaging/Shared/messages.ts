@@ -75,6 +75,11 @@ export interface BindActorRes {
   readonly boundCount: number;
 }
 
+export interface SessionBindingSnapshot {
+  readonly actorId: string;
+  readonly sessionIds: readonly string[];
+}
+
 export interface ActorCallRequest {
   readonly scenario: string;
   readonly actorId: string;

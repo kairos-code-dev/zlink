@@ -124,6 +124,12 @@ int main ()
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
+    /* E2E-CP-13 — every common E2E configuration has an implementation map. */
+    gate.require (
+      std::filesystem::exists (e2e_root / "SpotActorTransfer/feature-map.ko.md"),
+      "E2E-CP-13",
+      "Config 10 SpotActorTransfer is missing feature-map.ko.md");
+
     /* IMP-CP-08 — session-owned transport failures reach the session callback. */
     gate.require (stream_host.find ("stream_session_error_t::transport_error")
                     != std::string::npos,

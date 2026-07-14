@@ -543,7 +543,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-10** (결함) — **§2.5 시나리오 파일 분리 위반** — 4개 config가 단일 `main.cpp`
 - [ ] **E2E-CP-11** (결함) — **Config 11 feature-map이 자기 모순**이다(pending을 `구현`으로 적는다)
 - [ ] **E2E-CP-12** (결함) — **Config 6 기본 실행이 단일 시나리오**(`SF-A1`)이고 프레임워크 knob이 env로 뚫려 있다
-- [ ] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
+- [x] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
+  - 근거: 수정 전 target-contract gate가 `SpotActorTransfer/feature-map.ko.md` 부재로 실패했다. 공통 Config 10의 스무 시나리오를 모두 행으로 두고, 현재 runner와 기존 gap에 근거해 각 상태를 `deferred`로 기록했다. 역할 배치 차이와 약한 단언을 완료로 표시하지 않았으며, 문서 추가 뒤 target-contract gate와 runner 문법 검사가 통과했다.
 - [ ] **E2E-CP-14** (미구현) — **§3.1 "route mesh 없음 × 분리 배치" 조합이 아예 만들어지지 않는다**
 - [ ] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
 - [x] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**

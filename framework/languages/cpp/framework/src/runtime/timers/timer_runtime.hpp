@@ -56,6 +56,7 @@ class timer_runtime_t
     task_t<timer_tick_t> dispatch_fire_count_async (timer_t &timer, std::uint64_t fire_count) const;
 
     void cancel_all () const noexcept;
+    static void cancel_all (spot_context_state_t &context) noexcept;
     std::vector<timer_failure_event_t> failure_events (const timer_t &timer) const;
     std::vector<timer_tick_t> delivered_ticks (const timer_t &timer) const;
 

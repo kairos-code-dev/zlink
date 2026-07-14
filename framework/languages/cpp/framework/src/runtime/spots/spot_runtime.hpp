@@ -193,6 +193,7 @@ class spot_context_state_t
         if (lifecycle.on_closing && spot_instance) {
             lifecycle.on_closing (spot_instance.get ());
         }
+        cancel_timers ();
         const auto rid = std::string (spot_rid.value ());
         if (node->location_lifecycle) {
             (void) node->location_lifecycle->release_spot (
@@ -221,6 +222,7 @@ class spot_context_state_t
                                 runtime::serial_execution_queue_t::async_work_t work);
     bool run_serial_sync (std::string name, std::function<void ()> work);
     void drain_serial ();
+    void cancel_timers () noexcept;
 
     std::shared_ptr<spot_node_builder_state_t> node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;

@@ -1005,6 +1005,11 @@ task_t<bool> spot_context_t::close_erased ()
     }
 }
 
+void detail::spot_context_state_t::cancel_timers () noexcept
+{
+    detail::timer_runtime_t::cancel_all (*this);
+}
+
 task_t<actor_ref_t> spot_context_t::leave_actor_erased (
   const actor_ref_t &actor_ref,
   std::type_index actor_type,

@@ -338,7 +338,12 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
 
 void timer_runtime_t::cancel_all () const noexcept
 {
-    for (const auto &timer : _context->timers) {
+    cancel_all (*_context);
+}
+
+void timer_runtime_t::cancel_all (spot_context_state_t &context) noexcept
+{
+    for (const auto &timer : context.timers) {
         if (timer->native_timer && timer->native_timer->valid ()) {
             try {
                 timer->native_timer->stop ();

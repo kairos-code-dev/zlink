@@ -174,6 +174,9 @@ int main ()
     if (builder.find_spot (close_created.spot_rid).result ().value ()) {
         return 15;
     }
+    if (!close_timer.is_disposed ()) {
+        return 22;
+    }
 
     bool invalid_period_failed = false;
     try {

@@ -596,7 +596,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-43** (결함) — **`SF-C2`가 lease 만료만으로 통과한다.** 문서가 명시적으로 금지한 것이고, `draining` 필드를 e2e가 버린다
 - [ ] **E2E-CP-44** (결함) — **`SF-D3`·`SF-A1`의 상태 필드 3개가 실제로는 bit 하나**로 붕괴한다
 - [ ] **E2E-CP-45** (결함) — **`SF-E1`이 store가 아니라 앱 데코레이터에 지연을 넣어** 자기 `sleep`을 잰다
-- [ ] **E2E-CP-46** (결함) — **`PS-A1`의 오라클이 계약이 허용하는 것보다 강하고**(무손실 전량), warm-up barrier가 없고, 순서를 안 본다
+- [x] **E2E-CP-46** (결함) — **`PS-A1`의 오라클이 계약이 허용하는 것보다 강하고**(무손실 전량), warm-up barrier가 없고, 순서를 안 본다
+  - 근거: 수정 전 target-contract 검증이 고정 sleep, 측정 메시지 전량 수신 요구, 공통 수신 순서 검사 부재를 각각 검출했다. client가 세 subscriber의 첫 warm-up 수신을 확인할 때까지 발행을 반복한 뒤 측정 구간을 분리하고, 각 evidence의 기록 순서에서 길이 3 이상인 공통 연속 번호를 찾도록 바꿨다. target-contract 검증과 `./run_e2e.sh PS-A1`이 통과했다.
 - [x] **E2E-CP-47** (결함) — **`PS-B1`의 격리 단언에 시간 제한이 없어** 격리와 head-of-line 블로킹을 구분하지 못한다
   - 근거: 수정 전 target-contract gate가 fast subscriber의 순차 wait, 2초 제한 부재, 2.5초 초과 실패 부재를 모두 검출했다. PubSub client가 두 fast subscriber의 16개 수신을 2초 server timeout으로 동시에 기다리고 총 2.5초를 넘으면 실패하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-B1`이 통과했다. 이 제한은 느린 subscriber의 직렬 처리 시간 16×250ms=4초보다 짧다.
 - [x] **E2E-CP-48** (미구현) — **`PS-C1`의 publisher 쪽 negative**(dispatch marker 없음)가 단언되지 않는다

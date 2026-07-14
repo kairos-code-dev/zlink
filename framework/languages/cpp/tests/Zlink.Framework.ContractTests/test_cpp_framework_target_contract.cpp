@@ -84,10 +84,12 @@ int main ()
     const auto pubsub_client_root = e2e_root / "PubSub/Client";
     const auto pubsub_client_support =
       read_file (pubsub_client_root / "Support/client_support.hpp");
+    const auto pubsub_fanout_scenario =
+      read_file (pubsub_client_root / "Scenarios/fanout_basic_delivery_scenario.hpp");
     const auto pubsub_slow_scenario =
       read_file (pubsub_client_root / "Scenarios/slow_subscriber_scenario.hpp");
     const std::vector<std::string> pubsub_client_scenarios{
-      read_file (pubsub_client_root / "Scenarios/fanout_basic_delivery_scenario.hpp"),
+      pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
       read_file (pubsub_client_root / "Scenarios/late_subscriber_scenario.hpp"),
       read_file (pubsub_client_root / "Scenarios/subscriber_reconnect_scenario.hpp"),
@@ -216,6 +218,22 @@ int main ()
     gate.require (every_pubsub_scenario_checks_evidence,
                   "E2E-CP-04",
                   "a PubSub client scenario prints PASS without checking subscriber evidence");
+
+    /* E2E-CP-46 — PS-A1 uses observed warm-up and a shared ordered sequence. */
+    gate.require (pubsub_fanout_scenario.find ("sleep_for (std::chrono::milliseconds (500))")
+                    == std::string::npos
+                    && pubsub_fanout_scenario.find ("try_wait_for_subscriber_evidence")
+                         != std::string::npos,
+                  "E2E-CP-46",
+                  "PS-A1 still uses a fixed sleep instead of an observed warm-up barrier");
+    gate.require (pubsub_fanout_scenario.find ("common_contiguous_sequence")
+                    != std::string::npos,
+                  "E2E-CP-46",
+                  "PS-A1 still requires lossless delivery instead of a common sequence");
+    gate.require (pubsub_client_support.find ("common_contiguous_sequence")
+                    != std::string::npos,
+                  "E2E-CP-46",
+                  "PubSub client support cannot verify shared delivery order");
 
     /* IMP-CP-30 — application reliability policy is not a framework hook. */
     gate.require (zlink_builder_hpp.find ("on_retry") == std::string::npos

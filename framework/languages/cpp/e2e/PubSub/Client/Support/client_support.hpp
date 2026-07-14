@@ -3,6 +3,7 @@
 
 #include "../../Shared/pubsub_contracts.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -10,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -281,6 +283,25 @@ inline std::vector<std::string> dispatch_error_evidence (const std::string &pack
             "packet=" + packet, "topic=" + topic};
 }
 
+inline std::optional<std::vector<std::string>> try_wait_for_subscriber_evidence (
+  const std::string &subscriber_url, const evidence_wait_req_t &request)
+{
+    const auto body = request_text ("POST", subscriber_url, "/evidence/wait",
+                                    nlohmann::json (request).dump (), "application/json", false);
+    if (!body) {
+        return std::nullopt;
+    }
+    return nlohmann::json::parse (*body).get<std::vector<std::string>> ();
+}
+
+inline std::vector<std::string> wait_for_subscriber_evidence (
+  const std::string &subscriber_url, const evidence_wait_req_t &request)
+{
+    const auto lines = try_wait_for_subscriber_evidence (subscriber_url, request);
+    ensure (lines.has_value (), "subscriber evidence request failed for " + subscriber_url);
+    return *lines;
+}
+
 inline std::vector<std::string> wait_for_subscriber_evidence (
   const std::string &subscriber_url,
   std::vector<std::vector<std::string>> line_groups,
@@ -289,10 +310,66 @@ inline std::vector<std::string> wait_for_subscriber_evidence (
     evidence_wait_req_t request;
     request.contains_all_line_groups = std::move (line_groups);
     request.timeout_milliseconds = timeout_milliseconds;
-    const auto body = request_text ("POST", subscriber_url, "/evidence/wait",
-                                    nlohmann::json (request).dump (), "application/json");
-    ensure (body.has_value (), "subscriber evidence request failed for " + subscriber_url);
-    return nlohmann::json::parse (*body).get<std::vector<std::string>> ();
+    return wait_for_subscriber_evidence (subscriber_url, request);
+}
+
+inline std::vector<int> common_contiguous_sequence (
+  const std::vector<std::vector<std::string>> &subscriber_lines,
+  int first_sequence,
+  int last_sequence)
+{
+    std::vector<std::vector<int>> sequences;
+    sequences.reserve (subscriber_lines.size ());
+    constexpr std::string_view marker = "value=measure-";
+    for (const auto &lines : subscriber_lines) {
+        auto &sequence = sequences.emplace_back ();
+        for (const auto &line : lines) {
+            const auto marker_at = line.find (marker);
+            if (marker_at == std::string::npos) {
+                continue;
+            }
+            const auto value_at = marker_at + marker.size ();
+            std::size_t value_end = value_at;
+            while (value_end < line.size () && line[value_end] >= '0' && line[value_end] <= '9') {
+                ++value_end;
+            }
+            if (value_end == value_at) {
+                continue;
+            }
+            const auto value = std::stoi (line.substr (value_at, value_end - value_at));
+            if (value >= first_sequence && value <= last_sequence) {
+                sequence.push_back (value);
+            }
+        }
+    }
+    if (sequences.empty ()) {
+        return {};
+    }
+
+    std::vector<int> longest;
+    const auto &candidate_source = sequences.front ();
+    for (std::size_t begin = 0; begin < candidate_source.size (); ++begin) {
+        std::vector<int> candidate;
+        for (std::size_t end = begin; end < candidate_source.size (); ++end) {
+            if (!candidate.empty () && candidate_source[end] != candidate.back () + 1) {
+                break;
+            }
+            candidate.push_back (candidate_source[end]);
+            bool shared = true;
+            for (std::size_t subscriber = 1; subscriber < sequences.size (); ++subscriber) {
+                if (std::search (sequences[subscriber].begin (), sequences[subscriber].end (),
+                                 candidate.begin (), candidate.end ())
+                    == sequences[subscriber].end ()) {
+                    shared = false;
+                    break;
+                }
+            }
+            if (shared && candidate.size () > longest.size ()) {
+                longest = candidate;
+            }
+        }
+    }
+    return longest;
 }
 
 inline void ensure_no_evidence_line (const std::vector<std::string> &lines,

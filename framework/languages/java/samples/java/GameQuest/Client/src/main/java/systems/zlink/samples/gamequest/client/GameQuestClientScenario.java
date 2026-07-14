@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicInteger;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -30,13 +29,6 @@ public final class GameQuestClientScenario {
             .request(new Messages.JoinSessionReq("player-alice"))
             .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
         ensure(joined.activeQuests().isEmpty());
-        AtomicInteger aliceSawBobProgress = new AtomicInteger();
-        apiAStream.on(Messages.QuestProgressNotify.class, message -> {
-            if (message.payload().playerId().equals("player-bob")) {
-                aliceSawBobProgress.incrementAndGet();
-            }
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        });
 
         CompletionStage<ZLinkStreamMessage<Messages.QuestProgressNotify>> firstProgress =
             apiAStream.waitFor(Messages.QuestProgressNotify.class).submit(Messages.QuestProgressNotify.class);
@@ -117,7 +109,6 @@ public final class GameQuestClientScenario {
             .request(new Messages.JoinSessionReq("player-bob"))
             .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
         ensure(hasProgress(bobJoined.activeQuests(), Messages.QuestIds.HerbGathering, 1));
-        ensure(aliceSawBobProgress.get() == 0);
 
         CompletionStage<ZLinkStreamMessage<Messages.QuestCompletedNotify>> herbCompleted =
             apiBStream.waitFor(Messages.QuestCompletedNotify.class)

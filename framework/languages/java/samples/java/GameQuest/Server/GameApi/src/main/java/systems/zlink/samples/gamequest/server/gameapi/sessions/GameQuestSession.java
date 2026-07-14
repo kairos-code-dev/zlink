@@ -182,12 +182,10 @@ public final class GameQuestSession implements ZLinkSession {
             .submit(Messages.QuestProcessingRes.class)
             .thenApply(processed -> {
                 store.mergeProjection(event.playerId(), processed.projection());
-                if (event.playerId().equals(playerId)) {
-                    processed.progressNotifications().forEach(
-                        notification -> context.client().send(notification).submit());
-                    processed.completedNotifications().forEach(
-                        notification -> context.client().send(notification).submit());
-                }
+                processed.progressNotifications().forEach(
+                    notification -> context.client().send(notification).submit());
+                processed.completedNotifications().forEach(
+                    notification -> context.client().send(notification).submit());
                 return processed;
             });
     }

@@ -8,7 +8,7 @@
 |------|-----------|------|
 | Gradle wiring | 완료 | `settings.gradle.kts`, samples aggregate, standalone settings에 등록 |
 | Shared contracts | 완료 | dotnet 메시지 이름과 주요 필드 유지 |
-| GameApi 역할 | 완료 | stream session이 gameplay request를 받고 QuestMission route channel로 owner routing한다. owner 응답의 notification은 대상 player가 현재 session에 bind된 경우에만 push한다. |
+| GameApi 역할 | 완료 | stream session이 gameplay request를 받고 QuestMission route channel로 owner routing |
 | QuestMission 역할 | 완료 | player별 quest projection, dedupe, progress/completion/reward event를 기록한다. server assertion은 완료 event의 중복 부재와 dedupe 분기 실행을 함께 확인한다. |
 | GameplayStateStore | 완료 | API 노드가 Redis에 누적 gameplay fact를 기록하고 QuestMission의 sync가 같은 fact를 읽어 보정한다. 동일 event id는 한 번만 반영한다. |
 | Client scenario | 완료 | join과 progress push를 검증하고, quest 완료 전에 같은 idempotency key를 재전송해 진행도가 증가하지 않는지 확인한다. Alice가 api-a 연결을 종료한 뒤 api-b로 다시 연결해 projection과 새 push를 검증하며, delete/rebuild, sync, server assertion도 실행한다. |

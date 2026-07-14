@@ -11,6 +11,10 @@ if grep -n 'leaveFinishedActors' "${game_source}"; then
   echo "TicTacToe actor cleanup must be driven by LeaveGameReq, not by the timer." >&2
   exit 1
 fi
+if ! rg -q 'stream-inbound sample=TicTacToe' Client/src/main/java --glob '*.java'; then
+  echo "TicTacToe client must register inbound observers before connect" >&2
+  exit 1
+fi
 
 core_lib="$(cd ../../../../../.. && pwd)/core/build/lib/libzlink.so"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${core_lib}" ]]; then
@@ -162,6 +166,11 @@ wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
 grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=${play_b_node_rid}" "${log_dir}/client.log"
+for role in host guest observer; do
+  grep -Eq "stream-inbound sample=TicTacToe role=${role} .*kind=(RESPONSE|SEND) .*name=.* seq=.* bytes=[0-9]+" "${log_dir}/client.log"
+done
+grep -Eq "stream-inbound sample=TicTacToe role=.* kind=RESPONSE " "${log_dir}/client.log"
+grep -Eq "stream-inbound sample=TicTacToe role=.* kind=SEND " "${log_dir}/client.log"
 grep -Eq "tictactoe(=| )completed" "${log_dir}/client.log"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"

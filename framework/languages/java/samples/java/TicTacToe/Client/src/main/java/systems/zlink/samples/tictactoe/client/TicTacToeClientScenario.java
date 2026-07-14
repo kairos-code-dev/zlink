@@ -24,6 +24,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
+import systems.zlink.stream.connector.ZLinkStreamMessageKind;
 
 public final class TicTacToeClientScenario {
     public void run(TicTacToeClientOptions options) throws Exception {
@@ -38,9 +39,9 @@ public final class TicTacToeClientScenario {
                 .fetch(CreateGameHttpRes.class);
         }
         String observerEndpoint = nonOwnerEndpoint(game);
-        ZLinkStreamConnector host = playerConnector(game.ownerPlayEndpoint());
-        ZLinkStreamConnector guest = playerConnector(observerEndpoint);
-        ZLinkStreamConnector observer = playerConnector(observerEndpoint);
+        ZLinkStreamConnector host = playerConnector(game.ownerPlayEndpoint(), "host");
+        ZLinkStreamConnector guest = playerConnector(observerEndpoint, "guest");
+        ZLinkStreamConnector observer = playerConnector(observerEndpoint, "observer");
 
         try {
             host.connect().submit().toCompletableFuture().join();
@@ -271,8 +272,8 @@ public final class TicTacToeClientScenario {
             .orElseThrow(() -> new IllegalStateException("non-owner Play endpoint is required"));
     }
 
-    private static ZLinkStreamConnector playerConnector(String endpoint) {
-        return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
+    private static ZLinkStreamConnector playerConnector(String endpoint, String role) {
+        ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
             TicTacToeSampleDefaults.RequestTimeout,
@@ -287,6 +288,18 @@ public final class TicTacToeClientScenario {
             Duration.ofSeconds(5),
             2.0,
             ZLinkMessagePackCodec.defaultCodec()));
+        connector.observeInbound(observation -> {
+            if (observation.kind() != ZLinkStreamMessageKind.CONTROL) {
+                System.out.println(
+                    "stream-inbound sample=TicTacToe role=" + role
+                        + " kind=" + observation.kind()
+                        + " name=" + observation.packetName()
+                        + " seq=" + (observation.requestSeq() == null ? "-" : observation.requestSeq())
+                        + " bytes=" + observation.payloadLength());
+            }
+            return CompletableFuture.completedFuture(null);
+        });
+        return connector;
     }
 
     private static void ensure(boolean condition) {

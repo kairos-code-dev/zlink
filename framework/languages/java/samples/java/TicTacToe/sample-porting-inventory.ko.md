@@ -21,6 +21,7 @@
 | `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/java/.../client/TicTacToeClientScenario.java` | validation | done | 연속 room의 owner round-robin과 고유 ID, 가득 찬 room의 join 거절, 진행 중 leave 무시, 종료 후 client leave 기반 destroy, host/guest/observer stream 연결, 인증, join, move, win, milestone push를 검증한다. host와 guest가 자기 join 알림을 받지 않는지도 typed callback으로 직접 계수한다. |
 | common: client는 API 응답의 Play endpoint 사용 | `TicTacToeClientScenario.java` | validation | done | client 설정에 Play endpoint를 미리 넣지 않고 API 응답의 endpoint 목록으로 연결한다. |
 | common: push 대기는 connector public wait API 사용 | `TicTacToeClientScenario.java` | validation | done | `PlayerJoinedNotify`, `GameStateNotify`, `WinMilestoneNotify`를 typed wait path로 기다린다. |
+| common: inbound observer는 connect 전에 등록 | `TicTacToeClientScenario.java` | validation | done | host·guest·observer connector 생성 직후 observer를 등록한다. marker는 역할, message kind, packet name, request sequence와 payload byte length를 포함하며 payload 검증이나 push 대기를 대신하지 않는다. |
 
 ## Shared Contract
 
@@ -60,3 +61,4 @@ release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
 ## 검증
 
 - `nice -n 15 timeout 600s ./run_sample.sh` 통과: `PASS TicTacToe.Java`
+- runner가 host·guest·observer의 `stream-inbound sample=TicTacToe` marker와 RESPONSE·SEND 수신을 확인했다.

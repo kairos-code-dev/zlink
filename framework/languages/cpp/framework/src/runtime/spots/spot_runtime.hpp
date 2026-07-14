@@ -189,7 +189,10 @@ class spot_context_state_t
         if (closed || actor_count != 0) {
             return false;
         }
-        close_requested = false;
+        {
+            std::lock_guard<std::mutex> callback_lock (callback_mutex);
+            close_requested = false;
+        }
         if (lifecycle.on_closing && spot_instance) {
             lifecycle.on_closing (spot_instance.get ());
         }

@@ -5,7 +5,9 @@
 #include "runtime/timers/timer_runtime.hpp"
 
 #include <chrono>
+#include <future>
 #include <stdexcept>
+#include <thread>
 
 namespace
 {
@@ -176,6 +178,36 @@ int main ()
     }
     if (!close_timer.is_disposed ()) {
         return 22;
+    }
+
+    auto concurrent_close_created = builder.create_spot ("stage");
+    auto concurrent_close_context = concurrent_close_created.context;
+    auto concurrent_close_timer =
+      concurrent_close_context.add_timer<tick_handler_t> ("concurrent-close", 10ms);
+    auto concurrent_close_runtime =
+      zlink::framework::detail::timer_runtime_t::from (concurrent_close_context);
+    std::promise<void> callback_entered;
+    std::promise<void> release_callback;
+    auto release_signal = release_callback.get_future ().share ();
+    bool callback_completed = false;
+    std::thread callback_thread ([&] {
+        callback_completed = static_cast<bool> (concurrent_close_runtime.dispatch_fire_count (
+          concurrent_close_timer, 1, [&] (const zlink::framework::timer_tick_t &) {
+              callback_entered.set_value ();
+              release_signal.wait ();
+          }));
+    });
+    callback_entered.get_future ().wait ();
+    const auto concurrent_close_result = concurrent_close_context.close ().result ();
+    const auto remained_visible =
+      builder.find_spot (concurrent_close_created.spot_rid).result ().value ().has_value ();
+    release_callback.set_value ();
+    callback_thread.join ();
+    if (!concurrent_close_result || !concurrent_close_result.value () || !remained_visible
+        || !callback_completed
+        || builder.find_spot (concurrent_close_created.spot_rid).result ().value ()
+        || !concurrent_close_timer.is_disposed ()) {
+        return 23;
     }
 
     bool invalid_period_failed = false;

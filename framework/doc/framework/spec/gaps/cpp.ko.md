@@ -344,7 +344,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
 - [ ] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
 - [ ] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
-- [ ] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**
+- [x] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**
+  - 근거: 수정 전 구조 게이트가 `close_erased()`의 callback 상태 전이가 `callback_mutex` 밖에서 수행됨을 검출했다. depth 확인·close 요청 기록과 `close_now()`의 요청 초기화를 기존 `callback_mutex`로 보호하고, 별도 스레드의 callback을 barrier로 유지한 채 close가 callback 종료까지 Spot을 보존하는 회귀 테스트를 추가했다. spot timer/runtime ctest 2개가 통과했다.
 - [ ] **IMP-CP-35** (결함) — framework runtime에 **owner-lease join이 아예 없다.** store에 떠넘겼다
 - [ ] **IMP-CP-36** (결함) — Redis 페이징이 SSCAN 커서가 아니라 **SMEMBERS + 정수 오프셋**이다
 - [ ] **IMP-CP-37** (결함) — actor row에 **다른 셋에는 없는 `mesh` hash 필드**를 쓴다

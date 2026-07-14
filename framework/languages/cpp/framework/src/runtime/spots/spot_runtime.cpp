@@ -997,9 +997,12 @@ task_t<bool> spot_context_t::close_erased ()
         if (_state->closed || _state->actor_count != 0) {
             co_return result_t<bool>::success (false);
         }
-        if (_state->callback_depth != 0) {
-            _state->close_requested = true;
-            co_return result_t<bool>::success (true);
+        {
+            std::lock_guard<std::mutex> callback_lock (_state->callback_mutex);
+            if (_state->callback_depth != 0) {
+                _state->close_requested = true;
+                co_return result_t<bool>::success (true);
+            }
         }
         co_return result_t<bool>::success (_state->close_now ());
     }

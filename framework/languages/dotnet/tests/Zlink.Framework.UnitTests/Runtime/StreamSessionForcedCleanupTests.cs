@@ -119,6 +119,66 @@ public sealed class StreamSessionForcedCleanupTests
     }
 
     [Fact]
+    public async Task Stream_Request_Without_Wire_Correlation_DoesNotInvent_One_From_RequestSeq()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"zlink-stream-no-corr-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(root, "flow.log");
+        var registration = new ZLinkFrameworkRegistration();
+        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        registration.DispatchOptions.TraceLogFile(logPath);
+        var lifetime = new StreamFlowLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var session = await ZLinkStreamSessionRuntime.CreateAsync(
+            provider,
+            socket,
+            RoutingId.From("stream-no-corr-client"),
+            typeof(StreamFlowSession),
+            static _ => { },
+            "test",
+            TimeProvider.System);
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(19),
+            nameof(StreamFlowRequest),
+            ZlinkStreamMetadata.Empty,
+            null,
+            null,
+            null);
+
+        try
+        {
+            session.EnqueuePacket(
+                Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
+                Message.From(ZLinkStreamPacketPayloadCodec.EncodeJson(
+                    new StreamFlowRequest("request"),
+                    typeof(StreamFlowRequest))));
+
+            await lifetime.ReplyCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            var frame = await socket.SentFrame.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Null(DecodeStreamHeader(frame).CorrelationId);
+
+            var lines = File.ReadAllLines(logPath);
+            Assert.Equal(2, lines.Length);
+            Assert.All(lines, line => Assert.DoesNotContain("corr=", line, StringComparison.Ordinal));
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task Native_Callbacks_Are_Offloaded_Serialized_Per_Session_And_Parallel_Across_Sessions()
     {
         var registration = new ZLinkFrameworkRegistration();

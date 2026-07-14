@@ -132,7 +132,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
             ZLinkDispatchErrorSurface.StreamSession,
             messageKind,
             header.Name,
-            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            CorrelationId: header.CorrelationId,
             SourceRid: RoutingId?.ToString()));
     }
 

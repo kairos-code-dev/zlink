@@ -384,7 +384,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                         ? ZLinkDispatchMessageKind.Request
                         : ZLinkDispatchMessageKind.Send,
                     decoded.Name,
-                    CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
+                    CorrelationId: decoded.CorrelationId));
 
             var dispatch = _context.EnterDispatch(decoded);
             try
@@ -405,7 +405,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                         ZLinkDispatchErrorSurface.StreamSession,
                         ZLinkDispatchMessageKind.Send,
                         decoded.Name,
-                        CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
+                        CorrelationId: decoded.CorrelationId));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

@@ -248,7 +248,7 @@ internal sealed class ZLinkActorDispatchRouter(
             kind,
             kindText,
             header.Name,
-            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            correlationId: header.CorrelationId,
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
 
@@ -271,7 +271,7 @@ internal sealed class ZLinkActorDispatchRouter(
             ZLinkDispatchMessageKind.ActorRequest,
             "ActorRequest",
             header.Name,
-            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            correlationId: header.CorrelationId,
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
 

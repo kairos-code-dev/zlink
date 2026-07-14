@@ -210,6 +210,14 @@ async function main(): Promise<void> {
     },
     {
       method: 'POST',
+      path: '/actors/ta-a4/destroy',
+      handle: async () => {
+        await entrySpot.destroy('ta-a4');
+        return { actorId: 'ta-a4', status: 'destroyed' };
+      }
+    },
+    {
+      method: 'POST',
       path: '/actors/ta-b1-reference/destroy',
       handle: async () => {
         await entrySpot.destroy('ta-b1-reference');

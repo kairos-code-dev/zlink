@@ -124,6 +124,19 @@ async function runTaA4(options: ClientOptions): Promise<void> {
   const evidence = await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`);
   requireEvidence(evidence, 'TA-A4-disconnected-send', 'send');
   requireEvidence(evidence, 'TA-A4-disconnected-request', 'request');
+  await postJson(`${options.actorUrl}/actors/ta-a4/destroy`, {});
+  await assertFailure(
+    options,
+    'TA-A4-destroyed-request',
+    'ta-a4',
+    'actorRouteNotFound',
+    false,
+    taA4.actor
+  );
+  requireNoEvidence(
+    await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`),
+    'TA-A4-destroyed-request'
+  );
   console.log('scenario TA-A4 passed');
 }
 

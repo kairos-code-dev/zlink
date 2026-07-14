@@ -107,6 +107,10 @@ export class ZLinkActorRuntimeState {
     return this.movingValue;
   }
 
+  get hasActorOrCreation(): boolean {
+    return this.actorValue !== undefined || this.creationTask !== undefined;
+  }
+
   beginMove(): void {
     if (this.movingValue) {
       throw new ZLinkFrameworkException(

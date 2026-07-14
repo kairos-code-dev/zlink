@@ -85,6 +85,7 @@ import { ZLinkSpotRuntimeOptionsFactory } from './spot-runtime-options-factory';
 import { ZLinkChannelRuntimeOptionsFactory } from './channel-runtime-options-factory';
 import { ZLinkSpotNodeRuntimeOptionsFactory } from './spot-node-runtime-options-factory';
 import { rollbackRuntimeStart, stopRuntimeParts } from './runtime-shutdown';
+import { ZLinkRuntimeAdmissionGate } from '../admission';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -121,6 +122,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   private readonly metrics: ZLinkRuntimeMetrics;
   private ready = true;
+  private readonly admission = new ZLinkRuntimeAdmissionGate();
   private drainOperation?: Promise<ZLinkDrainResult>;
   private drainingMarkerPublished = false;
   private ownerCleanupPending = false;
@@ -354,7 +356,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         spotNodes: spotNodeRuntime.nodesByName,
         providerResolver: this.options.providerResolver,
         dispatchErrors,
-        metrics: this.metrics
+        metrics: this.metrics,
+        acceptNewSession: () => this.admission.acceptsNewWork
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;
@@ -444,6 +447,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private async performDrain(deadlineMs: number): Promise<ZLinkDrainResult> {
     this.drainStartedAt = process.hrtime.bigint();
     this.ready = false;
+    this.admission.close();
     const deadline = new AbortController();
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<{ readonly kind: 'timeout' }>((resolve) => {
@@ -638,6 +642,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     | 'locationLifecycle'
     | 'boundSessionFactory'
     | 'shutdownSignal'
+    | 'admission'
   > {
     this.ensureLocationRuntime();
     return this.actorRuntimeOptionsFactory().createActorManagerOptions(spotRouteResolver);
@@ -671,7 +676,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       dispatchErrorReporter: (errorSink) => this.createDispatchErrorReporter(errorSink),
       runtimeOrPreStartErrorSink: this.runtimeOrPreStartErrorSink,
       detachedTaskRunner: this.detachedTaskRunner(),
-      metrics: this.metrics
+      metrics: this.metrics,
+      admission: this.admission
     }).create(this.actorTransferRuntime);
   }
 
@@ -700,6 +706,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       actorTransferRegistry: this.actorTransferRegistry,
       shutdownSignal: () => this.state?.abortController.signal,
       metrics: this.metrics,
+      admission: this.admission,
       flowCreationEnabled: () => this.flowCreationEnabled(),
       traceBoundSessionSend: (actorId, packetName) => {
         const flow = this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink).flow;

@@ -78,6 +78,7 @@ import type {
   ZLinkSpotActorTransferRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
+import type { ZLinkRuntimeAdmissionGate } from '../admission';
 import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 export type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkSpotLocationClaim } from './spot-location-claim';
@@ -128,6 +129,7 @@ export interface ZLinkSpotManagerOptions {
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly spotDrainPolicy?: (spotType: Type<ZLinkSpot>) => ZLinkSpotDrainPolicy;
+  readonly admission?: ZLinkRuntimeAdmissionGate;
 }
 
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
@@ -219,6 +221,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
+    this.options.admission?.requireRequest('SPOT create');
     const spotRid = this.activations.allocateSpotRid();
     const ownedRequest = args.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
@@ -256,6 +259,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
     throwIfAborted(args.signal);
     const operation = this.activations.getOrBegin(spotType, spotRid, async () => {
+      this.options.admission?.requireRequest('SPOT create');
       const ownedRequest = args.request === undefined
         ? BindingMessage.from(Buffer.alloc(0))
         : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
@@ -358,6 +362,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActorJoinResponse> {
+    this.options.admission?.requireRequest('Actor join admission');
     return await this.actorMembership.admitActorJoin(spotRid, actor, request, commit, signal);
   }
 

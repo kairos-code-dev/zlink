@@ -46,6 +46,65 @@ test('DRAIN-006 rejects a non-positive deadline before starting', async () => {
   assert.equal(host.isReady(), true);
 });
 
+test('DRAIN-002 drain closes actor create and SPOT create/join admission', async () => {
+  class RoomSpot {}
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const actorOptions = host.createActorManagerOptions();
+  const spotOptions = host.createSpotManagerOptions();
+  host.stop = async () => {};
+  await host.drain(1000);
+
+  const actors = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map(),
+    ...actorOptions
+  });
+  const spots = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    ...spotOptions
+  });
+
+  await assert.rejects(
+    () => actors.getOrCreate('new-actor', 'player'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateRejected
+  );
+  assert.equal(actors.getState('new-actor'), undefined);
+  await assert.rejects(
+    () => spots.create(RoomSpot),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+  await assert.rejects(
+    () => spots.admitActorJoin('new-room', { actorId: 'actor-1' }, fakeMessage('join'), async () => {}),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+});
+
+test('DRAIN-002 draining stream runtime rejects a new session before application creation', async () => {
+  const socket = new DrainAdmissionStreamSocket();
+  let sessions = 0;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    acceptNewSession: () => false,
+    sessionFactory(context) {
+      sessions += 1;
+      return { context };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('new-session');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sessions, 0);
+  assert.deepEqual(socket.disconnects, ['new-session']);
+  const decodedFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0]);
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
+  assert.equal(header.name, 'session-closing');
+  assert.equal(decodedFrame.payload[1], 4);
+  await runtime.dispose();
+});
+
 test('drain deadline owns session notification and returns after a hung notification', async () => {
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
@@ -457,4 +516,29 @@ function createDeferred() {
   let resolve;
   const promise = new Promise((complete) => { resolve = complete; });
   return { promise, resolve };
+}
+
+function fakeMessage(text) {
+  const payload = Buffer.from(text);
+  return {
+    data() { return payload; },
+    close() {}
+  };
+}
+
+class DrainAdmissionStreamSocket {
+  constructor() {
+    this.sent = [];
+    this.disconnects = [];
+  }
+
+  onFramedPacket(handler) { this.handler = handler; }
+  send(_routingId, message) {
+    this.sent.push(Uint8Array.from(message.data()));
+    return true;
+  }
+  disconnectPeer(routingId) { this.disconnects.push(routingId); }
+  async bindActor() {}
+  async unbindActor() {}
+  sendBoundActor() { return true; }
 }

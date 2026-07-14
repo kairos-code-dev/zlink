@@ -298,7 +298,11 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     claimLocation = true
   ): Promise<{ actor: ZLinkActor; actorRef: ActorRef; created: boolean }> {
     throwIfAborted(signal);
-    const state = this.getOrCreateState(actorId);
+    const existingState = this.states.get(actorId);
+    if (existingState?.hasActorOrCreation !== true) {
+      this.options.admission?.requireActorCreate(actorId);
+    }
+    const state = existingState ?? this.getOrCreateState(actorId);
     const createRequest = this.createRequestMessage(request);
     if (request !== undefined && createRequest.nativeRequest !== undefined) {
       state.setCreateRequestPayload(createRequest.nativeRequest.data());

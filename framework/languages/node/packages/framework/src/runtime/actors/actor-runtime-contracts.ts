@@ -14,6 +14,7 @@ import type { ZLinkBackendSpotNode } from '../backend/contracts';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
+import type { ZLinkRuntimeAdmissionGate } from '../admission';
 
 export interface ZLinkActorJoinRuntimeResult<TReply> {
   readonly accepted: boolean;
@@ -42,6 +43,7 @@ export interface ZLinkActorManagerOptions {
   readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
   readonly shutdownSignal?: AbortSignal;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly admission?: ZLinkRuntimeAdmissionGate;
 }
 
 export interface ZLinkActorRefResolver {

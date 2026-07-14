@@ -131,10 +131,11 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly acceptNewSession?: () => boolean;
 }
 
 interface ZLinkStartedStreamNode {
-  readonly runtime: ZLinkStreamSessionNodeRuntime;
+  readonly runtime: ZLinkStreamSessionNodeRuntimeCore;
   readonly socket: ZLinkBackendStreamSocket;
   readonly monitor: ZLinkBackendSocketMonitor;
 }
@@ -163,11 +164,12 @@ export class ZLinkStreamRuntimeManager {
       socket.bind(streamNode.bind!);
       const monitor = monitoringAdapter.openSocketMonitor(socket);
       const sessionType = streamNode.session!;
-      const runtime = new ZLinkStreamSessionNodeRuntime({
+      const runtime = new ZLinkStreamSessionNodeRuntimeCore({
         nodeName,
         socket,
         monitor,
         bindingRuntime: this.options.bindingRuntime,
+        acceptNewSession: this.options.acceptNewSession,
         dispatchErrors: this.options.dispatchErrors,
         metrics: this.options.metrics,
         messageSerializers: this.options.registration.messageSerializers,

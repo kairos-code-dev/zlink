@@ -26,6 +26,7 @@ import type {
 } from '../streams/stream-binding-runtime-ports';
 import { ZLinkNativeFallbackBoundSession } from '../streams/native-fallback-bound-session';
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
+import type { ZLinkRuntimeAdmissionGate } from '../admission';
 
 export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -56,6 +57,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly traceBoundSessionSend?: (actorId: string, packetName: string) => void;
   readonly flowCreationEnabled?: () => boolean;
+  readonly admission: ZLinkRuntimeAdmissionGate;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -76,6 +78,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'actorTransferRegistry'
     | 'shutdownSignal'
     | 'metrics'
+    | 'admission'
   > {
     const actorTransferRegistry = this.options.actorTransferRegistry;
     return {
@@ -106,6 +109,7 @@ export class ZLinkActorRuntimeOptionsFactory {
       actorTransferRegistry,
       shutdownSignal: this.options.shutdownSignal(),
       metrics: this.options.metrics,
+      admission: this.options.admission,
       nativeActorNodeProvider: this.options.primarySpotNodeOrUndefined,
       locationLifecycle: this.options.locationLifecycle(),
       boundSessionFactory: (actorId) => new ZLinkNativeFallbackBoundSession({

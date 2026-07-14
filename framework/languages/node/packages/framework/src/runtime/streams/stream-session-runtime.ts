@@ -54,6 +54,7 @@ interface ZLinkStreamLivenessClock {
 
 interface ZLinkStreamLivenessOptions {
   readonly livenessClock?: ZLinkStreamLivenessClock;
+  readonly acceptNewSession?: () => boolean;
 }
 
 const systemLivenessClock: ZLinkStreamLivenessClock = {
@@ -499,7 +500,8 @@ export class ZLinkStreamSessionNodeRuntime {
   }
 
   markConnected(routingId: unknown, localAddr?: string, remoteAddr?: string): void {
-    this.getOrCreateSession(routingId).enqueueConnected(localAddr, remoteAddr);
+    const session = this.getOrCreateSession(routingId);
+    session?.enqueueConnected(localAddr, remoteAddr);
   }
 
   markDisconnected(routingId: unknown, error?: unknown): void {
@@ -531,6 +533,11 @@ export class ZLinkStreamSessionNodeRuntime {
     }
     this.activityVersion += 1;
     const session = this.getOrCreateSession(routingId);
+    if (session === undefined) {
+      header.close();
+      payload.close();
+      return;
+    }
     this.applyPendingConnectionMetadata(session);
     session.enqueuePacket(header, payload);
   }
@@ -559,7 +566,7 @@ export class ZLinkStreamSessionNodeRuntime {
           });
           return;
         }
-        this.getOrCreateSession(event.routingId).enqueueConnected(event.localAddr, event.remoteAddr);
+        this.getOrCreateSession(event.routingId)?.enqueueConnected(event.localAddr, event.remoteAddr);
         return;
       case ZLinkSocketNativeEventType.Disconnected:
         {
@@ -679,11 +686,20 @@ export class ZLinkStreamSessionNodeRuntime {
     });
   }
 
-  private getOrCreateSession(routingId: unknown): ZLinkStreamSessionRuntime {
+  private getOrCreateSession(routingId: unknown): ZLinkStreamSessionRuntime | undefined {
     const sessionId = streamSessionIdFromRoutingId(routingId);
     const existing = this.getActiveSession(sessionId);
     if (existing !== undefined) {
       return existing;
+    }
+    if (this.options.acceptNewSession?.() === false) {
+      const rejected = new ZLinkManagedStream(
+        this.options.socket,
+        routingId,
+        this.options.messageSerializers
+      );
+      void rejected.closeForDrain().catch((error) => this.options.onError?.(error));
+      return undefined;
     }
     const created = new ZLinkStreamSessionRuntime(
       this.options,

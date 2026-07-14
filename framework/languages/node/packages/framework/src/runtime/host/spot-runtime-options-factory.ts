@@ -30,6 +30,7 @@ import type {
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 import type { MeshRouterResolver } from './mesh-router-resolver';
+import type { ZLinkRuntimeAdmissionGate } from '../admission';
 
 export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -48,6 +49,7 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly runtimeOrPreStartErrorSink: ZLinkDispatchErrorSink;
   readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly admission: ZLinkRuntimeAdmissionGate;
 }
 
 export class ZLinkSpotRuntimeOptionsFactory {
@@ -88,6 +90,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
       actorHandoffRuntime: this.options.actorHandoff,
       spotDrainPolicy: this.spotDrainPolicyResolver(),
       metrics: this.options.metrics,
+      admission: this.options.admission,
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
     };
   }

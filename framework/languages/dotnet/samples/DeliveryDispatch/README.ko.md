@@ -219,7 +219,7 @@ ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같
    기존 actor 위치를 먼저 찾는다. 기존 actor가 없을 때만 `CourierEntrySpot module` 아래 actor
    준비를 요청한다. 배송원 A와 B는 별도 channel이 아니라 서로 다른 actor다.
 4. `DispatchWorker module`은 먼저 courier id가 `courier-a`인 후보를 고르고, 기존 actor 위치를
-   찾은 뒤 target SpotNode rid로 `OfferDeliveryReq`를 보낸다.
+   찾은 뒤 target SpotNode rid로 `OfferDeliveryMsg`를 **응답 없는 one-way로** 보낸다. 배송원의 결정은 `OfferDeliveryResultMsg`로 dispatch channel에 돌아온다(공통 sample spec §7.4).
 5. target node의 `CourierEntrySpot module`은 자기 아래 actor를 찾고, `CourierActor module`은
    session route로 `CourierSession server`에 제안을 push하고, 배송원 앱의 응답을 배차 결과로
    돌려준다.
@@ -315,16 +315,14 @@ sequenceDiagram
     DispatchHttp->>DispatchWorker: enqueue work
     DispatchWorker->>CourierRoute: FindCourierActorReq(courier-a)
     CourierRoute-->>DispatchWorker: FindCourierActorRes(existing actor)
-    DispatchWorker->>CourierRoute: OfferDeliveryReq to node rid
+    DispatchWorker->>CourierRoute: OfferDeliveryMsg(Attempt) to node rid (one-way)
     CourierRoute->>CourierEntry: find actor owned by entry spot
     CourierEntry->>CourierActor: dispatch offer
     CourierActor->>CourierSession: push offer by session route
     CourierSession->>CourierClient: push offer
     CourierClient-->>CourierSession: accept or timeout
     CourierSession-->>CourierActor: decision
-    CourierActor-->>CourierEntry: OfferDeliveryRes
-    CourierEntry-->>CourierRoute: OfferDeliveryRes
-    CourierRoute-->>DispatchWorker: OfferDeliveryRes
+    CourierActor-->>DispatchWorker: OfferDeliveryResultMsg(Attempt) (one-way)
     DispatchWorker->>Tracking: DeliveryStatusChangedReq
     Tracking->>CustomerEntry: notify customer id
     CustomerEntry->>CustomerActor: dispatch notify

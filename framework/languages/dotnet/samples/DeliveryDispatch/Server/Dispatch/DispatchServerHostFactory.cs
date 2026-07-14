@@ -13,20 +13,26 @@ namespace DeliveryDispatch.Server.Dispatch;
 
 public static class DispatchServerHostFactory
 {
-    public static WebApplication Build(SampleTopology topology)
+    public static WebApplication Build(SampleConfiguration configuration)
     {
+        var topology = configuration.Topology;
         var builder = WebApplication.CreateBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            configuration.Role.LogDir,
             "dispatch");
         builder.WebHost.UseUrls(topology.DispatchHttpUrl);
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddSingleton<DispatchWorkQueue>();
+        builder.Services.AddSingleton<DeliveryOfferStore>();
+        builder.Services.AddSingleton<CourierSelectionPolicy>();
         builder.Services.AddSingleton<CourierOfferPort>();
         builder.Services.AddSingleton<DeliveryStatusPublisher>();
-        builder.Services.AddHostedService<DispatchWorker>();
+        builder.Services.AddSingleton<DispatchWorker>();
+        builder.Services.AddHostedService<DispatchQueuePump>();
+        builder.Services.AddHostedService<OfferDeadlineSweeper>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -34,7 +40,7 @@ public static class DispatchServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("dispatch"))
+                .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
             options.AddClientServerChannel(SampleNames.DispatchChannel)
@@ -102,6 +108,7 @@ public static class DispatchServerHostFactory
                 DeliveryStatus.Assigned,
                 DeliveryStatus.Reassigned,
                 DeliveryStatus.Accepted,
+                DeliveryStatus.PickedUp,
                 DeliveryStatus.Delivered);
             return Results.Ok(new ServerAssertionRes(success && reassigned, evidence.ReadLines()));
         });

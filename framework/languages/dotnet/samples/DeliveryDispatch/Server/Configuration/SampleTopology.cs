@@ -2,6 +2,87 @@ using Systems.Zlink;
 
 namespace DeliveryDispatch.Server.Configuration;
 
+/// <summary>
+/// The endpoints as they appear in the configuration file. The runner decides the ports for a run,
+/// but it hands them over in a file rather than through the environment
+/// (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md §2.2).
+/// </summary>
+public sealed class SampleTopologyOptions
+{
+    public string RedisEndpoint { get; set; } = string.Empty;
+
+    public string RedisKeyPrefix { get; set; } = string.Empty;
+
+    public string DispatchHttpUrl { get; set; } = string.Empty;
+
+    public string DispatchChannelEndpoint { get; set; } = string.Empty;
+
+    public string DispatchSpotRouterEndpoint { get; set; } = string.Empty;
+
+    public string TrackingChannelEndpoint { get; set; } = string.Empty;
+
+    public string TrackingSpotRouterEndpoint { get; set; } = string.Empty;
+
+    public string TrackingSpotEndpoint { get; set; } = string.Empty;
+
+    public string CustomerStreamEndpoint { get; set; } = string.Empty;
+
+    public string CustomerSpotRouterEndpoint { get; set; } = string.Empty;
+
+    public string CustomerSpotEndpoint { get; set; } = string.Empty;
+
+    public string CourierStreamEndpoint { get; set; } = string.Empty;
+
+    public string CourierSessionSpotRouterEndpoint { get; set; } = string.Empty;
+
+    public string CourierSessionSpotEndpoint { get; set; } = string.Empty;
+
+    public string CourierActorNode1RouterEndpoint { get; set; } = string.Empty;
+
+    public string CourierActorNode1Endpoint { get; set; } = string.Empty;
+
+    public string CourierActorNode2RouterEndpoint { get; set; } = string.Empty;
+
+    public string CourierActorNode2Endpoint { get; set; } = string.Empty;
+
+    /// <summary>Turns the file's values into the typed topology, failing on the first one that is
+    /// missing. Routing ids are names the sample owns, so they are not configuration.</summary>
+    public SampleTopology ToTopology()
+    {
+        return new SampleTopology(
+            Required(RedisEndpoint, nameof(RedisEndpoint)),
+            Required(RedisKeyPrefix, nameof(RedisKeyPrefix)),
+            Required(DispatchHttpUrl, nameof(DispatchHttpUrl)),
+            Required(DispatchChannelEndpoint, nameof(DispatchChannelEndpoint)),
+            Required(DispatchSpotRouterEndpoint, nameof(DispatchSpotRouterEndpoint)),
+            Required(TrackingChannelEndpoint, nameof(TrackingChannelEndpoint)),
+            Required(TrackingSpotRouterEndpoint, nameof(TrackingSpotRouterEndpoint)),
+            Required(TrackingSpotEndpoint, nameof(TrackingSpotEndpoint)),
+            Required(CustomerStreamEndpoint, nameof(CustomerStreamEndpoint)),
+            Required(CustomerSpotRouterEndpoint, nameof(CustomerSpotRouterEndpoint)),
+            Required(CustomerSpotEndpoint, nameof(CustomerSpotEndpoint)),
+            RoutingId.From(SampleNames.CustomerSpotNode),
+            Required(CourierStreamEndpoint, nameof(CourierStreamEndpoint)),
+            Required(CourierSessionSpotRouterEndpoint, nameof(CourierSessionSpotRouterEndpoint)),
+            Required(CourierSessionSpotEndpoint, nameof(CourierSessionSpotEndpoint)),
+            RoutingId.From(SampleNames.CourierSessionSpotNode),
+            Required(CourierActorNode1RouterEndpoint, nameof(CourierActorNode1RouterEndpoint)),
+            Required(CourierActorNode1Endpoint, nameof(CourierActorNode1Endpoint)),
+            RoutingId.From(SampleNames.CourierActorNode1),
+            Required(CourierActorNode2RouterEndpoint, nameof(CourierActorNode2RouterEndpoint)),
+            Required(CourierActorNode2Endpoint, nameof(CourierActorNode2Endpoint)),
+            RoutingId.From(SampleNames.CourierActorNode2));
+    }
+
+    private static string Required(string value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"sample.topology.{name} is required.");
+
+        return value;
+    }
+}
+
 public sealed record SampleTopology(
     string RedisEndpoint,
     string RedisKeyPrefix,
@@ -26,71 +107,6 @@ public sealed record SampleTopology(
     string CourierActorNode2Endpoint,
     RoutingId CourierActorNode2Rid)
 {
-    public static SampleTopology Create()
-    {
-        var redisEndpoint = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REDIS_ENDPOINT")
-                            ?? "127.0.0.1:6379";
-        var redisKeyPrefix = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REDIS_KEY_PREFIX")
-                             ?? "deliverydispatch:";
-        var dispatchHttp = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_HTTP")
-                           ?? "http://127.0.0.1:7392";
-        var dispatchChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_CHANNEL")
-                              ?? "tcp://127.0.0.1:7395";
-        var dispatchSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER")
-                                 ?? "tcp://127.0.0.1:7396";
-        var trackingChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_CHANNEL")
-                              ?? "tcp://127.0.0.1:7397";
-        var trackingSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER")
-                                  ?? "tcp://127.0.0.1:7398";
-        var trackingSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_SPOT")
-                           ?? "tcp://127.0.0.1:7399";
-        var customerStream = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_STREAM")
-                             ?? "tcp://127.0.0.1:7400";
-        var customerSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER")
-                                 ?? "tcp://127.0.0.1:7401";
-        var customerSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_SPOT")
-                           ?? "tcp://127.0.0.1:7402";
-        var courierStream = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_STREAM")
-                            ?? "tcp://127.0.0.1:7403";
-        var courierSessionSpotRouter =
-            Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER")
-            ?? "tcp://127.0.0.1:7404";
-        var courierSessionSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SESSION_SPOT")
-                                 ?? "tcp://127.0.0.1:7405";
-        var courierSpotNode1Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")
-                                     ?? "tcp://127.0.0.1:7407";
-        var courierSpotNode1 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1")
-                               ?? "tcp://127.0.0.1:7408";
-        var courierSpotNode2Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")
-                                     ?? "tcp://127.0.0.1:7410";
-        var courierSpotNode2 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2")
-                               ?? "tcp://127.0.0.1:7411";
-
-        return new SampleTopology(
-            redisEndpoint,
-            redisKeyPrefix,
-            dispatchHttp,
-            dispatchChannel,
-            dispatchSpotRouter,
-            trackingChannel,
-            trackingSpotRouter,
-            trackingSpot,
-            customerStream,
-            customerSpotRouter,
-            customerSpot,
-            RoutingId.From(SampleNames.CustomerSpotNode),
-            courierStream,
-            courierSessionSpotRouter,
-            courierSessionSpot,
-            RoutingId.From(SampleNames.CourierSessionSpotNode),
-            courierSpotNode1Router,
-            courierSpotNode1,
-            RoutingId.From(SampleNames.CourierActorNode1),
-            courierSpotNode2Router,
-            courierSpotNode2,
-            RoutingId.From(SampleNames.CourierActorNode2));
-    }
-
     public CourierActorNodePlacement CourierPlacement(string courierId)
     {
         return courierId switch

@@ -9,6 +9,8 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder"/>
         <ProjectReference Include="..\..\Shared\DeliveryDispatch.Shared.csproj"/>
         <ProjectReference Include="..\..\..\..\src\Zlink.Framework\Zlink.Framework.csproj"/>
         <PackageReference Include="Systems.Zlink"/>

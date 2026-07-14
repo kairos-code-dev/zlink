@@ -53,33 +53,32 @@ internal sealed class EnsureCourierActorRouteHandler(
     }
 }
 
+/// <summary>
+/// The offer arrives as a one-way send, is handed to the courier actor, and this handler
+/// returns — the spot's serial queue is given straight back, so it is not held for the length
+/// of a courier's reaction time. The node does not time the offer either: that deadline belongs
+/// to the dispatch worker (common sample spec §7.4).
+/// </summary>
 internal sealed class OfferDeliveryRouteHandler(
     IZLinkActorManager actorManager,
-    ActorDirectory actors)
-    : IZLinkSpotRequestHandler<CourierEntrySpot, OfferDeliveryReq, OfferDeliveryRes>
+    IZLinkActorClient actors,
+    ILogger<OfferDeliveryRouteHandler> logger)
+    : IZLinkSpotPacketHandler<CourierEntrySpot, OfferDeliveryMsg>
 {
-    public async ValueTask<OfferDeliveryRes> HandleAsync(
+    public async ValueTask HandleAsync(
         CourierEntrySpot spot,
-        OfferDeliveryReq request,
+        OfferDeliveryMsg message,
         CancellationToken cancellationToken)
     {
-        var actorRef = await actorManager.FindAsync(request.CourierId, cancellationToken)
-                       ?? throw new InvalidOperationException($"Courier actor is not bound: {request.CourierId}");
-        var actor = actors.Require(actorRef.ActorId);
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(SampleTimings.CourierDecisionTimeout);
-        try
-        {
-            return await actor.OfferAsync(request, timeoutSource.Token);
-        }
-        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
-            && !cancellationToken.IsCancellationRequested)
-        {
-            return new OfferDeliveryRes(
-                request.DeliveryId,
-                request.CourierId,
-                false,
-                "courier did not respond before dispatch timeout");
-        }
+        var actorRef = await actorManager.FindAsync(message.CourierId, cancellationToken)
+                       ?? throw new InvalidOperationException(
+                           $"Courier actor is not bound: {message.CourierId}");
+
+        actors.SendToActor(actorRef, message).Submit(cancellationToken);
+        logger.LogInformation(
+            "deliverydispatch courier-route: offered delivery={DeliveryId} courier={CourierId} attempt={Attempt}",
+            message.DeliveryId,
+            message.CourierId,
+            message.Attempt);
     }
 }

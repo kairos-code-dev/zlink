@@ -3,60 +3,43 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace DeliveryDispatch.Server.CourierActorNode;
 
+/// <summary>
+/// A courier. It pushes the offer to whoever holds this courier's stream session and its turn
+/// ends there — it does not wait for the answer, and there is nothing left here that could wait
+/// (common sample spec §7.4). The answer arrives later as a <see cref="CourierDecisionMsg"/>
+/// from the session, and the only thing the actor has to remember in between is which attempt
+/// the offer belonged to, so the decision can be paired with it.
+/// </summary>
 internal sealed class CourierActor(
     string actorId,
     IZLinkActorContext context) : IZLinkActor
 {
-    private readonly object _gate = new();
-    private readonly Dictionary<string, TaskCompletionSource<CourierDecisionMsg>> _pending = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _offeredAttempts = new(StringComparer.Ordinal);
 
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 
-    public async ValueTask<OfferDeliveryRes> OfferAsync(
-        OfferDeliveryReq offer,
-        CancellationToken cancellationToken)
+    /// <summary>Pushes the offer and returns. The courier takes as long as it takes.</summary>
+    public void Offer(OfferDeliveryMsg offer, CancellationToken cancellationToken)
     {
-        var pending = new TaskCompletionSource<CourierDecisionMsg>(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (_gate)
-        {
-            _pending[offer.DeliveryId] = pending;
-        }
-
-        try
-        {
-            Context.BoundSession.Send(new OfferDeliveryNotify(
-                    offer.CourierId,
-                    offer.DeliveryId,
-                    offer.PickupAddress,
-                    offer.DropoffAddress))
-                .Submit(cancellationToken);
-            var decision = await pending.Task.WaitAsync(cancellationToken);
-            return new OfferDeliveryRes(
+        _offeredAttempts[offer.DeliveryId] = offer.Attempt;
+        Context.BoundSession
+            .Send(new OfferDeliveryNotify(
+                offer.CourierId,
                 offer.DeliveryId,
-                ActorId,
-                decision.Accepted,
-                decision.Reason);
-        }
-        finally
-        {
-            lock (_gate)
-            {
-                _pending.Remove(offer.DeliveryId);
-            }
-        }
+                offer.PickupAddress,
+                offer.DropoffAddress))
+            .Submit(cancellationToken);
     }
 
-    public void Complete(CourierDecisionMsg decision)
+    /// <summary>
+    /// The attempt the courier is answering, or null when this actor knows of no such offer —
+    /// it was already answered, or this actor was never offered it.
+    /// </summary>
+    public int? TakeOfferedAttempt(string deliveryId)
     {
-        TaskCompletionSource<CourierDecisionMsg>? pending;
-        lock (_gate)
-        {
-            _pending.TryGetValue(decision.DeliveryId, out pending);
-        }
-
-        pending?.TrySetResult(decision);
+        return _offeredAttempts.Remove(deliveryId, out var attempt) ? attempt : null;
     }
 }
 

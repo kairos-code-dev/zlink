@@ -6,16 +6,10 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
-        var node = ReadOption(args, "--node")
-            ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE")
-            ?? "node1";
-        var topology = SampleTopology.Create();
-        await NodeHostFactory.Build(topology, node).RunAsync();
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+        // The role gets its configuration file and nothing else. No environment variable is read
+        // anywhere below this line
+        // (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md §2).
+        var configuration = SampleConfiguration.Load(args);
+        await NodeHostFactory.Build(configuration).RunAsync();
     }
 }

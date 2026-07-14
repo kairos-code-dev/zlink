@@ -7,12 +7,10 @@ public sealed class EvidenceStore
     private readonly object _gate = new();
     private readonly string _path;
 
-    public EvidenceStore()
+    public EvidenceStore(SampleConfiguration configuration)
     {
-        var directory = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_WORK_DIR")
-                        ?? Path.Combine(Path.GetTempPath(), "zlink-deliverydispatch");
-        Directory.CreateDirectory(directory);
-        _path = Path.Combine(directory, "events.log");
+        _path = configuration.EvidencePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
     }
 
     public void Append(DeliveryStatusChangedReq status)

@@ -6,9 +6,10 @@ source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
-rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
+FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
+CONFIG_DIR="${RUN_DIR}/config"
+mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${CONFIG_DIR}" "${FLOW_LOG_DIR}"
+rm -f "${FLOW_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -84,24 +85,23 @@ PY
 )"
 fi
 
-export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:dotnet:${RANDOM}:$$:}"
-export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
-export DELIVERYDISPATCH_DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
-export DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[4]}"
-export DELIVERYDISPATCH_TRACKING_CHANNEL="tcp://127.0.0.1:${PORTS[5]}"
-export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
-export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
-export DELIVERYDISPATCH_CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[8]}"
-export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
-export DELIVERYDISPATCH_CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[10]}"
-export DELIVERYDISPATCH_COURIER_STREAM="tcp://127.0.0.1:${PORTS[11]}"
-export DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
-export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1="tcp://127.0.0.1:${PORTS[15]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2="tcp://127.0.0.1:${PORTS[18]}"
-export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
+REDIS_KEY_PREFIX="deliverydispatch:dotnet:${RANDOM}:$$:"
+DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
+DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
+DISPATCH_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[4]}"
+TRACKING_CHANNEL="tcp://127.0.0.1:${PORTS[5]}"
+TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
+TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
+CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[8]}"
+CUSTOMER_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
+CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[10]}"
+COURIER_STREAM="tcp://127.0.0.1:${PORTS[11]}"
+COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
+COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
+COURIER_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
+COURIER_NODE1="tcp://127.0.0.1:${PORTS[15]}"
+COURIER_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
+COURIER_NODE2="tcp://127.0.0.1:${PORTS[18]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -177,38 +177,78 @@ wait_log() {
 }
 
 zlink_redis_start_scoped_assign REDIS_CONTAINER DELIVERYDISPATCH_REDIS_ENDPOINT "zlink-deliverydispatch-dotnet-redis" redis:7.2-alpine
-export DELIVERYDISPATCH_REDIS_ENDPOINT
-wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
+REDIS_ENDPOINT="${DELIVERYDISPATCH_REDIS_ENDPOINT}"
+wait_port redis "tcp://${REDIS_ENDPOINT}"
+
+# Each role gets one configuration file holding the values it needs. The runner picks this run's
+# ports, but it hands them over in a file rather than through the environment
+# (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md 2.2, 7).
+write_role_config() {
+  local role="$1"
+  local node_rid="${2:-}"
+  python3 "${SCRIPT_DIR}/write_role_config.py" \
+    --output "${CONFIG_DIR}/${role}.json" \
+    --role "${role}" \
+    --node-rid "${node_rid}" \
+    --log-dir "${FLOW_LOG_DIR}" \
+    --work-dir "${WORK_DIR}" \
+    --redis-endpoint "${REDIS_ENDPOINT}" \
+    --redis-key-prefix "${REDIS_KEY_PREFIX}" \
+    --dispatch-http "${DISPATCH_HTTP}" \
+    --dispatch-channel "${DISPATCH_CHANNEL}" \
+    --dispatch-spot-router "${DISPATCH_SPOT_ROUTER}" \
+    --tracking-channel "${TRACKING_CHANNEL}" \
+    --tracking-spot-router "${TRACKING_SPOT_ROUTER}" \
+    --tracking-spot "${TRACKING_SPOT}" \
+    --customer-stream "${CUSTOMER_STREAM}" \
+    --customer-spot-router "${CUSTOMER_SPOT_ROUTER}" \
+    --customer-spot "${CUSTOMER_SPOT}" \
+    --courier-stream "${COURIER_STREAM}" \
+    --courier-session-spot-router "${COURIER_SESSION_SPOT_ROUTER}" \
+    --courier-session-spot "${COURIER_SESSION_SPOT}" \
+    --courier-node1-router "${COURIER_NODE1_ROUTER}" \
+    --courier-node1 "${COURIER_NODE1}" \
+    --courier-node2-router "${COURIER_NODE2_ROUTER}" \
+    --courier-node2 "${COURIER_NODE2}"
+}
+
+write_role_config tracking
+write_role_config customer-gateway
+write_role_config courier-session
+write_role_config dispatch
+write_role_config courier-actor-node1 delivery-courier-node-1
+write_role_config courier-actor-node2 delivery-courier-node-2
 
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
-start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj"
-wait_port tracking-channel "${DELIVERYDISPATCH_TRACKING_CHANNEL}"
-wait_port tracking-spot-router "${DELIVERYDISPATCH_TRACKING_SPOT_ROUTER}"
-wait_port tracking-spot "${DELIVERYDISPATCH_TRACKING_SPOT}"
+start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj" --config "${CONFIG_DIR}/tracking.json"
+wait_port tracking-channel "${TRACKING_CHANNEL}"
+wait_port tracking-spot-router "${TRACKING_SPOT_ROUTER}"
+wait_port tracking-spot "${TRACKING_SPOT}"
 
-start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj"
-wait_port customer-stream "${DELIVERYDISPATCH_CUSTOMER_STREAM}"
-wait_port customer-spot-router "${DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER}"
+start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj" --config "${CONFIG_DIR}/customer-gateway.json"
+wait_port customer-stream "${CUSTOMER_STREAM}"
+wait_port customer-spot-router "${CUSTOMER_SPOT_ROUTER}"
 
-start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node1
-wait_port courier-actor-node1-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER}"
+start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --config "${CONFIG_DIR}/courier-actor-node1.json"
+wait_port courier-actor-node1-router "${COURIER_NODE1_ROUTER}"
 
-start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node2
-wait_port courier-actor-node2-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER}"
+start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --config "${CONFIG_DIR}/courier-actor-node2.json"
+wait_port courier-actor-node2-router "${COURIER_NODE2_ROUTER}"
 
-start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj"
-wait_port courier-session-router "${DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER}"
-wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
+start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj" --config "${CONFIG_DIR}/courier-session.json"
+wait_port courier-session-router "${COURIER_SESSION_SPOT_ROUTER}"
+wait_port courier-session-stream "${COURIER_STREAM}"
 
-start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"
-wait_port dispatch-spot-router "${DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER}"
-wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"
+start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj" --config "${CONFIG_DIR}/dispatch.json"
+wait_port dispatch-spot-router "${DISPATCH_SPOT_ROUTER}"
+wait_http dispatch "${DISPATCH_HTTP}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
-  --api-url "${DELIVERYDISPATCH_DISPATCH_HTTP}" \
-  --stream-endpoint "${DELIVERYDISPATCH_CUSTOMER_STREAM}" \
-  --courier-stream-endpoint "${DELIVERYDISPATCH_COURIER_STREAM}" >"${LOG_DIR}/client.log" 2>&1
+  --api-url "${DISPATCH_HTTP}" \
+  --stream-endpoint "${CUSTOMER_STREAM}" \
+  --courier-stream-endpoint "${COURIER_STREAM}" \
+  --log-dir "${FLOW_LOG_DIR}" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "deliverydispatch=completed" "${LOG_DIR}/client.log"
 grep -q "topology=ready" "${LOG_DIR}/client.log"
@@ -219,6 +259,6 @@ wait_log "deliverydispatch customer-session: bound customer" "${LOG_DIR}/custome
 wait_log "deliverydispatch customer-entry: pushed status" "${LOG_DIR}/customer-gateway.log"
 wait_log "deliverydispatch courier-session: bound courier=courier-a" "${LOG_DIR}/courier-session.log"
 wait_log "deliverydispatch courier-session: bound courier=courier-b" "${LOG_DIR}/courier-session.log"
-grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"
+grep -Rq "message flow" "${FLOW_LOG_DIR}"
 echo "deliverydispatch-runner-evidence=completed"
 RUN_SUCCEEDED=1

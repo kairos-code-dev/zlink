@@ -24,6 +24,19 @@ internal sealed class ZLinkFrameworkActorFacade(
         spots,
         actorSessionManager);
 
+    /// <summary>
+    /// One local actor join at a time on this node.
+    ///
+    /// A local join spans two SPOT serial queues: admission runs on the target spot's queue,
+    /// and the commit reaches back into the source spot's queue to deliver OnLeaveActor. A
+    /// join therefore holds the target's queue while it waits for the source's. Two joins in
+    /// opposite directions between the same pair of spots then wait on each other's queue and
+    /// both stall forever, taking the two spots' timers and every later join down with them.
+    /// Serialising the local join removes the cycle: the second join cannot start until the
+    /// first has released both queues.
+    /// </summary>
+    private readonly SemaphoreSlim _localJoinGate = new(1, 1);
+
     public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
         RoutingId spotRid,
         IZLinkActor actor,
@@ -48,16 +61,24 @@ internal sealed class ZLinkFrameworkActorFacade(
                 cancellationToken).ConfigureAwait(false);
 
         ZLinkSpotActorJoinResult joinResult;
-        if (localActivation is not null)
-            joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)
-                .ConfigureAwait(false);
-        else
-            joinResult = await spots.JoinActorAsync(
-                state,
-                spotRid,
-                actor,
-                request,
-                cancellationToken).ConfigureAwait(false);
+        await _localJoinGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (localActivation is not null)
+                joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)
+                    .ConfigureAwait(false);
+            else
+                joinResult = await spots.JoinActorAsync(
+                    state,
+                    spotRid,
+                    actor,
+                    request,
+                    cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _localJoinGate.Release();
+        }
         var reply = joinResult.Reply ?? ZLinkMessage.Empty;
         return joinResult.Accepted
             ? new ZLinkActorJoinResult.Accepted(ToActorRef(actorState), reply)

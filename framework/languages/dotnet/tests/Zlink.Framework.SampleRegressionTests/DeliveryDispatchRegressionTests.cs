@@ -19,13 +19,13 @@ public sealed partial class RegressionTests
             shellRunner,
             "zlink-deliverydispatch-dotnet-redis",
             "DELIVERYDISPATCH_REDIS_ENDPOINT");
-        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("write_role_config", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("topology=ready", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-reassignment=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-server-evidence=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-runner-evidence=completed", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\" \"${DELIVERYDISPATCH_LOG_DIR}\"", shellRunner,
+        Assert.Contains("grep -Rq \"message flow\" \"${FLOW_LOG_DIR}\"", shellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
@@ -34,9 +34,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-deliverydispatch-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$env:DELIVERYDISPATCH_LOG_DIR = $SampleLogDir", powershellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Write-RoleConfig", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("topology=ready", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-reassignment=completed", powershellRunner, StringComparison.Ordinal);
@@ -50,8 +48,11 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", powershellRunner,
             StringComparison.Ordinal);
 
-        Assert.Contains("DELIVERYDISPATCH_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
-        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        // The topology is bound from the role's configuration file, not pieced together from
+        // the environment
+        // (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md §2.3).
+        Assert.Contains("SampleTopologyOptions", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("Environment.GetEnvironmentVariable", topology, StringComparison.Ordinal);
         foreach (var hostFactory in Directory.EnumerateFiles(Path.Combine(sampleRoot, "Server"), "*HostFactory.cs",
                      SearchOption.AllDirectories))
         {
@@ -163,12 +164,48 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("RequestWithRetryAsync", dispatchAdapters, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.Delay(100", dispatchAdapters, StringComparison.Ordinal);
         Assert.DoesNotContain("catch (Exception error)", dispatchAdapters, StringComparison.Ordinal);
-        Assert.DoesNotContain("catch (Exception error)", dispatchWorker, StringComparison.Ordinal);
+        // The worker may not manufacture a courier timeout of its own — the deadline is a row in
+        // the offer store, swept by a timer. It *may* catch around the sweeper and the queue pump,
+        // because a supervision loop that dies on one bad delivery stops sweeping every other one.
         Assert.DoesNotContain("courier timeout", dispatchWorker, StringComparison.Ordinal);
-        Assert.Contains("RequestAsync<FindCourierActorReq, FindCourierActorRes>", dispatchAdapters,
-            StringComparison.Ordinal);
-        Assert.Contains("RequestAsync<OfferDeliveryReq, OfferDeliveryRes>", dispatchAdapters,
-            StringComparison.Ordinal);
+        // Dispatch addresses the courier's node, not the actor: it resolves that node's entry spot
+        // and sends the offer there. Finding the actor is the node's job, and doing it from here
+        // would put a request in front of a message that does not need one.
+        Assert.Contains("ResolveSpotHandleAsync", dispatchAdapters, StringComparison.Ordinal);
+        // The offer is one-way and the decision comes back as its own message (common sample spec
+        // §7.4). A request/reply offer would hold the courier node's serial queue open for as long
+        // as the courier takes to answer, so the shape is asserted here, not just the behaviour.
+        Assert.Contains("SendToSpot(", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("OfferDeliveryReq", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("OfferDeliveryRes ", dispatchAdapters, StringComparison.Ordinal);
+        Assert.Contains("DeliveryOfferStore", dispatchWorker, StringComparison.Ordinal);
+
+        // The shell is not the sample's configuration system: every role reads one file it is
+        // given with --config, and no application file reads the environment
+        // (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md §2).
+        foreach (var file in Directory.EnumerateFiles(sampleRoot, "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal)
+                || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Assert.DoesNotContain("Environment.GetEnvironmentVariable", File.ReadAllText(file),
+                StringComparison.Ordinal);
+        }
+
+        var runner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        Assert.DoesNotContain("export DELIVERYDISPATCH_DISPATCH", runner, StringComparison.Ordinal);
+        Assert.Contains("--config", runner, StringComparison.Ordinal);
+        Assert.Contains("OfferDeadlineSweeper", dispatchWorker, StringComparison.Ordinal);
+
+        // Nothing on the courier node may wait for the courier's decision.
+        var courierActor = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierActorNode",
+            "CourierActor.cs"));
+        Assert.DoesNotContain("TaskCompletionSource", courierActor, StringComparison.Ordinal);
         Assert.Contains("RequestAsync<DeliveryStatusChangedReq, DeliveryStatusChangedRes>", dispatchAdapters,
             StringComparison.Ordinal);
     }

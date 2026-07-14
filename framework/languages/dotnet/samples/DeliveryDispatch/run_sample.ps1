@@ -8,12 +8,13 @@ $RedisContainer = $null
 $RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $WorkDir = Join-Path $RunDir "work"
-$SampleLogDir = if ($env:DELIVERYDISPATCH_LOG_DIR) { $env:DELIVERYDISPATCH_LOG_DIR } else { Join-Path $ScriptDir "logs" }
+$SampleLogDir = Join-Path $ScriptDir "logs"
+$ConfigDir = Join-Path $RunDir "config"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
-$env:DELIVERYDISPATCH_LOG_DIR = $SampleLogDir
 
 function Set-DefaultEnv {
     param([string]$Name, [string]$Value)
@@ -46,56 +47,95 @@ try {
     $basePort = if ($env:DELIVERYDISPATCH_BASE_PORT) { [int]$env:DELIVERYDISPATCH_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 19 -BasePort $basePort
 
-    Set-DefaultEnv "DELIVERYDISPATCH_REDIS_KEY_PREFIX" "deliverydispatch:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
-    Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_HTTP" "http://127.0.0.1:$($ports[2])"
-    Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_CHANNEL" "tcp://127.0.0.1:$($ports[3])"
-    Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[4])"
-    Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_CHANNEL" "tcp://127.0.0.1:$($ports[5])"
-    Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[6])"
-    Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT" "tcp://127.0.0.1:$($ports[7])"
-    Set-DefaultEnv "DELIVERYDISPATCH_CUSTOMER_STREAM" "tcp://127.0.0.1:$($ports[8])"
-    Set-DefaultEnv "DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[9])"
-    Set-DefaultEnv "DELIVERYDISPATCH_CUSTOMER_SPOT" "tcp://127.0.0.1:$($ports[10])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_STREAM" "tcp://127.0.0.1:$($ports[11])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[12])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_SESSION_SPOT" "tcp://127.0.0.1:$($ports[13])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER" "tcp://127.0.0.1:$($ports[14])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE1" "tcp://127.0.0.1:$($ports[15])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER" "tcp://127.0.0.1:$($ports[17])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2" "tcp://127.0.0.1:$($ports[18])"
-    Set-DefaultEnv "DELIVERYDISPATCH_WORK_DIR" $WorkDir
+    $RedisKeyPrefix = "deliverydispatch:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
+    $DispatchHttp = "http://127.0.0.1:$($ports[2])"
+    $DispatchChannel = "tcp://127.0.0.1:$($ports[3])"
+    $DispatchSpotRouter = "tcp://127.0.0.1:$($ports[4])"
+    $TrackingChannel = "tcp://127.0.0.1:$($ports[5])"
+    $TrackingSpotRouter = "tcp://127.0.0.1:$($ports[6])"
+    $TrackingSpot = "tcp://127.0.0.1:$($ports[7])"
+    $CustomerStream = "tcp://127.0.0.1:$($ports[8])"
+    $CustomerSpotRouter = "tcp://127.0.0.1:$($ports[9])"
+    $CustomerSpot = "tcp://127.0.0.1:$($ports[10])"
+    $CourierStream = "tcp://127.0.0.1:$($ports[11])"
+    $CourierSessionSpotRouter = "tcp://127.0.0.1:$($ports[12])"
+    $CourierSessionSpot = "tcp://127.0.0.1:$($ports[13])"
+    $CourierNode1Router = "tcp://127.0.0.1:$($ports[14])"
+    $CourierNode1 = "tcp://127.0.0.1:$($ports[15])"
+    $CourierNode2Router = "tcp://127.0.0.1:$($ports[17])"
+    $CourierNode2 = "tcp://127.0.0.1:$($ports[18])"
 
     $redis = Start-SampleRedisContainer "zlink-deliverydispatch-dotnet-redis"
     $RedisContainer = $redis.ContainerId
-    $env:DELIVERYDISPATCH_REDIS_ENDPOINT = $redis.Endpoint
-    Wait-SampleTcpEndpoint "redis" "tcp://$env:DELIVERYDISPATCH_REDIS_ENDPOINT"
+    $RedisEndpoint = $redis.Endpoint
+    Wait-SampleTcpEndpoint "redis" "tcp://$RedisEndpoint"
+
+    # Each role gets one configuration file. The runner picks this run's ports, but it hands them
+    # over in a file rather than through the environment
+    # (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md 2.2, 7).
+    function Write-RoleConfig {
+        param([string]$Role, [string]$NodeRid = "")
+
+        python3 (Join-Path $ScriptDir "write_role_config.py") `
+            --output (Join-Path $ConfigDir "$Role.json") `
+            --role $Role `
+            --node-rid $NodeRid `
+            --log-dir $SampleLogDir `
+            --work-dir $WorkDir `
+            --redis-endpoint $RedisEndpoint `
+            --redis-key-prefix $RedisKeyPrefix `
+            --dispatch-http $DispatchHttp `
+            --dispatch-channel $DispatchChannel `
+            --dispatch-spot-router $DispatchSpotRouter `
+            --tracking-channel $TrackingChannel `
+            --tracking-spot-router $TrackingSpotRouter `
+            --tracking-spot $TrackingSpot `
+            --customer-stream $CustomerStream `
+            --customer-spot-router $CustomerSpotRouter `
+            --customer-spot $CustomerSpot `
+            --courier-stream $CourierStream `
+            --courier-session-spot-router $CourierSessionSpotRouter `
+            --courier-session-spot $CourierSessionSpot `
+            --courier-node1-router $CourierNode1Router `
+            --courier-node1 $CourierNode1 `
+            --courier-node2-router $CourierNode2Router `
+            --courier-node2 $CourierNode2
+        if ($LASTEXITCODE -ne 0) { throw "Could not write the $Role configuration file." }
+    }
+
+    Write-RoleConfig "tracking"
+    Write-RoleConfig "customer-gateway"
+    Write-RoleConfig "courier-session"
+    Write-RoleConfig "dispatch"
+    Write-RoleConfig "courier-actor-node1" "delivery-courier-node-1"
+    Write-RoleConfig "courier-actor-node2" "delivery-courier-node-2"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "DeliveryDispatch.sln")
 
-    Start-SampleDotnetAssembly -Name "tracking" -Project (Join-Path $ScriptDir "Server/Tracking/DeliveryDispatch.Server.Tracking.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "tracking-channel" $env:DELIVERYDISPATCH_TRACKING_CHANNEL
-    Wait-SampleTcpEndpoint "tracking-spot-router" $env:DELIVERYDISPATCH_TRACKING_SPOT_ROUTER
-    Wait-SampleTcpEndpoint "tracking-spot" $env:DELIVERYDISPATCH_TRACKING_SPOT
+    Start-SampleDotnetAssembly -Name "tracking" -Project (Join-Path $ScriptDir "Server/Tracking/DeliveryDispatch.Server.Tracking.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "tracking.json")) | Out-Null
+    Wait-SampleTcpEndpoint "tracking-channel" $TrackingChannel
+    Wait-SampleTcpEndpoint "tracking-spot-router" $TrackingSpotRouter
+    Wait-SampleTcpEndpoint "tracking-spot" $TrackingSpot
 
-    Start-SampleDotnetAssembly -Name "customer-gateway" -Project (Join-Path $ScriptDir "Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "customer-stream" $env:DELIVERYDISPATCH_CUSTOMER_STREAM
-    Wait-SampleTcpEndpoint "customer-spot-router" $env:DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER
+    Start-SampleDotnetAssembly -Name "customer-gateway" -Project (Join-Path $ScriptDir "Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "customer-gateway.json")) | Out-Null
+    Wait-SampleTcpEndpoint "customer-stream" $CustomerStream
+    Wait-SampleTcpEndpoint "customer-spot-router" $CustomerSpotRouter
 
-    Start-SampleDotnetAssembly -Name "courier-session" -Project (Join-Path $ScriptDir "Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "courier-session-stream" $env:DELIVERYDISPATCH_COURIER_STREAM
+    Start-SampleDotnetAssembly -Name "courier-session" -Project (Join-Path $ScriptDir "Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "courier-session.json")) | Out-Null
+    Wait-SampleTcpEndpoint "courier-session-stream" $CourierStream
 
-    Start-SampleDotnetAssembly -Name "courier-actor-node1" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--node", "node1") | Out-Null
-    Wait-SampleTcpEndpoint "courier-actor-node1-router" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER
+    Start-SampleDotnetAssembly -Name "courier-actor-node1" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "courier-actor-node1.json")) | Out-Null
+    Wait-SampleTcpEndpoint "courier-actor-node1-router" $CourierNode1Router
 
-    Start-SampleDotnetAssembly -Name "courier-actor-node2" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--node", "node2") | Out-Null
-    Wait-SampleTcpEndpoint "courier-actor-node2-router" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER
+    Start-SampleDotnetAssembly -Name "courier-actor-node2" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "courier-actor-node2.json")) | Out-Null
+    Wait-SampleTcpEndpoint "courier-actor-node2-router" $CourierNode2Router
 
-    Start-SampleDotnetAssembly -Name "dispatch" -Project (Join-Path $ScriptDir "Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "dispatch-spot-router" $env:DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER
-    Wait-SampleHttpHealth "dispatch" $env:DELIVERYDISPATCH_DISPATCH_HTTP
+    Start-SampleDotnetAssembly -Name "dispatch" -Project (Join-Path $ScriptDir "Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj") -LogDirectory $LogDir -Arguments @("--config", (Join-Path $ConfigDir "dispatch.json")) | Out-Null
+    Wait-SampleTcpEndpoint "dispatch-spot-router" $DispatchSpotRouter
+    Wait-SampleHttpHealth "dispatch" $DispatchHttp
 
     $clientLog = Join-Path $LogDir "client.log"
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--api-url", $env:DELIVERYDISPATCH_DISPATCH_HTTP, "--stream-endpoint", $env:DELIVERYDISPATCH_CUSTOMER_STREAM, "--courier-stream-endpoint", $env:DELIVERYDISPATCH_COURIER_STREAM) *> $clientLog
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--api-url", $DispatchHttp, "--stream-endpoint", $CustomerStream, "--courier-stream-endpoint", $CourierStream, "--log-dir", $SampleLogDir) *> $clientLog
     if (-not (Select-String -Path $clientLog -Pattern "deliverydispatch=completed" -Quiet)) {
         throw "DeliveryDispatch client did not complete."
     }

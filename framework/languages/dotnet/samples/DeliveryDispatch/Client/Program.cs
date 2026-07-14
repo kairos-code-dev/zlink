@@ -10,9 +10,9 @@ var streamEndpoint = ReadOption(args, "--stream-endpoint")
                      ?? throw new ArgumentException("Missing --stream-endpoint.");
 var courierStreamEndpoint = ReadOption(args, "--courier-stream-endpoint")
                             ?? throw new ArgumentException("Missing --courier-stream-endpoint.");
-using var loggerFactory = SampleLogging.CreateFactory(
-    SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
-    "client");
+var logDir = ReadOption(args, "--log-dir")
+             ?? throw new ArgumentException("Missing --log-dir.");
+using var loggerFactory = SampleLogging.CreateFactory(logDir, "client");
 var logger = loggerFactory.CreateLogger("DeliveryDispatch.Client");
 
 using var http = ZLinkHttpClient.Create(apiUrl).Build();

@@ -6,40 +6,37 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.Dispatch;
 
+/// <summary>
+/// The only way the worker reaches a courier actor. The offer is a one-way send: the turn that
+/// sends it ends right there, and the courier's answer comes back later as its own inbound
+/// message (common sample spec §7.4).
+/// </summary>
 internal sealed class CourierOfferPort(
     SampleTopology topology,
     IZLinkRouteClient routes,
     IZLinkSpotHandleResolver spots)
 {
-    public async ValueTask<DispatchOfferAttempt> OfferAsync(
+    public async ValueTask OfferAsync(
         AssignDeliveryMsg delivery,
         string courierId,
+        int attempt,
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
-                      ?? throw new InvalidOperationException(
-                          $"Courier placement spot '{placement.NodeRid}' was not found.");
-        var found = await DispatchRouteClient.RequestAsync<FindCourierActorReq, FindCourierActorRes>(
-            routes,
-            address,
-            new FindCourierActorReq(courierId),
-            cancellationToken);
-        if (found.Actor is null)
-        {
-            return DispatchOfferAttempt.NotDelivered(delivery.DeliveryId, courierId, "courier is not bound");
-        }
-
-        var actorSpot = await spots.ResolveSpotHandleAsync(found.Actor.NodeRid, cancellationToken)
+        var entrySpot = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
                         ?? throw new InvalidOperationException(
-                            $"Courier actor spot '{found.Actor.NodeRid}' was not found.");
-        var response = await DispatchRouteClient.RequestAsync<OfferDeliveryReq, OfferDeliveryRes>(
-            routes,
-            actorSpot,
-            new OfferDeliveryReq(courierId, delivery.DeliveryId, delivery.PickupAddress, delivery.DropoffAddress),
-            cancellationToken,
-            SampleTimings.OfferRequestTimeout);
-        return new DispatchOfferAttempt(response, Delivered: true);
+                            $"Courier entry spot has no live location row: {placement.NodeRid}");
+
+        routes
+            .SendToSpot(
+                entrySpot,
+                new OfferDeliveryMsg(
+                    courierId,
+                    delivery.DeliveryId,
+                    attempt,
+                    delivery.PickupAddress,
+                    delivery.DropoffAddress))
+            .Submit(cancellationToken);
     }
 }
 
@@ -74,25 +71,6 @@ internal static class DispatchChannelClient
         TimeSpan? timeout = null)
     {
         var call = channels.RequestToChannel(channelName, request);
-        if (timeout is { } value)
-        {
-            call = call.Timeout(value);
-        }
-
-        return await call.Async<TRes>(cancellationToken);
-    }
-}
-
-internal static class DispatchRouteClient
-{
-    public static async ValueTask<TRes> RequestAsync<TReq, TRes>(
-        IZLinkRouteClient routes,
-        SpotHandle address,
-        TReq request,
-        CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
-    {
-        var call = routes.RequestToSpot(address, request);
         if (timeout is { } value)
         {
             call = call.Timeout(value);

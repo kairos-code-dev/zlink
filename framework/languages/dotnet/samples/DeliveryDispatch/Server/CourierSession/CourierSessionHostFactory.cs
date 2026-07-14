@@ -10,13 +10,15 @@ namespace DeliveryDispatch.Server.CourierSession;
 
 public static class CourierSessionHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleConfiguration configuration)
     {
+        var topology = configuration.Topology;
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            configuration.Role.LogDir,
             "courier-session");
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<CourierSessionBinder>();
         builder.Services.AddZLinkFramework(options =>
@@ -26,7 +28,7 @@ public static class CourierSessionHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("courier-session"))
+                .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)

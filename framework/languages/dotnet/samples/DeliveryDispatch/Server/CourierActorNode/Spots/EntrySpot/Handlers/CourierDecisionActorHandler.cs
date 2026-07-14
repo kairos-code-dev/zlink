@@ -1,10 +1,19 @@
+using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 
-internal sealed class CourierDecisionActorHandler(ILogger<CourierDecisionActorHandler> logger)
+/// <summary>
+/// The courier's decision, sent back to dispatch one-way. The node neither judges it nor times
+/// it — it carries the attempt the offer was made under, and dispatch decides whether that
+/// attempt is still the current one (common sample spec §7.4).
+/// </summary>
+internal sealed class CourierDecisionActorHandler(
+    IZLinkChannelClient channels,
+    ILogger<CourierDecisionActorHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecisionMsg>
 {
     public ValueTask HandleAsync(
@@ -14,11 +23,32 @@ internal sealed class CourierDecisionActorHandler(ILogger<CourierDecisionActorHa
         CourierDecisionMsg message,
         CancellationToken cancellationToken)
     {
-        actor.Complete(message);
+        var attempt = actor.TakeOfferedAttempt(message.DeliveryId);
+        if (attempt is null)
+        {
+            logger.LogWarning(
+                "deliverydispatch courier-actor: decision for an unknown offer delivery={DeliveryId} courier={CourierId}",
+                message.DeliveryId,
+                actor.ActorId);
+            return ValueTask.CompletedTask;
+        }
+
+        channels
+            .SendToChannel(
+                SampleNames.DispatchChannel,
+                new OfferDeliveryResultMsg(
+                    message.DeliveryId,
+                    message.CourierId,
+                    attempt.Value,
+                    message.Accepted,
+                    message.Reason))
+            .Submit(cancellationToken);
+
         logger.LogInformation(
-            "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} accepted={Accepted}",
+            "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} attempt={Attempt} accepted={Accepted}",
             message.DeliveryId,
             actor.ActorId,
+            attempt.Value,
             message.Accepted);
         return ValueTask.CompletedTask;
     }

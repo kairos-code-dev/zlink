@@ -12,13 +12,15 @@ namespace DeliveryDispatch.Server.CustomerGateway;
 
 public static class CustomerGatewayHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleConfiguration configuration)
     {
+        var topology = configuration.Topology;
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            configuration.Role.LogDir,
             "customer-gateway");
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<CustomerActorDirectory>();
         builder.Services.AddSingleton<CustomerActorAccess>();
@@ -29,7 +31,7 @@ public static class CustomerGatewayHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("customer-gateway"))
+                .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
             options.AddSpotMesh(SampleNames.CustomerActorDiscovery)

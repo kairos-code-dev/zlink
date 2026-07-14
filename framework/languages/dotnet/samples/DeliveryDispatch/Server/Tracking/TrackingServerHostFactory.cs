@@ -11,13 +11,15 @@ namespace DeliveryDispatch.Server.Tracking;
 
 public static class TrackingServerHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleConfiguration configuration)
     {
+        var topology = configuration.Topology;
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            configuration.Role.LogDir,
             "tracking");
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddZLinkFramework(options =>
@@ -27,7 +29,7 @@ public static class TrackingServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("tracking"))
+                .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)

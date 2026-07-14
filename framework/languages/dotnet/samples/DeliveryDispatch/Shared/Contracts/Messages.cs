@@ -87,9 +87,18 @@ public sealed record AssignDeliveryMsg(
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record OfferDeliveryReq(
+/// <summary>
+/// The offer, and the courier's answer to it. Both are one-way (common sample spec §7.4): a
+/// courier looks at a screen and presses a button, and tying that time to a request's reply
+/// would hold the spot's serial queue open for as long as the courier thinks. The server cannot
+/// request anything of a client anyway — it can only push — so the decision was always going to
+/// arrive as a separate inbound message. <c>Attempt</c> is what makes the pairing safe: a
+/// decision that names an attempt other than the current one arrived too late and is dropped.
+/// </summary>
+public sealed record OfferDeliveryMsg(
     string CourierId,
     string DeliveryId,
+    int Attempt,
     string PickupAddress,
     string DropoffAddress);
 
@@ -99,9 +108,10 @@ public sealed record OfferDeliveryNotify(
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record OfferDeliveryRes(
+public sealed record OfferDeliveryResultMsg(
     string DeliveryId,
     string CourierId,
+    int Attempt,
     bool Accepted,
     string? Reason);
 

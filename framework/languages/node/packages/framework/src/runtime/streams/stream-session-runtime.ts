@@ -118,8 +118,14 @@ export class ZLinkStreamSessionRuntime {
     this.context = options.bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
     const sessionOrPromise = options.sessionFactory(this.context);
     this.sessionReady = isPromiseLike(sessionOrPromise)
-      ? sessionOrPromise.then((session) => this.requireProvidedContext(session))
-      : Promise.resolve(this.requireProvidedContext(sessionOrPromise));
+      ? sessionOrPromise.then(
+        (session) => this.completeSessionCreation(session),
+        (error) => {
+          this.context.completeConfiguration();
+          throw error;
+        }
+      )
+      : Promise.resolve(this.completeSessionCreation(sessionOrPromise));
   }
 
   get session(): Promise<ZLinkSession> {
@@ -138,6 +144,11 @@ export class ZLinkStreamSessionRuntime {
       );
     }
     return session;
+  }
+
+  private completeSessionCreation(session: ZLinkSession): ZLinkSession {
+    this.context.completeConfiguration();
+    return this.requireProvidedContext(session);
   }
 
   private async requireSession(): Promise<ZLinkSession> {

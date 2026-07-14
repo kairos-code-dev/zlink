@@ -15,7 +15,9 @@ import type {
   ZLinkStream
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { throwIfAborted } from '../abort';
+import { ZLinkConfigurationException } from '../configuration';
 import {
   messageToBytes,
   type ZLinkStreamFrameHeader,
@@ -91,7 +93,8 @@ export interface ZLinkBoundSessionFactory {
 export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
-  readonly handlers: ZLinkSessionHandlerRegistry = new DefaultZLinkSessionHandlerRegistry(this);
+  private readonly handlerRegistry = new DefaultZLinkSessionHandlerRegistry(this);
+  readonly handlers: ZLinkSessionHandlerRegistry = this.handlerRegistry;
   private readonly localActors = new ZLinkSessionLocalActorBindings<DefaultZLinkSessionActor>();
   private readonly requests = new ZLinkSessionRequestTracker();
   private currentDispatchHeader: ZLinkStreamFrameHeader | undefined;
@@ -225,20 +228,38 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   unbindLocal(actorId: string, token: string): void {
     this.localActors.unbind(actorId, token);
   }
+
+  completeConfiguration(): void {
+    this.handlerRegistry.closeRegistration();
+  }
 }
 
 class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry {
   private readonly handlersByPacket = new Map<string, ZLinkSessionPacketHandler<ZLinkSessionContext>>();
+  private registrationOpen = true;
 
   constructor(private readonly context: ZLinkSessionContext) {}
 
   addHandler<THandler>(handlerType: new (...args: never[]) => THandler): this {
+    if (!this.registrationOpen) {
+      throw new ZLinkConfigurationException('Session handler registration is closed.');
+    }
+    const packetName = sessionHandlerPacketName(handlerType);
+    if (this.handlersByPacket.has(packetName)) {
+      throw new ZLinkConfigurationException(
+        `Session packet '${packetName}' is already registered.`
+      );
+    }
     const handler = new handlerType() as THandler & Partial<ZLinkSessionPacketHandler<ZLinkSessionContext>>;
     if (typeof handler.handle !== 'function') {
       throw new TypeError(`Session handler '${handlerType.name}' must implement handle(...).`);
     }
-    this.handlersByPacket.set(handlerType.name, handler as ZLinkSessionPacketHandler<ZLinkSessionContext>);
+    this.handlersByPacket.set(packetName, handler as ZLinkSessionPacketHandler<ZLinkSessionContext>);
     return this;
+  }
+
+  closeRegistration(): void {
+    this.registrationOpen = false;
   }
 
   async tryHandle(dispatch: import('../../contracts').ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean> {
@@ -249,6 +270,17 @@ class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry 
     await handler.handle(this.context, dispatch, payload);
     return true;
   }
+}
+
+function sessionHandlerPacketName(handlerType: new (...args: never[]) => unknown): string {
+  const declared = readZLinkDecoratorMetadata(handlerType)
+    .find((metadata) => metadata.kind === 'packet')?.packetName?.trim();
+  if (declared === undefined || declared.length === 0) {
+    throw new ZLinkConfigurationException(
+      `Session handler '${handlerType.name}' must declare a packet name with @ZLinkPacket(...).`
+    );
+  }
+  return declared;
 }
 
 class DefaultZLinkSessionClient implements ZLinkSessionClient {

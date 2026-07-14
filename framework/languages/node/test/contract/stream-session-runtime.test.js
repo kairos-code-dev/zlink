@@ -106,6 +106,62 @@ test('actor session lifecycle serializes disconnect and replacement bind for the
   assert.deepEqual(events, ['disconnect:start', 'disconnect:end', 'bind']);
 });
 
+test('session handler registry uses packet metadata and closes registration after session creation', async () => {
+  const socket = new FakeStreamSocket();
+  const handled = [];
+  class RenamedHandler {
+    async handle(_context, dispatch, message) {
+      handled.push([dispatch.packetName, message.decode()]);
+    }
+  }
+  class DuplicateHandler {
+    async handle() {}
+  }
+  class LateHandler {
+    async handle() {}
+  }
+  framework.ZLinkPacket('session.contract')(RenamedHandler);
+  framework.ZLinkPacket('session.contract')(DuplicateHandler);
+  framework.ZLinkPacket('session.late')(LateHandler);
+
+  const runtime = new framework.ZLinkStreamSessionRuntime({
+    socket,
+    sessionFactory(context) {
+      context.handlers.addHandler(RenamedHandler);
+      return { context };
+    }
+  }, zlink.RoutingId.from(9));
+
+  await runtime.session;
+  assert.equal(await runtime.context.handlers.tryHandle({
+    packetName: 'session.contract',
+    metadata: new Map(),
+    canReply: false
+  }, { decode: () => 'payload' }), true);
+  assert.deepEqual(handled, [['session.contract', 'payload']]);
+  assert.throws(
+    () => runtime.context.handlers.addHandler(DuplicateHandler),
+    /registration is closed/i
+  );
+  assert.throws(
+    () => runtime.context.handlers.addHandler(LateHandler),
+    /registration is closed/i
+  );
+
+  await runtime.dispose();
+
+  assert.throws(() => {
+    new framework.ZLinkStreamSessionRuntime({
+      socket: new FakeStreamSocket(),
+      sessionFactory(context) {
+        context.handlers.addHandler(RenamedHandler);
+        context.handlers.addHandler(DuplicateHandler);
+        return { context };
+      }
+    }, zlink.RoutingId.from(10));
+  }, /already registered/i);
+});
+
 test('stream session node runtime dispatches framed packets through one session context', async () => {
   const socket = new FakeStreamSocket();
   const events = [];

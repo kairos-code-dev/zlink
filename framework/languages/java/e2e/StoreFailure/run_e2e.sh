@@ -20,10 +20,6 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/StoreFailure}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/StoreFailure-gradle-cache}"
-zlink_redis_start_scoped_assign BASE_REDIS_CONTAINER redis_port \
-  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
 export ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS:-500}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:store-failure:${run_id}}"
 export ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS:-1000}"
@@ -121,6 +117,14 @@ finally:
 PY
 }
 
+redis_port="$(reserve_ports 1)"
+zlink_redis_start_scoped_assign BASE_REDIS_CONTAINER redis_port \
+  "zlink-redis-java-e2e" \
+  "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
+  "127.0.0.1:${redis_port}:6379"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
+ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
+
 tcp() {
   echo "tcp://127.0.0.1:$1"
 }
@@ -209,6 +213,16 @@ unpause_redis_container() {
   else
     docker unpause "${REDIS_CONTAINER}" >/dev/null
   fi
+}
+
+stop_redis_process() {
+  docker stop -t 1 "${BASE_REDIS_CONTAINER}" >/dev/null
+}
+
+restart_redis_process() {
+  docker start "${BASE_REDIS_CONTAINER}" >/dev/null
+  zlink_redis_wait_ready "${BASE_REDIS_CONTAINER}"
+  wait_port redis-base "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
 }
 
 stop_redis_container() {
@@ -686,7 +700,11 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-SF-D2.stdout.log" 2>"${log_dir}/client-SF-D2.stderr.log" &
 SF_D2_CLIENT_PID="$!"
 sleep 0.5
-pause_redis_container
+stop_redis_process
+if [[ "$(docker inspect -f '{{.State.Running}}' "${BASE_REDIS_CONTAINER}")" != "false" ]]; then
+  echo "SF-D2 Redis process did not stop" >&2
+  exit 1
+fi
 kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
 wait "${API_B_PID}" >/dev/null 2>&1 || true
 python3 - "${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" "${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" <<'PY'
@@ -695,7 +713,7 @@ import time
 
 time.sleep((int(sys.argv[1]) + int(sys.argv[2])) / 1000.0)
 PY
-unpause_redis_container
+restart_redis_process
 wait "${SF_D2_CLIENT_PID}"
 cat "${log_dir}/client-SF-D2.stdout.log"
 stop_all

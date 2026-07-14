@@ -66,7 +66,8 @@ void baseline (const options_t &options)
           url,
           [] (const auto &status) {
               return status.store_healthy && status.owner_lease_healthy
-                     && status.has_last_refresh_at;
+                     && status.owner_lease_renewed_at_unix_ms > 0
+                     && status.last_refresh_at_unix_ms > 0;
           },
           options.heartbeat * 8, "SF-A1 status was not healthy");
     }
@@ -417,13 +418,18 @@ void long_recovery (const options_t &options)
 
 void status_transition (const options_t &options)
 {
-    sf_client::wait_status (
+    const auto initial = sf_client::wait_status (
       options.consumer_url,
-      [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
+      [] (const auto &status) {
+          return status.store_healthy && status.owner_lease_healthy
+                 && status.owner_lease_renewed_at_unix_ms > 0
+                 && status.last_refresh_at_unix_ms > 0;
+      },
       options.heartbeat * 8, "SF-D3 initial status was not healthy");
     sf_client::stop_store ();
+    sf::runtime_status_res_t outage;
     try {
-        sf_client::wait_status (
+        outage = sf_client::wait_status (
           options.consumer_url,
           [] (const auto &status) {
               return !status.store_healthy && !status.owner_lease_healthy
@@ -435,13 +441,26 @@ void status_transition (const options_t &options)
         sf_client::restart_store ();
         throw;
     }
+    sf_client::ensure (
+      outage.owner_lease_renewed_at_unix_ms >= initial.owner_lease_renewed_at_unix_ms
+        && outage.last_refresh_at_unix_ms >= initial.last_refresh_at_unix_ms,
+      "SF-D3 outage discarded the last successful runtime timestamps");
     sf_client::restart_store ();
-    sf_client::wait_status (
+    const auto recovered = sf_client::wait_status (
       options.consumer_url,
-      [] (const auto &status) {
-          return status.store_healthy && status.owner_lease_healthy && status.has_last_refresh_at;
+      [&outage] (const auto &status) {
+          return status.store_healthy && status.owner_lease_healthy && status.last_error.empty ()
+                 && status.last_refresh_at_unix_ms > outage.last_refresh_at_unix_ms
+                 && status.owner_lease_renewed_at_unix_ms
+                      > outage.owner_lease_renewed_at_unix_ms;
       },
       options.heartbeat * 10, "SF-D3 status did not recover");
+    sf_client::ensure (
+      recovered.last_refresh_at_unix_ms > outage.last_refresh_at_unix_ms,
+      "SF-D3 recovery did not advance last refresh time");
+    sf_client::ensure (
+      recovered.owner_lease_renewed_at_unix_ms > outage.owner_lease_renewed_at_unix_ms,
+      "SF-D3 recovery did not advance owner lease renewal time");
     std::cout << "scenario SF-D3 passed\n";
 }
 

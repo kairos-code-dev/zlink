@@ -15,12 +15,12 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 | .NET 기준 파일 | C++ 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|---------------|------|------|------|
-| `Shared/Messages.cs` | `Shared/store_failure_contracts.hpp` | shared | done | channel 이름, profile request/reply, evidence wait, runtime status, peer row DTO가 있다. |
+| `Shared/Messages.cs` | `Shared/store_failure_contracts.hpp` | shared | done | channel 이름, profile request/reply, evidence wait, runtime status, peer row DTO가 있다. runtime status는 owner lease 갱신 시각과 last refresh 시각의 실제 millisecond 값을 전달한다. |
 | `Client/Program.cs` | `Client/main.cpp` | client-entry | done | SF-A1~SF-D3 scenario 선택과 public HTTP probe driver가 있다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp` | client-support | done | env parsing, HTTP GET/POST, Redis process 정지·재기동과 readiness 확인, peer/status wait helper가 있다. |
 | `Client/Support/SfProbe.cs` | `Client/Support/client_support.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | client-support | done | `/query/status`, `/query/peers`, `/profile/request`, `/health` 기반 probe를 제공한다. 표준 profile probe는 consumer 내부 retry 없이 framework request 한 번의 결과를 반환한다. |
 | `Client/Support/StoreFailureProcessManager.cs` | `run_e2e.sh`, `Client/Support/client_support.hpp` | runner/client-support | done | runner가 provider/consumer와 고정 loopback host port의 Redis container를 시작한다. SF-B2에서는 Redis 정지를 확인한 뒤 `api-b`를 새 channel endpoint에서 재기동한다. client는 public HTTP와 Docker stop/restart로 장애와 복구를 제어한다. |
-| `Client/Scenarios/*.cs` | `Client/main.cpp` | scenario | done | C++은 scenario 함수를 한 파일에 둔다. SF-C2는 typed draining row, drain 중 lease 건강성, 신규 request 제외, terminal `drained`, TTL 전 owner 정리를 검증한다. 나머지 SF-A1~SF-E1 scenario도 구현했다. |
+| `Client/Scenarios/*.cs` | `Client/main.cpp` | scenario | done | C++은 scenario 함수를 한 파일에 둔다. SF-C2는 typed draining row, drain 중 lease 건강성, 신규 request 제외, terminal `drained`, TTL 전 owner 정리를 검증한다. SF-D3는 장애 중 마지막 성공 시각 보존과 복구 뒤 owner lease 갱신 시각·last refresh 시각 증가를 검증한다. 나머지 SF-A1~SF-E1 scenario도 구현했다. |
 | `Client/Scenarios/SfE1StoreDelayNonBlockingScenario.cs` | `Client/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp`, `Server/Shared/location_store.hpp` | scenario | done | consumer store delay admin endpoint와 E2E 전용 delayable location store wrapper로 store read 지연을 주입하고, 지연 중 application request p99와 지연 해제 뒤 recovery request를 검증한다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/main.cpp` | provider-role | done | Redis location store, client-server channel server, runtime status endpoint, evidence endpoint, shutdown/crash endpoint를 구성한다. |
 | `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/Handlers/provider_handlers.hpp` | provider-role | done | `/query/status`, `/evidence`, `/evidence/wait`, `/shutdown`, `/admin/crash`를 제공한다. |
@@ -43,6 +43,10 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 ## 검증
 
+- 2026-07-15: `./run_e2e.sh SF-D3`, `./run_e2e.sh SF-A1`
+  - 결과: 통과
+  - 로그: `logs/20260715-083935-2463877`(SF-D3), `logs/20260715-083951-2465231`(SF-A1)
+  - 의미: status 조회의 즉석 probe 없이 heartbeat 기반 장애 전이가 관측되고, 복구 뒤 실제 시각 값이 증가했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-083121-2436565`(SF-C2), `logs/20260715-083148-2438708`(SF-D2)

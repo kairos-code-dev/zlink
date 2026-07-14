@@ -111,7 +111,18 @@ class query_status_handler_t
           .store_healthy = status.store_healthy,
           .watch_enabled = status.watch_enabled,
           .owner_lease_healthy = status.owner_lease_healthy,
-          .has_last_refresh_at = status.last_refresh_at.has_value (),
+          .owner_lease_renewed_at_unix_ms =
+            status.owner_lease_renewed_at
+              ? std::chrono::duration_cast<std::chrono::milliseconds> (
+                  status.owner_lease_renewed_at->time_since_epoch ())
+                  .count ()
+              : 0,
+          .last_refresh_at_unix_ms =
+            status.last_refresh_at
+              ? std::chrono::duration_cast<std::chrono::milliseconds> (
+                  status.last_refresh_at->time_since_epoch ())
+                  .count ()
+              : 0,
           .last_error = status.last_error.value_or (std::string{})})
                           .dump ();
         return response;

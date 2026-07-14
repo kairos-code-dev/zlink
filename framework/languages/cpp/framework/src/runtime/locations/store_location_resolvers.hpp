@@ -274,18 +274,9 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         value.polling_interval = _options.polling_interval;
         value.owner_lease_healthy = _runtime->owner_lease_healthy ();
         value.owner_lease_renewed_at = _runtime->owner_lease_renewed_at ();
+        value.last_refresh_at = value.owner_lease_renewed_at;
         value.last_error = _runtime->last_error ();
-        try {
-            (void) _store->list_owner_leases ().result ().value ();
-            value.store_healthy = true;
-            value.last_refresh_at = std::chrono::system_clock::now ();
-            value.last_error.reset ();
-        }
-        catch (const std::exception &error) {
-            value.store_healthy = false;
-            value.owner_lease_healthy = false;
-            value.last_error = error.what ();
-        }
+        value.store_healthy = !value.last_error.has_value ();
         return completed (std::move (value));
     }
 

@@ -113,6 +113,8 @@ int main ()
       e2e_root / "DiscoveryRegistryHa/Server/Consumer/Endpoints/consumer_endpoints.hpp");
     const auto store_failure_location_store = read_file (
       e2e_root / "DiscoveryRegistryHa/Server/Shared/location_store.hpp");
+    const auto store_failure_contracts =
+      read_file (e2e_root / "DiscoveryRegistryHa/Shared/store_failure_contracts.hpp");
     const std::vector<std::string> pubsub_client_scenarios{
       pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
@@ -808,6 +810,28 @@ int main ()
     gate.require (location_auto_connect.find ("peer.draining ? 0u : peer.weight")
                     != std::string::npos,
                   "E2E-CP-43", "draining channel peers remain eligible for new requests");
+
+    /* E2E-CP-44 — status reports the runtime heartbeat transition and real timestamps. */
+    gate.require (store_location_resolvers.find ("(void) _store->list_owner_leases ()")
+                    == std::string::npos
+                    && store_location_resolvers.find (
+                         "value.last_refresh_at = std::chrono::system_clock::now ()")
+                         == std::string::npos,
+                  "E2E-CP-44", "get_status still manufactures health with an inline store probe");
+    gate.require (store_failure_contracts.find ("owner_lease_renewed_at_unix_ms")
+                    != std::string::npos
+                    && store_failure_contracts.find ("last_refresh_at_unix_ms")
+                         != std::string::npos
+                    && store_failure_contracts.find ("has_last_refresh_at")
+                         == std::string::npos,
+                  "E2E-CP-44", "StoreFailure status still collapses timestamps to a presence bit");
+    gate.require (store_failure_client.find (
+                    "recovered.last_refresh_at_unix_ms > outage.last_refresh_at_unix_ms")
+                    != std::string::npos
+                    && store_failure_client.find (
+                         "recovered.owner_lease_renewed_at_unix_ms > outage.owner_lease_renewed_at_unix_ms")
+                         != std::string::npos,
+                  "E2E-CP-44", "SF-D3 does not prove refresh and lease timestamps advance after recovery");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

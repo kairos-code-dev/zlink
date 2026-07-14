@@ -3,6 +3,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -59,7 +60,8 @@ struct runtime_status_res_t
     bool store_healthy = false;
     bool watch_enabled = false;
     bool owner_lease_healthy = false;
-    bool has_last_refresh_at = false;
+    std::int64_t owner_lease_renewed_at_unix_ms = 0;
+    std::int64_t last_refresh_at_unix_ms = 0;
     std::string last_error;
 };
 
@@ -164,7 +166,9 @@ inline void to_json (nlohmann::json &json, const runtime_status_res_t &value)
     json = nlohmann::json{{"store_healthy", value.store_healthy},
                           {"watch_enabled", value.watch_enabled},
                           {"owner_lease_healthy", value.owner_lease_healthy},
-                          {"has_last_refresh_at", value.has_last_refresh_at},
+                          {"owner_lease_renewed_at_unix_ms",
+                           value.owner_lease_renewed_at_unix_ms},
+                          {"last_refresh_at_unix_ms", value.last_refresh_at_unix_ms},
                           {"last_error", value.last_error}};
 }
 
@@ -173,7 +177,9 @@ inline void from_json (const nlohmann::json &json, runtime_status_res_t &value)
     json.at ("store_healthy").get_to (value.store_healthy);
     json.at ("watch_enabled").get_to (value.watch_enabled);
     json.at ("owner_lease_healthy").get_to (value.owner_lease_healthy);
-    json.at ("has_last_refresh_at").get_to (value.has_last_refresh_at);
+    json.at ("owner_lease_renewed_at_unix_ms")
+      .get_to (value.owner_lease_renewed_at_unix_ms);
+    json.at ("last_refresh_at_unix_ms").get_to (value.last_refresh_at_unix_ms);
     if (json.contains ("last_error") && !json.at ("last_error").is_null ()) {
         json.at ("last_error").get_to (value.last_error);
     }

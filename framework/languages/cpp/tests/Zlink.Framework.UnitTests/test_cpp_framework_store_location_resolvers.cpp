@@ -239,13 +239,15 @@ class scripted_actor_location_store_t final : public test_location_store_t
 class failing_owner_lease_store_t final : public test_location_store_t
 {
   public:
-    zlink::framework::task_t<zlink::framework::owner_lease_snapshot_t>
-    list_owner_leases () override
+    zlink::framework::task_t<zlink::framework::owner_lease_renewal_t>
+    renew_owner_lease (std::string,
+                       zlink::routing_id_t,
+                       std::chrono::milliseconds) override
     {
-        return zlink::framework::task_t<zlink::framework::owner_lease_snapshot_t> (
-          zlink::framework::result_t<zlink::framework::owner_lease_snapshot_t>::failure (
+        return zlink::framework::task_t<zlink::framework::owner_lease_renewal_t> (
+          zlink::framework::result_t<zlink::framework::owner_lease_renewal_t>::failure (
             zlink::framework::framework_error_kind_t::request_failed,
-            "owner lease list failed"));
+            "owner lease renewal failed"));
     }
 };
 
@@ -1276,6 +1278,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsStoreFailureAsSta
     failing_owner_lease_store_t store;
     location_options_t options;
     location_runtime_t runtime (store, options, "owner-a");
+    runtime.renew_owner_lease_once ();
     store_location_runtime_query_t query (store, runtime, options);
 
     const auto status = query.get_status ().result ().value ();
@@ -1283,7 +1286,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsStoreFailureAsSta
     EXPECT_FALSE (status.store_healthy);
     EXPECT_FALSE (status.owner_lease_healthy);
     ASSERT_TRUE (status.last_error.has_value ());
-    EXPECT_NE (std::string::npos, status.last_error->find ("owner lease list failed"));
+    EXPECT_NE (std::string::npos, status.last_error->find ("owner lease renewal failed"));
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryListsTopologyWithFiltersAndPaging)

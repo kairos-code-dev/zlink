@@ -311,7 +311,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-23** (결함) — `Manual` 모드인데 error/state/disconnected callback을 **IO 스레드에서 인라인 호출**한다
 - [ ] **IMP-CP-24** (결함) — connector metadata 디코더가 **빈 값을 거부**한다 (교차 언어 wire 파손)
 - [ ] **IMP-CP-25** (결함) — HTTP: streaming body가 **redirect에서 빈 채로 재전송**된다
-- [ ] **IMP-CP-26** (결함) — HTTP: 압축 해제 후 **`content-length`를 제거하지 않는다**
+- [x] **IMP-CP-26** (결함) — HTTP: 압축 해제 후 **`content-length`를 제거하지 않는다**
+  - 근거: 수정 전 gzip·deflate 회귀 테스트에서 압축 해제된 body에 압축 전송 길이 `content-length`가 각각 남아 두 테스트가 실패했다. 두 압축 경로가 `content-encoding`과 `content-length`를 함께 제거하도록 수정한 뒤 대상 테스트 2개와 HTTP client 전체 ctest가 통과했다.
 - [ ] **IMP-CP-27** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다
 
 ### 상세

@@ -129,9 +129,11 @@ class request_performer_t
                 if (encoding && iequals (*encoding, "gzip")) {
                     raw.body = gunzip (raw.body, _options.max_response_body_size);
                     erase_header (raw.headers, "content-encoding");
+                    erase_header (raw.headers, "content-length");
                 } else if (encoding && iequals (*encoding, "deflate")) {
                     raw.body = inflate_deflate (raw.body, _options.max_response_body_size);
                     erase_header (raw.headers, "content-encoding");
+                    erase_header (raw.headers, "content-length");
                 }
             }
             return finish_response (std::move (raw), started_at, effective_timeout ());

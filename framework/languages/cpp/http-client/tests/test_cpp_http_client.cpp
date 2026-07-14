@@ -1472,7 +1472,8 @@ TEST (ZLinkHttpClient, DecompressesGzipResponses)
     const auto result = client.get ("/gzip").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body, "hello gzip payload");
-    EXPECT_EQ (result.value ().headers.count ("Content-Encoding"), 0U);
+    EXPECT_EQ (result.value ().headers.count ("content-encoding"), 0U);
+    EXPECT_EQ (result.value ().headers.count ("content-length"), 0U);
 }
 
 TEST (ZLinkHttpClient, RejectsDecompressedResponseAboveBodyLimit)
@@ -1701,7 +1702,8 @@ TEST (ZLinkHttpClient, DecompressesDeflateResponses)
     const auto result = client.get ("/deflate").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body, "hello deflate payload");
-    EXPECT_EQ (result.value ().headers.count ("Content-Encoding"), 0U);
+    EXPECT_EQ (result.value ().headers.count ("content-encoding"), 0U);
+    EXPECT_EQ (result.value ().headers.count ("content-length"), 0U);
 }
 
 TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)

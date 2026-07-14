@@ -16,15 +16,18 @@ public final class GameQuestSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkClient channels;
     private final GameQuestStore store;
+    private final SampleTopology topology;
     private String playerId;
 
     public GameQuestSession(
         ZLinkSessionContext context,
         ZLinkClient channels,
-        GameQuestStore store) {
+        GameQuestStore store,
+        SampleTopology topology) {
         this.context = context;
         this.channels = channels;
         this.store = store;
+        this.topology = topology;
     }
 
     @Override
@@ -69,7 +72,7 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> handleJoin(Messages.JoinSessionReq request) {
         playerId = request.playerId();
-        store.bind(request.playerId(), SampleTopology.apiName());
+        store.bind(request.playerId(), topology.gameApi().instanceName());
         return channels
             .requestToChannel(
                 ownerChannel(request.playerId()),
@@ -187,11 +190,11 @@ public final class GameQuestSession implements ZLinkSession {
             });
     }
 
-    private static String ownerChannel(String playerId) {
-        return SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId));
+    private String ownerChannel(String playerId) {
+        return SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId));
     }
 
-    private static Messages.GameplayMsg event(
+    private Messages.GameplayMsg event(
         String playerId,
         String idempotencyKey,
         String eventType,
@@ -205,7 +208,7 @@ public final class GameQuestSession implements ZLinkSession {
             idempotencyKey,
             value,
             count,
-            SampleTopology.apiName(),
+            topology.gameApi().instanceName(),
             Instant.now().toEpochMilli(),
             publish);
     }

@@ -11,8 +11,7 @@ $SampleLogDir = Join-Path $RunDir "sample-logs"
 $BuildLog = Join-Path $LogDir "build.log"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
-$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir
-$env:SUPPORTCHAT_REDIS_KEY_PREFIX = "supportchat:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):"
+$RedisKeyPrefix = "supportchat:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):"
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
@@ -107,28 +106,58 @@ function Wait-Log {
 }
 
 function Start-Role {
-    param([string]$Name, [string]$Binary)
+    param([string]$Name, [string]$Binary, [string]$ConfigPath)
     $logPath = Join-Path $LogDir "$Name.log"
     $errPath = Join-Path $LogDir "$Name.err.log"
-    $process = Start-Process -FilePath $Binary -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errPath -PassThru
+    $process = Start-Process -FilePath $Binary -ArgumentList @("--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errPath -PassThru
     $Processes.Add($process)
 }
 
 try {
     $ports = Reserve-Ports 8
-    $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
-    $env:SUPPORTCHAT_API_HTTP_ENDPOINT = "http://127.0.0.1:$($ports[1])"
-    $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
-    $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
-    $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[4])"
-    $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
-    $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
-    $env:SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
+    $ApiChannelEndpoint = "tcp://127.0.0.1:$($ports[0])"
+    $ApiHttpEndpoint = "http://127.0.0.1:$($ports[1])"
+    $SupportChannelEndpoint = "tcp://127.0.0.1:$($ports[2])"
+    $SessionSpotEndpoint = "tcp://127.0.0.1:$($ports[3])"
+    $SessionRouterEndpoint = "tcp://127.0.0.1:$($ports[4])"
+    $EntrySpotEndpoint = "tcp://127.0.0.1:$($ports[5])"
+    $EntryRouterEndpoint = "tcp://127.0.0.1:$($ports[6])"
+    $StreamEndpoint = "tcp://127.0.0.1:$($ports[7])"
 
     $redis = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-supportchat"
     $RedisContainer = $redis.ContainerId
-    $env:SUPPORTCHAT_REDIS_ENDPOINT = $redis.Endpoint
-    Wait-Port "redis" "tcp://$env:SUPPORTCHAT_REDIS_ENDPOINT"
+    $RedisEndpoint = $redis.Endpoint
+    Wait-Port "redis" "tcp://$RedisEndpoint"
+
+    $ApiConfig = Join-Path $RunDir "api.properties"
+    $SessionConfig = Join-Path $RunDir "session.properties"
+    $SupportConfig = Join-Path $RunDir "support.properties"
+    @(
+        "sample.redisEndpoint=$RedisEndpoint",
+        "sample.redisKeyPrefix=$RedisKeyPrefix",
+        "sample.logDirectory=$SampleLogDir",
+        "sample.apiChannelEndpoint=$ApiChannelEndpoint",
+        "sample.apiHttpEndpoint=$ApiHttpEndpoint"
+    ) | Set-Content -Path $ApiConfig -Encoding UTF8
+    @(
+        "sample.redisEndpoint=$RedisEndpoint",
+        "sample.redisKeyPrefix=$RedisKeyPrefix",
+        "sample.logDirectory=$SampleLogDir",
+        "sample.sessionSpotEndpoint=$SessionSpotEndpoint",
+        "sample.sessionRouterEndpoint=$SessionRouterEndpoint",
+        "sample.streamEndpoint=$StreamEndpoint",
+        "sample.sessionRouterRid=3101",
+        "sample.sessionPubRid=3102"
+    ) | Set-Content -Path $SessionConfig -Encoding UTF8
+    @(
+        "sample.redisEndpoint=$RedisEndpoint",
+        "sample.redisKeyPrefix=$RedisKeyPrefix",
+        "sample.logDirectory=$SampleLogDir",
+        "sample.supportChannelEndpoint=$SupportChannelEndpoint",
+        "sample.supportEntrySpotEndpoint=$EntrySpotEndpoint",
+        "sample.supportEntrySpotRouterEndpoint=$EntryRouterEndpoint",
+        "sample.supportEntryRid=4201"
+    ) | Set-Content -Path $SupportConfig -Encoding UTF8
 
     & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon --no-parallel --max-workers=1 `
         :Server:Api:installDist `
@@ -139,22 +168,22 @@ try {
         throw "Gradle installDist failed."
     }
 
-    Start-Role "support" (Join-Path $SampleDir "Server/Support/build/install/Support/bin/Support")
-    Wait-Port "support-channel" $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
-    Wait-Port "support-entry-router" $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
-    Wait-Port "support-entry-pub" $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
+    Start-Role "support" (Join-Path $SampleDir "Server/Support/build/install/Support/bin/Support") $SupportConfig
+    Wait-Port "support-channel" $SupportChannelEndpoint
+    Wait-Port "support-entry-router" $EntryRouterEndpoint
+    Wait-Port "support-entry-pub" $EntrySpotEndpoint
 
-    Start-Role "api" (Join-Path $SampleDir "Server/Api/build/install/Api/bin/Api")
-    Wait-Port "api-channel" $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT
+    Start-Role "api" (Join-Path $SampleDir "Server/Api/build/install/Api/bin/Api") $ApiConfig
+    Wait-Port "api-channel" $ApiChannelEndpoint
 
-    Start-Role "session" (Join-Path $SampleDir "Server/Session/build/install/Session/bin/Session")
-    Wait-Port "session-spot" $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT
-    Wait-Port "session-router" $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
-    Wait-Port "session-stream" $env:SUPPORTCHAT_STREAM_ENDPOINT
+    Start-Role "session" (Join-Path $SampleDir "Server/Session/build/install/Session/bin/Session") $SessionConfig
+    Wait-Port "session-spot" $SessionSpotEndpoint
+    Wait-Port "session-router" $SessionRouterEndpoint
+    Wait-Port "session-stream" $StreamEndpoint
 
     $clientLog = Join-Path $LogDir "client.log"
     & (Join-Path $SampleDir "Client/build/install/Client/bin/Client") `
-        --stream-endpoint $env:SUPPORTCHAT_STREAM_ENDPOINT *> $clientLog
+        --stream-endpoint $StreamEndpoint *> $clientLog
     if ($LASTEXITCODE -ne 0) {
         throw "SupportChat client failed."
     }

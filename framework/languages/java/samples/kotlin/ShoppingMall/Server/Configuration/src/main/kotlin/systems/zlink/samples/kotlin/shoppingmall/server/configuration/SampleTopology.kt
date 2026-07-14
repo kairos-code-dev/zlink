@@ -1,61 +1,77 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.configuration
 
 import java.time.Duration
+import org.springframework.boot.context.properties.ConfigurationProperties
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
 
-/**
- * Endpoint topology and `OrderId` owner routing. The run script overrides the
- * defaults through `-Dzlink.samples.shoppingmall.*` system properties.
- */
-object SampleTopology {
-    val CommerceApiAEndpoint = property("commerceApiAEndpoint", "tcp://127.0.0.1:47492")
-    val CommerceApiBEndpoint = property("commerceApiBEndpoint", "tcp://127.0.0.1:47493")
-    val WorkflowAEndpoint = property("workflowAEndpoint", "tcp://127.0.0.1:47494")
-    val WorkflowBEndpoint = property("workflowBEndpoint", "tcp://127.0.0.1:47495")
-    val RedisEndpoint = property("redisEndpoint", "127.0.0.1:6379")
-    val RedisKeyPrefix = property("redisKeyPrefix", "shoppingmall:kotlin:")
+@ConfigurationProperties("sample")
+data class SampleTopology(
+    val instanceId: String? = null,
+    val logDirectory: String? = null,
+    val channelEndpoint: String? = null,
+    val redisEndpoint: String? = null,
+    val redisKeyPrefix: String? = null,
+    val storeDirectory: String? = null,
+) {
+    fun role(): Role = Role(
+        required(instanceId, "instanceId"),
+        required(logDirectory, "logDirectory"),
+        required(channelEndpoint, "channelEndpoint"),
+        required(storeDirectory, "storeDirectory"),
+    )
 
-    fun commerceApiEndpoint(instanceId: String): String =
-        if (instanceId == SampleNames.ApiInstanceB) CommerceApiBEndpoint else CommerceApiAEndpoint
+    fun location(): Location = Location(
+        required(redisEndpoint, "redisEndpoint"),
+        required(redisKeyPrefix, "redisKeyPrefix"),
+    )
 
-    fun workflowEndpoint(instanceId: String): String =
-        if (instanceId == SampleNames.WorkflowInstanceB) WorkflowBEndpoint else WorkflowAEndpoint
+    fun requiredStoreDirectory(): String = required(storeDirectory, "storeDirectory")
 
-    /** Deterministic, cross-language stable owner selection by `OrderId`. */
     fun workflowInstanceForOrder(orderId: String): String {
         var sum = 0
-        for (c in orderId) {
-            sum = (sum * 31 + c.code) and 0x7fffffff
-        }
+        for (character in orderId) sum = (sum * 31 + character.code) and 0x7fffffff
         return if (sum % 2 == 1) SampleNames.WorkflowInstanceB else SampleNames.WorkflowInstanceA
     }
 
     fun failedPlaceholder(orderId: String): OrderState =
-        OrderState(
-            orderId,
-            OrderStatuses.Failed,
-            null,
-            null,
-            null,
-            "order does not exist",
-            null,
-            null,
-            System.currentTimeMillis(),
-        )
+        OrderState(orderId, OrderStatuses.Failed, null, null, null, "order does not exist", null, null,
+            System.currentTimeMillis())
 
-    private fun property(name: String, defaultValue: String): String =
-        System.getProperty("zlink.samples.shoppingmall.$name", defaultValue)
+    data class Role(
+        val instanceId: String,
+        val logDirectory: String,
+        val channelEndpoint: String,
+        val storeDirectory: String,
+    )
+
+    data class Location(val redisEndpoint: String, val redisKeyPrefix: String)
+
+    companion object {
+        fun configPath(args: Array<String>): String {
+            require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+                "Usage: <role executable> --config <path>"
+            }
+            return args[1]
+        }
+
+        private fun required(value: String?, name: String): String {
+            require(!value.isNullOrBlank()) { "sample.$name is required" }
+            return value
+        }
+    }
 }
 
 object SampleLocationStore {
-    fun create(): ZLinkRedisLocationStore =
-        ZLinkRedisLocationStore(
+    fun create(topology: SampleTopology): ZLinkRedisLocationStore {
+        val location = topology.location()
+        return ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(SampleTopology.RedisEndpoint)
-                .setKeyPrefix("${SampleTopology.RedisKeyPrefix}locations:")
+                .setConnectionString(location.redisEndpoint)
+                .setKeyPrefix("${location.redisKeyPrefix}locations:")
                 .setCommandTimeout(Duration.ofMillis(500)),
         )
+    }
 }

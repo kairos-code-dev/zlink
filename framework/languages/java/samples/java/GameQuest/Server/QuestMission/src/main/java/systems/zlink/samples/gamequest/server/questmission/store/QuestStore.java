@@ -9,16 +9,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import systems.zlink.samples.gamequest.server.configuration.RedisSampleStore;
+import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class QuestStore implements AutoCloseable {
     private final QuestDomain domain = new QuestDomain();
-    private final RedisSampleStore shared = new RedisSampleStore();
+    private final RedisSampleStore shared;
     private final Map<String, List<Messages.QuestProgress>> projections = new HashMap<>();
     private final Map<String, String> eventIdsByIdempotency = new HashMap<>();
     private final List<Messages.StoredQuestEvent> events = new ArrayList<>();
     private final Map<String, Integer> rehydrates = new HashMap<>();
+
+    public QuestStore(SampleTopology topology) {
+        shared = new RedisSampleStore(topology);
+    }
 
     public synchronized Messages.QuestProcessingRes apply(Messages.GameplayMsg event) {
         String key = event.playerId() + ":" + event.idempotencyKey();

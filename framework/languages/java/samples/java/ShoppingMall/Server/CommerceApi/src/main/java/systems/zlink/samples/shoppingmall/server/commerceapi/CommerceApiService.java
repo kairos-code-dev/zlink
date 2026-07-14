@@ -15,12 +15,15 @@ import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
 public final class CommerceApiService {
     private final RedisCommerceStore store;
     private final ZLinkClient channels;
+    private final SampleTopology topology;
 
     public CommerceApiService(
         RedisCommerceStore store,
-        ZLinkClient channels) {
+        ZLinkClient channels,
+        SampleTopology topology) {
         this.store = store;
         this.channels = channels;
+        this.topology = topology;
     }
 
     public CompletionStage<Messages.StartOrderRes> startOrder(Messages.StartOrderReq request) {
@@ -30,7 +33,7 @@ public final class CommerceApiService {
         store.getPaymentMethod(request.paymentMethodId());
         OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
             request.idempotencyKey(),
-            SampleTopology.apiName());
+            topology.api().instanceName());
         store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
         Messages.OrderState existing = store.findProjection(mapping.orderId());
         if (existing != null) {
@@ -40,7 +43,7 @@ public final class CommerceApiService {
 
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
+                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(mapping.orderId())),
                 workflowRequest)
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.StartOrderWorkflowRes.class)
@@ -64,7 +67,7 @@ public final class CommerceApiService {
 
     public CompletionStage<Messages.RebuildOrderProjectionRes> rebuildProjection(String orderId) {
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
+                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(orderId)),
                 new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.RebuildOrderProjectionRes.class);
@@ -73,7 +76,7 @@ public final class CommerceApiService {
     public CompletionStage<Messages.StartOrderRes> createPendingThenStart(Messages.StartOrderReq request) {
         store.reserveIdempotency(
             request.idempotencyKey(),
-            SampleTopology.apiName());
+            topology.api().instanceName());
         return startOrder(request);
     }
 
@@ -82,12 +85,12 @@ public final class CommerceApiService {
         validate(request);
         OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
             request.idempotencyKey(),
-            SampleTopology.apiName());
+            topology.api().instanceName());
         Messages.CartSeed cart = store.getCart(request.cartId());
         store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
+                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(mapping.orderId())),
                 new Messages.PrepareInventoryReservedCheckpointReq(workflowRequest))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);
@@ -95,7 +98,7 @@ public final class CommerceApiService {
 
     public CompletionStage<Messages.ContinueOrderWorkflowRes> continueOrder(String orderId) {
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
+                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(orderId)),
                 new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);

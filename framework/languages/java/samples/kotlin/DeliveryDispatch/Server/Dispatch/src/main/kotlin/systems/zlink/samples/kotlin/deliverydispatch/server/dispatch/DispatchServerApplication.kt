@@ -27,6 +27,7 @@ class DispatchServerApplication {
     @Bean
     fun dispatchFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
+            options.addHandlersFromPackageOf(DispatchServerApplication::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -36,6 +37,12 @@ class DispatchServerApplication {
                 .traceLabel("dispatch")
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient()
+            // The courier's decision comes back here as its own one-way message, so dispatch has
+            // to be a channel server (common sample spec section 7.4).
+            options.addClientServerChannel(SampleNames.DispatchChannel)
+                .enableServer(SampleTopology.DispatchChannelEndpoint)
+                .setRoutingId(RoutingId.from("delivery-dispatch-channel"))
+                .addHandlerGroup(SampleNames.DispatchChannel)
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
                 .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"))
@@ -60,11 +67,21 @@ class DispatchServerApplication {
     fun dispatchWorkQueue(worker: DispatchWorker): DispatchWorkQueue = DispatchWorkQueue(worker)
 
     @Bean
+    fun deliveryOfferStore(): DeliveryOfferStore = DeliveryOfferStore()
+
+    @Bean
     fun dispatchWorker(
         channels: ZLinkClient,
         routes: ZLinkRouteClient,
         spots: SpotHandleResolver,
-    ): DispatchWorker = DispatchWorker(channels, routes, spots)
+        offers: DeliveryOfferStore,
+    ): DispatchWorker = DispatchWorker(channels, routes, spots, offers)
+
+    @Bean(destroyMethod = "close")
+    fun offerDeadlineSweeper(
+        offers: DeliveryOfferStore,
+        worker: DispatchWorker,
+    ): OfferDeadlineSweeper = OfferDeadlineSweeper(offers, worker)
 
     @Bean
     fun dispatchHttpServer(

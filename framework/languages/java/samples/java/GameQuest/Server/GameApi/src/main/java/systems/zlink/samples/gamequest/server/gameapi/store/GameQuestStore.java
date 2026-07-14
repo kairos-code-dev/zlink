@@ -9,16 +9,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import systems.zlink.samples.gamequest.server.configuration.RedisSampleStore;
+import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class GameQuestStore implements AutoCloseable {
-    private final RedisSampleStore shared = new RedisSampleStore();
+    private final RedisSampleStore shared;
     private final Map<String, List<Messages.QuestProgress>> projections = new HashMap<>();
     private final Map<String, Set<String>> completedMissions = new HashMap<>();
     private final Map<String, Set<String>> unlockedFeatures = new HashMap<>();
     private final Map<String, Set<String>> enteredAreas = new HashMap<>();
     private final Map<String, Map<String, Integer>> kills = new HashMap<>();
     private final Map<String, Map<String, Integer>> items = new HashMap<>();
+
+    public GameQuestStore(SampleTopology topology) {
+        shared = new RedisSampleStore(topology);
+    }
 
     public synchronized void bind(String playerId, String apiName) {
         shared.bind(playerId, apiName);

@@ -16,7 +16,7 @@
 | `.NET: Client/Program.cs` | `Client/src/main/kotlin/.../client/Program.kt` | client-entry | done | client argument를 읽고 scenario를 실행한다. |
 | `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/kotlin/.../client/TicTacToeClientScenario.kt` | client-scenario | done | room 생성, stream 인증, host/guest/observer join, move, milestone push를 self-check한다. |
 | `.NET: Server/TicTacToe.Server.csproj` | `Server/build.gradle.kts` | build | done | Server role project. |
-| `.NET: Server/Program.cs` | `Server/src/main/kotlin/.../server/Program.kt` | server-entry | done | `api` 또는 `play` role을 선택해 실행한다. |
+| `.NET: Server/Program.cs` | `Server/src/main/kotlin/.../server/api/ApiProgram.kt`, `server/play/PlayProgram.kt` | server-entry | done | API와 Play를 별도 실행 진입점으로 시작하며 각 진입점은 설정 파일 경로만 받는다. |
 | `.NET: Server/Api/ApiServer.cs` | `Server/src/main/kotlin/.../server/api/ApiServer.kt` | server-role | done | API HTTP/channel role을 실행한다. |
 | `.NET: Server/Api/Handlers/AuthenticatePlayerHandler.cs` | `Server/src/main/kotlin/.../api/handlers/AuthenticatePlayerHandler.kt` | handler | done | access token을 player identity로 검증한다. |
 | `.NET: Server/Api/Handlers/CreateGameHttpHandler.cs` | `Server/src/main/kotlin/.../api/handlers/CreateGameHttpHandler.kt` | handler | done | HTTP room 생성 요청을 Play channel request로 연결한다. |

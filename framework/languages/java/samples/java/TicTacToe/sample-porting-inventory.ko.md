@@ -33,7 +33,7 @@
 
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
-| `.NET: Server/Program.cs` | `Server/src/main/java/.../server/Program.java` | server-entry | done | `api`와 `play` role을 같은 Server project에서 선택해 실행한다. |
+| `.NET: Server/Program.cs` | `Server/src/main/java/.../server/api/ApiProgram.java`, `server/play/PlayProgram.java` | server-entry | done | API와 Play를 별도 실행 진입점으로 시작하며 각 진입점은 설정 파일 경로만 받는다. |
 | `.NET: Server/Api/*` | `Server/src/main/java/.../server/api/*` | api-role | done | `/games` HTTP endpoint와 player authentication channel handler를 제공한다. |
 | `.NET: Server/Configuration/*` | `Server/src/main/java/.../server/configuration/*` | server-config | done | sample endpoint, Redis endpoint, routing id, logging, location store 설정을 모은다. |
 | `.NET: Server/Play/PlayServer.cs` | `Server/src/main/java/.../server/play/PlayServer.java` | play-role | done | Play channel server, API channel client, stream server, actor runtime, Spot route/pubsub endpoint를 구성한다. |

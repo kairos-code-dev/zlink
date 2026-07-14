@@ -1,3 +1,5 @@
+import org.gradle.jvm.application.tasks.CreateStartScripts
+
 plugins {
     application
     id("org.jetbrains.kotlin.jvm")
@@ -37,6 +39,19 @@ kotlin {
 }
 
 application {
-    mainClass.set("systems.zlink.samples.kotlin.tictactoe.server.ProgramKt")
+    mainClass.set("systems.zlink.samples.kotlin.tictactoe.server.api.ApiProgramKt")
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+val playStartScripts by tasks.registering(CreateStartScripts::class) {
+    applicationName = "tictactoe-play"
+    mainClass.set("systems.zlink.samples.kotlin.tictactoe.server.play.PlayProgramKt")
+    classpath = files(tasks.named("jar"), configurations.runtimeClasspath)
+    defaultJvmOpts = application.applicationDefaultJvmArgs
+    outputDir = layout.buildDirectory.dir("play-start-scripts").get().asFile
+}
+
+tasks.named<Sync>("installDist") {
+    dependsOn(playStartScripts)
+    from(playStartScripts) { into("bin") }
 }

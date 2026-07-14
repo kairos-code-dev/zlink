@@ -16,8 +16,12 @@ public final class RedisSampleStore implements AutoCloseable {
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> redis;
 
-    public RedisSampleStore() {
-        client = RedisClient.create(redisUri(redisEndpoint()));
+    private final String keyPrefix;
+
+    public RedisSampleStore(SampleTopology topology) {
+        SampleTopology.Location location = topology.location();
+        keyPrefix = location.redisKeyPrefix();
+        client = RedisClient.create(redisUri(location.redisEndpoint()));
         connection = client.connect();
         redis = connection.sync();
     }
@@ -82,7 +86,7 @@ public final class RedisSampleStore implements AutoCloseable {
     }
 
     private String key(String name) {
-        return property("zlink.samples.gamequest.redisKeyPrefix", "gamequest:java:") + "gamequest:" + name;
+        return keyPrefix + "gamequest:" + name;
     }
 
     private String writeJson(Object value) {
@@ -113,11 +117,4 @@ public final class RedisSampleStore implements AutoCloseable {
         return endpoint.startsWith("redis://") ? endpoint : "redis://" + endpoint;
     }
 
-    private static String property(String name, String fallback) {
-        return System.getProperty(name, fallback);
-    }
-
-    private static String redisEndpoint() {
-        return property("zlink.samples.gamequest.redisEndpoint", "127.0.0.1:6379");
-    }
 }

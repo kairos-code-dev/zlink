@@ -70,6 +70,7 @@ class DeliveryEvidenceStore(stateDir: String) {
                 ExpectedStatus(DeliveryStatus.Assigned, "courier-a"),
                 ExpectedStatus(DeliveryStatus.Reassigned, "courier-b"),
                 ExpectedStatus(DeliveryStatus.Accepted, "courier-b"),
+                ExpectedStatus(DeliveryStatus.PickedUp, "courier-b"),
                 ExpectedStatus(DeliveryStatus.Delivered, "courier-b"),
             ),
             evidence = evidence,

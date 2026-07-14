@@ -1,9 +1,13 @@
 package systems.zlink.samples.kotlin.supportchat.server.support
 
+import java.nio.file.Path
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.core.env.StandardEnvironment
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
@@ -29,31 +33,32 @@ import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zl
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.entryspot.SupportEntrySpot
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [SupportApplication::class],
 )
 class SupportApplication {
     @Bean
-    fun supportFramework(): ZLinkFrameworkConfigurer =
+    fun supportFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            val topology = SampleTopology.create()
+            val support = topology.support()
             options.addHandlersFromPackageOf(SupportApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleFlowLog.path("support"))
+                traceLogFile(SampleFlowLog.path(topology, "support"))
                 traceLabel("support")
             }
             options.addClientServerChannel(SampleNames.SupportChannel)
-                .enableServer(topology.supportChannelEndpoint)
+                .enableServer(support.channelEndpoint)
                 .addHandlerGroup(SampleNames.SupportChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
-            node.enableRouter(topology.supportEntrySpotRouterEndpoint)
-                .setRoutingId(topology.supportEntryRid)
-            node.enablePubSub(topology.supportEntrySpotEndpoint)
+            node.enableRouter(support.entryRouterEndpoint)
+                .setRoutingId(support.entryRoutingId)
+            node.enablePubSub(support.entrySpotEndpoint)
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
             node.addActorTransferAdapter(
@@ -64,7 +69,7 @@ class SupportApplication {
         }
 
     @Bean
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean
     fun supportActorDirectory(): SupportActorDirectory = SupportActorDirectory()
@@ -90,12 +95,17 @@ class SupportApplication {
         ConversationNotificationPublisher()
 
     companion object {
-        fun run(args: Array<String> = emptyArray()): AutoCloseable {
+        fun run(configPath: String): ConfigurableApplicationContext {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val builder = SpringApplicationBuilder(SupportApplication::class.java)
+                .environment(environment)
                 .web(WebApplicationType.NONE)
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
-            return AutoCloseable { context.close() }
+            return builder.run()
         }
     }
 }

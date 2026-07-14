@@ -77,11 +77,28 @@ data class EnsureCourierActorRes(
     val actor: ActorRefSnapshot,
 )
 
-data class OfferDeliveryReq(
-    val deliveryId: String,
+/**
+ * The offer, and the courier's answer to it. Both are one-way (common sample spec section 7.4): a
+ * courier looks at a screen and presses a button, and tying that time to a request's reply would
+ * hold the spot's serial queue open for as long as the courier thinks. The decision was always
+ * going to arrive as a separate inbound message, because the server can only push to a client,
+ * never request of it. [attempt] is what makes the pairing safe: a decision that names another
+ * attempt arrived too late and is dropped.
+ */
+data class OfferDeliveryMsg(
     val courierId: String,
+    val deliveryId: String,
+    val attempt: Int,
     val pickupAddress: String,
     val dropoffAddress: String,
+)
+
+data class OfferDeliveryResultMsg(
+    val deliveryId: String,
+    val courierId: String,
+    val attempt: Int,
+    val accepted: Boolean,
+    val reason: String? = null,
 )
 
 data class OfferDeliveryNotify(
@@ -89,13 +106,6 @@ data class OfferDeliveryNotify(
     val deliveryId: String,
     val pickupAddress: String,
     val dropoffAddress: String,
-)
-
-data class OfferDeliveryRes(
-    val deliveryId: String,
-    val courierId: String,
-    val accepted: Boolean,
-    val reason: String? = null,
 )
 
 data class CourierDecisionMsg(

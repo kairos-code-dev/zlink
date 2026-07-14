@@ -7,9 +7,7 @@ Set-Location $SampleDir
 
 $RunDir = Join-Path ([System.IO.Path]::GetTempPath()) "zlink-tictactoe-kotlin-$PID-$([Guid]::NewGuid().ToString('N'))"
 $LogDir = Join-Path $RunDir "logs"
-$FlowLogDir = if ($env:TICTACTOE_LOG_DIR) { $env:TICTACTOE_LOG_DIR } else { Join-Path $SampleDir "logs" }
-New-Item -ItemType Directory -Force -Path $LogDir, $FlowLogDir | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $FlowLogDir "*.log")
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
@@ -118,9 +116,10 @@ function Invoke-Gradle {
 
 function Start-SampleRole {
     param([string]$Role, [string]$ConfigPath, [string]$LogName)
-    $serverBin = Join-Path $SampleDir "Server/build/install/Server/bin/Server"
+    $scriptName = if ($Role -eq "play") { "tictactoe-play" } else { "Server" }
+    $serverBin = Join-Path $SampleDir "Server/build/install/Server/bin/$scriptName"
     if ($IsWindows) { $serverBin = "$serverBin.bat" }
-    $process = Start-Process -FilePath $serverBin -ArgumentList @($Role, "--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput (Join-Path $LogDir $LogName) -RedirectStandardError (Join-Path $LogDir "$LogName.err") -PassThru
+    $process = Start-Process -FilePath $serverBin -ArgumentList @("--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput (Join-Path $LogDir $LogName) -RedirectStandardError (Join-Path $LogDir "$LogName.err") -PassThru
     $Processes.Add($process)
 }
 
@@ -144,7 +143,7 @@ try {
     $RedisContainer = $redis.ContainerId
     $redisEndpoint = $redis.Endpoint
     Wait-Endpoint "redis" $redisEndpoint
-    $redisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) { $env:TICTACTOE_REDIS_KEY_PREFIX } else { "zlink:tictactoe-kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):room:" }
+    $redisKeyPrefix = "zlink:tictactoe-kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):room:"
 
     $commonPlayChannels = "tcp://127.0.0.1:${PlayAChannelPort},tcp://127.0.0.1:${PlayBChannelPort}"
     $commonPlayStreams = "tcp://127.0.0.1:${PlayAStreamPort},tcp://127.0.0.1:${PlayBStreamPort}"
@@ -165,6 +164,7 @@ try {
         "sample.playEndpoint=tcp://127.0.0.1:$PlayAStreamPort",
         "sample.playEndpoints=$commonPlayStreams",
         "sample.spotEndpoint=tcp://127.0.0.1:$PlayASpotPort",
+        "sample.routeEndpoint=tcp://127.0.0.1:$PlayASpotPort",
         "sample.spotEndpoints=$commonSpots",
         "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort",
         "sample.spotPubSubEndpoints=$commonPubs",
@@ -190,6 +190,7 @@ try {
         -replace 'sample\.playChannelEndpoint=.*', "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayBChannelPort" `
         -replace 'sample\.playEndpoint=.*', "sample.playEndpoint=tcp://127.0.0.1:$PlayBStreamPort" `
         -replace 'sample\.spotEndpoint=.*', "sample.spotEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
+        -replace 'sample\.routeEndpoint=.*', "sample.routeEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
         -replace 'sample\.spotPubSubEndpoint=.*', "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort" `
         -replace 'sample\.playSpotNodeRid=.*', "sample.playSpotNodeRid=play-node-2" `
         -replace 'sample\.peerPlaySpotNodeRid=.*', "sample.peerPlaySpotNodeRid=play-node-1" `
@@ -200,21 +201,21 @@ try {
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:installDist", ":Client:installDist", "--quiet")
 
     Start-SampleRole "play" $playBConfig "play-b.log"
-    Wait-LogContains (Join-Path $LogDir "play-b.log") "Started Program"
+    Wait-LogContains (Join-Path $LogDir "play-b.log") "Started PlayProgram"
     Wait-Endpoint "play-b-stream" "tcp://127.0.0.1:$PlayBStreamPort"
     Wait-Endpoint "play-b-spot" "tcp://127.0.0.1:$PlayBSpotPort"
 
     Start-SampleRole "play" $playAConfig "play-a.log"
-    Wait-LogContains (Join-Path $LogDir "play-a.log") "Started Program"
+    Wait-LogContains (Join-Path $LogDir "play-a.log") "Started PlayProgram"
     Wait-Endpoint "play-a-stream" "tcp://127.0.0.1:$PlayAStreamPort"
     Wait-Endpoint "play-a-spot" "tcp://127.0.0.1:$PlayASpotPort"
 
     Start-SampleRole "api" $apiAConfig "api-a.log"
-    Wait-LogContains (Join-Path $LogDir "api-a.log") "Started Program"
+    Wait-LogContains (Join-Path $LogDir "api-a.log") "Started ApiProgram"
     Wait-Endpoint "api-a-http" "http://127.0.0.1:$ApiAHttpPort"
 
     Start-SampleRole "api" $apiBConfig "api-b.log"
-    Wait-LogContains (Join-Path $LogDir "api-b.log") "Started Program"
+    Wait-LogContains (Join-Path $LogDir "api-b.log") "Started ApiProgram"
     Wait-Endpoint "api-b-http" "http://127.0.0.1:$ApiBHttpPort"
 
     $clientBin = Join-Path $SampleDir "Client/build/install/Client/bin/Client"

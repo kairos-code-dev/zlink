@@ -12,17 +12,13 @@ public final class SampleLogging {
         try {
             Files.createDirectories(Path.of(settings.logDirectory()));
             Path.of(settings.logDirectory(), role + ".log").toFile().createNewFile();
-            Files.createDirectories(Path.of(flowLogDirectory()));
+            Files.createDirectories(Path.of(settings.logDirectory()));
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to initialize sample log files.", ex);
         }
     }
 
-    public static String flowLogPath(String role) {
-        return Path.of(flowLogDirectory(), "flow-" + role + ".log").toString();
-    }
-
-    private static String flowLogDirectory() {
-        return System.getenv().getOrDefault("TICTACTOE_LOG_DIR", "logs");
+    public static String flowLogPath(SampleSettings settings, String role) {
+        return Path.of(settings.logDirectory(), "flow-" + role + ".log").toString();
     }
 }

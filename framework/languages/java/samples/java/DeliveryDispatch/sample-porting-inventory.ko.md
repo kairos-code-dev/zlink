@@ -38,7 +38,7 @@
 | `BindCourierSessionRes` | `Messages.BindCourierSessionRes` | shared-contract | done | courier session bind 응답이다. |
 | `BindCourierReq` / `BindCourierRes` | `Messages.BindCourierReq`, `Messages.BindCourierRes` | shared-contract | done | CourierGateway가 actor 위치와 session route를 돌려준다. |
 | `EnsureCourierActorReq` / `EnsureCourierActorRes` | `Messages.EnsureCourierActorReq`, `Messages.EnsureCourierActorRes` | shared-contract | done | target courier spot node의 actor를 보장한다. |
-| `OfferDeliveryReq` / `OfferDeliveryRes` | `Messages.OfferDeliveryReq`, `Messages.OfferDeliveryRes` | shared-contract | done | dispatch worker가 courier에게 배송 제안을 보내고 결과를 받는다. |
+| `OfferDeliveryMsg` / `OfferDeliveryResultMsg` | `Messages.OfferDeliveryMsg`, `Messages.OfferDeliveryResultMsg` | shared-contract | done | 제안도 결정 결과도 **응답 없는 one-way**다. 시한은 `DispatchWorker`의 sweeper가 소유한다(공통 sample spec §7.4). |
 | `OfferDeliveryNotify` / `CourierDecision` | `Messages.OfferDeliveryNotify`, `Messages.CourierDecision` | shared-contract | done | courier stream push와 courier client decision이다. |
 | `ReassignDelivery` | `Messages.ReassignDelivery` | shared-contract | done | timeout 재배정 의미를 드러내는 shared message다. |
 | `DeliveryStatusChangedReq` / `DeliveryStatusChangedRes` | `Messages.DeliveryStatusChangedReq`, `Messages.DeliveryStatusChangedRes` | shared-contract | done | Tracking server 기록 요청과 응답이다. |

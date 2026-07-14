@@ -84,12 +84,30 @@ public final class Messages {
     public record EnsureCourierActorRes(String courierId, ActorRefSnapshot actor) {
     }
 
-    @ZLinkPacket("OfferDeliveryReq")
-    public record OfferDeliveryReq(
+    /**
+     * The offer, and the courier's answer to it. Both are one-way (common sample spec section 7.4):
+     * a courier looks at a screen and presses a button, and tying that time to a request's reply
+     * would hold the spot's serial queue open for as long as the courier thinks. The decision was
+     * always going to arrive as a separate inbound message, because the server can only push to a
+     * client, never request of it. {@code attempt} is what makes the pairing safe: a decision that
+     * names another attempt arrived too late and is dropped.
+     */
+    @ZLinkPacket("OfferDeliveryMsg")
+    public record OfferDeliveryMsg(
         String courierId,
         String deliveryId,
+        int attempt,
         String pickupAddress,
         String dropoffAddress) {
+    }
+
+    @ZLinkPacket("OfferDeliveryResultMsg")
+    public record OfferDeliveryResultMsg(
+        String deliveryId,
+        String courierId,
+        int attempt,
+        boolean accepted,
+        String reason) {
     }
 
     public record OfferDeliveryNotify(
@@ -97,9 +115,6 @@ public final class Messages {
         String deliveryId,
         String pickupAddress,
         String dropoffAddress) {
-    }
-
-    public record OfferDeliveryRes(String deliveryId, String courierId, boolean accepted, String reason) {
     }
 
     @ZLinkPacket("CourierDecision")

@@ -1,8 +1,10 @@
 package systems.zlink.samples.kotlin.shoppingmall.client
 
+import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopology
+
 suspend fun main(args: Array<String>) {
     try {
-        ClientApplication.run(args)
+        ClientApplication.run(SampleTopology.configPath(args))
         println("shoppingmall=completed")
         System.out.flush()
         System.err.flush()

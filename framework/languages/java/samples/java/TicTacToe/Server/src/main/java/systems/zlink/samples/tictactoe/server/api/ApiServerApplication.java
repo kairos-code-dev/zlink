@@ -1,8 +1,13 @@
 package systems.zlink.samples.tictactoe.server.api;
 
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
+import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -14,6 +19,7 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleSettings.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = {
@@ -25,20 +31,29 @@ public final class ApiServerApplication {
     private ApiServerApplication() {
     }
 
-    public static ConfigurableApplicationContext run(SampleSettings settings) {
+    public static ConfigurableApplicationContext run(String configPath) {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(ApiServerApplication.class)
+            .environment(environment)
             .web(WebApplicationType.SERVLET)
-            .properties(
-                "server.address=127.0.0.1",
-                "server.port=" + settings.apiHttpPort())
-            .initializers(context ->
-                context.getBeanFactory().registerSingleton("sampleSettings", settings));
+            .properties("spring.config.location=" + Path.of(configPath).toAbsolutePath().toUri());
         builder.application().setKeepAlive(true);
-        return builder.run();
+        return builder.run(new String[0]);
     }
 
     @Bean
     ZLinkFrameworkConfigurer apiFramework(SampleSettings settings) {
         return ApiServer.configure(settings);
+    }
+
+    @Bean
+    WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> apiHttpServer(SampleSettings settings) {
+        return server -> {
+            var endpoint = java.net.URI.create(settings.apiBindUrl());
+            server.setAddress(java.net.InetAddress.getLoopbackAddress());
+            server.setPort(endpoint.getPort());
+        };
     }
 }

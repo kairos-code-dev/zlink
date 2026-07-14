@@ -1,92 +1,60 @@
 package systems.zlink.samples.shoppingmall.server.configuration;
 
 import java.nio.charset.StandardCharsets;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import systems.zlink.contracts.core.RoutingId;
 
-public final class SampleTopology {
-    public static final String ApiAHttpUrl = property("apiAHttpUrl", "http://127.0.0.1:49101");
-    public static final String ApiBHttpUrl = property("apiBHttpUrl", "http://127.0.0.1:49102");
-    public static final String WorkflowAHttpUrl = property("workflowAHttpUrl", "http://127.0.0.1:49111");
-    public static final String WorkflowBHttpUrl = property("workflowBHttpUrl", "http://127.0.0.1:49112");
-    public static final String WorkflowAChannelEndpoint =
-        property("workflowAChannelEndpoint", "tcp://127.0.0.1:49121");
-    public static final String WorkflowBChannelEndpoint =
-        property("workflowBChannelEndpoint", "tcp://127.0.0.1:49122");
-    public static final String WorkflowASpotEndpoint =
-        property("workflowASpotEndpoint", "tcp://127.0.0.1:49131");
-    public static final String WorkflowASpotRouterEndpoint =
-        property("workflowASpotRouterEndpoint", "tcp://127.0.0.1:49132");
-    public static final String WorkflowBSpotEndpoint =
-        property("workflowBSpotEndpoint", "tcp://127.0.0.1:49133");
-    public static final String WorkflowBSpotRouterEndpoint =
-        property("workflowBSpotRouterEndpoint", "tcp://127.0.0.1:49134");
-    public static final String RedisEndpoint = property("redisEndpoint", "127.0.0.1:6379");
-    public static final String RedisKeyPrefix = property("redisKeyPrefix", "shoppingmall:java:");
+@ConfigurationProperties("sample")
+public record SampleTopology(
+    String instanceName,
+    String logDirectory,
+    String httpUrl,
+    String channelEndpoint,
+    String spotEndpoint,
+    String spotRouterEndpoint,
+    String workflowAChannelEndpoint,
+    String workflowBChannelEndpoint,
+    String redisEndpoint,
+    String redisKeyPrefix) {
 
-    private SampleTopology() {
+    public Api api() {
+        return new Api(required(instanceName, "instanceName"), required(logDirectory, "logDirectory"),
+            required(httpUrl, "httpUrl"), required(workflowAChannelEndpoint, "workflowAChannelEndpoint"),
+            required(workflowBChannelEndpoint, "workflowBChannelEndpoint"));
     }
 
-    public static String apiName() {
-        return System.getProperty("zlink.samples.shoppingmall.apiName", "api-a");
+    public Workflow workflow() {
+        String name = required(instanceName, "instanceName");
+        return new Workflow(name, required(logDirectory, "logDirectory"), required(httpUrl, "httpUrl"),
+            required(channelEndpoint, "channelEndpoint"), required(spotEndpoint, "spotEndpoint"),
+            required(spotRouterEndpoint, "spotRouterEndpoint"), RoutingId.from(name));
     }
 
-    public static String workflowName() {
-        return System.getProperty("zlink.samples.shoppingmall.workflowName", "workflow-a");
+    public Location location() {
+        return new Location(required(redisEndpoint, "redisEndpoint"), required(redisKeyPrefix, "redisKeyPrefix"));
     }
 
-    public static String selectedApiHttpUrl() {
-        return "api-b".equals(apiName()) ? ApiBHttpUrl : ApiAHttpUrl;
-    }
-
-    public static String selectedWorkflowHttpUrl() {
-        return "workflow-b".equals(workflowName()) ? WorkflowBHttpUrl : WorkflowAHttpUrl;
-    }
-
-    public static String selectedWorkflowChannelEndpoint() {
-        return "workflow-b".equals(workflowName()) ? WorkflowBChannelEndpoint : WorkflowAChannelEndpoint;
-    }
-
-    public static String selectedWorkflowSpotEndpoint() {
-        return "workflow-b".equals(workflowName()) ? WorkflowBSpotEndpoint : WorkflowASpotEndpoint;
-    }
-
-    public static String selectedWorkflowSpotRouterEndpoint() {
-        return "workflow-b".equals(workflowName())
-            ? WorkflowBSpotRouterEndpoint
-            : WorkflowASpotRouterEndpoint;
-    }
-
-    public static RoutingId selectedWorkflowRoutingId() {
-        return RoutingId.from(workflowName());
-    }
-
-    public static String ownerWorkflowName(String orderId) {
-        return ownerIndex(orderId) == 1 ? "workflow-b" : "workflow-a";
-    }
-
-    public static String workflowChannelEndpoint(String workflowName) {
-        return "workflow-b".equals(workflowName) ? WorkflowBChannelEndpoint : WorkflowAChannelEndpoint;
-    }
-
-    public static String workflowSpotRouterEndpoint(String workflowName) {
-        return "workflow-b".equals(workflowName)
-            ? WorkflowBSpotRouterEndpoint
-            : WorkflowASpotRouterEndpoint;
-    }
-
-    public static RoutingId workflowRoutingId(String workflowName) {
-        return RoutingId.from(workflowName);
-    }
-
-    private static int ownerIndex(String orderId) {
+    public String ownerWorkflowName(String orderId) {
         int sum = 0;
-        for (byte value : orderId.getBytes(StandardCharsets.UTF_8)) {
-            sum += Byte.toUnsignedInt(value);
-        }
-        return sum % 2;
+        for (byte value : orderId.getBytes(StandardCharsets.UTF_8)) sum += Byte.toUnsignedInt(value);
+        return sum % 2 == 1 ? "workflow-b" : "workflow-a";
     }
 
-    private static String property(String name, String fallback) {
-        return System.getProperty("zlink.samples.shoppingmall." + name, fallback);
+    public static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: <role executable> --config <path>");
+        }
+        return args[1];
     }
+
+    private static String required(String value, String name) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("sample." + name + " is required");
+        return value;
+    }
+
+    public record Api(String instanceName, String logDirectory, String httpUrl,
+        String workflowAChannelEndpoint, String workflowBChannelEndpoint) { }
+    public record Workflow(String instanceName, String logDirectory, String httpUrl, String channelEndpoint,
+        String spotEndpoint, String spotRouterEndpoint, RoutingId routingId) { }
+    public record Location(String redisEndpoint, String redisKeyPrefix) { }
 }

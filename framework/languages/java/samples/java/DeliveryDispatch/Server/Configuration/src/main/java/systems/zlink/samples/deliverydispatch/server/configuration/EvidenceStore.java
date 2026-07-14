@@ -39,6 +39,7 @@ public final class EvidenceStore {
                 expected(Messages.DeliveryStatus.Assigned, "courier-a"),
                 expected(Messages.DeliveryStatus.Reassigned, "courier-b"),
                 expected(Messages.DeliveryStatus.Accepted, "courier-b"),
+                expected(Messages.DeliveryStatus.PickedUp, "courier-b"),
                 expected(Messages.DeliveryStatus.Delivered, "courier-b")),
             evidence,
             reassignedDeliveryId);

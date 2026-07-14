@@ -1,12 +1,14 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play
 
+import java.nio.file.Path
 import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.json.JsonMapper
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
-import org.springframework.context.ApplicationContextInitializer
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.core.env.StandardEnvironment
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -20,6 +22,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.s
 
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleSettings::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [PlayServer::class],
@@ -50,14 +53,18 @@ class PlayServerApplication {
             .build()
 
     companion object {
-        fun run(settings: SampleSettings): ConfigurableApplicationContext =
-            SpringApplicationBuilder(PlayServerApplication::class.java).also { builder ->
+        fun run(configPath: String): ConfigurableApplicationContext {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
+            return SpringApplicationBuilder(PlayServerApplication::class.java).also { builder ->
                 builder.application().setKeepAlive(true)
             }
+                .environment(environment)
                 .web(WebApplicationType.NONE)
-                .initializers(ApplicationContextInitializer<ConfigurableApplicationContext> { context ->
-                    context.beanFactory.registerSingleton("sampleSettings", settings)
-                })
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
                 .run()
+        }
     }
 }

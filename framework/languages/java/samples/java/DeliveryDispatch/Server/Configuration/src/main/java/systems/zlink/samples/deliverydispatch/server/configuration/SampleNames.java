@@ -5,6 +5,13 @@ public final class SampleNames {
     }
 
     public static final String CourierChannel = "deliverydispatch.courier";
+
+    /**
+     * Where the courier's decision comes back to. The offer goes out one-way and the decision
+     * returns as its own one-way message, so dispatch has to be reachable as a channel server
+     * (common sample spec section 7.4).
+     */
+    public static final String DispatchChannel = "deliverydispatch.dispatch";
     public static final String TrackingChannel = "deliverydispatch.tracking";
     public static final String CustomerSpotDiscovery = "delivery-customers";
     public static final String CourierSpotDiscovery = "delivery-couriers";

@@ -7,13 +7,17 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.StandardEnvironment
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
@@ -64,8 +68,8 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.UnlockFeatureReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.UnlockFeatureRes
 
 fun main(args: Array<String>) {
-    val app = Program.run(*args)
-    val http = startHttp(Program.store)
+    val app = Program.run(SampleTopology.configPath(args))
+    val http = startHttp(Program.store, app.getBean(SampleTopology::class.java))
     Runtime.getRuntime().addShutdownHook(Thread {
         http.stop(0)
         app.close()
@@ -74,36 +78,38 @@ fun main(args: Array<String>) {
 }
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [Program::class],
 )
 class Program {
     @Bean
-    fun gameApiFramework(): ZLinkFrameworkConfigurer =
-        ZLinkFrameworkConfigurer { options ->
+    fun gameApiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
+        val api = topology.gameApi()
+        return ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(
-                    "${System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")}/flow-${SampleTopology.apiName()}.log",
-                )
-                .traceLabel(SampleTopology.apiName())
-            SampleTopology.ownerChannels().zip(SampleTopology.ownerChannelEndpoints()).forEach { (channel, endpoint) ->
+                .traceLogFile("${api.logDirectory}/flow-${api.instanceName}.log")
+                .traceLabel(api.instanceName)
+            listOf(api.missionAChannelEndpoint, api.missionBChannelEndpoint).forEachIndexed { index, endpoint ->
+                val channel = SampleNames.questOwnerChannelFor(if (index == 0) "mission-a" else "mission-b")
                 options.addClientServerChannel(channel)
                     .enableClient(endpoint)
             }
             options.addStreamNode(SampleNames.StreamNode)
-                .bind(SampleTopology.selectedApiStreamEndpoint())
+                .bind(api.streamEndpoint)
                 .registerSession(GameQuestSession::class.java)
         }
+    }
 
     @Bean(destroyMethod = "close")
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean(destroyMethod = "close")
-    fun gameQuestStore(): GameQuestStore =
-        GameQuestStore().also { store = it }
+    fun gameQuestStore(topology: SampleTopology): GameQuestStore =
+        GameQuestStore(topology).also { store = it }
 
     @Bean
     fun gameQuestApiServices(store: GameQuestStore, routes: ZLinkClient): GameQuestApiServices {
@@ -117,12 +123,18 @@ class Program {
     companion object {
         lateinit var store: GameQuestStore
         lateinit var routes: ZLinkClient
-        fun run(vararg args: String): AutoCloseable {
+        fun run(configPath: String): ConfigurableApplicationContext {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val context = SpringApplicationBuilder(Program::class.java)
+                .environment(environment)
                 .also { it.application().setKeepAlive(true) }
                 .web(WebApplicationType.NONE)
-                .run(*args)
-            return AutoCloseable { context.close() }
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
+                .run()
+            return context
         }
     }
 }
@@ -131,6 +143,7 @@ class GameQuestSession(
     private val context: ZLinkSessionContext,
     private val routes: ZLinkClient,
     private val store: GameQuestStore,
+    private val topology: SampleTopology,
 ) : ZLinkSuspendingSession() {
     private var playerId: String? = null
     override fun context(): ZLinkSessionContext = context
@@ -155,9 +168,9 @@ class GameQuestSession(
 
     private suspend fun handleJoin(request: JoinSessionReq) {
         playerId = request.playerId
-        store.bind(request.playerId, SampleTopology.apiName())
+        store.bind(request.playerId, topology.gameApi().instanceName)
         val ownerProjection = routes
-            .requestToChannel(SampleTopology.ownerChannel(request.playerId), GetQuestProgressReq(request.playerId))
+            .requestToChannel(topology.ownerChannel(request.playerId), GetQuestProgressReq(request.playerId))
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -166,7 +179,7 @@ class GameQuestSession(
 
     private suspend fun handleGetProgress(request: GetQuestProgressReq) {
         val ownerProjection = routes
-            .requestToChannel(SampleTopology.ownerChannel(request.playerId), request)
+            .requestToChannel(topology.ownerChannel(request.playerId), request)
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -175,7 +188,7 @@ class GameQuestSession(
 
     private suspend fun handleSync(request: SyncQuestProgressReq) {
         val response = routes
-            .requestToChannel(SampleTopology.ownerChannel(request.playerId), request)
+            .requestToChannel(topology.ownerChannel(request.playerId), request)
             .submit(SyncQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, response.updatedQuests)
@@ -210,7 +223,7 @@ class GameQuestSession(
     private suspend fun process(event: GameplayMsg): QuestProcessingRes {
         store.recordGameplay(event)
         val processed = routes
-            .requestToChannel(SampleTopology.ownerChannel(event.playerId), event)
+            .requestToChannel(topology.ownerChannel(event.playerId), event)
             .submit(QuestProcessingRes::class.java)
             .await()
         store.mergeProjection(event.playerId, processed.projection)
@@ -227,15 +240,15 @@ class GameQuestSession(
             idempotencyKey,
             value,
             count,
-            SampleTopology.apiName(),
+            topology.gameApi().instanceName,
             Instant.now().toEpochMilli(),
             publish,
         )
 }
 
-private fun startHttp(store: GameQuestStore): HttpServer {
+private fun startHttp(store: GameQuestStore, topology: SampleTopology): HttpServer {
     val json = jacksonObjectMapper()
-    val uri = URI.create(SampleTopology.selectedApiHttpEndpoint())
+    val uri = URI.create(topology.gameApi().httpEndpoint)
     val server = HttpServer.create(InetSocketAddress(uri.host, uri.port), 0)
     server.createContext("/health") { exchange -> writeJson(exchange, 200, mapOf("status" to "ok")) }
     server.createContext("/internal/snapshot") { exchange ->
@@ -251,13 +264,13 @@ private fun startHttp(store: GameQuestStore): HttpServer {
         store.addUnpublishedKill(playerId)
         writeJson(exchange, 200, mapOf("accepted" to true))
     }
-    server.createContext("/self-check/projection/") { exchange -> handleProjection(exchange, store) }
+    server.createContext("/self-check/projection/") { exchange -> handleProjection(exchange, store, topology) }
     server.createContext("/self-check/assert") { exchange -> writeJson(exchange, 200, store.assertState()) }
     server.start()
     return server
 }
 
-private fun handleProjection(exchange: HttpExchange, store: GameQuestStore) {
+private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topology: SampleTopology) {
     val parts = exchange.requestURI.path.split("/")
     val playerId = parts.getOrElse(3) { "" }
     val questId = parts.getOrElse(4) { "" }
@@ -266,7 +279,7 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore) {
             val deleted = kotlinx.coroutines.runBlocking {
                 Program.routes
                     .requestToChannel(
-                        SampleTopology.ownerChannel(playerId),
+                        topology.ownerChannel(playerId),
                         DeleteQuestProjectionReq(playerId, questId),
                     )
                     .submit(DeleteQuestProjectionRes::class.java)
@@ -279,7 +292,7 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore) {
             val rebuilt = kotlinx.coroutines.runBlocking {
                 Program.routes
                     .requestToChannel(
-                        SampleTopology.ownerChannel(playerId),
+                        topology.ownerChannel(playerId),
                         RebuildQuestProjectionReq(playerId, questId, 0),
                     )
                     .submit(QuestProgress::class.java)
@@ -299,8 +312,8 @@ private fun writeJson(exchange: HttpExchange, status: Int, body: Any) {
     exchange.responseBody.use { it.write(bytes) }
 }
 
-class GameQuestStore : AutoCloseable {
-    private val shared = RedisSampleStore()
+class GameQuestStore(topology: SampleTopology) : AutoCloseable {
+    private val shared = RedisSampleStore(topology)
     private val projections = mutableMapOf<String, MutableList<QuestProgress>>()
     private val completedMissions = mutableMapOf<String, MutableSet<String>>()
     private val unlockedFeatures = mutableMapOf<String, MutableSet<String>>()

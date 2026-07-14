@@ -13,12 +13,10 @@ fi
 
 pids=()
 redis_container_id=""
-redis_key_prefix="${TICTACTOE_REDIS_KEY_PREFIX:-zlink:tictactoe:${RANDOM}:$$:room:}"
+redis_key_prefix="zlink:tictactoe:${RANDOM}:$$:room:"
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
-export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$(pwd)/logs}"
-mkdir -p "${log_dir}" "${TICTACTOE_LOG_DIR}"
-rm -f "${TICTACTOE_LOG_DIR}"/*.log
+mkdir -p "${log_dir}"
 
 print_logs() {
   local status="$1"
@@ -125,28 +123,30 @@ sed -i \
   -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
   "${play_b_config}"
 
+chmod 0600 "${api_a_config}" "${api_b_config}" "${play_a_config}" "${play_b_config}"
+
 gradle_run :Server:installDist :Client:installDist
 
-"$(app_bin Server Server)" play --config "${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
+Server/build/install/Server/bin/tictactoe-play --config "${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
-wait_log_contains "${log_dir}/play-b.log" "Started Program"
+wait_log_contains "${log_dir}/play-b.log" "Started PlayProgram"
 wait_endpoint play-b-stream "tcp://127.0.0.1:${play_b_stream_port}"
 wait_endpoint play-b-spot "tcp://127.0.0.1:${play_b_spot_port}"
 
-"$(app_bin Server Server)" play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
+Server/build/install/Server/bin/tictactoe-play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
 pids+=("$!")
-wait_log_contains "${log_dir}/play-a.log" "Started Program"
+wait_log_contains "${log_dir}/play-a.log" "Started PlayProgram"
 wait_endpoint play-a-stream "tcp://127.0.0.1:${play_a_stream_port}"
 wait_endpoint play-a-spot "tcp://127.0.0.1:${play_a_spot_port}"
 
-"$(app_bin Server Server)" api --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server Server)" --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
-wait_log_contains "${log_dir}/api-a.log" "Started Program"
+wait_log_contains "${log_dir}/api-a.log" "Started ApiProgram"
 wait_endpoint api-a-http "http://127.0.0.1:${api_a_http_port}"
 
-"$(app_bin Server Server)" api --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server Server)" --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
-wait_log_contains "${log_dir}/api-b.log" "Started Program"
+wait_log_contains "${log_dir}/api-b.log" "Started ApiProgram"
 wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
 "$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
@@ -157,5 +157,5 @@ grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotN
 grep -Eq "tictactoe(=| )completed" "${log_dir}/client.log"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"
-grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
+grep -Rq "message flow" "${log_dir}"
 echo "PASS TicTacToe.Java"

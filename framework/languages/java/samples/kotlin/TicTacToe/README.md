@@ -35,13 +35,14 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 The runner always provisions a dedicated Redis Docker container on a
 Docker-assigned loopback port and removes that container on success or failure.
 It does not reuse an external Redis endpoint. The runner also supplies a unique
-`TICTACTOE_REDIS_KEY_PREFIX` for each execution so parallel
-sample runs do not share location-store keys.
+Redis key prefix for each execution so parallel sample runs do not share
+location-store keys.
 
 Run the roles manually:
 
 ```bash
-gradle :Server:run --args='play --config ./application.properties'
-gradle :Server:run --args='api --config ./application.properties'
+gradle :Server:installDist
+Server/build/install/Server/bin/tictactoe-play --config ./application.properties
+Server/build/install/Server/bin/Server --config ./application.properties
 gradle :Client:run
 ```

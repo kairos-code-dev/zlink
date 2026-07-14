@@ -222,7 +222,7 @@ final class SampleReleaseGateContractTest {
                 "BindCourierReq", "BindCourierRes",
                 "FindCourierActorReq", "FindCourierActorRes",
                 "EnsureCourierActorReq", "EnsureCourierActorRes",
-                "OfferDeliveryReq", "OfferDeliveryRes",
+                "OfferDeliveryMsg", "OfferDeliveryResultMsg",
                 "DeliveryStatusChangedReq", "DeliveryStatusChangedRes",
                 "FindCustomerActorReq", "FindCustomerActorRes",
                 "EnsureCustomerActorReq", "EnsureCustomerActorRes")) {
@@ -237,7 +237,7 @@ final class SampleReleaseGateContractTest {
                 "BindCourierReq", "BindCourierRes",
                 "FindCourierActorReq", "FindCourierActorRes",
                 "EnsureCourierActorReq", "EnsureCourierActorRes",
-                "OfferDeliveryReq", "OfferDeliveryRes",
+                "OfferDeliveryMsg", "OfferDeliveryResultMsg",
                 "DeliveryStatusChangedReq", "DeliveryStatusChangedRes",
                 "FindCustomerActorReq", "FindCustomerActorRes",
                 "EnsureCustomerActorReq", "EnsureCustomerActorRes")) {
@@ -600,14 +600,14 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("java", "TicTacToe", "Client/src/main/java",
                 "systems/zlink/samples/tictactoe/client/Program.java", "TicTacToeClientArguments.parse"),
             "Java TicTacToe Client role Program must live in the Client project folder");
-        assertTrue(sampleFileContains("java", "TicTacToe", "Server/src/main/java",
-                "systems/zlink/samples/tictactoe/server/Program.java", "PlayServerApplication.run(settings)"),
-            "Java TicTacToe Server role Program must live in the Server project folder");
-
-        String serverProgramSource = sampleJavaSource(
+        String apiProgramSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/Program.java");
+            "systems/zlink/samples/tictactoe/server/api/ApiProgram.java");
+        String playProgramSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/PlayProgram.java");
         String serverBuildSource = sampleFile(
             "java",
             "TicTacToe",
@@ -666,17 +666,13 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java");
 
-        assertTrue(serverProgramSource.contains("case \"api\" -> ApiServerApplication.run(settings)")
-                && serverProgramSource.contains("case \"play\" -> PlayServerApplication.run(settings)")
-                && serverProgramSource.contains("SampleSettings.load(args)")
-                && !serverProgramSource.contains("case \"all\"")
-                && !serverProgramSource.contains("case \"client\"")
-                && !serverProgramSource.contains("TicTacToeServerApplicationGroup")
-                && !serverProgramSource.contains("case \"server\"")
+        assertTrue(apiProgramSource.contains("ApiServerApplication.run(SampleSettings.configPath(args))")
+                && playProgramSource.contains("PlayServerApplication.run(SampleSettings.configPath(args))")
+                && serverBuildSource.contains("playStartScripts")
                 && !serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
-            "TicTacToe Java Server Program must expose only role modes; run_sample.sh owns orchestration");
-        assertFalse(serverProgramSource.contains("CountDownLatch")
-                || serverProgramSource.contains("ZLinkFramework.start"),
+            "TicTacToe Java must expose separate Api and Play executables that accept only a config path");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("ZLinkFramework.start"),
             "TicTacToe Java Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkConfigurer")
                 && apiSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
@@ -694,15 +690,20 @@ final class SampleReleaseGateContractTest {
                 && playHostFactorySource.contains("setKeepAlive(true)")
                 && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "TicTacToe direct Api and Play framework hosts must enable MessagePack codecs and expose HTTP create-game with shared settings");
-        assertTrue(settingsSource.contains("--config")
-                && settingsSource.contains("sample.apiBindUrl")
-                && settingsSource.contains("--api-bind")
-                && settingsSource.contains("--api-url")
-                && settingsSource.contains("--api-channel-endpoint")
-                && settingsSource.contains("--play-channel-endpoint")
-                && settingsSource.contains("--route-endpoint")
-                && settingsSource.contains("--spot-endpoint")
-                && settingsSource.contains("--play-endpoint")
+        assertTrue(settingsSource.contains("@ConfigurationProperties(\"sample\")")
+                && settingsSource.contains("--config")
+                && settingsSource.contains("require(apiBindUrl, \"apiBindUrl\")")
+                && !settingsSource.contains("--api-bind")
+                && !settingsSource.contains("--api-url")
+                && !settingsSource.contains("--api-channel-endpoint")
+                && !settingsSource.contains("--play-channel-endpoint")
+                && !settingsSource.contains("--route-endpoint")
+                && !settingsSource.contains("--spot-endpoint")
+                && !settingsSource.contains("--play-endpoint")
+                && apiHostFactorySource.contains("SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME")
+                && apiHostFactorySource.contains("SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME")
+                && playHostFactorySource.contains("SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME")
+                && playHostFactorySource.contains("SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME")
                 && !settingsSource.contains("withEphemeralDefaults")
                 && !settingsSource.contains("SamplePorts.reserve")
                 && !settingsSource.contains("static SampleSettings current")
@@ -930,7 +931,8 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(serverProgramSource.contains("CreateGameHandler"),
+        assertFalse(apiProgramSource.contains("CreateGameHandler")
+                || playProgramSource.contains("CreateGameHandler"),
             "TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
 
@@ -975,14 +977,14 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("kotlin", "TicTacToe", "Client/src/main/kotlin",
                 "systems/zlink/samples/kotlin/tictactoe/client/Program.kt", "TicTacToeClientArguments.parse"),
             "Kotlin TicTacToe Client role Program must live in the Client project folder");
-        assertTrue(sampleFileContains("kotlin", "TicTacToe", "Server/src/main/kotlin",
-                "systems/zlink/samples/kotlin/tictactoe/server/Program.kt", "PlayServerApplication.run(settings)"),
-            "Kotlin TicTacToe Server role Program must live in the Server project folder");
-
-        String serverProgramSource = sampleKotlinSource(
+        String apiProgramSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/Program.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/api/ApiProgram.kt");
+        String playProgramSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/PlayProgram.kt");
         String serverBuildSource = sampleFile(
             "kotlin",
             "TicTacToe",
@@ -1049,17 +1051,13 @@ final class SampleReleaseGateContractTest {
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt");
 
-        assertTrue(serverProgramSource.contains("\"api\" -> ApiServerApplication.run(settings)")
-                && serverProgramSource.contains("\"play\" -> PlayServerApplication.run(settings)")
-                && serverProgramSource.contains("SampleSettings.load(args)")
-                && !serverProgramSource.contains("\"all\"")
-                && !serverProgramSource.contains("\"client\"")
-                && !serverProgramSource.contains("TicTacToeServerApplicationGroup")
-                && !serverProgramSource.contains("\"server\"")
+        assertTrue(apiProgramSource.contains("ApiServerApplication.run(SampleSettings.configPath(args))")
+                && playProgramSource.contains("PlayServerApplication.run(SampleSettings.configPath(args))")
+                && serverBuildSource.contains("playStartScripts")
                 && !serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
-            "Kotlin TicTacToe Server Program must expose only role modes; run_sample.sh owns orchestration");
-        assertFalse(serverProgramSource.contains("CountDownLatch")
-                || serverProgramSource.contains("ZLinkFramework.start"),
+            "Kotlin TicTacToe must expose separate Api and Play executables that accept only a config path");
+        assertFalse(apiProgramSource.contains("CountDownLatch")
+                || playProgramSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkConfigurer")
                 && apiSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
@@ -1077,15 +1075,20 @@ final class SampleReleaseGateContractTest {
                 && playHostFactorySource.contains("setKeepAlive(true)")
                 && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "Kotlin TicTacToe direct Api and Play framework hosts must enable MessagePack codecs and expose HTTP create-game with shared settings");
-        assertTrue(settingsSource.contains("--config")
+        assertTrue(settingsSource.contains("@ConfigurationProperties(\"sample\")")
+                && settingsSource.contains("--config")
                 && settingsSource.contains("sample.apiBindUrl")
-                && settingsSource.contains("--api-bind")
-                && settingsSource.contains("--api-url")
-                && settingsSource.contains("--api-channel-endpoint")
-                && settingsSource.contains("--play-channel-endpoint")
-                && settingsSource.contains("--route-endpoint")
-                && settingsSource.contains("--spot-endpoint")
-                && settingsSource.contains("--play-endpoint")
+                && !settingsSource.contains("--api-bind")
+                && !settingsSource.contains("--api-url")
+                && !settingsSource.contains("--api-channel-endpoint")
+                && !settingsSource.contains("--play-channel-endpoint")
+                && !settingsSource.contains("--route-endpoint")
+                && !settingsSource.contains("--spot-endpoint")
+                && !settingsSource.contains("--play-endpoint")
+                && apiHostFactorySource.contains("SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME")
+                && apiHostFactorySource.contains("SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME")
+                && playHostFactorySource.contains("SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME")
+                && playHostFactorySource.contains("SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME")
                 && !settingsSource.contains("withEphemeralDefaults")
                 && !settingsSource.contains("SamplePorts.reserve")
                 && !settingsSource.contains("currentValue")
@@ -1291,7 +1294,8 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "Kotlin TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(serverProgramSource.contains("CreateGameHandler"),
+        assertFalse(apiProgramSource.contains("CreateGameHandler")
+                || playProgramSource.contains("CreateGameHandler"),
             "Kotlin TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
 

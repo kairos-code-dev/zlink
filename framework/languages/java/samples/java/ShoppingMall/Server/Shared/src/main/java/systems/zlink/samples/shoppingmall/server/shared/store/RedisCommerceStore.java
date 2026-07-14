@@ -28,12 +28,13 @@ public final class RedisCommerceStore implements AutoCloseable {
     private final String stateKey;
     private final String lockKey;
 
-    public RedisCommerceStore() {
-        client = RedisClient.create(redisUri(SampleTopology.RedisEndpoint));
+    public RedisCommerceStore(SampleTopology topology) {
+        SampleTopology.Location location = topology.location();
+        client = RedisClient.create(redisUri(location.redisEndpoint()));
         connection = client.connect();
         redis = connection.sync();
-        stateKey = SampleTopology.RedisKeyPrefix + "shoppingmall:commerce-state";
-        lockKey = SampleTopology.RedisKeyPrefix + "shoppingmall:commerce-state:lock";
+        stateKey = location.redisKeyPrefix() + "shoppingmall:commerce-state";
+        lockKey = location.redisKeyPrefix() + "shoppingmall:commerce-state:lock";
     }
 
     public void seedDefaults() {

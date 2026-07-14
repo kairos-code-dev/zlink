@@ -19,17 +19,22 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        new ShoppingMallClientScenario().run();
+        new ShoppingMallClientScenario(SampleTopology.load(args)).run();
         System.out.println(SampleNames.CompletedMarker);
     }
 
     private static final class ShoppingMallClientScenario {
         private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
         private final HttpClient http = HttpClient.newHttpClient();
+        private final SampleTopology topology;
+
+        ShoppingMallClientScenario(SampleTopology topology) {
+            this.topology = topology;
+        }
 
         void run() throws Exception {
             Messages.StartOrderRes success = start(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "cart-success",
                 "pm-ok",
                 "start-success");
@@ -37,70 +42,70 @@ public final class Program {
             Messages.OrderState confirmed = waitForStatus(success.orderId(), Messages.OrderStatuses.Confirmed);
 
             Messages.StartOrderRes duplicate = start(
-                SampleTopology.ApiBHttpUrl,
+                topology.apiBHttpUrl(),
                 "cart-success",
                 "pm-ok",
                 "start-success");
             ensure(duplicate.orderId().equals(success.orderId()));
 
             Messages.StartOrderRes pendingRecovered = post(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "/self-check/idempotency/pending",
                 new Messages.StartOrderReq("cart-success", "addr-home", "pm-ok", "pending-recovered"),
                 Messages.StartOrderRes.class);
             waitForStatus(pendingRecovered.orderId(), Messages.OrderStatuses.Confirmed);
 
             CompletableFuture<Messages.StartOrderRes> firstConcurrent = CompletableFuture.supplyAsync(() ->
-                uncheckedStart(SampleTopology.ApiAHttpUrl, "cart-success", "pm-ok", "concurrent-order"));
+                uncheckedStart(topology.apiAHttpUrl(), "cart-success", "pm-ok", "concurrent-order"));
             CompletableFuture<Messages.StartOrderRes> secondConcurrent = CompletableFuture.supplyAsync(() ->
-                uncheckedStart(SampleTopology.ApiBHttpUrl, "cart-success", "pm-ok", "concurrent-order"));
+                uncheckedStart(topology.apiBHttpUrl(), "cart-success", "pm-ok", "concurrent-order"));
             Messages.StartOrderRes concurrentA = firstConcurrent.get();
             Messages.StartOrderRes concurrentB = secondConcurrent.get();
             ensure(concurrentA.orderId().equals(concurrentB.orderId()));
             waitForStatus(concurrentA.orderId(), Messages.OrderStatuses.Confirmed);
 
             Messages.ContinueOrderWorkflowRes reserved = post(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "/self-check/workflow/inventory-reserved",
                 new Messages.StartOrderReq("cart-success", "addr-office", "pm-ok", "reserved-resume"),
                 Messages.ContinueOrderWorkflowRes.class);
             ensure(Messages.OrderStatuses.InventoryReserved.equals(reserved.state().status()));
             Messages.ContinueOrderWorkflowRes resumed = post(
-                SampleTopology.ApiBHttpUrl,
+                topology.apiBHttpUrl(),
                 "/self-check/workflow/" + reserved.state().orderId() + "/continue",
                 "",
                 Messages.ContinueOrderWorkflowRes.class);
             ensure(Messages.OrderStatuses.Confirmed.equals(resumed.state().status()));
 
             Messages.StartOrderRes inventoryFailure = start(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "cart-inventory-fail",
                 "pm-ok",
                 "inventory-failure");
             waitForStatus(inventoryFailure.orderId(), Messages.OrderStatuses.Failed);
 
             Messages.StartOrderRes paymentFailure = start(
-                SampleTopology.ApiBHttpUrl,
+                topology.apiBHttpUrl(),
                 "cart-payment-fail",
                 "pm-decline",
                 "payment-failure");
             waitForStatus(paymentFailure.orderId(), Messages.OrderStatuses.Failed);
 
             ensure(postRaw(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "/self-check/projection/" + confirmed.orderId() + "/delete"));
-            Messages.GetOrderStateRes rebuiltByRead = get(SampleTopology.ApiBHttpUrl, "/orders/" + confirmed.orderId(),
+            Messages.GetOrderStateRes rebuiltByRead = get(topology.apiBHttpUrl(), "/orders/" + confirmed.orderId(),
                 Messages.GetOrderStateRes.class);
             ensure(Messages.OrderStatuses.Confirmed.equals(rebuiltByRead.state().status()));
             Messages.RebuildOrderProjectionRes explicitRebuild = post(
-                SampleTopology.ApiAHttpUrl,
+                topology.apiAHttpUrl(),
                 "/self-check/projection/" + confirmed.orderId() + "/rebuild",
                 "",
                 Messages.RebuildOrderProjectionRes.class);
             ensure(Messages.OrderStatuses.Confirmed.equals(explicitRebuild.state().status()));
 
             Messages.StartOrderRes scaleOut = start(
-                SampleTopology.ApiBHttpUrl,
+                topology.apiBHttpUrl(),
                 "cart-success",
                 "pm-ok",
                 "scale-out-order");
@@ -147,7 +152,7 @@ public final class Program {
             Messages.OrderState last = null;
             while (Instant.now().isBefore(deadline)) {
                 Messages.GetOrderStateRes response = get(
-                    SampleTopology.ApiAHttpUrl,
+                    topology.apiAHttpUrl(),
                     "/orders/" + orderId,
                     Messages.GetOrderStateRes.class);
                 last = response.state();
@@ -166,7 +171,7 @@ public final class Program {
             Messages.ServerAssertionRes last = null;
             while (Instant.now().isBefore(deadline)) {
                 last = post(
-                    SampleTopology.ApiAHttpUrl,
+                    topology.apiAHttpUrl(),
                     "/self-check/assert",
                     request,
                     Messages.ServerAssertionRes.class);

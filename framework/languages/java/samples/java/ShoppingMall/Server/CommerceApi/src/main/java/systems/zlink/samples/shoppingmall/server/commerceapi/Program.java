@@ -7,13 +7,16 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -27,6 +30,7 @@ import systems.zlink.samples.shoppingmall.server.shared.store.RedisCommerceStore
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = Program.class)
@@ -35,43 +39,49 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        ConfigurableApplicationContext app = run(args);
-        HttpServer http = startHttp(app.getBean(CommerceApiService.class));
+        ConfigurableApplicationContext app = run(SampleTopology.configPath(args));
+        HttpServer http = startHttp(app.getBean(CommerceApiService.class), app.getBean(SampleTopology.class));
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             http.stop(0);
             app.close();
         }));
     }
 
-    public static ConfigurableApplicationContext run(String... args) {
+    public static ConfigurableApplicationContext run(String configPath) {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(environment)
+            .properties("spring.config.location=" + Path.of(configPath).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        return builder.run(args);
+        return builder.run();
     }
 
     @Bean
-    ZLinkFrameworkConfigurer commerceApiFramework() {
+    ZLinkFrameworkConfigurer commerceApiFramework(SampleTopology topology) {
+        SampleTopology.Api api = topology.api();
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(SampleFlowLog.path(SampleTopology.apiName()))
-                .traceLabel(SampleTopology.apiName());
+                .traceLogFile(SampleFlowLog.path(api.logDirectory(), api.instanceName()))
+                .traceLabel(api.instanceName());
             options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-a"))
-                .enableClient(SampleTopology.WorkflowAChannelEndpoint);
+                .enableClient(api.workflowAChannelEndpoint());
             options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-b"))
-                .enableClient(SampleTopology.WorkflowBChannelEndpoint);
+                .enableClient(api.workflowBChannelEndpoint());
         };
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
-    RedisCommerceStore redisCommerceStore() {
-        RedisCommerceStore store = new RedisCommerceStore();
+    RedisCommerceStore redisCommerceStore(SampleTopology topology) {
+        RedisCommerceStore store = new RedisCommerceStore(topology);
         store.seedDefaults();
         return store;
     }
@@ -79,13 +89,14 @@ public final class Program {
     @Bean
     CommerceApiService commerceApiService(
         RedisCommerceStore store,
-        ZLinkClient channels) {
-        return new CommerceApiService(store, channels);
+        ZLinkClient channels,
+        SampleTopology topology) {
+        return new CommerceApiService(store, channels, topology);
     }
 
-    private static HttpServer startHttp(CommerceApiService api) throws IOException {
+    private static HttpServer startHttp(CommerceApiService api, SampleTopology topology) throws IOException {
         ObjectMapper json = new ObjectMapper().findAndRegisterModules();
-        URI uri = URI.create(SampleTopology.selectedApiHttpUrl());
+        URI uri = URI.create(topology.api().httpUrl());
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
         server.createContext("/health", exchange -> writeJson(exchange, json, 200, new Health("ok")));
         server.createContext("/", exchange -> route(exchange, json, api));

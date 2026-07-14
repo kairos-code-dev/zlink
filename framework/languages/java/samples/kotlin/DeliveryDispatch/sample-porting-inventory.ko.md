@@ -27,12 +27,12 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `.NET: Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | `Server/CourierSpotNode/build.gradle.kts` | server-role-project | done | Kotlin role 이름은 공통 문서의 Courier spot server node 의미를 따른다. |
 | `.NET: Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierSpotNode/src/main/kotlin/.../CourierSpotNodeApplication.kt` | framework-host | done | courier actor spot mesh, entry spot, actor factory를 public framework API로 구성한다. |
 | `.NET: Server/CourierActorNode/Program.cs` | `Server/CourierSpotNode/src/main/kotlin/.../Program.kt` | server-entrypoint | done | real ZLink spot node host entrypoint로 standalone runtime proof를 통과했다. |
-| `.NET: Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierSpotNode/src/main/kotlin/.../handlers/*RouteHandler.kt` | spot-request-handler | done | `FindCourierActorReq`, `EnsureCourierActorReq`, `OfferDeliveryReq` Spot request handler가 actor manager와 directory를 사용한다. |
+| `.NET: Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierSpotNode/src/main/kotlin/.../handlers/*RouteHandler.kt` | spot-request-handler | done | `FindCourierActorReq`·`EnsureCourierActorReq`는 Spot request handler, `OfferDeliveryMsg`는 **one-way Spot packet handler**다(공통 sample spec §7.4). |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/EntrySpot.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/CourierEntrySpot.kt` | entry-spot | done | courier actor entry spot과 actor registration을 구현했다. |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/Handlers/BindCourierSessionActorHandler.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/handlers/BindCourierSessionActorHandler.kt` | actor-bind-handler | done | bound session join response를 actor handler로 반환한다. |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/Handlers/CourierDecisionActorHandler.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/handlers/CourierDecisionActorHandler.kt` | actor-request-handler | done | courier decision send를 actor가 응답을 기다리는 offer에 연결한다. |
 | `.NET: Server/CourierGateway/CourierDirectory.cs` | `Server/CourierGateway/src/main/kotlin/.../CourierDirectory.kt` | courier-directory | done | courier id -> actor node/session route mapping을 public handler에서 사용한다. |
-| `.NET: Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/src/main/kotlin/.../handlers/*Handler.kt` | channel-handler | done | `BindCourierReq`, `OfferDeliveryReq` handlers가 `requestToSpot`으로 courier actor node entry spot에 요청한다. |
+| `.NET: Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/src/main/kotlin/.../handlers/*Handler.kt` | channel-handler | done | `BindCourierReq` handler가 `requestToSpot`으로 courier actor node entry spot에 요청한다. offer는 gateway를 거치지 않는다. |
 | `.NET: Server/CourierGateway/CourierGatewayHostFactory.cs` | `Server/CourierGateway/src/main/kotlin/.../CourierGatewayApplication.kt` | framework-host | done | courier channel server와 courier actor spot mesh client를 public framework API로 구성한다. |
 | `.NET: Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj` | `Server/CourierGateway/build.gradle.kts` | server-role-project | done | distinct role project |
 | `.NET: Server/CourierGateway/Program.cs` | `Server/CourierGateway/src/main/kotlin/.../Program.kt` | server-entrypoint | done | real ZLink channel server entrypoint로 standalone runtime proof를 통과했다. |
@@ -83,9 +83,9 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `common/.NET: BindCourierRes` | `BindCourierRes` | shared-contract | done | `courierId`, `actor`, `sessionRoute` 대응 |
 | `common/.NET: EnsureCourierActorReq` | `EnsureCourierActorReq` | shared-contract | done | `courierId` 대응 |
 | `common/.NET: EnsureCourierActorRes` | `EnsureCourierActorRes` | shared-contract | done | `courierId`, `actor` 대응 |
-| `common/.NET: OfferDeliveryReq` | `OfferDeliveryReq` | shared-contract | done | `deliveryId`, `courierId`, `pickupAddress`, `dropoffAddress` 대응 |
+| `common/.NET: OfferDeliveryMsg` | `OfferDeliveryMsg` | shared-contract | done | `courierId`, `deliveryId`, `attempt`, `pickupAddress`, `dropoffAddress` 대응 (one-way) |
 | `common/.NET: OfferDeliveryNotify` | `OfferDeliveryNotify` | shared-contract | done | `deliveryId`, `courierId`, `pickupAddress`, `dropoffAddress` 대응 |
-| `common/.NET: OfferDeliveryRes` | `OfferDeliveryRes` | shared-contract | done | `deliveryId`, `courierId`, `accepted`, `reason` 대응 |
+| `common/.NET: OfferDeliveryResultMsg` | `OfferDeliveryResultMsg` | shared-contract | done | `deliveryId`, `courierId`, `attempt`, `accepted`, `reason` 대응 (one-way) |
 | `.NET: CourierDecisionMsg` | `CourierDecisionMsg` | shared-contract | done | courier stream send 메시지로 `deliveryId`, `courierId`, `accepted`, `reason` 대응 |
 | `.NET: ReassignDelivery` | 없음 | shared-contract | not-needed | 공통 문서에 없는 미사용 `.NET` record다. 재배정은 `DeliveryStatus.Reassigned`와 `DispatchWorker` 흐름으로 검증한다. |
 | `common/.NET: DeliveryStatusChangedReq` | `DeliveryStatusChangedReq` | shared-contract | done | `deliveryId`, `status`, `courierId`, `occurredAt` 대응 |

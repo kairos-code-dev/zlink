@@ -1,69 +1,48 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
-import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CourierDecisionMsg
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryMsg
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryNotify
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
 
+/**
+ * A courier. It pushes the offer to whoever holds this courier's stream session and its turn ends
+ * there — it does not wait for the answer, and there is nothing left here that could wait (common
+ * sample spec section 7.4). The answer arrives later as a `CourierDecisionMsg` from the session,
+ * and the only thing the actor has to remember in between is which attempt the offer belonged to,
+ * so the decision can be paired with it.
+ */
 class CourierActor(
     private val id: String,
     private val actorContext: ZLinkActorContext,
 ) : ZLinkActor {
-    private val pending = mutableMapOf<String, CompletableFuture<CourierDecisionMsg>>()
+    private val offeredAttempts = mutableMapOf<String, Int>()
 
     override fun actorId(): String = id
 
     override fun context(): ZLinkActorContext = actorContext
 
-    fun offer(offer: OfferDeliveryReq): OfferDeliveryRes {
-        val decision = CompletableFuture<CourierDecisionMsg>()
-        synchronized(pending) {
-            pending[offer.deliveryId] = decision
+    /** Pushes the offer and returns. The courier takes as long as it takes. */
+    fun offer(offer: OfferDeliveryMsg) {
+        synchronized(offeredAttempts) {
+            offeredAttempts[offer.deliveryId] = offer.attempt
         }
-        return try {
-            actorContext.boundSession()
-                .send(
-                    OfferDeliveryNotify(
-                        courierId = offer.courierId,
-                        deliveryId = offer.deliveryId,
-                        pickupAddress = offer.pickupAddress,
-                        dropoffAddress = offer.dropoffAddress,
-                    ),
-                )
-                .submit()
-            val accepted = decision.get(SampleTimings.CourierDecisionTimeout.toMillis(), TimeUnit.MILLISECONDS)
-            OfferDeliveryRes(
-                deliveryId = offer.deliveryId,
-                courierId = offer.courierId,
-                accepted = accepted.accepted,
-                reason = accepted.reason,
+        actorContext.boundSession()
+            .send(
+                OfferDeliveryNotify(
+                    courierId = offer.courierId,
+                    deliveryId = offer.deliveryId,
+                    pickupAddress = offer.pickupAddress,
+                    dropoffAddress = offer.dropoffAddress,
+                ),
             )
-        } catch (ex: java.util.concurrent.TimeoutException) {
-            OfferDeliveryRes(
-                deliveryId = offer.deliveryId,
-                courierId = offer.courierId,
-                accepted = false,
-                reason = "courier did not respond before dispatch timeout",
-            )
-        } catch (ex: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("courier offer was interrupted", ex)
-        } catch (ex: java.util.concurrent.ExecutionException) {
-            throw IllegalStateException("courier decision failed", ex)
-        } finally {
-            synchronized(pending) {
-                pending.remove(offer.deliveryId)
-            }
-        }
+            .submit()
     }
 
-    fun complete(decision: CourierDecisionMsg) {
-        val waiting = synchronized(pending) { pending[decision.deliveryId] }
-        waiting?.complete(decision)
-    }
+    /**
+     * The attempt the courier is answering, or null when this actor knows of no such offer — it was
+     * already answered, or this actor was never offered it.
+     */
+    fun takeOfferedAttempt(deliveryId: String): Int? =
+        synchronized(offeredAttempts) { offeredAttempts.remove(deliveryId) }
 }

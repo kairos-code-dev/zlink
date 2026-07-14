@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
-import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
@@ -18,6 +17,11 @@ import systems.zlink.stream.connector.ZLinkStreamMessage;
 public final class GameQuestClientScenario {
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newHttpClient();
+    private final GameQuestClientOptions options;
+
+    public GameQuestClientScenario(GameQuestClientOptions options) {
+        this.options = options;
+    }
 
     public void run(ZLinkStreamConnector apiAStream, ZLinkStreamConnector apiBStream) throws Exception {
         apiAStream.connect().submit().toCompletableFuture().join();
@@ -68,14 +72,14 @@ public final class GameQuestClientScenario {
         ensure(auction.eventId().equals("player-alice-unlock-auction"));
         ensure(auctionCompleted.toCompletableFuture().join().payload().rewardGranted());
         Messages.GetGameplaySnapshotRes snapshot = post(
-            SampleTopology.ApiAHttpEndpoint,
+            options.apiAHttpEndpoint(),
             "/internal/snapshot",
             new Messages.GetGameplaySnapshotReq("player-alice"),
             Messages.GetGameplaySnapshotRes.class);
         ensure(snapshot.unlockedFeatureIds().contains("auction"));
 
-        ensure(postRaw(SampleTopology.MissionAHttpEndpoint, "/self-check/owner/player-alice/close"));
-        ensure(postRaw(SampleTopology.MissionBHttpEndpoint, "/self-check/owner/player-alice/close"));
+        ensure(postRaw(options.missionAHttpEndpoint(), "/self-check/owner/player-alice/close"));
+        ensure(postRaw(options.missionBHttpEndpoint(), "/self-check/owner/player-alice/close"));
 
         Messages.CompleteMissionRes tutorial = apiAStream
             .request(new Messages.CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
@@ -111,7 +115,7 @@ public final class GameQuestClientScenario {
         ensure(herbPush.rewardGranted());
         ensure(herbPush.progress().status().equals(Messages.QuestStatuses.RewardGranted));
 
-        ensure(postRaw(SampleTopology.ApiAHttpEndpoint,
+        ensure(postRaw(options.apiAHttpEndpoint(),
             "/self-check/projection/player-bob/" + Messages.QuestIds.HerbGathering + "/delete"));
         Messages.GetQuestProgressRes missingProjection = apiBStream
             .request(new Messages.GetQuestProgressReq("player-bob"))
@@ -119,7 +123,7 @@ public final class GameQuestClientScenario {
         ensure(missingProjection.activeQuests().stream()
             .noneMatch(progress -> progress.questId().equals(Messages.QuestIds.HerbGathering)));
         Messages.QuestProgress rebuilt = post(
-            SampleTopology.ApiAHttpEndpoint,
+            options.apiAHttpEndpoint(),
             "/self-check/projection/player-bob/" + Messages.QuestIds.HerbGathering + "/rebuild",
             "",
             Messages.QuestProgress.class);
@@ -132,7 +136,7 @@ public final class GameQuestClientScenario {
             progress.questId().equals(Messages.QuestIds.HerbGathering)
                 && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
 
-        ensure(postRaw(SampleTopology.ApiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"));
+        ensure(postRaw(options.apiBHttpEndpoint(), "/self-check/gameplay/kill-without-publish/player-alice"));
         Messages.SyncQuestProgressRes sync = apiAStream
             .request(new Messages.SyncQuestProgressReq("player-alice"))
             .submit(Messages.SyncQuestProgressRes.class).toCompletableFuture().join();
@@ -156,7 +160,7 @@ public final class GameQuestClientScenario {
         Messages.GameQuestServerAssertRes last = null;
         while (Instant.now().isBefore(deadline)) {
             last = post(
-                SampleTopology.ApiAHttpEndpoint,
+                options.apiAHttpEndpoint(),
                 "/self-check/assert",
                 "",
                 Messages.GameQuestServerAssertRes.class);

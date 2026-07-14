@@ -5,8 +5,8 @@ This is the standalone sample client for `TicTacToe`.
 Start the server roles first:
 
 ```bash
-gradle :Server:run --args='play'
-gradle :Server:run --args='api'
+Server/build/install/Server/bin/tictactoe-play --config ./application.properties
+Server/build/install/Server/bin/Server --config ./application.properties
 ```
 
 Then run the client:

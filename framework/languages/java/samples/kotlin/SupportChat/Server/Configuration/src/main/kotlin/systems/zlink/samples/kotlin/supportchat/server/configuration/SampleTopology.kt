@@ -1,56 +1,75 @@
 package systems.zlink.samples.kotlin.supportchat.server.configuration
 
+import org.springframework.boot.context.properties.ConfigurationProperties
 import systems.zlink.contracts.core.RoutingId
 
+@ConfigurationProperties("sample")
 data class SampleTopology(
-    val redisEndpoint: String,
-    val redisKeyPrefix: String,
-    val apiChannelEndpoint: String,
-    val apiHttpEndpoint: String,
-    val supportChannelEndpoint: String,
-    val sessionSpotEndpoint: String,
-    val sessionRouterEndpoint: String,
-    val supportEntrySpotEndpoint: String,
-    val supportEntrySpotRouterEndpoint: String,
-    val streamEndpoint: String,
-    val sessionRouterRid: RoutingId,
-    val sessionPubRid: RoutingId,
-    val supportEntryRid: RoutingId,
+    val redisEndpoint: String?,
+    val redisKeyPrefix: String?,
+    val logDirectory: String?,
+    val apiChannelEndpoint: String?,
+    val apiHttpEndpoint: String?,
+    val supportChannelEndpoint: String?,
+    val sessionSpotEndpoint: String?,
+    val sessionRouterEndpoint: String?,
+    val supportEntrySpotEndpoint: String?,
+    val supportEntrySpotRouterEndpoint: String?,
+    val streamEndpoint: String?,
+    val sessionRouterRid: String?,
+    val sessionPubRid: String?,
+    val supportEntryRid: String?,
 ) {
-    val primarySession: SampleSessionNode
-        get() = SampleSessionNode(
-            pubEndpoint = sessionSpotEndpoint,
-            routerEndpoint = sessionRouterEndpoint,
-            streamEndpoint = streamEndpoint,
-            routingId = sessionRouterRid,
-            publisherRoutingId = sessionPubRid,
-        )
+    fun location(): SampleLocation = SampleLocation(
+        redisEndpoint = required(redisEndpoint, "redisEndpoint"),
+        redisKeyPrefix = required(redisKeyPrefix, "redisKeyPrefix"),
+    )
+
+    fun logDirectory(): String = required(logDirectory, "logDirectory")
+
+    fun api(): ApiTopology = ApiTopology(
+        channelEndpoint = required(apiChannelEndpoint, "apiChannelEndpoint"),
+        httpEndpoint = required(apiHttpEndpoint, "apiHttpEndpoint"),
+    )
+
+    fun session(): SampleSessionNode = SampleSessionNode(
+        pubEndpoint = required(sessionSpotEndpoint, "sessionSpotEndpoint"),
+        routerEndpoint = required(sessionRouterEndpoint, "sessionRouterEndpoint"),
+        streamEndpoint = required(streamEndpoint, "streamEndpoint"),
+        routingId = RoutingId.from(required(sessionRouterRid, "sessionRouterRid")),
+        publisherRoutingId = RoutingId.from(required(sessionPubRid, "sessionPubRid")),
+    )
+
+    fun support(): SupportTopology = SupportTopology(
+        channelEndpoint = required(supportChannelEndpoint, "supportChannelEndpoint"),
+        entrySpotEndpoint = required(supportEntrySpotEndpoint, "supportEntrySpotEndpoint"),
+        entryRouterEndpoint = required(supportEntrySpotRouterEndpoint, "supportEntrySpotRouterEndpoint"),
+        entryRoutingId = RoutingId.from(required(supportEntryRid, "supportEntryRid")),
+    )
 
     companion object {
-        fun create(): SampleTopology =
-            SampleTopology(
-                redisEndpoint = readEndpoint("SUPPORTCHAT_REDIS_ENDPOINT", "127.0.0.1:6379"),
-                redisKeyPrefix = readEndpoint("SUPPORTCHAT_REDIS_KEY_PREFIX", "supportchat:"),
-                apiChannelEndpoint = readEndpoint("SUPPORTCHAT_API_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47203"),
-                apiHttpEndpoint = readEndpoint("SUPPORTCHAT_API_HTTP_ENDPOINT", "http://127.0.0.1:47213"),
-                supportChannelEndpoint = readEndpoint("SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47204"),
-                sessionSpotEndpoint = readEndpoint("SUPPORTCHAT_SESSION_SPOT_ENDPOINT", "tcp://127.0.0.1:47205"),
-                sessionRouterEndpoint = readEndpoint("SUPPORTCHAT_SESSION_ROUTER_ENDPOINT", "tcp://127.0.0.1:47206"),
-                supportEntrySpotEndpoint = readEndpoint("SUPPORTCHAT_ENTRY_SPOT_ENDPOINT", "tcp://127.0.0.1:47208"),
-                supportEntrySpotRouterEndpoint = readEndpoint(
-                    "SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT",
-                    "tcp://127.0.0.1:47209",
-                ),
-                streamEndpoint = readEndpoint("SUPPORTCHAT_STREAM_ENDPOINT", "tcp://127.0.0.1:47212"),
-                sessionRouterRid = RoutingId.from("3101"),
-                sessionPubRid = RoutingId.from("3102"),
-                supportEntryRid = RoutingId.from("4201"),
-            )
+        fun configPath(args: Array<String>): String {
+            require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+                "Usage: <role executable> --config <path>"
+            }
+            return args[1]
+        }
 
-        private fun readEndpoint(name: String, defaultValue: String): String =
-            System.getenv(name)?.takeIf { it.isNotBlank() } ?: defaultValue
+        private fun required(value: String?, name: String): String =
+            requireNotNull(value?.takeIf { it.isNotBlank() }) { "sample.$name is required" }
     }
 }
+
+data class SampleLocation(val redisEndpoint: String, val redisKeyPrefix: String)
+
+data class ApiTopology(val channelEndpoint: String, val httpEndpoint: String)
+
+data class SupportTopology(
+    val channelEndpoint: String,
+    val entrySpotEndpoint: String,
+    val entryRouterEndpoint: String,
+    val entryRoutingId: RoutingId,
+)
 
 data class SampleSessionNode(
     val pubEndpoint: String,

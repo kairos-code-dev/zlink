@@ -4,7 +4,7 @@ public final class SampleFlowLog {
     private SampleFlowLog() {
     }
 
-    public static String path(String role) {
-        return System.getenv().getOrDefault("SUPPORTCHAT_LOG_DIR", "logs") + "/flow-" + role + ".log";
+    public static String path(SampleTopology topology, String role) {
+        return topology.requiredLogDirectory() + "/flow-" + role + ".log";
     }
 }

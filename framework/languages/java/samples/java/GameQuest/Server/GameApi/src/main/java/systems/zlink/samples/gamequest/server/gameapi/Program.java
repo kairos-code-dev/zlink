@@ -7,11 +7,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -25,14 +28,16 @@ import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = Program.class)
 public class Program {
     public static void main(String[] args) throws Exception {
-        AutoCloseable app = run(args);
-        GameQuestStore store = ApplicationContextHolder.store;
-        HttpServer http = startHttp(store);
+        ConfigurableApplicationContext app = run(SampleTopology.configPath(args));
+        GameQuestStore store = app.getBean(GameQuestStore.class);
+        SampleTopology topology = app.getBean(SampleTopology.class);
+        HttpServer http = startHttp(store, topology);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             http.stop(0);
             try {
@@ -43,39 +48,44 @@ public class Program {
         Thread.currentThread().join();
     }
 
-    public static AutoCloseable run(String... args) {
+    public static ConfigurableApplicationContext run(String configPath) {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(environment)
+            .properties("spring.config.location=" + Path.of(configPath).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
+        return builder.run();
     }
 
     @Bean
-    ZLinkFrameworkConfigurer gameApiFramework() {
+    ZLinkFrameworkConfigurer gameApiFramework(SampleTopology topology) {
+        SampleTopology.GameApi api = topology.gameApi();
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")
-                    + "/flow-" + SampleTopology.apiName() + ".log")
-                .traceLabel(SampleTopology.apiName());
+                .traceLogFile(api.logDirectory() + "/flow-" + api.instanceName() + ".log")
+                .traceLabel(api.instanceName());
             options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-a"))
-                .enableClient(SampleTopology.missionAOwnerChannelEndpoint());
+                .enableClient(api.missionAChannelEndpoint());
             options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-b"))
-                .enableClient(SampleTopology.missionBOwnerChannelEndpoint());
+                .enableClient(api.missionBChannelEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
-                .bind(SampleTopology.selectedApiStreamEndpoint())
+                .bind(api.streamEndpoint())
                 .registerSession(GameQuestSession.class);
         };
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")
-    GameQuestStore gameQuestStore() {
-        GameQuestStore store = new GameQuestStore();
+    GameQuestStore gameQuestStore(SampleTopology topology) {
+        GameQuestStore store = new GameQuestStore(topology);
         ApplicationContextHolder.store = store;
         return store;
     }
@@ -87,9 +97,9 @@ public class Program {
         return new GameQuestApiServices();
     }
 
-    private static HttpServer startHttp(GameQuestStore store) throws IOException {
+    private static HttpServer startHttp(GameQuestStore store, SampleTopology topology) throws IOException {
         ObjectMapper json = new ObjectMapper();
-        URI uri = URI.create(SampleTopology.selectedApiHttpEndpoint());
+        URI uri = URI.create(topology.gameApi().httpEndpoint());
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
         server.createContext("/health", exchange -> writeJson(exchange, json, 200, new Health("ok")));
         server.createContext("/internal/snapshot", exchange -> {
@@ -107,7 +117,7 @@ public class Program {
             writeJson(exchange, json, 200, new Accepted(true));
         });
         server.createContext("/self-check/projection/", exchange ->
-            handleProjection(exchange, json, store).exceptionally(error -> {
+            handleProjection(exchange, json, store, topology).exceptionally(error -> {
                 writeJsonUnchecked(exchange, json, 500, new ErrorBody(error.getMessage()));
                 return null;
             }));
@@ -119,7 +129,8 @@ public class Program {
     private static java.util.concurrent.CompletionStage<Void> handleProjection(
         HttpExchange exchange,
         ObjectMapper json,
-        GameQuestStore store) {
+        GameQuestStore store,
+        SampleTopology topology) {
         String[] parts = exchange.getRequestURI().getPath().split("/");
         String playerId = parts.length >= 4 ? parts[3] : "";
         String questId = parts.length >= 5 ? parts[4] : "";
@@ -127,7 +138,7 @@ public class Program {
         if ("delete".equals(action)) {
             return ApplicationContextHolder.channels
                 .requestToChannel(
-                    SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
+                    SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId)),
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
                 .submit(Messages.DeleteQuestProjectionRes.class)
                 .thenAccept(deleted -> {
@@ -138,7 +149,7 @@ public class Program {
         if ("rebuild".equals(action)) {
             return ApplicationContextHolder.channels
                 .requestToChannel(
-                    SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
+                    SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId)),
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
                 .submit(Messages.QuestProgress.class)
                 .thenAccept(rebuilt -> {

@@ -5,12 +5,9 @@ $ErrorActionPreference = "Stop"
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $SampleDir
 
-$LogDir = Join-Path $SampleDir "build/sample-logs"
-$SampleFlowLogDir = Join-Path $SampleDir "logs"
+$RunDir = Join-Path ([System.IO.Path]::GetTempPath()) "gamequest-kotlin-$PID-$([Guid]::NewGuid().ToString('N'))"
+$LogDir = Join-Path $RunDir "logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-New-Item -ItemType Directory -Force -Path $SampleFlowLogDir | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $SampleFlowLogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
@@ -37,6 +34,7 @@ function Cleanup {
     if ($RedisContainerId) {
         Remove-ZlinkSampleRedis $RedisContainerId
     }
+    Remove-Item -Recurse -Force $RunDir -ErrorAction SilentlyContinue
 }
 
 function Reserve-Endpoints {
@@ -107,7 +105,7 @@ function Invoke-Gradle {
 }
 
 function Start-Role {
-    param([string]$Project, [string]$ScriptName, [string]$LogName, [string]$JavaOptions)
+    param([string]$Project, [string]$ScriptName, [string]$LogName, [string]$ConfigPath)
     $bin = Join-Path $SampleDir "$Project/build/install/$ScriptName/bin/$ScriptName"
     if ($IsWindows) {
         $bin = "$bin.bat"
@@ -120,7 +118,8 @@ function Start-Role {
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.UseShellExecute = $false
-    $startInfo.Environment["JAVA_TOOL_OPTIONS"] = $JavaOptions
+    $startInfo.ArgumentList.Add("--config")
+    $startInfo.ArgumentList.Add($ConfigPath)
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     $process.Start() | Out-Null
@@ -135,8 +134,18 @@ function Start-Role {
     $Processes.Add($process)
 }
 
+function Protect-ConfigFile {
+    param([string]$Path)
+    if ($IsWindows) {
+        & icacls $Path /inheritance:r /grant:r "$env:USERNAME`:(R,W)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config ACL: $Path" }
+    } else {
+        & chmod 600 $Path
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config mode: $Path" }
+    }
+}
+
 $Status = 1
-$oldJavaToolOptions = $env:JAVA_TOOL_OPTIONS
 try {
     $endpoints = Reserve-Endpoints 8
     $apiAStream = Split-Endpoint $endpoints[0]
@@ -154,10 +163,27 @@ try {
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
 
-    $redisKeyPrefix = if ($env:GAMEQUEST_REDIS_KEY_PREFIX) { $env:GAMEQUEST_REDIS_KEY_PREFIX } else { "gamequest:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):" }
+    $redisKeyPrefix = "gamequest:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):"
+    $apiAStreamEndpoint = "tcp://$($apiAStream.Host):$($apiAStream.Port)"
+    $apiBStreamEndpoint = "tcp://$($apiBStream.Host):$($apiBStream.Port)"
+    $apiAHttpEndpoint = "http://$($apiAHttp.Host):$($apiAHttp.Port)"
+    $apiBHttpEndpoint = "http://$($apiBHttp.Host):$($apiBHttp.Port)"
+    $missionAChannelEndpoint = "tcp://$($missionARoute.Host):$($missionARoute.Port)"
+    $missionBChannelEndpoint = "tcp://$($missionBRoute.Host):$($missionBRoute.Port)"
+    $missionAHttpEndpoint = "http://$($missionAHttp.Host):$($missionAHttp.Port)"
+    $missionBHttpEndpoint = "http://$($missionBHttp.Host):$($missionBHttp.Port)"
 
-    $prefix = "zlink.samples.gamequest"
-    $commonJavaOptions = "$oldJavaToolOptions -D$prefix.apiAStreamEndpoint=tcp://$($apiAStream.Host):$($apiAStream.Port) -D$prefix.apiBStreamEndpoint=tcp://$($apiBStream.Host):$($apiBStream.Port) -D$prefix.apiAHttpEndpoint=http://$($apiAHttp.Host):$($apiAHttp.Port) -D$prefix.apiBHttpEndpoint=http://$($apiBHttp.Host):$($apiBHttp.Port) -D$prefix.missionARouteEndpoint=tcp://$($missionARoute.Host):$($missionARoute.Port) -D$prefix.missionBRouteEndpoint=tcp://$($missionBRoute.Host):$($missionBRoute.Port) -D$prefix.missionAHttpEndpoint=http://$($missionAHttp.Host):$($missionAHttp.Port) -D$prefix.missionBHttpEndpoint=http://$($missionBHttp.Host):$($missionBHttp.Port) -D$prefix.redisEndpoint=$redisEndpoint -D$prefix.redisKeyPrefix=$redisKeyPrefix"
+    $missionAConfig = Join-Path $RunDir "mission-a.properties"
+    $missionBConfig = Join-Path $RunDir "mission-b.properties"
+    $apiAConfig = Join-Path $RunDir "api-a.properties"
+    $apiBConfig = Join-Path $RunDir "api-b.properties"
+    $clientConfig = Join-Path $RunDir "client.properties"
+    @("sample.instanceName=mission-a", "sample.logDirectory=$LogDir", "sample.channelEndpoint=$missionAChannelEndpoint", "sample.httpEndpoint=$missionAHttpEndpoint", "sample.redisEndpoint=$redisEndpoint", "sample.redisKeyPrefix=$redisKeyPrefix") | Set-Content $missionAConfig -Encoding UTF8
+    @("sample.instanceName=mission-b", "sample.logDirectory=$LogDir", "sample.channelEndpoint=$missionBChannelEndpoint", "sample.httpEndpoint=$missionBHttpEndpoint", "sample.redisEndpoint=$redisEndpoint", "sample.redisKeyPrefix=$redisKeyPrefix") | Set-Content $missionBConfig -Encoding UTF8
+    @("sample.instanceName=api-a", "sample.logDirectory=$LogDir", "sample.streamEndpoint=$apiAStreamEndpoint", "sample.httpEndpoint=$apiAHttpEndpoint", "sample.missionAChannelEndpoint=$missionAChannelEndpoint", "sample.missionBChannelEndpoint=$missionBChannelEndpoint", "sample.redisEndpoint=$redisEndpoint", "sample.redisKeyPrefix=$redisKeyPrefix") | Set-Content $apiAConfig -Encoding UTF8
+    @("sample.instanceName=api-b", "sample.logDirectory=$LogDir", "sample.streamEndpoint=$apiBStreamEndpoint", "sample.httpEndpoint=$apiBHttpEndpoint", "sample.missionAChannelEndpoint=$missionAChannelEndpoint", "sample.missionBChannelEndpoint=$missionBChannelEndpoint", "sample.redisEndpoint=$redisEndpoint", "sample.redisKeyPrefix=$redisKeyPrefix") | Set-Content $apiBConfig -Encoding UTF8
+    @("sample.apiAStreamEndpoint=$apiAStreamEndpoint", "sample.apiBStreamEndpoint=$apiBStreamEndpoint", "sample.apiAHttpEndpoint=$apiAHttpEndpoint", "sample.apiBHttpEndpoint=$apiBHttpEndpoint", "sample.missionAHttpEndpoint=$missionAHttpEndpoint", "sample.missionBHttpEndpoint=$missionBHttpEndpoint") | Set-Content $clientConfig -Encoding UTF8
+    @($missionAConfig, $missionBConfig, $apiAConfig, $apiBConfig, $clientConfig) | ForEach-Object { Protect-ConfigFile $_ }
 
     Push-Location "../../.."
     try {
@@ -169,15 +195,15 @@ try {
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:GameApi:installDist", ":Server:QuestMission:installDist", ":Client:installDist", "--quiet")
 
-    Start-Role -Project "Server/QuestMission" -ScriptName "QuestMission" -LogName "mission-a.log" -JavaOptions "$commonJavaOptions -Dzlink.samples.gamequest.missionName=mission-a"
-    Start-Role -Project "Server/QuestMission" -ScriptName "QuestMission" -LogName "mission-b.log" -JavaOptions "$commonJavaOptions -Dzlink.samples.gamequest.missionName=mission-b"
+    Start-Role -Project "Server/QuestMission" -ScriptName "QuestMission" -LogName "mission-a.log" -ConfigPath $missionAConfig
+    Start-Role -Project "Server/QuestMission" -ScriptName "QuestMission" -LogName "mission-b.log" -ConfigPath $missionBConfig
     Wait-Port $missionARoute.Host $missionARoute.Port
     Wait-Port $missionBRoute.Host $missionBRoute.Port
     Wait-HttpHealth "http://$($missionAHttp.Host):$($missionAHttp.Port)"
     Wait-HttpHealth "http://$($missionBHttp.Host):$($missionBHttp.Port)"
 
-    Start-Role -Project "Server/GameApi" -ScriptName "GameApi" -LogName "api-a.log" -JavaOptions "$commonJavaOptions -Dzlink.samples.gamequest.apiName=api-a"
-    Start-Role -Project "Server/GameApi" -ScriptName "GameApi" -LogName "api-b.log" -JavaOptions "$commonJavaOptions -Dzlink.samples.gamequest.apiName=api-b"
+    Start-Role -Project "Server/GameApi" -ScriptName "GameApi" -LogName "api-a.log" -ConfigPath $apiAConfig
+    Start-Role -Project "Server/GameApi" -ScriptName "GameApi" -LogName "api-b.log" -ConfigPath $apiBConfig
     Wait-Port $apiAStream.Host $apiAStream.Port
     Wait-Port $apiBStream.Host $apiBStream.Port
     Wait-HttpHealth "http://$($apiAHttp.Host):$($apiAHttp.Port)"
@@ -188,8 +214,7 @@ try {
     if ($IsWindows) {
         $clientBin = "$clientBin.bat"
     }
-    $env:JAVA_TOOL_OPTIONS = $commonJavaOptions
-    & $clientBin | Tee-Object -FilePath (Join-Path $LogDir "client.log")
+    & $clientBin --config $clientConfig | Tee-Object -FilePath (Join-Path $LogDir "client.log")
     if ($LASTEXITCODE -ne 0) { throw "Client failed" }
 
     Select-String -Path (Join-Path $LogDir "client.log") -Pattern "gamequest-server-evidence=completed" | Out-Null
@@ -198,5 +223,4 @@ try {
     $Status = 0
 } finally {
     Cleanup $Status
-    $env:JAVA_TOOL_OPTIONS = $oldJavaToolOptions
 }

@@ -12,26 +12,73 @@ import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.Sample
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryMsg
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatus
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorReq
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorRes
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryMsg
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionRes
 
+/**
+ * The dispatch flow. No step of it waits for a courier: the offer goes out one-way, the turn ends,
+ * and the offer row decides what happens next — either a decision arrives, or the deadline passes
+ * and the sweeper reassigns (common sample spec section 7.4).
+ */
 class DispatchWorker(
     private val channels: ZLinkClient,
     private val routes: ZLinkRouteClient,
     private val spots: SpotHandleResolver,
+    private val offers: DeliveryOfferStore,
 ) {
+    /** Who gets offered a delivery, and in what order. The worker's policy, not the node's. */
+    private val candidates = listOf("courier-a", "courier-b")
+
+    /** The first offer. Records it, sends it, and returns — nobody is left waiting. */
     suspend fun dispatch(request: AssignDeliveryMsg) {
-        if (request.deliveryId == "delivery-reassign") {
-            dispatchReassigned(request)
+        val courierId = candidates[0]
+        val attempt = offers.offer(request, 0, SampleTimings.CourierDecisionTimeout)
+        publishStatus(request.deliveryId, DeliveryStatus.Assigned, courierId)
+        offer(request, courierId, attempt)
+    }
+
+    /** A decision arrived. Accepted carries the delivery through; refused reassigns. */
+    suspend fun settle(offer: DeliveryOffer, accepted: Boolean, reason: String?) {
+        val courierId = candidates[offer.candidateIndex]
+        if (!accepted) {
+            println(
+                "deliverydispatch dispatch: courier=$courierId did not take " +
+                    "delivery=${offer.request.deliveryId} (${reason ?: "refused"})",
+            )
+            reassign(offer)
             return
         }
-        dispatchSuccessful(request)
+
+        publishStatus(offer.request.deliveryId, DeliveryStatus.Accepted, courierId)
+        publishStatus(offer.request.deliveryId, DeliveryStatus.PickedUp, courierId)
+        publishStatus(offer.request.deliveryId, DeliveryStatus.Delivered, courierId)
+        offers.close(offer.request.deliveryId)
+    }
+
+    /**
+     * The offer lapsed, or the courier refused. Either way the next candidate gets it. The deadline
+     * lives here rather than on the courier node: a node that timed the offer and manufactured a
+     * refusal would be hiding the dispatch policy (common sample spec section 7.4).
+     */
+    suspend fun reassign(offer: DeliveryOffer) {
+        val nextIndex = offer.candidateIndex + 1
+        if (nextIndex >= candidates.size) {
+            System.err.println(
+                "deliverydispatch dispatch: delivery=${offer.request.deliveryId} " +
+                    "was rejected by all couriers",
+            )
+            publishStatus(offer.request.deliveryId, DeliveryStatus.Failed, candidates.last())
+            offers.close(offer.request.deliveryId)
+            return
+        }
+
+        val courierId = candidates[nextIndex]
+        val attempt = offers.offer(offer.request, nextIndex, SampleTimings.CourierDecisionTimeout)
+        publishStatus(offer.request.deliveryId, DeliveryStatus.Reassigned, courierId)
+        offer(offer.request, courierId, attempt)
     }
 
     suspend fun assertServerEvidence(request: ServerAssertionReq): ServerAssertionRes =
@@ -39,63 +86,22 @@ class DispatchWorker(
             .requestToChannel(SampleNames.TrackingChannel, request)
             .submit(ServerAssertionRes::class.java).await()
 
-    private suspend fun dispatchSuccessful(request: AssignDeliveryMsg) {
-        publishStatus(request.deliveryId, DeliveryStatus.Assigned, "courier-a")
-        val offered = offer(request, "courier-a")
-        if (!offered.accepted) {
-            publishStatus(request.deliveryId, DeliveryStatus.Failed, "courier-a")
-            return
-        }
-        publishStatus(request.deliveryId, DeliveryStatus.Accepted, "courier-a")
-        publishStatus(request.deliveryId, DeliveryStatus.PickedUp, "courier-a")
-        publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-a")
-    }
-
-    private suspend fun dispatchReassigned(request: AssignDeliveryMsg) {
-        publishStatus(request.deliveryId, DeliveryStatus.Assigned, "courier-a")
-        val first = offer(request, "courier-a")
-        if (first.accepted) {
-            publishStatus(request.deliveryId, DeliveryStatus.Accepted, "courier-a")
-            publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-a")
-            return
-        }
-        publishStatus(request.deliveryId, DeliveryStatus.Reassigned, "courier-b")
-        val second = offer(request, "courier-b")
-        if (!second.accepted) {
-            publishStatus(request.deliveryId, DeliveryStatus.Failed, "courier-b")
-            return
-        }
-        publishStatus(request.deliveryId, DeliveryStatus.Accepted, "courier-b")
-        publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-b")
-    }
-
-    private suspend fun offer(request: AssignDeliveryMsg, courierId: String): OfferDeliveryRes {
+    /** The offer is a one-way send: the turn that sends it ends right there. */
+    private suspend fun offer(request: AssignDeliveryMsg, courierId: String, attempt: Int) {
         val address = courierAddress(courierId)
-        val found = routes
-            .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
-            .timeout(SampleTimings.RequestTimeout)
-            .submit(FindCourierActorRes::class.java).await()
-        if (found.actor == null) {
-            return OfferDeliveryRes(
-                deliveryId = request.deliveryId,
-                courierId = courierId,
-                accepted = false,
-                reason = "courier actor is not bound: $courierId",
-            )
-        }
-        return routes
-            .requestToSpot(
+        routes
+            .sendToSpot(
                 SampleNames.CourierSpotMesh,
                 address,
-                OfferDeliveryReq(
+                OfferDeliveryMsg(
                     courierId = courierId,
                     deliveryId = request.deliveryId,
+                    attempt = attempt,
                     pickupAddress = request.pickupAddress,
                     dropoffAddress = request.dropoffAddress,
                 ),
             )
-            .timeout(SampleTimings.OfferRequestTimeout)
-            .submit(OfferDeliveryRes::class.java).await()
+            .submit()
     }
 
     private suspend fun courierAddress(courierId: String): SpotHandle {

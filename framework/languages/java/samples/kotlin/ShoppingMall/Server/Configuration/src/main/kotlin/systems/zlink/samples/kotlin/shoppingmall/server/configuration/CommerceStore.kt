@@ -9,7 +9,6 @@ import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.LockSupport
@@ -24,21 +23,14 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PaymentMethodS
  * whole JSON document, applies the change, and writes it back; both
  * CommerceApi instances and both OrderWorkflow instances share one document.
  */
-class CommerceStore {
+class CommerceStore(private val topology: SampleTopology) {
     val json: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val stateFile: Path
     private val lockFile: Path
     private val stateMutex = Any()
 
     init {
-        val directory = System.getProperty(
-            "zlink.samples.shoppingmall.storeDir",
-            System.getenv().getOrDefault(
-                "SHOPPINGMALL_STORE_DIR",
-                Paths.get(System.getProperty("java.io.tmpdir"), "zlink-shoppingmall-store").toString(),
-            ),
-        )
-        val dir = Paths.get(directory)
+        val dir = Path.of(topology.requiredStoreDirectory())
         Files.createDirectories(dir)
         stateFile = dir.resolve("commerce-state.json")
         lockFile = dir.resolve("commerce-state.lock")
@@ -347,7 +339,7 @@ class CommerceStore {
             StoreEvidence(eventsByOrder, paymentFailureCount, releasedReservationCount, startedCount)
         }
 
-    fun placeholder(orderId: String): OrderState = SampleTopology.failedPlaceholder(orderId)
+    fun placeholder(orderId: String): OrderState = topology.failedPlaceholder(orderId)
 
     // ----- json plumbing -----
 

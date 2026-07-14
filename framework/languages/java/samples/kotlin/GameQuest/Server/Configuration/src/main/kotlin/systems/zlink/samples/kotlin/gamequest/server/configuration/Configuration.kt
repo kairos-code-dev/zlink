@@ -8,6 +8,7 @@ import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
 import java.nio.charset.StandardCharsets
 import java.time.Duration
+import org.springframework.boot.context.properties.ConfigurationProperties
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
@@ -27,56 +28,94 @@ object SampleTimings {
     val ConnectTimeout: Duration = Duration.ofSeconds(5)
 }
 
-object SampleTopology {
-    val ApiAStreamEndpoint: String = property("apiAStreamEndpoint", "tcp://127.0.0.1:28301")
-    val ApiBStreamEndpoint: String = property("apiBStreamEndpoint", "tcp://127.0.0.1:28302")
-    val ApiAHttpEndpoint: String = property("apiAHttpEndpoint", "http://127.0.0.1:28311")
-    val ApiBHttpEndpoint: String = property("apiBHttpEndpoint", "http://127.0.0.1:28312")
-    val MissionARouteEndpoint: String = property("missionARouteEndpoint", "tcp://127.0.0.1:28321")
-    val MissionBRouteEndpoint: String = property("missionBRouteEndpoint", "tcp://127.0.0.1:28322")
-    val MissionAHttpEndpoint: String = property("missionAHttpEndpoint", "http://127.0.0.1:28331")
-    val MissionBHttpEndpoint: String = property("missionBHttpEndpoint", "http://127.0.0.1:28332")
-    val RedisEndpoint: String = property("redisEndpoint", "127.0.0.1:6379")
-    val RedisKeyPrefix: String = property("redisKeyPrefix", "gamequest:kotlin:")
+@ConfigurationProperties("sample")
+data class SampleTopology(
+    val instanceName: String? = null,
+    val logDirectory: String? = null,
+    val streamEndpoint: String? = null,
+    val channelEndpoint: String? = null,
+    val httpEndpoint: String? = null,
+    val missionAChannelEndpoint: String? = null,
+    val missionBChannelEndpoint: String? = null,
+    val redisEndpoint: String? = null,
+    val redisKeyPrefix: String? = null,
+) {
+    fun gameApi(): GameApi = GameApi(
+        required(instanceName, "instanceName"),
+        required(logDirectory, "logDirectory"),
+        required(streamEndpoint, "streamEndpoint"),
+        required(httpEndpoint, "httpEndpoint"),
+        required(missionAChannelEndpoint, "missionAChannelEndpoint"),
+        required(missionBChannelEndpoint, "missionBChannelEndpoint"),
+    )
 
-    fun apiName(): String = System.getProperty("zlink.samples.gamequest.apiName", "api-a")
-    fun missionName(): String = System.getProperty("zlink.samples.gamequest.missionName", "mission-a")
-    fun selectedApiStreamEndpoint(): String = if (apiName() == "api-b") ApiBStreamEndpoint else ApiAStreamEndpoint
-    fun selectedApiHttpEndpoint(): String = if (apiName() == "api-b") ApiBHttpEndpoint else ApiAHttpEndpoint
-    fun selectedMissionRouteEndpoint(): String =
-        if (missionName() == "mission-b") MissionBRouteEndpoint else MissionARouteEndpoint
-    fun selectedMissionHttpEndpoint(): String =
-        if (missionName() == "mission-b") MissionBHttpEndpoint else MissionAHttpEndpoint
-    fun selectedMissionChannel(): String = ownerChannelForIndex(if (missionName() == "mission-b") 1 else 0)
-    fun selectedMissionChannelEndpoint(): String =
-        if (missionName() == "mission-b") MissionBRouteEndpoint else MissionARouteEndpoint
-    fun ownerChannel(playerId: String): String = ownerChannelForIndex(ownerIndex(playerId))
-    fun ownerChannels(): List<String> = listOf(ownerChannelForIndex(0), ownerChannelForIndex(1))
-    fun ownerChannelEndpoints(): List<String> = listOf(MissionARouteEndpoint, MissionBRouteEndpoint)
+    fun questMission(): QuestMission = QuestMission(
+        required(instanceName, "instanceName"),
+        required(logDirectory, "logDirectory"),
+        required(channelEndpoint, "channelEndpoint"),
+        required(httpEndpoint, "httpEndpoint"),
+    )
+
+    fun location(): Location = Location(
+        required(redisEndpoint, "redisEndpoint"),
+        required(redisKeyPrefix, "redisKeyPrefix"),
+    )
+
+    fun ownerChannel(playerId: String): String =
+        SampleNames.questOwnerChannelFor(if (ownerIndex(playerId) == 1) "mission-b" else "mission-a")
 
     private fun ownerIndex(playerId: String): Int =
         playerId.toByteArray(StandardCharsets.UTF_8).sumOf { it.toInt() and 0xff } % 2
 
-    private fun ownerChannelForIndex(index: Int): String =
-        SampleNames.questOwnerChannelFor(if (index == 1) "mission-b" else "mission-a")
+    data class GameApi(
+        val instanceName: String,
+        val logDirectory: String,
+        val streamEndpoint: String,
+        val httpEndpoint: String,
+        val missionAChannelEndpoint: String,
+        val missionBChannelEndpoint: String,
+    )
 
-    private fun property(name: String, fallback: String): String =
-        System.getProperty("zlink.samples.gamequest.$name", fallback)
+    data class QuestMission(
+        val instanceName: String,
+        val logDirectory: String,
+        val channelEndpoint: String,
+        val httpEndpoint: String,
+    )
+
+    data class Location(val redisEndpoint: String, val redisKeyPrefix: String)
+
+    companion object {
+        fun configPath(args: Array<String>): String {
+            require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+                "Usage: <role executable> --config <path>"
+            }
+            return args[1]
+        }
+
+        private fun required(value: String?, name: String): String {
+            require(!value.isNullOrBlank()) { "sample.$name is required" }
+            return value
+        }
+    }
 }
 
 object SampleLocationStore {
-    fun create(): ZLinkRedisLocationStore =
-        ZLinkRedisLocationStore(
+    fun create(topology: SampleTopology): ZLinkRedisLocationStore {
+        val location = topology.location()
+        return ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(SampleTopology.RedisEndpoint)
-                .setKeyPrefix("${SampleTopology.RedisKeyPrefix}locations:")
+                .setConnectionString(location.redisEndpoint)
+                .setKeyPrefix("${location.redisKeyPrefix}locations:")
                 .setCommandTimeout(Duration.ofMillis(500)),
         )
+    }
 }
 
-class RedisSampleStore : AutoCloseable {
+class RedisSampleStore(topology: SampleTopology) : AutoCloseable {
+    private val location = topology.location()
     private val json = jacksonObjectMapper()
-    private val client: RedisClient = RedisClient.create(redisUri(SampleTopology.RedisEndpoint))
+    private val client: RedisClient = RedisClient.create(redisUri(location.redisEndpoint))
     private val connection: StatefulRedisConnection<String, String> = client.connect()
     private val redis: RedisCommands<String, String> = connection.sync()
 
@@ -98,18 +137,13 @@ class RedisSampleStore : AutoCloseable {
 
     fun readProjection(playerId: String): List<QuestProgress> {
         val value = redis.get(key("projection:$playerId"))
-        if (value.isNullOrBlank()) {
-            return emptyList()
-        }
+        if (value.isNullOrBlank()) return emptyList()
         val type: JavaType = json.typeFactory.constructCollectionType(List::class.java, QuestProgress::class.java)
         return json.readValue(value, type)
     }
 
     fun appendQuestEvents(events: List<StoredQuestEvent>) {
-        if (events.isEmpty()) {
-            return
-        }
-        redis.rpush(key("quest-events"), *events.map(json::writeValueAsString).toTypedArray())
+        if (events.isNotEmpty()) redis.rpush(key("quest-events"), *events.map(json::writeValueAsString).toTypedArray())
     }
 
     fun readQuestEvents(): List<StoredQuestEvent> =
@@ -126,8 +160,6 @@ class RedisSampleStore : AutoCloseable {
         client.shutdown()
     }
 
-    private fun key(name: String): String = "${SampleTopology.RedisKeyPrefix}gamequest:$name"
-
-    private fun redisUri(endpoint: String): String =
-        if (endpoint.startsWith("redis://")) endpoint else "redis://$endpoint"
+    private fun key(name: String): String = "${location.redisKeyPrefix}gamequest:$name"
+    private fun redisUri(endpoint: String): String = if (endpoint.startsWith("redis://")) endpoint else "redis://$endpoint"
 }

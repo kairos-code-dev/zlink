@@ -6,12 +6,16 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.StandardEnvironment
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
@@ -45,9 +49,9 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgress
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressRes
 
 fun main(args: Array<String>) {
-    val app = Program.run(*args)
+    val app = Program.run(SampleTopology.configPath(args))
     val store = Program.store
-    val http = startHttp(store)
+    val http = startHttp(store, app.getBean(SampleTopology::class.java))
     Runtime.getRuntime().addShutdownHook(Thread {
         http.stop(0)
         app.close()
@@ -56,49 +60,56 @@ fun main(args: Array<String>) {
 }
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [Program::class],
 )
 class Program {
     @Bean
-    fun questMissionFramework(): ZLinkFrameworkConfigurer =
-        ZLinkFrameworkConfigurer { options ->
+    fun questMissionFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
+        val mission = topology.questMission()
+        return ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
             options.addHandlersFromPackageOf(Program::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(
-                    "${System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")}/flow-${SampleTopology.missionName()}.log",
-                )
-                .traceLabel(SampleTopology.missionName())
-            options.addClientServerChannel(SampleTopology.selectedMissionChannel())
-                .enableServer(SampleTopology.selectedMissionChannelEndpoint())
+                .traceLogFile("${mission.logDirectory}/flow-${mission.instanceName}.log")
+                .traceLabel(mission.instanceName)
+            options.addClientServerChannel(SampleNames.questOwnerChannelFor(mission.instanceName))
+                .enableServer(mission.channelEndpoint)
                 .addHandlerGroup("quest-owner")
         }
+    }
 
     @Bean(destroyMethod = "close")
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean(destroyMethod = "close")
-    fun questStore(): QuestStore =
-        QuestStore().also { store = it }
+    fun questStore(topology: SampleTopology): QuestStore =
+        QuestStore(topology).also { store = it }
 
     companion object {
         lateinit var store: QuestStore
-        fun run(vararg args: String): AutoCloseable {
+        fun run(configPath: String): ConfigurableApplicationContext {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val context = SpringApplicationBuilder(Program::class.java)
+                .environment(environment)
                 .also { it.application().setKeepAlive(true) }
                 .web(WebApplicationType.NONE)
-                .run(*args)
-            return AutoCloseable { context.close() }
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
+                .run()
+            return context
         }
     }
 }
 
-private fun startHttp(store: QuestStore): HttpServer {
+private fun startHttp(store: QuestStore, topology: SampleTopology): HttpServer {
     val json = jacksonObjectMapper()
-    val uri = URI.create(SampleTopology.selectedMissionHttpEndpoint())
+    val uri = URI.create(topology.questMission().httpEndpoint)
     val server = HttpServer.create(InetSocketAddress(uri.host, uri.port), 0)
     server.createContext("/health") { exchange -> writeJson(exchange, 200, mapOf("status" to "ok")) }
     server.createContext("/self-check/owner/") { exchange ->
@@ -164,9 +175,9 @@ class SyncQuestProgressHandler(
         store.sync(request.playerId, 4)
 }
 
-class QuestStore : AutoCloseable {
+class QuestStore(topology: SampleTopology) : AutoCloseable {
     private val domain = QuestDomain()
-    private val shared = RedisSampleStore()
+    private val shared = RedisSampleStore(topology)
     private val projections = mutableMapOf<String, MutableList<QuestProgress>>()
     private val eventIdsByIdempotency = mutableMapOf<String, String>()
     private val events = mutableListOf<StoredQuestEvent>()

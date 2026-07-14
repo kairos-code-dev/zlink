@@ -12,9 +12,8 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
 fun main(args: Array<String>) = runBlocking {
-    val streamEndpoint = readOption(args, "--stream-endpoint")
-        ?: throw IllegalArgumentException("Missing --stream-endpoint.")
-    val clients = List(6) { createClient(streamEndpoint) }
+    val options = ClientOptions.parse(args)
+    val clients = List(6) { createClient(options) }
     try {
         SupportChatClientScenario().run(
             agent = clients[0],
@@ -32,10 +31,10 @@ fun main(args: Array<String>) = runBlocking {
     }
 }
 
-private fun createClient(streamEndpoint: String): ZLinkStreamConnector =
+private fun createClient(options: ClientOptions): ZLinkStreamConnector =
     ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
-            URI.create(streamEndpoint),
+            options.streamEndpoint,
             ZLinkStreamDispatchMode.AUTO,
             SampleTimings.RequestTimeout,
             2,
@@ -51,7 +50,17 @@ private fun createClient(streamEndpoint: String): ZLinkStreamConnector =
         ),
     )
 
-private fun readOption(args: Array<String>, name: String): String? {
-    val index = args.indexOf(name)
-    return if (index >= 0 && index + 1 < args.size) args[index + 1] else null
+private data class ClientOptions(val streamEndpoint: URI) {
+    companion object {
+        fun parse(args: Array<String>): ClientOptions {
+            require(args.size == 2 && args[0] == "--stream-endpoint") {
+                "Usage: Client --stream-endpoint <tcp://host:port>"
+            }
+            val endpoint = URI.create(args[1])
+            require(endpoint.scheme == "tcp" && !endpoint.host.isNullOrBlank() && endpoint.port in 1..65535) {
+                "--stream-endpoint must be a valid tcp endpoint"
+            }
+            return ClientOptions(endpoint)
+        }
+    }
 }

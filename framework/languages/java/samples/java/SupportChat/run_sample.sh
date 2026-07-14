@@ -6,31 +6,77 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
-LOG_DIR="$ROOT_DIR/logs"
+RUN_DIR="$(mktemp -d)"
+LOG_DIR="$RUN_DIR/logs"
 BUILD_LOG="$LOG_DIR/build.log"
 mkdir -p "$LOG_DIR"
-rm -f "$LOG_DIR"/*.log
 
-export SUPPORTCHAT_LOG_DIR="$LOG_DIR"
 read -r api_channel_port support_channel_port session_stream_port \
   session_router_port support_router_port api_http_port support_http_port \
   <<<"$(zlink_sample_reserve_ports 7)"
-export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${api_channel_port}}"
-export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${support_channel_port}}"
-export SUPPORTCHAT_SESSION_STREAM_ENDPOINT="${SUPPORTCHAT_SESSION_STREAM_ENDPOINT:-tcp://127.0.0.1:${session_stream_port}}"
-export SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${session_router_port}}"
-export SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${support_router_port}}"
-export SUPPORTCHAT_API_HTTP_ENDPOINT="${SUPPORTCHAT_API_HTTP_ENDPOINT:-http://127.0.0.1:${api_http_port}}"
-export SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT="${SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT:-http://127.0.0.1:${support_http_port}}"
-export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-zlink:supportchat:sample:$(date +%s):$$}"
+api_channel_endpoint="tcp://127.0.0.1:${api_channel_port}"
+support_channel_endpoint="tcp://127.0.0.1:${support_channel_port}"
+session_stream_endpoint="tcp://127.0.0.1:${session_stream_port}"
+session_router_endpoint="tcp://127.0.0.1:${session_router_port}"
+support_router_endpoint="tcp://127.0.0.1:${support_router_port}"
+api_http_endpoint="http://127.0.0.1:${api_http_port}"
+support_http_endpoint="http://127.0.0.1:${support_http_port}"
+redis_key_prefix="zlink:supportchat:sample:$(date +%s):$$"
 
 REDIS_CONTAINER=""
 zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
   "zlink-redis-java-sample-supportchat" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-export SUPPORTCHAT_REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+redis_endpoint="127.0.0.1:$REDIS_PORT"
 
 pids=()
-trap cleanup EXIT
+on_exit() {
+  local status="$?"
+  trap - EXIT
+  if [[ "$status" != "0" ]]; then
+    for log in "$LOG_DIR"/*.log; do
+      [[ -f "$log" ]] || continue
+      echo "===== $log =====" >&2
+      tail -n 200 "$log" >&2 || true
+    done
+  fi
+  cleanup
+  rm -rf "$RUN_DIR"
+  exit "$status"
+}
+trap on_exit EXIT
+
+api_config="$RUN_DIR/api.properties"
+session_config="$RUN_DIR/session.properties"
+support_config="$RUN_DIR/support.properties"
+cat >"$api_config" <<EOF
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
+sample.logDirectory=${LOG_DIR}
+sample.apiChannelEndpoint=${api_channel_endpoint}
+sample.apiHttpEndpoint=${api_http_endpoint}
+EOF
+cat >"$session_config" <<EOF
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
+sample.logDirectory=${LOG_DIR}
+sample.sessionStreamEndpoint=${session_stream_endpoint}
+sample.sessionSpotRouterEndpoint=${session_router_endpoint}
+sample.sessionSpotNodeRid=supportchat-session-node
+sample.supportSpotRouterEndpoint=${support_router_endpoint}
+sample.supportSpotNodeRid=supportchat-support-node
+EOF
+cat >"$support_config" <<EOF
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
+sample.logDirectory=${LOG_DIR}
+sample.supportChannelEndpoint=${support_channel_endpoint}
+sample.supportSpotRouterEndpoint=${support_router_endpoint}
+sample.supportSpotNodeRid=supportchat-support-node
+sample.sessionSpotRouterEndpoint=${session_router_endpoint}
+sample.sessionSpotNodeRid=supportchat-session-node
+sample.supportHttpEndpoint=${support_http_endpoint}
+EOF
+chmod 0600 "$api_config" "$session_config" "$support_config"
 
 cd "$ROOT_DIR"
 ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon \
@@ -42,20 +88,23 @@ cd "$ROOT_DIR"
 start_role() {
   local name="$1"
   local binary="$2"
-  "$binary" >"$LOG_DIR/$name.log" 2>&1 &
+  local config="$3"
+  "$binary" --config "$config" >"$LOG_DIR/$name.log" 2>&1 &
   pids+=("$!")
 }
 
-start_role support "$ROOT_DIR/Server/Support/build/install/Support/bin/Support"
-start_role api "$ROOT_DIR/Server/Api/build/install/Api/bin/Api"
-start_role session "$ROOT_DIR/Server/Session/build/install/Session/bin/Session"
+start_role support "$ROOT_DIR/Server/Support/build/install/Support/bin/Support" "$support_config"
+start_role api "$ROOT_DIR/Server/Api/build/install/Api/bin/Api" "$api_config"
+start_role session "$ROOT_DIR/Server/Session/build/install/Session/bin/Session" "$session_config"
 disown "${pids[@]}" 2>/dev/null || true
 
-wait_http "$SUPPORTCHAT_SUPPORT_HTTP_ENDPOINT"
-wait_http "$SUPPORTCHAT_API_HTTP_ENDPOINT"
+wait_http "$support_http_endpoint"
+wait_http "$api_http_endpoint"
+wait_port "$session_stream_endpoint"
 echo "topology=ready"
 
-"$ROOT_DIR/Client/build/install/Client/bin/Client" >"$LOG_DIR/client.log" 2>&1
+"$ROOT_DIR/Client/build/install/Client/bin/Client" \
+  --stream-endpoint "$session_stream_endpoint" >"$LOG_DIR/client.log" 2>&1
 cat "$LOG_DIR/client.log"
 
 conversation_id="$(sed -n 's/^supportchat-conversation=//p' "$LOG_DIR/client.log" | tail -1)"

@@ -6,10 +6,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -20,41 +24,41 @@ import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(proxyBeanMethods = false, scanBasePackageClasses = Program.class)
 public final class Program {
     private Program() {
     }
 
     public static void main(String[] args) throws Exception {
-        AutoCloseable app = run(args);
-        HttpServer http = startHttp();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            http.stop(0);
-            try {
-                app.close();
-            } catch (Exception ignored) {
-            }
-        }));
+        ConfigurableApplicationContext app = run(SampleTopology.configPath(args));
+        Runtime.getRuntime().addShutdownHook(new Thread(app::close));
         Thread.currentThread().join();
     }
 
-    public static AutoCloseable run(String... args) {
+    public static ConfigurableApplicationContext run(String configPath) {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
-            .web(WebApplicationType.NONE);
+            .environment(environment)
+            .web(WebApplicationType.NONE)
+            .properties("spring.config.location=" + Path.of(configPath).toAbsolutePath().toUri());
         builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
+        return builder.run();
     }
 
     @Bean
-    ZLinkFrameworkConfigurer apiFramework() {
+    ZLinkFrameworkConfigurer apiFramework(SampleTopology topology) {
+        SampleTopology.Api api = topology.api();
         return options -> {
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(SampleFlowLog.path("api"))
+                .traceLogFile(SampleFlowLog.path(topology, "api"))
                 .traceLabel("api");
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(SampleTopology.ApiChannelEndpoint)
+                .enableServer(api.channelEndpoint())
                 .addHandlerGroup(SampleNames.ApiChannel);
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableClient();
@@ -62,13 +66,14 @@ public final class Program {
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
-    private static HttpServer startHttp() throws IOException {
+    @Bean(destroyMethod = "close")
+    AutoCloseable apiHttpServer(SampleTopology topology) throws IOException {
         ObjectMapper json = new ObjectMapper();
-        URI uri = URI.create(SampleTopology.ApiHttpEndpoint);
+        URI uri = URI.create(topology.api().httpEndpoint());
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
         server.createContext("/health", exchange -> {
             byte[] bytes = json.writeValueAsString(new Health("ok")).getBytes(StandardCharsets.UTF_8);
@@ -78,7 +83,7 @@ public final class Program {
             exchange.close();
         });
         server.start();
-        return server;
+        return () -> server.stop(0);
     }
 
     private record Health(String status) {

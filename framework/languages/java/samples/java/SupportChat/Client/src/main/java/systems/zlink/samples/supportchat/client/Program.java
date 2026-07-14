@@ -8,7 +8,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeoutException;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
-import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
@@ -21,8 +20,9 @@ public final class Program {
     }
 
     public static void main(String[] args) {
+        ClientOptions options = ClientOptions.parse(args);
         ZLinkStreamConnector[] clients = new ZLinkStreamConnector[6];
-        Arrays.setAll(clients, ignored -> createClient());
+        Arrays.setAll(clients, ignored -> createClient(options));
         try {
             new SupportChatClientScenario().run(
                 clients[0], clients[1], clients[2], clients[3], clients[4], clients[5]);
@@ -37,9 +37,9 @@ public final class Program {
         }
     }
 
-    private static ZLinkStreamConnector createClient() {
+    private static ZLinkStreamConnector createClient(ClientOptions options) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
-            URI.create(SampleTopology.SessionStreamEndpoint),
+            options.streamEndpoint(),
             ZLinkStreamDispatchMode.AUTO,
             SampleTimings.RequestTimeout,
             SampleTimings.RequestTimeout,
@@ -60,6 +60,22 @@ public final class Program {
             null,
             null,
             null));
+    }
+
+    private record ClientOptions(URI streamEndpoint) {
+        static ClientOptions parse(String[] args) {
+            if (args.length != 2 || !"--stream-endpoint".equals(args[0])) {
+                throw new IllegalArgumentException("Usage: Client --stream-endpoint <tcp://host:port>");
+            }
+            URI endpoint = URI.create(args[1]);
+            if (!"tcp".equals(endpoint.getScheme())
+                || endpoint.getHost() == null
+                || endpoint.getPort() < 1
+                || endpoint.getPort() > 65535) {
+                throw new IllegalArgumentException("--stream-endpoint must be a valid tcp endpoint");
+            }
+            return new ClientOptions(endpoint);
+        }
     }
 }
 

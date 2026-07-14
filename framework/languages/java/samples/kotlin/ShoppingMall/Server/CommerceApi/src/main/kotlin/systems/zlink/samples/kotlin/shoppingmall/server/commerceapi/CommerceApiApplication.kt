@@ -1,10 +1,12 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
-import org.springframework.boot.ApplicationArguments
+import java.nio.file.Path
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.StandardEnvironment
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -16,36 +18,34 @@ import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleName
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopology
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [CommerceApiApplication::class],
 )
 class CommerceApiApplication {
     @Bean
-    fun instanceOptions(arguments: ApplicationArguments): CommerceApiInstanceOptions =
-        CommerceApiInstanceOptions.fromArgs(arguments.sourceArgs)
+    fun commerceStore(topology: SampleTopology): CommerceStore = CommerceStore(topology)
 
     @Bean
-    fun commerceStore(): CommerceStore = CommerceStore()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
-
-    @Bean
-    fun commerceApiFramework(options: CommerceApiInstanceOptions): ZLinkFrameworkConfigurer =
-        ZLinkFrameworkConfigurer { configurer ->
+    fun commerceApiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
+        val role = topology.role()
+        return ZLinkFrameworkConfigurer { configurer ->
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile((System.getenv("SHOPPINGMALL_LOG_DIR") ?: "logs") + "/flow-${options.instanceId}.log")
-                traceLabel(options.instanceId)
+                traceLogFile("${role.logDirectory}/flow-${role.instanceId}.log")
+                traceLabel(role.instanceId)
             }
             configurer.addHandlersFromPackageOf(CommerceApiApplication::class.java)
 
-            configurer.addClientServerChannel(SampleNames.commerceApiChannel(options.instanceId))
-                .enableServer(SampleTopology.commerceApiEndpoint(options.instanceId))
+            configurer.addClientServerChannel(SampleNames.commerceApiChannel(role.instanceId))
+                .enableServer(role.channelEndpoint)
                 .addHandlerGroup("commerce")
 
-            val peer = CommerceApiInstanceOptions.peerInstance(options.instanceId)
+            val peer = if (role.instanceId == SampleNames.ApiInstanceB) SampleNames.ApiInstanceA else SampleNames.ApiInstanceB
             configurer.addClientServerChannel(SampleNames.commerceApiChannel(peer))
                 .enableClient()
 
@@ -54,13 +54,20 @@ class CommerceApiApplication {
             configurer.addClientServerChannel(SampleNames.workflowChannel(SampleNames.WorkflowInstanceB))
                 .enableClient()
         }
+    }
 
     companion object {
-        fun run(args: Array<String> = emptyArray()): AutoCloseable {
+        fun run(configPath: String): AutoCloseable {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val builder = SpringApplicationBuilder(CommerceApiApplication::class.java)
+                .environment(environment)
                 .web(WebApplicationType.NONE)
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run()
             context.getBean(CommerceStore::class.java).seedDefaults()
             return AutoCloseable { context.close() }
         }

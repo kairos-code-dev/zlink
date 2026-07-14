@@ -25,7 +25,7 @@ object PlayServer {
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid))
+                traceLogFile(SampleLogging.flowLogPath(settings, settings.playSpotNodeRid))
                 traceLabel(settings.playSpotNodeRid)
             }
             options.addHandlersFromPackageOf(PlayServer::class.java)

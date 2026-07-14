@@ -1,9 +1,13 @@
 package systems.zlink.samples.kotlin.supportchat.server.session
 
+import java.nio.file.Path
 import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.core.env.StandardEnvironment
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
@@ -18,21 +22,21 @@ import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTopol
 import systems.zlink.samples.kotlin.supportchat.server.session.sessions.SupportChatSession
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [SessionApplication::class],
 )
 class SessionApplication {
     @Bean
-    fun sessionFramework(): ZLinkFrameworkConfigurer =
+    fun sessionFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            val topology = SampleTopology.create()
-            val session = topology.primarySession
+            val session = topology.session()
             options.addHandlersFromPackageOf(SessionApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleFlowLog.path("session"))
+                traceLogFile(SampleFlowLog.path(topology, "session"))
                 traceLabel("session")
             }
             options.addClientServerChannel(SampleNames.ApiChannel)
@@ -49,15 +53,20 @@ class SessionApplication {
         }
 
     @Bean
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     companion object {
-        fun run(args: Array<String> = emptyArray()): AutoCloseable {
+        fun run(configPath: String): ConfigurableApplicationContext {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val builder = SpringApplicationBuilder(SessionApplication::class.java)
+                .environment(environment)
                 .web(WebApplicationType.NONE)
+                .properties("spring.config.location=${Path.of(configPath).toAbsolutePath().toUri()}")
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
-            return AutoCloseable { context.close() }
+            return builder.run()
         }
     }
 }

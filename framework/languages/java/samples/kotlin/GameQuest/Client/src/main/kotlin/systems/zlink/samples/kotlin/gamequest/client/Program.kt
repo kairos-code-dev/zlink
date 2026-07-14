@@ -6,6 +6,8 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.async
@@ -15,7 +17,6 @@ import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionReq
@@ -45,11 +46,12 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
-suspend fun main() {
-    val apiA = createClient(SampleTopology.ApiAStreamEndpoint)
-    val apiB = createClient(SampleTopology.ApiBStreamEndpoint)
+suspend fun main(args: Array<String>) {
+    val options = GameQuestClientOptions.load(args)
+    val apiA = createClient(options.apiAStreamEndpoint)
+    val apiB = createClient(options.apiBStreamEndpoint)
     try {
-        GameQuestClientScenario().run(apiA, apiB)
+        GameQuestClientScenario(options).run(apiA, apiB)
     } finally {
         apiA.close().await()
         apiB.close().await()
@@ -84,7 +86,7 @@ private fun createClient(endpoint: String): ZLinkKotlinStreamConnector =
         ),
     ).kotlin()
 
-class GameQuestClientScenario {
+class GameQuestClientScenario(private val options: GameQuestClientOptions) {
     private val json = jacksonObjectMapper()
     private val http = HttpClient.newHttpClient()
 
@@ -121,14 +123,14 @@ class GameQuestClientScenario {
         ensure(auction.eventId == "player-alice-unlock-auction")
         ensure(auctionCompleted.await().payload().rewardGranted)
         val snapshot = post<GetGameplaySnapshotRes>(
-            SampleTopology.ApiAHttpEndpoint,
+            options.apiAHttpEndpoint,
             "/internal/snapshot",
             GetGameplaySnapshotReq("player-alice"),
         )
         ensure(snapshot.unlockedFeatureIds.contains("auction"))
 
-        ensure(postRaw(SampleTopology.MissionAHttpEndpoint, "/self-check/owner/player-alice/close"))
-        ensure(postRaw(SampleTopology.MissionBHttpEndpoint, "/self-check/owner/player-alice/close"))
+        ensure(postRaw(options.missionAHttpEndpoint, "/self-check/owner/player-alice/close"))
+        ensure(postRaw(options.missionBHttpEndpoint, "/self-check/owner/player-alice/close"))
 
         val tutorial = apiAStream.request(CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
             .await<CompleteMissionRes>()
@@ -155,11 +157,11 @@ class GameQuestClientScenario {
         ensure(herbPush.rewardGranted)
         ensure(herbPush.progress.status == QuestStatuses.RewardGranted)
 
-        ensure(postRaw(SampleTopology.ApiAHttpEndpoint, "/self-check/projection/player-bob/${QuestIds.HerbGathering}/delete"))
+        ensure(postRaw(options.apiAHttpEndpoint, "/self-check/projection/player-bob/${QuestIds.HerbGathering}/delete"))
         val missingProjection = apiBStream.request(GetQuestProgressReq("player-bob")).await<GetQuestProgressRes>()
         ensure(missingProjection.activeQuests.none { it.questId == QuestIds.HerbGathering })
         val rebuilt = post<QuestProgress>(
-            SampleTopology.ApiAHttpEndpoint,
+            options.apiAHttpEndpoint,
             "/self-check/projection/player-bob/${QuestIds.HerbGathering}/rebuild",
             "",
         )
@@ -170,7 +172,7 @@ class GameQuestClientScenario {
             it.questId == QuestIds.HerbGathering && it.status == QuestStatuses.RewardGranted
         })
 
-        ensure(postRaw(SampleTopology.ApiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"))
+        ensure(postRaw(options.apiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"))
         val sync = apiAStream.request(SyncQuestProgressReq("player-alice")).await<SyncQuestProgressRes>()
         ensure(sync.updatedQuests.any { it.questId == QuestIds.FirstHunt && it.currentCount >= 4 })
         val reconciled = apiBStream.request(GetQuestProgressReq("player-alice")).await<GetQuestProgressRes>()
@@ -186,7 +188,7 @@ class GameQuestClientScenario {
         val deadline = Instant.now().plus(Duration.ofSeconds(10))
         var last: GameQuestServerAssertRes? = null
         while (Instant.now().isBefore(deadline)) {
-            val current: GameQuestServerAssertRes = post(SampleTopology.ApiAHttpEndpoint, "/self-check/assert", "")
+            val current: GameQuestServerAssertRes = post(options.apiAHttpEndpoint, "/self-check/assert", "")
             last = current
             if (current.passed) {
                 return current
@@ -218,6 +220,36 @@ class GameQuestClientScenario {
             error("HTTP ${response.statusCode()} for $path: ${response.body()}")
         }
         return json.readValue(response.body())
+    }
+}
+
+data class GameQuestClientOptions(
+    val apiAStreamEndpoint: String,
+    val apiBStreamEndpoint: String,
+    val apiAHttpEndpoint: String,
+    val apiBHttpEndpoint: String,
+    val missionAHttpEndpoint: String,
+    val missionBHttpEndpoint: String,
+) {
+    companion object {
+        fun load(args: Array<String>): GameQuestClientOptions {
+            require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+                "Usage: Client --config <path>"
+            }
+            val properties = java.util.Properties().apply {
+                Files.newBufferedReader(Path.of(args[1])).use(::load)
+            }
+            fun required(name: String): String =
+                requireNotNull(properties.getProperty(name)?.takeIf(String::isNotBlank)) { "$name is required" }
+            return GameQuestClientOptions(
+                required("sample.apiAStreamEndpoint"),
+                required("sample.apiBStreamEndpoint"),
+                required("sample.apiAHttpEndpoint"),
+                required("sample.apiBHttpEndpoint"),
+                required("sample.missionAHttpEndpoint"),
+                required("sample.missionBHttpEndpoint"),
+            )
+        }
     }
 }
 

@@ -36,7 +36,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 Run the roles manually:
 
 ```bash
-gradle :Server:run --args='play --config ./application.properties'
-gradle :Server:run --args='api --config ./application.properties'
+gradle :Server:installDist
+Server/build/install/Server/bin/tictactoe-play --config ./application.properties
+Server/build/install/Server/bin/Server --config ./application.properties
 gradle :Client:run
 ```

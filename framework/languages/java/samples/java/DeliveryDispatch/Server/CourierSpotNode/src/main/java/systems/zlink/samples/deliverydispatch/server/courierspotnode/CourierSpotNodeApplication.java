@@ -52,6 +52,11 @@ public final class CourierSpotNodeApplication {
             spotNode.enablePubSub(selected.spotEndpoint());
             spotNode.addEntrySpot(CourierEntrySpot.class);
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);
+            // The courier's decision goes back to dispatch as its own one-way message, so this
+            // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
+            options.addClientServerChannel(SampleNames.DispatchChannel)
+                .enableClient()
+                .setRoutingId(RoutingId.from("delivery-courier-" + node + "-dispatch"));
         };
     }
 

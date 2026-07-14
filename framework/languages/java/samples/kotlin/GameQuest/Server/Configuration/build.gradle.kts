@@ -15,6 +15,7 @@ dependencies {
     api("io.lettuce:lettuce-core:6.3.2.RELEASE")
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     api("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")
+    api("org.springframework.boot:spring-boot:3.5.14")
 }
 
 kotlin {

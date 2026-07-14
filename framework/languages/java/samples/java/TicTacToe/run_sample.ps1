@@ -83,37 +83,31 @@ function Invoke-Gradle {
     }
 }
 
-function Start-GradleRole {
-    param([string[]]$Arguments, [string]$LogName)
+function Start-SampleRole {
+    param([string]$Role, [string]$ConfigPath, [string]$LogName)
     $logPath = Join-Path $LogDir $LogName
     $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $quotedArguments = $Arguments | ForEach-Object {
-        if ($_ -match '\s') {
-            '"' + ($_ -replace '"', '\"') + '"'
-        } else {
-            $_
-        }
-    }
-    $process = Start-Process -FilePath $Gradle -ArgumentList $quotedArguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+    $scriptName = if ($Role -eq "play") { "tictactoe-play" } else { "Server" }
+    $serverBin = Join-Path $SampleDir "Server/build/install/Server/bin/$scriptName"
+    if ($IsWindows) { $serverBin = "$serverBin.bat" }
+    $process = Start-Process -FilePath $serverBin -ArgumentList @("--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
     $Processes.Add($process)
 }
 
 $Status = 1
 try {
-    $ports = Reserve-Ports 5
+    $ports = Reserve-Ports 7
     $ApiPort = $ports[0]
     $ApiChannelPort = $ports[1]
     $PlayStreamPort = $ports[2]
     $PlayChannelPort = $ports[3]
     $SpotPort = $ports[4]
+    $SpotPubPort = $ports[5]
+    $PeerSpotPort = $ports[6]
     $redis = Start-ZlinkSampleRedis "zlink-redis-java-sample-tictactoe" "redis:7-alpine"
     $RedisContainer = $redis.ContainerId
     $RedisEndpoint = $redis.Endpoint
-    $RedisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) {
-        $env:TICTACTOE_REDIS_KEY_PREFIX
-    } else {
-        "zlink:tictactoe:${PID}:$([Guid]::NewGuid().ToString('N')):room:"
-    }
+    $RedisKeyPrefix = "zlink:tictactoe:${PID}:$([Guid]::NewGuid().ToString('N')):room:"
 
     $ConfigFile = Join-Path $SampleDir "build/sample-application.properties"
     @(
@@ -121,18 +115,29 @@ try {
         "sample.apiPublicUrl=http://127.0.0.1:$ApiPort",
         "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiChannelPort",
         "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayChannelPort",
+        "sample.playChannelEndpoints=tcp://127.0.0.1:$PlayChannelPort",
         "sample.playEndpoint=tcp://127.0.0.1:$PlayStreamPort",
+        "sample.playEndpoints=tcp://127.0.0.1:$PlayStreamPort",
         "sample.spotEndpoint=tcp://127.0.0.1:$SpotPort",
+        "sample.spotEndpoints=tcp://127.0.0.1:$SpotPort",
+        "sample.spotPubSubEndpoint=tcp://127.0.0.1:$SpotPubPort",
+        "sample.spotPubSubEndpoints=tcp://127.0.0.1:$SpotPubPort",
         "sample.redisEndpoint=$RedisEndpoint",
         "sample.redisKeyPrefix=$RedisKeyPrefix",
+        "sample.playSpotNodeRid=play-node-1",
+        "sample.peerPlaySpotNodeRid=play-node-2",
+        "sample.peerSpotEndpoint=tcp://127.0.0.1:$PeerSpotPort",
+        "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PeerSpotPort",
         "sample.logDirectory=$LogDir"
     ) | Set-Content -Path $ConfigFile -Encoding UTF8
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=play --config $ConfigFile") -LogName "play.log"
+    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Server:installDist", ":Client:installDist", "--quiet")
+
+    Start-SampleRole "play" $ConfigFile "play.log"
     Wait-Port $PlayStreamPort
     Wait-Port $PlayChannelPort
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=api --config $ConfigFile") -LogName "api.log"
+    Start-SampleRole "api" $ConfigFile "api.log"
     Wait-Port $ApiPort
     Wait-Port $ApiChannelPort
 

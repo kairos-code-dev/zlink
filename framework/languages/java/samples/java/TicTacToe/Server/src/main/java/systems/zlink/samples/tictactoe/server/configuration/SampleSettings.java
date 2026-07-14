@@ -1,11 +1,9 @@
 package systems.zlink.samples.tictactoe.server.configuration;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
-import java.util.Properties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
+@ConfigurationProperties("sample")
 public record SampleSettings(
     String apiBindUrl,
     String apiPublicUrl,
@@ -25,96 +23,18 @@ public record SampleSettings(
     String peerSpotEndpoint,
     String peerSpotPubSubEndpoint,
     String logDirectory) {
-    public static SampleSettings createDefault() {
-        return new SampleSettings(
-            "http://127.0.0.1:18080",
-            "http://127.0.0.1:18080",
-            "tcp://127.0.0.1:47201",
-            "tcp://127.0.0.1:47203",
-            List.of("tcp://127.0.0.1:47203", "tcp://127.0.0.1:47213"),
-            "tcp://127.0.0.1:47202",
-            List.of("tcp://127.0.0.1:47202", "tcp://127.0.0.1:47212"),
-            "tcp://127.0.0.1:47205",
-            List.of("tcp://127.0.0.1:47205", "tcp://127.0.0.1:47215"),
-            "tcp://127.0.0.1:47207",
-            List.of("tcp://127.0.0.1:47207", "tcp://127.0.0.1:47217"),
-            "",
-            "zlink:tictactoe:room:",
-            "play-node-1",
-            "play-node-2",
-            "tcp://127.0.0.1:47215",
-            "tcp://127.0.0.1:47217",
-            "logs/tictactoe");
-    }
-
-    public static SampleSettings load(String[] args) {
-        SampleSettings defaults = createDefault();
-        SampleSettings configured = fromProperties(readOption(args, "--config", null), defaults);
-        SampleSettings resolved = fromArgs(args, configured);
-
-        // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
-        // an isolated container; require the endpoint so a stray direct run never
-        // silently falls back to a developer's local Redis.
-        if (resolved.redisEndpoint() == null || resolved.redisEndpoint().isBlank()) {
-            throw new IllegalStateException(
-                "redisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
-                    + "which provisions an isolated Redis container.");
-        }
-
-        return resolved;
-    }
-
-    private static SampleSettings fromArgs(String[] args, SampleSettings defaults) {
-        return new SampleSettings(
-            readOption(args, "--api-bind", defaults.apiBindUrl()),
-            readOption(args, "--api-url", readOption(args, "--api-bind", defaults.apiPublicUrl())),
-            readOption(args, "--api-channel-endpoint", defaults.apiChannelEndpoint()),
-            readOption(args, "--play-channel-endpoint", defaults.playChannelEndpoint()),
-            readListOption(args, "--play-channel-endpoints", defaults.playChannelEndpoints()),
-            readOption(args, "--play-endpoint", defaults.playEndpoint()),
-            readListOption(args, "--play-endpoints", defaults.playEndpoints()),
-            readOption(args, "--spot-endpoint", readOption(args, "--route-endpoint", defaults.spotEndpoint())),
-            readListOption(args, "--spot-endpoints", defaults.spotEndpoints()),
-            readOption(args, "--spot-pubsub-endpoint", defaults.spotPubSubEndpoint()),
-            readListOption(args, "--spot-pubsub-endpoints", defaults.spotPubSubEndpoints()),
-            readOption(args, "--redis-endpoint", defaults.redisEndpoint()),
-            readOption(args, "--redis-key-prefix", defaults.redisKeyPrefix()),
-            readOption(args, "--play-spot-node-rid", defaults.playSpotNodeRid()),
-            readOption(args, "--peer-play-spot-node-rid", defaults.peerPlaySpotNodeRid()),
-            readOption(args, "--peer-spot-endpoint", defaults.peerSpotEndpoint()),
-            readOption(args, "--peer-spot-pubsub-endpoint", defaults.peerSpotPubSubEndpoint()),
-            readOption(args, "--log-dir", defaults.logDirectory()));
-    }
-
-    private static SampleSettings fromProperties(String path, SampleSettings defaults) {
-        if (path == null || path.isBlank()) {
-            return defaults;
-        }
-        Properties properties = new Properties();
-        try (var input = Files.newInputStream(Path.of(path))) {
-            properties.load(input);
-        } catch (IOException error) {
-            throw new IllegalArgumentException("Failed to read config file: " + path, error);
-        }
-        return new SampleSettings(
-            properties.getProperty("sample.apiBindUrl", defaults.apiBindUrl()),
-            properties.getProperty("sample.apiPublicUrl", defaults.apiPublicUrl()),
-            properties.getProperty("sample.apiChannelEndpoint", defaults.apiChannelEndpoint()),
-            properties.getProperty("sample.playChannelEndpoint", defaults.playChannelEndpoint()),
-            readListProperty(properties, "sample.playChannelEndpoints", defaults.playChannelEndpoints()),
-            properties.getProperty("sample.playEndpoint", defaults.playEndpoint()),
-            readListProperty(properties, "sample.playEndpoints", defaults.playEndpoints()),
-            properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint()),
-            readListProperty(properties, "sample.spotEndpoints", defaults.spotEndpoints()),
-            properties.getProperty("sample.spotPubSubEndpoint", defaults.spotPubSubEndpoint()),
-            readListProperty(properties, "sample.spotPubSubEndpoints", defaults.spotPubSubEndpoints()),
-            properties.getProperty("sample.redisEndpoint", defaults.redisEndpoint()),
-            properties.getProperty("sample.redisKeyPrefix", defaults.redisKeyPrefix()),
-            properties.getProperty("sample.playSpotNodeRid", defaults.playSpotNodeRid()),
-            properties.getProperty("sample.peerPlaySpotNodeRid", defaults.peerPlaySpotNodeRid()),
-            properties.getProperty("sample.peerSpotEndpoint", defaults.peerSpotEndpoint()),
-            properties.getProperty("sample.peerSpotPubSubEndpoint", defaults.peerSpotPubSubEndpoint()),
-            properties.getProperty("sample.logDirectory", defaults.logDirectory()));
+    public SampleSettings {
+        require(apiBindUrl, "apiBindUrl");
+        require(apiPublicUrl, "apiPublicUrl");
+        require(apiChannelEndpoint, "apiChannelEndpoint");
+        require(playChannelEndpoint, "playChannelEndpoint");
+        require(playEndpoint, "playEndpoint");
+        require(spotEndpoint, "spotEndpoint");
+        require(spotPubSubEndpoint, "spotPubSubEndpoint");
+        require(redisEndpoint, "redisEndpoint");
+        require(redisKeyPrefix, "redisKeyPrefix");
+        require(playSpotNodeRid, "playSpotNodeRid");
+        require(logDirectory, "logDirectory");
     }
 
     public int apiHttpPort() {
@@ -130,37 +50,16 @@ public record SampleSettings(
         return spotEndpoint;
     }
 
-    private static String readOption(String[] args, String name, String defaultValue) {
-        for (int index = 0; index < args.length; index++) {
-            if (!args[index].equals(name)) {
-                continue;
-            }
-            if (index + 1 >= args.length) {
-                throw new IllegalArgumentException("Missing value for '" + name + "'.");
-            }
-            return args[index + 1];
+    public static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: <role executable> --config <path>");
         }
-        return defaultValue;
+        return args[1];
     }
 
-    private static List<String> readListOption(String[] args, String name, List<String> defaultValue) {
-        return split(readOption(args, name, null), defaultValue);
-    }
-
-    private static List<String> readListProperty(
-        Properties properties,
-        String name,
-        List<String> defaultValue) {
-        return split(properties.getProperty(name), defaultValue);
-    }
-
-    private static List<String> split(String value, List<String> defaultValue) {
+    private static void require(String value, String name) {
         if (value == null || value.isBlank()) {
-            return defaultValue;
+            throw new IllegalArgumentException("sample." + name + " is required");
         }
-        return java.util.Arrays.stream(value.split(","))
-            .map(String::trim)
-            .filter(item -> !item.isEmpty())
-            .toList();
     }
 }

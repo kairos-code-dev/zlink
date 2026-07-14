@@ -18,7 +18,7 @@ object ApiServer {
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleLogging.flowLogPath("api-${settings.apiHttpPort}"))
+                traceLogFile(SampleLogging.flowLogPath(settings, "api-${settings.apiHttpPort}"))
                 traceLabel("api-${settings.apiHttpPort}")
             }
             options.addHandlersFromPackageOf(ApiServer::class.java)

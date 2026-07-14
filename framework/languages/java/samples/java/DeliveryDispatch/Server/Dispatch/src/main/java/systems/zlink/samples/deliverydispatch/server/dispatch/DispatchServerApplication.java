@@ -34,6 +34,7 @@ public final class DispatchServerApplication {
     @Bean
     ZLinkFrameworkConfigurer dispatchFramework() {
         return options -> {
+            options.addHandlersFromPackageOf(DispatchServerApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
@@ -41,6 +42,12 @@ public final class DispatchServerApplication {
                 .traceLabel("dispatch");
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();
+            // The courier's decision comes back here as its own one-way message, so dispatch has
+            // to be a channel server (common sample spec section 7.4).
+            options.addClientServerChannel(SampleNames.DispatchChannel)
+                .enableServer(SampleTopology.DispatchChannelEndpoint)
+                .setRoutingId(RoutingId.from("delivery-dispatch-channel"))
+                .addHandlerGroup(SampleNames.DispatchChannel);
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
                 .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"));
@@ -68,11 +75,22 @@ public final class DispatchServerApplication {
     }
 
     @Bean
+    DeliveryOfferStore deliveryOfferStore() {
+        return new DeliveryOfferStore();
+    }
+
+    @Bean
     DispatchWorker dispatchWorker(
         systems.zlink.framework.channels.ZLinkClient channels,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
-        systems.zlink.framework.spots.SpotHandleResolver spotHandles) {
-        return new DispatchWorker(channels, routes, spotHandles);
+        systems.zlink.framework.spots.SpotHandleResolver spotHandles,
+        DeliveryOfferStore offers) {
+        return new DispatchWorker(channels, routes, spotHandles, offers);
+    }
+
+    @Bean(destroyMethod = "close")
+    OfferDeadlineSweeper offerDeadlineSweeper(DeliveryOfferStore offers, DispatchWorker worker) {
+        return new OfferDeadlineSweeper(offers, worker);
     }
 
     @Bean

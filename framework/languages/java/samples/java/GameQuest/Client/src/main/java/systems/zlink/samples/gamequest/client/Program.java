@@ -4,7 +4,6 @@ import java.net.URI;
 import java.time.Duration;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTimings;
-import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -15,10 +14,11 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        ZLinkStreamConnector apiA = createClient(SampleTopology.ApiAStreamEndpoint);
-        ZLinkStreamConnector apiB = createClient(SampleTopology.ApiBStreamEndpoint);
+        GameQuestClientOptions options = GameQuestClientOptions.load(args);
+        ZLinkStreamConnector apiA = createClient(options.apiAStreamEndpoint());
+        ZLinkStreamConnector apiB = createClient(options.apiBStreamEndpoint());
         try {
-            new GameQuestClientScenario().run(apiA, apiB);
+            new GameQuestClientScenario(options).run(apiA, apiB);
         } finally {
             apiA.close().submit().toCompletableFuture().join();
             apiB.close().submit().toCompletableFuture().join();

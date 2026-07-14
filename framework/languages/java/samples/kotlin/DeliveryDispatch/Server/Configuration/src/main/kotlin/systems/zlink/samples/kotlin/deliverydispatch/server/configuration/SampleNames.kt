@@ -2,6 +2,13 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.configuration
 
 object SampleNames {
     const val CourierChannel: String = "deliverydispatch.courier"
+
+    /**
+     * Where the courier's decision comes back to. The offer goes out one-way and the decision
+     * returns as its own one-way message, so dispatch has to be reachable as a channel server
+     * (common sample spec section 7.4).
+     */
+    const val DispatchChannel: String = "deliverydispatch.dispatch"
     const val TrackingChannel: String = "deliverydispatch.tracking"
     const val CustomerSpotMesh: String = "delivery-customers"
     const val CourierSpotMesh: String = "delivery-couriers"

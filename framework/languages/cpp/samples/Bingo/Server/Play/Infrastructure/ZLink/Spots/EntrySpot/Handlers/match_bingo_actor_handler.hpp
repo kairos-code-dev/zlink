@@ -24,9 +24,14 @@ bingo_entry_spot_t::match_bingo (const player_actor_t &actor,
       matched.room_id, actor.actor.actor_id, display_name};
     auto joined = co_await actor.context.join_spot (spot_rid, join_request)
                     .async<bingo_room_join_res_t> ();
-    const auto join_state =
-      std::visit ([] (const auto &value) { return value.reply.state; }, joined);
-    co_return match_bingo_res_t{matched.room_id, join_state, matched.room_owner_node_rid};
+    const auto *accepted =
+      std::get_if<actor_join_accepted_t<bingo_room_join_res_t>> (&joined);
+    if (accepted == nullptr) {
+        throw framework_exception_t (framework_error_kind_t::request_failed,
+                                     "Bingo room join was rejected");
+    }
+    co_return match_bingo_res_t{matched.room_id, accepted->reply.state,
+                                matched.room_owner_node_rid};
 }
 
 } // namespace zlink::samples::bingo

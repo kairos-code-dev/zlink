@@ -464,7 +464,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 **아래는 샘플 서버 인프라를 정독해 나온 것이다. 진짜 버그가 5건 더 나왔다.**
 
-- [ ] **SMP-CP-51** (**버그**) — **거절된 actor join이 정상 응답으로 나간다.** `std::visit`이 **양쪽 대안에 다 컴파일**된다 (Bingo·TicTacToe)
+- [x] **SMP-CP-51** (**버그**) — **거절된 actor join이 정상 응답으로 나간다.** `std::visit`이 **양쪽 대안에 다 컴파일**된다 (Bingo·TicTacToe)
+  - 근거: 수정 전 sample parity gate가 두 handler의 `std::visit` 성공 평탄화를 모두 검출했다. accepted 대안을 명시적으로 확인하고 rejected를 request failure로 바꾼 뒤 gate와 Bingo·TicTacToe 전체 runner가 통과했다. level 거절을 client에서 만드는 검증은 SMP-CP-35에 남아 있다.
 - [x] **SMP-CP-52** (**버그**) — **Bingo가 draw 진행 중 카드 재제출을 받아** 이미 뽑힌 번호를 새 카드에 소급 적용한다. **승리를 조작할 수 있다**
   - 근거: 수정 전 공개 client의 중복 제출 오류 단언이 실패했다. domain이 이미 제출된 카드를 거부하도록 수정한 뒤 `./run_sample.sh`의 전체 client/server self-check와 관련 ctest 3개가 통과했다.
 - [x] **SMP-CP-53** (**버그**) — **Bingo `StopObservingBingoEventsReq`에 가드가 0개**다. **게임 중인 player를 방에서 쫓아낼 수 있다**

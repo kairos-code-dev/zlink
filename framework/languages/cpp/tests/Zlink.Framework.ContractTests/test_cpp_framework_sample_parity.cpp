@@ -326,6 +326,22 @@ TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
       << "CommerceApi must not own the OrderWorkflow continuation lifecycle";
 }
 
+TEST (CppFrameworkSampleParity, SampleRoomJoinHandlersRejectRejectedVariants)
+{
+    for (const auto &relative : {
+           "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
+           "match_bingo_actor_handler.hpp",
+           "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
+           "play_actor_join_game_handler.hpp"}) {
+        const auto path = cpp_language_root () / relative;
+        const auto handler = read_file (path);
+        EXPECT_EQ (handler.find ("std::visit"), std::string::npos)
+          << path << " must not flatten accepted and rejected actor join variants";
+        EXPECT_NE (handler.find ("actor_join_accepted_t"), std::string::npos)
+          << path << " must explicitly require an accepted actor join";
+    }
+}
+
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
     const std::vector<std::string> banned_patterns{"configure_registry_host",

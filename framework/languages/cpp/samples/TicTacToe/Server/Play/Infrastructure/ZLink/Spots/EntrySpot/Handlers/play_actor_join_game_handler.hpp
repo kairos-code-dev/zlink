@@ -16,7 +16,12 @@ tictactoe_entry_spot_t::join_game (const player_actor_t &actor,
     const auto spot_rid = spot_rid_t::from_string (request.room_id);
     const auto payload = tictactoe_game_join_req_t{request.room_id, actor.require_player ()};
     auto joined = co_await actor.context.join_spot (spot_rid, payload).async<join_game_res_t> ();
-    co_return std::visit ([] (const auto &value) { return value.reply; }, joined);
+    const auto *accepted = std::get_if<actor_join_accepted_t<join_game_res_t>> (&joined);
+    if (accepted == nullptr) {
+        throw framework_exception_t (framework_error_kind_t::request_failed,
+                                     "TicTacToe room join was rejected");
+    }
+    co_return accepted->reply;
 }
 
 } // namespace zlink::samples::tictactoe

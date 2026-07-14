@@ -8,7 +8,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -773,6 +775,67 @@ public sealed partial class UnhandledDispatchPolicyTests
         await runner.StopAsync();
     }
 
+    [Fact]
+    public async Task SpotActorSendMalformedPayload_ReportsPayloadDecodeFailureBeforeHandlerInvocation()
+    {
+        var observer = new CapturingMessageFlowObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.SetMessageFlowObserver(observer);
+        var probe = new TestActorSendProbe();
+        using var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
+        var logger = new CapturingLogger<ZLinkSpotActorPacketDispatcher>();
+        var registry = new ZLinkSpotActorHandlerRegistry(
+            ZLinkSpotActorHandlerSurface.UserSpot,
+            typeof(TestActorSpot));
+        registry.AddPacket(
+            typeof(TestActorSendHandler),
+            typeof(TestActor),
+            "malformed-actor-send");
+        registry.Bind();
+        await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(services);
+        var invoker = new ZLinkSpotHandlerInvoker(
+            handlerInstances,
+            new TestActorSpot(),
+            new ZLinkCodecRegistryBuilder(),
+            null);
+        var dispatcher = new ZLinkSpotActorPacketDispatcher(
+            () => registry,
+            () => invoker,
+            new ZLinkDispatchErrorReporter(
+                options,
+                logger,
+                observerPump: observerPump),
+            logger);
+        var actor = new TestActor("actor-1");
+        var runtimeState = new ZLinkActorRuntimeState(actor.ActorId);
+        runtimeState.BindActorInstance(actor);
+        using var body = Message.From("{");
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "malformed-actor-send",
+            ZlinkStreamMetadata.Empty);
+
+        await dispatcher.DispatchAsync(actor, runtimeState, header, body, CancellationToken.None);
+
+        var observed = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ZLinkMessageFlowOutcome.Dropped, observed.Outcome);
+        Assert.Equal(ZLinkDispatchErrorSurface.SpotActor, observed.Surface);
+        Assert.Equal(ZLinkDispatchMessageKind.ActorSend, observed.MessageKind);
+        Assert.Equal(ZLinkDispatchErrorReason.PayloadDecodeFailed, observed.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, observed.ErrorAction);
+        Assert.Equal("malformed-actor-send", observed.PacketName);
+        Assert.Equal("actor-1", observed.ActorId);
+        Assert.Equal(0, probe.InvocationCount);
+        await runner.StopAsync();
+    }
+
     private static async Task<Received> ReceiveAsync(
         ZLinkBackendRouterSocketWrapper router,
         TimeSpan timeout)
@@ -1006,6 +1069,28 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         public IZLinkActorContext Context
             => throw new InvalidOperationException("Context is not needed by this test.");
+    }
+
+    private sealed class TestActorSpot;
+
+    private sealed class TestActorSendProbe
+    {
+        public int InvocationCount;
+    }
+
+    private sealed class TestActorSendHandler(TestActorSendProbe probe)
+        : IZLinkSpotActorSendHandler<TestActorSpot, TestActor, TestRequest>
+    {
+        public ValueTask HandleAsync(
+            TestActorSpot spot,
+            TestActor actor,
+            ZLinkSpotActorSendContext context,
+            TestRequest message,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref probe.InvocationCount);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class CapturingMessageFlowObserver : IZLinkMessageFlowObserver

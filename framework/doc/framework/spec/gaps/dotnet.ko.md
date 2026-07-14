@@ -234,7 +234,8 @@
 - [ ] **IMP-DN-03** (결함) — 05 §3.3·31 §15
 - [x] **IMP-DN-04** (결함) — 51
   — `CreateAsync`가 activation을 catalog에 commit한 직후 user Spot 생성 계측을 기록해 close와 gauge가 균형을 이룬다. metric/lifecycle 테스트 16건, 전체 unit 630건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-05** (결함) — 05 §2.4.3
+- [x] **IMP-DN-05** (결함) — 05 §2.4.3
+  — actor payload codec 경계가 decode 예외를 handler 예외와 구분하고 user Spot·Entry Spot의 send/request 정책이 각각 `Drop`·`ReplyError`로 `PayloadDecodeFailed`를 보고한다. 실패 게이트 2건과 Entry Spot actor 테스트를 포함한 관련 테스트 62건, 전체 unit 634건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-06** (결함) — 40 §3·§8.2
   — store resolver가 등록된 `ZLinkLocationOptions.ListPageSize`를 모든 Spot 목록 page request에 사용한다. location 관련 테스트 37건, 전체 unit 632건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-07** (결함) — 20 §8
@@ -267,7 +268,7 @@
 | **IMP-DN-02** | 결함 | [22 §5](../server/22-actor-model.ko.md)·[20 §8](../server/20-spot-messaging.ko.md): handler 중복 등록은 **startup 오류** | 중복 검사가 spot **활성화 시점**의 `Bind()`에만 있다(`ZLinkSpotPacketRegistry.cs:25-38`). host는 정상 기동하고 **첫 방 생성에서** 터지며, 그것도 `SpotCreateFailed`로 감싸여 설정 오류로 보이지 않는다. Entry Spot 중복은 startup에서 잡히므로 **두 표면이 비대칭** |
 | **IMP-DN-03** | 결함 | [05 §3.3](../05-framework-api.ko.md)·[31 §15](../server/31-session-actor-dispatch.ko.md): send는 nonblocking 시도 → **pending queue + ready 알림** | `Runtime/Streams/ZLinkBoundSessionService.cs:82-90` — bound-session push만 `SendFlags.DontWait` 실패 시 **즉시 `RouteNotConnected` 예외**. 클라이언트 소켓 하나가 잠깐 차면 브로드캐스트 타이머 턴이 죽는다 |
 | **IMP-DN-04** | 결함 | [51](../server/51-runtime-metrics.ko.md): `zlink.spot.count`는 현재 유지 중인 SPOT 수 | `ZLinkSpotNodeCatalog.cs` — `RecordSpotCreated`가 `GetOrCreateAsync`(:354)에만 있고 **`CreateAsync`에는 없다.** 종료는 양쪽 다 기록(:548, :581). `CreateAsync`만 쓰는 앱은 5회 만들고 닫으면 게이지가 **-5** |
-| **IMP-DN-05** | 결함 | [05 §2.4.3](../05-framework-api.ko.md): reason 닫힌 집합에 `PayloadDecodeFailed` | `ZLinkSpotActorPacketDispatcher.cs:35-51` — decode가 handler 호출 **안에서** 일어나 모두 `HandlerException`으로 보고된다. actor 표면에서 `PayloadDecodeFailed`가 **한 번도 발생하지 않는다** |
+| **IMP-DN-05** | 결함 | [05 §2.4.3](../05-framework-api.ko.md): reason 닫힌 집합에 `PayloadDecodeFailed` | 재검증 결과 user Spot의 `ZLinkSpotActorPacketDispatcher`뿐 아니라 같은 invoker를 사용하는 Entry Spot actor 경로도 decode 예외를 handler 예외로 분류했다. actor payload codec이 decode 실패를 명시적으로 구분하고 두 표면의 send/request 경계가 `PayloadDecodeFailed`로 처리한다 |
 | **IMP-DN-06** | 결함 | [40 §3·§8.2](../server/40-location-runtime.ko.md): 목록 조회는 `list page size` option을 따른다 | `ZLinkStoreLocationResolvers.cs:90-98` — `new ZLinkPageRequest(1000, …)` **하드코딩**. drain 대상 탐색 경로라 option이 무시된다 |
 | **IMP-DN-07** | 결함 | [20 §8](../server/20-spot-messaging.ko.md): **같은 Entry Spot 타입 중복**은 설정 오류 | `ZLinkSpotRegistrationValidator.cs:55-63` — spot factory는 노드 간 중복을 검사하는데 **Entry Spot 타입은 안 한다.** 두 SpotNode가 같은 Entry Spot 타입을 등록해도 기동된다 |
 

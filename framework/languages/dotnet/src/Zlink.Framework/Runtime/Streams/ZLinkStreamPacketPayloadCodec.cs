@@ -12,6 +12,23 @@ internal static class ZLinkStreamPacketPayloadCodec
         ZLinkCodecRegistryBuilder codecs,
         IZlinkStreamCompressionCodec? compressionCodec)
     {
+        try
+        {
+            return DecodeCore(header, payloadMessage, messageType, codecs, compressionCodec);
+        }
+        catch (Exception exception)
+        {
+            throw new ZLinkStreamPayloadDecodeException(exception);
+        }
+    }
+
+    private static object? DecodeCore(
+        ZlinkStreamHeader header,
+        Message payloadMessage,
+        Type messageType,
+        ZLinkCodecRegistryBuilder codecs,
+        IZlinkStreamCompressionCodec? compressionCodec)
+    {
         if (messageType == typeof(Message)) return payloadMessage;
 
         var payload = payloadMessage.AsReadOnlyMemory();
@@ -91,4 +108,10 @@ internal static class ZLinkStreamPacketPayloadCodec
     {
         return ZLinkEnvelopeCodec.EncodeJsonBytes(message, messageType);
     }
+}
+
+internal sealed class ZLinkStreamPayloadDecodeException(Exception decodeException)
+    : Exception("The actor packet payload could not be decoded.", decodeException)
+{
+    public Exception DecodeException { get; } = decodeException;
 }

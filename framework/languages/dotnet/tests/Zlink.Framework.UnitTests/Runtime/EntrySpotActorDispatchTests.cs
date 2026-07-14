@@ -1671,6 +1671,49 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task EntrySpotActorDispatch_MalformedRequestPayload_ReportsPayloadDecodeFailure()
+    {
+        var node = new CapturingSpotNode();
+        var observer = new CapturingMessageFlowObserver();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node, observer);
+        try
+        {
+            RegisterProbeActor(runtime, actorRef);
+
+            await DispatchEntryActorPartsAsync(
+                runtime,
+                CreateActorRequestParts(
+                    actorRef,
+                    "request",
+                    "ignored",
+                    requestId: 46,
+                    flags: 1,
+                    malformedPayload: true),
+                CancellationToken.None);
+
+            var reply = Assert.Single(node.NoBindReplies);
+            var decoded = DecodeReplyFrame<ZLinkStreamWireError>(Assert.Single(reply.Parts));
+            Assert.Equal(ZlinkStreamMessageKind.Error, decoded.Header.Kind);
+            Assert.Equal(nameof(JsonException), decoded.Payload.Code);
+            Assert.Empty(node.BoundSessionReplies);
+
+            var observed = await observer.WaitAsync(
+                ZLinkMessageFlowOutcome.Error,
+                TimeSpan.FromSeconds(2));
+            Assert.Equal(ZLinkDispatchErrorSurface.SpotActor, observed.Surface);
+            Assert.Equal(ZLinkDispatchMessageKind.ActorRequest, observed.MessageKind);
+            Assert.Equal(ZLinkDispatchErrorReason.PayloadDecodeFailed, observed.ErrorReason);
+            Assert.Equal(ZLinkDispatchErrorAction.ReplyError, observed.ErrorAction);
+            Assert.Equal("request", observed.PacketName);
+            Assert.Equal("actor-a", observed.ActorId);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task EntrySpotActorDispatch_NoBindMissingActor_RepliesNoBindError()
     {
         var node = new CapturingSpotNode();
@@ -2499,7 +2542,8 @@ public sealed partial class EntrySpotActorDispatchTests
         string packetName,
         string value,
         ulong requestId,
-        uint flags)
+        uint flags,
+        bool malformedPayload = false)
     {
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
@@ -2525,7 +2569,9 @@ public sealed partial class EntrySpotActorDispatchTests
                 RoutingId.From("source-session"),
                 requestId,
                 flags,
-                Message.From(ZLinkEnvelopeCodec.EncodeJsonBytes(value, typeof(string))),
+                malformedPayload
+                    ? Message.From("{")
+                    : Message.From(ZLinkEnvelopeCodec.EncodeJsonBytes(value, typeof(string))),
                 false)
         ];
     }

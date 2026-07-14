@@ -40,6 +40,14 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
 
                 scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
             }
+            catch (ZLinkStreamPayloadDecodeException ex)
+            {
+                scope.PayloadDecodeFailed(
+                    logger,
+                    dispatchErrors,
+                    ZLinkDispatchErrorAction.Drop,
+                    ex.DecodeException);
+            }
             catch (Exception ex)
             {
                 scope.HandlerException(
@@ -83,6 +91,15 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
 
                 return reply;
+            }
+            catch (ZLinkStreamPayloadDecodeException ex)
+            {
+                scope.PayloadDecodeFailed(
+                    logger,
+                    dispatchErrors,
+                    ZLinkDispatchErrorAction.ReplyError,
+                    ex.DecodeException);
+                return ZLinkActorReply.FromError(ex.DecodeException);
             }
             catch (Exception ex)
             {

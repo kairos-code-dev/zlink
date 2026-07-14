@@ -24,13 +24,29 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             // The only caller (the dispatch router's send path) already
             // holds this actor's dispatch turn; re-entering the mailbox
             // here deadlocks the actor permanently.
-            await activation.InvokeActorPacketAsync(
-                    descriptor,
-                    actor,
-                    header,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await activation.InvokeActorPacketAsync(
+                        descriptor,
+                        actor,
+                        header,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ZLinkStreamPayloadDecodeException ex)
+            {
+                CreateActorFlow(
+                        actor,
+                        header,
+                        ZLinkDispatchMessageKind.ActorSend,
+                        "ActorSend")
+                    .PayloadDecodeFailed(
+                        ZLinkStandardErrorLogger.Instance,
+                        _dispatchErrors,
+                        ZLinkDispatchErrorAction.Drop,
+                        ex.DecodeException);
+            }
 
             return true;
         }
@@ -55,7 +71,11 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                 || descriptor is null)
                 continue;
 
-            var flow = CreateActorRequestFlow(actor, header);
+            var flow = CreateActorFlow(
+                actor,
+                header,
+                ZLinkDispatchMessageKind.ActorRequest,
+                "ActorRequest");
             flow.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
             // A caller inside the actor's dispatch turn (the dispatch
@@ -86,6 +106,17 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                 flow.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);
                 return new EntrySpotActorReplyDispatchResult(true, reply);
             }
+            catch (ZLinkStreamPayloadDecodeException ex)
+            {
+                flow.PayloadDecodeFailed(
+                    ZLinkStandardErrorLogger.Instance,
+                    _dispatchErrors,
+                    ZLinkDispatchErrorAction.ReplyError,
+                    ex.DecodeException);
+                return new EntrySpotActorReplyDispatchResult(
+                    true,
+                    ZLinkActorReply.FromError(ex.DecodeException));
+            }
             catch (Exception ex)
             {
                 _dispatchErrors.Report(new ZLinkDispatchFailure(
@@ -104,15 +135,17 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         return new EntrySpotActorReplyDispatchResult(false, null);
     }
 
-    private static ZLinkDispatchFlowScope CreateActorRequestFlow(
+    private static ZLinkDispatchFlowScope CreateActorFlow(
         IZLinkActor actor,
-        ZlinkStreamHeader header)
+        ZlinkStreamHeader header,
+        ZLinkDispatchMessageKind messageKind,
+        string kindName)
     {
         return new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.SpotActor,
             "SpotActor",
-            ZLinkDispatchMessageKind.ActorRequest,
-            "ActorRequest",
+            messageKind,
+            kindName,
             header.Name,
             correlationId: header.CorrelationId,
             actorId: actor.ActorId,

@@ -12,6 +12,10 @@
 
 ## 검증 경로 판정
 
+publisher와 모든 subscriber는 실행마다 만든 전용 Redis location store를 함께 사용한다. publisher의
+peer row는 framework lifecycle이 등록하며 subscriber는 고정 publisher endpoint를 받지 않고 이 row를
+조회해 fanout 연결을 설정한다.
+
 Pub/Sub fanout의 수신자는 client stream session이 아니라 subscriber 역할 server다. 공통 E2E README는
 이 경우 subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로 사용할 수 있다고
 정리한다. 따라서 이 feature map은 별도 client stream connector observer를 요구하지 않는다.
@@ -20,5 +24,5 @@ Pub/Sub fanout의 수신자는 client stream session이 아니라 subscriber 역
 
 - `timeout 420s framework/languages/node/e2e/PubSub/run_e2e.sh`
   - 결과: `pubsub e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-093248-3426974`
+  - 최신 확인 로그 디렉터리: `logs/20260715-074718-2239660`
   - 통과 scenario: `PS-A1`, `PS-A2`, `PS-A3`, `PS-A4`, `PS-B1`, `PS-B2`, `PS-C1`

@@ -11,7 +11,8 @@ export class ServerProcessLauncher {
     const config = this.writeConfig(name, {
       rid: name,
       httpUrl,
-      publisherEndpoint: this.options.publisherEndpoint,
+      redisEndpoint: this.options.redisEndpoint,
+      redisKeyPrefix: this.options.redisKeyPrefix,
       evidenceFile: path.join(this.options.logDir, evidenceFile),
       logDir: this.options.logDir,
       handlerDelayMs: 0
@@ -29,6 +30,8 @@ export class ServerProcessLauncher {
       rid: 'pub-a',
       httpUrl: this.options.publisherUrl,
       publisherEndpoint: this.options.publisherEndpoint,
+      redisEndpoint: this.options.redisEndpoint,
+      redisKeyPrefix: this.options.redisKeyPrefix,
       evidenceFile: path.join(this.options.logDir, 'pub-restart.evidence.log'),
       logDir: this.options.logDir
     });

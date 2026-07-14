@@ -6,7 +6,8 @@ export interface SubscriberOptions {
   readonly rid: string;
   readonly httpUrl: string;
   readonly logDir: string;
-  readonly publisherEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly handlerDelayMs: number;
 }
@@ -19,7 +20,8 @@ export function validateSubscriberOptions(value: unknown): SubscriberOptions {
     rid: optional(values, 'rid') ?? 'subscriber',
     httpUrl: optional(values, 'httpUrl') ?? 'http://127.0.0.1:0',
     logDir: optional(values, 'logDir') ?? 'logs',
-    publisherEndpoint: required(values, 'publisherEndpoint'),
+    redisEndpoint: required(values, 'redisEndpoint'),
+    redisKeyPrefix: required(values, 'redisKeyPrefix'),
     evidenceFile: optional(values, 'evidenceFile'),
     handlerDelayMs
   };

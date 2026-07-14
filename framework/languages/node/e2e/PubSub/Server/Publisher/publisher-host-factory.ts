@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode, type ZLinkFanoutClient } from '@zlink-systems/framework';
 import { ZLINK_FANOUT_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PubSubNames } from '../../Shared/messages';
 import { validatePublisherOptions, type PublisherOptions } from './Configuration/publisher-options';
 import { PUBSUB_OPTIONS, createPubSubConfigurationModule } from '../../configuration';
@@ -32,7 +33,8 @@ export async function startPublisherHost(): Promise<void> {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.useInMemoryLocationStores();
+          builder.addLocationStore(createRedisLocationStore(options));
+          Object.assign(builder.configureLocations(), locationMessagingOptions());
           builder.addFanoutChannel(PubSubNames.channel)
             .enablePublisher(options.publisherEndpoint);
           return builder.build();

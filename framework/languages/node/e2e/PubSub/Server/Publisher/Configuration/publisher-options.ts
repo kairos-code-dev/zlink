@@ -5,6 +5,8 @@ export interface PublisherOptions {
   readonly httpUrl: string;
   readonly logDir: string;
   readonly publisherEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
 }
 
@@ -15,6 +17,8 @@ export function validatePublisherOptions(value: unknown): PublisherOptions {
     httpUrl: optional(values, 'httpUrl') ?? 'http://127.0.0.1:0',
     logDir: optional(values, 'logDir') ?? 'logs',
     publisherEndpoint: required(values, 'publisherEndpoint'),
+    redisEndpoint: required(values, 'redisEndpoint'),
+    redisKeyPrefix: required(values, 'redisKeyPrefix'),
     evidenceFile: optional(values, 'evidenceFile')
   };
 }

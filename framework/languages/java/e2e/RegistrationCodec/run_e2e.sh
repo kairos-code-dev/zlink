@@ -20,6 +20,11 @@ export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cach
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
+if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
+  echo "RegistrationCodec must use a 5s route settle limit" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"
@@ -193,7 +198,7 @@ if [[ "${run_main_scenarios}" == "true" ]]; then
   pids+=("$!")
   wait_port server "${SERVER_ENDPOINT}"
   wait_health server "${HTTP_ENDPOINT}"
-  sleep 1
+  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 if [[ "${run_mismatch_scenario}" == "true" ]]; then
@@ -204,7 +209,7 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
   pids+=("$!")
   wait_port mismatch-server "${MISMATCH_ENDPOINT}"
   wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
-  sleep 1
+  sleep "${ROUTE_SETTLE_SECONDS}"
 
   ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
@@ -212,7 +217,7 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
     "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
   pids+=("$!")
   wait_health codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-  sleep 1
+  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \

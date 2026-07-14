@@ -303,7 +303,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 
 - [x] **IMP-CP-12** (결함) — **spot을 닫아도 그 spot의 timer가 멈추지 않는다.** 닫힌 spot에 tick이 계속 들어가고 컨텍스트가 누수된다
   - 근거: 수정 전 spot timer 회귀 테스트에서 callback 안에서 close가 완료된 뒤에도 timer가 disposed되지 않아 종료 코드 22로 실패했다. `close_now()`가 lifecycle `on_closing` 뒤 context의 모든 native timer를 중지·dispose하도록 framework 책임으로 묶은 뒤 spot timer/runtime ctest 2개와 Bingo 전체 runner가 통과했다.
-- [ ] **IMP-CP-13** (결함) — location 모니터링이 **diff 없이 매 tick 이벤트를 발행**한다
+- [x] **IMP-CP-13** (결함) — location 모니터링이 **diff 없이 매 tick 이벤트를 발행**한다
+  - 근거: 수정 전 10ms polling 회귀에서 동일 snapshot의 status·topology·service summary가 75ms 동안 각각 8회 발행됐다. host가 직전 의미 상태를 보존하고 관측 시각과 row 순서를 제외한 diff가 있는 event 종류만 발행하도록 바꿨다. 유휴 중 각 1회, store health 변경 뒤 status만 정확히 1회 추가됨을 확인했고 monitoring test와 store location resolver 전체 26개 테스트가 통과했다.
 - [x] **IMP-CP-14** (결함) — 등록한 location polling 간격에 **숨은 1초 상한**이 걸린다
   - 근거: 수정 전 1.3초 interval 회귀 테스트에서 location query가 1.1초 안에 두 번 호출되어 실패했다. polling interval 계산이 숨은 1초 초기값 대신 검증된 첫 source interval에서 최소값을 구하도록 바꾼 뒤 monitoring 대상 4개와 store location resolver 전체 26개 테스트가 통과했다.
 - [ ] **IMP-CP-15** (결함) — 스펙이 정한 **spot source가 timer 실패 이벤트를 내지 못한다**

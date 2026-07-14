@@ -281,31 +281,46 @@ void monitoring_runtime_t::publish_location_snapshot (
   std::vector<location_topology_entry_t> topology,
   std::vector<location_service_summary_t> summary) const
 {
+    publish_location_changes (
+      std::move (source_name), std::move (status), true,
+      topology.empty () ? std::nullopt
+                        : std::optional<std::vector<location_topology_entry_t>> (
+                            std::move (topology)),
+      summary.empty () ? std::nullopt
+                       : std::optional<std::vector<location_service_summary_t>> (
+                           std::move (summary)));
+}
+
+void monitoring_runtime_t::publish_location_changes (
+  std::string source_name,
+  location_runtime_status_t status,
+  bool status_changed,
+  std::optional<std::vector<location_topology_entry_t>> topology,
+  std::optional<std::vector<location_service_summary_t>> summary) const
+{
     if (!contains_source (_state->location_sources, source_name)) {
         return;
     }
-    auto status_event = location_event_payload_t{runtime_event_base_t{source_name},
-                                                 location_event_kind_t::status_changed,
-                                                 status,
-                                                 {},
-                                                 {}};
-    publish (std::move (status_event));
-    if (topology.empty () && summary.empty ()) {
-        return;
+    if (status_changed) {
+        publish (location_event_payload_t{runtime_event_base_t{source_name},
+                                          location_event_kind_t::status_changed,
+                                          status,
+                                          {},
+                                          {}});
     }
-    if (!topology.empty ()) {
+    if (topology) {
         publish (location_event_payload_t{runtime_event_base_t{source_name},
                                           location_event_kind_t::topology_changed,
                                           status,
-                                          topology,
+                                          std::move (*topology),
                                           {}});
     }
-    if (!summary.empty ()) {
+    if (summary) {
         publish (location_event_payload_t{runtime_event_base_t{std::move (source_name)},
                                           location_event_kind_t::service_summary_changed,
                                           std::move (status),
                                           {},
-                                          std::move (summary)});
+                                          std::move (*summary)});
     }
 }
 

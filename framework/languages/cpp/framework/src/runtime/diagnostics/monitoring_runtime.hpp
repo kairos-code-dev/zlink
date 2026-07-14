@@ -52,6 +52,12 @@ class monitoring_runtime_t
                                     location_runtime_status_t status,
                                     std::vector<location_topology_entry_t> topology,
                                     std::vector<location_service_summary_t> summary) const;
+    void publish_location_changes (
+      std::string source_name,
+      location_runtime_status_t status,
+      bool status_changed,
+      std::optional<std::vector<location_topology_entry_t>> topology,
+      std::optional<std::vector<location_service_summary_t>> summary) const;
     void publish_spot_snapshot (spot_event_payload_t event) const;
     void publish_stream (stream_event_payload_t event) const;
     void publish_actor (actor_event_payload_t event) const;

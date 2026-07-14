@@ -6,11 +6,13 @@
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -33,6 +35,9 @@ class location_monitoring_host_service_t final : public hosted_service_t
             return;
         }
         _query = &services.get_required<location_runtime_query_t> ();
+        _last_status.reset ();
+        _last_topology.clear ();
+        _last_summaries.clear ();
         _stop.store (false, std::memory_order_release);
         _thread = std::thread ([this] { run (); });
     }
@@ -84,22 +89,84 @@ class location_monitoring_host_service_t final : public hosted_service_t
               _query->list_service_summaries (location_service_summary_filter_t{})
                 .result ()
                 .value ();
+            const auto status_changed = !_last_status || !same_status (*_last_status, status);
+            const auto topology_changed = !_last_status || !same_topology (_last_topology, topology);
+            const auto summaries_changed =
+              !_last_status || !same_summaries (_last_summaries, summaries);
             detail::monitoring_runtime_t runtime (_monitoring);
             for (const auto &source : _monitoring->location_sources) {
-                runtime.publish_location_snapshot (source.source_name, status, topology, summaries);
+                runtime.publish_location_changes (
+                  source.source_name, status, status_changed,
+                  topology_changed
+                    ? std::optional<std::vector<location_topology_entry_t>> (topology)
+                    : std::nullopt,
+                  summaries_changed
+                    ? std::optional<std::vector<location_service_summary_t>> (summaries)
+                    : std::nullopt);
             }
+            _last_status = std::move (status);
+            _last_topology = std::move (topology);
+            _last_summaries = std::move (summaries);
         }
         catch (...) {
             try {
                 auto status = _query->get_status ().result ().value ();
                 detail::monitoring_runtime_t runtime (_monitoring);
+                const auto changed = !_last_status || !same_status (*_last_status, status);
                 for (const auto &source : _monitoring->location_sources) {
-                    runtime.publish_location_snapshot (source.source_name, status, {}, {});
+                    runtime.publish_location_changes (source.source_name, status, changed,
+                                                      std::nullopt, std::nullopt);
                 }
+                _last_status = std::move (status);
             }
             catch (...) {
             }
         }
+    }
+
+    static bool same_status (const location_runtime_status_t &left,
+                             const location_runtime_status_t &right)
+    {
+        return left.store_healthy == right.store_healthy
+               && left.watch_enabled == right.watch_enabled
+               && left.polling_interval == right.polling_interval
+               && left.last_error == right.last_error
+               && left.owner_lease_healthy == right.owner_lease_healthy;
+    }
+
+    static bool same_topology_entry (const location_topology_entry_t &left,
+                                     const location_topology_entry_t &right)
+    {
+        return left.kind == right.kind && left.mesh_name == right.mesh_name
+               && left.role == right.role && left.node_rid == right.node_rid
+               && left.spot_rid == right.spot_rid && left.actor_id == right.actor_id
+               && left.endpoint == right.endpoint && left.state == right.state
+               && left.desired_count == right.desired_count
+               && left.ready_count == right.ready_count && left.error_code == right.error_code;
+    }
+
+    static bool same_topology (const std::vector<location_topology_entry_t> &left,
+                               const std::vector<location_topology_entry_t> &right)
+    {
+        return left.size () == right.size ()
+               && std::is_permutation (left.begin (), left.end (), right.begin (),
+                                       same_topology_entry);
+    }
+
+    static bool same_summary (const location_service_summary_t &left,
+                              const location_service_summary_t &right)
+    {
+        return left.mesh_name == right.mesh_name
+               && left.auto_connect_type == right.auto_connect_type && left.role == right.role
+               && left.total_count == right.total_count && left.ready_count == right.ready_count
+               && left.lost_count == right.lost_count && left.error_count == right.error_count;
+    }
+
+    static bool same_summaries (const std::vector<location_service_summary_t> &left,
+                                const std::vector<location_service_summary_t> &right)
+    {
+        return left.size () == right.size ()
+               && std::is_permutation (left.begin (), left.end (), right.begin (), same_summary);
     }
 
     std::shared_ptr<detail::monitoring_runtime_state_t> _monitoring;
@@ -108,6 +175,9 @@ class location_monitoring_host_service_t final : public hosted_service_t
     std::thread _thread;
     std::mutex _gate;
     std::condition_variable _wake;
+    std::optional<location_runtime_status_t> _last_status;
+    std::vector<location_topology_entry_t> _last_topology;
+    std::vector<location_service_summary_t> _last_summaries;
 };
 
 } // namespace zlink::framework::runtime

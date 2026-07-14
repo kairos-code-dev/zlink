@@ -253,12 +253,13 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
 {
   public:
     bool fail_lists = false;
+    std::atomic_bool store_healthy{true};
     std::atomic_int status_calls{0};
 
     zlink::framework::task_t<location_runtime_status_t> get_status () override
     {
         ++status_calls;
-        return completed (location_runtime_status_t{.store_healthy = true,
+        return completed (location_runtime_status_t{.store_healthy = store_healthy.load (),
                                                     .watch_enabled = false,
                                                     .polling_interval =
                                                       std::chrono::milliseconds (10),
@@ -1740,7 +1741,16 @@ TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostPublishesSnaps
         return status_events.load () > 0 && topology_events.load () > 0
                && summary_events.load () > 0;
     }));
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    EXPECT_EQ (1, status_events.load ());
+    EXPECT_EQ (1, topology_events.load ());
+    EXPECT_EQ (1, summary_events.load ());
+
+    query->store_healthy.store (false);
+    EXPECT_TRUE (wait_until ([&] { return status_events.load () == 2; }));
     service.stop ();
+    EXPECT_EQ (1, topology_events.load ());
+    EXPECT_EQ (1, summary_events.load ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostFallsBackToStatusOnly)

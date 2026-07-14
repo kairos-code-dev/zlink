@@ -258,6 +258,12 @@ int main ()
     gate.require (runner.find ("ObservabilityOps") != std::string::npos, "CPP-G0-E2E-002",
                   "run_e2e_all.sh does not register ObservabilityOps");
 
+    /* CPP-G0-E2E-003 — the integrated runner uses the eleven common E2E configs. */
+    gate.require (runner.find ("SpotActorTransfer") != std::string::npos, "CPP-G0-E2E-003",
+                  "run_e2e_all.sh does not register Config 10 SpotActorTransfer");
+    gate.require (runner.find ("DeliveryDispatch") == std::string::npos, "CPP-G0-E2E-003",
+                  "run_e2e_all.sh registers the non-contract DeliveryDispatch fork");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

@@ -492,7 +492,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 ### 체크리스트 — E2E
 
-- [ ] **E2E-CP-01** (결함) — **Config 10이 통합 게이트에서 아예 안 돈다.** 대신 문서에 없는 config가 돈다
+- [x] **E2E-CP-01** (결함) — **Config 10이 통합 게이트에서 아예 안 돈다.** 대신 문서에 없는 config가 돈다
+  - 근거: 수정 전 target-contract gate가 `SpotActorTransfer` 누락과 문서 밖 `DeliveryDispatch` 등록을 모두 검출했다. 통합 목록을 공통 11개 config에 맞춘 뒤 gate가 통과했고, `./run_e2e_all.sh SpotActorTransfer:ST-A1`이 forward·reverse·shuffle 세 변형에서 모두 통과했다.
 - [ ] **E2E-CP-02** (결함) — **Config 9 Track A(P0 전부)가 이름만 그렇다.** session gateway 역할도 stream connector도 없다
 - [ ] **E2E-CP-03** (결함) — **Config 11이 구조 자체가 규약 밖**이다(Client 없음·env role 스위치·`OrderWorkflow` 역할 0건)
 - [ ] **E2E-CP-04** (결함) — **PubSub client 시나리오가 아무것도 단언하지 않는다**

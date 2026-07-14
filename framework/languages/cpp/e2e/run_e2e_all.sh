@@ -19,10 +19,10 @@ CONFIGS=(
   PubSub
   ResilienceLifecycle
   DiscoveryRegistryHa
-  DeliveryDispatch
   RuntimeMonitoring
   AutomaticTurnDispatch
   ToActorMessaging
+  SpotActorTransfer
   ObservabilityOps
 )
 

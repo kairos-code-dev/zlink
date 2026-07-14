@@ -19,10 +19,7 @@ import { TICTACTOE_GAME_ROOM_PROVISIONER, TicTacToeGameCreator } from './Applica
 import { ZLinkTicTacToeGameRoomProvisioner } from './Infrastructure/ZLink/tictactoe-game-room-provisioner';
 import { PlaySessionFactory } from './Infrastructure/ZLink/Sessions/play-session-factory';
 import { PLAY_STREAM_ENDPOINT } from './play-tokens';
-import {
-  createTicTacToeLocationStore,
-  RedisRoomRouteStore
-} from '../Configuration/redis-room-route-store';
+import { createTicTacToeLocationStore } from '../Configuration/location-store';
 import { TICTACTOE_SAMPLE_CONFIG, createTicTacToeConfigurationModule } from '../Configuration/sample-config';
 import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
 function createTicTacToePlayModule() {
@@ -83,7 +80,6 @@ function createTicTacToePlayModule() {
         inject: [TICTACTOE_SAMPLE_CONFIG],
         useFactory: (config: TicTacToeSampleConfig) => config.playStreamEndpoint
       },
-      RedisRoomRouteStore,
       { provide: TICTACTOE_GAME_ROOM_PROVISIONER, useClass: ZLinkTicTacToeGameRoomProvisioner },
       TicTacToeGameCreator,
       CreateGameHandler,

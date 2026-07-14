@@ -1148,6 +1148,37 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
   assert.deepEqual(payloads, ['first-a']);
 });
 
+test('ZLinkSpotManager caller cancellation does not cancel shared getOrCreate activation', async () => {
+  class TimerHandler {
+    async handle() {}
+  }
+  class StageSpot {}
+  const controller = new AbortController();
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    spotTimerHandlers: [{
+      spotType: StageSpot,
+      handlerType: TimerHandler,
+      name: 'heartbeat',
+      periodMs: 60_000
+    }]
+  });
+
+  const canceledCaller = manager.getOrCreate(
+    StageSpot,
+    'shared-cancel-room',
+    controller.signal
+  );
+  const waitingCaller = manager.getOrCreate(StageSpot, 'shared-cancel-room');
+  controller.abort();
+
+  await assert.rejects(canceledCaller, /aborted/);
+  const result = await waitingCaller;
+  assert.equal(result.state, framework.ZLinkSpotCreateState.Existing);
+  assert.deepEqual(await manager.find('shared-cancel-room'), { spotRid: 'shared-cancel-room' });
+  await manager.close('shared-cancel-room');
+});
+
 test('ZLinkSpotManager reserves same-turn getOrCreate before activation yields', async () => {
   let constructed = 0;
   const release = createDeferred();

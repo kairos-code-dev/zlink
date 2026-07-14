@@ -25,7 +25,7 @@ import type {
 export { createSpotHandle, resolveSpotHandle } from './spot-handle';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
-import { throwIfAborted } from '../abort';
+import { awaitWithAbort, throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
   ZLinkRuntimeEventPublisher
@@ -254,17 +254,18 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
+    throwIfAborted(args.signal);
     const operation = this.activations.getOrBegin(spotType, spotRid, async () => {
       const ownedRequest = args.request === undefined
         ? BindingMessage.from(Buffer.alloc(0))
         : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
       try {
-        return await this.createActivation(spotType, spotRid, ownedRequest, args.signal);
+        return await this.createActivation(spotType, spotRid, ownedRequest);
       } finally {
         ownedRequest.close();
       }
     });
-    return await operation.ready;
+    return await awaitWithAbort(operation.ready, args.signal);
   }
 
   async find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null> {

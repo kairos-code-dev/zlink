@@ -371,7 +371,11 @@ public final class ConsumerScenario {
 
         post(adminA() + "/admin/drain");
         waitForWeight(adminA(), 0);
-        Set<String> drained = collectStableProvidersWithout("b4-drained", "api-a", "api-b");
+        Set<String> drained = collectProvidersExactly("b4-drained", 40);
+        ensure(drained.equals(Set.of("api-b")),
+            "RL-B4 drained traffic reached an unexpected provider: " + drained);
+        ensure(!hasEvidenceWithPrefix(adminA(), "WorkReq", "b4-drained-"),
+            "RL-B4 drained provider recorded a new request");
         ensure(get(adminA() + "/health").contains("ok"), "RL-B4 drained provider health failed");
         waitForTopology(2);
 
@@ -630,6 +634,22 @@ public final class ConsumerScenario {
         return providers;
     }
 
+    private Set<String> collectProvidersExactly(String prefix, int attempts) {
+        Set<String> providers = new HashSet<>();
+        for (int index = 0; index < attempts; index++) {
+            String value = prefix + "-" + index;
+            Contracts.WorkRes reply = client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkReq(value))
+                .timeout(Duration.ofSeconds(3))
+                .submit(Contracts.WorkRes.class).toCompletableFuture().join();
+            ensure(reply.value().equals("work:" + value),
+                "reply payload mismatch for " + value);
+            providers.add(reply.providerRid());
+        }
+        return providers;
+    }
+
     private Set<String> collectStableProvidersWithout(
         String prefix,
         String forbidden,
@@ -854,6 +874,22 @@ public final class ConsumerScenario {
                 }
             }
         } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private boolean hasEvidenceWithPrefix(String baseUrl, String marker, String valuePrefix) {
+        try {
+            JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+            ensure(entries.isArray(), "provider evidence response has no entries array");
+            for (JsonNode entry : entries) {
+                if (marker.equals(entry.path("marker").asText())
+                    && entry.path("value").asText().startsWith(valuePrefix)) {
+                    return true;
+                }
+            }
+        } catch (IOException error) {
+            throw new IllegalStateException("failed to parse provider evidence", error);
         }
         return false;
     }

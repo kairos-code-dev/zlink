@@ -789,13 +789,15 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 **"실패할 수 없는 단언"이 이 여섯 config를 관통한다.** 아래는 그중 게이트가 **구조적으로 실패
 불가능**한 것만 추렸다.
 
+- [x] **E2E-JV-09** (**가짜 통과**) — RL-B4가 drain된 provider의 신규 request evidence 부재를 확인하지 않는다.
+  - 근거: drain 호출을 제거한 fault injection에서 새 gate가 실패하고 `api-a`의 실제 request flow가 기록됐으며, 정상 drain 뒤 고정된 40개 요청이 모두 `api-b`에서 처리되고 `api-a` evidence에는 해당 요청 prefix가 없음을 확인해 `scenario RL-B4 passed`를 얻었다.
 - [x] **E2E-JV-10** (**가짜 통과**) — RL-B3가 종료된 provider의 peer row 부재를 확인하지 않는다.
   - 근거: provider를 유지한 fault injection에서 새 부재 gate가 실패했으며, 정상 종료 뒤 `api-b` row 부재와 `api-a` 안정 수렴을 확인해 `scenario RL-B3 passed`를 얻었다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **E2E-KT-05** (**빈 시나리오**) | [config-5 RL-D1](../../common/e2e/config-5-resilience-lifecycle.ko.md): **많은 subscriber/consumer로 높은 fanout 부하**를 주고 누락·붕괴 없이 처리되는지 본다 | Kotlin `RlD1HighFanoutScenario.kt` **파일 전체**가 이것이다 — `fun ClientScenarioContext.runHighFanoutEvidenceScenario() { println("scenario RL-D1 passed") }`. runner가 그 줄을 grep한다. **검증 코드가 0줄이다.** feature-map은 "high fanout burst에서 정상 reply를 유지하는지 확인한다"고 적는다 |
-| **E2E-JV-09** (**가짜 통과**) | [config-5 RL-B4(**P0**)](../../common/e2e/config-5-resilience-lifecycle.ko.md): drain 후 신규 request가 **그 노드 evidence에 더 기록되지 않고** 다른 노드가 받는다 | `collectProviders(prefix, attempts, 1)`이 **첫 성공 응답에서 반환한다.** ⇒ provider 2개에 drain이 **완전히 망가져도** 트래픽이 50/50이라 30번 중 한 번은 살아 있는 노드에 떨어져 통과한다. **drain된 노드의 `/evidence`를 한 번도 보지 않는다.** RL-A1/A2/A4/B2/B3/B5/C2가 전부 이 helper를 쓴다 |
+| **E2E-JV-09** (**가짜 통과**) | [config-5 RL-B4(**P0**)](../../common/e2e/config-5-resilience-lifecycle.ko.md): drain 후 신규 request가 **그 노드 evidence에 더 기록되지 않고** 다른 노드가 받는다 | **해결:** drain 이후 고정된 40개 요청의 모든 응답이 `api-b`인지 확인하고, 같은 요청 prefix가 `api-a`의 `/evidence`에 한 건도 없는지 직접 검증한다. |
 | **E2E-JV-10** (**가짜 통과**) | [config-5 RL-B3](../../common/e2e/config-5-resilience-lifecycle.ko.md): 종료 후 provider의 peer row가 store에서 **제거된다** | **해결:** `waitForTopologyWithout("api-b", 30)`으로 row 부재를 직접 확인한 뒤, 연결 reconcile 중 일시 실패를 허용하면서 최종 성공 구간에는 `api-a`만 나타나는지 검증한다. |
 | **E2E-JV-11** (**가짜 통과**) | [config-6 §3](../../common/e2e/config-6-store-failure-recovery.ko.md): harness가 Redis process를 **정지했다가 재기동**한다. SF-D2는 복구 후 각 노드가 **자기 row를 다시 upsert**하는지 본다 | Java는 Redis 앞에 **파이썬 TCP 프록시**를 세우고 그 프록시를 `kill -STOP`한다. Kotlin은 `docker pause`. ⇒ **peer row도 Redis 연결도 그대로 살아 있다.** SF-D2가 잡아야 할 결함(복구 후 row를 다시 안 올리는 구현)이 **관측 불가능하고**, Redis 클라이언트 재연결도 **한 번도 실행되지 않는다** |
 | **E2E-JV-12** (**가짜 통과**) | [config-6 SF-E1](../../common/e2e/config-6-store-failure-recovery.ko.md): store client가 스레드나 이벤트 루프를 **점유하지 않음을 실측으로 증명**한다 | 지연을 **앱 데코레이터의 `CompletableFuture.delayedExecutor`**로 주입한다 — **정의상 스레드를 안 잡는 타이머**다. 진짜 Redis 클라이언트는 **전혀 느려지지 않는다.** 그리고 단언은 **자기가 넣은 타이머가 돌았는지**를 잰다. ⇒ **모든 Redis 호출마다 I/O 스레드를 붙잡는 store client도 통과한다** |

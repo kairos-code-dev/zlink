@@ -684,11 +684,7 @@ async function assertHttpBoundPush(
 }
 
 async function createSpot(node: HttpClient, spotRid: string, mode = 'accept'): Promise<CreateSpotRes> {
-  const created = await post<CreateSpotRes>(node, '/spots', { spotRid, mode } satisfies CreateSpotReq);
-  // The Redis-backed public resolver observes a new Spot on its polling turn.
-  // Waiting here keeps the scenario on the supported routed transfer path.
-  await delay(500);
-  return created;
+  return await post<CreateSpotRes>(node, '/spots', { spotRid, mode } satisfies CreateSpotReq);
 }
 
 async function createActor(node: HttpClient, actorId: string, actorType: string, stateVersion: number): Promise<ActorCreateRes> {

@@ -9,6 +9,7 @@
 #include <zlink/stream_e2e_client.hpp>
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -49,6 +50,18 @@ class tictactoe_client_scenario_t
             if (room.play_endpoints.size () < 2) {
                 throw std::runtime_error ("API must return at least two Play endpoints.");
             }
+            ensure (room.play_nodes.size () == room.play_endpoints.size ());
+            ensure (std::all_of (
+              room.play_endpoints.begin (), room.play_endpoints.end (),
+              [&room] (const std::string &endpoint) {
+                  return std::count_if (
+                           room.play_nodes.begin (), room.play_nodes.end (),
+                           [&endpoint] (const play_node_info_t &node) {
+                               return node.stream_endpoint == endpoint
+                                      && !node.spot_node_rid.empty ();
+                           })
+                         == 1;
+              }));
             std::string guest_endpoint;
             for (const auto &endpoint : room.play_endpoints) {
                 if (endpoint != room.owner_play_endpoint) {
@@ -179,6 +192,8 @@ class tictactoe_client_scenario_t
               co_await client1.request (client1_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client1_auth.player.actor_id == options.x_actor_id);
+            ensure (client1_auth.player.display_name == options.x_actor_id);
+            ensure (client1_auth.player.level >= room.required_level);
             ensure (client1_auth.player.wins == 99);
 
             trace ("authenticate client2");
@@ -187,6 +202,9 @@ class tictactoe_client_scenario_t
               co_await client2.request (client2_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client2_auth.player.actor_id == options.o_actor_id);
+            ensure (client2_auth.player.display_name == options.o_actor_id);
+            ensure (client2_auth.player.level >= room.required_level);
+            ensure (client2_auth.player.wins == 0);
             ensure (client2_auth.player.actor_id != client1_auth.player.actor_id);
 
             trace ("authenticate observer");
@@ -195,6 +213,9 @@ class tictactoe_client_scenario_t
               co_await observer.request (observer_auth_request)
                 .async<authenticate_res_t> ();
             ensure (observer_auth.player.actor_id == options.observer_actor_id);
+            ensure (observer_auth.player.display_name == options.observer_actor_id);
+            ensure (observer_auth.player.level > 0);
+            ensure (observer_auth.player.wins == 0);
             const auto observe_request = observe_milestone_req_t{};
             auto observe = co_await observer.request (observe_request)
                              .async<observe_milestone_res_t> ();
@@ -248,8 +269,13 @@ class tictactoe_client_scenario_t
             require_condition (!client2_self_join, "self join notify must not be delivered");
             trace ("wait client1 saw client2 join");
             auto client1_saw_client2_join = client1_wait_client2_join.get ();
+            ensure (client1_saw_client2_join.actor_id == client2_auth.player.actor_id);
+            ensure (client1_saw_client2_join.display_name == client2_auth.player.display_name);
+            ensure (client1_saw_client2_join.level == client2_auth.player.level);
             ensure (client1_saw_client2_join.room_id == room.room_id);
             ensure (client1_saw_client2_join.mark == tictactoe_marks_t::o);
+            ensure (client1_saw_client2_join.state.status
+                    == tictactoe_status_t::in_progress);
             auto client1_saw_game_start = client1_wait_game_start.get ();
             ensure (client1_saw_game_start.room_id == room.room_id);
             ensure (client1_saw_game_start.state.status == tictactoe_status_t::in_progress);
@@ -375,6 +401,7 @@ class tictactoe_client_scenario_t
             auto milestone = observer_wait_milestone.get ();
             ensure (milestone.room_id == room.room_id);
             ensure (milestone.actor_id == options.x_actor_id);
+            ensure (milestone.display_name == client1_auth.player.display_name);
             ensure (milestone.wins == 100);
             ensure (milestone.receiving_spot_node_rid == non_owner_node_rid (room));
             std::cout << "observer-win-milestone=verified actor=" << milestone.actor_id

@@ -442,7 +442,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-32** (결함) — **GameQuest 멱등성 단언이 `>=`라 실패할 수 없다.** 중복 증가해도 통과한다
 - [ ] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
 - [ ] **SMP-CP-34** (결함) — **Bingo 게이트 5·7·8·9·11단계가 문서보다 약하다**
-- [ ] **SMP-CP-35** (결함) — **TicTacToe 게이트 1·3·7·11단계가 필드를 빠뜨린다.** level 입장 조건은 아예 평가되지 않는다
+- [x] **SMP-CP-35** (결함) — **TicTacToe 게이트 1·3·7·11단계가 필드를 빠뜨린다.** level 입장 조건은 아예 평가되지 않는다
+  - 근거: sample parity 회귀 테스트가 Play endpoint 매핑, 두 player의 level 입장 조건, join push의 사용자·상태 필드, milestone display name 단언 부재를 모두 검출했다. 단계별 단언을 보강한 뒤 해당 테스트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-36** (결함) — **GameQuest reconnect가 정의하는 두 반쪽(unbind·복원 조회) 없이 돈다.** "다른 owner"도 미단언
 - [ ] **SMP-CP-37** (결함) — **DeliveryDispatch가 상태 "순서"를 단언하지 않는다.** 독립 future를 선언 순서로 `.get()`할 뿐이다
 

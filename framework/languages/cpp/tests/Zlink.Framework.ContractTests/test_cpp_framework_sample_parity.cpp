@@ -689,6 +689,24 @@ TEST (CppFrameworkSampleParity, TicTacToeInventoryAndRunnersMatchCommonRedisCont
       << "TicTacToe README must document the runner-owned Redis container";
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeClientGateChecksCommonContractFields)
+{
+    const auto client = read_file (
+      cpp_language_root () / "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
+
+    EXPECT_NE (client.find ("room.play_nodes.size () == room.play_endpoints.size ()"),
+               std::string::npos);
+    EXPECT_NE (client.find ("client1_auth.player.level >= room.required_level"),
+               std::string::npos);
+    EXPECT_NE (client.find ("client2_auth.player.level >= room.required_level"),
+               std::string::npos);
+    EXPECT_NE (client.find ("client1_saw_client2_join.display_name"), std::string::npos);
+    EXPECT_NE (client.find ("client1_saw_client2_join.level"), std::string::npos);
+    EXPECT_NE (client.find ("client1_saw_client2_join.state.status"), std::string::npos);
+    EXPECT_NE (client.find ("milestone.display_name == client1_auth.player.display_name"),
+               std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 {
     const auto cpp_root = cpp_language_root ();

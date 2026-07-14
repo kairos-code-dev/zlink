@@ -369,6 +369,7 @@ run_client() {
   shift 2
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
   ZLINK_CPP_E2E_API_A_ENDPOINT="$API_A" \
+  ZLINK_CPP_E2E_API_A2_ENDPOINT="$API_A2" \
   ZLINK_CPP_E2E_API_B_ENDPOINT="$API_B" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -433,8 +434,17 @@ if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
 fi
 
 if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
+  if ! rg -q 'ZLINK_CPP_E2E_STORE_CONSUMER_URL' \
+      "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp" \
+    || ! rg -q 'locations/peers' \
+      "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp"; then
+    echo "RM-A4 contract gate failed: persistent consumer handover assertions are missing" >&2
+    exit 1
+  fi
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a-v1
   API_A_PID="$LAST_PID"
+  start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
+  STORE_CONSUMER_PID="$LAST_PID"
   READY="$LOG_DIR/rm-a4-ready"
   CONTINUE="$LOG_DIR/rm-a4-continue"
   run_client rm-a4 rm-a4 env \
@@ -445,7 +455,6 @@ if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
   stop_pid "$API_A_PID"
   start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a-v2
   API_A_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$A4_CLIENT_PID"
   cat "$LOG_DIR/client-rm-a4.stdout.log"

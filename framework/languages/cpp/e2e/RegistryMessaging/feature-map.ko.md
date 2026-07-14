@@ -8,7 +8,7 @@
 |----------|------|------|
 | `RM-A1` | 구현 | Redis location store로 `registry.messaging.api` peer row를 공유하고 endpoint 없는 client-server client가 자동 연결로 request를 보낸다. provider HTTP endpoint의 `/locations/peers`가 store peer row 두 개를 검증한다. `E2E_START_ORDER`의 정방향·역방향·고정 seed shuffle 변형은 두 provider의 실제 시작 순서를 바꾼다. |
 | `RM-A2` | 구현 | `EnableClient(endpoint)` 수동 연결로 `api-a`에 직접 request를 보낸다. |
-| `RM-A4` | 구현 | 같은 rid `api-a`를 다른 endpoint의 `api-a-v2`로 교체한 뒤 연속 request를 검증한다. |
+| `RM-A4` | 구현 | location store consumer를 교체 전부터 유지한다. 같은 rid `api-a`를 다른 endpoint의 `api-a-v2`로 교체한 뒤 runtime query에서 p2 row 하나만 남는지 확인하고, 같은 consumer로 보낸 연속 request 20개가 모두 v2 evidence에 기록되는지 검증한다. |
 | `RM-A6` | 구현 | 같은 Redis location store 안에서 `api` channel과 `workflow` channel의 provider가 섞이지 않는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
 | `RM-B1` | 구현 | client 실행 중 `api-b` provider를 추가하고 두 provider로 분산되는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
 | `RM-B2` | 구현 | 두 provider의 시작 순서를 `E2E_START_ORDER`로 바꿀 수 있다. `api-b` provider 종료 뒤 peer row 제거를 기다리고 request가 `api-a`로만 가는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |

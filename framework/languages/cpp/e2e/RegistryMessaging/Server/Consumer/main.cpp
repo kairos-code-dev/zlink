@@ -5,6 +5,7 @@
 
 #include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
+#include "../Shared/peer_locations_handler.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -44,6 +45,7 @@ int main (int argc, char **argv)
                   server.set_max_request_body_size (4 * 1024 * 1024);
               })
               .map_health ("/health")
+              .map_get<rm::peer_locations_handler_t> ("/locations/peers")
               .map_post<rm_consumer::batch_request_handler_t> ("/profile/batch-request")
               .map_post<rm_consumer::profile_request_handler_t> ("/profile/request")
               .map_post<rm_consumer::slow_request_handler_t> ("/profile/slow-request")

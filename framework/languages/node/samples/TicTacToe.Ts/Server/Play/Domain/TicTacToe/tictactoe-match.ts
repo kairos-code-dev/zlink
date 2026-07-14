@@ -33,7 +33,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
   private readonly turnTimeoutMs: number;
   private status: GameStatus;
   private winner: string | null;
-  private nextTurn: string | null;
+  private nextTurn: string;
   private lastMoveActorId: string | null;
   private lastMoveCell: number | null;
   private turnDeadline: number | null;
@@ -45,7 +45,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     this.board = new TicTacToeBoard();
     this.status = GameStatus.WaitingForPlayers;
     this.winner = null;
-    this.nextTurn = null;
+    this.nextTurn = '';
     this.lastMoveActorId = null;
     this.lastMoveCell = null;
     this.turnDeadline = null;
@@ -94,7 +94,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     }
     this.status = GameStatus.TurnTimedOut;
     this.winner = null;
-    this.nextTurn = null;
+    this.nextTurn = '';
     this.turnDeadline = null;
     return { state: this.snapshot(), changed: true };
   }
@@ -125,14 +125,14 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     if (this.board.hasWon(mark)) {
       this.status = GameStatus.Won;
       this.winner = actorId;
-      this.nextTurn = null;
+      this.nextTurn = '';
       this.turnDeadline = null;
       return;
     }
     if (this.board.isFull()) {
       this.status = GameStatus.Draw;
       this.winner = null;
-      this.nextTurn = null;
+      this.nextTurn = '';
       this.turnDeadline = null;
       return;
     }

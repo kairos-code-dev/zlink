@@ -188,7 +188,7 @@ class TicTacToeClientScenario {
       ensure(() => stateOf(client1FinalMove).board === 'XXXOO....');
       ensure(() => stateOf(client1FinalMove).status === GameStatus.Won);
       ensure(() => stateOf(client1FinalMove).winner === client1Auth.player.actorId);
-      ensure(() => stateOf(client1FinalMove).nextTurn === null);
+      ensure(() => stateOf(client1FinalMove).nextTurn === '');
       requireLastMove(stateOf(client1FinalMove), client1Auth.player.actorId, 2);
 
       const milestone = await observerSawMilestone;

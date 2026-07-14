@@ -172,7 +172,7 @@ export interface GameState {
   board: string;
   status: GameStatus;
   winner: string | null;
-  nextTurn: string | null;
+  nextTurn: string;
   xActorId: string | null;
   oActorId: string | null;
   lastMoveActorId: string | null;

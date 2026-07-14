@@ -106,7 +106,6 @@ export function flowIfEnabled(
 export class ZLinkMessageFlowTracer {
   private tracedEvents = 0;
   private observerFailures = 0;
-  private sampleCounter = 0;
 
   constructor(
     private readonly ctx: ZLinkDiagnosticsContext,
@@ -136,7 +135,7 @@ export class ZLinkMessageFlowTracer {
     if (
       flow.outcome !== ZLinkMessageFlowOutcome.Dropped &&
       flow.outcome !== ZLinkMessageFlowOutcome.Error &&
-      !this.sample()
+      !this.sample(flow.flowId)
     ) {
       return;
     }
@@ -169,7 +168,7 @@ export class ZLinkMessageFlowTracer {
     return this.observerFailures;
   }
 
-  private sample(): boolean {
+  private sample(flowId: string): boolean {
     const rate = this.ctx.diagnostics.sampleRate;
     if (rate >= 1.0) {
       return true;
@@ -177,9 +176,7 @@ export class ZLinkMessageFlowTracer {
     if (rate <= 0.0) {
       return false;
     }
-    const stride = Math.max(1, Math.round(1.0 / rate));
-    this.sampleCounter += 1;
-    return this.sampleCounter % stride === 0;
+    return hashFlowId(flowId) / 0x1_0000_0000 < rate;
   }
 
   private logDefault(flow: ZLinkMessageFlowEvent, level: 'error' | 'warn' | 'debug'): void {
@@ -209,6 +206,15 @@ export class ZLinkMessageFlowTracer {
     }
     return new observerType();
   }
+}
+
+function hashFlowId(flowId: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < flowId.length; index += 1) {
+    hash ^= flowId.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }
 
 function field(name: string, value: string | undefined): string | undefined {

@@ -159,6 +159,37 @@ test('MFLOW-009 live-mode cell toggles every reader without rebuilding the trace
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
 });
 
+test('MFLOW-EXT flow sampling keeps or drops every event in one flow together', async () => {
+  const events = [];
+  class FlowObserver {
+    onMessageFlow(event) {
+      events.push(event);
+    }
+  }
+  const { tracer } = makeTracer(
+    diagnostics(ZLinkMessageFlowLogMode.KeyTransitions, {
+      sampleRate: 0.5,
+      logFile: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-flow-sample-')), 'flow.log')
+    }),
+    undefined,
+    FlowObserver
+  );
+  const flow = {
+    flowId: '018f2b63-9d4a-7abc-8def-0123456789ab',
+    flowOrigin: 'Inbound'
+  };
+
+  tracer.trace({ ...receivedEvent(), ...flow });
+  tracer.trace({
+    ...receivedEvent(),
+    ...flow,
+    outcome: ZLinkMessageFlowOutcome.Dispatched
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(events.length === 0 || events.length === 2, `sampled ${events.length} of 2 events`);
+});
+
 test('MFLOW-010 stream correlation_id round-trips byte-identically across framework and connector codecs', () => {
   const correlationId = '1a2b';
   const requestSeq = 7n;

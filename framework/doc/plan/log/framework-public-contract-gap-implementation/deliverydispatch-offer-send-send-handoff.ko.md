@@ -4,6 +4,29 @@
 C++는 이 문서대로 이미 반영·검증 완료(레퍼런스 구현). 스펙이 정본이고, C++는 그 스펙을 구현한
 예시일 뿐이다.
 
+## 진행 상태 (2026-07-14)
+
+| 대상 | 상태 |
+| --- | --- |
+| C++ 샘플 | **완료**(레퍼런스) |
+| Node 샘플 | **완료** — `DeliveryOfferStore` + sweeper + `attempt` |
+| .NET 샘플 | **완료·실측 그린** — `run_sample.sh` exit 0. 로그 evidence: `offer expired attempt=1` → `decision attempt=2` (courier-b 수락) |
+| Java 샘플 | **완료·실측 그린** — `delivery-reassign` 문자열로 재배차를 **흉내내던** 분기를 제거하고 실제 시한 만료로 재배차하게 했다 |
+| Kotlin 샘플 | **완료·실측 그린** — Java와 동일. `ZLinkSuspendingSpotPacketHandler`는 `ZLinkSpot` 바운드라 entry spot에 쓸 수 없어 `ZLinkSpotPacketHandler`를 직접 구현했다 |
+| 테스트 가드 | **완료** — java testkit 계약 이름 갱신, .NET 회귀 테스트가 이제 `SendToSpot`·`DeliveryOfferStore`·`OfferDeadlineSweeper`를 요구하고 `TaskCompletionSource` 재등장을 실패로 잡는다 |
+| **C++ e2e 픽스처** | **미착수** — `framework/languages/cpp/e2e/DeliveryDispatch`는 아직 `offer_delivery_req_t`/`offer_delivery_res_t` request/reply다. 샘플과 별개 픽스처이므로 남은 작업으로 분리한다 |
+
+**언어별 함정.**
+
+- **Java/Kotlin: dispatch가 채널 server가 되어야 한다.** 결정이 one-way로 돌아오려면 courier node가
+  보낼 상대가 있어야 하는데, 기존에는 dispatch 채널 자체가 없었다(HTTP가 in-process 큐에 바로 넣었다).
+  `deliverydispatch.dispatch` 채널을 새로 만들고 러너의 포트 예약도 하나 늘렸다.
+- **Kotlin의 첫 결정이 시한을 넘겼다.** 채널 client가 처음 붙는 비용 때문에 900ms 시한을 놓쳐
+  "늦게 온 결정"으로 버려졌다. 시한을 1500ms로 올려 해소했다(시한 값은 언어별 상수이며 cpp 700 /
+  java 900과 이미 다르다).
+- **재배차 경로에도 `PickedUp`이 생긴다.** 수락 처리를 한 곳으로 모았으므로 evidence 기대 순서가
+  `Assigned → Reassigned → Accepted → PickedUp → Delivered`가 된다. cpp가 이미 그렇다.
+
 ---
 
 ## 1. 무엇이 문제였나

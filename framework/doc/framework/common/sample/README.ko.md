@@ -165,7 +165,8 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
 모든 언어의 sample은
 [Sample/E2E 설정 정책](../sample-e2e-configuration-policy.ko.md)을 필수로 따른다. Runner는 실행별
 role 설정 파일을 만들고 framework host에는 설정 파일 경로만 전달한다. Framework host가 아닌
-standalone client는 필요한 값이 적으면 명시적인 CLI option으로 받되 시작할 때 한 번 검증한다.
+standalone client는 직접 연결하는 endpoint, 요청 timeout과 scenario selector를 명시적인 CLI
+option으로 받되 시작할 때 한 번 검증한다.
 Endpoint, Redis, routing id, timeout과 로그 경로를 환경 변수나 JVM system property로 전달하지
 않으며, server와 client 애플리케이션 코드에서 직접 사용할 수 있는 환경 변수는 0개다.
 

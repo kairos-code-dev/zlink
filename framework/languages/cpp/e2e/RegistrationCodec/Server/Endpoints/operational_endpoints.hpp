@@ -291,13 +291,19 @@ class codec_mismatch_handler_t
   private:
     operation_status_t run ()
     {
-        auto request = request_channel_with_retry<protobuf_roundtrip_res_t> (
-          _channels, protobuf_roundtrip_req_t{.value = "json-only"});
-        if (request.value != "protobuf:json-only"
-            || request.content_type != "application/x-protobuf") {
-            throw std::runtime_error ("RC-B5 fallback reply mismatch");
+        /* RC-B5: 상대 peer는 JSON codec만 등록했다. Protobuf payload는 그 peer가 해석할 수
+         * 없으므로 요청이 실패하는 것이 정상이다 — codec 불일치는 조용히 넘어가지 않는다. */
+        auto mismatched =
+          _channels.request (api_channel, protobuf_roundtrip_req_t{.value = "json-only"})
+            .timeout (std::chrono::seconds (5))
+            .async<protobuf_roundtrip_res_t> ()
+            .result ();
+        if (mismatched) {
+            throw std::runtime_error ("RC-B5 expected the JSON-only peer to reject a protobuf "
+                                      "payload");
         }
 
+        /* 불일치가 채널을 망가뜨리지 않는다: 같은 채널의 JSON 요청은 계속 동작한다. */
         auto json = request_channel_with_retry<json_roundtrip_res_t> (
           _channels, json_roundtrip_req_t{.value = "after-mismatch"});
         if (json.value != "json:after-mismatch") {

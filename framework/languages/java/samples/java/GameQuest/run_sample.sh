@@ -67,6 +67,7 @@ mission_b_config="$RUN_DIR/mission-b.properties"
 api_a_config="$RUN_DIR/api-a.properties"
 api_b_config="$RUN_DIR/api-b.properties"
 client_config="$RUN_DIR/client.properties"
+rehydrate_client_config="$RUN_DIR/rehydrate-client.properties"
 write_role_config "$mission_a_config" mission-a channelEndpoint "$mission_a_channel" "$mission_a_http"
 write_role_config "$mission_b_config" mission-b channelEndpoint "$mission_b_channel" "$mission_b_http"
 write_role_config "$api_a_config" api-a streamEndpoint "$api_a_stream" "$api_a_http"
@@ -77,17 +78,27 @@ sample.missionAChannelEndpoint=${mission_a_channel}
 sample.missionBChannelEndpoint=${mission_b_channel}
 EOF
 done
-cat >"$client_config" <<EOF
+write_client_config() {
+  local path="$1"
+  local scenario="$2"
+  cat >"$path" <<EOF
 sample.apiAStreamEndpoint=${api_a_stream}
 sample.apiBStreamEndpoint=${api_b_stream}
 sample.apiAHttpEndpoint=${api_a_http}
 sample.apiBHttpEndpoint=${api_b_http}
-sample.missionAHttpEndpoint=${mission_a_http}
-sample.missionBHttpEndpoint=${mission_b_http}
+sample.scenario=${scenario}
 EOF
-chmod 0600 "$mission_a_config" "$mission_b_config" "$api_a_config" "$api_b_config" "$client_config"
+}
+write_client_config "$client_config" full
+write_client_config "$rehydrate_client_config" rehydrate
+chmod 0600 "$mission_a_config" "$mission_b_config" "$api_a_config" "$api_b_config" \
+  "$client_config" "$rehydrate_client_config"
 
 cd "$ROOT_DIR"
+if rg -n 'markRehydrated|recordRehydrated|owner-rehydrates' Server; then
+  echo "fake rehydrate evidence must not remain in GameQuest server code" >&2
+  exit 1
+fi
 (
   cd ../../..
   ./gradlew --no-daemon \
@@ -138,4 +149,7 @@ grep -q '"questId":"first-hunt"' <<<"$alice_events"
 grep -q '"eventType":"QuestProgressReconciledEvent"' <<<"$alice_events"
 grep -q '"currentCount":5' <<<"$alice_events"
 echo "gamequest startup replay restored player-alice"
+"$(app_bin Client Client)" --config "$rehydrate_client_config" >"$LOG_DIR/rehydrate-client.log" 2>&1
+cat "$LOG_DIR/rehydrate-client.log"
+grep -q "gamequest-rehydrate=completed" "$LOG_DIR/rehydrate-client.log"
 echo "gamequest full client/server self-check completed"

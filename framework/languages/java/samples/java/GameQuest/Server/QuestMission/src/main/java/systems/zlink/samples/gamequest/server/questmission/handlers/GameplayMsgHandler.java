@@ -19,7 +19,6 @@ public final class GameplayMsgHandler
     public java.util.concurrent.CompletionStage<Messages.QuestProcessingRes> handle(
         Messages.GameplayMsg request,
         ZLinkRequestContext context) {
-        store.markRehydrated(request.playerId());
         return java.util.concurrent.CompletableFuture.completedFuture(store.apply(request));
     }
 }

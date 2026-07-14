@@ -95,9 +95,6 @@ public final class GameQuestClientScenario {
             Messages.GetGameplaySnapshotRes.class);
         ensure(snapshot.unlockedFeatureIds().contains("auction"));
 
-        ensure(postRaw(options.missionAHttpEndpoint(), "/self-check/owner/player-alice/close"));
-        ensure(postRaw(options.missionBHttpEndpoint(), "/self-check/owner/player-alice/close"));
-
         Messages.CompleteMissionRes tutorial = apiAStream
             .request(new Messages.CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
             .submit(Messages.CompleteMissionRes.class).toCompletableFuture().join();
@@ -192,6 +189,19 @@ public final class GameQuestClientScenario {
         Messages.GameQuestServerAssertRes assertion = waitForServerAssertion();
         ensure(assertion.passed());
         System.out.println(SampleNames.ServerEvidenceMarker);
+    }
+
+    public void verifyRehydrated(ZLinkStreamConnector apiAStream) {
+        apiAStream.connect().submit().toCompletableFuture().join();
+        Messages.JoinSessionRes joined = apiAStream
+            .request(new Messages.JoinSessionReq("player-alice"))
+            .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
+        ensure(joined.activeQuests().stream().anyMatch(progress ->
+            progress.questId().equals(Messages.QuestIds.FirstHunt)
+                && progress.currentCount() == 5
+                && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
+        apiAStream.disconnect().submit().toCompletableFuture().join();
+        System.out.println(SampleNames.RehydrateMarker);
     }
 
     private Messages.GameQuestServerAssertRes waitForServerAssertion() throws Exception {

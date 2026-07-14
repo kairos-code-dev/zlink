@@ -89,12 +89,6 @@ public class Program {
         URI uri = URI.create(topology.questMission().httpEndpoint());
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
         server.createContext("/health", exchange -> writeJson(exchange, json, 200, new Health("ok")));
-        server.createContext("/self-check/owner/", exchange -> {
-            String[] parts = exchange.getRequestURI().getPath().split("/");
-            String playerId = parts.length >= 4 ? parts[3] : "";
-            store.markRehydrated(playerId);
-            writeJson(exchange, json, 200, new CloseOwner(true, true));
-        });
         server.createContext("/self-check/events", exchange -> writeJson(exchange, json, 200, store.events()));
         server.start();
         return server;
@@ -110,9 +104,6 @@ public class Program {
     }
 
     private record Health(String status) {
-    }
-
-    private record CloseOwner(boolean closed, boolean owner) {
     }
 
     private static final class ApplicationContextHolder {

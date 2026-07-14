@@ -89,12 +89,10 @@ public final class GameQuestStore implements AutoCloseable {
         List<String> bindingHistory = shared.bindingHistory();
         List<String> activeBindings = shared.activeBindings();
         List<Messages.StoredQuestEvent> events = shared.readQuestEvents();
-        Map<String, String> rehydrates = shared.rehydrates();
         List<String> deduplicatedEvents = shared.deduplicatedEvents();
         bindingHistory.forEach(binding -> evidence.add("binding:" + binding));
         events.forEach(event -> evidence.add("event:" + event.playerId() + ":" + event.questId()
             + ":" + event.eventType() + ":v" + event.version() + ":source=" + event.sourceEventId()));
-        rehydrates.forEach((playerId, count) -> evidence.add("rehydrated:" + playerId + ":" + count));
         deduplicatedEvents.forEach(eventId -> evidence.add("deduplicated:" + eventId));
 
         List<BooleanSupplier> conditions = List.of(
@@ -138,10 +136,6 @@ public final class GameQuestStore implements AutoCloseable {
             check(evidence, "missing:event:player-bob:herb-gathering:QuestRewardGrantedEvent:1",
                 () -> count(events, "player-bob", Messages.QuestIds.HerbGathering,
                     Messages.QuestRewardGrantedEvent.class.getSimpleName()) == 1),
-            check(evidence, "missing:rehydrated:player-alice:2",
-                () -> Integer.parseInt(rehydrates.getOrDefault("player-alice", "0")) >= 2),
-            check(evidence, "missing:rehydrated:player-bob:1",
-                () -> Integer.parseInt(rehydrates.getOrDefault("player-bob", "0")) >= 1),
             check(evidence, "duplicate:event-version", () -> uniqueEventVersions(events)));
         boolean passed = true;
         for (BooleanSupplier condition : conditions) {

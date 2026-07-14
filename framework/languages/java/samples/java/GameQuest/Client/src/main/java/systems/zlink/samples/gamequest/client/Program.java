@@ -18,7 +18,14 @@ public final class Program {
         ZLinkStreamConnector apiA = createClient(options.apiAStreamEndpoint());
         ZLinkStreamConnector apiB = createClient(options.apiBStreamEndpoint());
         try {
-            new GameQuestClientScenario(options).run(apiA, apiB);
+            GameQuestClientScenario scenario = new GameQuestClientScenario(options);
+            if ("full".equals(options.scenario())) {
+                scenario.run(apiA, apiB);
+            } else if ("rehydrate".equals(options.scenario())) {
+                scenario.verifyRehydrated(apiA);
+            } else {
+                throw new IllegalArgumentException("Unknown sample.scenario: " + options.scenario());
+            }
         } finally {
             apiA.close().submit().toCompletableFuture().join();
             apiB.close().submit().toCompletableFuture().join();

@@ -7,7 +7,6 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class RedisSampleStore implements AutoCloseable {
@@ -69,14 +68,6 @@ public final class RedisSampleStore implements AutoCloseable {
             .stream()
             .map(value -> readJson(value, Messages.StoredQuestEvent.class))
             .toList();
-    }
-
-    public void recordRehydrated(String playerId) {
-        redis.hincrby(key("owner-rehydrates"), playerId, 1);
-    }
-
-    public Map<String, String> rehydrates() {
-        return redis.hgetall(key("owner-rehydrates"));
     }
 
     public void recordDeduplicatedEvent(String eventId) {

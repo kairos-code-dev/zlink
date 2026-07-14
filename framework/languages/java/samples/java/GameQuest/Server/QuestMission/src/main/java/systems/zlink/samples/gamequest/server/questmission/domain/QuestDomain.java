@@ -2,6 +2,7 @@ package systems.zlink.samples.gamequest.server.questmission.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -25,6 +26,43 @@ public final class QuestDomain {
         }
 
         return new QuestDecision(updated, stored, progress, completed);
+    }
+
+    public Messages.QuestProgress fold(
+        String playerId,
+        String questId,
+        List<Messages.StoredQuestEvent> events) {
+        int current = 0;
+        int required = 1;
+        String status = Messages.QuestStatuses.InProgress;
+        String lastEventId = null;
+        long updatedAt = 0;
+        List<Messages.StoredQuestEvent> ordered = events.stream()
+            .sorted(Comparator.comparingLong(Messages.StoredQuestEvent::version))
+            .toList();
+        for (Messages.StoredQuestEvent event : ordered) {
+            required = event.requiredCount();
+            if (event.eventType().equals(Messages.QuestProgressedEvent.class.getSimpleName())) {
+                current = Math.min(required, current + event.delta());
+            } else if (event.eventType().equals(Messages.QuestProgressReconciledEvent.class.getSimpleName())) {
+                current = event.currentCount();
+                status = event.status();
+            } else if (event.eventType().equals(Messages.QuestCompletedEvent.class.getSimpleName())) {
+                current = Math.max(current, required);
+            } else if (event.eventType().equals(Messages.QuestRewardGrantedEvent.class.getSimpleName())) {
+                status = Messages.QuestStatuses.RewardGranted;
+            }
+            lastEventId = event.sourceEventId();
+            updatedAt = Math.max(updatedAt, event.createdAtUnixMs());
+        }
+        return new Messages.QuestProgress(
+            playerId,
+            questId,
+            status,
+            current,
+            required,
+            lastEventId,
+            updatedAt);
     }
 
     private static void applyCounter(

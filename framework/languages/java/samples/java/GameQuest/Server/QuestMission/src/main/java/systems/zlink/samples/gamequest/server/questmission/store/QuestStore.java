@@ -2,7 +2,6 @@ package systems.zlink.samples.gamequest.server.questmission.store;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -21,7 +20,6 @@ public final class QuestStore implements AutoCloseable {
     private final Map<String, List<Messages.QuestProgress>> projections = new HashMap<>();
     private final Set<String> appliedEventIds = new HashSet<>();
     private final List<Messages.StoredQuestEvent> events = new ArrayList<>();
-    private final Map<String, Integer> rehydrates = new HashMap<>();
 
     public QuestStore(SampleTopology topology) {
         shared = new RedisSampleStore(topology);
@@ -103,23 +101,17 @@ public final class QuestStore implements AutoCloseable {
     public synchronized Messages.QuestProgress rebuildProjection(String playerId, String questId, int count) {
         List<Messages.StoredQuestEvent> stream = events.stream()
             .filter(event -> event.playerId().equals(playerId) && event.questId().equals(questId))
-            .sorted(Comparator.comparingLong(Messages.StoredQuestEvent::version))
             .toList();
         if (stream.isEmpty()) {
             throw new IllegalStateException("Quest stream was not found for " + playerId + "/" + questId);
         }
 
-        Messages.QuestProgress rebuilt = foldProjection(playerId, questId, stream);
+        Messages.QuestProgress rebuilt = domain.fold(playerId, questId, stream);
         projections.computeIfAbsent(playerId, ignored -> new ArrayList<>())
             .removeIf(progress -> progress.questId().equals(questId));
         projections.get(playerId).add(rebuilt);
         shared.writeProjection(playerId, projections.get(playerId));
         return rebuilt;
-    }
-
-    public synchronized void markRehydrated(String playerId) {
-        rehydrates.merge(playerId, 1, Integer::sum);
-        shared.recordRehydrated(playerId);
     }
 
     public synchronized List<Messages.QuestProgress> projection(String playerId) {
@@ -128,10 +120,6 @@ public final class QuestStore implements AutoCloseable {
 
     public synchronized List<Messages.StoredQuestEvent> events() {
         return List.copyOf(events);
-    }
-
-    public synchronized Map<String, Integer> rehydrates() {
-        return Map.copyOf(rehydrates);
     }
 
     public synchronized Set<String> players() {
@@ -169,45 +157,11 @@ public final class QuestStore implements AutoCloseable {
             for (String questId : questIds) {
                 List<Messages.StoredQuestEvent> stream = stored.stream()
                     .filter(event -> event.playerId().equals(playerId) && event.questId().equals(questId))
-                    .sorted(Comparator.comparingLong(Messages.StoredQuestEvent::version))
                     .toList();
-                restored.add(foldProjection(playerId, questId, stream));
+                restored.add(domain.fold(playerId, questId, stream));
             }
             projections.put(playerId, restored);
         });
     }
 
-    private static Messages.QuestProgress foldProjection(
-        String playerId,
-        String questId,
-        List<Messages.StoredQuestEvent> stream) {
-        int current = 0;
-        int required = 1;
-        String status = Messages.QuestStatuses.InProgress;
-        String lastEventId = null;
-        long updatedAt = 0;
-        for (Messages.StoredQuestEvent event : stream) {
-            required = event.requiredCount();
-            if (event.eventType().equals(Messages.QuestProgressedEvent.class.getSimpleName())) {
-                current = Math.min(required, current + event.delta());
-            } else if (event.eventType().equals(Messages.QuestProgressReconciledEvent.class.getSimpleName())) {
-                current = event.currentCount();
-                status = event.status();
-            } else if (event.eventType().equals(Messages.QuestCompletedEvent.class.getSimpleName())) {
-                current = Math.max(current, required);
-            } else if (event.eventType().equals(Messages.QuestRewardGrantedEvent.class.getSimpleName())) {
-                status = Messages.QuestStatuses.RewardGranted;
-            }
-            lastEventId = event.sourceEventId();
-            updatedAt = Math.max(updatedAt, event.createdAtUnixMs());
-        }
-        return new Messages.QuestProgress(
-            playerId,
-            questId,
-            status,
-            current,
-            required,
-            lastEventId,
-            updatedAt);
-    }
 }

@@ -18,37 +18,48 @@ export function commonContiguousSequence(
   runId: string,
   topic: string,
   min: number,
-  max: number
+  max: number,
+  valuePrefix: string
 ): readonly number[] {
-  const sets = snapshots.map((lines) => new Set(
-    lines
+  const sequences = snapshots.map((lines) => lines
       .filter((line) => isEvent(line, runId, topic))
+      .filter((line) => {
+        const sequence = extractInt(line, 'seq');
+        return sequence >= min
+          && sequence <= max
+          && line.includes(`value=${valuePrefix}${sequence}`);
+      })
       .map((line) => extractInt(line, 'seq'))
-      .filter((seq) => seq >= min && seq <= max)
-  ));
-  if (sets.length === 0) {
+  );
+  if (sequences.length === 0) {
     return [];
   }
-  const common = new Set(sets[0]);
-  for (const set of sets.slice(1)) {
-    for (const seq of [...common]) {
-      if (!set.has(seq)) {
-        common.delete(seq);
-      }
-    }
-  }
-  const sorted = [...common].sort((left, right) => left - right);
+
   let best: number[] = [];
-  let current: number[] = [];
-  for (const seq of sorted) {
-    if (current.length === 0 || current[current.length - 1] + 1 === seq) {
-      current.push(seq);
-    } else {
-      if (current.length > best.length) {
-        best = current;
+  for (let start = 0; start < sequences[0].length; start += 1) {
+    const first = sequences[0][start];
+    const positions = sequences.map((sequence) => sequence.indexOf(first));
+    if (positions.some((position) => position < 0)) {
+      continue;
+    }
+    const current = [first];
+    for (let index = start + 1; index < sequences[0].length; index += 1) {
+      const candidate = sequences[0][index];
+      if (candidate !== current[current.length - 1] + 1) {
+        break;
       }
-      current = [seq];
+      const nextPositions = sequences.map((sequence, sequenceIndex) =>
+        sequence.findIndex((value, position) => position > positions[sequenceIndex] && value === candidate)
+      );
+      if (nextPositions.some((position) => position < 0)) {
+        break;
+      }
+      current.push(candidate);
+      positions.splice(0, positions.length, ...nextPositions);
+    }
+    if (current.length > best.length) {
+      best = current;
     }
   }
-  return current.length > best.length ? current : best;
+  return best;
 }

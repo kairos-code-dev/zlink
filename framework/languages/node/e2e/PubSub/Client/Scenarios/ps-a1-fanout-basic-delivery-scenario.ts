@@ -14,18 +14,28 @@ export async function runPsA1(publisher: string, subscribers: readonly string[])
   }
   await waitForAll(subscribers, { containsAll: ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`], timeoutMilliseconds: 10_000 });
 
-  const measureStart = 100;
+  const measureStart = 1000;
   const measureCount = 12;
   for (let i = measureStart; i < measureStart + measureCount; i += 1) {
     await publishEvent(publisher, PubSubNames.mainTopic, runId, i, `measure-${i}`);
   }
   const snapshots = await waitForAll(subscribers, {
     containsAll: ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`],
-    containsAnyGroups: [[`seq=${measureStart}|`], [`seq=${measureStart + 1}|`], [`seq=${measureStart + 2}|`]],
+    containsAllLineGroups: [0, 1, 2].map((offset) => [
+      `seq=${measureStart + offset}|`,
+      `value=measure-${measureStart + offset}`
+    ]),
     timeoutMilliseconds: 10_000
   });
   ensure(
-    commonContiguousSequence(snapshots, runId, PubSubNames.mainTopic, measureStart, measureStart + measureCount - 1).length >= 3,
+    commonContiguousSequence(
+      snapshots,
+      runId,
+      PubSubNames.mainTopic,
+      measureStart,
+      measureStart + measureCount - 1,
+      'measure-'
+    ).length >= 3,
     'PS-A1 expected common contiguous sequence on all subscribers.'
   );
   console.log('scenario PS-A1 passed');

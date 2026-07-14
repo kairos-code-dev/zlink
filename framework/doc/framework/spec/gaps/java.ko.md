@@ -210,3 +210,33 @@ flow가 경계에서 끊긴다.
   raw payload는 raw 표면이 소유해야 한다.
 - Kotlin wrapper에 목표 계약에 없는 request `await<T>()` overload 2개(typed·raw)가 있다. 목표
   선언에 없는 공개 표면은 두지 않는다.
+
+## 라운드 2 (2026-07-14) — 관측 · channel topology · companion 패키지
+
+### 체크리스트
+
+- [ ] **IMP-JV-11** (결함) — `flow_id`를 envelope header가 아닌 **자체 message part**로 나른다 (교차 언어 wire 위반)
+- [ ] **IMP-JV-12** (결함) — per-source polling 간격을 **전역 최소값 하나로 붕괴**시킨다
+- [ ] **IMP-JV-13** (미구현) — 계기 12개 결측(그중 `channel.messages.dropped`가 치명적)
+- [ ] **IMP-JV-14** (결함) — runtime-event handler 예외를 **error sink에 보고하지 않는다**
+- [ ] **IMP-JV-15** (미구현) — `fanout.published`/`received`에 `topic` 라벨이 없다
+- [ ] **IMP-JV-16** (결함) — **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다**
+- [ ] **IMP-JV-17** (결함) — 자동 연결 역할에 대한 런타임 `connect()`가 **거부되지 않는다**
+- [ ] **IMP-JV-18** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘린다**
+- [ ] **IMP-JV-19** (결함) — HTTP attempt timeout이 **redirect hop마다** 적용된다
+- [ ] **IMP-JV-20** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다
+
+### 상세
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **IMP-JV-11** | [53 §3.1·§3.4](../server/53-flow-correlation.ko.md): `flow_id`/`flow_origin`은 **envelope header의 1급 필드**다. 다르게 나르는 relay를 두지 않는다 | `ZLinkChannelFlowFrame.java:9-27` — `"__zlink.flow\n<uuid>\n<ORIGIN>"`를 **세 번째 message part**로 인코딩한다(`ZLinkChannelCallRuntime.java:215-223`). **다른 어떤 구현도 그 part를 쓰거나 읽지 않고**, Java는 header의 flow 필드를 **읽지 않는다.** ⇒ Java가 낀 흐름은 fleet 추적에서 **끊긴다** |
+| **IMP-JV-12** | [50 §4](../server/50-runtime-monitoring.ko.md): polling 주기는 등록 시점에 **항상 명시**한다. **숨은 기본 주기를 두지 않는다** | `DefaultZLinkMonitoringOptions.java:61-67` — 모든 source 간격의 **최소값 하나**로 `scheduleWithFixedDelay` 하나를 돌리고, 매 tick에 **모든 source를 poll**한다. ⇒ `addSpotEvents("play",200ms)` + `addLocationRuntimeEvents("loc",60s)`면 Redis topology 페이징이 **200ms마다** 돈다 — 설정한 비용의 **300배** |
+| **IMP-JV-13** | [51](../server/51-runtime-metrics.ko.md)·[52 §2](../server/52-message-flow-tracing.ko.md): **metric/counter는 trace mode와 무관하게 계속 발생한다** | 계기 12개가 없다 — `stream.session.bind.duration`, `stream.{inbound,outbound}.bytes`, `spot.timer.tick.lateness`, `actor.count`, `actor.mailbox.depth`, **`channel.messages.dropped`**, `location.peers`, `location.store.errors`, `location.owner_lease.renew.failures`, `location.write.conflicts`, **`observability.observer.overflow`**. ⇒ trace를 끄면 drop에 대한 **관측 신호가 0** |
+| **IMP-JV-14** | [50 §3.2](../server/50-runtime-monitoring.ko.md): handler 예외는 **runtime error sink로 보고한다** | `ZLinkRuntimeEventDispatcher.java:38-47` — `catch { handlerFailureCount.incrementAndGet(); }`. 공개 reader가 없는 **내부 카운터**로만 남는다 |
+| **IMP-JV-15** | [51 §4.4b](../server/51-runtime-metrics.ko.md): `fanout.published`/`received`에 `topic`(닫힌 집합) 라벨 | `ZLinkChannelDirectCalls.java:126` 등 전부 `Map.of()`. ⇒ **topic별 발행/수신 차이**를 계산할 수 없다 — 이 한 쌍이 존재하는 이유가 그건데 |
+| **IMP-JV-16** | [10 §5.2](../server/10-channel-topology.ko.md): 같은 역할에 수동 endpoint가 **하나라도** 있으면 그 역할은 수동으로 확정되고, **자동 연결 reconcile이 돌지 않는다** | `ZLinkLocationAutoConnectHost.java:107-127` — 모든 surface에 **무조건** reconciler를 만든다. 유일한 완화는 `ConnectableSocketExecutor.connect`(:174-186)가 **문자열이 정확히 일치하는** 수동 endpoint만 건너뛰는 것. ⇒ `enableClient("tcp://10.0.0.5:5001")` + location store면 DEALER가 **store의 staging 서버들까지 물고 라운드로빈**한다 |
+| **IMP-JV-17** | [10 §5.2](../server/10-channel-topology.ko.md): 자동 연결로 확정된 역할에 런타임 수동 endpoint를 추가하려 하면 **그때 거부된다** | `RuntimeEndpointConnections.java:19-30` — 검증 후 그냥 연결한다. frozen/auto 모드가 **없다**(`.NET`은 `Freeze`, C++은 `frozen` 상태를 갖는다). ⇒ **역할마다 진실의 원천이 하나**라는 불변식이 깨진다 |
+| **IMP-JV-18** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md) | `RequestPerformer.java:160-162`가 `proxy-authorization`을 요청 헤더에 넣고, `JavaHttpClientFactory.java:27-30`은 `.authenticator(...)` 없이 `ProxySelector`만 준다. `.NET`(IMP-DN-12)과 **같은 결함** |
+| **IMP-JV-19** | [http 06 §6.2](../http-client/06-redirect-retry-cookie.ko.md): timeout은 **시도(attempt)당** 적용한다 | `RequestPerformer.java:176-181` — `hop()`마다 timeout을 **새로 건다.** ⇒ `timeout(3s)` + `followRedirects(5)` + `retry(2)`가 계약상 ~9초여야 하는데 **~45초**를 태울 수 있다 |
+| **IMP-JV-20** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | `ZLinkStreamConnectorPayloadCodec.java:23-35` — 압축 전 크기로 한도를 검사한다. `.NET`(IMP-DN-13)과 **같은 결함** |

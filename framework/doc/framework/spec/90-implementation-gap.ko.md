@@ -986,26 +986,30 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 **모든 항목은 코드 인용으로 뒷받침한다.** 근거 없는 추정은 싣지 않는다.
 **상세는 언어별 갭 문서(§16)가 소유한다.**
 
-### 15.1 대조한 축과 남은 축
+### 15.1 대조한 축
 
-| 대조함 | 아직 안 함 |
+| 라운드 | 대조한 스펙 |
 |---|---|
-| 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 | 00 · 10 · 11 · 25 · 12(HTTP client) · 32(connector) · 50~53 |
+| **1** | 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 |
+| **2** | 00 · 10 · 11 · 25 · 50~53 · 12(HTTP client) · 32(connector) |
 
-**남은 축을 대조하기 전에는 이 목록이 완전하다고 말할 수 없다.** 감사는 **새 갭이 나오지 않을
-때까지** 반복한다.
+**두 라운드로 스펙 전 문서를 한 번씩 대조했다.** 그러나 **한 번 훑었다고 비어 있는 것은 아니다** —
+같은 문서를 다른 각도로 다시 보면 또 나온다. 감사는 **새 갭이 나오지 않을 때까지** 반복한다.
 
-### 15.2 라운드 1 결과 (2026-07-14)
+### 15.2 라운드별 결과 (2026-07-14)
 
-| 언어 | 발굴 | 그중 결함 | 문서 |
-|------|------|-----------|------|
-| `.NET` (기준선) | **7** | 7 | [gaps/dotnet](gaps/dotnet.ko.md) |
-| Java / Kotlin | **10** | 6 | [gaps/java](gaps/java.ko.md) |
-| Node | **10** | 6 | [gaps/node](gaps/node.ko.md) |
-| C++ | **11** | 6 | [gaps/cpp](gaps/cpp.ko.md) |
+| 언어 | 라운드 1 | 라운드 2 | 합계 | 문서 |
+|------|---------|---------|------|------|
+| `.NET` (기준선) | 7 | 6 | **13** | [gaps/dotnet](gaps/dotnet.ko.md) |
+| Java / Kotlin | 10 | 10 | **20** | [gaps/java](gaps/java.ko.md) |
+| Node / TypeScript | 10 | 12 | **22** | [gaps/node](gaps/node.ko.md) |
+| C++ | 11 | 16 | **27** | [gaps/cpp](gaps/cpp.ko.md) |
 
-**기준선에서 7건이 나온 것이 이번 라운드의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
-언어를 맞추는 방식으로는 이 7건이 **영원히 안 보인다.**
+**기준선에서 13건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
+언어를 맞추는 방식으로는 이 13건이 **영원히 안 보인다.**
+
+**C++이 가장 많다.** 레퍼런스 구현인데 그렇다 — companion 패키지(connector·HTTP client)에서 특히
+많이 나왔다.
 
 ### 15.3 교차 언어 — 같은 결함이 여러 구현에 있다
 
@@ -1015,6 +1019,13 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | **IMP-X2** | **location event source가 없다.** [40 §9](server/40-location-runtime.ko.md)의 `location-peer/spot/actor/route`와 `StoreFailure`/`StoreRecovered` | Java · C++ · Node |
 | **IMP-X3** | **startup validation이 [20 §8](server/20-spot-messaging.ko.md)·[30 §7.2](server/30-stream-session.ko.md)의 설정 오류를 통과시킨다.** "모든 설정 오류는 host 시작 전에 실패한다"가 계약 | **네 언어 모두** |
 | **IMP-X4** | **location store read에 5초 취소 상한이 없다.** [54 §3.4](server/54-graceful-drain-handoff.ko.md)가 framework 내부 정책으로 고정 | `.NET` · Java — **기준선에도 없는 구멍** |
+| **IMP-X5** | **message-flow 관측자가 로그 모드에 묶여 침묵한다.** [52 §3](server/52-message-flow-tracing.ko.md)은 "관측자는 모드와 무관하게, `off`여도 발화한다"고 요구한다. ⇒ OTel로 흘리려고 관측자를 달고 로그를 끄면 **아무것도 안 온다** | Java · Node · C++ (`.NET`만 올바름) |
+| **IMP-X6** | **`origin=lifecycle`을 생성하지 않는다.** [53 §4.2](server/53-flow-correlation.ko.md). ⇒ drain이 유발한 트래픽을 application 트래픽과 **구분할 수 없다** | Java · Node · C++ |
+| **IMP-X7** | **connector send payload 한도를 압축 *전* payload에 적용한다.** [32 §4.7](stream-connector/32-stream-connector.ko.md)은 "압축을 쓰면 압축된 payload 기준"이라고 못 박는다. ⇒ browser는 받고 나머지는 거부한다 — **압축이 존재하는 이유가 막힌다** | `.NET` · Java · C++ (TypeScript만 올바름) |
+| **IMP-X8** | **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다.** [10 §5.2](server/10-channel-topology.ko.md). ⇒ 수동으로 지정한 서버 말고 **store에 있는 다른 peer들까지 물고 라운드로빈**한다 | Java · Node |
+| **IMP-X9** | **HTTP client가 proxy 자격증명을 대상 서버로 흘리고, CONNECT는 인증 없이 나간다.** [http 07 §7.3](http-client/07-auth-tls-proxy.ko.md) | `.NET` · Java (C++·Node는 올바름) |
+| **IMP-X10** | **SPOT timer 등록 검증이 startup이 아니라 spot 활성화 시점이다.** [25 §4.1](server/25-stage-wrapper-on-spot.ko.md). ⇒ `period=0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 | `.NET` · Node |
+| **IMP-X11** | **`fanout.received`가 등록되지 않은 topic까지 메트릭 라벨로 단다.** [51 §5](server/51-runtime-metrics.ko.md)는 라벨을 등록 시점의 닫힌 집합으로 제한한다. ⇒ **수집기 카디널리티가 무한히 늘어난다** | `.NET` · Node (C++은 올바름) |
 
 ## 16. 언어별 갭 체크리스트
 
@@ -1022,11 +1033,11 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 | 언어 | 문서 | 항목 수 |
 |------|------|---------|
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 15 |
-| Java | [gaps/java](gaps/java.ko.md) | 33 |
-| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | 8 |
-| Node.js | [gaps/node](gaps/node.ko.md) | 20 |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) | 20 |
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 21 |
+| Java | [gaps/java](gaps/java.ko.md) | 43 |
+| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | Java 공유 + 고유 3 |
+| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 32 |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) | 36 |
 
 각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
 **언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어

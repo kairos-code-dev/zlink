@@ -60,3 +60,9 @@
   raw payload는 raw 표면이 소유해야 한다.
 - Kotlin wrapper에 목표 계약에 없는 request `await<T>()` overload 2개(typed·raw)가 있다. 목표
   선언에 없는 공개 표면은 두지 않는다.
+
+## 라운드 2 (2026-07-14)
+
+**Kotlin 고유 갭은 새로 나오지 않았다.** Kotlin은 Java 런타임을 공유하므로 라운드 2의 Java 항목
+(**IMP-JV-11 ~ IMP-JV-20**)과 교차 언어 항목(**IMP-X5·IMP-X6**)이 **그대로 적용된다.**
+[java 체크리스트](java.ko.md)를 함께 본다.

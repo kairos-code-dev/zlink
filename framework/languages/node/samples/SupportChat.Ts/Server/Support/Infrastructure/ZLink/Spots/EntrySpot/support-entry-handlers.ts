@@ -1,11 +1,14 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT, zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
+import {
+  ZLINK_CHANNEL_CLIENT,
+  zlinkEntrySpotActorRequestHandler
+} from '@zlink-systems/nestjs';
 import { AgentAvailabilityDirectory } from '../../../../Application/ConversationAssignment/agent-availability-directory';
 import { SampleNames, SampleTimings } from '../../../../../Configuration/sample-names';
 import {
-  ConversationStatuses,
   PacketNames,
   SupportChatRoles,
+  joinConversation,
   openConversationApi
 } from '../../../../../../Shared/Contracts/messages';
 import { SupportUserActor } from '../../Actors/support-user-actor';
@@ -55,15 +58,16 @@ class OpenConversationActorHandler implements ZLinkEntrySpotActorRequestHandler<
       .requestToChannel(SampleNames.apiChannel, openConversationApi(actor.actorId, actor.displayName, request.subject))
       .timeout(SampleTimings.requestTimeout)
       .submit<OpenConversationApiRes>();
+    const joined = await actor.context.joinSpot(
+      opened.conversationId,
+      joinConversation(actor.participantId, actor.role, actor.displayName)
+    ).submit<{ state: OpenConversationRes['state'] }>();
+    if (joined.status !== 'accepted') {
+      throw new Error(`Conversation '${opened.conversationId}' rejected customer actor.`);
+    }
     return {
       conversationId: opened.conversationId,
-      state: {
-        conversationId: opened.conversationId,
-        subject: request.subject,
-        status: ConversationStatuses.WaitingForAgent,
-        customerActorId: actor.actorId,
-        lastMessageSeq: 0
-      }
+      state: joined.reply.state
     };
   }
 }

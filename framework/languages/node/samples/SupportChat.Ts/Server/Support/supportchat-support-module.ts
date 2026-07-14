@@ -14,7 +14,6 @@ import { EnsureSupportUserActorHandler } from './Infrastructure/ZLink/Handlers/e
 import { ConversationIdleTimerHandler } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-idle-timer-handler';
 import {
   CloseConversationHandler,
-  EnsureConversationAssignmentHandler,
   JoinConversationHandler,
   SendChatMessageHandler,
   SetTypingHandler
@@ -74,6 +73,7 @@ function createSupportChatSupportModule() {
       SupportConversationAllocator,
       SupportActorDirectory,
       SupportUserActorFactory,
+      ConversationSpot,
       SupportEntrySpot,
       EnsureSupportUserActorHandler,
       EnsureAgentConversationHandler,
@@ -85,7 +85,6 @@ function createSupportChatSupportModule() {
       SetTypingHandler,
       CloseConversationHandler,
       ConversationIdleTimerHandler,
-      EnsureConversationAssignmentHandler,
       SupportNotificationPublisher
     ]
   })(SupportChatSupportModule);

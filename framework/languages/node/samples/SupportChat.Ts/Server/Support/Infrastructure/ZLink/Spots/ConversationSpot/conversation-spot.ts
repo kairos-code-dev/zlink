@@ -1,3 +1,4 @@
+import { Injectable, Scope } from '@nestjs/common';
 import { SampleTimings } from '../../../../../Configuration/sample-names';
 import {
   SupportChatRoles
@@ -5,6 +6,8 @@ import {
 import { Conversation } from '../../../../Domain/SupportChat/conversation';
 import { ConversationIdleTimerHandler } from './Handlers/conversation-idle-timer-handler';
 import { SupportNotificationPublisher } from './Notifications/support-notification-publisher';
+import { AgentAssignmentService } from '../../../../Application/ConversationAssignment/agent-assignment-service';
+import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import type {
   ConversationState,
 } from '../../../../../../Shared/Contracts/messages';
@@ -19,12 +22,18 @@ import type {
 } from '@zlink-systems/framework';
 import type { SupportUserActor } from '../../Actors/support-user-actor';
 
+@Injectable({ scope: Scope.TRANSIENT })
 class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   readonly context!: ZLinkSpotContext<SupportUserActor, ConversationSpot>;
   private conversation?: Conversation;
   private readonly actors = new Map<string, SupportUserActor>();
-  private readonly notifications = new SupportNotificationPublisher();
   private timer?: ZLinkTimer;
+
+  constructor(
+    private readonly assignments: AgentAssignmentService,
+    private readonly directory: SupportActorDirectory,
+    private readonly notifications: SupportNotificationPublisher
+  ) {}
 
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
     const value = request.decode<ConversationCreateRequest>(Object as never);
@@ -51,10 +60,20 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
 
   async onJoinedActor(actor: SupportUserActor): Promise<void> {
     this.actors.set(actor.actorId, actor);
-    if (actor.role !== SupportChatRoles.Agent) return;
-    const joined = this.requireConversation().join(actor.participantId, SupportChatRoles.Agent, actor.displayName);
-    const customer = this.findParticipant(joined.state.customerActorId);
-    this.notifications.publish(joined.event, customer === undefined ? [] : [customer]);
+    if (actor.role === SupportChatRoles.Agent) {
+      const joined = this.requireConversation().join(actor.participantId, SupportChatRoles.Agent, actor.displayName);
+      const customer = this.findParticipant(joined.state.customerActorId);
+      this.notifications.publish(joined.event, customer === undefined ? [] : [customer]);
+      return;
+    }
+    const agentActorId = this.assignments.assignNextAgent();
+    if (agentActorId === undefined) return;
+    const roster = this.directory.get(agentActorId);
+    if (roster === undefined) {
+      throw new Error(`Assigned roster actor '${agentActorId}' was not found.`);
+    }
+    const assigned = this.assignAgent(agentActorId, roster.displayName);
+    this.notifications.publish(assigned.event, [roster]);
   }
 
   async onLeaveActor(actor: SupportUserActor): Promise<void> {

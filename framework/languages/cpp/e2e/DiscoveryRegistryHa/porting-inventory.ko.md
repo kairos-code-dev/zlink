@@ -21,7 +21,7 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 | `Client/Support/SfProbe.cs` | `Client/Support/client_support.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | client-support | done | `/query/status`, `/query/peers`, `/profile/request`, `/health` 기반 probe를 제공한다. 표준 profile probe는 consumer 내부 retry 없이 framework request 한 번의 결과를 반환한다. |
 | `Client/Support/StoreFailureProcessManager.cs` | `run_e2e.sh`, `Client/Support/client_support.hpp` | runner/client-support | done | runner가 provider/consumer와 고정 loopback host port의 Redis container를 시작한다. SF-B2에서는 Redis 정지를 확인한 뒤 `api-b`를 새 channel endpoint에서 재기동한다. client는 public HTTP와 Docker stop/restart로 장애와 복구를 제어한다. |
 | `Client/Scenarios/*.cs` | `Client/main.cpp` | scenario | done | C++은 scenario 함수를 한 파일에 둔다. SF-C2는 typed draining row, drain 중 lease 건강성, 신규 request 제외, terminal `drained`, TTL 전 owner 정리를 검증한다. SF-D3는 장애 중 마지막 성공 시각 보존과 복구 뒤 owner lease 갱신 시각·last refresh 시각 증가를 검증한다. 나머지 SF-A1~SF-E1 scenario도 구현했다. |
-| `Client/Scenarios/SfE1StoreDelayNonBlockingScenario.cs` | `Client/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp`, `Server/Shared/location_store.hpp` | scenario | done | consumer store delay admin endpoint와 E2E 전용 delayable location store wrapper로 store read 지연을 주입하고, 지연 중 application request p99와 지연 해제 뒤 recovery request를 검증한다. |
+| `Client/Scenarios/SfE1StoreDelayNonBlockingScenario.cs` | `Client/main.cpp`, `Support/redis_latency_proxy.py`, `run_e2e.sh` | scenario | done | harness의 TCP proxy가 Redis 응답을 지연한다. client는 proxy 관리 포트로 지연을 제어하고, 지연 중 runtime status 조회와 application request p99, 지연 해제 뒤 recovery request를 검증한다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/main.cpp` | provider-role | done | Redis location store, client-server channel server, runtime status endpoint, evidence endpoint, shutdown/crash endpoint를 구성한다. |
 | `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/Handlers/provider_handlers.hpp` | provider-role | done | `/query/status`, `/evidence`, `/evidence/wait`, `/shutdown`, `/admin/crash`를 제공한다. |
 | `Server/Provider/Support/ProviderOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | provider-role | done | provider rid, HTTP endpoint, channel endpoint, Redis endpoint/key prefix, log dir를 env로 읽는다. |
@@ -30,7 +30,7 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 | connection transition evidence | `Server/Consumer/Infrastructure/socket_evidence_store.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-evidence | done | client channel의 정식 socket monitoring event를 process-local로 기록하고 `/query/connections`에서 제공해 D1·D2가 survivor reconnect 부재와 dead peer disconnect를 확인한다. |
 | `Server/Consumer/PollingOnlyLocationStore.cs` | C++ Redis store 기본 동작, `run_e2e.sh`의 SF-A2 provider coordinator | store-mode | done | C++ Redis extension은 watch surface 없이 polling 기반으로 동작한다. SF-A2는 초기 부재 신호 뒤 `api-c`를 추가해 peer 반영과 실제 routing을 확인하고, 정상 종료 뒤 peer 제거와 routing 제외를 확인한다. |
 | framework owner lease join | `framework/src/runtime/locations/live_location_reader.hpp` | runtime-read | done | Redis와 in-memory store는 raw row를 반환한다. framework reader가 store 기준 lease snapshot과 monotonic 경과 시간을 결합해 live peer·spot·actor·route row만 내부 소비자에게 제공한다. |
-| `Server/Consumer/DelayableLocationStore.cs` | `Server/Shared/location_store.hpp` | store-mode | done | C++ E2E wrapper가 `location_store_t`와 `location_change_stamp_store_t` 호출을 inner Redis store로 위임하되, delay state가 설정된 동안 해당 store 호출을 늦춘다. 이 지연은 SF-E1 하네스가 store 응답 지연 중 같은 process의 무관 application request가 막히지 않는지 실측하기 위한 전용 구성이다. |
+| `Server/Consumer/DelayableLocationStore.cs` | `Support/redis_latency_proxy.py`, `run_e2e.sh` | harness | done | application store decorator를 사용하지 않는다. 별도 TCP proxy가 Redis server에서 돌아오는 응답 바이트를 늦추므로 실제 store client I/O 대기와 무관 request 처리를 함께 실측한다. |
 | `Server/Consumer/Support/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, Redis endpoint/key prefix, log dir를 env로 읽는다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | loopback Redis container를 띄우고 provider 2개와 consumer 1개를 실행한다. `all`은 parent run이 Redis container 하나를 준비하고 각 scenario child에 endpoint와 container 이름을 넘긴다. 의도된 provider crash scenario만 SIGABRT를 허용하고, cleanup 또는 일반 종료의 비정상 status는 실패로 드러낸다. |
 | `*.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_store_failure_provider`, `zlink_cpp_e2e_store_failure_consumer`, `zlink_cpp_e2e_store_failure_client` target이 있다. |
@@ -43,6 +43,14 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s ./run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-085244-2519813`(SF-A1)부터 `logs/20260715-085440-2530199`(SF-E1)까지
+  - 의미: 실제 Redis 응답 지연 주입을 포함한 Config 6 전체 scenario가 통과했다.
+- 2026-07-15: `./run_e2e.sh SF-E1`
+  - 결과: 통과
+  - 로그: `logs/20260715-085158-2516107`
+  - 의미: 300ms Redis 응답 지연에서 peer query 2406.46ms, status query 0.93ms, application request p99 51.50ms를 실측했고 두 무관 경로는 819.50ms budget 안에 남았다.
 - 2026-07-15: `./run_e2e.sh SF-D3`, `./run_e2e.sh SF-A1`
   - 결과: 통과
   - 로그: `logs/20260715-083935-2463877`(SF-D3), `logs/20260715-083951-2465231`(SF-A1)

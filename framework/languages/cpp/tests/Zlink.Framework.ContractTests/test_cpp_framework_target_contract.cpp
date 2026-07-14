@@ -833,6 +833,26 @@ int main ()
                          != std::string::npos,
                   "E2E-CP-44", "SF-D3 does not prove refresh and lease timestamps advance after recovery");
 
+    /* E2E-CP-45 — E1 delays Redis replies at the harness network boundary. */
+    gate.require (store_failure_location_store.find ("delayable_location_store_t")
+                    == std::string::npos
+                    && store_failure_location_store.find ("sleep_for (delay)")
+                         == std::string::npos,
+                  "E2E-CP-45", "SF-E1 still delays an application store decorator");
+    gate.require (std::filesystem::exists (
+                    e2e_root / "DiscoveryRegistryHa/Support/redis_latency_proxy.py")
+                    && store_failure_runner.find ("redis_latency_proxy.py")
+                         != std::string::npos
+                    && store_failure_runner.find ("ZLINK_CPP_SF_REDIS_PROXY_ADMIN_URL")
+                         != std::string::npos,
+                  "E2E-CP-45", "SF-E1 has no harness-owned Redis latency proxy");
+    gate.require (store_failure_client.find ("redis_proxy_admin_url")
+                    != std::string::npos
+                    && store_failure_support.find ("/delay") != std::string::npos
+                    && store_failure_support.find ("/admin/store-delay")
+                         == std::string::npos,
+                  "E2E-CP-45", "SF-E1 does not control latency outside the application process");
+
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
                     != std::string::npos,

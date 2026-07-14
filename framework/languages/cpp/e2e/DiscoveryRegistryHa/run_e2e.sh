@@ -156,6 +156,8 @@ CLIENT="$BUILD_DIR/zlink_cpp_e2e_store_failure_client"
 REDIS_CONTAINER=""
 REDIS_OWNED=0
 REDIS_KEY_PREFIX="zlink:cpp:store-failure:${RUN_ID}"
+STORE_ENDPOINT=""
+REDIS_PROXY_ADMIN_URL=""
 PIDS=()
 API_A_PID=""
 API_B_PID=""
@@ -353,6 +355,26 @@ fi
 wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
 echo "redis key prefix=$REDIS_KEY_PREFIX"
 
+STORE_ENDPOINT="$REDIS_ENDPOINT"
+if [[ "$SCENARIO" == "SF-E1" ]]; then
+  redis_proxy_port="$(pick_loopback_port)"
+  redis_proxy_admin_port="$(pick_loopback_port)"
+  python3 "$SCRIPT_DIR/Support/redis_latency_proxy.py" \
+    --listen-port "$redis_proxy_port" \
+    --admin-port "$redis_proxy_admin_port" \
+    --upstream-host "${REDIS_ENDPOINT%:*}" \
+    --upstream-port "${REDIS_ENDPOINT##*:}" \
+    >"$LOG_DIR/redis-latency-proxy.stdout.log" \
+    2>"$LOG_DIR/redis-latency-proxy.stderr.log" &
+  REDIS_PROXY_PID="$!"
+  PIDS+=("$REDIS_PROXY_PID")
+  STORE_ENDPOINT="127.0.0.1:${redis_proxy_port}"
+  REDIS_PROXY_ADMIN_URL="http://127.0.0.1:${redis_proxy_admin_port}"
+  wait_tcp 127.0.0.1 "$redis_proxy_port" "Redis latency proxy"
+  wait_tcp 127.0.0.1 "$redis_proxy_admin_port" "Redis latency proxy admin"
+  echo "redis latency proxy endpoint=$STORE_ENDPOINT admin=$REDIS_PROXY_ADMIN_URL"
+fi
+
 start_provider() {
   local rid="$1"
   local channel="$2"
@@ -361,7 +383,7 @@ start_provider() {
   ZLINK_CPP_DRHA_RID="$rid" \
   ZLINK_CPP_DRHA_CHANNEL_ENDPOINT="$channel" \
   ZLINK_CPP_DRHA_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$STORE_ENDPOINT" \
   ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
   ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
@@ -381,7 +403,7 @@ start_consumer() {
   local http="$2"
   ZLINK_CPP_DRHA_RID="$rid" \
   ZLINK_CPP_DRHA_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$STORE_ENDPOINT" \
   ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
   ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
@@ -453,6 +475,7 @@ ZLINK_CPP_SF_PROVIDER_B_ENDPOINT="$API_B" \
 ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL="$HTTP_B_REPLACEMENT" \
 ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_ENDPOINT="$API_B_REPLACEMENT" \
 ZLINK_CPP_SF_PROVIDER_C_START_FILE="$SF_A2_PROVIDER_START_FILE" \
+ZLINK_CPP_SF_REDIS_PROXY_ADMIN_URL="$REDIS_PROXY_ADMIN_URL" \
 ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" \
 ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
 ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \

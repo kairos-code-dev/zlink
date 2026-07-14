@@ -9,8 +9,6 @@
 
 #include <zlink/framework.hpp>
 
-#include <memory>
-
 namespace sf = zlink::framework::e2e::store_failure;
 namespace sf_consumer = zlink::framework::e2e::store_failure::consumer;
 
@@ -26,16 +24,12 @@ int main (int argc, char **argv)
         auto *socket_evidence_ptr = socket_evidence.get ();
         framework.services ().add_singleton<sf_consumer::socket_evidence_store_t> (
           std::move (socket_evidence));
-        auto delay_state = std::make_shared<sf::server::location_store_delay_state_t> ();
-        framework.services ().add_factory<sf::server::location_store_delay_state_t> (
-          [delay_state] (zlink::framework::service_provider_t &) { return delay_state; },
-          zlink::framework::service_lifetime_t::singleton);
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
           .trace_label ("cpp-store-failure-" + options.rid);
         sf::server::add_redis_location_store (framework, options.redis_endpoint,
-                                              options.redis_key_prefix, delay_state);
+                                              options.redis_key_prefix);
         framework.add_client_server_channel (sf::api_channel).enable_client ();
         framework.monitoring ().add_socket_events (sf::api_channel);
         framework.monitoring ().on<zlink::framework::socket_event_payload_t> (
@@ -51,7 +45,6 @@ int main (int argc, char **argv)
           .map_post<sf_consumer::profile_request_handler_t> ("/profile/request")
           .map_post<sf_consumer::profile_request_timeout_handler_t> (
             "/profile/request/timeout/{milliseconds}")
-          .map_post<sf_consumer::store_delay_handler_t> ("/admin/store-delay")
           .map_post<sf_consumer::shutdown_handler_t> ("/shutdown");
     });
     return app.run (argc, argv);

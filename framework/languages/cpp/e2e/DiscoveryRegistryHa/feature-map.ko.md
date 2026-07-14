@@ -17,12 +17,20 @@
 | SF-D1 | 구현 | 두 provider 연결을 실제 request로 준비하고 장애 전부터 복구 뒤까지 traffic을 유지한다. local row 재등록과 heartbeat 유예 뒤 status가 회복되며, 두 endpoint의 Connected/Disconnected count가 늘지 않는다. |
 | SF-D2 | 구현 | 장애 전부터 지속 traffic을 흘리고 최대 성공 간격을 제한한다. Redis 정지 중 `api-b`가 crash된 뒤 `api-a` socket count는 유지되고 `api-b` Disconnected만 증가하며, owner lease join에서 dead row가 제외된다. |
 | SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime heartbeat 상태가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. 장애 중에는 마지막 성공 시각을 보존하고, 복구 뒤 owner lease 갱신 시각과 last refresh 시각이 장애 전 값보다 증가하는지 확인한다. 상태 조회 자체는 store probe를 실행하지 않는다. |
-| SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
+| SF-E1 | 구현 | harness의 TCP proxy가 실제 Redis 응답에 300ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 runtime status 조회와 application request p99가 baseline 기반 budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. |
 
 표준 `/profile/request`는 내부 retry 없이 5초 제한의 framework request 한 번만 실행한다. 따라서 각 scenario의 request 성공은 늦은 재시도로 복구된 결과가 아니라 해당 시점 연결의 실제 결과다.
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s ./run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-085244-2519813`(SF-A1)부터 `logs/20260715-085440-2530199`(SF-E1)까지
+  - 의미: harness Redis latency proxy를 포함한 SF-A1~SF-E1 전체 회귀가 통과했다.
+- 2026-07-15: `./run_e2e.sh SF-E1`
+  - 결과: 통과
+  - 로그: `logs/20260715-085158-2516107`
+  - 의미: harness proxy가 Redis 응답을 지연해 peer query가 2406.46ms 걸리는 동안 runtime status 조회는 0.93ms, application request p99는 51.50ms로 819.50ms budget 안에 남았다.
 - 2026-07-15: `./run_e2e.sh SF-D3`, `./run_e2e.sh SF-A1`
   - 결과: 통과
   - 로그: `logs/20260715-083935-2463877`(SF-D3), `logs/20260715-083951-2465231`(SF-A1)

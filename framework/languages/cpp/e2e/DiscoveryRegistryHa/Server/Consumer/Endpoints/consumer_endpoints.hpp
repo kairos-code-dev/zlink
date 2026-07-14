@@ -189,29 +189,6 @@ class query_connections_handler_t
     socket_evidence_store_t &_evidence;
 };
 
-class store_delay_handler_t
-{
-  public:
-    using dependency_types =
-      zlink::framework::dependency_list_t<server::location_store_delay_state_t>;
-    using request_type = store_delay_req_t;
-    using reply_type = operation_status_t;
-
-    explicit store_delay_handler_t (server::location_store_delay_state_t &state) :
-        _state (state)
-    {
-    }
-
-    operation_status_t handle (const store_delay_req_t &request)
-    {
-        _state.set_delay (std::chrono::milliseconds (request.milliseconds));
-        return {.status = "ok"};
-    }
-
-  private:
-    server::location_store_delay_state_t &_state;
-};
-
 class shutdown_handler_t
 {
   public:

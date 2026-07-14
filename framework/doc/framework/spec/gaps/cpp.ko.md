@@ -320,7 +320,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-23** (결함) — `Manual` 모드인데 error/state/disconnected callback을 **IO 스레드에서 인라인 호출**한다
 - [x] **IMP-CP-24** (결함) — connector metadata 디코더가 **빈 값을 거부**한다 (교차 언어 wire 파손)
   - 근거: 수정 전 metadata codec 회귀 테스트에서 encoder가 만든 `{key: ""}` 프레임을 decoder가 거부해 종료 코드 70으로 실패했다. decoder는 key 길이만 1 이상으로 유지하고 0 길이 value를 허용하도록 수정한 뒤 connector 전체 protocol/integration ctest가 통과했다.
-- [ ] **IMP-CP-25** (결함) — HTTP: streaming body가 **redirect에서 빈 채로 재전송**된다
+- [x] **IMP-CP-25** (결함) — HTTP: streaming body가 **redirect에서 빈 채로 재전송**된다
+  - 근거: 수정 전 실제 307·303 redirect 회귀에서 소비된 provider가 두 번째 hop에서 다시 호출되고 stale `content-type`이 남아 두 테스트가 실패했다. logical request가 현재 provider를 소유하고 첫 redirect 뒤 제거하며 body source가 없으면 content type도 전송하지 않도록 바꿨다. 307은 bodyless POST, 303은 bodyless GET으로 도착했고 provider 호출은 첫 hop의 chunk와 종료 두 번뿐이었으며 HTTP client 전체 56개 테스트가 통과했다.
 - [x] **IMP-CP-26** (결함) — HTTP: 압축 해제 후 **`content-length`를 제거하지 않는다**
   - 근거: 수정 전 gzip·deflate 회귀 테스트에서 압축 해제된 body에 압축 전송 길이 `content-length`가 각각 남아 두 테스트가 실패했다. 두 압축 경로가 `content-encoding`과 `content-length`를 함께 제거하도록 수정한 뒤 대상 테스트 2개와 HTTP client 전체 ctest가 통과했다.
 - [x] **IMP-CP-27** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다

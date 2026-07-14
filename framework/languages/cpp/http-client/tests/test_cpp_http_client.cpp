@@ -208,6 +208,7 @@ http::response<http::string_body> make_response (const http::request<http::strin
     }
     if (target == "/echo-content-type") {
         response.body () = nlohmann::json{
+          {"method", std::string (request.method_string ())},
           {"contentType", std::string (request[http::field::content_type])},
           {"requestBody",
            request.body ()}}.dump ();
@@ -274,6 +275,18 @@ http::response<http::string_body> make_response (const http::request<http::strin
     if (target == "/redirect-loop") {
         response.result (http::status::found);
         response.set (http::field::location, "/redirect-loop");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/redirect-stream-307") {
+        response.result (http::status::temporary_redirect);
+        response.set (http::field::location, "/echo-content-type");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/redirect-stream-303") {
+        response.result (http::status::see_other);
+        response.set (http::field::location, "/echo-content-type");
         response.prepare_payload ();
         return response;
     }
@@ -1660,6 +1673,60 @@ TEST (ZLinkHttpClient, UploadsStreamedRequestBody)
     const auto echoed = nlohmann::json::parse (result.value ().body);
     EXPECT_EQ (echoed.at ("contentType").get<std::string> (), "application/octet-stream");
     EXPECT_EQ (echoed.at ("requestBody").get<std::string> (), "chunk-one|chunk-two|chunk-three");
+}
+
+TEST (ZLinkHttpClient, DropsConsumedStreamBodyOn307Redirect)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .follow_redirects ()
+                    .build ();
+
+    int calls = 0;
+    const auto result = client.post ("/redirect-stream-307")
+                          .body_stream (
+                            [&] () -> std::optional<std::string> {
+                                ++calls;
+                                return calls == 1 ? std::optional<std::string> ("streamed")
+                                                  : std::nullopt;
+                            },
+                            "application/octet-stream")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("method"), "POST");
+    EXPECT_EQ (echoed.at ("requestBody"), "");
+    EXPECT_EQ (echoed.at ("contentType"), "");
+    EXPECT_EQ (calls, 2);
+}
+
+TEST (ZLinkHttpClient, DropsConsumedStreamBodyOn303Redirect)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .follow_redirects ()
+                    .build ();
+
+    int calls = 0;
+    const auto result = client.post ("/redirect-stream-303")
+                          .body_stream (
+                            [&] () -> std::optional<std::string> {
+                                ++calls;
+                                return calls == 1 ? std::optional<std::string> ("streamed")
+                                                  : std::nullopt;
+                            },
+                            "application/octet-stream")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("method"), "GET");
+    EXPECT_EQ (echoed.at ("requestBody"), "");
+    EXPECT_EQ (echoed.at ("contentType"), "");
+    EXPECT_EQ (calls, 2);
 }
 
 TEST (ZLinkHttpClient, CoroutineBodyStreamProviderRunsOnExecuteSchedulerWorker)

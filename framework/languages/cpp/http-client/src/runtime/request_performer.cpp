@@ -19,6 +19,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <functional>
+#include <optional>
 
 namespace zlink::http_client::detail
 {
@@ -26,6 +28,7 @@ namespace
 {
 namespace beast = boost::beast;
 namespace http = beast::http;
+using body_provider_t = std::function<std::optional<std::string> ()>;
 
 struct exchange_outcome_t
 {
@@ -52,6 +55,11 @@ raw_http_response_t to_raw_response (const http::response<http::string_body> &re
 bool is_authorization_header (const std::string &name)
 {
     return iequals (name, "authorization");
+}
+
+bool is_content_type_header (const std::string &name)
+{
+    return iequals (name, "content-type");
 }
 
 bool can_retry_reused_connection (http_method_t method)
@@ -94,10 +102,11 @@ class request_performer_t
         const auto origin = hop;
         auto method = _request.method;
         auto body = _request.body;
+        auto body_provider = _request.body_provider;
         int redirects_left = _options.follow_redirects;
 
         for (;;) {
-            auto response = perform_hop (origin, hop, method, body);
+            auto response = perform_hop (origin, hop, method, body, body_provider);
             if (_options.cookies) {
                 for (const auto &field : response) {
                     if (field.name () == http::field::set_cookie) {
@@ -119,6 +128,7 @@ class request_performer_t
                     method = http_method_t::get;
                     body.reset ();
                 }
+                body_provider = {};
                 hop = resolve_location (hop, location);
                 continue;
             }
@@ -151,6 +161,7 @@ class request_performer_t
     build_wire_request (const hop_target_t &origin,
                         const hop_target_t &hop,
                         http_method_t method,
+                        bool has_body,
                         bool absolute_form) const
     {
         const auto wire_target =
@@ -177,10 +188,16 @@ class request_performer_t
             if (!keep_authorization && is_authorization_header (name)) {
                 continue;
             }
+            if (!has_body && is_content_type_header (name)) {
+                continue;
+            }
             wire.set (name, value);
         }
         for (const auto &[name, value] : _request.headers) {
             if (!keep_authorization && is_authorization_header (name)) {
+                continue;
+            }
+            if (!has_body && is_content_type_header (name)) {
                 continue;
             }
             wire.set (name, value);
@@ -208,10 +225,11 @@ class request_performer_t
     http::response<http::string_body> perform_hop (const hop_target_t &origin,
                                                    const hop_target_t &hop,
                                                    http_method_t method,
-                                                   const std::optional<std::string> &body)
+                                                   const std::optional<std::string> &body,
+                                                   const body_provider_t &body_provider)
     {
         const auto key = pool_key (hop);
-        const bool can_reuse = !_request.body_provider;
+        const bool can_reuse = !body_provider;
 
         for (int attempt = 0; attempt < 2; ++attempt) {
             std::unique_ptr<pooled_connection_t> connection;
@@ -225,7 +243,8 @@ class request_performer_t
             }
 
             try {
-                auto outcome = run_exchange (*connection, origin, hop, method, body);
+                auto outcome =
+                  run_exchange (*connection, origin, hop, method, body, body_provider);
                 if (outcome.reusable && can_reuse) {
                     _pool.release (key, std::move (connection));
                 }
@@ -244,18 +263,19 @@ class request_performer_t
                                      const hop_target_t &origin,
                                      const hop_target_t &hop,
                                      http_method_t method,
-                                     const std::optional<std::string> &body)
+                                     const std::optional<std::string> &body,
+                                     const body_provider_t &body_provider)
     {
         if (connection.plain) {
             connection.plain->expires_after (effective_timeout ());
             return run_exchange_on (*connection.plain, connection.buffer, origin, hop, method,
-                                    body);
+                                    body, body_provider);
         }
 #ifdef ZLINK_HTTP_CLIENT_WITH_OPENSSL
         if (connection.secure) {
             beast::get_lowest_layer (*connection.secure).expires_after (effective_timeout ());
             return run_exchange_on (*connection.secure, connection.buffer, origin, hop, method,
-                                    body);
+                                    body, body_provider);
         }
 #endif
         throw request_error ("HTTP connection is not open");
@@ -267,17 +287,21 @@ class request_performer_t
                                         const hop_target_t &origin,
                                         const hop_target_t &hop,
                                         http_method_t method,
-                                        const std::optional<std::string> &body)
+                                        const std::optional<std::string> &body,
+                                        const body_provider_t &body_provider)
     {
         const bool absolute_form = _options.proxy.has_value () && hop.scheme == "http";
+        const bool has_body = body.has_value () || static_cast<bool> (body_provider);
 
-        if (_request.body_provider) {
+        if (body_provider) {
             auto wire = build_wire_request<http::buffer_body> (origin, hop, method,
+                                                               has_body,
                                                                absolute_form);
             wire.chunked (true);
-            send_streamed (stream, wire, _request.body_provider);
+            send_streamed (stream, wire, body_provider);
         } else {
             auto wire = build_wire_request<http::string_body> (origin, hop, method,
+                                                               has_body,
                                                                absolute_form);
             if (body) {
                 wire.body () = *body;

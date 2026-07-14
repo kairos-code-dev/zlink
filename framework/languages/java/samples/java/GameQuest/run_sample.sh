@@ -131,6 +131,8 @@ if rg -n 'ZLinkRequestHandler<Messages.GameplayMsg' Server/QuestMission/src/main
   echo "GameplayMsg must use one-way send handlers" >&2
   exit 1
 fi
+grep -q 'gamequest-scale-out=completed' \
+  Client/src/main/java/systems/zlink/samples/gamequest/client/GameQuestClientScenario.java
 (
   cd ../../..
   ./gradlew --no-daemon \
@@ -176,8 +178,11 @@ cat "$LOG_DIR/client.log"
 
 grep -q "gamequest-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "gamequest=completed" "$LOG_DIR/client.log"
+grep -q "gamequest-scale-out=completed" "$LOG_DIR/client.log"
 grep -h -q 'surface=CHANNEL kind=SEND.*packet=GameplayMsg' "$LOG_DIR"/flow-api-*.log
 grep -h -q 'surface=SPOT_ROUTE kind=SEND.*packet=GameplayMsg' "$LOG_DIR"/flow-mission-*.log
+grep -q 'packet=GameplayMsg.*spot=player-scale-a' "$LOG_DIR/flow-mission-a.log"
+grep -q 'packet=GameplayMsg.*spot=player-scale-b' "$LOG_DIR/flow-mission-b.log"
 grep -h -q 'surface=CHANNEL kind=SEND.*packet=QuestProcessingMsg' "$LOG_DIR"/flow-api-*.log
 if grep -h -q 'kind=REQUEST.*packet=GameplayMsg' "$LOG_DIR"/flow-*.log; then
   echo "GameplayMsg request/reply flow must not remain" >&2

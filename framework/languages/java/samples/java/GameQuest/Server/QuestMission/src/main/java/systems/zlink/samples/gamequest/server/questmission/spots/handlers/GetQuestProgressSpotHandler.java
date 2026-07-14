@@ -12,8 +12,6 @@ public final class GetQuestProgressSpotHandler
     public CompletionStage<Messages.GetQuestProgressRes> handle(
         PlayerQuestSpot spot,
         Messages.GetQuestProgressReq request) {
-        spot.requirePlayer(request.playerId());
-        return CompletableFuture.completedFuture(
-            new Messages.GetQuestProgressRes(spot.store().projection(spot.playerId())));
+        return CompletableFuture.completedFuture(spot.progress(request));
     }
 }

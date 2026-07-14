@@ -12,7 +12,6 @@ public final class SyncQuestProgressSpotHandler
     public CompletionStage<Messages.SyncQuestProgressRes> handle(
         PlayerQuestSpot spot,
         Messages.SyncQuestProgressReq request) {
-        spot.requirePlayer(request.playerId());
-        return CompletableFuture.completedFuture(spot.store().sync(spot.playerId()));
+        return CompletableFuture.completedFuture(spot.sync(request));
     }
 }

@@ -12,8 +12,6 @@ public final class DeleteQuestProjectionSpotHandler
     public CompletionStage<Messages.DeleteQuestProjectionRes> handle(
         PlayerQuestSpot spot,
         Messages.DeleteQuestProjectionReq request) {
-        spot.requirePlayer(request.playerId());
-        return CompletableFuture.completedFuture(
-            spot.store().deleteProjection(spot.playerId(), request.questId()));
+        return CompletableFuture.completedFuture(spot.delete(request));
     }
 }

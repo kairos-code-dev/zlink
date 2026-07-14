@@ -22,18 +22,19 @@ public final class PlayerQuestRouter {
     }
 
     public <T> CompletionStage<T> request(String playerId, Object request, Class<T> responseType) {
-        RoutingId spotRid = RoutingId.from(playerId);
-        return spots.getOrCreate(
-                PlayerQuestSpot.class,
-                spotRid,
-                ZLinkMessage.of(new PlayerQuestCreateReq(playerId)))
-            .thenCompose(ignored -> handles.resolveSpotHandle(spotRid))
-            .thenApply(found -> found.orElseThrow(() ->
-                new IllegalStateException("player quest Spot is not registered: " + spotRid)))
+        return ownerHandle(playerId)
             .thenCompose(handle -> request(handle, request, responseType));
     }
 
     public CompletionStage<Void> send(String playerId, Object message) {
+        return ownerHandle(playerId)
+            .thenApply(handle -> {
+                routes.sendToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, message).submit();
+                return null;
+            });
+    }
+
+    private CompletionStage<SpotHandle> ownerHandle(String playerId) {
         RoutingId spotRid = RoutingId.from(playerId);
         return spots.getOrCreate(
                 PlayerQuestSpot.class,
@@ -41,11 +42,7 @@ public final class PlayerQuestRouter {
                 ZLinkMessage.of(new PlayerQuestCreateReq(playerId)))
             .thenCompose(ignored -> handles.resolveSpotHandle(spotRid))
             .thenApply(found -> found.orElseThrow(() ->
-                new IllegalStateException("player quest Spot is not registered: " + spotRid)))
-            .thenApply(handle -> {
-                routes.sendToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, message).submit();
-                return null;
-            });
+                new IllegalStateException("player quest Spot is not registered: " + spotRid)));
     }
 
     private <T> CompletionStage<T> request(SpotHandle handle, Object request, Class<T> responseType) {

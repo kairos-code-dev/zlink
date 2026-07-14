@@ -10,6 +10,7 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
+import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkSpotContext context;
@@ -37,19 +38,36 @@ public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
-    public String playerId() {
-        return playerId;
-    }
-
-    public void requirePlayer(String requestedPlayerId) {
+    private void requirePlayer(String requestedPlayerId) {
         if (!playerId.equals(requestedPlayerId)) {
             throw new IllegalArgumentException(
                 "request player does not match owner Spot: " + requestedPlayerId);
         }
     }
 
-    public QuestStore store() {
-        return store;
+    public Messages.QuestProcessingMsg apply(Messages.GameplayMsg message) {
+        requirePlayer(message.playerId());
+        return store.apply(message);
+    }
+
+    public Messages.GetQuestProgressRes progress(Messages.GetQuestProgressReq request) {
+        requirePlayer(request.playerId());
+        return new Messages.GetQuestProgressRes(store.projection(playerId));
+    }
+
+    public Messages.SyncQuestProgressRes sync(Messages.SyncQuestProgressReq request) {
+        requirePlayer(request.playerId());
+        return store.sync(playerId);
+    }
+
+    public Messages.DeleteQuestProjectionRes delete(Messages.DeleteQuestProjectionReq request) {
+        requirePlayer(request.playerId());
+        return store.deleteProjection(playerId, request.questId());
+    }
+
+    public Messages.QuestProgress rebuild(Messages.RebuildQuestProjectionReq request) {
+        requirePlayer(request.playerId());
+        return store.rebuildProjection(playerId, request.questId(), request.count());
     }
 
     @Override

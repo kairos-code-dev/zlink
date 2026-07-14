@@ -8,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
@@ -190,6 +191,7 @@ public final class GameQuestClientScenario {
         ensure(reconnectedProgress.toCompletableFuture().join().payload().progress().currentCount() == 1);
         apiBStream.disconnect().submit().toCompletableFuture().join();
 
+        verifyScaleOut(apiAStream, apiBStream);
         Messages.GameQuestServerAssertRes assertion = waitForServerAssertion();
         ensure(assertion.passed());
         System.out.println(SampleNames.ServerEvidenceMarker);
@@ -206,6 +208,46 @@ public final class GameQuestClientScenario {
                 && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
         apiAStream.disconnect().submit().toCompletableFuture().join();
         System.out.println(SampleNames.RehydrateMarker);
+    }
+
+    private void verifyScaleOut(
+        ZLinkStreamConnector apiAStream,
+        ZLinkStreamConnector apiBStream) {
+        CompletableFuture.allOf(
+            apiAStream.connect().submit().toCompletableFuture(),
+            apiBStream.connect().submit().toCompletableFuture()).join();
+        CompletableFuture.allOf(
+            apiAStream.request(new Messages.JoinSessionReq("player-scale-a"))
+                .submit(Messages.JoinSessionRes.class).toCompletableFuture(),
+            apiBStream.request(new Messages.JoinSessionReq("player-scale-b"))
+                .submit(Messages.JoinSessionRes.class).toCompletableFuture()).join();
+
+        CompletableFuture<ZLinkStreamMessage<Messages.QuestProgressNotify>> progressA =
+            apiAStream.waitFor(Messages.QuestProgressNotify.class)
+                .where(Messages.QuestProgressNotify.class, message ->
+                    message.payload().playerId().equals("player-scale-a"))
+                .submit(Messages.QuestProgressNotify.class).toCompletableFuture();
+        CompletableFuture<ZLinkStreamMessage<Messages.QuestProgressNotify>> progressB =
+            apiBStream.waitFor(Messages.QuestProgressNotify.class)
+                .where(Messages.QuestProgressNotify.class, message ->
+                    message.payload().playerId().equals("player-scale-b"))
+                .submit(Messages.QuestProgressNotify.class).toCompletableFuture();
+        CompletableFuture<Messages.KillMonsterRes> requestA = apiAStream
+            .request(new Messages.KillMonsterReq(
+                "player-scale-a", "wolf", "forest", "scale-kill-1"))
+            .submit(Messages.KillMonsterRes.class).toCompletableFuture();
+        CompletableFuture<Messages.CollectItemRes> requestB = apiBStream
+            .request(new Messages.CollectItemReq(
+                "player-scale-b", "healing-herb", 1, "scale-herb-1"))
+            .submit(Messages.CollectItemRes.class).toCompletableFuture();
+
+        CompletableFuture.allOf(requestA, requestB, progressA, progressB).join();
+        ensure(progressA.join().payload().progress().currentCount() == 1);
+        ensure(progressB.join().payload().progress().currentCount() == 1);
+        CompletableFuture.allOf(
+            apiAStream.disconnect().submit().toCompletableFuture(),
+            apiBStream.disconnect().submit().toCompletableFuture()).join();
+        System.out.println("gamequest-scale-out=completed");
     }
 
     private Messages.GameQuestServerAssertRes waitForServerAssertion() throws Exception {

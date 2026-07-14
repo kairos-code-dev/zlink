@@ -20,8 +20,7 @@ public final class ApplyGameplaySpotHandler
     public CompletionStage<Void> handle(
         PlayerQuestSpot spot,
         Messages.GameplayMsg request) {
-        spot.requirePlayer(request.playerId());
-        Messages.QuestProcessingMsg result = spot.store().apply(request);
+        Messages.QuestProcessingMsg result = spot.apply(request);
         channels.sendToChannel(
                 SampleNames.questNotificationChannelFor(request.sourceApi()),
                 result)

@@ -12,8 +12,6 @@ public final class RebuildQuestProjectionSpotHandler
     public CompletionStage<Messages.QuestProgress> handle(
         PlayerQuestSpot spot,
         Messages.RebuildQuestProjectionReq request) {
-        spot.requirePlayer(request.playerId());
-        return CompletableFuture.completedFuture(
-            spot.store().rebuildProjection(spot.playerId(), request.questId(), request.count()));
+        return CompletableFuture.completedFuture(spot.rebuild(request));
     }
 }

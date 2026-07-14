@@ -80,6 +80,10 @@ public final class Program {
             options.setActorTransferForwardWindow(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .setMessageFlowObserver(flow -> {
+                    evidence.addFlow(flow);
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                })
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-spot-transfer-" + nodeRid);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.MESH);

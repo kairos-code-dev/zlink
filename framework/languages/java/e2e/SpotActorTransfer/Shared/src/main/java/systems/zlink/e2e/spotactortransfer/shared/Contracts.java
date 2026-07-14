@@ -110,9 +110,14 @@ public final class Contracts {
         String actorId,
         String kind,
         String value,
-        String nodeRid) {
+        String nodeRid,
+        String transferId,
+        String correlationId,
+        String flowId) {
         public String text() {
-            return String.join("|", scenario, actorId, kind, value, nodeRid);
+            return String.join(
+                "|", scenario, actorId, kind, value, nodeRid,
+                transferId, correlationId, flowId);
         }
     }
 

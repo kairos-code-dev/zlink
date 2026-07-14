@@ -131,6 +131,12 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 .requestToActor(requireActor(actorId), request)
                 .timeout(Duration.ofSeconds(12))
                 .submit(Contracts.JoinTargetRes.class).toCompletableFuture().join();
+            if (result.accepted()) {
+                ActorRef resolved = requireActor(actorId);
+                evidence.add(
+                    request.scenario(), actorId, "location_visible",
+                    resolved.nodeRid() + ":" + Long.toUnsignedString(resolved.generation()));
+            }
             evidence.add(request.scenario(), actorId,
                 result.accepted() ? "success_reply" : "reject_reply", request.targetSpotRid());
             writeJson(exchange, result);

@@ -7,13 +7,13 @@
 
 | 시나리오 | 상태 | 현재 검증 범위 |
 |----------|------|----------------|
-| ST-A1 | 부분 구현 | local join 승인과 target packet 처리는 확인한다. callback, location commit, 성공 응답의 전체 순서는 아직 역할 server evidence로 증명하지 못한다. |
+| ST-A1 | 구현 | local join callback 뒤 공개 actor 조회에서 target location을 확인하고, 그 evidence 뒤에만 성공 응답 marker를 남긴다. |
 | ST-A2 | 구현 | local join 거절 뒤 source membership을 유지하고 leave·joined 부수 효과가 없는지 확인한다. |
 | ST-A3 | 구현 | joined callback 대기 중 packet 완료를 차단하고, callback 이후 target에서 처리되는지 확인한다. |
-| ST-B1 | 부분 구현 | remote transfer와 state 복원, source와 target 각각의 callback 순서는 확인한다. 전체 순서에 필요한 역할 사이 marker는 아직 모두 남지 않는다. |
+| ST-B1 | 구현 | remote transfer와 state 복원, 역할별 callback 순서, transfer id로 연결된 typed flow marker와 commit ack를 확인한다. |
 | ST-B2 | 구현 | commit ack 뒤 source process를 종료해도 target actor와 성공 결과가 유지되는지 확인한다. |
 | ST-B3 | 구현 | transfer adapter가 없는 actor가 기본 빈 state로 transfer되는지 확인한다. |
-| ST-B4 | 부분 구현 | 명시적인 빈 transfer state, target domain state, source와 target 각각의 callback 순서는 확인한다. 전체 순서에 필요한 역할 사이 marker는 아직 모두 남지 않는다. |
+| ST-B4 | 구현 | 명시적인 빈 transfer state와 target domain state를 확인하고, 역할별 callback과 typed flow marker를 같은 transfer id로 연결한다. |
 | ST-C1 | 구현 | target admission 뒤 source process를 종료하고, commit되지 않은 target actor와 callback 부수 효과가 없는지 확인한다. |
 | ST-C2 | 구현 | target commit 뒤 source process를 종료해도 target actor가 유지되는지 확인한다. |
 | ST-C3 | 구현 | transfer-out, leave, transfer-in, joined callback 실패를 각각 주입하고 실패 evidence를 확인한다. |
@@ -21,8 +21,8 @@
 | ST-D2 | 구현 | stale source release가 새 generation의 target location을 제거하지 못하는지 확인한다. |
 | ST-E1 | 구현 | remote transfer 전후 bound session push가 source에서 target으로 이어지는지 확인한다. |
 | ST-E2 | 구현 | 실패한 transfer 뒤 bound session push가 기존 source actor로 전달되는지 확인한다. |
-| ST-F1 | 구현 | moving 중 packet을 대기시키고 target에서 입력 순서대로 다시 처리하는지 확인한다. |
-| ST-F2 | 구현 | handoff backlog가 target direct packet보다 먼저 처리되는지 확인한다. |
+| ST-F1 | 부분 구현 | moving 중 packet을 대기시키고 target에서 입력 순서대로 다시 처리하는 것은 확인한다. 정상 late backlog 경로가 target `backlog_enqueued` marker를 내지 않는 결함은 E2E-JV-17에 남아 있다. |
+| ST-F2 | 부분 구현 | handoff backlog가 target direct packet보다 먼저 처리되는 것은 확인한다. target enqueue와 location publish의 marker 순서는 E2E-JV-17의 runtime 결함 때문에 아직 확인하지 못한다. |
 | ST-F3 | 구현 | bound session packet이 transfer 전후 순서를 유지하며 target에서 다시 처리되는지 확인한다. |
 | ST-F4 | 구현 | forwarding window 안의 stale ref는 전달하고 window 뒤에는 `ACTOR_LOCATION_STALE`로 실패하는지 확인한다. |
 | ST-F5 | 구현 | 연속 transfer 뒤 이전 두 source의 forwarding mapping이 제거되는지 확인한다. |
@@ -30,6 +30,6 @@
 
 ## 남은 검증 갭
 
-- `ST-A1`, `ST-B1`, `ST-B4`의 전체 순서 증거는 `E2E-JV-17`에서 추적한다. 역할 server가
-  `location_committed`를 포함한 필수 marker와 같은 flow correlation을 남긴 뒤 역할 사이 순서를
-  다시 검증해야 한다.
+- `ST-F1`, `ST-F2`의 target `backlog_enqueued` evidence와 location publish 전 적재 순서는
+  `E2E-JV-17`에서 추적한다. Java runtime의 committed backlog replay와 late backlog marker를 고쳐야
+  성공 경로에서 이 순서를 검증할 수 있다.

@@ -90,7 +90,8 @@ public final class Program {
         Contracts.ProbeRes probe = probe(nodeA, actorId, "ST-A1", "after-joined");
         require("actor-a".equals(probe.nodeRid()), "ST-A1 packet did not stay on actor-a");
         require(spotRid.equals(probe.spotRid()), "ST-A1 packet did not reach target spot");
-        assertNodeOrder(actorId, "actor-a", List.of("admission", "leave", "joined", "success_reply"));
+        assertNodeOrder(actorId, "actor-a", List.of(
+            "admission", "leave", "joined", "location_visible", "success_reply"));
     }
 
     private void localReject() throws Exception {
@@ -136,10 +137,14 @@ public final class Program {
         Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B1", "after-transfer");
         require("actor-b".equals(probe.nodeRid()), "ST-B1 target owner is not actor-b");
         require(probe.stateVersion() == 21, "ST-B1 state was not restored");
+        waitFor(actorId, "location_committed", Duration.ofSeconds(3));
+        waitFor(actorId, "source_cleanup", Duration.ofSeconds(3));
         assertNodeOrder(actorId, "actor-a", List.of(
-            "transfer_out", "leave", "commit_ack", "success_reply"));
+            "transfer_out", "leave", "commit_ack", "location_visible", "success_reply"));
         assertNodeOrder(actorId, "actor-b", List.of(
             "admission", "transfer_in", "joined"));
+        assertCorrelatedTransferMarkers(actorId, List.of(
+            "commit_request", "location_committed", "source_cleanup", "commit_ack"));
     }
 
     private void inFlightHandoffOrder() throws Exception {
@@ -343,10 +348,14 @@ public final class Program {
             "ST-B4 custom empty transfer failed");
         Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B4", "after-empty-state");
         require(probe.stateVersion() == 41, "ST-B4 domain state was not loaded");
+        waitFor(actorId, "location_committed", Duration.ofSeconds(3));
+        waitFor(actorId, "source_cleanup", Duration.ofSeconds(3));
         assertNodeOrder(actorId, "actor-a", List.of(
             "transfer_out_empty", "leave", "commit_ack", "success_reply"));
         assertNodeOrder(actorId, "actor-b", List.of(
             "admission", "transfer_in_empty", "joined", "domain_state_loaded"));
+        assertCorrelatedTransferMarkers(actorId, List.of(
+            "commit_request", "location_committed", "source_cleanup", "commit_ack"));
     }
 
     private void sourceDownBeforeCommit() throws Exception {
@@ -667,6 +676,34 @@ public final class Program {
             .toList();
         require(observed.equals(markers),
             "marker order mismatch expected=" + markers + " actual=" + observed);
+    }
+
+    private void assertCorrelatedTransferMarkers(String actorId, List<String> kinds)
+        throws Exception {
+        List<Contracts.Evidence> actorEvidence = evidence().stream()
+            .filter(entry -> actorId.equals(entry.actorId()))
+            .toList();
+        String transferId = actorEvidence.stream()
+            .map(Contracts.Evidence::transferId)
+            .filter(value -> !value.isBlank())
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "missing transfer id evidence actor=" + actorId));
+        for (String kind : kinds) {
+            Contracts.Evidence marker = actorEvidence.stream()
+                .filter(entry -> kind.equals(entry.kind()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                    "missing correlated marker " + kind + " actor=" + actorId));
+            require(transferId.equals(marker.transferId()),
+                "transfer id mismatch kind=" + kind + " expected=" + transferId
+                    + " actual=" + marker.transferId());
+            if (!"commit_ack".equals(kind)) {
+                require(!marker.flowId().isBlank(), "missing flow id kind=" + kind);
+                require(!marker.correlationId().isBlank(),
+                    "missing message correlation id kind=" + kind);
+            }
+        }
     }
 
     private record HandoffFixture(

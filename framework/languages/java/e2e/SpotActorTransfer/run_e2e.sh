@@ -181,11 +181,6 @@ else
 fi
 
 grep -q "spot-actor-transfer e2e result=passed" "${LOG_DIR}/client.stdout.log"
-if [[ "${SCENARIO}" == "ST-B1" ]]; then
-  wait_log_contains "${LOG_DIR}/actor-a-flow.log" "packet=commit_request"
-  wait_log_contains "${LOG_DIR}/actor-b-flow.log" "packet=location_committed"
-  wait_log_contains "${LOG_DIR}/actor-a-flow.log" "packet=source_cleanup"
-fi
 if [[ "${SCENARIO}" == "ST-F6" ]]; then
   grep -q "packet=handoff_request_frame" "${LOG_DIR}/actor-a-flow.log"
   grep -q "packet=handoff_direct_reply" "${LOG_DIR}/actor-b-flow.log"

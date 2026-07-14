@@ -20,8 +20,16 @@ export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlin
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
 export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=""
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:runtime-monitoring:${run_id}}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=600
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
+if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
+   || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
+  echo "RuntimeMonitoring must use 3s readiness and 5s route settle limits" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"
@@ -220,7 +228,7 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
 pids+=("$!")
 wait_port trigger-http "${TRIGGER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
 ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \

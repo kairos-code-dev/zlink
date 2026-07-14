@@ -3427,6 +3427,10 @@ assert has(play_b, "SpotInitialized", "user:play-b:sm-e1-missing")
 assert not any(item["spot_rid"] == "user:play-b:sm-e1-missing" for item in play_a["entries"])
 print("scenario SM-E1 evidence passed")
 PY
+  grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
+    "$LOG_DIR/play-b-flow.log"
+  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
+    "$LOG_DIR/play-b-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
 fi

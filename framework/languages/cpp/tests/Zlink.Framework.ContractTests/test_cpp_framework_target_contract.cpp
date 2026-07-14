@@ -302,6 +302,22 @@ int main ()
     gate.require (all_scenario_list.find ("SM-Q9") == std::string::npos, "E2E-CP-05",
                   "SpotService all mode includes non-contract SM-Q9");
 
+    /* E2E-CP-18 — SM-E1 proves both missing-handler flow classifications. */
+    const auto sm_e1_begin = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-E1\"");
+    const auto sm_e1_end = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-E2\"", sm_e1_begin);
+    const auto sm_e1_block =
+      sm_e1_begin != std::string::npos && sm_e1_end != std::string::npos
+        ? spot_service_runner.substr (sm_e1_begin, sm_e1_end - sm_e1_begin)
+        : std::string{};
+    gate.require (sm_e1_block.find (
+                    "reason=handler_missing.*action=reply_error.*packet=MissingSpotReq")
+                    != std::string::npos,
+                  "E2E-CP-18", "SM-E1 does not assert request message-flow error evidence");
+    gate.require (sm_e1_block.find (
+                    "reason=handler_missing.*action=drop.*packet=MissingSpotMsg")
+                    != std::string::npos,
+                  "E2E-CP-18", "SM-E1 does not assert send message-flow error evidence");
+
     /* E2E-CP-30 — RC-A6 is a startup-negative path, not a client scenario. */
     gate.require (registration_codec_runner.find ("== rc-a*") == std::string::npos,
                   "E2E-CP-30", "RegistrationCodec routes RC-A6 through the client glob");

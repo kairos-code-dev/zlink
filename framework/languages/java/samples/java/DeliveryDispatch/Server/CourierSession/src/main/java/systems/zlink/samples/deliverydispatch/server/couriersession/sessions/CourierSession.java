@@ -63,7 +63,7 @@ public final class CourierSession implements ZLinkSession {
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if ("BindCourierSessionReq".equals(dispatch.packetName())) {
-            return handleBindCourierSessionReq(payload);
+            return handleBindCourierSessionReq(dispatch, payload);
         }
         return handlers.tryHandle(context, dispatch, payload).thenCompose(handled -> {
             if (handled) {
@@ -77,17 +77,18 @@ public final class CourierSession implements ZLinkSession {
         });
     }
 
-    private CompletionStage<Void> handleBindCourierSessionReq(ZLinkMessage payload) {
+    private CompletionStage<Void> handleBindCourierSessionReq(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload) {
         Messages.BindCourierSessionReq request = payload.decode(Messages.BindCourierSessionReq.class);
         return findOrEnsureActor(request.courierId()).thenCompose(actorRef -> {
             ZLinkSessionActor bound = context.actors().find(actorRef.actorId()).orElse(null);
             CompletionStage<ZLinkSessionActor> actorStage = bound == null
                 ? context.actors().bind(actorRef.toActorRef())
                 : CompletableFuture.completedFuture(bound);
-            return actorStage.thenRun(() -> context.client()
-                    .reply(new Messages.BindCourierSessionRes(
-                        request.courierId(), actorRef, context.sessionId()))
-                    .submit());
+            Messages.BindCourierSessionReq relayed = new Messages.BindCourierSessionReq(
+                request.courierId(), actorRef, context.sessionId());
+            return actorStage.thenCompose(actor -> actor.relay(dispatch, ZLinkMessage.of(relayed)));
         });
     }
 

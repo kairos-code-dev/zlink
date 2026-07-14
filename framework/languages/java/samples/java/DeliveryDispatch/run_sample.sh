@@ -6,6 +6,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
+if grep -q 'Server:CourierGateway' standalone.settings.gradle.kts; then
+  echo "DeliveryDispatch must not include the dead CourierGateway role" >&2
+  exit 1
+fi
+if grep -R -q '@ZLinkHandlerGroup("customer-route")' Server/CustomerGateway/src/main/java; then
+  echo "DeliveryDispatch must not retain the unregistered customer-route handlers" >&2
+  exit 1
+fi
+
 pids=()
 redis_container_id=""
 log_dir="build/sample-logs"
@@ -86,7 +95,7 @@ import socket
 reserved = []
 try:
     chosen = set()
-    while len(reserved) < 16:
+    while len(reserved) < 15:
         host = "127.0.0.1"
         port = random.randint(20000, 29999)
         if port in chosen:
@@ -118,7 +127,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking customer_stream courier_stream courier_gateway dispatch_http dispatch_channel customer_spot customer_router tracking_spot_router tracking_spot_pub courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking customer_stream courier_stream dispatch_http dispatch_channel customer_spot customer_router tracking_spot_router tracking_spot_pub courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -127,7 +136,6 @@ common_java_options="${JAVA_TOOL_OPTIONS:-}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${tracking}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")"
-common_java_options+=" -Dzlink.samples.deliverydispatch.courierGatewayChannelEndpoint=tcp://$(endpoint_host "${courier_gateway}"):$(endpoint_port "${courier_gateway}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot_router}"):$(endpoint_port "${tracking_spot_router}")"
@@ -155,7 +163,6 @@ gradle_run \
   :Server:CustomerGateway:installDist \
   :Server:CourierSession:installDist \
   :Server:CourierSpotNode:installDist \
-  :Server:CourierGateway:installDist \
   :Server:Dispatch:installDist \
   :Client:installDist
 
@@ -183,10 +190,6 @@ wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier
 wait_port "$(endpoint_host "${courier_node1_router}")" "$(endpoint_port "${courier_node1_router}")"
 wait_port "$(endpoint_host "${courier_node2_router}")" "$(endpoint_port "${courier_node2_router}")"
 
-JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/CourierGateway CourierGateway)" >"${log_dir}/courier-gateway.log" 2>&1 &
-pids+=("$!")
-wait_port "$(endpoint_host "${courier_gateway}")" "$(endpoint_port "${courier_gateway}")"
-
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Dispatch Dispatch)" >"${log_dir}/dispatch.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
@@ -198,5 +201,12 @@ cat "${log_dir}/client.log"
 grep -q "deliverydispatch-reassignment=completed" "${log_dir}/client.log"
 grep -q "deliverydispatch-server-evidence=completed" "${log_dir}/client.log"
 grep -q "deliverydispatch=completed" "${log_dir}/client.log"
+for courier_id in courier-a courier-b; do
+  if ! grep -q "courier-bind-relayed=${courier_id}" \
+      "${log_dir}/courier-node1.log" "${log_dir}/courier-node2.log"; then
+    echo "DeliveryDispatch bind did not reach the courier actor: ${courier_id}" >&2
+    exit 1
+  fi
+done
 
 echo "deliverydispatch full client/server self-check completed"

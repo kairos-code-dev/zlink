@@ -11,8 +11,6 @@ public final class SampleTopology {
         property("customerStreamEndpoint", "tcp://127.0.0.1:48104");
     public static final String CourierStreamEndpoint =
         property("courierStreamEndpoint", "tcp://127.0.0.1:48105");
-    public static final String CourierGatewayChannelEndpoint =
-        property("courierGatewayChannelEndpoint", "tcp://127.0.0.1:48106");
     public static final String DispatchHttpEndpoint =
         property("dispatchHttpEndpoint", "http://127.0.0.1:48107");
     public static final String DispatchChannelEndpoint =

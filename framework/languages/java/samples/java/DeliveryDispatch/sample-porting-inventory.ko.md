@@ -20,7 +20,6 @@
 | `.NET: Server/Tracking/*` | `Server/Tracking/src/main/java/.../server/tracking/*` | server-role | done | tracking channel, evidence 기록, customer push, server assertion을 처리한다. |
 | `.NET: Server/CustomerGateway/*` | `Server/CustomerGateway/src/main/java/.../server/customergateway/*` | server-role | done | customer stream session, customer actor, entry spot, status push를 처리한다. |
 | `.NET: Server/CourierSession/*` | `Server/CourierSession/src/main/java/.../server/couriersession/*` | server-role | done | courier stream session과 courier actor/session bind를 처리한다. |
-| `.NET: Server/CourierGateway/*` | `Server/CourierGateway/src/main/java/.../server/couriergateway/*` | server-role | done | courier id를 actor node rid와 session route로 해석한다. |
 | `.NET: Server/CourierActorNode/*` | `Server/CourierSpotNode/src/main/java/.../server/courierspotnode/*` | server-role | done | node 1/2 courier actor, entry spot, Spot request handler를 제공한다. Java project명은 spot 책임을 드러내도록 `CourierSpotNode`로 둔다. |
 | `.NET: Server/Dispatch/*` | `Server/Dispatch/src/main/java/.../server/dispatch/*` | server-role | done | HTTP API, dispatch worker, courier offer, tracking event, self-check endpoint를 제공한다. |
 
@@ -34,9 +33,9 @@
 | `SubscribeDeliveryRes` | `Messages.SubscribeDeliveryRes` | shared-contract | done | subscription 수락 응답이다. |
 | `DeliveryStatusNotify` | `Messages.DeliveryStatusNotify` | shared-contract | done | customer stream push payload다. |
 | `AssignDeliveryMsg` | `Messages.AssignDeliveryMsg` | shared-contract | done | dispatch worker 입력 one-way send 메시지다. |
-| `BindCourierSessionReq` | `Messages.BindCourierSessionReq` | shared-contract | done | courier stream session과 courier actor bind 요청이다. |
-| `BindCourierSessionRes` | `Messages.BindCourierSessionRes` | shared-contract | done | courier session bind 응답이다. |
-| `BindCourierReq` / `BindCourierRes` | `Messages.BindCourierReq`, `Messages.BindCourierRes` | shared-contract | done | CourierGateway가 actor 위치와 session route를 돌려준다. |
+| `BindCourierSessionReq` | `Messages.BindCourierSessionReq` | shared-contract | done | CourierSession이 actor 위치와 session route를 채운 뒤 courier actor로 relay한다. |
+| `BindCourierSessionRes` | `Messages.BindCourierSessionRes` | shared-contract | done | courier actor가 relay된 요청에 응답하고 원래 client 요청까지 결과를 전달한다. |
+| `BindCourierReq` / `BindCourierRes` | `Messages.BindCourierReq`, `Messages.BindCourierRes` | shared-contract | not-used | 현재 실행 흐름에는 별도 courier gateway가 없다. 다른 언어와 공유하는 wire 계약이므로 메시지 타입은 유지한다. |
 | `EnsureCourierActorReq` / `EnsureCourierActorRes` | `Messages.EnsureCourierActorReq`, `Messages.EnsureCourierActorRes` | shared-contract | done | target courier spot node의 actor를 보장한다. |
 | `OfferDeliveryMsg` / `OfferDeliveryResultMsg` | `Messages.OfferDeliveryMsg`, `Messages.OfferDeliveryResultMsg` | shared-contract | done | 제안도 결정 결과도 **응답 없는 one-way**다. 시한은 `DispatchWorker`의 sweeper가 소유한다(공통 sample spec §7.4). |
 | `OfferDeliveryNotify` / `CourierDecision` | `Messages.OfferDeliveryNotify`, `Messages.CourierDecision` | shared-contract | done | courier stream push와 courier client decision이다. |
@@ -56,7 +55,7 @@
 | CustomerGateway stream session | `CustomerSession`, `DeliveryDispatchClientScenario` | validation | done | `SubscribeDeliveryRes`와 status notify를 검증한다. |
 | CourierSession stream session | `CourierSession`, `DeliveryDispatchClientScenario` | validation | done | courier-a/b가 독립 stream session으로 bind된다. |
 | Courier spot node 1/2 | `CourierSpotNode` processes | validation | done | courier-a는 node-1, courier-b는 node-2 actor로 배치된다. |
-| CourierGateway directory | `CourierDirectory` | validation | done | courier id를 actor node rid와 session route로 해석한다. |
+| Courier actor bind relay | `CourierSession`, `BindCourierSessionActorHandler`, `run_sample.sh` | validation | done | courier-a/b 요청이 actor handler까지 relay되고 actor 응답이 client에 전달되는지 검증한다. |
 | Dispatch create delivery | `DispatchHttpServer`, client scenario | validation | done | `POST /deliveries`로 success/reassign 배송을 만든다. |
 | delivery-success statuses | `DeliveryDispatchClientScenario` | validation | done | `Assigned`, `Accepted`, `PickedUp`, `Delivered`와 `courier-a`를 검증한다. |
 | delivery-reassign statuses | `DeliveryDispatchClientScenario` | validation | done | `Assigned`, `Reassigned`, `Accepted`, `Delivered`와 `courier-b`를 검증한다. |
@@ -68,7 +67,8 @@
 
 ## 현재 결론
 
-Java `DeliveryDispatch`의 메시지 이름과 `CreateDeliveryRes` 필드는 공통 spec에 맞췄다. 다만
+Java `DeliveryDispatch`는 별도 courier gateway 없이 CourierSession에서 courier actor를 찾거나 만든 뒤
+bind 요청을 actor로 relay한다. 메시지 이름과 `CreateDeliveryRes` 필드도 공통 spec에 맞췄다. 다만
 CustomerGateway 재연결에서 기존 customer actor 위치를 먼저 조회하고 없을 때만 생성하는 흐름은
 아직 닫히지 않았으므로 이 샘플의 공통 spec 대조는 진행 중이다. public framework API가 부족하면
 sample helper로 우회하지 않고 public contract gap으로 분리한다.

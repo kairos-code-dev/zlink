@@ -41,6 +41,7 @@ export interface ZLinkChannelAutoConnectCapability {
   readonly local: ZLinkAutoConnectLocal;
   readonly localRow?: ZLinkPeerLocation;
   readonly executor: IZLinkAutoConnectExecutor;
+  readonly reconcilePeers?: boolean;
 }
 
 export function createChannelLocationAutoConnectContext(
@@ -93,7 +94,10 @@ export function buildChannelAutoConnectCapabilities(
         )
       });
     }
-    if (channel.client !== undefined) {
+    if (
+      channel.client !== undefined
+      && (channel.client.manualConnections?.length ?? 0) === 0
+    ) {
       const local = autoConnectLocal(
         ZLinkLocationAutoConnectType.ClientServer,
         channelName,
@@ -122,11 +126,15 @@ export function buildChannelAutoConnectCapabilities(
         capabilities.push({
           local,
           localRow: peerLocation(local),
-          executor: ZLinkNoopAutoConnectExecutor.instance
+          executor: ZLinkNoopAutoConnectExecutor.instance,
+          reconcilePeers: false
         });
       }
     }
-    if (channel.subscriber !== undefined) {
+    if (
+      channel.subscriber !== undefined
+      && (channel.subscriber.manualConnections?.length ?? 0) === 0
+    ) {
       const local = autoConnectLocal(
         ZLinkLocationAutoConnectType.Fanout,
         channelName,
@@ -146,6 +154,10 @@ export function buildChannelAutoConnectCapabilities(
 
   for (const routeChannel of registration.routeChannelOptions.values()) {
     const endpoint = routeChannel.bind ?? '';
+    const hasManualConnections = (routeChannel.manualConnections?.length ?? 0) > 0;
+    if (hasManualConnections && endpoint.length === 0) {
+      continue;
+    }
     const local = autoConnectLocal(
       ZLinkLocationAutoConnectType.RouteMesh,
       routeChannel.routerChannelId,
@@ -156,11 +168,14 @@ export function buildChannelAutoConnectCapabilities(
     capabilities.push({
       local,
       localRow: routeChannel.bind === undefined ? undefined : peerLocation(local, routeChannel.weight),
-      executor: new ZLinkSocketAutoConnectExecutor(
-        sockets.routeRouter(routeChannel.routerChannelId),
-        new Set(routeChannel.manualConnections ?? []),
-        { routerInitiatorDial: true }
-      )
+      executor: hasManualConnections
+        ? ZLinkNoopAutoConnectExecutor.instance
+        : new ZLinkSocketAutoConnectExecutor(
+            sockets.routeRouter(routeChannel.routerChannelId),
+            new Set(),
+            { routerInitiatorDial: true }
+          ),
+      reconcilePeers: !hasManualConnections
     });
   }
   return capabilities;

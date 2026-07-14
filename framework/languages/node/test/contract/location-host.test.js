@@ -123,15 +123,23 @@ test('framework runtime host starts channel auto-connect loops from location pee
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   await store.updatePeer(
-    peer('manual', 'owner-remote', 'node-b', 'tcp://manual'),
+    peer('manual', 'owner-remote', 'node-b', 'tcp://remote-manual'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   await store.updatePeer(
-    routePeer('owner-remote', 'node-b', 'tcp://remote-route'),
+    routePeer('mesh', 'owner-remote', 'node-b', 'tcp://remote-route'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  await store.updatePeer(
+    routePeer('manual-mesh', 'owner-remote', 'node-b', 'tcp://remote-manual-route'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   await store.updatePeer(
     fanoutPeer('events', 'owner-remote', 'node-b', 'tcp://remote-events'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  await store.updatePeer(
+    fanoutPeer('manual-events', 'owner-remote', 'node-b', 'tcp://remote-manual-events'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
 
@@ -154,13 +162,23 @@ test('framework runtime host starts channel auto-connect loops from location pee
           }
         },
         events: {
-          subscriber: {}
+          subscriber: {},
+          publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
+        },
+        'manual-events': {
+          subscriber: { manualConnections: ['tcp://manual-events'] },
+          publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
         }
       },
       routeChannels: [{
         routerChannelId: 'mesh',
         bind: 'tcp://local-route',
         routingId: 'node-a'
+      }, {
+        routerChannelId: 'manual-mesh',
+        bind: 'tcp://local-manual-route',
+        routingId: 'node-a',
+        manualConnections: ['tcp://manual-route']
       }],
       spotNodes: {
         play: {
@@ -181,7 +199,9 @@ test('framework runtime host starts channel auto-connect loops from location pee
       [
         'dealer:api:connect:tcp://remote-api',
         'dealer:manual:connect:tcp://manual',
+        'router:manual-mesh:connect:tcp://manual-route',
         'router:mesh:connect:tcp://remote-route',
+        'subscriber:manual-events:connect:tcp://manual-events',
         'subscriber:events:connect:tcp://remote-events'
       ].sort()
     );
@@ -199,6 +219,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
   assert.ok(calls.includes('dealer:api:disconnect:tcp://remote-api'));
   assert.ok(calls.includes('router:mesh:disconnect:tcp://remote-route'));
   assert.ok(calls.includes('subscriber:events:disconnect:tcp://remote-events'));
+  assert.equal(calls.some((call) => call.includes('tcp://remote-manual')), false);
   assert.equal(
     calls.filter((call) => call === 'dealer:manual:disconnect:tcp://manual').length,
     0
@@ -323,6 +344,15 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
             setSubscription() {},
             subscribe() { return false; }
           };
+        },
+        createReadablePoller() {
+          return {
+            wait() { return false; },
+            dispose() {}
+          };
+        },
+        createTopicMessage() {
+          return { parts: [] };
         }
       };
     },
@@ -471,10 +501,10 @@ function peer(meshName, ownerId, nodeRid, endpoint) {
   };
 }
 
-function routePeer(ownerId, nodeRid, endpoint) {
+function routePeer(meshName, ownerId, nodeRid, endpoint) {
   return {
     autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
-    meshName: 'mesh',
+    meshName,
     nodeRid: rid(nodeRid),
     role: framework.ZLinkLocationRole.Router,
     endpoint,

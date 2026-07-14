@@ -88,6 +88,7 @@ export class ZLinkChannelRuntimeLifecycle {
           runtime: location.runtime,
           peerResolver: location.resolver,
           executor: capability.executor,
+          reconcilePeers: capability.reconcilePeers,
           events: location.events,
           options: location.options
         });

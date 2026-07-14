@@ -174,6 +174,40 @@ test('auto-connect reconciler does not mark a target active when executor skips 
   await runtime.stop();
 });
 
+test('publish-only auto-connect capability does not query or reconcile peers', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, 'owner-local');
+  await runtime.start(rid('node-local'));
+  let peerQueries = 0;
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
+    runtime,
+    peerResolver: {
+      async listLivePeers() {
+        peerQueries += 1;
+        return [];
+      }
+    },
+    executor: {
+      connect() {
+        assert.fail('publish-only capability must not connect peers');
+      },
+      disconnect() {
+        assert.fail('publish-only capability must not disconnect peers');
+      }
+    },
+    reconcilePeers: false
+  });
+
+  await reconciler.tick();
+  assert.equal(peerQueries, 0);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://local' })).length, 1);
+
+  await reconciler.shutdown();
+  await runtime.stop();
+});
+
 test('auto-connect reconciler retains an existing draining peer without dialing a new draining peer', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const runtime = runtimeFor(store, 'owner-local');

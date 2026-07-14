@@ -27,6 +27,7 @@ export interface ZLinkAutoConnectReconcilerOptions {
   readonly runtime: IZLinkAutoConnectPeerPublisher;
   readonly peerResolver: ZLinkPeerLocationResolver;
   readonly executor: IZLinkAutoConnectExecutor;
+  readonly reconcilePeers?: boolean;
   readonly events?: ZLinkAutoConnectEventSink;
   readonly options?: ZLinkLocationOptions;
   readonly monotonicNowMs?: () => number;
@@ -38,6 +39,7 @@ export class ZLinkAutoConnectReconciler {
   private readonly runtime: IZLinkAutoConnectPeerPublisher;
   private readonly peerResolver: ZLinkPeerLocationResolver;
   private readonly executor: IZLinkAutoConnectExecutor;
+  private readonly reconcilePeers: boolean;
   private readonly events?: ZLinkAutoConnectEventSink;
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly monotonicNowMs: () => number;
@@ -54,6 +56,7 @@ export class ZLinkAutoConnectReconciler {
     this.runtime = options.runtime;
     this.peerResolver = options.peerResolver;
     this.executor = options.executor;
+    this.reconcilePeers = options.reconcilePeers ?? true;
     this.events = options.events;
     this.options = { ...zlinkDefaultLocationOptions, ...options.options };
     this.monotonicNowMs = options.monotonicNowMs ?? (() => performance.now());
@@ -80,6 +83,11 @@ export class ZLinkAutoConnectReconciler {
     } catch {
       this.storeFailedValue = true;
       this.localPublished = false;
+      return;
+    }
+
+    if (!this.reconcilePeers) {
+      this.storeFailedValue = false;
       return;
     }
 

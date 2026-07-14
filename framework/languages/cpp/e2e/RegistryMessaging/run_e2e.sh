@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
@@ -57,6 +58,30 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
+
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
 
 wait_tcp() {
   local host="$1"
@@ -237,6 +262,24 @@ start_provider() {
   wait_port "$rid-http" "$http"
 }
 
+start_standard_provider_pair() {
+  local role
+  mapfile -t ordered_server_roles < <(ordered_roles api-a api-b)
+  for role in "${ordered_server_roles[@]}"; do
+    echo "starting_role=$role"
+    case "$role" in
+      api-a)
+        start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
+        API_A_PID="$LAST_PID"
+        ;;
+      api-b)
+        start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
+        API_B_PID="$LAST_PID"
+        ;;
+    esac
+  done
+}
+
 start_workflow_provider() {
   local rid="$1"
   local workflow="$2"
@@ -382,10 +425,7 @@ if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
 fi
 
 if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
-  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-  API_A_PID="$LAST_PID"
-  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
-  API_B_PID="$LAST_PID"
+  start_standard_provider_pair
   sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a1 rm-a1 env
   cat "$LOG_DIR/client-rm-a1.stdout.log"
@@ -445,10 +485,7 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
 fi
 
 if [[ "$SCENARIO" == "RM-B2" || "$SCENARIO" == "rm-b2" ]]; then
-  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-  API_A_PID="$LAST_PID"
-  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
-  API_B_PID="$LAST_PID"
+  start_standard_provider_pair
   READY="$LOG_DIR/rm-b2-ready"
   CONTINUE="$LOG_DIR/rm-b2-continue"
   run_client rm-b2 rm-b2 env \

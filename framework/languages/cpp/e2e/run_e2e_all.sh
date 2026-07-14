@@ -32,6 +32,42 @@ START_ORDER_VARIANTS=(
   shuffle:20260709
 )
 
+START_ORDER_CONFIGS=(
+  RegistryMessaging
+  SpotService
+  ToActorMessaging
+)
+
+uses_start_order_axis() {
+  local config="$1"
+  local candidate
+  for candidate in "${START_ORDER_CONFIGS[@]}"; do
+    if [[ "$candidate" == "$config" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+start_orders_for() {
+  local config="$1"
+  if uses_start_order_axis "$config"; then
+    printf '%s\n' "${START_ORDER_VARIANTS[@]}"
+  else
+    printf '%s\n' forward
+  fi
+}
+
+verify_start_order_contract() {
+  local config
+  for config in "${START_ORDER_CONFIGS[@]}"; do
+    if ! rg -q 'E2E_START_ORDER' "${SCRIPT_DIR}/${config}/run_e2e.sh"; then
+      echo "[cpp-e2e] start-order contract missing in ${config}" >&2
+      return 1
+    fi
+  done
+}
+
 cleanup_done=0
 active_config_pid=""
 
@@ -150,11 +186,13 @@ run_config_with_retry() {
 }
 
 all_started_at="$(date +%s)"
-echo "[cpp-e2e] start configs=${#SELECTED_CONFIGS[@]} start_orders=${#START_ORDER_VARIANTS[@]} at=$(date -Is)"
+verify_start_order_contract
+echo "[cpp-e2e] start configs=${#SELECTED_CONFIGS[@]} at=$(date -Is)"
 for i in "${!SELECTED_CONFIGS[@]}"; do
   config="${SELECTED_CONFIGS[$i]}"
   scenario="${SELECTED_SCENARIOS[$i]}"
-  for start_order in "${START_ORDER_VARIANTS[@]}"; do
+  mapfile -t selected_start_orders < <(start_orders_for "$config")
+  for start_order in "${selected_start_orders[@]}"; do
     echo "[cpp-e2e] ${config} start scenario=${scenario} start_order=${start_order}"
     run_config_with_retry "${config}" "${scenario}" "${start_order}"
   done

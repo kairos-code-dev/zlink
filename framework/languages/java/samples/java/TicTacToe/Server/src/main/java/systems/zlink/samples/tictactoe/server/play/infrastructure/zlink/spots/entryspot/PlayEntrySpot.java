@@ -8,6 +8,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorJoinGameHandler;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorObserveMilestoneHandler;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneMsgHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
@@ -34,6 +36,8 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
 
     @Override
     public void configure() {
+        context.handlers().addHandler(PlayActorJoinGameHandler.class);
+        context.handlers().addHandler(PlayActorObserveMilestoneHandler.class);
         context.handlers().addHandler(PlayerWinMilestoneMsgHandler.class);
     }
 

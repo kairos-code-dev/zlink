@@ -35,12 +35,13 @@
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
 | `.NET: Server/Program.cs` | `Server/src/main/java/.../server/api/ApiProgram.java`, `server/play/PlayProgram.java` | server-entry | done | API와 Play를 별도 실행 진입점으로 시작하며 각 진입점은 설정 파일 경로만 받는다. |
-| `.NET: Server/Api/*` | `Server/src/main/java/.../server/api/*` | api-role | done | `/games` HTTP endpoint와 player authentication channel handler를 제공한다. |
+| `.NET: Server/Api/*` | `Server/src/main/java/.../server/api/*` | api-role | done | `/games` HTTP endpoint를 제공하고 player authentication request handler를 API channel builder에 직접 등록한다. |
 | `.NET: Server/Configuration/*` | `Server/src/main/java/.../server/configuration/*` | server-config | done | sample endpoint, Redis endpoint, routing id, logging, location store 설정을 모은다. |
-| `.NET: Server/Play/PlayServer.cs` | `Server/src/main/java/.../server/play/PlayServer.java` | play-role | done | Play channel server, API channel client, stream server, actor runtime, Spot route/pubsub endpoint를 구성한다. |
+| `.NET: Server/Play/PlayServer.cs` | `Server/src/main/java/.../server/play/PlayServer.java` | play-role | done | Play channel server, API channel client, stream server, actor runtime, Spot route/pubsub endpoint를 구성한다. Play request와 session packet handler는 각 builder에 직접 등록한다. |
 | common: Play domain 경계 | `server/play/domain/tictactoe/*` | domain | done | board, turn, win/draw 판정을 framework 타입 없이 표현한다. |
 | common: game creation use case | `server/play/application/gamecreation/TicTacToeGameCreator.java` | application | done | room 생성과 Redis room route 기록을 조율한다. |
 | common: ZLink adapter 경계 | `server/play/infrastructure/zlink/*` | framework-adapter | done | session, actor, entry Spot, game Spot callback을 application/domain 호출로 변환한다. |
+| common: manual handler registration | `ApiServer`, `PlayServer`, `PlayEntrySpot`, `TicTacToeGame` | framework-configuration | done | channel·stream·Spot의 handler를 각 surface를 소유한 구성 지점에 직접 등록한다. package scan은 사용하지 않는다. |
 | common: observer milestone handler는 entry Spot 책임 | `PlayEntrySpot`, `PlayerWinMilestoneMsgHandler` | runtime-flow | done | 별도 public notification Spot 타입을 만들지 않고 entry Spot 안에서 milestone push를 처리한다. |
 
 ## Runner 검증
@@ -48,6 +49,7 @@
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
 | Redis room route store | `run_sample.sh`, `SampleLocationStore`, `RedisRoomRouteStore` | external-adapter | done | runner가 실행별 전용 Docker Redis를 만들고 그 endpoint만 사용한다. |
+| manual registration gate | `run_sample.sh` | validation | done | Java server source에 `addHandlersFromPackageOf(...)`가 있으면 역할을 시작하기 전에 실패한다. |
 | API A/B와 Play A/B scale-out | `run_sample.sh` | validation | done | API 2개, Play 2개를 띄우고 manual channel, Spot route, Spot pub/sub endpoint를 서로 연결한다. |
 | observer cross-node milestone | runner grep + client marker | validation | done | observer가 owner가 아닌 Play에 연결하고, API 응답의 endpoint/rid 매핑과 `WinMilestoneNotify`의 실제 수신 node rid가 같은지 확인한다. |
 | message flow marker | `TICTACTOE_LOG_DIR` grep | validation | done | runner가 role별 flow log의 `message flow` marker를 확인한다. |
@@ -55,10 +57,14 @@
 
 ## 남은 확인 사항
 
-현재 Java `TicTacToe` 샘플 inventory에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통 샘플 문서나
+Java `TicTacToe`의 수동 등록 구현과 전체 runner는 완료됐다. 다만 쓰기 범위 밖의
+`SampleReleaseGateContractTest`가 아직 package scan을 요구하므로 release gate는 실패한다. 이 assertion을
+수동 등록 기준으로 갱신하기 전까지 SMP-JV-30의 저장소 전체 검증은 `partial`이다. 이후 공통 샘플 문서나
 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
 
 ## 검증
 
 - `nice -n 15 timeout 600s ./run_sample.sh` 통과: `PASS TicTacToe.Java`
 - runner가 host·guest·observer의 `stream-inbound sample=TicTacToe` marker와 RESPONSE·SEND 수신을 확인했다.
+- `SampleReleaseGateContractTest`는 16개 중 15개가 통과했다. 남은 1개는 Java TicTacToe에 package scan을
+  요구하는 기존 assertion(`SampleReleaseGateContractTest:790-827`)이다.

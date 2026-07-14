@@ -11,6 +11,10 @@ if grep -n 'leaveFinishedActors' "${game_source}"; then
   echo "TicTacToe actor cleanup must be driven by LeaveGameReq, not by the timer." >&2
   exit 1
 fi
+if rg -n 'addHandlersFromPackageOf' Server/src/main/java --glob '*.java'; then
+  echo "TicTacToe must register handlers explicitly" >&2
+  exit 1
+fi
 if ! rg -q 'stream-inbound sample=TicTacToe' Client/src/main/java --glob '*.java'; then
   echo "TicTacToe client must register inbound observers before connect" >&2
   exit 1

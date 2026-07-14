@@ -16,6 +16,8 @@ import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.play.domain.tictactoe.TicTacToeMatch;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.PlayActorLeaveGameHandler;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.PlayActorPlaceMarkHandler;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameTimerHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
@@ -58,6 +60,12 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     @Override
     public ZLinkSpotContext context() {
         return context;
+    }
+
+    @Override
+    public void configure() {
+        context.handlers().addHandler(PlayActorLeaveGameHandler.class);
+        context.handlers().addHandler(PlayActorPlaceMarkHandler.class);
     }
 
     @Override

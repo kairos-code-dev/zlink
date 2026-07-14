@@ -1,6 +1,8 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import {
   isZLinkMessage,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
   ZLinkMessage,
   type Type,
   ZLinkEncodedPayload,
@@ -46,6 +48,23 @@ export function decodeFrameworkPayloadMessage<T>(
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>,
   type?: Type<T>
 ): T {
+  return decodeFrameworkPayload(message, registry, type, false);
+}
+
+export function decodeFrameworkTypedPayloadMessage<T>(
+  message: Message,
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>,
+  type?: Type<T>
+): T {
+  return decodeFrameworkPayload(message, registry, type, true);
+}
+
+function decodeFrameworkPayload<T>(
+  message: Message,
+  registry: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer> | undefined,
+  type: Type<T> | undefined,
+  rejectInvalidJson: boolean
+): T {
   if (message.data().length === 0) {
     return undefined as T;
   }
@@ -61,8 +80,16 @@ export function decodeFrameworkPayloadMessage<T>(
   const text = message.getString('utf8');
   try {
     return JSON.parse(text) as T;
-  } catch {
-    return text as T;
+  } catch (error) {
+    if (!rejectInvalidJson) {
+      return text as T;
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      'PayloadDecodeFailed: framework payload is not valid JSON.',
+      false,
+      error
+    );
   }
 }
 

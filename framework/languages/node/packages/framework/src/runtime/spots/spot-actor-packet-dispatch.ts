@@ -29,7 +29,7 @@ import {
   messageToBytes,
   ZLinkStreamMessageKind
 } from '../streams/protocol';
-import { decodeFrameworkPayloadMessage } from '../messaging/payload-codec';
+import { decodeFrameworkTypedPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkProviderResolver } from '../../contracts';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
@@ -213,7 +213,7 @@ export class ZLinkSpotActorPacketDispatch {
     action: ZLinkDispatchErrorAction
   ): unknown {
     try {
-      return decodeFrameworkPayloadMessage(message, this.options.messageSerializers);
+      return decodeFrameworkTypedPayloadMessage(message, this.options.messageSerializers);
     } catch (error) {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotActor,

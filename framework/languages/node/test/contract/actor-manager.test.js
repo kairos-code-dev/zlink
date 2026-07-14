@@ -15,6 +15,9 @@ const {
 const {
   ZLinkEntryActorRuntimeService
 } = require('../../packages/framework/dist/runtime/host/entry-actor-runtime');
+const {
+  ZLinkSpotActorPacketDispatch
+} = require('../../packages/framework/dist/runtime/spots/spot-actor-packet-dispatch');
 const msgpack = require('../../packages/framework-codec-msgpack/dist/server/framework.cjs');
 const protobuf = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
 
@@ -2367,6 +2370,61 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
   );
+});
+
+test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before invoking the handler', async () => {
+  const errors = [];
+  let handlerInvocations = 0;
+  class PlayerActor {
+    constructor(actorId) {
+      this.actorId = actorId;
+    }
+  }
+  class BrokenPayloadHandler {
+    async handle() {
+      handlerInvocations += 1;
+    }
+  }
+  const actor = new PlayerActor('alice');
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime().addPacket({
+    kind: framework.ZLinkActorPacketKind.Send,
+    packetName: 'BrokenPayload',
+    actorType: PlayerActor,
+    handlerType: BrokenPayloadHandler
+  });
+  const dispatch = new ZLinkSpotActorPacketDispatch({
+    spot: {},
+    spotRid: () => 'room-1',
+    registry,
+    resolveActor: () => actor,
+    onDisconnectActor: async () => {},
+    dispatchErrors: {
+      flow: {
+        accepts: () => false,
+        flowCreationEnabled: () => false
+      },
+      report(error) {
+        errors.push(error);
+      }
+    }
+  });
+  const header = zlink.Message.from(Buffer.from(framework.encodeStreamHeader({
+    kind: framework.ZLinkStreamMessageKind.Send,
+    codec: framework.ZLinkStreamCodec.Json,
+    flags: framework.ZLinkStreamHeaderFlags.None,
+    name: 'BrokenPayload',
+    metadata: new Map()
+  })));
+
+  await assert.rejects(
+    () => dispatch.dispatch('alice', [header, zlink.Message.from(Buffer.from('{'))]),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.PayloadDecodeFailed
+  );
+  assert.equal(handlerInvocations, 0);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].reason, framework.ZLinkDispatchErrorReason.PayloadDecodeFailed);
+  assert.equal(errors[0].action, framework.ZLinkDispatchErrorAction.Drop);
 });
 
 test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered without actor type', async () => {

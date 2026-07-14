@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { ClientOptions } from './client-options';
 import { getJson } from './http-client';
 
@@ -9,18 +11,23 @@ export async function readProviderEvidence(options: ClientOptions): Promise<read
   return snapshots.flatMap((snapshot) => snapshot.status === 'fulfilled' ? snapshot.value : []);
 }
 
-export function readProviderEvidenceFiles(options: ClientOptions): readonly string[] {
-  return fs.readdirSync(options.logDir)
-    .filter((name) => /^api-.*\.evidence\.log$/.test(name))
-    .flatMap((name) => {
-      try {
-        return fs.readFileSync(path.join(options.logDir, name), 'utf8')
-          .split(/\r?\n/)
-          .filter((line) => line.length > 0);
-      } catch {
-        return [];
-      }
-    });
+export function findProviderEvidenceMarkers(
+  options: ClientOptions,
+  markers: ReadonlySet<string>
+): ReadonlySet<string> {
+  const found = new Set<string>();
+  for (const name of fs.readdirSync(options.logDir).filter((entry) => /^api-.*\.evidence\.log$/.test(entry))) {
+    let contents: string;
+    try {
+      contents = fs.readFileSync(path.join(options.logDir, name), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const marker of markers) {
+      if (contents.includes(`marker=${marker}|`)) found.add(marker);
+    }
+  }
+  return found;
 }
 
 export async function waitForProviderEvidenceLine(
@@ -37,5 +44,3 @@ export async function waitForProviderEvidenceLine(
   }
   throw new Error(failureMessage);
 }
-import fs from 'node:fs';
-import path from 'node:path';

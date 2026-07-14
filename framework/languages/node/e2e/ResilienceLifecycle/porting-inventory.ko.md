@@ -31,7 +31,7 @@
 | RL-D2 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl-d2-observer-fault-scenario.ts` | done | observer failure isolation. PASS: `logs/20260703-211853-78546` |
 | RL-D3 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl-d3-dispatch-error-evidence-scenario.ts` | done | dispatch-error evidence. PASS: `logs/20260703-211853-78546` |
 | RL-D4 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl-d4-missing-request-handler-scenario.ts` | done | decoded error round-trip + raw Error/Response header gate. PASS: `logs/20260715-080129-2299877` |
-| RL-D5 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl-d5-mixed-burst-scenario.ts` | done | 8 client, 120초 mixed soak + latency/cleanup observation. PASS: `logs/20260715-080359-2311388` |
+| RL-D5 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl-d5-mixed-burst-scenario.ts` | done | 8 client, 120초 mixed soak + latency/cleanup observation. PASS: `logs/20260715-082358-2399471` |
 
 ## File Mapping
 

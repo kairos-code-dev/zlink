@@ -3,7 +3,7 @@ import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { profileReq } from '../Support/resilience-helpers';
-import { readProviderEvidenceFiles } from '../Support/provider-evidence';
+import { findProviderEvidenceMarkers } from '../Support/provider-evidence';
 import { ensure } from '../Support/scenario-assert';
 
 interface LatencySample {
@@ -16,6 +16,8 @@ interface WorkerResult {
   readonly sends: number;
   readonly samples: readonly LatencySample[];
 }
+
+const workloadIntervalMs = 20;
 
 export async function runRlD5(options: ClientOptions): Promise<void> {
   ensure(options.consumerUrls.length >= 8, 'RL-D5 requires at least eight concurrent clients.');
@@ -82,12 +84,17 @@ async function runWorker(
     await postJson(consumerUrl, '/profile/command', {
       commandId: `rl-d5-${runId}-w${workerId}-cmd${sequence}`
     });
+    await delay(workloadIntervalMs);
   }
   return {
     requests: sequence,
     sends: sequence,
     samples
   };
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function confirmTailSends(options: ClientOptions, runId: string): Promise<void> {
@@ -100,10 +107,8 @@ async function confirmTailSends(options: ClientOptions, runId: string): Promise<
     await Promise.all([...pending].map(([commandId, url]) =>
       postJson(url, '/profile/command', { commandId })));
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const evidence = readProviderEvidenceFiles(options);
-    for (const commandId of pending.keys()) {
-      if (evidence.some((line) => line.includes(`marker=${commandId}|`))) pending.delete(commandId);
-    }
+    const found = findProviderEvidenceMarkers(options, new Set(pending.keys()));
+    for (const commandId of found) pending.delete(commandId);
   }
   ensure(pending.size === 0, `RL-D5 tail send unavailable for clients: ${[...pending.values()].join(', ')}`);
 }

@@ -92,9 +92,11 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:spot-service:${run_id}}"
-LOCAL_READINESS_TIMEOUT_SECONDS="${LOCAL_READINESS_TIMEOUT_SECONDS:-30}"
-LOCAL_READINESS_POLL_SECONDS="${LOCAL_READINESS_POLL_SECONDS:-0.1}"
-LOCAL_READINESS_ATTEMPTS="${LOCAL_READINESS_ATTEMPTS:-300}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
 
 print_logs() {
   local status="$1"
@@ -155,6 +157,14 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
+   || "${ROUTE_SETTLE_SECONDS:-}" != 5 \
+   || "${SCENARIO_SETTLE_SECONDS:-}" != 3 ]]; then
+  echo "SpotService must use 3s readiness, 5s route settle, and 3s scenario settle limits" >&2
+  exit 1
+fi
 
 reserve_ports() {
   python3 - <<'PY'
@@ -532,7 +542,7 @@ for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_named_server "$role"
   wait_named_server "$role"
 done
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
   for role in gateway multi-node-a multi-node-b; do
     if ! grep -Fq "[topology] role=${role} route_mesh=disabled" "${log_dir}/${role}.stdout.log"; then
@@ -611,7 +621,7 @@ run_sm_g1() {
   sleep "${ZLINK_JAVA_E2E_SM_G1_LEASE_WAIT_SECONDS:-20}"
   start_named_server play-a
   wait_named_server play-a
-  sleep 2
+  sleep "${ROUTE_SETTLE_SECONDS}"
   touch "${restarted_file}"
 
   wait "${client_pid}"
@@ -685,19 +695,19 @@ for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
-    sleep 2
+    sleep "${SCENARIO_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "timer-overrun" ]]; then
     create_timer_spot "${HTTP_A}" timer-overrun-skip
     create_timer_spot "${HTTP_A}" timer-overrun-catchup
     create_timer_spot "${HTTP_A}" timer-overrun-delay
-    sleep 2
+    sleep "${SCENARIO_SETTLE_SECONDS}"
   fi
   run_client_mode "${mode}"
   if [[ "${mode}" == "idle-timer" ]]; then
     close_spot "${HTTP_A}" idle-active
   fi
-  sleep 2
+  sleep "${SCENARIO_SETTLE_SECONDS}"
 done
 if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}" != "default-batch" ) ]]; then
   case "${SCENARIO}" in
@@ -711,7 +721,7 @@ if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}
       echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
       ;;
     SM-E2|sm-e2)
-      sleep 2
+      sleep "${SCENARIO_SETTLE_SECONDS}"
       echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
       ;;
     SM-A6|sm-a6)
@@ -746,7 +756,7 @@ fi
 run_publisher
 cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
 cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
-sleep 2
+sleep "${SCENARIO_SETTLE_SECONDS}"
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
 echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"

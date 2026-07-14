@@ -18,7 +18,7 @@ import {
   ZLinkSpotEventKind,
   ZLinkTimerOverrunPolicy
 } from '../../contracts';
-import { ZLinkConfigurationException } from '../configuration';
+import { validateTimerRegistration } from '../../contracts/Configuration/TimerRegistrationValidator';
 import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createProviderInstance } from './spot-provider';
@@ -50,7 +50,7 @@ export class ZLinkSpotTimerRegistry {
     signal?: AbortSignal,
     reportFailure?: ZLinkTimerFailureReporter
   ): Promise<ZLinkTimer> {
-    validateTimer(name, periodMs, options);
+    validateTimerRegistration(name, periodMs, options);
     throwIfAborted(signal);
     const handler = await createProviderInstance(handlerType, providerResolver);
     const timer = new ZLinkManagedTimer(
@@ -311,27 +311,6 @@ export async function addSpotTimerRegistrations(
         )
       );
     }
-  }
-}
-
-function validateTimer(name: string, periodMs: number, options: ZLinkTimerOptions | undefined): void {
-  if (name.trim().length === 0) {
-    throw new ZLinkConfigurationException('SPOT timer name must not be empty.');
-  }
-  if (!Number.isFinite(periodMs) || periodMs <= 0) {
-    throw new ZLinkConfigurationException('SPOT timer period must be greater than zero.');
-  }
-  if (
-    options?.overrunPolicy !== undefined
-    && !Object.values(ZLinkTimerOverrunPolicy).includes(options.overrunPolicy)
-  ) {
-    throw new ZLinkConfigurationException('SPOT timer overrun policy is not supported.');
-  }
-  if (
-    options?.overrunPolicy === ZLinkTimerOverrunPolicy.CatchUpBounded
-    && (options.maxCatchUpTicks === undefined || options.maxCatchUpTicks <= 0)
-  ) {
-    throw new ZLinkConfigurationException('SPOT timer MaxCatchUpTicks must be greater than zero.');
   }
 }
 

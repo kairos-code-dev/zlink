@@ -67,6 +67,62 @@ test('Node registration rejects incomplete SpotNode capabilities before startup'
   );
 });
 
+test('Node registration rejects invalid Spot timer options before startup', () => {
+  class GameSpot {}
+  class EntrySpot {}
+  class TimerHandler {}
+  const registrationWithTimer = (timerKind, timer) => ({
+    spotNodes: {
+      game: {
+        router: { bind: 'tcp://127.0.0.1:0' },
+        [timerKind]: [timer]
+      }
+    }
+  });
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(registrationWithTimer('spotTimerHandlers', {
+      spotType: GameSpot,
+      handlerType: TimerHandler,
+      name: 'tick',
+      periodMs: 0
+    })),
+    /period must be greater than zero/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration(registrationWithTimer('entrySpotTimerHandlers', {
+      entrySpotType: EntrySpot,
+      handlerType: TimerHandler,
+      name: '',
+      periodMs: 100
+    })),
+    /name must not be empty/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration(registrationWithTimer('spotTimerHandlers', {
+      spotType: GameSpot,
+      handlerType: TimerHandler,
+      name: 'tick',
+      periodMs: 100,
+      options: { overrunPolicy: 'unsupported' }
+    })),
+    /overrun policy is not supported/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration(registrationWithTimer('spotTimerHandlers', {
+      spotType: GameSpot,
+      handlerType: TimerHandler,
+      name: 'tick',
+      periodMs: 100,
+      options: {
+        overrunPolicy: framework.ZLinkTimerOverrunPolicy.CatchUpBounded,
+        maxCatchUpTicks: 0
+      }
+    })),
+    /MaxCatchUpTicks must be greater than zero/
+  );
+});
+
 async function assertNestStartupRejects(options, pattern) {
   class InvalidConfigurationModule {}
   Module({ imports: [nestjs.ZLinkModule.forRoot(options)] })(InvalidConfigurationModule);

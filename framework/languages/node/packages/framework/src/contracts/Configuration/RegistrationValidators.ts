@@ -16,6 +16,7 @@ import {
   isRouteClientEnabled,
   isRouteTransportDeclared
 } from './RouteChannelInternalState';
+import { validateTimerRegistration } from './TimerRegistrationValidator';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -257,6 +258,7 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
     validateEntrySpot(spotNodeName, spotNode);
     validateSpotNodeFactories(spotNodeName, spotNode);
+    validateSpotNodeTimers(spotNode);
     if (
       spotNode.router?.routingId !== undefined &&
       spotNode.pubSub?.routingId !== undefined &&
@@ -266,6 +268,15 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
         `SpotNode '${spotNodeName}' router and pubSub routingId must match.`
       );
     }
+  }
+}
+
+function validateSpotNodeTimers(spotNode: ZLinkSpotNodeOptions): void {
+  for (const timer of spotNode.entrySpotTimerHandlers ?? []) {
+    validateTimerRegistration(timer.name, timer.periodMs, timer.options);
+  }
+  for (const timer of spotNode.spotTimerHandlers ?? []) {
+    validateTimerRegistration(timer.name, timer.periodMs, timer.options);
   }
 }
 

@@ -11,11 +11,18 @@ export interface DynamicProvider {
   readonly channelEndpoint: string;
 }
 
+export interface DynamicConsumer {
+  readonly process: DynamicProcess;
+  readonly httpUrl: string;
+}
+
 export class DynamicClusterLauncher {
   private readonly processes: DynamicProcess[] = [];
+  private locationProbe?: DynamicProcess;
   private constructor(
     private readonly locationProbeMain: string,
     private readonly providerMain: string,
+    private readonly consumerMain: string,
     private readonly logDir: string,
     private readonly redisEndpoint: string,
     private readonly redisKeyPrefix: string
@@ -25,6 +32,7 @@ export class DynamicClusterLauncher {
     const launcher = new DynamicClusterLauncher(
       options.locationProbeMain,
       options.providerMain,
+      options.consumerMain,
       options.logDir,
       options.redisEndpoint,
       `${options.redisKeyPrefix}:${scenarioName}`
@@ -42,6 +50,7 @@ export class DynamicClusterLauncher {
         locationProbeHttp,
         undefined
       );
+      launcher.locationProbe = locationProbe;
       await locationProbe.waitReady();
       return launcher;
     } catch (error) {
@@ -78,6 +87,48 @@ export class DynamicClusterLauncher {
       }
       throw error;
     }
+  }
+
+  async startConsumer(name: string): Promise<DynamicConsumer> {
+    const httpUrl = await pickHttpUrl();
+    let process: DynamicProcess | undefined;
+    try {
+      process = this.startServer(
+        name,
+        this.consumerMain,
+        {
+          httpUrl,
+          redisEndpoint: this.redisEndpoint,
+          redisKeyPrefix: this.redisKeyPrefix,
+          traceLabel: name,
+          logDir: this.logDir
+        },
+        httpUrl
+      );
+      await process.waitReady();
+      return { process, httpUrl };
+    } catch (error) {
+      if (process !== undefined) {
+        await process.stop();
+        const index = this.processes.indexOf(process);
+        if (index >= 0) this.processes.splice(index, 1);
+      }
+      throw error;
+    }
+  }
+
+  async waitForSingleProvider(rid: string, endpoint: string): Promise<void> {
+    const topology = this.locationProbe;
+    if (topology === undefined) throw new Error('Location probe is not running.');
+    for (let i = 0; i < 120; i += 1) {
+      const response = await fetch(`${topology.httpUrl}/location/topology`);
+      if (response.ok) {
+        const rows = await response.json() as Array<{ readonly endpoint?: string }>;
+        if (rows.length === 1 && rows[0].endpoint === endpoint) return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(`Provider '${rid}' did not converge to '${endpoint}'.`);
   }
 
   async stop(provider: DynamicProvider): Promise<void> {

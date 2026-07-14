@@ -166,6 +166,7 @@ node "$CLIENT_MAIN" \
   --location-consumer-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
   --location-probe-main "$LOCATION_PROBE_MAIN" \
   --provider-main "$PROVIDER_MAIN" \
+  --consumer-main "$CONSUMER_MAIN" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --log-dir "$LOG_DIR" \

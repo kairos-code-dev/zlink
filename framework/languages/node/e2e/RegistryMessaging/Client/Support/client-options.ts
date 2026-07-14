@@ -9,6 +9,7 @@ export interface ClientOptions {
   readonly locationConsumerUrl: string;
   readonly locationProbeMain: string;
   readonly providerMain: string;
+  readonly consumerMain: string;
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
   readonly logDir: string;
@@ -38,6 +39,7 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     locationConsumerUrl: required(values, 'location-consumer-url'),
     locationProbeMain: required(values, 'location-probe-main'),
     providerMain: required(values, 'provider-main'),
+    consumerMain: required(values, 'consumer-main'),
     redisEndpoint: required(values, 'redis-endpoint'),
     redisKeyPrefix: required(values, 'redis-key-prefix'),
     logDir: required(values, 'log-dir'),

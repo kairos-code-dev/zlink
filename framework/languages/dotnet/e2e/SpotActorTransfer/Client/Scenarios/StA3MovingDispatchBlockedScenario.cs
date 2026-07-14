@@ -1,0 +1,46 @@
+using SpotActorTransfer.Client.Support;
+using SpotActorTransfer.Shared;
+using Zlink.HttpClient;
+
+namespace SpotActorTransfer.Client.Scenarios;
+
+internal static class StA3MovingDispatchBlockedScenario
+{
+    public static async Task RunAsync(SpotActorTransferScenarioContext context)
+    {
+        var actorId = $"actor-local-moving-{Guid.NewGuid():N}";
+        var spotRid = $"spot-local-moving-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeA, spotRid, "delay-joined");
+        await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 13);
+
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-A3", spotRid));
+        var waitingEvidence = await context.WaitEvidenceAsync(context.NodeA, [
+            $"ST-A3|{actorId}|admission|spot={spotRid}",
+            $"transfer|{actorId}|leave|13",
+            $"ST-A3|{actorId}|joined_wait|{spotRid}"
+        ]);
+        SpotActorTransferScenarioContext.RequireNoContains(
+            waitingEvidence,
+            $"ST-A3|{actorId}|packet_handler|during-joined-wait",
+            "ST-A3 packet should not run before OnJoinedActorAsync is released.");
+
+        var blockedProbe = context.ProbeAsync(context.NodeA, actorId, new ProbeReq("ST-A3", "during-joined-wait"));
+        await Task.Delay(500);
+        SpotActorTransferScenarioContext.Require(!blockedProbe.IsCompleted, "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
+
+        var release = await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);
+        SpotActorTransferScenarioContext.Require(release.Released, "ST-A3 joined gate was already released before the scenario released it.");
+
+        var join = await joinTask;
+        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-A3 join was rejected.");
+        var probe = await blockedProbe.WaitAsync(TimeSpan.FromSeconds(10));
+        SpotActorTransferScenarioContext.Require(probe.SpotRid == spotRid, "ST-A3 blocked packet did not resume on the target spot.");
+
+        await context.WaitEvidenceAsync(context.NodeA, [
+            $"ST-A3|{actorId}|joined_released|{spotRid}",
+            $"transfer|{actorId}|joined|{spotRid}:13",
+            $"ST-A3|{actorId}|packet_handler|during-joined-wait",
+            $"ST-A3|{actorId}|success_reply|{spotRid}"
+        ]);
+    }
+}

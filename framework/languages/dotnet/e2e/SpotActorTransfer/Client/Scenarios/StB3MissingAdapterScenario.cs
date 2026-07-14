@@ -1,0 +1,32 @@
+using SpotActorTransfer.Client.Support;
+using SpotActorTransfer.Shared;
+using Zlink.HttpClient;
+
+namespace SpotActorTransfer.Client.Scenarios;
+
+internal static class StB3MissingAdapterScenario
+{
+    public static async Task RunAsync(SpotActorTransferScenarioContext context)
+    {
+        var actorId = $"actor-no-adapter-{Guid.NewGuid():N}";
+        var spotRid = $"spot-no-adapter-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotRid);
+        await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeNoAdapter, 31);
+
+        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B3", spotRid));
+        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-B3 join was rejected.");
+
+        var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B3", "after-default-empty-transfer"));
+        SpotActorTransferScenarioContext.Require(probe.NodeRid == "actor-b", $"ST-B3 probe expected actor-b, got {probe.NodeRid}.");
+        SpotActorTransferScenarioContext.Require(probe.StateVersion == 0, $"ST-B3 default empty target state expected 0, got {probe.StateVersion}.");
+        await context.WaitEvidenceAsync(context.NodeA, [
+            $"transfer|{actorId}|transfer_out_empty_default|no-adapter",
+            $"transfer|{actorId}|leave|31"
+        ]);
+        await context.WaitEvidenceAsync(context.NodeB, [
+            $"transfer|{actorId}|transfer_in_empty_default|actor-factory",
+            $"transfer|{actorId}|joined|{spotRid}:0",
+            $"ST-B3|{actorId}|packet_handler|after-default-empty-transfer"
+        ]);
+    }
+}

@@ -87,4 +87,25 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("provider.Get(\"/evidence\")", trafficProbe, StringComparison.Ordinal);
         Assert.Contains("provider.Post(\"/evidence/wait\")", trafficProbe, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Config_9_And_10_Keep_One_Client_Scenario_Per_File()
+    {
+        var root = ResolveE2eRoot();
+        AssertScenarioFiles(root, "SpotActorTransfer", "St", 20);
+        AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
+    }
+
+    private static void AssertScenarioFiles(string root, string config, string idPrefix, int expectedCount)
+    {
+        var client = Path.Combine(root, config, "Client");
+        var scenarioDirectory = Path.Combine(client, "Scenarios");
+        Assert.True(Directory.Exists(scenarioDirectory), $"{config} Client/Scenarios is missing.");
+        var scenarios = Directory.GetFiles(scenarioDirectory, $"{idPrefix}*Scenario.cs");
+        Assert.Equal(expectedCount, scenarios.Length);
+
+        var program = File.ReadAllText(Path.Combine(client, "Program.cs"));
+        Assert.DoesNotContain("async Task Run", program, StringComparison.Ordinal);
+        Assert.DoesNotContain("async () =>", program, StringComparison.Ordinal);
+    }
 }

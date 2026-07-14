@@ -415,7 +415,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - [x] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)
   — Bingo가 제출 카드와 양쪽 draw state를 대조하고, DeliveryDispatch가 단일 수신 루프로 상태 도착 순서를 검증한다. 두 sample runner와 regression 31건이 통과했다.
 - [ ] **E2E-DN-01** (결함) — `ObservabilityOps`가 **e2e 앱이 아니다** — 샘플 바이너리를 셸로 구동한다
-- [ ] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
+- [x] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
+  — Config 9의 20개 `ST-*`와 Config 10의 7개 `TA-*` 요청·검증 본문을 ID별 scenario 파일로 옮기고, 공통 client 동작은 각 config의 context가 맡도록 정리했다. 두 client `Program.cs`에는 옵션·scenario 선택·호출 순서만 남겼다. Config 10 전체 runner와 Config 9의 20개 scenario runner, regression 37건이 통과했다.
 - [ ] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**
 - [x] **E2E-DN-04** (결함) — readiness 기본값이 **30초**(SpotService **60초**) — 문서는 3초
   — 11개 runner가 local readiness 기본값 3초와 0.1초 poll을 사용한다. regression 33건과 전 runner 기동을 확인했다.

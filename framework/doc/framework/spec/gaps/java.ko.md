@@ -478,3 +478,32 @@ Config 11 전체 실행도 각 selector를
 | **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | Bingo·SupportChat·DeliveryDispatch·ShoppingMall·GameQuest에 `connectRouter`/`connectPeerPub`가 **29곳**(`.NET`·Node는 **0**). 인자 없는 `.enableClient()` overload가 **같은 파일에서 이미 쓰이고 있다** — 피할 수 있는 호출들이다. **[갭 인덱스 §13.2]가 "연결 축은 규약과 일치한다"고 적고 있었는데 거짓이었고, 정정했다** |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | `addSpotMesh` **0건**(Java·Kotlin 모두). 소유권을 **클라이언트 측 해시**로 흉내낸다(`SampleTopology.java:42-47`). `.NET`엔 `QuestMission`·`GameApi` 양쪽에 있다 |
 | **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | 두 언어 모두 요청을 `grace + 2×heartbeat` 동안 돌리고 unhealthy 상태를 기다릴 뿐, **장애 중 provider를 재시작하지도, 새 connect가 억제되는지 단언하지도 않는다.** SF-B1이 이미 SF-B2가 보는 것을 전부 본다. 게다가 그 시간을 **[IMP-JV-33]으로 읽는 곳이 0인 `storeFailureGrace`**에서 계산한다 — **죽은 옵션으로 시간을 재는 시나리오다** |
+
+## 라운드 5 (2026-07-14) — GameQuest 심층
+
+**얕은 패스는 "owner Spot이 없다"까지만 봤다. 깊이 파니 샘플 전체가 전제를 구현하지 않았다.**
+
+Java와 Kotlin GameQuest는 **같은 코드베이스의 두 문법**이다. Spot도, spot-mesh도, event
+sourcing도, location-store binding도, 자동 연결도 **없다.** 있는 것은 프로세스 전역 `HashMap` 위에
+얹은 2-shard request/reply 서비스와, **쓰기만 하고 읽지 않는** Redis 감사 로그다.
+
+**그리고 self-check의 가장 중요한 게이트 5개가 구조적으로 실패할 수 없다.**
+
+### 진짜 버그
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-JV-11** (**버그**) | [gamequest §1·§8](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 spot-mesh에 분산**하는 것이다 | GameQuest 트리 전체에 `Spot`·`Actor` grep **0건**(Bingo·TicTacToe·SupportChat엔 다 있다). `QuestMission/Program.java:69-72`는 **channel 서버 하나**만 등록하고, 상태는 Spring 싱글턴 `QuestStore`의 `HashMap`에 `synchronized` 하나로 지킨다. ⇒ **서로 다른 player의 이벤트가 전역 모니터 하나에 직렬화된다.** owner도, lease도, re-home도 없다 |
+| **SMP-JV-12** (**버그**) | [gamequest §14](../../common/sample/event/gamequest.ko.md): rehydrate는 **노드 재시작 → event replay로 aggregate 복원**이다 | `markRehydrated`가 **두 곳에서** 불린다 — `/self-check/owner` 엔드포인트(`Program.java:95`)**와 모든 gameplay 메시지**(`GameplayMsgHandler.java:22`). 게이트는 `>= 2`다(`GameQuestStore.java:173-176`). ⇒ **클라이언트의 rehydrate 호출을 통째로 지워도 게이트가 통과한다.** 아무것도 닫히지 않고 아무것도 replay되지 않는다 |
+| **SMP-JV-13** (**버그**) | [gamequest §9](../../common/sample/event/gamequest.ko.md): owner는 **최초 활성 시 event stream을 replay**한다 | `QuestStore`가 Redis에 **쓰기만 한다**(`appendQuestEvents`·`writeProjection`). **읽는 코드가 트리 전체에 없다.** replay는 JVM 안의 `List`를 읽는다. ⇒ mission 노드를 재시작하면 **모든 상태가 0에서 시작하고**, Redis에 그대로 있는 stream을 **아무도 읽지 않는다.** SoR이 장식이다 |
+| **SMP-JV-14** (**버그**) | [gamequest §7](../../common/sample/event/gamequest.ko.md): notify는 **session binding을 가진 노드로 route**하고, **binding이 없으면 생략**한다 | `GameQuestSession.java:183-190` — notify를 **요청을 보낸 그 소켓**(`context.client()`)으로 민다. 대상이 누구든 상관없이. ⇒ **실제로 터진다**: 시나리오가 `player-bob`의 아이템 수집을 **alice의 세션으로** 보내고(bob은 아직 접속 전), owner가 낸 `QuestProgressNotify{playerId:"bob"}`이 **alice의 WebSocket으로 나간다.** 계약상 그 push는 **버려져야** 한다 |
+| **SMP-JV-15** (**버그**) | [gamequest §9](../../common/sample/event/gamequest.ko.md): 유실되면 `GameplayStateStore`의 **누적 fact로 재계산**한다 | `SyncQuestProgressHandler.java:22` — `store.sync(playerId, 4)`. **상수 4다.** `GameplayStateStore`를 읽지 않는다. ⇒ 미발행 kill을 2개 주입하든 1개 주입하든 **보정 결과는 항상 4**이고, 단언 `currentCount >= 4`는 그래도 통과한다 |
+| **SMP-JV-16** (**버그**) | [gamequest §14](../../common/sample/event/gamequest.ko.md): 같은 `IdempotencyKey` 재전송 → **진행 중복 증가 없음** | **두 가지 이유로 실패할 수 없다.** ① EventId가 dedupe 조회가 아니라 **결정적 문자열 결합**이다(`playerId + "-" + key`) — dedupe 맵을 지워도 같은 문자열이 나온다. ② 도메인이 `Math.min(required, prev + delta)`로 **clamp**하므로 3/3에서 4번째 kill은 그대로 3이고 새 event가 안 붙는다. ⇒ **dedupe 블록을 통째로 주석 처리해도 게이트가 초록이다** |
+| **SMP-JV-17** (**버그**) | [gamequest §14](../../common/sample/event/gamequest.ko.md): reward idempotency | 가드가 **도메인 status 검사**다. 이미 `RewardGranted`면 같은 source event를 재적용해도 두 번째 event가 안 나온다 — **dedupe와 무관하게.** ⇒ SMP-JV-16과 같은 이유로 **실패할 수 없다** |
+| **SMP-JV-18** (**버그**) | [gamequest §14](../../common/sample/event/gamequest.ko.md): reconnect = **연결 끊고 binding 해제 → 다른 노드로 재접속 → 조회로 복원** | 클라이언트가 **재접속을 하지 않는다.** alice는 api-a에만 붙고 끝이고, bob은 api-b에만 붙는다(재접속이 아니다). 유일한 단언은 "unbind가 일어났다"뿐. ⇒ **샘플의 대표 주장(같은 PlayerId가 다른 Session Server에서 같은 owner에 도달한다)을 검증하는 코드가 없다** |
+| **SMP-JV-19** (**버그**) | [gamequest §9](../../common/sample/event/gamequest.ko.md): **상태 = 이벤트의 fold**. `QuestProgressed`는 `Delta`를 갖는다 | `StoredQuestEvent`에 **`Payload`도 `Delta`도 없고** 절대값 스냅샷(`currentCount`·`status`)을 싣는다. 그래서 "replay"가 **마지막 행 읽기**로 퇴화한다(Kotlin은 아예 `stream.last()`). ⇒ **최신 행 하나만 남기고 stream을 다 지워도 rebuild 게이트가 통과한다.** event sourcing이 아니다 |
+| **SMP-JV-20** (**버그**) | [gamequest §8](../../common/sample/event/gamequest.ko.md): scale-out은 두 player가 **다른 owner에서 동시 처리**된다 | 모든 호출이 `.join()`으로 **즉시 블로킹**된다. alice의 전 구간이 끝난 뒤에야 bob의 세션이 열린다. **겹치는 구간이 없고**, 두 player가 다른 owner에 앉았는지 **단언하지 않는다** |
+| **SMP-JV-21** (**버그**) | [샘플 규약](../../common/sample/README.ko.md): `Msg`는 **응답 없는 단방향**이다. request/reply는 `Req`/`Res`여야 한다. entry-spot → owner spot 내부 메시지도 **예외가 아니다** | `GameplayMsgHandler`가 **`ZLinkRequestHandler<GameplayMsg, QuestProcessingRes>`**다 — 계약에 없는 응답 타입을 발명해 projection과 notify 목록을 **호출자에게 되돌려준다.** 그게 SMP-JV-14(push 오라우팅)의 원인이다. C++은 명시적으로 one-way send라고 주석까지 달아 뒀다 |
+| **SMP-JV-22** (결함) | [샘플 규약](../../common/sample/README.ko.md): **다른 언어 구현을 복사 기준으로 삼지 않는다** | `sample-porting-inventory.ko.md:3` — **"기준: dotnet samples/GameQuest"**. 그리고 `:19` — **"남은 gap 또는 partial 항목이 없다"**. 위 11개 버그가 전부 그 "완료" 행 아래에 있다 |
+
+**ZoneWorld는 Java/Kotlin 구현이 아직 없다** — 계획된 순서(`dotnet → java → kotlin → node → cpp`)상 정상이며 갭이 아니다.

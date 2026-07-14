@@ -168,7 +168,14 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   addStreamNode(name: string): ZLinkStreamNodeBuilder {
-    const streamNode = this.streamNodeOptions(name);
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new ZLinkConfigurationException('STREAM node name must not be empty or padded.');
+    }
+    if (Object.prototype.hasOwnProperty.call(this.options.streamNodes, name)) {
+      throw new ZLinkConfigurationException(`Duplicate STREAM node '${name}'.`);
+    }
+    const streamNode: MutableStreamNodeOptions = {};
+    this.options.streamNodes[name] = streamNode;
     return new DefaultStreamNodeBuilder(streamNode);
   }
 
@@ -193,11 +200,6 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private channel(name: string): MutableChannelOptions {
     this.options.channels[name] ??= {};
     return this.options.channels[name];
-  }
-
-  private streamNodeOptions(name: string): MutableStreamNodeOptions {
-    this.options.streamNodes[name] ??= {};
-    return this.options.streamNodes[name];
   }
 
   private spotNodeOptions(name: string): MutableSpotNodeOptions {

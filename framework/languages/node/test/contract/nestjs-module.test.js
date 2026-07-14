@@ -1448,6 +1448,18 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
   assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://0.0.0.0:9110');
 
   assert.throws(
+    () => framework.createFrameworkOptions((builder) => builder.addStreamNode('')),
+    /STREAM node name must not be empty or padded/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.addStreamNode('client.stream');
+      builder.addStreamNode('client.stream');
+    }),
+    /Duplicate STREAM node 'client\.stream'/
+  );
+
+  assert.throws(
     () => framework.createFrameworkOptions((builder) => {
       builder.addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')

@@ -85,3 +85,103 @@
 | **IMP-DN-11** | [32 §10.1·§9](../stream-connector/32-stream-connector.ko.md): response·error·heartbeat는 **수신 한도에 넣지 않는다**. request id가 부합하지 않는 error는 `RemoteError` | `Runtime/ZlinkStreamReceiveDispatcher.cs:18-37` — `pending.TryComplete()`가 실패하면 `RequestSeq is null`인 `Error`만 오류 표면으로 가고 **나머지는 전부 수신 메시지 큐로 떨어진다.** ⇒ 30초에 timeout된 request의 응답이 31초에 도착하면 **읽지 않은 메시지 예산(1024)을 갉아먹고**, 짝 없는 `Error`가 `RemoteError`로 **영영 보고되지 않는다** |
 | **IMP-DN-12** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md): proxy 인증 정보는 **대상 서버로 새지 않아야 한다**(**CONNECT tunnel 요청에만** 실림) | `Zlink.HttpClient/Runtime/RequestPerformer.cs:132-133` — `Proxy-Authorization`을 **매 요청 메시지 헤더**에 붙인다. `https://` 대상이면 그 헤더는 **CONNECT 터널 안쪽을 타고 원본 서버까지 간다.** 정작 `HttpTransportFactory.cs:27-31`의 `new WebProxy(...)`에는 **credential이 없어서 CONNECT 자체는 인증 없이** 나간다. ⇒ proxy 인증은 407로 실패하고, **그 자격증명은 엉뚱한 서버 손에 들어간다.** C++·Node는 올바르다 |
 | **IMP-DN-13** | [32 §4.7](../stream-connector/32-stream-connector.ko.md): 한도는 payload 바이트에만 적용하며 **압축을 쓰면 압축된 payload 기준**이다 | `ZlinkStreamFrameSender.cs:20-26` — 한도 검사가 **압축 전에** 돈다. ⇒ 80KB JSON을 `.compress()`하면(wire 6KB) **browser connector는 받고 .NET/Java/C++은 거부한다.** 압축이 존재하는 바로 그 이유가 막힌다 |
+
+## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합
+
+라운드 3은 질문을 뒤집었다 — **"코드가 스펙이 허용하지 않는 걸 하는가?"**
+
+**public 타입 이름은 깨끗하다.** `Zlink.Framework.Contracts`의 interface 106개 + 타입 144개가 전부
+카탈로그에 있고 `Runtime/**`은 아무것도 export하지 않는다. **문제는 전부 "받아서 검증하고 버리는
+옵션"과 경합이다.**
+
+### 체크리스트
+
+- [ ] **IMP-DN-14** (결함) — `IZLinkSocketConfig` 14개 중 **9개를 적용하지 않고**, `Linger`는 **앱 몰래 0으로 강제**한다
+- [ ] **IMP-DN-15** (결함) — `IZLinkRouteConfig`/`IZLinkOutboundRouteConfig`가 **설정만 되고 읽히지 않는다**
+- [ ] **IMP-DN-16** (결함) — SpotNode의 role config 표면이 **완전한 no-op**이다
+- [ ] **IMP-DN-17** (결함) — **actor가 든 spot을 닫을 수 있다** (check-then-act 경합)
+- [ ] **IMP-DN-18** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **같은 spot을 기다리는 다른 호출자 전부를 실패**시킨다
+
+### 상세
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **IMP-DN-14** | `IZLinkSocketConfig`의 각 항목은 소켓에 적용된다 | 적용 경로(`ZLinkChannelBundleFactory.cs:167-176`)가 다루는 건 `MaxMessageSize`·`SendHighWaterMark`·`ReceiveHighWaterMark` **셋뿐**이다. `Linger`·`TcpNoDelay`·`IPv6`·`Immediate`·`ConnectTimeout`·`HandshakeInterval`·`SendBufferSize`·`ReceiveBufferSize`·`ReceiveTimeout`은 **읽는 곳이 없다.** 더 나쁜 건 `ZLinkDotNetBackendAdapters.cs:23,31,39,47,75`가 DEALER/ROUTER/PUB/SUB에 **`Linger = TimeSpan.Zero`를 하드코딩**한다는 것이다. ⇒ `Linger = 1s`를 설정하면 **수락되고 getter로 1초로 읽히는데** 소켓은 Linger 0으로 돈다. 종료 시 큐에 남은 메시지가 **전부 버려진다** — 그 설정이 막으려던 바로 그 일이 |
+| **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 읽는 곳이 **없다.** 대신 `ZLinkRouteChannelInitializer.cs:50-51`이 `SetMandatory(true); SetHandover(true);`를, `ZLinkRouteConnectionSet.cs:118-119`가 `SetProbe(true)`를 **상수로** 박아 둔다. client-server의 **server ROUTER는 셋 중 어느 것도 부르지 않아** `ConfigureServerRouting()`이 **자기가 이름 붙인 바로 그 소켓에서 무효**다 |
+| **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | 살아 있는 config 객체를 돌려주는데 **읽는 곳이 0개**다. 애초에 불가능하다 — `IZLinkBackendSpotNode`에 **소켓 옵션 setter가 아예 없다.** ⇒ SPOT fan-out이 backpressure에서 조용히 드롭하는 걸 막으려고 `SendHighWaterMark = 100_000; NoDrop = true`를 걸면 **오류 없이 수락되고 버려진다** |
+| **IMP-DN-17** | [21 §close](../server/21-spot-node.ko.md): **actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다** | `ZLinkSpotNodeCatalog.cs:429-437` — `if (activation.JoinedActorCount > 0) return false;`로 **검사한 뒤 닫는다.** `JoinedActorCount`는 자기 `_gate`가 지키는데, join commit(`ZLinkSpotActivationActors.cs:339`)은 **spot의 직렬 줄**에서 돌며 그 락을 잡지 않는다. ⇒ "0명 확인 → close 등록" 사이에 join commit이 끼면 **actor가 든 방이 파괴된다.** `OnLeaveActor`가 안 돌아 앱 장부엔 그 actor가 남고, actor의 location row는 **해제된 spot을 가리킨다.** C++만 이걸 제대로 한다(`node->mutex`로 검사와 close를 함께 감싼다) |
+| **IMP-DN-18** | [21](../server/21-spot-node.ko.md): `GetOrCreate`는 하나의 activation을 모든 호출자가 공유한다. [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | `ZLinkSpotNodeCatalog.cs:340-375` — 소유자가 **자기 token**으로 생성을 돌리고, 실패하면 `pending.Fail(...)`로 **공유 TCS를 그 실패로 완료**한다. ⇒ 1초 deadline인 A와 30초 deadline인 B가 같은 방을 요청하면, **A가 1초에 취소될 때 B도 함께 죽는다** — B에겐 29초가 남아 있었는데. 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** |
+
+## 교차 언어 결함 — 이 언어에서 무엇을 고치나
+
+**교차 언어 결함이라도 고치는 일은 이 언어에서 한다.** [갭 인덱스](../90-implementation-gap.ko.md) §15.3이
+**왜**(계약과 결정)를 소유하고, 아래 표가 **무엇을**(이 언어의 작업)을 소유한다.
+
+| 교차 결함 | 무엇이 깨지나 | 이 언어의 작업 |
+|---|---|---|
+| **IMP-X3** | startup validation이 스펙의 설정 오류를 통과시킨다 | IMP-DN-02 · IMP-DN-07 · IMP-DN-10 |
+| **IMP-X4** | location store read에 5초 취소 상한이 없다 | **이 언어 전용 ID 없음** — `Runtime/Locations/`에 `StoreReadTimeout` 개념 자체가 없다. [54 §3.4](../server/54-graceful-drain-handoff.ko.md)가 요구하는 5초 상한을 store read 경계마다 적용한다 |
+| **IMP-X7** | connector send payload 한도를 압축 *전* payload에 적용 | IMP-DN-13 |
+| **IMP-X9** | HTTP client가 proxy 자격증명을 대상 서버로 흘린다 | IMP-DN-12 |
+| **IMP-X10** | SPOT timer 등록 검증이 startup이 아니다 | IMP-DN-10 |
+| **IMP-X11** | `fanout.received`가 미등록 topic까지 라벨로 단다 | IMP-DN-08 |
+| **IMP-X12** | actor가 든 spot을 닫을 수 있다 (경합) | IMP-DN-17 |
+| **IMP-X13** | 서버가 `correlation_id`를 `request_seq`로 날조 | IMP-DN-09 |
+| **IMP-X14** | `listPageSize`가 무시된다 | IMP-DN-06 (1000을 하드코딩) |
+| **IMP-X17** | `GetOrCreate` 취소가 다른 호출자 전부를 실패시킨다 | IMP-DN-18 |
+| **IMP-X18** | Redis fixture 바이트 단위 일치 주장이 거짓 | 빈 컬렉션 표현이 fixture와 다르다 |
+
+## 이전 기록 — 기준선 대조 (2026-07-13 이전)
+
+> **이 절은 과거 기록이다.** 당시 계약 기준으로 확인한 내용이며, 그 뒤 계약이 바뀐 항목이 있다
+> (특히 실행 terminator — [갭 인덱스 §12.21](../90-implementation-gap.ko.md) 참조).
+> **현재 작업 목록은 이 문서 위쪽의 체크리스트다.**
+
+`.NET` public declaration과 package는 이 문서에서 추적하던 계약 차이를 해소했다.
+actor membership은 nullable `SpotRid`만 상태 기준으로 사용하고, join 결과는 승인/거절
+sealed record로 유효한 상태만 표현한다.
+
+다음 타입은 기존 interface catalog에서 이름이나 전체 시그니처를 찾기 어려웠다.
+현재 `.NET` interface 문서의 전체 inventory, 보완 시그니처와 공통 기능 커버리지 표에
+반영했다.
+
+```text
+IZLinkActorClient
+IZLinkActorDirectory
+IZLinkActorJoinCall
+IZLinkActorLocationStore
+IZLinkActorRequestCall
+IZLinkActorSendCall
+IZLinkChannelRuntimeOptions
+IZLinkClientServerChannelOptions
+IZLinkCodecExtension
+IZLinkCodecRegistrar
+IZLinkLocationReadiness
+IZLinkOwnerLeaseStore
+IZLinkPeerLocationStore
+IZLinkRouteLocationStore
+IZLinkRouteMeshChannelOptions
+IZLinkSpotActorLifecycle
+IZLinkSpotCommonContext
+IZLinkSpotLocationStore
+IZLinkStreamCompressionBuilder
+IZLinkUnhandledDispatchOptions
+IZLinkWorkerCall
+IZLinkWorkerOptions
+```
+
+`IZLinkActorSendCall`은 다른 one-way call과 같은 `void Submit(CancellationToken)` 계약을
+제공한다. `SpotHandle`, capability별 `IZLinkEndpointConnections`, sealed monitoring event와
+typed packet identity 단일 소유도 contract/unit/E2E 및 실제 package consumer로 검증한다.
+
+runtime metrics, flow correlation, graceful drain과 session closing도 정식 계약, package와
+Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
+
+> **실행 terminator는 예외다.** 위 목록이 만들어질 당시에는 "request·actor join·worker의 yield
+> 전용 타입을 제거하고 단일 완료 terminator가 자동으로 turn을 관리한다"가 계약이었고, 그 기준으로
+> 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
+> (`submit`/`async`/`yield`)이며([04 §1.1](../04-async-execution-policy.ko.md)), `.NET`은 이를
+> 충족하지 않는다. 따라서 **`.NET`에 남은 구현 차이는 [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
+> [§12.21](#1221-yield-terminator-부재-전-언어), [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
+> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)이다.** 그 밖에 이 문서가 추적하는 `.NET`
+> 차이는 없다.

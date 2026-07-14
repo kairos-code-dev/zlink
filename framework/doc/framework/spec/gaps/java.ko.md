@@ -240,3 +240,210 @@ flow가 경계에서 끊긴다.
 | **IMP-JV-18** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md) | `RequestPerformer.java:160-162`가 `proxy-authorization`을 요청 헤더에 넣고, `JavaHttpClientFactory.java:27-30`은 `.authenticator(...)` 없이 `ProxySelector`만 준다. `.NET`(IMP-DN-12)과 **같은 결함** |
 | **IMP-JV-19** | [http 06 §6.2](../http-client/06-redirect-retry-cookie.ko.md): timeout은 **시도(attempt)당** 적용한다 | `RequestPerformer.java:176-181` — `hop()`마다 timeout을 **새로 건다.** ⇒ `timeout(3s)` + `followRedirects(5)` + `retry(2)`가 계약상 ~9초여야 하는데 **~45초**를 태울 수 있다 |
 | **IMP-JV-20** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | `ZLinkStreamConnectorPayloadCodec.java:23-35` — 압축 전 크기로 한도를 검사한다. `.NET`(IMP-DN-13)과 **같은 결함** |
+
+## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합
+
+**Java에는 `module-info.java`가 없다.** 그래서 `zlink-framework-core`의 **모든 `public` 클래스가
+application API**다. 이 사실이 아래 여러 항목의 근본이다.
+
+### 체크리스트
+
+- [ ] **IMP-JV-21** (결함) — `systems.zlink.framework.execution` 패키지가 **framework 내부 실행기를 공개**한다
+- [ ] **IMP-JV-22** (결함) — raw STREAM frame/header codec이 core의 **public API**다
+- [ ] **IMP-JV-23** (결함) — header decode 실패를 **날조한 packet으로 바꾸고**, 그 요청에 **응답할 수 없게** 만든다
+- [ ] **IMP-JV-24** (결함) — Spring host 자동 drain이 **25초** — 스펙은 30초
+- [ ] **IMP-JV-25** (결함) — `addForwardedMetadataKey(...)`가 **조용한 no-op**
+- [ ] **IMP-JV-26** (결함) — connector가 사용자 **error callback의 실패를 삼킨다**
+- [ ] **IMP-JV-27** (결함) — `includeNativeDiagnostics`를 **읽는 곳이 없다**
+- [ ] **IMP-JV-28** (결함) — `ZLinkStoreSpotHandleResolver`가 **내부 transport 주소 타입을 공개 표면으로 흘린다**
+- [ ] **IMP-JV-29** (결함) — connector의 `ZLinkStreamJson`·`ZLinkStreamCompressionCodecs`가 **스펙 근거가 없다**
+- [ ] **IMP-JV-30** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
+- [ ] **IMP-JV-31** (결함) — 서버가 `correlation_id`를 `request_seq`로 **날조한다**
+- [ ] **IMP-JV-32** (결함) — `listPageSize`를 **읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이다
+- [ ] **IMP-JV-33** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다.** fail-static 유예 정책 자체가 없다
+
+### 상세
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **IMP-JV-21** | [25 §3](../server/25-stage-wrapper-on-spot.ko.md): **사용자에게 내부 실행기(mailbox·queue·drain loop)를 노출하지 않는다.** 사용자가 보는 것은 등록 표면뿐이다 | `execution/ZLinkSpotDispatchQueue.java:33,42,51,61`(public 생성자 + spot 직렬 줄에 `enqueue`), `ZLinkAsyncSerialQueue.java`, `ZLinkWorkerPool.java:21,30,77,97,125`(public 생성자 + `execute` + **`close()`**). 스펙 어디에도 이 이름들이 없다. ⇒ 앱이 **프로세스 전체 spot이 공유하는 worker pool을 `close()`할 수 있고**, spot의 turn 큐에 **임의 작업을 직접 밀어 넣어** turn 모델을 통째로 우회할 수 있다 |
+| **IMP-JV-22** | [32 §5](../stream-connector/32-stream-connector.ko.md): **임의 header bytes를 다루는 API를 공개 표면에 두지 않는다** | `runtime/streams/ZLinkStreamFrameCodec.java:12,20`·`ZLinkStreamHeaderCodec.java:29,118`이 public이다. **connector는 제대로 한다**(`ZLinkStreamWireProtocol.java:10`이 package-private). core만 뚫려 있다 |
+| **IMP-JV-23** | [11 §3.1](../server/11-channel-messaging.ko.md): 잘못된 frame은 **로그 + drop**. [51 §4.4](../server/51-runtime-metrics.ko.md): `dropped{reason="decode_error"}` | `runtime/spots/ActorPacketFrames.java:21-37` — header decode가 실패하면 **catch해서 raw header 바이트를 UTF-8로 읽은 값을 packet name으로 삼는 Header를 날조한다.** plain-header 경로는 이미 `decodeOrPlain`이 처리하므로, 이 catch는 **진짜로 손상된 frame에서만** 튄다. drop도 metric도 없다. 게다가 `streamHeader=false`라서 `encodeReply`가 **응답 헤더 없는 맨 payload**를 내보낸다 — 호출자의 connector는 header의 `request_seq`로 매칭하므로 **그 요청은 30초 timeout까지 매달린다** |
+| **IMP-JV-24** | [54 §6](../server/54-graceful-drain-handoff.ko.md): 기본 deadline은 **모든 언어에서 30초**다. **인자 없는 overload와 host 자동 drain이 같은 값을 쓴다** | `ZLinkFrameworkRuntime.java:430-431`은 30초로 맞는데, **실제로 프로세스 종료에 도는 유일한 경로**인 `ZLinkFrameworkLifecycle.java:37,89,111`이 **25초**다. ⇒ 25~30초에 끝나는 drain이 Java에서만 `ForceStopped(DeadlineExceeded)`가 되고 다른 언어에선 `Drained`가 된다 |
+| **IMP-JV-25** | 스펙이 선언한 metadata 전달 정책 | `ZLinkMetadataPolicyRegistration.java:10,17,20` — `forwardedApplicationKeys`의 **소비자가 트리 전체에 없다**(getter round-trip 유닛테스트뿐). `configureMetadata().addForwardedMetadataKey("tenant")`가 **아무것도 전달하지 않는다.** 기록된 `metadata(k,v)` no-op(IMP-JV-06)과 **같은 병**이 설정 축에서 반복된다 |
+| **IMP-JV-26** | [32 §9](../stream-connector/32-stream-connector.ko.md): 사용자 callback 실패는 `UserCallbackFailed`. **error handler에 예외 조항이 없다** | `DefaultZLinkStreamConnector.java:354-361` — `catch (Throwable ignored) {}`. 바로 10줄 위 메시지 경로는 `publishUserCallbackFailed`를 **제대로 부른다.** ⇒ `onErrorReceived`가 던지면 **오류도 metric도 로그도 없다** |
+| **IMP-JV-27** | — | `ZLinkDispatchOptionsRegistration.java:160,179,219`가 전부. 형제 옵션(`includeMessageSizes`·`sampleRate`·`logFile`)은 살아 있는데 이것만 죽었다 |
+| **IMP-JV-28** | [00 §5](../00-public-contract-governance.ko.md): transport 주소는 framework 내부다 | `spots/ZLinkStoreSpotHandleResolver.java:10-11,34`가 **사용자 대면 `framework.spots` 패키지에서 public**이고 `runtime.internal.spots.SpotTransportAddress`를 반환한다. **코드베이스 자신이 그 타입을 `runtime/internal/` 아래 둔다** |
+| **IMP-JV-29** | [00 §3](../00-public-contract-governance.ko.md): 스펙 근거 없이 public API를 만들지 않는다 | connector의 `ZLinkStreamJson`·`ZLinkStreamCompressionCodecs` — 스펙 트리 grep **0건**(형제 connector 타입은 전부 항목이 있다). `ZLinkStreamJson`은 고정된 `send`/`request`/`on` 표면을 **중복하는 두 번째 static facade**다 |
+| **IMP-JV-30** | [21 §close](../server/21-spot-node.ko.md) | `ZLinkSpotLifecycle.java:134-142` — `hasActorsInSpot()`이 **락 없이** actor registry를 순회하고, `joinedSpotRid`를 **쓰는** commit은 spot dispatch 줄에서 돈다. `.NET` IMP-DN-17과 **같은 경합** |
+| **IMP-JV-31** | [52 §9](../server/52-message-flow-tracing.ko.md) | `ZLinkStreamRuntime.java:272-273` — `.orElseGet(() -> requestSequence()...)`. `.NET` IMP-DN-09과 **같은 결함**(C++만 올바르다) |
+| **IMP-JV-32** | [40 §3·§8.2](../server/40-location-runtime.ko.md): 목록 조회는 `list page size`(기본 **1000**)를 따른다 | `ZLinkLocationOptions.java:12,40-48` — **읽는 곳 0.** 내부 조회가 `ZLinkPageRequest.firstPage()`(pageSize 0)를 써서 Redis `SMEMBERS`로 **kind 인덱스 전체**를 읽는다. ⇒ 모든 `listSpots`/`listActors`가 **O(N) 전체 읽기**이고, 그걸 제한하라는 옵션이 **아무 일도 안 한다** |
+| **IMP-JV-33** | [40 §6.1·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **읽는 곳 0.** ⇒ Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** |
+
+## 교차 언어 결함 — 이 언어에서 무엇을 고치나
+
+**교차 언어 결함이라도 고치는 일은 이 언어에서 한다.** [갭 인덱스](../90-implementation-gap.ko.md) §15.3이
+**왜**(계약과 결정)를 소유하고, 아래 표가 **무엇을**(이 언어의 작업)을 소유한다.
+
+| 교차 결함 | 무엇이 깨지나 | 이 언어의 작업 |
+|---|---|---|
+| **IMP-X1** | pending actor row를 resolve 성공으로 반환 | IMP-JV-09 |
+| **IMP-X2** | location event source 4종 결측 | IMP-JV-08 |
+| **IMP-X3** | startup validation이 설정 오류를 통과 | IMP-JV-05 |
+| **IMP-X4** | location store read에 5초 상한 없음 | **이 언어 전용 ID 없음** — `runtime/locations/`(`ZLinkStoreLocationResolvers`·`ZLinkLiveLocationRows`·`ZLinkOwnerLeaseTracker`·`ZLinkAutoConnectLoop`)가 store를 **무제한**으로 호출한다. 5초 취소 상한을 적용한다 |
+| **IMP-X5** | message-flow 관측자가 로그 모드에 묶여 침묵 | **이 언어 전용 ID 없음** — `ZLinkMessageFlowTracer.java:65-78`의 `enabled()`가 **로그 모드만** 읽고, 샘플 게이트까지 통과해야 :89의 관측자 dispatch에 닿는다. [52 §3](../server/52-message-flow-tracing.ko.md)은 "관측자는 모드와 무관하게 발화한다"이다. `.NET`(`ZLinkMessageFlowTracer.cs:44`)처럼 `ShouldLog(outcome) || ObserverEnabled`로 고친다 |
+| **IMP-X6** | `origin=lifecycle`을 생성하지 않는다 | **이 언어 전용 ID 없음** — `ZLinkMessageFlowTracer.java:119-123`의 `originFor()`가 `RECEIVED`가 아닌 모든 것을 `APPLICATION`으로 매핑한다. enum은 wire 디코더(`ZLinkStreamHeaderCodec.java:243`)에만 있다. drain·startup·shutdown이 새 flow를 `lifecycle`로 시작해야 한다 |
+| **IMP-X7** | connector send payload 한도를 압축 전에 적용 | IMP-JV-20 |
+| **IMP-X8** | 수동 endpoint가 auto-reconcile을 끄지 않는다 | IMP-JV-16 |
+| **IMP-X9** | HTTP client proxy 자격증명 유출 | IMP-JV-18 |
+| **IMP-X12** | actor가 든 spot을 닫을 수 있다 (경합) | IMP-JV-30 |
+| **IMP-X13** | `correlation_id` 날조 | IMP-JV-31 |
+| **IMP-X14** | `listPageSize`가 죽어 있다 | IMP-JV-32 |
+| **IMP-X15** | `storeFailureGrace`가 죽어 있다 | IMP-JV-33 |
+| **IMP-X16** | `includeNativeDiagnostics`가 죽어 있다 | IMP-JV-27 |
+| **IMP-X18** | Redis fixture 불일치 | `putInstant`가 null instant에 `1970-01-01T00:00:00Z`를 낸다 — fixture는 `0001-01-01T00:00:00+00:00` |
+
+## 이전 기록 — 기준선 대조 (2026-07-13 이전)
+
+> **이 절은 과거 기록이다.** 당시 계약 기준으로 확인한 내용이며, 그 뒤 계약이 바뀐 항목이 있다
+> (특히 실행 terminator — [갭 인덱스 §12.21](../90-implementation-gap.ko.md) 참조).
+> **현재 작업 목록은 이 문서 위쪽의 체크리스트다.**
+
+### 3.1 handler 비동기 완료
+
+Java request, send, publish, Spot, actor와 session handler는 `CompletionStage<T>` 또는
+`CompletionStage<Void>`를 반환한다.
+
+> **turn 의미는 갭이다.** 현재 구현의 automatic turn은 handler가 stage를 **반환할 때까지**만 다음
+> handler의 시작을 막고, 반환된 incomplete stage의 **완료는 기다리지 않는다.** 정본 계약은
+> `async`가 **완료까지 turn을 유지**하는 것이다([04 §1.1](../04-async-execution-policy.ko.md)).
+> 아래 근거는 **폐기된 계약 기준의 기록**이며, 현재 갭은
+> [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다.
+
+확인 근거(구 계약 기준):
+
+- `JavaTargetContractGapTest.handlersFactoriesAndLifecycleExposeCompletionStages`
+- Config 8 `AutomaticTurnDispatch` 전체 selector — 이 config는 [config-8 실행 turn과
+  terminator](../../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다
+
+Kotlin adapter는 lifecycle과 actor callback의 coroutine을 `CoroutineScope.future`로
+`CompletionStage`에 연결한다. `CompletionStage.await()`는
+`suspendCancellableCoroutine`과 stage 완료 callback으로 coroutine을 재개하므로 callback
+실행 줄을 blocking wait로 점유하지 않는다. waiter cancellation은 공유 framework stage를
+취소하지 않고, stage의 완료 오류는 원래 원인으로 풀어서 전달한다.
+
+현재 확인 위치:
+
+- `zlink-framework-kotlin/.../ZLinkSuspendingHandlers.kt`
+- `zlink-framework-kotlin/.../ZLinkCoroutineTurnAwait.kt`
+
+### 3.2 one-way call 완료 표면
+
+`ZLinkSendCall`, `ZLinkSessionSendCall`, `ZLinkSessionReplyCall`과
+`ZLinkBoundSessionSendCall`의 one-way `submit()`은 `void`다. `ZLinkSubmitStage`, public
+`await`와 yield call은 production source에 없다. 전송 실패는 framework error observer와
+runtime 진단 경로로 보고한다.
+
+### 3.3 typed session handler
+
+`ZLinkTypedSessionPacketHandler`는 raw application handler를 상속하지 않는다. message type
+descriptor와 typed `CompletionStage<Void> handle(...)`을 제공하며 framework dispatcher와
+application handler의 등록 경계가 분리되어 있다.
+
+### 3.4 Actor join 계약
+
+`ZLinkActorContext.joinSpot(...)`과 `joinEntrySpot(...)`은 요청을 필수로 받는다. 요청 없는
+overload와 default throw는 없으며, 단일 `ZLinkActorJoinCall`과 sealed 승인·거절 결과를 사용한다.
+
+### 3.5 interface inventory 문서 상태
+
+다음 타입은 기존 Java interface catalog에서 찾기 어려웠으며 현재 언어별 interface
+inventory에 정식 public contract로 반영했다.
+
+```text
+ActorSpotHandleResolver
+ManualEndpointListBuilder
+SpotHandleResolver
+ZLinkActorClient
+ZLinkActorDirectory
+ZLinkActorJoinCall
+ZLinkActorLocationStore
+ZLinkActorRequestCall
+ZLinkActorSendCall
+ZLinkChannelRuntimeOptions
+ZLinkClientServerChannelRuntimeOptions
+ZLinkCodecRegistrar
+ZLinkLocationChangeStampStore
+ZLinkLocationKey
+ZLinkLocationReadiness
+ZLinkLocationRuntimeQuery
+ZLinkLocationStore
+ZLinkLocationWatchStore
+ZLinkOwnerLeaseStore
+ZLinkPeerLocationResolver
+ZLinkPeerLocationStore
+ZLinkRouteLocationStore
+ZLinkSocketRuntimeOptions
+ZLinkSpotActorLifecycle
+ZLinkSpotLocationStore
+ZLinkSpotPacketHandler
+ZLinkSpotRequestHandler
+ZLinkSpotSubscriptionHandler
+ZLinkSpotTimerHandler
+ZLinkStreamCompressionBuilder
+ZLinkTypedSessionPacketHandler
+```
+
+Kotlin 전용 public type과 top-level extension도 Kotlin interface catalog의 type 및
+function inventory에 반영했다.
+
+```text
+ZLinkCoroutineSuspendHandlerInvoker
+ZLinkKotlinLifecycleCall
+ZLinkKotlinSendCall
+ZLinkKotlinStreamConnector
+ZLinkStreamTypedWaitCall
+ZLinkSuspendingLocationStore
+await
+awaitJoinReply
+awaitOwnerLeases
+send
+publishToTopic
+resolveActorSpotHandle
+resolveSpotHandle
+useCoroutineHandlers
+messages
+errors
+```
+
+### 3.6 Actor membership와 join 결과
+
+현재 actor context는 nullable Spot 식별자와 join boolean을 따로 노출한다. 두 값을
+순서대로 읽는 동안 상태가 바뀌거나 구현이 서로 다른 값을 돌려주면 모순이 생긴다.
+목표 계약은 nullable Spot 식별자 하나를 join 상태의 단일 기준으로 사용한다.
+
+현재 join 결과도 result code 또는 승인 여부와 nullable actor를 독립 필드로 제공한다.
+목표 계약은 sealed 승인/거절 결과로 바꾼다. 승인 결과만 필수 actor ref를 가지며 두
+결과 모두 reply를 가진다. Kotlin은 Java sealed 계약을 그대로 사용한다.
+
+location store/query, compression과 connector에 선언된 Kotlin public extension은 Kotlin
+문서의 전체 function inventory를 기준으로 별도 검증한다. Java 완료 판정이 Kotlin 완료를
+의미하지 않는다.
+
+### 3.7 Java/Kotlin 검증 상태
+
+Java target public declaration은 `JavaTargetContractGapTest` 전체 통과와 production symbol
+검색으로 확인했다. Java Config 1~10과 Config 11 `ObservabilityOps` 전체 selector가 real E2E를
+통과했다. `ZLinkMessageFlowTracerTest.dispatchErrorsUseContractLogLevels`는 handler 예외를
+one-way 여부와 관계없이 Error로 기록하고, handler 없음·decode 실패·invalid frame의 기본 수준을
+send는 Warning, publish는 Debug로 기록하는 계약을 고정한다. Kotlin channel handler도 같은
+Java dispatch reporter를 사용한다.
+
+Kotlin은 `KotlinPublicSurfaceContractTest`, 전체 unit/integration test와 언어별 E2E로 확인했다.
+`KotlinFlowContextBridgeTest`는 suspending lifecycle의 flow가 suspension 전후에 유지되고 다음
+호출에 남지 않는지 검증한다. `KotlinCompletionStageAwaitIntegrationTest`는 drain waiter를 취소해도
+공유 drain stage가 취소되지 않는지 검증한다. Config 8 전체 실행은 **구 계약(`ATD-*`) 기준** 기록이며
+pending await 중 Play 재시작 같은 routing id recovery를 포함해 통과했다. 그 config는
+[config-8 실행 turn과 terminator](../../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
+Config 11 전체 실행도 각 selector를
+새 Redis와 새 토폴로지에서 실행하여 OBS-A1~C5가 모두 통과했다.

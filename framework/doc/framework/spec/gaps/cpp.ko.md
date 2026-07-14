@@ -119,3 +119,101 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 | **IMP-CP-25** | [http 06 §6.1](../http-client/06-redirect-retry-cookie.ko.md): 307·308은 보존하되 **streaming body는 rewind 불가라 드롭**한다 | `request_performer.cpp:99-124,272-276` — redirect 루프가 method/body를 바꾸면서 **provider를 비우지 않고**, 다음 홉에서 원본 `_request.body_provider`를 다시 읽는다. ⇒ `307`이면 이미 소진된 provider가 즉시 `nullopt`를 내서 서버가 **0바이트 파일을 저장하는데 호출은 200으로 성공**한다. `303`이면 chunked **GET**을 내보내 많은 서버가 거부한다 |
 | **IMP-CP-26** | [http 08](../http-client/08-compression.ko.md): 해제 후 `content-encoding`**과 관련 length** 헤더를 제거한다 | `request_performer.cpp:127-135` — `content-encoding`만 지우고 **`content-length`는 남긴다.** ⇒ 그 값으로 버퍼를 잡는 호출자가 18KB 본문에 **압축 길이 1.4KB**를 읽고 잘린다 |
 | **IMP-CP-27** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | `zlink_stream_calls.cpp:122-126` — 압축 전 크기로 검사한다. `.NET`(IMP-DN-13)·Java(IMP-JV-20)와 **같은 결함** |
+
+## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합 · Redis store
+
+### 체크리스트
+
+- [ ] **IMP-CP-28** (결함) — `extension_boundaries.hpp` — **설치되는 공개 헤더인데 스펙 근거도 구현도 0**
+- [ ] **IMP-CP-29** (결함) — `unhandled_dispatch_options_t` 5개 필드가 **검증만 되고 읽히지 않는다**
+- [ ] **IMP-CP-30** (결함) — `on_retry`/`on_dead_letter` — **C++에만 있는 메시지 신뢰성 계약**, 스펙 근거 0
+- [ ] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
+- [ ] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
+- [ ] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
+- [ ] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**
+- [ ] **IMP-CP-35** (결함) — framework runtime에 **owner-lease join이 아예 없다.** store에 떠넘겼다
+- [ ] **IMP-CP-36** (결함) — Redis 페이징이 SSCAN 커서가 아니라 **SMEMBERS + 정수 오프셋**이다
+- [ ] **IMP-CP-37** (결함) — actor row에 **다른 셋에는 없는 `mesh` hash 필드**를 쓴다
+- [ ] **IMP-CP-38** (결함) — lease remove/list가 **자기 Lua script를 쓰지 않는다**(그 script는 dead code)
+
+### 상세
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **IMP-CP-34** | [04](../04-async-execution-policy.ko.md): 한 spot의 두 callback은 동시에 실행되지 않는다. [21 §close](../server/21-spot-node.ko.md) | `callback_depth`·`callback_thread`·`close_requested`는 **`callback_mutex`**가 지킨다(`spot_runtime.hpp:253-261`). 그런데 `close_erased()`(`spot_runtime.cpp:994-1005`)는 **`node->mutex`만 잡고** 그 둘을 읽고 쓴다. 결과가 두 갈래다 — ① **살아 있는 callback 한가운데서 close가 실행된다**: 낡은 `callback_depth == 0`을 보고 `close_now()`로 직행해 다른 스레드가 handler를 실행 중인 spot의 컨텍스트를 헐어 버린다. **한 spot에서 두 callback이 동시에 도는 것** — 직렬 줄이 존재하는 유일한 이유가 그걸 막는 건데. ② **close가 조용히 유실된다**: `leave_callback`이 먼저 `close_requested == false`를 읽고 나가면, 뒤늦게 A가 낡은 `callback_depth == 1`을 보고 `close_requested = true`를 쓴다. **`close_spot()`은 성공을 반환했는데 방은 영원히 안 닫힌다** |
+| **IMP-CP-28** | [00 §3](../00-public-contract-governance.ko.md): 스펙 근거 없이 public API를 만들지 않는다 | `extensions/include/.../extension_boundaries.hpp` — `cpp/CMakeLists.txt:633`이 **consumer 패키지로 설치한다.** `kafka_bridge_extension_t::map_topic`, `grpc_bridge_extension_t`, `http_gateway_extension_t`, `dead_letter_storage_extension_t`, `flatbuffers_codec_extension_t`, `custom_transport_extension_point_t`… 스펙 트리 grep **0건**, 헤더 밖 사용처 **0건**, 구현 **0줄**. **리포에서 가장 큰 무근거 공개 표면**이고 전부 no-op이다 |
+| **IMP-CP-29** | [11 §3.1](../server/11-channel-messaging.ko.md): 미처리 dispatch 정책은 framework가 고정한다 | `contracts/dispatch/execution.hpp:55-62`의 5개 필드가 **startup에서 검증된다** — 그래서 앱은 "먹혔다"는 확인을 받는다. 그런데 **읽는 곳이 0**이고 실제 정책은 `dispatch_error_reporter.hpp:73-87`에 **박혀 있다** |
+| **IMP-CP-30** | [24](../server/24-spot-address-messaging.ko.md): **도메인 idempotency가 필요한 일반 retry는 application 정책이며 handle이 대신하지 않는다** | `zlink_builder.hpp:49-50`의 `on_retry`/`on_dead_letter`가 **살아 있다**(`channel_runtime.cpp:1847-1856, 521-542`에서 등록·호출). C++ 카탈로그는 `zlink_builder_t`를 **정확히 7개 메서드**로 고정하고, 스펙 트리에 `on_retry`/`dead_letter` grep **0건**. ⇒ **C++에만 존재하는 메시지 신뢰성 계약**이며, 스펙이 명시적으로 application 몫이라고 한 것을 framework가 가져갔다 |
+| **IMP-CP-31** | [05](../05-framework-api.ko.md): framework 기본값은 core socket 기본 send timeout과 같은 **1000ms**. `Timeout(...)`은 **reply 대기 시간만** 정하고 전송 backpressure는 `SendTimeout` 정책이 처리한다 | `channel_outbound_exchange.cpp:1014-1016` → `resolve_channel_wait_timeout`(:259-272)이 **`default_request_timeout` = 30초**로 폴백한다. C++엔 **send timeout 개념 자체가 없다**(`grep send_timeout` → 0건). ⇒ 포화된 peer에 대고 `send(...).submit()`이 **30초 매달린다**(.NET/Java는 1초). 그리고 스펙이 **명시적으로 분리하라고 한** request/reply timeout을 send timeout으로 재사용한다 |
+| **IMP-CP-32** | C++ 카탈로그 §16.24: `*_state_t`·`*_snapshot_t`·`*_access_t`는 **application이 직접 다루지 않는다**. §3.2: **pending request table은 runtime이지 계약이 아니다** | `zlink_builder.hpp:56-59`의 public 메서드 4개가 `channel_snapshot_t`/`spot_node_snapshot_t`/`stream_snapshot_t`를 반환하고(스펙의 클래스에는 없는 메서드다), `channels/channel.hpp:461-462`가 앱에게 `message_bus_t::pending_count()`/`pending_limit()`을 준다(스펙 grep 0건) |
+| **IMP-CP-33** | — | `contracts/dispatch/execution.hpp:74,96,254-258`이 전부. 형제 `include_message_sizes`는 살아 있다 |
+| **IMP-CP-35** | [40 §1·§5.1](../server/40-location-runtime.ko.md): **store는 저장만 하고, owner lease join·generation guard는 framework runtime의 책임**이다. 성공 결과에 stale row가 섞이면 안 된다 | `store_location_resolvers.hpp:230` — 트리 전체에서 `list_owner_leases()`를 부르는 **유일한 곳**이 `get_status()` 안의 **버려지는 health probe**다. resolver도 list도 auto-connect도 lease를 join하지 않는다. **join을 store 안으로 떠넘겼다**(`redis.hpp:1411-1426`). ⇒ 스펙대로("store는 저장만") 작성한 **사용자 store는 죽은 owner의 row를 영원히 반환한다.** auto-connect가 죽은 노드를 계속 dial하고, `resolve_spot`이 사라진 노드의 방을 계속 돌려준다. 게다가 Redis 확장의 대체 구현은 `HMGET` 뒤에 **별도 `PTTL`**을 쏘므로, 그 사이에 lease가 만료되면 **멀쩡한 row를 버린다** |
+| **IMP-CP-36** | [40 §3](../server/40-location-runtime.ko.md): 목록은 페이지 커서로 순회한다 | `redis.hpp:1357-1371` — `SMEMBERS` 전체를 받아 **정수 오프셋**으로 자른다. 나머지 셋은 전부 **SSCAN 커서**를 쓴다. ⇒ drain이 actor row를 페이지로 훑는 도중 다른 노드가 actor 하나를 만들거나 지우면(`SADD`/`SREM`) **Redis 반복 순서가 바뀌어** 오프셋이 엉뚱한 곳에 떨어진다. **1페이지에 나온 row가 또 나오고, 2페이지에 나왔어야 할 row는 영영 안 나온다.** drain handoff가 **actor를 조용히 건너뛴다** |
+| **IMP-CP-37** | `framework/testdata/location/redis/actor-location-v2.json`: **네 Redis 확장이 이 fixture와 바이트 단위로 일치해야 한다.** `hashFields`는 `owner`/`gen`/`json`/`updatedAtMs` | `redis.hpp:959` — actor row에 **`mesh` 다섯 번째 hash 필드**를 쓴다. 나머지 셋은 전부 null을 넘긴다. ⇒ **fixture의 바이트 단위 일치 주장이 이미 거짓이다.** 게다가 비대칭이다 — `remove_actor`는 mesh를 안 넘겨서 `P:stamp:actor:{mesh}`가 **쓸 때만 INCR되고 지울 때는 안 된다.** C++ fixture 테스트가 row JSON만 검사해서 **아무도 못 잡는다** |
+| **IMP-CP-38** | [41 §3·§4](../server/41-location-store-redis.ko.md): 모든 write 결정은 **Lua script 한 번**으로 원자 실행한다. `ListOwnerLeases`는 lease 목록과 Redis `TIME` 기준 `StoreNow`를 **한 script로 함께** 반환한다 | 두 script(`redis.hpp:159-188`)가 **dead code**다. `remove_lease()`는 `DEL` + `SREM`을 **따로** 쏘고, `list_owner_leases()`는 `TIME` → `SMEMBERS` → owner마다 `PTTL` + `GET`을 **각각 블로킹 왕복**으로 쏜다. `store_now`는 맨 앞에서 한 번 재고, owner *k*의 `PTTL`은 **2k번째 왕복 뒤에** 읽는다. 그런데 코드는 `lease_expires_at = store_now + remaining`으로 계산한다(:1055) — 실제 만료는 `t_read + remaining`이므로 **스캔에 걸린 시간만큼 만료를 과소평가한다.** owner 200개·0.5ms 링크면 **~200ms 체계적 과소평가**다. 지금은 IMP-CP-35 때문에 그 스냅샷을 lease join에 안 써서 가려져 있을 뿐, **CP-35를 고치는 순간 살아난다** |
+
+## 교차 언어 결함 — 이 언어에서 무엇을 고치나
+
+**교차 언어 결함이라도 고치는 일은 이 언어에서 한다.** [갭 인덱스](../90-implementation-gap.ko.md) §15.3이
+**왜**(계약과 결정)를 소유하고, 아래 표가 **무엇을**(이 언어의 작업)을 소유한다.
+
+| 교차 결함 | 무엇이 깨지나 | 이 언어의 작업 |
+|---|---|---|
+| **IMP-X1** | pending actor row를 resolve 성공으로 반환 | IMP-CP-07 |
+| **IMP-X2** | location event source 결측 + `StoreFailure`/`StoreRecovered` 부재 | IMP-CP-09 |
+| **IMP-X3** | startup validation이 아예 없다 | IMP-CP-04 |
+| **IMP-X5** | message-flow 관측자가 로그 모드에 묶여 침묵 | **이 언어 전용 ID 없음** — `message_flow_tracer.hpp:69-105`의 `trace()`가 `enabled_for(outcome)`와 샘플 게이트에서 `emit()`(=`deliver_observer`) **앞에** 반환한다. [52 §3](../server/52-message-flow-tracing.ko.md)대로 관측자는 모드와 무관하게 발화해야 한다 |
+| **IMP-X6** | `origin=lifecycle`을 생성하지 않는다 | **이 언어 전용 ID 없음** — `flow_origin_t::lifecycle`이 로그 이름 switch(`message_flow_tracer.hpp:157`)에만 있다. `flow_context_t::enter(..., lifecycle)`을 부르는 곳이 없다 |
+| **IMP-X7** | connector send payload 한도를 압축 전에 적용 | IMP-CP-27 |
+| **IMP-X14** | `listPageSize`가 죽어 있다 | **이 언어 전용 ID 없음** — `contracts/locations/options.hpp:16`이 트리 내 유일한 등장이고, `store_location_resolvers.hpp:180`이 `page_size == 0`(무제한) 요청을 만든다 |
+| **IMP-X15** | `storeFailureGrace`가 죽어 있다 | IMP-CP-06 |
+| **IMP-X16** | `include_native_diagnostics`가 죽어 있다 | IMP-CP-33 |
+| **IMP-X18** | Redis fixture 바이트 단위 일치 주장이 거짓 | IMP-CP-37 |
+
+## 이전 기록 — 기준선 대조 (2026-07-13 이전)
+
+> **이 절은 과거 기록이다.** 당시 계약 기준으로 확인한 내용이며, 그 뒤 계약이 바뀐 항목이 있다
+> (특히 실행 terminator — [갭 인덱스 §12.21](../90-implementation-gap.ko.md) 참조).
+> **현재 작업 목록은 이 문서 위쪽의 체크리스트다.**
+
+C++ public header와 package는 이 문서가 추적하던 계약 차이를 해소했다. 아래는 각 항목의
+해소 결과이며, 상세 근거는 C++ 계약 ledger와 구현 로그에 있다.
+
+| 항목 | 해소 결과 |
+|------|-----------|
+| coroutine blocking bridge | 공개 계약층의 `.result()` bridge 제거(lifecycle/transfer adapter는 coroutine). runtime 내부의 동기 소비 경로는 실행 줄 소유자가 관리한다 |
+| 오류 kind | 공통 집합 밖 여섯 enumerator를 public enum에서 제거하고 `detail::boundary_error_t` 내부 상태로 강등. 경계 의미는 `framework_exception_t::code()`(`std::error_code`) 파셋으로 노출 |
+| callback 이름 | `on_create_actor`/`on_actor_join(ed)`/`on_leave_actor`/`on_disconnect_actor`/`destroy_actor` snake_case 통일(camelCase 탐지 경로 삭제) |
+| typed session handler와 route-mesh options | `typed_session_packet_handler_for` concept과 serializer 경유 typed invoker 추가, route-mesh runtime options 정렬 |
+| one-way, location watch와 message-flow control | 일반 one-way와 actor send 모두 `void submit()`, relay/disconnect는 `task_t<void>`. location watch와 message-flow 계약 표면 반영 |
+| actor membership와 join 결과 | `is_joined()` 제거 후 `std::optional<spot_rid_t> spot_rid()` 단일 상태, join 결과는 승인/거절 `std::variant` |
+| 관측·운영(metrics/flow/drain) | flow correlation, 계기 카탈로그, graceful drain(핸드오프·liveness·session-closing)을 구현하고 Config 1~11 E2E와 sample로 검증 |
+
+dispatch 실패의 로그 수준([channel 메시징 §3.1](../server/11-channel-messaging.ko.md))도 2026-07-13에
+대조하고 정렬했다. 이전 C++ reporter는 **모든 dispatch 오류를 Error로 기록**해 원인별 구분이
+없었다. 지금은 application 코드가 던진 handler 예외를 one-way라도 Error로 남기고, handler 없음·
+payload decode 실패·invalid frame은 send(및 actor send)를 Warning, publish를 Debug로 낮춘다.
+request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogLevel`/`PublishLogLevel`
+기본값과 같은 의미). 검증은 `test_cpp_framework_message_flow`의 수준 매핑 케이스다.
+
+### 5.1 C++ 비동기 실행 정책 — 해소
+
+**해소(2026-07-14).** 당시의 turn 계약(자동 turn dispatch)을 검증하는 Config 8
+`AutomaticTurnDispatch`가 전 시나리오 통과했다(ATD-C3B·ATD-D2 포함).
+
+> **이후 계약이 바뀌었다.** 자동 turn dispatch는 폐기됐고 세 terminator(`submit`/`async`/`yield`)가
+> 정본이다([04 §1.1](../04-async-execution-policy.ko.md)). 아래 서술은 당시 계약 기준의 기록이며,
+> 현재 갭은 [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다. Config 8도
+> [실행 turn과 terminator](../../common/e2e/config-8-execution-turn.ko.md)로 재작성했다.
+
+간헐 실패의 원인은 turn 배선이 아니라 **stream connector의 heartbeat 응답 경로**였다. connector는
+server liveness ping의 pong을 `dispatch()` 경로에서만 썼는데, ATD client는 응답을 기다리는 동안
+`dispatch()`를 부르지 않는다. 그래서 수신 pump가 ping을 읽어 표시만 해 두고 pong은 나가지 않았고,
+응답이 heartbeat 창보다 오래 걸리는 정상 요청에서 서버가 세션을 heartbeat timeout으로 끊었다.
+client에는 그것이 `End of file`로 보였다. 지금은 수신 pump가 pong을 write 큐에 싣고, 동기 request
+루프도 자기 문맥에서 바로 답한다. 추적 기록은 C++ 구현 로그의 `CPP-ATD-TIMER-RESUME-001`에 있다.
+
+STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
+`[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의
+단일 프레임 인코딩이며, 원인(프레임워크 부착 SPOT의 multipart publish가 첫 파트만 전달)이
+core 소유라 C++ 계약 ledger에 열린 항목으로 남겨 두었다.

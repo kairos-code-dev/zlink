@@ -66,3 +66,16 @@
 **Kotlin 고유 갭은 새로 나오지 않았다.** Kotlin은 Java 런타임을 공유하므로 라운드 2의 Java 항목
 (**IMP-JV-11 ~ IMP-JV-20**)과 교차 언어 항목(**IMP-X5·IMP-X6**)이 **그대로 적용된다.**
 [java 체크리스트](java.ko.md)를 함께 본다.
+
+## 라운드 3 (2026-07-14)
+
+**Kotlin 고유 갭은 이번에도 나오지 않았다.** 공개 표면 전체가 Kotlin 카탈로그와 일치한다.
+
+Kotlin은 Java 런타임을 공유하므로 라운드 3의 Java 항목(**IMP-JV-21 ~ IMP-JV-33**)이 **그대로
+적용된다.** 특히 아래 둘은 Kotlin 사용자에게도 그대로 열려 있다.
+
+- **IMP-JV-21** — `systems.zlink.framework.execution`의 내부 실행기가 public이다. Kotlin 앱도
+  spot의 turn 큐에 직접 작업을 밀어 넣거나 공유 worker pool을 `close()`할 수 있다.
+- **IMP-JV-24** — Spring host 자동 drain이 25초다(스펙 30초). Kotlin Spring Boot 앱도 같은 경로를 탄다.
+
+[java 체크리스트](java.ko.md)를 함께 본다.

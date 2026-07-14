@@ -8,6 +8,25 @@
 
 검토 기준일은 2026-07-14이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
+## 이 문서와 언어별 갭 문서의 관계
+
+> **이 문서는 "왜"를 소유한다. 언어별 갭 문서는 "무엇을"을 소유한다.**
+
+| | 소유하는 것 |
+|---|---|
+| **이 문서** | 판정 기준 · **전 언어가 함께 닫는 계약 갭**(§12.20~§12.24) · **교차 언어 결함**(`IMP-X*`) · 샘플 축 · 문서 소유권 · 감사 라운드 요약 |
+| **[gaps/&lt;lang&gt;](gaps/)** | 그 언어의 **작업 체크리스트** — 모든 항목의 file:line과 고칠 것. 교차 언어 결함도 **그 언어에서 무엇을 고치는지**로 다시 적혀 있다 |
+
+**언어 하나를 고치는 사람은 `gaps/<lang>` 하나만 보면 된다.** 계약의 근거가 궁금할 때만 이리 온다.
+
+| 언어 | 작업 문서 |
+|------|-----------|
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) |
+| Java | [gaps/java](gaps/java.ko.md) |
+| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) |
+| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) |
+
 ## 1. 판정 기준
 
 다음은 구현 차이다.
@@ -133,428 +152,16 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 
 **connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
 
-## 3. Java/Kotlin
-
-### 3.1 handler 비동기 완료
-
-Java request, send, publish, Spot, actor와 session handler는 `CompletionStage<T>` 또는
-`CompletionStage<Void>`를 반환한다.
-
-> **turn 의미는 갭이다.** 현재 구현의 automatic turn은 handler가 stage를 **반환할 때까지**만 다음
-> handler의 시작을 막고, 반환된 incomplete stage의 **완료는 기다리지 않는다.** 정본 계약은
-> `async`가 **완료까지 turn을 유지**하는 것이다([04 §1.1](04-async-execution-policy.ko.md)).
-> 아래 근거는 **폐기된 계약 기준의 기록**이며, 현재 갭은
-> [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다.
-
-확인 근거(구 계약 기준):
-
-- `JavaTargetContractGapTest.handlersFactoriesAndLifecycleExposeCompletionStages`
-- Config 8 `AutomaticTurnDispatch` 전체 selector — 이 config는 [config-8 실행 turn과
-  terminator](../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다
-
-Kotlin adapter는 lifecycle과 actor callback의 coroutine을 `CoroutineScope.future`로
-`CompletionStage`에 연결한다. `CompletionStage.await()`는
-`suspendCancellableCoroutine`과 stage 완료 callback으로 coroutine을 재개하므로 callback
-실행 줄을 blocking wait로 점유하지 않는다. waiter cancellation은 공유 framework stage를
-취소하지 않고, stage의 완료 오류는 원래 원인으로 풀어서 전달한다.
-
-현재 확인 위치:
-
-- `zlink-framework-kotlin/.../ZLinkSuspendingHandlers.kt`
-- `zlink-framework-kotlin/.../ZLinkCoroutineTurnAwait.kt`
-
-### 3.2 one-way call 완료 표면
-
-`ZLinkSendCall`, `ZLinkSessionSendCall`, `ZLinkSessionReplyCall`과
-`ZLinkBoundSessionSendCall`의 one-way `submit()`은 `void`다. `ZLinkSubmitStage`, public
-`await`와 yield call은 production source에 없다. 전송 실패는 framework error observer와
-runtime 진단 경로로 보고한다.
-
-### 3.3 typed session handler
-
-`ZLinkTypedSessionPacketHandler`는 raw application handler를 상속하지 않는다. message type
-descriptor와 typed `CompletionStage<Void> handle(...)`을 제공하며 framework dispatcher와
-application handler의 등록 경계가 분리되어 있다.
-
-### 3.4 Actor join 계약
-
-`ZLinkActorContext.joinSpot(...)`과 `joinEntrySpot(...)`은 요청을 필수로 받는다. 요청 없는
-overload와 default throw는 없으며, 단일 `ZLinkActorJoinCall`과 sealed 승인·거절 결과를 사용한다.
-
-### 3.5 interface inventory 문서 상태
-
-다음 타입은 기존 Java interface catalog에서 찾기 어려웠으며 현재 언어별 interface
-inventory에 정식 public contract로 반영했다.
-
-```text
-ActorSpotHandleResolver
-ManualEndpointListBuilder
-SpotHandleResolver
-ZLinkActorClient
-ZLinkActorDirectory
-ZLinkActorJoinCall
-ZLinkActorLocationStore
-ZLinkActorRequestCall
-ZLinkActorSendCall
-ZLinkChannelRuntimeOptions
-ZLinkClientServerChannelRuntimeOptions
-ZLinkCodecRegistrar
-ZLinkLocationChangeStampStore
-ZLinkLocationKey
-ZLinkLocationReadiness
-ZLinkLocationRuntimeQuery
-ZLinkLocationStore
-ZLinkLocationWatchStore
-ZLinkOwnerLeaseStore
-ZLinkPeerLocationResolver
-ZLinkPeerLocationStore
-ZLinkRouteLocationStore
-ZLinkSocketRuntimeOptions
-ZLinkSpotActorLifecycle
-ZLinkSpotLocationStore
-ZLinkSpotPacketHandler
-ZLinkSpotRequestHandler
-ZLinkSpotSubscriptionHandler
-ZLinkSpotTimerHandler
-ZLinkStreamCompressionBuilder
-ZLinkTypedSessionPacketHandler
-```
-
-Kotlin 전용 public type과 top-level extension도 Kotlin interface catalog의 type 및
-function inventory에 반영했다.
-
-```text
-ZLinkCoroutineSuspendHandlerInvoker
-ZLinkKotlinLifecycleCall
-ZLinkKotlinSendCall
-ZLinkKotlinStreamConnector
-ZLinkStreamTypedWaitCall
-ZLinkSuspendingLocationStore
-await
-awaitJoinReply
-awaitOwnerLeases
-send
-publishToTopic
-resolveActorSpotHandle
-resolveSpotHandle
-useCoroutineHandlers
-messages
-errors
-```
-
-### 3.6 Actor membership와 join 결과
-
-현재 actor context는 nullable Spot 식별자와 join boolean을 따로 노출한다. 두 값을
-순서대로 읽는 동안 상태가 바뀌거나 구현이 서로 다른 값을 돌려주면 모순이 생긴다.
-목표 계약은 nullable Spot 식별자 하나를 join 상태의 단일 기준으로 사용한다.
-
-현재 join 결과도 result code 또는 승인 여부와 nullable actor를 독립 필드로 제공한다.
-목표 계약은 sealed 승인/거절 결과로 바꾼다. 승인 결과만 필수 actor ref를 가지며 두
-결과 모두 reply를 가진다. Kotlin은 Java sealed 계약을 그대로 사용한다.
-
-location store/query, compression과 connector에 선언된 Kotlin public extension은 Kotlin
-문서의 전체 function inventory를 기준으로 별도 검증한다. Java 완료 판정이 Kotlin 완료를
-의미하지 않는다.
-
-### 3.7 Java/Kotlin 검증 상태
-
-Java target public declaration은 `JavaTargetContractGapTest` 전체 통과와 production symbol
-검색으로 확인했다. Java Config 1~10과 Config 11 `ObservabilityOps` 전체 selector가 real E2E를
-통과했다. `ZLinkMessageFlowTracerTest.dispatchErrorsUseContractLogLevels`는 handler 예외를
-one-way 여부와 관계없이 Error로 기록하고, handler 없음·decode 실패·invalid frame의 기본 수준을
-send는 Warning, publish는 Debug로 기록하는 계약을 고정한다. Kotlin channel handler도 같은
-Java dispatch reporter를 사용한다.
-
-Kotlin은 `KotlinPublicSurfaceContractTest`, 전체 unit/integration test와 언어별 E2E로 확인했다.
-`KotlinFlowContextBridgeTest`는 suspending lifecycle의 flow가 suspension 전후에 유지되고 다음
-호출에 남지 않는지 검증한다. `KotlinCompletionStageAwaitIntegrationTest`는 drain waiter를 취소해도
-공유 drain stage가 취소되지 않는지 검증한다. Config 8 전체 실행은 **구 계약(`ATD-*`) 기준** 기록이며
-pending await 중 Play 재시작 같은 routing id recovery를 포함해 통과했다. 그 config는
-[config-8 실행 turn과 terminator](../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
-Config 11 전체 실행도 각 selector를
-새 Redis와 새 토폴로지에서 실행하여 OBS-A1~C5가 모두 통과했다.
-
-## 4. Node.js
-
-### 4.1 dispatch options
-
-언어별 스펙은 dispatch 최적화 전략을 runtime 내부에 두고 message kind별 unhandled
-policy, diagnostics와 message-flow observer만 정의한다. 현재 `ZLinkDispatchOptions`는
-단일 `mode`, 단일 `unhandled.action`과 제한된 diagnostics를 제공한다.
-
-2026-07-13 구현에서 다음 항목을 정식 계약에 맞췄다.
-
-```text
-public dispatch mode 제거 완료
-request/send/publish별 unhandled policy
-ReplyError
-LogAndDrop
-Drop
-includeNativeDiagnostics
-localRid
-peerRid
-socketRole
-```
-
-현재 계약과 구현 위치는
-`packages/framework/src/contracts/Dispatch/ZLinkDispatchOptions.ts`다. Config 8
-`AutomaticTurnDispatch`의 전체 Node.js runner도 통과했다 — **구 계약 기준 기록**이며, 그 config는
-[config-8 실행 turn과 terminator](../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
-
-### 4.2 public export 경계
-
-2026-07-13 구현에서 package root와 공개 `contracts/Configuration` export가 framework
-내부 등록 record, normalize/validate helper와 default builder를 더 이상 내보내지 않도록
-정리했다. 다음 종류의 이름은 package root에서 제거했다.
-
-```text
-createFrameworkRegistration
-createFrameworkOptions
-RouteChannelInternalState
-MutableCodecRegistryOptions
-DefaultDispatchOptionsBuilder
-내부 registration record
-내부 normalize/validate helper
-```
-
-공개 options, builder와 사용자가 구현하는 extension point만 package root에 남겼다. NestJS adapter는
-framework package 내부의 integration bridge를 빌드 시점에 사용하지만, 이 bridge는 package export에
-등록된 public subpath가 아니다. 따라서 application public surface에는 내부 등록 record와 구현 타입이
-나타나지 않는다. source export test와 실제 `.tgz` consumer test가 이 경계를 검증한다.
-
-### 4.3 typed session handler
-
-typed payload handler와 serializer registry 연결을 구현했다. application handler에서 raw
-`ZLinkMessage`를 받는 escape hatch는 제거했으며, bound session도 packet 타입으로 routing한다.
-
-### 4.4 one-way actor와 bound session
-
-actor와 bound session을 포함한 one-way submit을 `void submit()`으로 통일했다. 취소 신호는
-actor 이동이나 session bind처럼 완료를 기다리는 장기 작업에만 남겼다.
-
-### 4.5 interface catalog와 export 목록
-
-언어별 interface catalog는 application public 타입의 목표 시그니처를 모두 고정한다.
-location interface의 `I` prefix를 제거했다. package root의 내부 registration 타입도 제거했고,
-companion NestJS package의 참조는 application export와 분리된 integration subpath로 옮겼다.
-
-### 4.6 Actor membership와 join 결과
-
-`isJoined`와 중복 join call을 제거하고 `spotRid`를 membership 상태 기준으로 고정했다. join
-결과는 `status` discriminated union이며 승인 variant만 필수 actor ref를 가진다.
-
-### 4.7 관측과 종료
-
-OpenTelemetry meter `zlink.framework`, UUIDv7 flow correlation, typed graceful drain과
-`session-closing` 제어 프레임을 구현했다. Node.js Config 11 `ObservabilityOps` runner는
-OBS-A1~C5 evidence와 함께 통과했다. `Bingo.Ts`도 flow, metrics, drain 설정을 사용하는
-sample smoke를 통과했다.
-
-### 4.8 typed packet identity와 최종 상태
-
-channel, route, Spot과 fanout packet identity는 `@ZLinkPacket`이 해당 class에 직접 기록한
-metadata를 우선 사용하고, metadata가 없으면 생성자 이름을 사용한다. payload의
-`packetName()` method와 call builder의 packet name override는 제거했다. decorator가 없는
-subclass는 부모 class의 metadata를 상속하지 않는다. Stream Connector frame의 명시적 packet
-name은 별도 connector 계약이므로 이 규칙의 제거 대상이 아니다.
-
-### 4.9 stream disconnect routing id
-
-SupportChat의 즉시 재연결 검증에서 기존 연결의 disconnect 처리와 새 actor binding이 겹치는
-경합을 발견했다. Node.js framework는 같은 actor의 disconnect와 새 binding을 직렬화하고, 이전
-binding token이 새 binding을 지우지 못하도록 수정했다. Stream Connector도 `close()`가 TCP 종료를
-완료한 뒤 반환하도록 수정했다.
-
-**충족.** core STREAM session은 disconnect monitor event에 peer routing id를 기록한다. Node addon은
-이 값을 public `MonitorEvent.routingId`로 전달하고, framework adapter는 같은 값을 session runtime에
-넘긴다. 따라서 같은 endpoint에 여러 session이 있어도 종료된 session 하나만 선택해 disconnect
-callback과 binding 정리를 실행한다. routing id가 없는 이전 event를 endpoint만으로 추측하지 않는
-방어 동작은 유지한다.
-
-검증은 실제 STREAM peer를 연결·종료해 addon event의 routing id가 비어 있지 않은지 확인하고,
-framework의 다중 session 회귀 검사에서 지정된 session만 종료되는지 확인했다. sample 재검토는
-별도 G5 gate에서 계속 추적한다.
-
-### 4.10 Stream Connector browser-only package와 검증
-
-`@zlink-systems/stream-connector` package root를 플랫폼 `WebSocket` 기반 browser ESM으로 교체했다.
-Node TCP/TLS, 직접 WebSocket 구현, Node flow context와 `/browser` subpath를 제거했다. public
-transport는 `WebSocket`과 `WebSocketSecure`만 남으며 `tcp://`와 `tls://`는 connector를 만들 때
-`ConfigurationError`로 거부한다.
-
-브라우저 비동기 flow는 [flow correlation §4.4](server/53-flow-correlation.ko.md)의 명시적 계약을 따른다.
-connector instance에는 현재 inbound flow를 저장하지 않는다. 관련 outbound는 call builder의
-`flowFrom(message)`로 flow 쌍을 전달하고, 표시하지 않은 outbound는 새 application flow를 만든다.
-fake WebSocket contract test에서 관련 outbound의 보존과 관련 없는 callback의 격리를 확인했다.
-
-MessagePack과 Protobuf package root도 browser-safe payload codec만 내보내고 server serializer 등록은
-`./framework` subpath로 분리했다. `stream-wire`는 같은 source의 ESM/CommonJS 산출물을 제공한다.
-Bingo는 생성된 정적 encode/decode와 결정성 검사를 사용하며 runtime filesystem lookup과 `protoPath`
-option을 사용하지 않는다.
-
-실제 Chromium은 `ws`와 `wss` request/reply·push, 명시적 flow 전달과 관련 없는 callback 격리,
-reconnect, drain, close reason을 검증한다. 브라우저 기본 신뢰 설정에서는 자체 서명 인증서를
-거부하며, 테스트가 이를 우회하는 connector option은 없다. `close()`는 WebSocket의 실제 close
-event가 올 때까지 완료되지 않는지 fake WebSocket 회귀 검사에서도 확인한다.
-
-Node ambient type 없는 browser declaration/build, browser bundle의 Node module 부재, codec graph
-분리, Bingo 생성 codec 결정성, npm tarball browser/CommonJS consumer도 통과했다. 다섯 STREAM
-sample client와 네 framework E2E client를 Chromium으로 실행했고, Browser TypeScript connector에서
-`.NET`과 C++ STREAM server로 보내는 cross-language smoke도 통과했다. 따라서 이 항목에 남은
-public contract gap은 없다.
-
-### 4.11 dispatch 실패 수준과 `FailCaller`
-
-2026-07-13 재대조에서 두 가지 구현 차이를 추가로 확인하고 해소했다.
-
-첫째, channel dispatch error reporter가 원인과 message kind에 관계없이 모든 실패를 Error로
-기록했다. publish handler가 없으면 unhandled policy가 Warning을 한 번 더 기록해 중복 로그도
-남았다. reporter가 handler 예외는 Error, handler 없음·decode 실패·invalid frame은 send는
-Warning, publish는 Debug로 내부 결정하도록 수정했다. 공개 `ZLinkUnhandledDispatchOptions`에서
-호출자가 이 계약을 바꿀 수 있던 `sendLogLevel`과 `publishLogLevel`도 제거했다.
-
-둘째, 공통 framework API가 요구하는 `FailCaller`가 Node.js enum과 local dispatch 경로에
-없었다. local Spot request와 같은 reply frame 없는 호출은 이제 caller의 Promise를 실패시키고
-observer event에 `FailCaller`를 기록한다. transport reply frame을 만들 수 있는 request는
-기존처럼 `ReplyError`를 사용한다.
-
-두 항목은 contract test에서 로그 호출 횟수와 수준, local caller의 Promise 실패 및 observer
-event를 함께 검증한다.
-
-### 4.12 actor 소유권 변경 중 session relay
-
-2026-07-13 sample 반복 검증에서 actor가 다른 Spot node로 이동하는 동안 session binding의
-`ActorRef`를 갱신하는 짧은 구간에 다음 client request가 들어오면 `ActorSessionNotBound`로
-실패하는 경합을 확인했다. binding 갱신은 actor별 lifecycle coordinator를 사용했지만 session
-relay는 같은 직렬화 경로에 참여하지 않아, 이전 route를 제거한 뒤 새 route를 등록하기 전의
-중간 상태를 관찰할 수 있었다.
-
-session relay도 같은 actor별 lifecycle coordinator에서 실행하도록 수정했다. 이제 소유권 갱신
-중 들어온 relay는 갱신 완료 뒤 새 `ActorRef`와 binding route를 사용한다. contract test는 binding
-갱신을 의도적으로 중단한 동안 relay가 실패하거나 먼저 실행되지 않는지 검증한다. Bingo sample은
-서로 다른 play node 사이 actor 이동 직후 client request를 반복 실행해 이 경합의 실제 경로도
-검증한다.
-
-### 4.13 startup validation 누락 (해소)
-
-2026-07-13에 [channel 메시징 §4](server/11-channel-messaging.ko.md)와
-[SPOT 메시징 §8](server/20-spot-messaging.ko.md)의 각 행을 Node.js registration validator에 직접
-대입해 다음 누락을 확인했고, 같은 날 구현과 회귀 검사를 추가해 모두 해소했다.
-
-- server에 request/send handler가 하나도 없어도 startup이 성공한다.
-- subscriber에 publish handler가 하나도 없어도 startup이 성공한다.
-- router와 pub/sub 역할을 모두 사용하지 않는 SpotNode가 허용된다.
-- actor factory를 등록한 SpotNode에 router 역할이 없어도 허용된다.
-- router 또는 pub/sub 역할을 사용하면서 bind endpoint를 지정하지 않아도 허용된다.
-- location store의 자동 연결과 같은 SPOT 수신 역할의 수동 peer endpoint를 함께 지정하면
-  역할별 연결 정책이 필요하다.
-
-해소한 항목은 설정 오류를 첫 message 호출이나 연결 timeout까지 늦추므로 application 개발자가
-runtime 내부 연결 조건과 구동 순서를 알아야 하는 문제로 이어진다. Node.js는 registration과
-NestJS handler discovery가 끝난 뒤, socket을 만들기 전에 위 구성을
-`ZLinkConfigurationException`으로 거부한다. 회귀 검사는 잘못된 구성이 startup 전에 실패하는지
-검증한다.
-
-마지막 항목은 공통 channel topology §5.2의 역할별 manual 연결 규칙을 runtime에 적용해 해소했다.
-router에 manual peer가 있으면 router auto reconcile만 수행하지 않고, pub/sub에 manual endpoint가
-있으면 pub/sub auto reconcile만 수행하지 않는다. location store와 actor 위치 조회는 그대로
-유지한다. 따라서 TicTacToe는 sample 전용 wrapper 없이 수동 SPOT peer와 원격 actor 위치 조회를
-함께 사용할 수 있다.
-
-## 5. C++
-
-C++ public header와 package는 이 문서가 추적하던 계약 차이를 해소했다. 아래는 각 항목의
-해소 결과이며, 상세 근거는 C++ 계약 ledger와 구현 로그에 있다.
-
-| 항목 | 해소 결과 |
-|------|-----------|
-| coroutine blocking bridge | 공개 계약층의 `.result()` bridge 제거(lifecycle/transfer adapter는 coroutine). runtime 내부의 동기 소비 경로는 실행 줄 소유자가 관리한다 |
-| 오류 kind | 공통 집합 밖 여섯 enumerator를 public enum에서 제거하고 `detail::boundary_error_t` 내부 상태로 강등. 경계 의미는 `framework_exception_t::code()`(`std::error_code`) 파셋으로 노출 |
-| callback 이름 | `on_create_actor`/`on_actor_join(ed)`/`on_leave_actor`/`on_disconnect_actor`/`destroy_actor` snake_case 통일(camelCase 탐지 경로 삭제) |
-| typed session handler와 route-mesh options | `typed_session_packet_handler_for` concept과 serializer 경유 typed invoker 추가, route-mesh runtime options 정렬 |
-| one-way, location watch와 message-flow control | 일반 one-way와 actor send 모두 `void submit()`, relay/disconnect는 `task_t<void>`. location watch와 message-flow 계약 표면 반영 |
-| actor membership와 join 결과 | `is_joined()` 제거 후 `std::optional<spot_rid_t> spot_rid()` 단일 상태, join 결과는 승인/거절 `std::variant` |
-| 관측·운영(metrics/flow/drain) | flow correlation, 계기 카탈로그, graceful drain(핸드오프·liveness·session-closing)을 구현하고 Config 1~11 E2E와 sample로 검증 |
-
-dispatch 실패의 로그 수준([channel 메시징 §3.1](server/11-channel-messaging.ko.md))도 2026-07-13에
-대조하고 정렬했다. 이전 C++ reporter는 **모든 dispatch 오류를 Error로 기록**해 원인별 구분이
-없었다. 지금은 application 코드가 던진 handler 예외를 one-way라도 Error로 남기고, handler 없음·
-payload decode 실패·invalid frame은 send(및 actor send)를 Warning, publish를 Debug로 낮춘다.
-request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogLevel`/`PublishLogLevel`
-기본값과 같은 의미). 검증은 `test_cpp_framework_message_flow`의 수준 매핑 케이스다.
-
-### 5.1 C++ 비동기 실행 정책 — 해소
-
-**해소(2026-07-14).** 당시의 turn 계약(자동 turn dispatch)을 검증하는 Config 8
-`AutomaticTurnDispatch`가 전 시나리오 통과했다(ATD-C3B·ATD-D2 포함).
-
-> **이후 계약이 바뀌었다.** 자동 turn dispatch는 폐기됐고 세 terminator(`submit`/`async`/`yield`)가
-> 정본이다([04 §1.1](04-async-execution-policy.ko.md)). 아래 서술은 당시 계약 기준의 기록이며,
-> 현재 갭은 [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다. Config 8도
-> [실행 turn과 terminator](../common/e2e/config-8-execution-turn.ko.md)로 재작성했다.
-
-간헐 실패의 원인은 turn 배선이 아니라 **stream connector의 heartbeat 응답 경로**였다. connector는
-server liveness ping의 pong을 `dispatch()` 경로에서만 썼는데, ATD client는 응답을 기다리는 동안
-`dispatch()`를 부르지 않는다. 그래서 수신 pump가 ping을 읽어 표시만 해 두고 pong은 나가지 않았고,
-응답이 heartbeat 창보다 오래 걸리는 정상 요청에서 서버가 세션을 heartbeat timeout으로 끊었다.
-client에는 그것이 `End of file`로 보였다. 지금은 수신 pump가 pong을 write 큐에 싣고, 동기 request
-루프도 자기 문맥에서 바로 답한다. 추적 기록은 C++ 구현 로그의 `CPP-ATD-TIMER-RESUME-001`에 있다.
-
-STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정렬했다(이전 raw
-`[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의
-단일 프레임 인코딩이며, 원인(프레임워크 부착 SPOT의 multipart publish가 첫 파트만 전달)이
-core 소유라 C++ 계약 ledger에 열린 항목으로 남겨 두었다.
-
-## 6. `.NET` 구현 상태
-
-`.NET` public declaration과 package는 이 문서에서 추적하던 계약 차이를 해소했다.
-actor membership은 nullable `SpotRid`만 상태 기준으로 사용하고, join 결과는 승인/거절
-sealed record로 유효한 상태만 표현한다.
-
-다음 타입은 기존 interface catalog에서 이름이나 전체 시그니처를 찾기 어려웠다.
-현재 `.NET` interface 문서의 전체 inventory, 보완 시그니처와 공통 기능 커버리지 표에
-반영했다.
-
-```text
-IZLinkActorClient
-IZLinkActorDirectory
-IZLinkActorJoinCall
-IZLinkActorLocationStore
-IZLinkActorRequestCall
-IZLinkActorSendCall
-IZLinkChannelRuntimeOptions
-IZLinkClientServerChannelOptions
-IZLinkCodecExtension
-IZLinkCodecRegistrar
-IZLinkLocationReadiness
-IZLinkOwnerLeaseStore
-IZLinkPeerLocationStore
-IZLinkRouteLocationStore
-IZLinkRouteMeshChannelOptions
-IZLinkSpotActorLifecycle
-IZLinkSpotCommonContext
-IZLinkSpotLocationStore
-IZLinkStreamCompressionBuilder
-IZLinkUnhandledDispatchOptions
-IZLinkWorkerCall
-IZLinkWorkerOptions
-```
-
-`IZLinkActorSendCall`은 다른 one-way call과 같은 `void Submit(CancellationToken)` 계약을
-제공한다. `SpotHandle`, capability별 `IZLinkEndpointConnections`, sealed monitoring event와
-typed packet identity 단일 소유도 contract/unit/E2E 및 실제 package consumer로 검증한다.
-
-runtime metrics, flow correlation, graceful drain과 session closing도 정식 계약, package와
-Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
-
-> **실행 terminator는 예외다.** 위 목록이 만들어질 당시에는 "request·actor join·worker의 yield
-> 전용 타입을 제거하고 단일 완료 terminator가 자동으로 turn을 관리한다"가 계약이었고, 그 기준으로
-> 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
-> (`submit`/`async`/`yield`)이며([04 §1.1](04-async-execution-policy.ko.md)), `.NET`은 이를
-> 충족하지 않는다. 따라서 **`.NET`에 남은 구현 차이는 [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
-> [§12.21](#1221-yield-terminator-부재-전-언어), [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
-> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)이다.** 그 밖에 이 문서가 추적하는 `.NET`
-> 차이는 없다.
+## 3~6. 언어별 기준선 대조 기록 → 언어별 문서로 옮겼다
+
+각 언어의 과거 확인 기록은 그 언어의 갭 문서가 소유한다(§16).
+
+| 언어 | 문서 |
+|------|------|
+| Java/Kotlin | [gaps/java](gaps/java.ko.md) · [gaps/kotlin](gaps/kotlin.ko.md) |
+| Node.js | [gaps/node](gaps/node.ko.md) |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) |
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) |
 
 ## 7. 문서 및 계약 검증 차이
 
@@ -988,28 +595,39 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 ### 15.1 대조한 축
 
-| 라운드 | 대조한 스펙 |
-|---|---|
-| **1** | 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 |
-| **2** | 00 · 10 · 11 · 25 · 50~53 · 12(HTTP client) · 32(connector) |
+| 라운드 | 무엇을 물었나 | 범위 |
+|---|---|---|
+| **1** | 코드가 스펙대로 하는가 | 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 |
+| **2** | 코드가 스펙대로 하는가 | 00 · 10 · 11 · 25 · 50~53 · 12(HTTP client) · 32(connector) |
+| **3** | **코드가 스펙이 허용하지 않는 걸 하는가** + Redis store 대조 + 경합 경로 | 전 스펙 · 41 · SPOT/actor 런타임 |
 
-**두 라운드로 스펙 전 문서를 한 번씩 대조했다.** 그러나 **한 번 훑었다고 비어 있는 것은 아니다** —
-같은 문서를 다른 각도로 다시 보면 또 나온다. 감사는 **새 갭이 나오지 않을 때까지** 반복한다.
+**라운드 3이 질문을 뒤집었더니 또 나왔다.** 같은 문서를 한 번 훑었다는 것은 **비어 있음의 증거가
+아니다.** 감사는 **새 갭이 나오지 않을 때까지** 반복한다.
 
 ### 15.2 라운드별 결과 (2026-07-14)
 
-| 언어 | 라운드 1 | 라운드 2 | 합계 | 문서 |
-|------|---------|---------|------|------|
-| `.NET` (기준선) | 7 | 6 | **13** | [gaps/dotnet](gaps/dotnet.ko.md) |
-| Java / Kotlin | 10 | 10 | **20** | [gaps/java](gaps/java.ko.md) |
-| Node / TypeScript | 10 | 12 | **22** | [gaps/node](gaps/node.ko.md) |
-| C++ | 11 | 16 | **27** | [gaps/cpp](gaps/cpp.ko.md) |
+| 언어 | R1 | R2 | R3 | 합계 | 문서 |
+|------|----|----|----|------|------|
+| `.NET` (기준선) | 7 | 6 | 5 | **18** | [gaps/dotnet](gaps/dotnet.ko.md) |
+| Java / Kotlin | 10 | 10 | 13 | **33** | [gaps/java](gaps/java.ko.md) |
+| Node / TypeScript | 10 | 12 | 11 | **33** | [gaps/node](gaps/node.ko.md) |
+| C++ | 11 | 16 | 11 | **38** | [gaps/cpp](gaps/cpp.ko.md) |
 
-**기준선에서 13건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
-언어를 맞추는 방식으로는 이 13건이 **영원히 안 보인다.**
+**기준선에서 18건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
+언어를 맞추는 방식으로는 이 18건이 **영원히 안 보인다.**
 
-**C++이 가장 많다.** 레퍼런스 구현인데 그렇다 — companion 패키지(connector·HTTP client)에서 특히
-많이 나왔다.
+**C++이 가장 많다.** 레퍼런스 구현인데 그렇다.
+
+**라운드 3에서 새로 드러난 부류가 둘이다.**
+
+- **경합(race).** 지금까지 중 가장 잡기 어렵다 — 테스트가 통과하고 부하가 걸릴 때만 깨진다.
+  spot close가 `.NET`·Java·Node에서 **check-then-act**이고(IMP-X12), C++은 같은 계약을 **락 두 개가
+  서로 안 맞아서** 깬다(IMP-CP-34). **B1을 유일하게 제대로 하는 게 C++이고, B2를 유일하게 틀리는
+  것도 C++이다.**
+- **조용한 no-op.** 받아서 **검증까지 해 놓고 버리는 옵션.** 앱은 "먹혔다"는 확인을 받는다.
+  `.NET`은 `Linger`를 수락해 놓고 소켓엔 **0을 강제**하고(IMP-DN-14), Java의
+  `addForwardedMetadataKey`·C++의 `unhandled_dispatch_options_t`·Node의 `minThreads`가 모두
+  같은 병이다.
 
 ### 15.3 교차 언어 — 같은 결함이 여러 구현에 있다
 
@@ -1026,6 +644,24 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | **IMP-X9** | **HTTP client가 proxy 자격증명을 대상 서버로 흘리고, CONNECT는 인증 없이 나간다.** [http 07 §7.3](http-client/07-auth-tls-proxy.ko.md) | `.NET` · Java (C++·Node는 올바름) |
 | **IMP-X10** | **SPOT timer 등록 검증이 startup이 아니라 spot 활성화 시점이다.** [25 §4.1](server/25-stage-wrapper-on-spot.ko.md). ⇒ `period=0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 | `.NET` · Node |
 | **IMP-X11** | **`fanout.received`가 등록되지 않은 topic까지 메트릭 라벨로 단다.** [51 §5](server/51-runtime-metrics.ko.md)는 라벨을 등록 시점의 닫힌 집합으로 제한한다. ⇒ **수집기 카디널리티가 무한히 늘어난다** | `.NET` · Node (C++은 올바름) |
+| **IMP-X12** | **actor가 든 spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-spot-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". ⇒ `OnLeaveActor`가 안 돌고 actor의 location row가 **해제된 spot을 가리킨다** | `.NET` · Java · Node (**C++만 올바름** — `node->mutex`로 검사와 close를 함께 감싼다) |
+| **IMP-X13** | **서버가 `correlation_id`를 `request_seq`로 날조한다.** [52 §9](server/52-message-flow-tracing.ko.md)는 "client가 생성하고 server는 echo만 한다. **서버는 ingress에서 생성하지 않는다**". `request_seq`는 연결마다 도는 카운터라 **모든 세션의 로그가 `corr=1,2,3…`으로 뭉갠다** | `.NET` · Java · Node (**C++만 올바름**) |
+| **IMP-X14** | **`listPageSize`(기본 1000)를 읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이라 모든 목록 조회가 **O(N) 전체 읽기**다 | Java · Node · C++ (`.NET`은 1000을 하드코딩 — IMP-DN-06) |
+| **IMP-X15** | **`storeFailureGrace`(30초)를 읽는 곳이 없다.** [40 §6.1](server/40-location-runtime.ko.md)의 **fail-static 유예 정책 자체가 없다.** Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** | Java · Node · C++ |
+| **IMP-X16** | **`includeNativeDiagnostics`를 읽는 곳이 없다.** 형제 옵션들은 전부 살아 있다 | Java · Node · C++ |
+| **IMP-X17** | **첫 `GetOrCreate` 호출자의 취소가 같은 spot을 기다리는 다른 호출자 전부를 실패시킨다.** ⇒ 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** | `.NET` · Node |
+| **IMP-X18** | **Redis fixture의 "네 확장이 바이트 단위로 일치한다"는 주장이 거짓이다.** C++ actor row는 다섯 번째 hash 필드 `mesh`를 쓰고, 빈 컬렉션 표현과 Java의 zero timestamp가 fixture와 다르다. **fixture 테스트가 row JSON만 검사해서 아무도 못 잡는다** | 네 언어 모두 |
+
+### 15.4 판정이 필요한 항목 — 스펙끼리 충돌한다
+
+**이건 구현 결함이 아니라 스펙 결함이다.** 어느 쪽이 맞는지 정해야 한다.
+
+`sendLogLevel` / `publishLogLevel`은 application이 **[11 §3.1](server/11-channel-messaging.ko.md)이
+framework 정책으로 고정한 로그 레벨 표**를 덮어쓰게 한다. Node는 **바로 그 이유로 이 옵션을
+제거했다**(§4.11에 기록돼 있다). 그런데 **`.NET`과 Java 카탈로그는 여전히 이 옵션을 선언하고**
+두 구현 모두 그것을 존중한다. C++은 선언만 하고 죽어 있다(IMP-CP-29).
+
+**두 카탈로그가 틀렸거나, 두 구현이 틀렸다.** 지금은 **네 언어가 서로 다르게 동작한다.**
 
 ## 16. 언어별 갭 체크리스트
 
@@ -1033,11 +669,11 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 | 언어 | 문서 | 항목 수 |
 |------|------|---------|
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 21 |
-| Java | [gaps/java](gaps/java.ko.md) | 43 |
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 26 |
+| Java | [gaps/java](gaps/java.ko.md) | 56 |
 | Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | Java 공유 + 고유 3 |
-| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 32 |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) | 36 |
+| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 43 |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) | 47 |
 
 각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
 **언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어

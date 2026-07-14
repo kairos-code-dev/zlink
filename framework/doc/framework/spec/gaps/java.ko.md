@@ -447,3 +447,34 @@ pending await 중 Play 재시작 같은 routing id recovery를 포함해 통과�
 [config-8 실행 turn과 terminator](../../common/e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
 Config 11 전체 실행도 각 selector를
 새 Redis와 새 토폴로지에서 실행하여 OBS-A1~C5가 모두 통과했다.
+
+## 라운드 4 (2026-07-14) — 샘플 · E2E
+
+### 체크리스트
+
+- [ ] **SMP-JV-01** (**절대 규칙 위반**) — TicTacToe 밖 샘플이 **수동 연결을 쓴다**(29곳). `.NET`·Node는 0
+- [ ] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
+- [ ] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
+- [ ] **SMP-JV-04** (미구현) — Bingo의 정본 `yield` 사용처가 코드에 없다
+- [ ] **SMP-JV-05** (결함) — TicTacToe가 **MessagePack**을 쓴다 — 문서는 JSON으로 고정
+- [ ] **SMP-JV-06** (결함) — publish 메시지를 `Msg`로 잘못 이름 붙였다. 올바른 `Event`는 **선언만 되고 죽어 있다**
+- [ ] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 죽은 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**
+- [ ] **SMP-JV-08** (결함) — Bingo·DeliveryDispatch가 여전히 **환경변수·JVM system property**를 읽는다
+- [ ] **SMP-JV-09** (결함) — 클라이언트 self-check가 문서보다 약하다(릴리즈 게이트)
+- [ ] **SMP-JV-10** (결함) — ShoppingMall `GetOrderStateReq`가 **읽기 전용이어야 하는데 read model을 재구축**한다
+- [ ] **E2E-JV-01** (결함) — `ObservabilityOps`가 **역할 서버도 클라이언트도 없이** 폐기된 config-8 바이너리를 빌려 쓴다
+- [ ] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
+- [ ] **E2E-JV-03** (결함) — 클라이언트 21개 중 **19개가 raw `java.net.http.HttpClient`**를 쓴다
+- [ ] **E2E-JV-04** (결함) — 앱 코드의 **환경변수 읽기 535곳**인데 feature-map에 기록 **0**
+- [ ] **E2E-JV-05** (결함) — readiness가 최대 **20배**(60초). `ROUTE_SETTLE`이 **Java runner 전부에 없다**
+- [ ] **E2E-JV-06** (결함) — 시나리오 파일이 **12줄 껍데기**이고 본문이 532줄 god-context에 있다
+- [ ] **E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다
+- [ ] **E2E-JV-08** (결함) — `feature-map` 누락, `YieldDispatch`에 **`run_e2e.sh`가 없어** 실행 불가
+
+### 가장 무거운 것
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | Bingo·SupportChat·DeliveryDispatch·ShoppingMall·GameQuest에 `connectRouter`/`connectPeerPub`가 **29곳**(`.NET`·Node는 **0**). 인자 없는 `.enableClient()` overload가 **같은 파일에서 이미 쓰이고 있다** — 피할 수 있는 호출들이다. **[갭 인덱스 §13.2]가 "연결 축은 규약과 일치한다"고 적고 있었는데 거짓이었고, 정정했다** |
+| **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | `addSpotMesh` **0건**(Java·Kotlin 모두). 소유권을 **클라이언트 측 해시**로 흉내낸다(`SampleTopology.java:42-47`). `.NET`엔 `QuestMission`·`GameApi` 양쪽에 있다 |
+| **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | 두 언어 모두 요청을 `grace + 2×heartbeat` 동안 돌리고 unhealthy 상태를 기다릴 뿐, **장애 중 provider를 재시작하지도, 새 connect가 억제되는지 단언하지도 않는다.** SF-B1이 이미 SF-B2가 보는 것을 전부 본다. 게다가 그 시간을 **[IMP-JV-33]으로 읽는 곳이 0인 `storeFailureGrace`**에서 계산한다 — **죽은 옵션으로 시간을 재는 시나리오다** |

@@ -217,3 +217,64 @@ STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정�
 `[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의
 단일 프레임 인코딩이며, 원인(프레임워크 부착 SPOT의 multipart publish가 첫 파트만 전달)이
 core 소유라 C++ 계약 ledger에 열린 항목으로 남겨 두었다.
+
+## 라운드 4 (2026-07-14) — 샘플 · E2E
+
+**여기서 처음으로 진짜 기능 버그가 나왔다.** 지금까지는 계약 위반이었지 게임이 깨지진 않았다.
+
+### 샘플 체크리스트
+
+- [ ] **SMP-CP-01** (**버그**) — Bingo에서 **두 번째 player가 `BingoGameStartedNotify`를 못 받는다**
+- [ ] **SMP-CP-02** (미구현) — Bingo의 **정본 `yield` 사용처가 코드에 없다**
+- [ ] **SMP-CP-03** (결함) — SupportChat의 **릴리즈 게이트가 날조**다 — framework를 거치지 않는다
+- [ ] **SMP-CP-04** (결함) — TicTacToe가 **자체 Redis 스키마 + 근거 없는 `add_spot_resolver`**를 쓴다
+- [ ] **SMP-CP-05** (결함) — TicTacToe `NextTurn`이 mark가 아니라 **actor id**를 담는다
+- [ ] **SMP-CP-06** (결함) — Bingo reward packet 이름이 **자기 proto와 모순**된다(`Msg` vs `Event`)
+- [ ] **SMP-CP-07** (결함) — 문서에 없는 **`Probe` 프로세스**가 SupportChat·DeliveryDispatch에 있다
+- [ ] **SMP-CP-08** (결함) — 후반 샘플 4개가 **Domain/Application/Infrastructure 계층을 뭉갠다**
+- [ ] **SMP-CP-09** (결함) — ShoppingMall이 **전역 Redis 키 하나 + 전역 락 하나**로 모든 주문을 직렬화한다
+- [ ] **SMP-CP-10** (결함) — ShoppingMall에 **`ClientScenario`가 없다**
+- [ ] **SMP-CP-11** (결함) — "동시" 시나리오가 **순차 실행**된다
+- [ ] **SMP-CP-12** (결함) — GameQuest event store가 **프로세스 로컬 맵**이라 재시작 복구를 증명하지 못한다
+- [ ] **SMP-CP-13** (결함) — 클라이언트 self-check가 문서보다 약하다(릴리즈 게이트)
+- [ ] **SMP-CP-14** (결함) — 계약에 없는 wire 메시지 5종
+
+### 샘플 상세
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-CP-01** | [Bingo §10 step 6](../../common/sample/bingo/README.ko.md): **두 player client**가 `BingoGameStartedNotify`를 기다린다 | `bingo_room_spot.hpp:135` — `send_to_players(started, actor.actor.actor_id)`. **두 번째 인자는 제외 필터다**(`:175` `if (actor_id == excluded_actor_id) continue;`). 그런데 방금 join해서 **게임을 시작시킨 바로 그 player를 제외하고** 시작 notify를 보낸다. ⇒ **player-2는 시작 notify를 영영 못 받는다.** `.NET`은 이걸 명시적으로 보정한다(`BingoRoom.cs:59-63` — join 시 게임이 `Running`이면 그 actor의 bound session으로 따로 보낸다). **SMP-CP-13(약한 게이트)이 이 버그를 가려 왔다** |
+| **SMP-CP-02** | [sample README](../../common/sample/README.ko.md)가 **Bingo §7.1을 `yield`의 정본 사용처**로 지목한다 | 문서에 10건, **C++ 샘플 전체에 0건.** Api 서버는 handler 2개뿐이고(`api_server_framework.hpp:36-39`), `BingoPlayerState`는 `completed_lines`에서 끝나며, `on_actor_joined`/`on_leave_actor`는 **채널 왕복이 없는 동기 void**다. (전 언어 공통 — 문서가 모든 구현보다 앞서 있다) |
+| **SMP-CP-03** | 샘플의 **클라이언트 검증 흐름은 릴리즈 게이트**다 | `Server/Support/main.cpp:733-810` — "self-check"가 **서버 프로세스 안에서 평범한 도메인 객체를 만들어** 반환값을 단언한다. **Spot도 actor도 session도 framework 경로도 없다.** `Probe/main.cpp:60-73`이 그 문자열을 HTTP로 가져와 `server-invariants=verified`를 찍는다. **샘플의 릴리즈 게이트를 뒤집어쓴 유닛 테스트다** |
+| **SMP-CP-04** | [TicTacToe §6.2](../../common/sample/tictactoe/README.ko.md): **샘플이 자체 Redis 스키마를 만들지 않는다** | `play_server_host_factory.hpp:77-86`이 `add_spot_resolver("redis-room-route", …)`를 등록하고 자체 해시 스키마(`redis_room_route_store.hpp`)로 뒷받침한다. 게다가 **`add_spot_resolver`는 스펙 트리 grep 0건** — 이 샘플이 유일한 소비자인 **근거 없는 공개 표면**이다 |
+| **SMP-CP-09** | [ShoppingMall §2.2·§4·§16](../../common/sample/event/shoppingmall.ko.md): owner-spot 모델의 존재 이유가 **단일 병목 제거**다 | `Server/Common/store.hpp:163-166` — 모든 주문의 event stream·read model·commerce state를 **`shoppingmall:commerce-state` 단일 블롭**에 넣고, `redis_lock_t`가 읽기/갱신마다 **전역 락 하나**를 잡는다. ⇒ 두 `OrderWorkflow` 인스턴스가 **락 하나 뒤에 직렬화된다.** 위층의 spot-mesh 라우팅은 맞는데 **아래층 저장소가 그걸 무효화한다** |
+
+### E2E 체크리스트
+
+- [ ] **E2E-CP-01** (결함) — **Config 10이 게이트에서 보이지 않는다** — `run_e2e_all.sh`에 없고 feature-map도 없다
+- [ ] **E2E-CP-02** (결함) — 게이트가 **config 문서에 없는 `DeliveryDispatch` e2e를 대신 돌린다**
+- [ ] **E2E-CP-03** (결함) — Config 11이 **`Client/`가 없고** 단일 바이너리를 env로 역할 전환하며 검증이 **인라인 파이썬**이다
+- [ ] **E2E-CP-04** (결함) — Config 9의 **P0 트랙이 대역**이다 — session gateway도 stream connector도 없다
+- [ ] **E2E-CP-05** (결함) — Config 2의 `all` 실행이 **문서 시나리오 3개를 빠뜨리고 문서에 없는 `SM-Q9`를 돌린다**
+- [ ] **E2E-CP-06** (결함) — **Config 3의 클라이언트 시나리오가 아무것도 단언하지 않는다**
+- [ ] **E2E-CP-07** (결함) — actor ref `generation`이 **리터럴 `0`**이고 아무도 단언하지 않는다
+- [ ] **E2E-CP-08** (결함) — Config 10의 순서 단언이 **포함 검사**로 약화돼 있다
+- [ ] **E2E-CP-09** (결함) — `§2.6` 설정 정책 위반이 **전 config에 걸쳐 있는데 feature-map에 기록이 0**
+- [ ] **E2E-CP-10** (결함) — `§2.1` 대기 기준 위반
+- [ ] **E2E-CP-11** (결함) — config 4개에 **`Client/Scenarios/`가 없다**
+- [ ] **E2E-CP-12** (결함) — Config 11의 **P0 3개가 대체품**인데 "구현"으로 표시돼 있다
+
+### E2E 상세 — 가장 무거운 것
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-CP-06** | [e2e §2.5](../../common/e2e/README.ko.md): **시나리오 파일이 검증의 단위**다 | `PubSub/Client/Scenarios/fanout_basic_delivery_scenario.hpp` — 메시지 25개를 publish하고 **`scenario PS-A1 passed`를 출력한다. 단언이 파일에 하나도 없다.** `/evidence/wait`는 **`run_e2e.sh`에서만** 부른다. ⇒ **클라이언트 시나리오 파일이 아무것도 검증하지 않는다** |
+| **E2E-CP-01** | [e2e §2.8](../../common/e2e/README.ko.md) | `SpotActorTransfer`가 `run_e2e_all.sh`의 `CONFIGS`에 **0번 등장**하고, **feature-map이 없는 유일한 config**다. ⇒ 집계 게이트가 **Config 10을 한 번도 돌리지 않는다** |
+| **E2E-CP-02** | — | `e2e/DeliveryDispatch/`는 **config 문서가 없는데**(common/e2e grep 0건) `CONFIGS`에 들어 있다. ⇒ 게이트가 **계약이 정의하지 않은 것을 돌리면서 정의한 것은 건너뛴다** |
+| **E2E-CP-05** | [config-2](../../common/e2e/config-2-spot-service.ko.md) | `SpotService/run_e2e.sh:3737-3745`의 `all` 목록이 **`SM-F3`·`SM-F4`·`SM-F5`를 빠뜨리고**, **문서에 없는 `SM-Q9`를 포함**한다 |
+
+### feature-map을 증거로 쓰면 안 된다
+
+**C++ feature-map은 신뢰할 수 없다.** `ObservabilityOps` map은 **자기 runner가 PENDING이라고 찍는 행을 "구현"으로** 적고, `ToActorMessaging` map은 대역인 TA-A1~A4를 `implemented`로 적는다.
+
+**그래서 Config 1·4·5·6·7은 이번 라운드에서 시나리오별로 검증되지 않았다.** feature-map과 구조만 보고 "깨끗하다"고 판정했는데, 같은 방식으로 판정한 Config 2·3에서 **직접 읽어 보니 P0 구멍이 나왔다.** **잔여 리스크로 남긴다 — 통과로 취급하지 않는다.**

@@ -552,12 +552,30 @@ TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
 - **Java/Kotlin TicTacToe** — `addHandlersFromPackageOf(...)`로 package를 스캔한다. annotation
   선언은 그대로 두되 스캔 호출을 빼고 handler를 직접 등록해야 한다.
 
-### 13.2 연결 축 현황
+### 13.2 연결 축 현황 (2026-07-14 실측 — **이전 기록을 정정한다**)
 
-연결 축은 규약과 일치한다. TicTacToe만 수동 endpoint(`EnableClient`/`ConnectRouter`/`ConnectPeerPub`)를
-쓰고, 나머지 정본 샘플은 `AddLocationStore(...)` 자동 연결을 쓴다.
+> **이전에 이 절은 "연결 축은 규약과 일치한다"고 적고 있었다. 거짓이었다.**
+> 그때는 `.NET`만 보고 판정했다. **네 언어를 실제로 세어 보니 Java와 Kotlin이 규약을 어긴다.**
+> 판정을 기준선 하나로 내리면 안 된다는 것을 이 항목이 다시 보여 준다.
 
-**단 ZoneWorld는 예외로 어긋나 있다.** ZoneWorld는 자동 연결 샘플인데 `dotnet` 구현이 zone 노드
+[샘플 규약](../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다.
+나머지 정본 샘플은 `ConnectRouter(...)`·`ConnectPeerPub(...)`·`EnableClient(endpoint)`를
+**쓰지 않는다.** *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다."*
+
+**TicTacToe를 뺀 정본 샘플의 수동 연결 호출 지점:**
+
+| 언어 | `connectRouter`/`connectPeerPub` | 판정 |
+|------|----------------------------------|------|
+| `.NET` | **0** | 준수 |
+| Node | **0** | 준수 |
+| **Java** | **29** | **위반** — Bingo · SupportChat · DeliveryDispatch · ShoppingMall · GameQuest |
+| **Kotlin** | **다수** | **위반** — Java를 대부분 미러링 |
+| C++ | 미측정 | — |
+
+인자 없는 `.enableClient()` overload가 **같은 파일 안에서 이미 쓰이고 있다.** 즉 피할 수 있는
+호출들이다. 상세는 [gaps/java](gaps/java.ko.md) · [gaps/kotlin](gaps/kotlin.ko.md).
+
+**ZoneWorld도 어긋나 있다.** 자동 연결 샘플인데 `dotnet` 구현이 zone 노드
 사이의 spot router·pub/sub·bridge를 수동 dial한다. [10 §5](server/10-channel-topology.ko.md)의 규칙상 수동
 endpoint가 하나라도 있으면 그 역할은 수동으로 확정되어 자동 연결 reconcile이 돌지 않으므로, 그
 수동 배선이 오히려 자동 연결을 무력화한다. 수동 dial을 걷어내야 한다
@@ -600,18 +618,20 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | **1** | 코드가 스펙대로 하는가 | 02 · 03 · 05 · 20~24 · 30 · 31 · 40 · 41 · 54 |
 | **2** | 코드가 스펙대로 하는가 | 00 · 10 · 11 · 25 · 50~53 · 12(HTTP client) · 32(connector) |
 | **3** | **코드가 스펙이 허용하지 않는 걸 하는가** + Redis store 대조 + 경합 경로 | 전 스펙 · 41 · SPOT/actor 런타임 |
+| **4** | **샘플과 e2e가 자기 문서대로 하는가** | 공통 샘플 6종 · e2e config 11종 × 5개 언어 |
 
 **라운드 3이 질문을 뒤집었더니 또 나왔다.** 같은 문서를 한 번 훑었다는 것은 **비어 있음의 증거가
 아니다.** 감사는 **새 갭이 나오지 않을 때까지** 반복한다.
 
 ### 15.2 라운드별 결과 (2026-07-14)
 
-| 언어 | R1 | R2 | R3 | 합계 | 문서 |
-|------|----|----|----|------|------|
-| `.NET` (기준선) | 7 | 6 | 5 | **18** | [gaps/dotnet](gaps/dotnet.ko.md) |
-| Java / Kotlin | 10 | 10 | 13 | **33** | [gaps/java](gaps/java.ko.md) |
-| Node / TypeScript | 10 | 12 | 11 | **33** | [gaps/node](gaps/node.ko.md) |
-| C++ | 11 | 16 | 11 | **38** | [gaps/cpp](gaps/cpp.ko.md) |
+| 언어 | R1~R3 (framework) | R4 (샘플·e2e) | 합계 | 문서 |
+|------|-------------------|---------------|------|------|
+| `.NET` (기준선) | 18 | 17 | **35** | [gaps/dotnet](gaps/dotnet.ko.md) |
+| Java | 33 | 18 | **51** | [gaps/java](gaps/java.ko.md) |
+| Kotlin | Java 공유 | **10 (고유)** | — | [gaps/kotlin](gaps/kotlin.ko.md) |
+| Node / TypeScript | 33 | 15 | **48** | [gaps/node](gaps/node.ko.md) |
+| C++ | 38 | 26 | **64** | [gaps/cpp](gaps/cpp.ko.md) |
 
 **기준선에서 18건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
 언어를 맞추는 방식으로는 이 18건이 **영원히 안 보인다.**
@@ -652,7 +672,27 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | **IMP-X17** | **첫 `GetOrCreate` 호출자의 취소가 같은 spot을 기다리는 다른 호출자 전부를 실패시킨다.** ⇒ 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** | `.NET` · Node |
 | **IMP-X18** | **Redis fixture의 "네 확장이 바이트 단위로 일치한다"는 주장이 거짓이다.** C++ actor row는 다섯 번째 hash 필드 `mesh`를 쓰고, 빈 컬렉션 표현과 Java의 zero timestamp가 fixture와 다르다. **fixture 테스트가 row JSON만 검사해서 아무도 못 잡는다** | 네 언어 모두 |
 
-### 15.4 판정이 필요한 항목 — 스펙끼리 충돌한다
+### 15.4 라운드 4가 무너뜨린 것 — **"통과했다"는 기록은 통과의 증거가 아니다**
+
+라운드 4는 샘플과 e2e를 봤다. 그리고 **이 갭 문서 자신이 세 곳에서 거짓이었다는 것**을 드러냈다.
+
+| 이 문서가 적었던 것 | 실제 |
+|---|---|
+| §13.2 "**연결 축은 규약과 일치한다**" | Java 샘플에 TicTacToe 밖 수동 연결이 **29곳**. `.NET`만 보고 판정했다 |
+| [gaps/node] §4.7 "Node Config 11 ObservabilityOps runner는 **OBS-A1~C5 evidence와 함께 통과했다**" | 그 디렉토리엔 **e2e 앱이 없다.** 시나리오를 `echo "$scenario … PASS"`로 통과시킨다 |
+| 각 언어 `feature-map.ko.md`의 **"구현 100%"** | C++ `ObservabilityOps` map은 **자기 runner가 PENDING이라 찍는 행**을 "구현"으로 적는다. `ToActorMessaging` map은 대역인 TA-A1~A4를 `implemented`로 적는다 |
+
+**실패할 수 없는 검증이 있다.** Node의 probe 서버는 클라이언트가 단언할 `serviceRole`·`state`를
+**리터럴로 만들어 낸다** — `serviceRole === Router && state === Ready`는 영원히 참이다.
+
+**약한 게이트가 진짜 버그를 가린다.** C++ Bingo는 **두 번째 player에게 게임 시작 notify를 안 보낸다**
+(제외 필터에 그 player를 넣는다). 클라이언트 검증이 "**두** player가 기다린다"를 제대로 단언하지
+않아 아무도 몰랐다.
+
+**그래서 규칙을 하나 세운다 — 완료 표시는 그 자체로 증거가 아니다.** feature-map·이전 라운드의
+"해소" 기록·"통과" 로그는 **재검증 대상**이지 통과의 근거가 아니다.
+
+### 15.5 판정이 필요한 항목 — 스펙끼리 충돌한다
 
 **이건 구현 결함이 아니라 스펙 결함이다.** 어느 쪽이 맞는지 정해야 한다.
 

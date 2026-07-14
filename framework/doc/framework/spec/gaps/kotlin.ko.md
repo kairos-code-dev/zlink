@@ -79,3 +79,24 @@ Kotlin은 Java 런타임을 공유하므로 라운드 3의 Java 항목(**IMP-JV-
 - **IMP-JV-24** — Spring host 자동 drain이 25초다(스펙 30초). Kotlin Spring Boot 앱도 같은 경로를 탄다.
 
 [java 체크리스트](java.ko.md)를 함께 본다.
+
+## 라운드 4 (2026-07-14) — 샘플 · E2E
+
+> **"Kotlin 고유 갭은 없다"는 앞의 판단을 정정한다.** 그건 **런타임에만** 맞다.
+> **샘플과 e2e는 별개 코드베이스이고, Kotlin은 양방향으로 갈린다.**
+
+**Kotlin이 더 나은 축**: SupportChat 자동 연결, ShoppingMall의 읽기 전용 query와 완전한 §15 단언,
+DeliveryDispatch의 actor relay(Java는 건너뛴다).
+
+**Kotlin이 더 나쁜 축**:
+
+- [ ] **SMP-KT-01** (**절대 규칙 위반**) — TicTacToe 밖 샘플이 **수동 연결을 쓴다**(12곳)
+- [ ] **SMP-KT-02** (결함) — ShoppingMall이 **문서가 "사라진다"고 한 saga 오케스트레이터를 되살렸다** — 비내구 in-process 큐라 크래시 시 continuation을 잃는다(무손실 요구 위반)
+- [ ] **SMP-KT-03** (미구현) — ShoppingMall에 **HTTP edge가 없고**, 내부 메시지 `ContinueOrderWorkflowReq`를 **클라이언트가 직접** 보낸다
+- [ ] **SMP-KT-04** (미구현) — GameQuest·ShoppingMall에 **owner Spot이 없다**
+- [ ] **SMP-KT-05** (결함) — 샘플 6개 중 **2개가 coroutine 표면을 아예 안 켠다**(`useCoroutineHandlers` 미호출). ShoppingMall은 `suspend` 안에서 **`LockSupport.parkNanos`로 블로킹**한다
+- [ ] **SMP-KT-06** (결함) — DeliveryDispatch 기본 클라이언트가 **HTTP 폴링 루프**다(규약 금지)
+- [ ] **E2E-KT-01** (결함) — **SpotService의 "클라이언트"가 사실 framework 호스트**다 — `@EnableZLinkFramework`로 mesh를 등록하고 `outbound.requestToSpot(...)`을 **클라이언트 코드에서 직접** 호출한다. **Java 쪽은 깨끗하다**
+- [ ] **E2E-KT-02** (결함) — **Config 10이 2/20**이고 나머지 18개를 **Java 클라이언트에 위임**한다. `Shared/`도 `feature-map`도 없고 Redis 컨테이너 접두사도 틀렸다
+- [ ] **E2E-KT-03** (결함) — Config 2에서 시나리오 **6개 누락**. `RC-A6`(**P0**)는 클라이언트 시나리오 없이 **셸 `grep`으로** 검증하는데 feature-map은 "구현 완료"로 적는다
+- [ ] **E2E-KT-04** (결함) — `DiscoveryRegistryHa`에 **`Client/Scenarios/`가 없다** — 32줄 `when`이 477줄 god-context로 분기한다(규약이 금지한 `AllScenario` 형태)

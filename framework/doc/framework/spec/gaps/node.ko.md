@@ -368,3 +368,32 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 있으면 pub/sub auto reconcile만 수행하지 않는다. location store와 actor 위치 조회는 그대로
 유지한다. 따라서 TicTacToe는 sample 전용 wrapper 없이 수동 SPOT peer와 원격 actor 위치 조회를
 함께 사용할 수 있다.
+
+## 라운드 4 (2026-07-14) — 샘플 · E2E
+
+**여기서 "가짜 통과"가 나왔다.** 실패할 수 없는 검증이다.
+
+### 체크리스트
+
+- [ ] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
+- [ ] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
+- [ ] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**
+- [ ] **SMP-ND-02** (결함) — **6개 샘플 전부가 framework session handler registry를 우회**한다
+- [ ] **SMP-ND-03** (결함) — DeliveryDispatch가 **문서가 명시적으로 금지한** route-mesh + node rid로 offer를 보낸다
+- [ ] **SMP-ND-04** (결함) — TicTacToe가 **자체 Redis room-route 스키마**를 들고 있다
+- [ ] **SMP-ND-05** (결함) — TicTacToe의 "self-join notify 없음" 검사가 **25ms 창**이다
+- [ ] **E2E-ND-03** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**
+- [ ] **E2E-ND-04** (결함) — `§2.1` settle 상수가 **어느 runner에도 없고** readiness가 최대 **60초**
+- [ ] **E2E-ND-05** (결함) — Redis 격리에 **탈출구**가 있다(`ZLINK_REDIS_E2E_ENDPOINT`)
+- [ ] **E2E-ND-06** (결함) — e2e 앱 코드가 **환경변수를 읽고 쓴다**(`§2.6`: 0개)
+- [ ] **E2E-ND-07** (결함) — e2e 클라이언트가 **HTTP client wrapper를 안 쓴다** — 전부 raw `fetch`
+- [ ] **E2E-ND-08** (결함) — 시나리오 파일 **138개 중 0개**에 머리말 주석이 없다
+- [ ] **E2E-ND-09** (결함) — 낡은 디렉토리 이름과 죽은 `dist/`
+- [ ] **E2E-ND-10** (결함) — `START_ORDER` 축이 config 2개에만 있다
+
+### 가장 무거운 둘
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-ND-01** | [e2e §2·§2.2·§2.4·§2.5](../../common/e2e/README.ko.md): 역할 서버 + 시나리오 ID당 클라이언트 파일 하나. **test-runner로 대체하지 않는다**. §5: e2e는 in-process contract test가 **아니다** | `e2e/ObservabilityOps/`에 **`run_e2e.sh`와 `feature-map.ko.md` 둘뿐이다.** `Server/`도 `Client/`도 `Shared/`도 없다. runner는 **폐기된 config-8(ATD)을 재실행**해 로그를 grep하고, **in-process contract test**를 돌린 뒤, 이렇게 통과시킨다 — `for scenario in OBS-A1 … ; do echo "$scenario … PASS"; done`. **`echo`가 검증이다.** 그리고 feature-map은 13개를 전부 "구현"으로 적는다. **[gaps §4.7]이 "OBS-A1~C5 evidence와 함께 통과했다"고 기록하고 있는데 — 거짓이다** |
+| **E2E-ND-02** | [config-1 RM-A1(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): live-owner peer row와 **두 provider로의 연결 상태**를 확인한다 | `RegistryMessaging/Server/LocationProbe/Endpoints/location-probe-endpoints.ts:24-28` — 모든 row를 `serviceRole: Router`, `state: Ready` **리터럴로** 매핑한다. 클라이언트는 `serviceRole === Router && state === Ready`를 단언한다. ⇒ **절대 실패할 수 없는 단언이다.** 살아 있는 검증은 `rows >= 2` 하나뿐. `ResilienceLifecycle/Server/TopologyProbe`도 `state: Ready`를 하드코딩한다. 게다가 이 probe 서버들은 **application 역할이 없어** §2.4가 금지하는 형태다 |

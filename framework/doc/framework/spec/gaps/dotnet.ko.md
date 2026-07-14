@@ -185,3 +185,34 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 > [§12.21](#1221-yield-terminator-부재-전-언어), [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
 > [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)이다.** 그 밖에 이 문서가 추적하는 `.NET`
 > 차이는 없다.
+
+## 라운드 4 (2026-07-14) — 샘플 · E2E
+
+### 체크리스트
+
+- [ ] **SMP-DN-01** (미구현) — Bingo의 **player-record / `yield` 축이 코드에 통째로 없다**
+- [ ] **SMP-DN-02** (결함) — 정본 샘플 6개 중 **4개가 여전히 환경변수로 endpoint·Redis를 받는다**
+- [ ] **SMP-DN-03** (결함) — TicTacToe가 **위치 인자로 역할을 전환하는 단일 실행 파일**이다
+- [ ] **SMP-DN-04** (결함) — DeliveryDispatch 메시지 계약 drift
+- [ ] **SMP-DN-05** (결함) — GameQuest 메시지 계약 drift
+- [ ] **SMP-DN-06** (결함) — SupportChat의 **"반드시 오류로 검증한다" 5개 중 3개를 안 본다**
+- [ ] **SMP-DN-07** (결함) — ZoneWorld에 **`.NET` 전용 두 번째 클라이언트**가 있다(문서: TypeScript 하나만)
+- [ ] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)
+- [ ] **E2E-DN-01** (결함) — `ObservabilityOps`가 **e2e 앱이 아니다** — 샘플 바이너리를 셸로 구동한다
+- [ ] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
+- [ ] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**
+- [ ] **E2E-DN-04** (결함) — readiness 기본값이 **30초**(SpotService **60초**) — 문서는 3초
+- [ ] **E2E-DN-05** (결함) — `RuntimeMonitoring`에 **시나리오 실행 전용 `Trigger` 역할**이 있고 **다른 서버의 로그 파일을 읽어** 검증한다
+- [ ] **E2E-DN-06** (결함) — `RM-C9`(backpressure)가 **이름뿐**이고 `RM-A4`(P0)가 주장하는 것을 검증하지 않는다
+- [ ] **E2E-DN-07** (결함) — 역할 서버가 **30초 재시도 루프로 route 수렴 실패를 가린다**
+- [ ] **E2E-DN-08** (결함) — 클라이언트가 bounded wait endpoint 대신 **GET 폴링 루프**를 돈다(24개 파일)
+- [ ] **E2E-DN-09** (결함) — 시나리오 파일 명명·커버리지 장부
+
+### 가장 무거운 것
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-DN-01** | [e2e §2.2·§2.4·§2.5](../../common/e2e/README.ko.md) | `e2e/ObservabilityOps/`에 **`Client/`가 없다.** `Server/Program.cs`가 **Bingo·ShoppingMall 샘플 서버를 import**해 `options.Role`로 스위치하고, 클라이언트로 **`samples/Bingo/Client`를 쓴다.** 시나리오 로직은 `run_e2e.sh` 안의 **인라인 파이썬 783줄**에 있다. 그런데 feature-map은 OBS 13개를 전부 "구현"으로 적는다 |
+| **E2E-DN-07** | [e2e §2](../../common/e2e/README.ko.md): **수렴 직후 첫 요청**은 **재시도나 sleep으로 가리지 않는다** — 첫 요청이 바로 성공하는 것 **자체가 검증 대상**이다. *"workaround를 넣은 테스트는 완료로 보지 않는다"* | `LocationMessaging/Server/Provider/Endpoints/ProviderEndpoints.cs:120-141` — `RequestProfileWithRetryAsync`가 **30초 동안 100ms 간격으로 재시도**하며 `ZLinkFrameworkException`을 삼킨다. Config 1의 **모든** `/profile/request`가 이걸 통과한다 |
+| **E2E-DN-06** | [config-1 RM-C9](../../common/e2e/config-1-location-messaging.ko.md): 처리 속도보다 빠르게 **다량** 보내 송신 큐를 **HWM까지 채운다** | `RmC9BackpressureScenario.cs:11` — `SlowSendCount = 8`. **one-way send 8번**으로는 어떤 HWM에도 못 닿는다. 그러고는 **10초 자고**(`:25`) 후속 request가 되는지 본다. **backpressure가 만들어지지 않는다** |
+| **E2E-DN-04** | [e2e §2.1](../../common/e2e/README.ko.md): local readiness **3초**. *"긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지 않는다"* | 모든 runner가 **기본 30초**(`SpotService` **60초**)이고 **환경변수로 덮어쓸 수 있다.** 문서는 환경변수를 "느린 CI나 진단용 override"로만 허용한다 |

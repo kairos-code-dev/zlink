@@ -336,17 +336,20 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 
 모든 언어의 E2E는
 [Sample/E2E 설정 정책](../sample-e2e-configuration-policy.ko.md)을 필수로 따른다. 개별 config
-runner는 실행별 role 설정 파일을 생성하고 실행 파일에는 설정 파일 경로만 전달한다. Endpoint,
-Redis, routing id, timeout, 로그와 evidence 경로를 환경 변수나 JVM system property로 전달하지
-않는다. Role server와 client도 전역 환경을 직접 읽지 않고 언어별 정식 설정 시스템으로 검증한
-typed 설정을 사용한다.
+runner는 실행별 role 설정 파일을 생성하고 framework host에는 설정 파일 경로만 전달한다.
+Framework host가 아닌 standalone client는 필요한 값이 적으면 명시적인 CLI option으로 받되
+시작할 때 한 번 검증한다. Endpoint, Redis, routing id, timeout, 로그와 evidence 경로를 환경
+변수나 JVM system property로 전달하지 않으며, server와 client 애플리케이션 코드에서 직접
+사용할 수 있는 환경 변수는 0개다.
 
 Scenario selector, process restart와 장애 주입 명령은 E2E 실행 제어 입력이므로 설정값과 구분한다.
-이 입력은 CLI로 전달할 수 있지만 topology나 framework option을 개별 CLI option으로 우회해서
-전달하면 안 된다.
+Framework host에는 이 실행 제어 입력만 CLI로 전달할 수 있다. Standalone client는 endpoint와
+timeout처럼 실행에 필요한 소수의 값도 CLI로 받을 수 있다.
 
 현재 구현이 이 기준과 다르면 기존 환경 변수 interface를 예외로 유지하지 않는다. 해당 config의
-feature-map에 configuration migration gap을 기록하고 설정 파일과 typed binding으로 전환해야 한다.
+feature-map에 configuration migration gap을 기록해야 한다. Framework host는 설정 파일과 typed
+binding으로 전환하고, standalone client는 검증된 CLI 입력 또는 필요한 경우 typed 설정 파일로
+전환해야 한다.
 
 ### 2.7 `run_e2e.*` 실행 계약
 

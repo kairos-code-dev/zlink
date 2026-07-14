@@ -14,25 +14,27 @@
 - server와 client가 사용하는 endpoint
 - Redis endpoint와 key prefix
 - instance 이름과 routing id
-- timeout, retry 한도와 readiness 기준값
+- 애플리케이션 요청의 timeout과 retry 한도
 - 로그, trace, evidence와 업무 상태 파일 경로
 - TLS 인증서와 key 파일 경로
 - codec, monitoring과 framework 기능 옵션
 
 Runner는 실행별 port, Redis endpoint와 임시 디렉터리를 결정할 수 있다. 그러나 결정한 값을
-환경 변수나 개별 CLI option 목록으로 애플리케이션에 전달하면 안 된다. Runner는 각 프로세스가
-사용할 설정 파일을 만들고, 실행 파일에는 그 설정 파일 경로만 전달한다.
+환경 변수로 애플리케이션에 전달하면 안 된다. Framework host에는 role별 설정 파일 경로를
+전달한다. Framework host가 아닌 standalone client는 필요한 값이 적으면 명시적인 CLI option으로
+받을 수 있다.
 
 ## 2. 필수 규칙
 
-### 2.1 설정 파일이 유일한 애플리케이션 설정 입력이다
+### 2.1 Framework host는 설정 파일을 사용한다
 
 - 각 server role은 자기 역할에 필요한 값만 포함한 설정 파일 하나를 받는다.
 - 기본 설정 파일은 언어별 관례에 맞는 `Configuration/`, `config/` 또는 resource 디렉터리에 둔다.
 - 동적 port와 실행별 Redis가 필요하면 runner가 임시 role별 설정 파일을 생성한다.
-- 실행 파일에는 `--config <path>` 또는 해당 언어 host가 제공하는 동일한 의미의 설정 파일 경로만
-  전달한다.
-- CLI에는 설정 파일 경로, 실행할 role, E2E scenario selector 같은 실행 제어 값만 둘 수 있다.
+- Framework host 실행 파일에는 `--config <path>` 또는 해당 언어 host가 제공하는 동일한 의미의
+  설정 파일 경로만 전달한다.
+- Framework host의 CLI에는 설정 파일 경로, 실행할 role, E2E scenario selector 같은 실행 제어
+  값만 둘 수 있다.
   Endpoint, timeout, routing id처럼 설정 파일에 속하는 값을 개별 CLI option으로 나열하지 않는다.
 - 설정 파일이 없거나 필수 값이 잘못되면 프로세스는 framework runtime을 시작하기 전에 실패한다.
 
@@ -83,10 +85,12 @@ Runner가 환경 변수를 설정한 뒤 하위 프로세스가 읽는 방식도
 ## 4. Framework host가 아닌 client
 
 Stream Connector client, HTTP client와 browser client는 framework host가 아닐 수 있다. 이 경우
-server용 framework module을 억지로 시작하지 않고 같은 설정 파일에서 client에 필요한 부분만 읽는
-작은 typed client 설정 경계를 둔다.
+server용 framework module이나 별도 configuration 시스템을 만들지 않는다.
 
-- Standalone client는 client 설정 파일 경로를 받는다.
+- Standalone client에 필요한 값이 endpoint, timeout과 scenario처럼 적으면 명시적인 CLI option으로
+  받는다. 시작할 때 필수 값, 형식과 범위를 한 번 검증하고 typed client 설정 객체로 변환한다.
+- 설정 항목이 많거나 secret처럼 CLI에 노출하면 안 되는 값이 있으면 client 설정 파일을 사용한다.
+  이 경우 파일 읽기와 검증은 client 진입점의 설정 경계 한 곳에서만 수행한다.
 - Browser client는 정적 `config.json` 또는 runner가 제공하는 `/config.json`을 읽는다.
 - Client scenario에는 endpoint 상수, 환경 변수 조회와 server topology 전체를 넣지 않는다.
 - E2E scenario selector는 실행 제어 입력이므로 CLI로 받을 수 있다.
@@ -101,7 +105,8 @@ server용 framework module을 억지로 시작하지 않고 같은 설정 파일
 
 다만 sample/E2E가 소유하는 새 환경 변수 interface를 만들어 설정 우회 경로로 사용하면 안 된다.
 Docker image, build directory처럼 runner 자체의 선택값이 필요하면 runner option이나 repository의
-runner 설정으로 관리한다. 애플리케이션 프로세스는 이 값을 읽지 않는다.
+runner 설정으로 관리한다. Readiness 대기 한도도 애플리케이션 timeout과 구분해 runner 설정으로
+관리한다. 애플리케이션 프로세스는 이 값을 읽지 않는다.
 
 ## 6. Secret과 임시 설정 파일
 
@@ -118,13 +123,37 @@ runner 설정으로 관리한다. 애플리케이션 프로세스는 이 값을 
 
 1. 실행별 디렉터리와 port를 준비한다.
 2. 필요한 Redis container를 만들고 실제 endpoint를 확인한다.
-3. 각 role의 설정 파일을 생성하고 형식과 필수 값을 검증한다.
+3. 각 role의 설정 파일을 생성한다.
 4. Role 실행 파일에 설정 파일 경로를 전달한다.
-5. Readiness를 확인한 뒤 client self-check 또는 E2E scenario를 실행한다.
+5. Readiness를 확인한 뒤 standalone client에 필요한 CLI option을 전달해 self-check 또는 E2E
+   scenario를 실행한다.
 6. 자신이 시작한 프로세스, Redis와 임시 설정 파일을 정리한다.
 
-Runner는 설정 파일을 만드는 책임까지만 가진다. Server별 framework builder 구성, 설정 기본값과
-설정 항목의 의미를 shell, PowerShell 또는 공통 runner에 다시 구현하지 않는다.
+Runner의 설정 관련 책임은 설정 파일 생성과 경로 전달로 제한한다. 설정 파일 parsing, 필수 값
+검증, server별 framework builder 구성, 설정 기본값과 설정 항목의 의미를 shell, PowerShell 또는
+공통 runner에 다시 구현하지 않는다.
+
+### 7.1 Runner 단순성 규칙
+
+Sample과 E2E의 runner는 사용자가 실행 순서를 바로 이해할 수 있게 유지한다. 단순함은 파일의 줄
+수가 아니라 runner가 맡는 책임, 조건 분기, 중복 구현과 우회 경로의 수를 기준으로 판단한다.
+
+- Shell과 PowerShell script는 인자를 확인하고 공통 runner를 호출하는 간단한 진입점으로 둔다.
+- Runner는 실행 준비, role 설정 파일 생성, server 순차 실행, readiness 확인, client 실행, 결과
+  확인과 정리만 담당한다.
+- Framework builder 구성, 설정 기본값과 설정 항목의 의미를 runner에 다시 구현하지 않는다.
+- 환경 변수 호환 경로, 여러 단계의 fallback과 기존 프로세스 자동 탐색을 추가하지 않는다.
+- 오류가 발생하면 즉시 실패하고, 해당 실행에서 runner가 만든 프로세스, container와 임시 파일만
+  정리한다.
+- 같은 실행 로직을 shell, PowerShell과 언어별 script에 각각 중복해서 작성하지 않는다.
+- 여러 sample이나 E2E가 실제로 공유하는 실행 동작만 공통 runner로 분리한다.
+- 모든 sample의 차이를 조건 분기로 처리하는 하나의 범용 runner를 만들지 않는다. Sample별 차이는
+  role 목록, 실행 명령과 설정 파일 같은 명시적인 입력으로 표현한다.
+- Redis container와 여러 server role처럼 scenario에 필요한 절차는 유지한다. 실행에 필요하지 않은
+  자동 탐색, 호환 처리와 중복 fallback을 단순화 대상으로 본다.
+
+기본 실행 흐름은 준비, role 설정 파일 생성, server 순차 실행, readiness 확인, client scenario
+실행, 결과 확인, 정리 순서로 유지한다. Scenario가 요구하지 않는 별도 단계는 추가하지 않는다.
 
 ## 8. 회귀 검사
 
@@ -132,10 +161,12 @@ Runner는 설정 파일을 만드는 책임까지만 가진다. Server별 framew
 
 - Runner가 endpoint, Redis, role과 로그 경로를 환경 변수나 JVM system property로 전달하지 않는다.
 - 애플리케이션 코드가 환경 변수를 직접 읽지 않는다.
-- 각 프로세스가 설정 파일 경로를 받고 언어별 설정 시스템으로 binding한다.
+- Framework host가 설정 파일 경로를 받고 언어별 설정 시스템으로 binding한다.
+- Standalone client가 CLI 입력을 시작할 때 한 번 검증하고 typed 설정 객체로 변환한다.
 - 필수 설정 누락과 잘못된 endpoint가 runtime 시작 전에 실패한다.
 - Runner가 만든 설정 파일에는 실행별 port와 Redis endpoint가 실제로 반영된다.
 - Browser client가 환경 변수 없이 `config.json`을 읽는다.
 
 기존 sample이나 E2E가 이 정책과 다르면 현재 동작을 예외로 인정하지 않는다. 해당 항목은 migration
-gap으로 기록하고 설정 파일 경로와 typed binding으로 전환한 뒤 완료로 판정한다.
+gap으로 기록한다. Framework host는 설정 파일과 typed binding으로 전환하고, standalone client는
+검증된 CLI 입력 또는 필요한 경우 typed 설정 파일로 전환한 뒤 완료로 판정한다.

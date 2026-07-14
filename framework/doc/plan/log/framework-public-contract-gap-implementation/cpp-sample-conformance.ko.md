@@ -114,7 +114,11 @@ sample spec 정렬로 생긴 것이 아니라 부하가 드러낸 core 경로의
 
 | CPP-ATD-TIMER-RESUME-001 | E2E AutomaticTurnDispatch **ATD-C3B**(가끔 **ATD-D2**)가 간헐 실패한다. client가 받는 오류는 `End of file` — 세션 서버가 client stream을 닫는다 | **해결(2026-07-14).** stream connector는 server liveness ping의 pong을 `dispatch()` 경로에서만 썼다. ATD client는 async submit으로 응답을 기다리는 동안 `dispatch()`를 부르지 않으므로, 수신 pump가 ping을 읽어 `heartbeat_pong_due`만 세우고 pong은 나가지 않았다. 응답이 heartbeat 창보다 오래 걸리는 정상 요청에서 서버가 세션을 heartbeat timeout으로 끊었고, client는 그것을 `End of file`로 봤다. 수정: 수신 pump(async 체제)는 pong을 write 큐에 싣고, 동기 request 루프(sync 체제)는 자기 문맥에서 바로 답한다. 두 체제를 섞어 쓰면(io 스레드에서 동기 write) 같은 소켓에서 in-flight async write와 바이트가 섞여 abort까지 났다. 회귀 테스트는 `test_cpp_stream_connector`의 manual-dispatch pong 케이스. 동행 수정: 세션 픽스처의 중첩 timeout(3000ms → 15000ms), 러너 종료 유예(8s → 45s, `ZLINK_CPP_E2E_PROCESS_SHUTDOWN_TIMEOUT_SECONDS`) | framework/connector(완료) |
 
-남은 과제: ATD 세션 픽스처가 actor relay 실패를 오류 응답이 아니라 **stream close**로 표현한다. 계약상 실패는 error 프레임으로 돌려야 한다(열림).
+남은 과제: ATD 세션 픽스처가 actor relay 실패를 오류 응답이 아니라 **stream close**로 표현한다.
+계약상 실패는 error 프레임으로 돌려야 한다. **시도해 본 것(2026-07-14)**: detached thread를 걷어내고
+handler에서 `co_await relay_request` → 예외 → framework가 error reply를 쓰게 바꾸면 **ATD-B1의 marker
+순서가 달라진다**(detached relay가 turn 진행을 위해 필요했다). 제대로 고치려면 relay 완료 시점에
+error 프레임을 쓸 수 있는 stream error-reply 표면이 필요한데 framework에 없다 — 열림.
 
 ATD-C3B 재현 조건(추가 확인): C1/C2/C3는 **같은 timer spot**(`timer_spot_rid`)을 공유하고
 runner의 `all` 모드에서 C1 → C2 → C3 순으로 한 프로세스 안에서 돈다. `run_e2e.sh ATD-C3`로

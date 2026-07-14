@@ -570,7 +570,7 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 
 | # | 항목 | 해소 결과 | 검증 항목 |
 |---|------|-----------|-----------|
-| 10.1 | **Response/Error packet name 검증** | `.NET`과 C++도 request name을 pending 상태에 보존하고 reply 이름이 다르면 `FrameDecodeFailed`로 완료한다 | 정상 reply와 이름이 다른 reply를 구분하고 pending request를 실패로 완료한다 |
+| 10.1 | **Response/Error packet name 검증 — 폐기(2026-07-14)** | 이름 대조 규칙 자체를 스펙에서 걷어냈다. pending request 매칭은 `request_seq`가 정본이고 reply의 packet name은 참고 값이다 — 이름이 달라도 응답을 버리지 않는다. C++·Node·.NET 커넥터에서 대조를 제거했다 | 이름이 다른 reply도 같은 `request_seq`의 pending request를 정상 완료한다 |
 | 10.2 | **Error payload 포맷** | C++도 압축 해제 뒤 UTF-8 JSON object를 읽고 `code`와 `message`가 문자열인지 검증한다 | 올바른 Error object를 읽고 문자열이나 필수 필드가 잘못된 payload를 거부한다 |
 | 10.3 | **metadata 1024바이트 한도** | C++ public option을 제거하고 송수신 양쪽에 고정된 1024바이트 한도를 적용한다 | 경계값은 허용하고 한도를 넘은 송수신 metadata는 거부한다 |
 | 10.4 | **예약 packet name 범위** | C++는 `$zlink.` prefix만 거부하며 `$application.event` 같은 application 이름은 허용한다 | application 이름은 허용하고 framework 예약 prefix만 거부한다 |

@@ -174,6 +174,52 @@ test('auto-connect reconciler does not mark a target active when executor skips 
   await runtime.stop();
 });
 
+test('auto-connect reconciler retries the last desired target only within store failure grace', async () => {
+  let nowMs = 0;
+  let storeFailed = false;
+  let connectAttempts = 0;
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(
+      framework.ZLinkLocationAutoConnectType.ClientServer,
+      framework.ZLinkLocationRole.Dealer,
+      'node-local',
+      'tcp://dealer'
+    ),
+    runtime: {},
+    peerResolver: {
+      async listLivePeers() {
+        if (storeFailed) throw new Error('store unavailable');
+        return [peer(
+          'owner-remote',
+          framework.ZLinkLocationAutoConnectType.ClientServer,
+          framework.ZLinkLocationRole.Router,
+          'node-remote',
+          'tcp://remote'
+        )];
+      }
+    },
+    executor: {
+      connect() {
+        connectAttempts += 1;
+        return false;
+      },
+      disconnect() {}
+    },
+    options: { storeFailureGraceMs: 3000 },
+    monotonicNowMs: () => nowMs
+  });
+
+  await reconciler.tick();
+  assert.equal(connectAttempts, 1);
+  storeFailed = true;
+  await reconciler.tick();
+  assert.equal(connectAttempts, 2);
+
+  nowMs = 4000;
+  await reconciler.tick();
+  assert.equal(connectAttempts, 2);
+});
+
 test('publish-only auto-connect capability does not query or reconcile peers', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const runtime = runtimeFor(store, 'owner-local');

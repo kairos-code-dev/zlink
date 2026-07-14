@@ -47,7 +47,9 @@ export class ZLinkAutoConnectReconciler {
   private localGeneration = 0n;
   private localPublished = false;
   private storeFailedValue = false;
+  private storeFailureStartedAtMs: number | undefined;
   private recoveryDeferUntilMs = 0;
+  private lastDesired = new Map<string, ZLinkAutoConnectTarget>();
   private meshMemberRidHexes?: ReadonlySet<string>;
 
   constructor(options: ZLinkAutoConnectReconcilerOptions) {
@@ -81,13 +83,13 @@ export class ZLinkAutoConnectReconciler {
     try {
       await this.publishLocal(signal);
     } catch {
-      this.storeFailedValue = true;
-      this.localPublished = false;
+      this.recordStoreFailure();
       return;
     }
 
     if (!this.reconcilePeers) {
       this.storeFailedValue = false;
+      this.storeFailureStartedAtMs = undefined;
       return;
     }
 
@@ -98,13 +100,13 @@ export class ZLinkAutoConnectReconciler {
         meshName: this.local.meshName
       }, signal);
     } catch {
-      this.storeFailedValue = true;
-      this.localPublished = false;
+      this.recordStoreFailure();
       return;
     }
 
     if (this.storeFailedValue) {
       this.storeFailedValue = false;
+      this.storeFailureStartedAtMs = undefined;
       this.recoveryDeferUntilMs = this.monotonicNowMs() + this.options.heartbeatIntervalMs;
     }
 
@@ -118,6 +120,7 @@ export class ZLinkAutoConnectReconciler {
     for (const [key, target] of existingTargets) {
       if (this.active.has(key)) desired.set(key, target);
     }
+    this.lastDesired = new Map(desired);
     const connectedEndpoints: string[] = [];
     const disconnectedEndpoints: string[] = [];
     for (const [key, target] of desired) {
@@ -195,6 +198,24 @@ export class ZLinkAutoConnectReconciler {
         generation: this.localGeneration
       }, ZLinkLocationWriteIntent.Renew, signal);
       this.localPublished = renewed.status === ZLinkLocationWriteStatus.Stored;
+    }
+  }
+
+  private recordStoreFailure(): void {
+    const nowMs = this.monotonicNowMs();
+    this.storeFailureStartedAtMs ??= nowMs;
+    this.storeFailedValue = true;
+    this.localPublished = false;
+    if (
+      this.options.storeFailureGraceMs <= 0 ||
+      nowMs - this.storeFailureStartedAtMs > this.options.storeFailureGraceMs
+    ) {
+      return;
+    }
+    for (const [key, target] of this.lastDesired) {
+      if (!this.active.has(key) && this.executor.connect(target)) {
+        this.active.set(key, target);
+      }
     }
   }
 

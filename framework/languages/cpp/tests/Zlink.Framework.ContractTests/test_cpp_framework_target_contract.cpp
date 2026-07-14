@@ -346,6 +346,15 @@ int main ()
     gate.require (execution_hpp.find ("include_native_diagnostics") == std::string::npos,
                   "IMP-CP-33", "no-op include_native_diagnostics remains public");
 
+    /* E2E-CP-47 — fast subscribers must finish inside a bound shorter than slow HOL work. */
+    gate.require (pubsub_runner.find ("ThreadPoolExecutor(max_workers=2)") != std::string::npos,
+                  "E2E-CP-47", "PS-B1 fast-subscriber waits are not concurrent");
+    gate.require (pubsub_runner.find ("timeout_ms=2000") != std::string::npos,
+                  "E2E-CP-47", "PS-B1 fast-subscriber wait has no isolation bound");
+    gate.require (pubsub_runner.find ("fast subscriber isolation exceeded 2500 ms")
+                    != std::string::npos,
+                  "E2E-CP-47", "PS-B1 cannot fail when fast delivery is head-of-line blocked");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

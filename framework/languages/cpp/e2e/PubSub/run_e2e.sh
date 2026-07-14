@@ -360,8 +360,10 @@ verify() {
   local mode="$1"
   shift
   python3 - "$mode" "$BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS" "$@" <<'PY' | tee -a "$LOG_DIR/verify.log"
+import concurrent.futures
 import json
 import sys
+import time
 import urllib.request
 
 mode = sys.argv[1]
@@ -443,8 +445,24 @@ elif mode == "reconnect":
                    "accepted|", "value=during-reconnect-")
 elif mode == "slow":
     groups = [accepted(f"slow-isolation-{i}") for i in range(16)]
-    wait_lines(endpoints[1], contains_all_line_groups=groups)
-    wait_lines(endpoints[2], contains_all_line_groups=groups)
+    started = time.monotonic()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        waits = [
+            executor.submit(
+                wait_lines,
+                endpoint,
+                contains_all_line_groups=groups,
+                timeout_ms=2000)
+            for endpoint in endpoints[1:]
+        ]
+        for wait in waits:
+            wait.result()
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    if elapsed_ms > 2500:
+        raise SystemExit(
+            f"fast subscriber isolation exceeded 2500 ms: elapsed_ms={elapsed_ms}"
+        )
+    print(f"fast subscriber isolation elapsed_ms={elapsed_ms}")
 elif mode == "publisher-restart":
     groups = [accepted(f"after-publisher-restart-{i}") for i in range(20, 43)]
     for endpoint in endpoints:

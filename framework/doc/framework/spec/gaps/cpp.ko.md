@@ -575,7 +575,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-44** (결함) — **`SF-D3`·`SF-A1`의 상태 필드 3개가 실제로는 bit 하나**로 붕괴한다
 - [ ] **E2E-CP-45** (결함) — **`SF-E1`이 store가 아니라 앱 데코레이터에 지연을 넣어** 자기 `sleep`을 잰다
 - [ ] **E2E-CP-46** (결함) — **`PS-A1`의 오라클이 계약이 허용하는 것보다 강하고**(무손실 전량), warm-up barrier가 없고, 순서를 안 본다
-- [ ] **E2E-CP-47** (결함) — **`PS-B1`의 격리 단언에 시간 제한이 없어** 격리와 head-of-line 블로킹을 구분하지 못한다
+- [x] **E2E-CP-47** (결함) — **`PS-B1`의 격리 단언에 시간 제한이 없어** 격리와 head-of-line 블로킹을 구분하지 못한다
+  - 근거: 수정 전 target-contract gate가 fast subscriber의 순차 wait, 2초 제한 부재, 2.5초 초과 실패 부재를 모두 검출했다. 두 fast subscriber의 16개 수신을 2초 server timeout으로 동시에 기다리고 총 2.5초를 넘으면 실패하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-B1`이 통과했으며 실제 fast 완료는 28ms였다. 이는 느린 subscriber의 직렬 처리 시간 16×250ms=4초보다 짧다.
 - [x] **E2E-CP-48** (미구현) — **`PS-C1`의 publisher 쪽 negative**(dispatch marker 없음)가 단언되지 않는다
   - 근거: 수정 전 target-contract gate가 publisher negative 성공 marker와 실패 가능한 dispatch-error 검사를 모두 누락으로 검출했다. PS-C1 종료 시 저장한 publisher evidence에서 `error|kind=publish|reason=handlerMissing|action=drop` 조합의 부재를 검사하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-C1`이 `publisher dispatch negative passed`를 포함해 통과했다.
 

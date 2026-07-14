@@ -13,9 +13,14 @@ type EncodedMessageHandler = (
   signal?: AbortSignal
 ) => Promise<void> | void;
 
+interface QueuedMessage {
+  readonly message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>;
+  readonly signal?: AbortSignal;
+}
+
 export class ZlinkStreamReceivedMessages {
   private readonly handlers = new Map<string, Set<EncodedMessageHandler>>();
-  private readonly queue: Array<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> = [];
+  private readonly queue: QueuedMessage[] = [];
   private drainTask: Promise<void> | undefined;
   private dropReportPending = false;
 
@@ -32,6 +37,9 @@ export class ZlinkStreamReceivedMessages {
       this.handlers.set(name, set);
     }
     set.add(handler);
+    if (this.queue.some((queued) => queued.message.name === name)) {
+      queueMicrotask(() => this.scheduleDrain());
+    }
     return subscription(() => set.delete(handler));
   }
 
@@ -40,29 +48,26 @@ export class ZlinkStreamReceivedMessages {
       this.reportDropped(signal);
       return;
     }
-    this.queue.push(message);
-    this.scheduleDrain(signal);
+    this.queue.push({ message, signal });
+    this.scheduleDrain();
   }
 
-  private scheduleDrain(signal?: AbortSignal): void {
+  private scheduleDrain(): void {
     if (this.drainTask !== undefined) {
       return;
     }
-    this.drainTask = this.drain(signal).finally(() => {
+    this.drainTask = this.drain().finally(() => {
       this.drainTask = undefined;
-      if (this.queue.length > 0) {
-        this.scheduleDrain(signal);
+      if (this.findDeliverableIndex() >= 0) {
+        this.scheduleDrain();
       }
     });
   }
 
-  private async drain(signal?: AbortSignal): Promise<void> {
-    while (this.queue.length > 0) {
-      const message = this.queue.shift()!;
-      const handlers = this.handlers.get(message.name);
-      if (handlers === undefined) {
-        continue;
-      }
+  private async drain(): Promise<void> {
+    for (let index = this.findDeliverableIndex(); index >= 0; index = this.findDeliverableIndex()) {
+      const [{ message, signal }] = this.queue.splice(index, 1);
+      const handlers = this.handlers.get(message.name)!;
       for (const handler of handlers) {
         try {
           await handler(message, signal);
@@ -75,6 +80,10 @@ export class ZlinkStreamReceivedMessages {
         }
       }
     }
+  }
+
+  private findDeliverableIndex(): number {
+    return this.queue.findIndex(({ message }) => (this.handlers.get(message.name)?.size ?? 0) > 0);
   }
 
   private reportDropped(signal?: AbortSignal): void {

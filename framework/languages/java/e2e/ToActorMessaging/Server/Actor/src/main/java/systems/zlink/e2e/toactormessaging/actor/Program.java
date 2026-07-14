@@ -16,6 +16,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -29,6 +30,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 @EnableZLinkFramework
 @SpringBootApplication(proxyBeanMethods = false)
@@ -54,7 +56,7 @@ public final class Program {
     }
 
     @Bean(destroyMethod = "close")
-    JsonHttp http(EvidenceStore evidence, ZLinkActorManager actors) {
+    JsonHttp http(EvidenceStore evidence, ZLinkActorManager actors, ZLinkActorClient actorClient) {
         boot("http create");
         JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_ACTOR_HTTP"));
         boot("http route health");
@@ -70,6 +72,26 @@ public final class Program {
             actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
                 .thenApply(actor -> new Contracts.ActorRefWire(
                     actor.nodeRid().toHex(), actor.actorId(), actor.generation())));
+        http.postAsync("/push", Contracts.BoundPushRequest.class, request ->
+            actors.find(request.actorId()).thenCompose(found -> actorClient.requestToActor(
+                    found.orElseThrow(() -> new IllegalStateException(
+                        "actor was not found: " + request.actorId())),
+                    request)
+                .submit(Contracts.BoundPushReply.class))
+                .exceptionally(error -> Contracts.BoundPushReply.failed(
+                    request.actorId(), request.value(), errorKind(error))));
+        http.postAsync("/destroy", Contracts.DestroyActorRequest.class, request ->
+            actors.find(request.actorId()).thenCompose(found -> actorClient.requestToActor(
+                    found.orElseThrow(() -> new IllegalStateException(
+                        "actor was not found: " + request.actorId())),
+                    request)
+                .submit(Contracts.DestroyActorReply.class)));
+        http.postAsync("/unbind", Contracts.UnbindActorRequest.class, request ->
+            actors.find(request.actorId()).thenCompose(found -> actorClient.requestToActor(
+                    found.orElseThrow(() -> new IllegalStateException(
+                        "actor was not found: " + request.actorId())),
+                    request)
+                .submit(Contracts.UnbindActorReply.class)));
         boot("http start");
         http.start();
         boot("http start done");
@@ -170,6 +192,9 @@ public final class Program {
         public void configure() {
             context.handlers().addHandler(NotifyHandler.class);
             context.handlers().addHandler(AskHandler.class);
+            context.handlers().addHandler(BoundPushHandler.class);
+            context.handlers().addHandler(DestroyHandler.class);
+            context.handlers().addHandler(UnbindHandler.class);
         }
 
         @Override
@@ -240,5 +265,96 @@ public final class Program {
             return CompletableFuture.completedFuture(new Contracts.ActorReply(
                 request.scenario(), actor.actorId(), "reply:" + request.value()));
         }
+    }
+
+    public static final class BoundPushHandler implements ZLinkEntrySpotActorRequestHandler<
+        TestEntrySpot,
+        TestActor,
+        Contracts.BoundPushRequest,
+        Contracts.BoundPushReply> {
+        private final EvidenceStore evidence;
+
+        public BoundPushHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public CompletionStage<Contracts.BoundPushReply> handle(
+            TestEntrySpot entrySpot,
+            TestActor actor,
+            ZLinkSpotActorRequestContext context,
+            Contracts.BoundPushRequest request) {
+            actor.context().boundSession().send(new Contracts.BoundPushNotify(
+                request.scenario(), actor.actorId(), request.value())).submit();
+            evidence.append(new Contracts.ActorEvidence(
+                request.scenario(), actor.actorId(), "bound-push", request.value()));
+            return CompletableFuture.completedFuture(
+                Contracts.BoundPushReply.submitted(actor.actorId(), request.value()));
+        }
+    }
+
+    public static final class DestroyHandler implements ZLinkEntrySpotActorRequestHandler<
+        TestEntrySpot,
+        TestActor,
+        Contracts.DestroyActorRequest,
+        Contracts.DestroyActorReply> {
+        private final EvidenceStore evidence;
+
+        public DestroyHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public CompletionStage<Contracts.DestroyActorReply> handle(
+            TestEntrySpot entrySpot,
+            TestActor actor,
+            ZLinkSpotActorRequestContext context,
+            Contracts.DestroyActorRequest request) {
+            if (!actor.actorId().equals(request.actorId())) {
+                return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("destroy request actor id mismatch"));
+            }
+            return entrySpot.context().destroyActor(actor).thenApply(ignored -> {
+                evidence.append(new Contracts.ActorEvidence(
+                    request.scenario(), actor.actorId(), "destroy", "destroyed"));
+                return new Contracts.DestroyActorReply(actor.actorId(), true);
+            });
+        }
+    }
+
+    public static final class UnbindHandler implements ZLinkEntrySpotActorRequestHandler<
+        TestEntrySpot,
+        TestActor,
+        Contracts.UnbindActorRequest,
+        Contracts.UnbindActorReply> {
+        private final EvidenceStore evidence;
+
+        public UnbindHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public CompletionStage<Contracts.UnbindActorReply> handle(
+            TestEntrySpot entrySpot,
+            TestActor actor,
+            ZLinkSpotActorRequestContext context,
+            Contracts.UnbindActorRequest request) {
+            return actor.context().boundSession().disconnect().thenApply(ignored -> {
+                evidence.append(new Contracts.ActorEvidence(
+                    request.scenario(), actor.actorId(), "session-unbound", "disconnected"));
+                return new Contracts.UnbindActorReply(actor.actorId(), true);
+            });
+        }
+    }
+
+    private static String errorKind(Throwable error) {
+        Throwable current = error;
+        while (current instanceof java.util.concurrent.CompletionException
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current instanceof ZLinkFrameworkException frameworkError
+            ? frameworkError.kind().name()
+            : current.getClass().getSimpleName();
     }
 }

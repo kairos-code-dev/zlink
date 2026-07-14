@@ -45,4 +45,38 @@ public final class Contracts {
             return new ActorCallResponse(scenario, actorId, "failed", kind);
         }
     }
+
+    public record BindActorRequest(ActorRefWire actorRef) {
+    }
+
+    public record BindActorReply(String actorId, String nodeRid, long generation) {
+    }
+
+    public record BoundPushRequest(String scenario, String actorId, String value) {
+    }
+
+    public record BoundPushReply(String actorId, String value, boolean submitted, String errorKind) {
+        public static BoundPushReply submitted(String actorId, String value) {
+            return new BoundPushReply(actorId, value, true, null);
+        }
+
+        public static BoundPushReply failed(String actorId, String value, String errorKind) {
+            return new BoundPushReply(actorId, value, false, errorKind);
+        }
+    }
+
+    public record BoundPushNotify(String scenario, String actorId, String value) {
+    }
+
+    public record DestroyActorRequest(String scenario, String actorId) {
+    }
+
+    public record DestroyActorReply(String actorId, boolean destroyed) {
+    }
+
+    public record UnbindActorRequest(String scenario, String actorId) {
+    }
+
+    public record UnbindActorReply(String actorId, boolean unbound) {
+    }
 }

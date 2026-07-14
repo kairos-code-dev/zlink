@@ -13,12 +13,16 @@
 | `Shared/Messages.cs` | `Shared/src/main/java/.../shared/Contracts.java` | implemented |
 | `Server/Actor` | `Server/Actor/src/main/java/.../actor/Program.java` | implemented |
 | `Server/Caller` | `Server/Caller/src/main/java/.../caller/Program.java` | implemented |
+| session gateway x2 | `Server/Session/src/main/java/.../session/Program.java`를 서로 다른 Spot·stream endpoint로 두 번 실행 | implemented |
 | `Client` | `Client/src/main/java/.../client/Program.java` | implemented: caller response와 actor evidence를 함께 검증 |
-| Track A TA-A1..TA-A4 | Java client scenario assertions | implemented |
-| Track B TA-B1..TA-B3 | Java client failure/success assertions | implemented: TA-B2/TA-B3는 public `ActorRef` direct call 경로와 actor evidence 부재 확인으로 실패가 actor handler에 도달하지 않았음을 검증 |
+| Track A TA-A1..TA-A4 | 실제 stream connector bind, bind 전후 push, 공개 API unbind, actor destroy를 Java client와 역할별 evidence로 검증 | implemented |
+| Track B TA-B1..TA-B3 | Java client failure/success assertions | partial: TA-B2/TA-B3는 public `ActorRef` 직접 호출과 actor evidence 부재를 검증한다. TA-B1은 E2E-JV-15의 runtime error-kind blocker로 open이다. |
 
 ## 검증
 
-- `nice -n 10 timeout 600s ./run_e2e.sh all`
-- `logs/20260707-221746-3642522`: `to-actor-messaging e2e result=passed`.
-- `logs/20260707-185917-3176484`: `to-actor-messaging e2e result=passed`.
+- `./run_e2e.sh TA-A1` .. `./run_e2e.sh TA-A4`
+- `logs/20260715-030607-1313313`, `logs/20260715-030622-1314553`,
+  `logs/20260715-030635-1315721`, `logs/20260715-030651-1317573`:
+  각 selector에서 `to-actor-messaging e2e result=passed`.
+- `logs/20260715-030710-1319569`, `logs/20260715-030725-1320790`:
+  Track B 회귀 TA-B2·TA-B3 통과.

@@ -17,6 +17,11 @@ SCENARIO="${1:-all}"
 echo "start_order=${E2E_START_ORDER}"
 echo "scenario=${SCENARIO}"
 
+if [[ ! -f "Server/Session/build.gradle.kts" ]]; then
+  echo "ToActorMessaging requires the session gateway role" >&2
+  exit 1
+fi
+
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -30,7 +35,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(4):
+    for _ in range(10):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -77,13 +82,21 @@ redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
 wait_tcp "${redis_host}" "${redis_port}" redis
 
-read -r actor_http caller_http actor_spot caller_spot < <(reserve_ports)
+read -r actor_http caller_http session_a_http session_b_http \
+  actor_spot caller_spot session_a_spot session_b_spot \
+  session_a_stream session_b_stream < <(reserve_ports)
 export ZLINK_JAVA_E2E_ACTOR_HTTP="http://127.0.0.1:${actor_http}"
 export ZLINK_JAVA_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
+export ZLINK_JAVA_E2E_SESSION_A_HTTP="http://127.0.0.1:${session_a_http}"
+export ZLINK_JAVA_E2E_SESSION_B_HTTP="http://127.0.0.1:${session_b_http}"
 export ZLINK_JAVA_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
 export ZLINK_JAVA_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
+export ZLINK_JAVA_E2E_SESSION_A_STREAM="tcp://127.0.0.1:${session_a_stream}"
+export ZLINK_JAVA_E2E_SESSION_B_STREAM="tcp://127.0.0.1:${session_b_stream}"
 export ZLINK_JAVA_E2E_ACTOR_RID="actor-a"
 export ZLINK_JAVA_E2E_CALLER_RID="${ZLINK_JAVA_E2E_CALLER_RID:-aaa-caller}"
+echo "session_a_spot=tcp://127.0.0.1:${session_a_spot} session_a_stream=${ZLINK_JAVA_E2E_SESSION_A_STREAM}"
+echo "session_b_spot=tcp://127.0.0.1:${session_b_spot} session_b_stream=${ZLINK_JAVA_E2E_SESSION_B_STREAM}"
 
 print_logs() {
   local status="$1"
@@ -177,6 +190,24 @@ start_role() {
       ./Server/Caller/build/install/to-actor-caller/bin/to-actor-caller >"${log_dir}/caller.log" 2>&1 &
       pids+=("$!")
       ;;
+    session-a)
+      ZLINK_JAVA_E2E_SESSION_RID="session-a" \
+      ZLINK_JAVA_E2E_SESSION_HTTP="${ZLINK_JAVA_E2E_SESSION_A_HTTP}" \
+      ZLINK_JAVA_E2E_SESSION_SPOT="tcp://127.0.0.1:${session_a_spot}" \
+      ZLINK_JAVA_E2E_SESSION_STREAM="${ZLINK_JAVA_E2E_SESSION_A_STREAM}" \
+        ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+        >"${log_dir}/session-a.log" 2>&1 &
+      pids+=("$!")
+      ;;
+    session-b)
+      ZLINK_JAVA_E2E_SESSION_RID="session-b" \
+      ZLINK_JAVA_E2E_SESSION_HTTP="${ZLINK_JAVA_E2E_SESSION_B_HTTP}" \
+      ZLINK_JAVA_E2E_SESSION_SPOT="tcp://127.0.0.1:${session_b_spot}" \
+      ZLINK_JAVA_E2E_SESSION_STREAM="${ZLINK_JAVA_E2E_SESSION_B_STREAM}" \
+        ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+        >"${log_dir}/session-b.log" 2>&1 &
+      pids+=("$!")
+      ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -185,6 +216,8 @@ wait_role() {
   case "$1" in
     actor) wait_http "${ZLINK_JAVA_E2E_ACTOR_HTTP}" ;;
     caller) wait_http "${ZLINK_JAVA_E2E_CALLER_HTTP}" ;;
+    session-a) wait_http "${ZLINK_JAVA_E2E_SESSION_A_HTTP}" ;;
+    session-b) wait_http "${ZLINK_JAVA_E2E_SESSION_B_HTTP}" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -207,13 +240,15 @@ wait_role_ready() {
   case "$1" in
     actor) wait_log "${log_dir}/actor.log" "\\[boot\\] role=actor step=baselineActors done" "actor baseline readiness" ;;
     caller) wait_log "${log_dir}/caller.log" "\\[boot\\] role=caller step=main run done" "caller application readiness" ;;
+    session-a) wait_log "${log_dir}/session-a.log" "\[boot\] role=session rid=session-a step=main run done" "session-a application readiness" ;;
+    session-b) wait_log "${log_dir}/session-b.log" "\[boot\] role=session rid=session-b step=main run done" "session-b application readiness" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
 
 ../../gradlew --no-daemon --no-parallel --max-workers=1 --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
 
-SERVER_ROLES=(actor caller)
+SERVER_ROLES=(actor caller session-a session-b)
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"

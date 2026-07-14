@@ -43,44 +43,68 @@ try {
     $RedisContainer = $redis.ContainerId
     $env:GAMEQUEST_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:GAMEQUEST_REDIS_ENDPOINT"
+    $baseSettings = [ordered]@{
+        LogDirectory = $SampleLogDir
+        RedisEndpoint = $env:GAMEQUEST_REDIS_ENDPOINT
+        RedisKeyPrefix = $env:GAMEQUEST_REDIS_KEY_PREFIX
+        GameApiAHttpBaseUrl = $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
+        GameApiBHttpBaseUrl = $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
+        MissionAHttpBaseUrl = $env:GAMEQUEST_MISSION_A_HTTP_URL
+        MissionBHttpBaseUrl = $env:GAMEQUEST_MISSION_B_HTTP_URL
+        GameApiAStreamEndpoint = $env:GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT
+        GameApiBStreamEndpoint = $env:GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT
+        GameApiAStreamBindEndpoint = $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
+        GameApiBStreamBindEndpoint = $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
+        GameApiAChannelEndpoint = $env:GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
+        GameApiBChannelEndpoint = $env:GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
+        MissionAChannelEndpoint = $env:GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
+        MissionBChannelEndpoint = $env:GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
+        MissionASpotEndpoint = $env:GAMEQUEST_MISSION_A_SPOT_ENDPOINT
+        MissionASpotRouterEndpoint = $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
+        MissionBSpotEndpoint = $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT
+        MissionBSpotRouterEndpoint = $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
+        GameApiASpotEndpoint = $env:GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT
+        GameApiASpotRouterEndpoint = $env:GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
+        GameApiBSpotEndpoint = $env:GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT
+        GameApiBSpotRouterEndpoint = $env:GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
+    }
+    $configFiles = @{}
+    foreach ($instance in @("mission-a", "mission-b", "api-a", "api-b", "client")) {
+        $sample = [ordered]@{}
+        foreach ($key in $baseSettings.Keys) { $sample[$key] = $baseSettings[$key] }
+        $sample.InstanceName = $instance
+        $path = Join-Path $RunDir "appsettings.$instance.json"
+        @{ Sample = $sample } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+        $configFiles[$instance] = $path
+    }
 
-    $env:ASPNETCORE_URLS = $env:GAMEQUEST_MISSION_A_HTTP_URL
-    $env:GAMEQUEST_MISSION_NAME = "mission-a"
-    Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
+    Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["mission-a"]) | Out-Null
     Wait-SampleTcpEndpoint "mission-a-spot-router" $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-a-spot-pub" $env:GAMEQUEST_MISSION_A_SPOT_ENDPOINT
     Wait-SampleTcpEndpoint "mission-a-channel" $env:GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
     Wait-SampleHttpHealth "mission-a" $env:GAMEQUEST_MISSION_A_HTTP_URL
 
-    $env:ASPNETCORE_URLS = $env:GAMEQUEST_MISSION_B_HTTP_URL
-    $env:GAMEQUEST_MISSION_NAME = "mission-b"
-    Start-SampleDotnetAssembly -Name "mission-b" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
+    Start-SampleDotnetAssembly -Name "mission-b" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["mission-b"]) | Out-Null
     Wait-SampleTcpEndpoint "mission-b-spot-router" $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-b-spot-pub" $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT
     Wait-SampleTcpEndpoint "mission-b-channel" $env:GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
     Wait-SampleHttpHealth "mission-b" $env:GAMEQUEST_MISSION_B_HTTP_URL
 
-    $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
-    $env:GAMEQUEST_API_NAME = "api-a"
-    $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
-    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
+    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-a"]) | Out-Null
     Wait-SampleTcpEndpoint "api-a-stream" $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
     Wait-SampleTcpEndpoint "api-a-channel" $env:GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "api-a-spot" $env:GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT
     Wait-SampleTcpEndpoint "api-a-spot-router" $env:GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleHttpHealth "api-a" $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
 
-    $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
-    $env:GAMEQUEST_API_NAME = "api-b"
-    $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
-    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
+    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-b"]) | Out-Null
     Wait-SampleTcpEndpoint "api-b-stream" $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
     Wait-SampleTcpEndpoint "api-b-channel" $env:GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "api-b-spot" $env:GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT
     Wait-SampleTcpEndpoint "api-b-spot-router" $env:GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleHttpHealth "api-b" $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
 
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/GameQuest.Client.csproj")
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/GameQuest.Client.csproj") -Arguments @("--config", $configFiles["client"])
 
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "gamequest api event routed"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "gamequest mission processed"

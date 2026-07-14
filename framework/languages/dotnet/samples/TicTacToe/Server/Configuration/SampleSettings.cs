@@ -34,9 +34,12 @@ internal sealed record SampleSettings(
     public static SampleSettings Load(string[] args, string? mode = null)
     {
         var defaults = CreateDefault(mode);
-        var configPath = ReadOption(args, "--config");
+        if (args.Length != 2 || args[0] != "--config" || string.IsNullOrWhiteSpace(args[1]))
+            throw new ArgumentException("Usage: --config PATH");
+
+        var configPath = args[1];
         var builder = new ConfigurationBuilder();
-        if (!string.IsNullOrWhiteSpace(configPath)) builder.AddJsonFile(configPath, false);
+        builder.AddJsonFile(configPath, false);
 
         var section = builder.Build().GetSection("Sample");
         var apiIndex = ReadInt(section[nameof(ApiIndex)], defaults.ApiIndex);
@@ -49,7 +52,7 @@ internal sealed record SampleSettings(
         var spotEndpoints = ReadList(section, nameof(SpotEndpoints), defaults.SpotEndpoint);
         var spotPubSubEndpoints = ReadList(section, nameof(SpotPubSubEndpoints), defaults.SpotPubSubEndpoint);
         var peerPlayIndex = playIndex == 0 ? 1 : 0;
-        var configured = new SampleSettings(
+        var resolved = new SampleSettings(
             section[nameof(InstanceName)] ?? defaults.InstanceName,
             apiIndex,
             playIndex,
@@ -72,8 +75,6 @@ internal sealed record SampleSettings(
             section[nameof(RedisEndpoint)] ?? defaults.RedisEndpoint,
             section[nameof(RedisKeyPrefix)] ?? defaults.RedisKeyPrefix,
             section[nameof(LogDirectory)] ?? defaults.LogDirectory);
-
-        var resolved = ApplyArgs(configured, args);
 
         // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
         // an isolated container; require the endpoint so a stray direct run never
@@ -121,97 +122,6 @@ internal sealed record SampleSettings(
             Path.Combine("logs", "tictactoe"));
     }
 
-    private static SampleSettings ApplyArgs(SampleSettings defaults, string[] args)
-    {
-        string? instanceName = null;
-        string? apiBind = null;
-        string? apiUrl = null;
-        string? apiChannel = null;
-        string? playChannel = null;
-        string? play = null;
-        string? spot = null;
-        string? spotPubSub = null;
-        string? playSpotNodeRid = null;
-        string? redisEndpoint = null;
-        string? redisKeyPrefix = null;
-        string? logDirectory = null;
-
-        for (var i = 0; i < args.Length; i++)
-        {
-            string? ReadValue()
-            {
-                if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{args[i]}'.");
-
-                i++;
-                return args[i];
-            }
-
-            switch (args[i])
-            {
-                case "--instance":
-                    instanceName = ReadValue();
-                    break;
-                case "--api-bind":
-                    apiBind = ReadValue();
-                    break;
-                case "--api-url":
-                    apiUrl = ReadValue();
-                    break;
-                case "--api-channel-endpoint":
-                    apiChannel = ReadValue();
-                    break;
-                case "--play-channel-endpoint":
-                    playChannel = ReadValue();
-                    break;
-                case "--play-endpoint":
-                    play = ReadValue();
-                    break;
-                case "--spot-endpoint":
-                    spot = ReadValue();
-                    break;
-                case "--spot-pubsub-endpoint":
-                    spotPubSub = ReadValue();
-                    break;
-                case "--play-spot-node-rid":
-                    playSpotNodeRid = ReadValue();
-                    break;
-                case "--redis-endpoint":
-                    redisEndpoint = ReadValue();
-                    break;
-                case "--redis-key-prefix":
-                    redisKeyPrefix = ReadValue();
-                    break;
-                case "--log-dir":
-                    logDirectory = ReadValue();
-                    break;
-            }
-        }
-
-        return new SampleSettings(
-            instanceName ?? defaults.InstanceName,
-            defaults.ApiIndex,
-            defaults.PlayIndex,
-            apiBind ?? defaults.ApiBindUrl,
-            apiUrl ?? apiBind ?? defaults.ApiPublicUrl,
-            apiChannel ?? defaults.ApiChannelEndpoint,
-            defaults.ApiChannelEndpoints,
-            playChannel ?? defaults.PlayChannelEndpoint,
-            defaults.PlayChannelEndpoints,
-            play ?? defaults.PlayEndpoint,
-            defaults.PlayEndpoints,
-            spot ?? defaults.SpotEndpoint,
-            defaults.SpotEndpoints,
-            spotPubSub ?? defaults.SpotPubSubEndpoint,
-            defaults.SpotPubSubEndpoints,
-            playSpotNodeRid ?? defaults.PlaySpotNodeRid,
-            defaults.PeerPlaySpotNodeRid,
-            defaults.PeerSpotEndpoint,
-            defaults.PeerSpotPubEndpoint,
-            redisEndpoint ?? defaults.RedisEndpoint,
-            redisKeyPrefix ?? defaults.RedisKeyPrefix,
-            logDirectory ?? defaults.LogDirectory);
-    }
-
     private static (string InstanceName, int ApiIndex, int PlayIndex) ResolveMode(string? mode)
     {
         return mode switch
@@ -255,13 +165,4 @@ internal sealed record SampleSettings(
         return $"play-node-{index + 1}";
     }
 
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        if (index < 0) return null;
-
-        if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for '{name}'.");
-
-        return args[index + 1];
-    }
 }

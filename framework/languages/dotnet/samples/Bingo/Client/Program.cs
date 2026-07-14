@@ -10,16 +10,11 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        if (args.Length == 0)
-            throw new ArgumentException(
-                "Usage: --stream-a-endpoint tcp://HOST:PORT --stream-b-endpoint tcp://HOST:PORT");
-
-        var streamAEndpoint = ReadOption(args, "--stream-a-endpoint")
-                              ?? throw new ArgumentException("Missing --stream-a-endpoint.");
-        var streamBEndpoint = ReadOption(args, "--stream-b-endpoint")
-                              ?? throw new ArgumentException("Missing --stream-b-endpoint.");
+        var configuration = Bingo.Server.Configuration.SampleTopology.Load(args);
+        var streamAEndpoint = configuration.Topology.SessionA.StreamEndpoint;
+        var streamBEndpoint = configuration.Topology.SessionB.StreamEndpoint;
         using var loggerFactory = SampleLogging.CreateFactory(
-            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            configuration.LogDirectory,
             "client");
         var logger = loggerFactory.CreateLogger("Bingo.Client");
 
@@ -58,11 +53,5 @@ internal static class Program
                     observation.PayloadLength);
                 return ValueTask.CompletedTask;
             });
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 }

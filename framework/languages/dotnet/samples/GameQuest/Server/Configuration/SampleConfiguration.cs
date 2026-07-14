@@ -1,5 +1,6 @@
 using GameQuest.Shared;
 using Systems.Zlink;
+using System.Text.Json;
 
 namespace GameQuest.Server.Configuration;
 
@@ -72,33 +73,53 @@ public sealed record GameQuestTopology(
     RoutingId GameApiASpotRid,
     RoutingId GameApiBSpotRid)
 {
-    public static GameQuestTopology FromEnvironment() => new(
-        Required("GAMEQUEST_REDIS_ENDPOINT"),
-        Environment.GetEnvironmentVariable("GAMEQUEST_REDIS_KEY_PREFIX") ?? "gamequest:",
-        Required("GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL"),
-        Required("GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL"),
-        Required("GAMEQUEST_MISSION_A_HTTP_URL"),
-        Required("GAMEQUEST_MISSION_B_HTTP_URL"),
-        Required("GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_A_SPOT_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_B_SPOT_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT"),
-        RoutingId.From("7101"),
-        RoutingId.From("7102"),
-        RoutingId.From("7001"),
-        RoutingId.From("7002"),
-        RoutingId.From("7201"),
-        RoutingId.From("7202"));
+    public static GameQuestRuntimeConfiguration Load(string[] args)
+    {
+        var index = Array.IndexOf(args, "--config");
+        if (index < 0 || index + 1 >= args.Length)
+            throw new ArgumentException("Usage: --config PATH");
+        var document = JsonSerializer.Deserialize<GameQuestConfigurationDocument>(
+                           File.ReadAllText(args[index + 1]),
+                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       ?? throw new InvalidOperationException("GameQuest configuration is empty.");
+        var settings = document.Sample;
+        settings.Validate();
+        var topology = new GameQuestTopology(
+            settings.RedisEndpoint,
+            settings.RedisKeyPrefix,
+            settings.GameApiAHttpBaseUrl,
+            settings.GameApiBHttpBaseUrl,
+            settings.MissionAHttpBaseUrl,
+            settings.MissionBHttpBaseUrl,
+            settings.GameApiAStreamEndpoint,
+            settings.GameApiBStreamEndpoint,
+            settings.GameApiAChannelEndpoint,
+            settings.GameApiBChannelEndpoint,
+            settings.MissionAChannelEndpoint,
+            settings.MissionBChannelEndpoint,
+            settings.MissionASpotEndpoint,
+            settings.MissionASpotRouterEndpoint,
+            settings.MissionBSpotEndpoint,
+            settings.MissionBSpotRouterEndpoint,
+            settings.GameApiASpotEndpoint,
+            settings.GameApiASpotRouterEndpoint,
+            settings.GameApiBSpotEndpoint,
+            settings.GameApiBSpotRouterEndpoint,
+            RoutingId.From("7101"),
+            RoutingId.From("7102"),
+            RoutingId.From("7001"),
+            RoutingId.From("7002"),
+            RoutingId.From("7201"),
+            RoutingId.From("7202"));
+        var streamBindEndpoint = string.Equals(settings.InstanceName, "api-b", StringComparison.Ordinal)
+            ? settings.GameApiBStreamBindEndpoint
+            : settings.GameApiAStreamBindEndpoint;
+        return new GameQuestRuntimeConfiguration(
+            topology,
+            settings.InstanceName,
+            settings.LogDirectory,
+            streamBindEndpoint);
+    }
 
     public QuestMissionInstanceTopology ForQuestMission(string missionName)
     {
@@ -107,9 +128,10 @@ public sealed record GameQuestTopology(
             : new QuestMissionInstanceTopology("mission-a", MissionASpotEndpoint, MissionASpotRouterEndpoint, MissionASpotRid, OwnerIndex: 0);
     }
 
-    private static string Required(string name) =>
-        Environment.GetEnvironmentVariable(name)
-        ?? throw new InvalidOperationException($"{name} is required.");
+    public string MissionHttpBaseUrl(string missionName) =>
+        string.Equals(missionName, "mission-b", StringComparison.Ordinal)
+            ? MissionBHttpBaseUrl
+            : MissionAHttpBaseUrl;
 
     public RoutingId RouteRidForApi(string apiName) =>
         string.Equals(apiName, "api-b", StringComparison.Ordinal)
@@ -146,6 +168,53 @@ public sealed record GameQuestTopology(
         string.Equals(missionName, "mission-b", StringComparison.Ordinal)
             ? MissionBChannelEndpoint
             : MissionAChannelEndpoint;
+}
+
+public sealed record GameQuestRuntimeConfiguration(
+    GameQuestTopology Topology,
+    string InstanceName,
+    string LogDirectory,
+    string StreamBindEndpoint);
+
+public sealed class GameQuestConfigurationDocument
+{
+    public GameQuestConfiguration Sample { get; init; } = new();
+}
+
+public sealed class GameQuestConfiguration
+{
+    public string InstanceName { get; init; } = "";
+    public string LogDirectory { get; init; } = "";
+    public string RedisEndpoint { get; init; } = "";
+    public string RedisKeyPrefix { get; init; } = "";
+    public string GameApiAHttpBaseUrl { get; init; } = "";
+    public string GameApiBHttpBaseUrl { get; init; } = "";
+    public string MissionAHttpBaseUrl { get; init; } = "";
+    public string MissionBHttpBaseUrl { get; init; } = "";
+    public string GameApiAStreamEndpoint { get; init; } = "";
+    public string GameApiBStreamEndpoint { get; init; } = "";
+    public string GameApiAStreamBindEndpoint { get; init; } = "";
+    public string GameApiBStreamBindEndpoint { get; init; } = "";
+    public string GameApiAChannelEndpoint { get; init; } = "";
+    public string GameApiBChannelEndpoint { get; init; } = "";
+    public string MissionAChannelEndpoint { get; init; } = "";
+    public string MissionBChannelEndpoint { get; init; } = "";
+    public string MissionASpotEndpoint { get; init; } = "";
+    public string MissionASpotRouterEndpoint { get; init; } = "";
+    public string MissionBSpotEndpoint { get; init; } = "";
+    public string MissionBSpotRouterEndpoint { get; init; } = "";
+    public string GameApiASpotEndpoint { get; init; } = "";
+    public string GameApiASpotRouterEndpoint { get; init; } = "";
+    public string GameApiBSpotEndpoint { get; init; } = "";
+    public string GameApiBSpotRouterEndpoint { get; init; } = "";
+
+    public void Validate()
+    {
+        foreach (var value in GetType().GetProperties().Select(property =>
+                     (property.Name, Value: (string?)property.GetValue(this))))
+            if (string.IsNullOrWhiteSpace(value.Value))
+                throw new InvalidOperationException($"GameQuest Sample.{value.Name} is required.");
+    }
 }
 
 public static class GameQuestRouting

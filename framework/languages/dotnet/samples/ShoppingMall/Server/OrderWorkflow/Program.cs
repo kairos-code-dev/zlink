@@ -6,18 +6,13 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var instanceId = ReadOption(args, "--instance")
-                         ?? Environment.GetEnvironmentVariable("SHOPPINGMALL_WORKFLOW_INSTANCE")
-                         ?? "workflow-a";
-        var topology = SampleTopology.Create();
-        var instance = topology.ForWorkflowInstance(instanceId);
-        await using var app = OrderWorkflowServerHostFactory.Build(topology, instance, args);
+        var configuration = SampleTopology.Load(args);
+        var instance = configuration.Topology.ForWorkflowInstance(configuration.InstanceId);
+        await using var app = OrderWorkflowServerHostFactory.Build(
+            configuration.Topology,
+            instance,
+            configuration.LogDirectory,
+            args);
         await app.RunAsync();
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 }

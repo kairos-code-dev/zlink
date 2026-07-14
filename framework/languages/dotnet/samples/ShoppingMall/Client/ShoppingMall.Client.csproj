@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../Shared/ShoppingMall.Shared.csproj"/>
+        <ProjectReference Include="../Server/Configuration/ShoppingMall.Server.Configuration.csproj"/>
         <ProjectReference Include="../../Common/Logging/Zlink.Samples.Logging.csproj"/>
         <PackageReference Include="Zlink.HttpClient"/>
         <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>

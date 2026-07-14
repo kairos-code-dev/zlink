@@ -1,4 +1,5 @@
 using Systems.Zlink;
+using System.Text.Json;
 
 namespace Bingo.Server.Configuration;
 
@@ -12,54 +13,64 @@ public sealed record SampleTopology(
     string RedisEndpoint,
     string RedisKeyPrefix)
 {
-    public static SampleTopology Create()
+    public static SampleRuntimeConfiguration Load(string[] args)
     {
-        var playAChannelEndpoint = ReadEndpoint("BINGO_PLAY_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47104");
-        var playBChannelEndpoint = ReadEndpoint("BINGO_PLAY_B_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47114");
+        var index = Array.IndexOf(args, "--config");
+        if (index < 0 || index + 1 >= args.Length)
+            throw new ArgumentException("Usage: --config PATH");
+
+        var document = JsonSerializer.Deserialize<SampleConfigurationDocument>(
+                           File.ReadAllText(args[index + 1]),
+                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       ?? throw new InvalidOperationException("Bingo configuration is empty.");
+        var settings = document.Sample;
+        settings.Validate();
+
         var playA = new SamplePlayNode(
-            playAChannelEndpoint,
-            playBChannelEndpoint,
-            ReadEndpoint("BINGO_PLAY_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47110"),
-            ReadEndpoint("BINGO_PLAY_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47115"),
-            ReadEndpoint("BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47111"),
+            settings.PlayAChannelEndpoint,
+            settings.PlayBChannelEndpoint,
+            settings.PlayASpotEndpoint,
+            settings.PlayBSpotEndpoint,
+            settings.PlayASpotRouterEndpoint,
             RoutingId.From("2201"));
         var playB = new SamplePlayNode(
-            playBChannelEndpoint,
-            playAChannelEndpoint,
-            ReadEndpoint("BINGO_PLAY_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47115"),
-            ReadEndpoint("BINGO_PLAY_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47110"),
-            ReadEndpoint("BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47116"),
+            settings.PlayBChannelEndpoint,
+            settings.PlayAChannelEndpoint,
+            settings.PlayBSpotEndpoint,
+            settings.PlayASpotEndpoint,
+            settings.PlayBSpotRouterEndpoint,
             RoutingId.From("2202"));
 
-        return new SampleTopology(
+        var topology = new SampleTopology(
             new SampleApiNode(
-                ReadEndpoint("BINGO_API_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47103"),
+                settings.ApiAChannelEndpoint,
                 RoutingId.From("3301")),
             new SampleApiNode(
-                ReadEndpoint("BINGO_API_B_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47117"),
+                settings.ApiBChannelEndpoint,
                 RoutingId.From("3302")),
             playA,
             playB,
             new SampleSessionNode(
-                ReadEndpoint("BINGO_SESSION_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47105"),
-                ReadEndpoint("BINGO_SESSION_A_ROUTER_ENDPOINT", "tcp://127.0.0.1:47106"),
-                ReadEndpoint("BINGO_SESSION_A_STREAM_ENDPOINT", "tcp://127.0.0.1:47112"),
+                settings.SessionASpotEndpoint,
+                settings.SessionARouterEndpoint,
+                settings.SessionAStreamEndpoint,
                 RoutingId.From("1101"),
                 RoutingId.From("1102"),
                 playA.NodeRid,
                 playA.SpotRouterEndpoint,
                 playA.PlayChannelEndpoint),
             new SampleSessionNode(
-                ReadEndpoint("BINGO_SESSION_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47107"),
-                ReadEndpoint("BINGO_SESSION_B_ROUTER_ENDPOINT", "tcp://127.0.0.1:47108"),
-                ReadEndpoint("BINGO_SESSION_B_STREAM_ENDPOINT", "tcp://127.0.0.1:47113"),
+                settings.SessionBSpotEndpoint,
+                settings.SessionBRouterEndpoint,
+                settings.SessionBStreamEndpoint,
                 RoutingId.From("1103"),
                 RoutingId.From("1104"),
                 playB.NodeRid,
                 playB.SpotRouterEndpoint,
                 playB.PlayChannelEndpoint),
-            ReadRequired("BINGO_REDIS_ENDPOINT"),
-            ReadText("BINGO_REDIS_KEY_PREFIX", "bingo:"));
+            settings.RedisEndpoint,
+            settings.RedisKeyPrefix);
+        return new SampleRuntimeConfiguration(topology, settings.NodeName, settings.LogDirectory);
     }
 
     public SampleApiNode Api(string nodeName)
@@ -77,29 +88,64 @@ public sealed record SampleTopology(
         return string.Equals(nodeName, "b", StringComparison.OrdinalIgnoreCase) ? SessionB : SessionA;
     }
 
-    private static string ReadEndpoint(string name, string defaultValue)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
-    }
+}
 
-    private static string ReadText(string name, string defaultValue)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
-    }
+public sealed record SampleRuntimeConfiguration(
+    SampleTopology Topology,
+    string NodeName,
+    string LogDirectory);
 
-    private static string ReadRequired(string name)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidOperationException(
-                $"Environment variable '{name}' is required. Run the sample via run_sample.sh/run_sample.ps1, "
-                + "which provisions an isolated Redis container and passes its endpoint to every server role.");
-        }
+public sealed class SampleConfigurationDocument
+{
+    public SampleConfiguration Sample { get; init; } = new();
+}
 
-        return value;
+public sealed class SampleConfiguration
+{
+    public string NodeName { get; init; } = "";
+    public string LogDirectory { get; init; } = "";
+    public string RedisEndpoint { get; init; } = "";
+    public string RedisKeyPrefix { get; init; } = "";
+    public string ApiAChannelEndpoint { get; init; } = "";
+    public string ApiBChannelEndpoint { get; init; } = "";
+    public string PlayAChannelEndpoint { get; init; } = "";
+    public string PlayBChannelEndpoint { get; init; } = "";
+    public string PlayASpotEndpoint { get; init; } = "";
+    public string PlayBSpotEndpoint { get; init; } = "";
+    public string PlayASpotRouterEndpoint { get; init; } = "";
+    public string PlayBSpotRouterEndpoint { get; init; } = "";
+    public string SessionASpotEndpoint { get; init; } = "";
+    public string SessionBSpotEndpoint { get; init; } = "";
+    public string SessionARouterEndpoint { get; init; } = "";
+    public string SessionBRouterEndpoint { get; init; } = "";
+    public string SessionAStreamEndpoint { get; init; } = "";
+    public string SessionBStreamEndpoint { get; init; } = "";
+
+    public void Validate()
+    {
+        foreach (var (name, value) in new Dictionary<string, string>
+                 {
+                     [nameof(NodeName)] = NodeName,
+                     [nameof(LogDirectory)] = LogDirectory,
+                     [nameof(RedisEndpoint)] = RedisEndpoint,
+                     [nameof(RedisKeyPrefix)] = RedisKeyPrefix,
+                     [nameof(ApiAChannelEndpoint)] = ApiAChannelEndpoint,
+                     [nameof(ApiBChannelEndpoint)] = ApiBChannelEndpoint,
+                     [nameof(PlayAChannelEndpoint)] = PlayAChannelEndpoint,
+                     [nameof(PlayBChannelEndpoint)] = PlayBChannelEndpoint,
+                     [nameof(PlayASpotEndpoint)] = PlayASpotEndpoint,
+                     [nameof(PlayBSpotEndpoint)] = PlayBSpotEndpoint,
+                     [nameof(PlayASpotRouterEndpoint)] = PlayASpotRouterEndpoint,
+                     [nameof(PlayBSpotRouterEndpoint)] = PlayBSpotRouterEndpoint,
+                     [nameof(SessionASpotEndpoint)] = SessionASpotEndpoint,
+                     [nameof(SessionBSpotEndpoint)] = SessionBSpotEndpoint,
+                     [nameof(SessionARouterEndpoint)] = SessionARouterEndpoint,
+                     [nameof(SessionBRouterEndpoint)] = SessionBRouterEndpoint,
+                     [nameof(SessionAStreamEndpoint)] = SessionAStreamEndpoint,
+                     [nameof(SessionBStreamEndpoint)] = SessionBStreamEndpoint
+                 })
+            if (string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"Bingo Sample.{name} is required.");
     }
 }
 

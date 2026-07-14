@@ -1,4 +1,5 @@
 using Systems.Zlink;
+using System.Text.Json;
 
 namespace ShoppingMall.Server.Configuration;
 
@@ -50,27 +51,37 @@ public sealed record SampleTopology(
     RoutingId WorkflowASpotRid,
     RoutingId WorkflowBSpotRid)
 {
-    public static SampleTopology Create()
+    public static SampleRuntimeConfiguration Load(string[] args)
     {
-        return new SampleTopology(
-            Read("SHOPPINGMALL_REDIS_ENDPOINT", "127.0.0.1:6379"),
-            Read("SHOPPINGMALL_REDIS_KEY_PREFIX", "shoppingmall:"),
-            Read("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:48203"),
-            Read("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:48204"),
-            Read("SHOPPINGMALL_WORKFLOW_A_HTTP_URL", "http://127.0.0.1:48207"),
-            Read("SHOPPINGMALL_WORKFLOW_B_HTTP_URL", "http://127.0.0.1:48208"),
-            Read("SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:48209"),
-            Read("SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT", "tcp://127.0.0.1:48210"),
-            Read("SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT", "tcp://127.0.0.1:48211"),
-            Read("SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48212"),
-            Read("SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT", "tcp://127.0.0.1:48213"),
-            Read("SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48214"),
+        var index = Array.IndexOf(args, "--config");
+        if (index < 0 || index + 1 >= args.Length)
+            throw new ArgumentException("Usage: --config PATH");
+        var document = JsonSerializer.Deserialize<SampleConfigurationDocument>(
+                           File.ReadAllText(args[index + 1]),
+                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       ?? throw new InvalidOperationException("ShoppingMall configuration is empty.");
+        var settings = document.Sample;
+        settings.Validate();
+        var topology = new SampleTopology(
+            settings.RedisEndpoint,
+            settings.RedisKeyPrefix,
+            settings.ApiAHttpUrl,
+            settings.ApiBHttpUrl,
+            settings.WorkflowAHttpUrl,
+            settings.WorkflowBHttpUrl,
+            settings.WorkflowAChannelEndpoint,
+            settings.WorkflowBChannelEndpoint,
+            settings.WorkflowASpotEndpoint,
+            settings.WorkflowASpotRouterEndpoint,
+            settings.WorkflowBSpotEndpoint,
+            settings.WorkflowBSpotRouterEndpoint,
             RoutingId.From("6001"),
             RoutingId.From("6002"),
             RoutingId.From("6201"),
             RoutingId.From("6202"),
             RoutingId.From("6101"),
             RoutingId.From("6102"));
+        return new SampleRuntimeConfiguration(topology, settings.InstanceId, settings.LogDirectory);
     }
 
     public ApiInstanceTopology ForInstance(string instanceId)
@@ -122,10 +133,41 @@ public sealed record SampleTopology(
         return sum % 2;
     }
 
-    private static string Read(string name, string fallback)
+}
+
+public sealed record SampleRuntimeConfiguration(
+    SampleTopology Topology,
+    string InstanceId,
+    string LogDirectory);
+
+public sealed class SampleConfigurationDocument
+{
+    public SampleConfiguration Sample { get; init; } = new();
+}
+
+public sealed class SampleConfiguration
+{
+    public string InstanceId { get; init; } = "";
+    public string LogDirectory { get; init; } = "";
+    public string RedisEndpoint { get; init; } = "";
+    public string RedisKeyPrefix { get; init; } = "";
+    public string ApiAHttpUrl { get; init; } = "";
+    public string ApiBHttpUrl { get; init; } = "";
+    public string WorkflowAHttpUrl { get; init; } = "";
+    public string WorkflowBHttpUrl { get; init; } = "";
+    public string WorkflowAChannelEndpoint { get; init; } = "";
+    public string WorkflowBChannelEndpoint { get; init; } = "";
+    public string WorkflowASpotEndpoint { get; init; } = "";
+    public string WorkflowASpotRouterEndpoint { get; init; } = "";
+    public string WorkflowBSpotEndpoint { get; init; } = "";
+    public string WorkflowBSpotRouterEndpoint { get; init; } = "";
+
+    public void Validate()
     {
-        var value = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        foreach (var value in GetType().GetProperties().Select(property =>
+                     (property.Name, Value: (string?)property.GetValue(this))))
+            if (string.IsNullOrWhiteSpace(value.Value))
+                throw new InvalidOperationException($"ShoppingMall Sample.{value.Name} is required.");
     }
 }
 

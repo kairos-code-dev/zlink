@@ -7,11 +7,12 @@ namespace ShoppingMall.Client;
 
 internal static class Program
 {
-    public static async Task Main()
+    public static async Task Main(string[] args)
     {
-        var topology = SampleTopology.Create();
+        var configuration = ShoppingMall.Server.Configuration.SampleTopology.Load(args);
+        var topology = configuration.Topology;
         using var loggerFactory = SampleLogging.CreateFactory(
-            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            configuration.LogDirectory,
             "client");
         var logger = loggerFactory.CreateLogger("ShoppingMall.Client");
         using var apiA = ZLinkHttpClient.Create(topology.ApiAHttpUrl)

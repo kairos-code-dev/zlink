@@ -140,7 +140,7 @@ try {
     Wait-SampleTcpEndpoint "api-b-channel" $apiBChannelEndpoint
 
     $clientLog = Join-Path $LogDir "client.log"
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiAPublicUrl) *> $clientLog
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiAPublicUrl, "--log-dir", $SampleLogDir) *> $clientLog
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe" "TicTacToe stream-inbound marker"
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* seq=[0-9]" "TicTacToe sequenced stream-inbound response marker"
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* name=.*Notify" "TicTacToe stream-inbound push marker"

@@ -17,13 +17,15 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var topology = GameQuestTopology.FromEnvironment();
-        var missionName = Environment.GetEnvironmentVariable("GAMEQUEST_MISSION_NAME") ?? "mission-a";
+        var configuration = GameQuestTopology.Load(args);
+        var topology = configuration.Topology;
+        var missionName = configuration.InstanceName;
         var instance = topology.ForQuestMission(missionName);
         var builder = WebApplication.CreateBuilder(args);
+        builder.WebHost.UseUrls(topology.MissionHttpBaseUrl(missionName));
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("GAMEQUEST_LOG_DIR"),
+            configuration.LogDirectory,
             missionName);
 
         builder.Services.AddSingleton(topology);
@@ -42,7 +44,7 @@ internal static class Program
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(missionName))
+                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.AddClientServerChannel(SampleNames.QuestOwnerChannelFor(missionName))

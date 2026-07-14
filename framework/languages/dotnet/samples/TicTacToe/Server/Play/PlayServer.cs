@@ -32,7 +32,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .SetKeyPrefix(settings.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
+                .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
 

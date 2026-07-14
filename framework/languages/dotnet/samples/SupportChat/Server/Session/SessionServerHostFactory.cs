@@ -13,12 +13,13 @@ public static class SessionServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
-        SampleSessionNode session)
+        SampleSessionNode session,
+        string logDirectory)
     {
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            logDirectory,
             "session");
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
@@ -28,7 +29,7 @@ public static class SessionServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("session"))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, "session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.AddClientServerChannel(SampleNames.ApiChannel)

@@ -10,13 +10,13 @@ namespace Bingo.Server.Api;
 
 public static class ApiServerHostFactory
 {
-    public static IHost Build(SampleTopology topology, SampleApiNode node)
+    public static IHost Build(SampleTopology topology, SampleApiNode node, string logDirectory)
     {
         var traceLabel = $"api-{node.RouteRid}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            logDirectory,
             traceLabel);
         builder.Services.AddZLinkFramework(options =>
         {
@@ -25,7 +25,7 @@ public static class ApiServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(traceLabel))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);

@@ -92,8 +92,9 @@ public sealed partial class RegressionTests
         Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
             powershellRunner, StringComparison.Ordinal);
 
-        Assert.Contains("SHOPPINGMALL_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
-        Assert.Contains("SHOPPINGMALL_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        Assert.Contains("RedisEndpoint", topology, StringComparison.Ordinal);
+        Assert.Contains("RedisKeyPrefix", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("Environment.GetEnvironmentVariable", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("SHOPPINGMALL_STORE_DIR", topology, StringComparison.Ordinal);
         Assert.Contains("new RedisCommerceStores(topology)", commerceApi, StringComparison.Ordinal);
         Assert.Contains("new RedisCommerceStores(topology)", workflowHostFactory, StringComparison.Ordinal);

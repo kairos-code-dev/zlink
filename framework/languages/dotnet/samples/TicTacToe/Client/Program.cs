@@ -10,7 +10,7 @@ internal static class Program
     {
         var options = TicTacToeClientArguments.Parse(args);
         using var loggerFactory = SampleLogging.CreateFactory(
-            SampleLogging.DirectoryFromEnvironment("TICTACTOE_LOG_DIR"),
+            TicTacToeClientArguments.ReadLogDirectory(args),
             "client");
         var logger = loggerFactory.CreateLogger("TicTacToe.Client");
         await new TicTacToeClientScenario(logger).RunAsync(options);
@@ -20,6 +20,9 @@ internal static class Program
 
 internal static class TicTacToeClientArguments
 {
+    public static string ReadLogDirectory(string[] args) =>
+        ReadOption(args, "--log-dir") ?? "logs";
+
     public static TicTacToeClientOptions Parse(string[] args)
     {
         var defaults = TicTacToeClientOptions.CreateDefault();

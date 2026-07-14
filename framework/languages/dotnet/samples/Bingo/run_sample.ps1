@@ -97,32 +97,61 @@ try {
     $env:BINGO_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
 
+    $baseSettings = [ordered]@{
+        LogDirectory = $SampleLogDir
+        RedisEndpoint = $env:BINGO_REDIS_ENDPOINT
+        RedisKeyPrefix = $env:BINGO_REDIS_KEY_PREFIX
+        ApiAChannelEndpoint = $env:BINGO_API_A_CHANNEL_ENDPOINT
+        ApiBChannelEndpoint = $env:BINGO_API_B_CHANNEL_ENDPOINT
+        PlayAChannelEndpoint = $env:BINGO_PLAY_A_CHANNEL_ENDPOINT
+        PlayBChannelEndpoint = $env:BINGO_PLAY_B_CHANNEL_ENDPOINT
+        PlayASpotEndpoint = $env:BINGO_PLAY_A_SPOT_ENDPOINT
+        PlayBSpotEndpoint = $env:BINGO_PLAY_B_SPOT_ENDPOINT
+        PlayASpotRouterEndpoint = $env:BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
+        PlayBSpotRouterEndpoint = $env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
+        SessionASpotEndpoint = $env:BINGO_SESSION_A_SPOT_ENDPOINT
+        SessionBSpotEndpoint = $env:BINGO_SESSION_B_SPOT_ENDPOINT
+        SessionARouterEndpoint = $env:BINGO_SESSION_A_ROUTER_ENDPOINT
+        SessionBRouterEndpoint = $env:BINGO_SESSION_B_ROUTER_ENDPOINT
+        SessionAStreamEndpoint = $env:BINGO_SESSION_A_STREAM_ENDPOINT
+        SessionBStreamEndpoint = $env:BINGO_SESSION_B_STREAM_ENDPOINT
+    }
+    $configFiles = @{}
+    foreach ($role in @("api-a", "api-b", "play-a", "play-b", "session-a", "session-b", "client")) {
+        $sample = [ordered]@{}
+        foreach ($key in $baseSettings.Keys) { $sample[$key] = $baseSettings[$key] }
+        $sample.NodeName = if ($role.EndsWith("-b")) { "b" } elseif ($role -eq "client") { "client" } else { "a" }
+        $path = Join-Path $RunDir "appsettings.$role.json"
+        @{ Sample = $sample } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+        $configFiles[$role] = $path
+    }
+
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "Bingo.csproj")
 
 
-    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
+    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-a"]) | Out-Null
     Wait-SampleTcpEndpoint "api-a" $env:BINGO_API_A_CHANNEL_ENDPOINT
-    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--node", "b") | Out-Null
+    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-b"]) | Out-Null
     Wait-SampleTcpEndpoint "api-b" $env:BINGO_API_B_CHANNEL_ENDPOINT
 
-    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
+    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-a"]) | Out-Null
     Wait-SampleTcpEndpoint "play-a" $env:BINGO_PLAY_A_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "play-a-spot-router" $env:BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "play-a-spot-pub" $env:BINGO_PLAY_A_SPOT_ENDPOINT
-    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--node", "b") | Out-Null
+    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-b"]) | Out-Null
     Wait-SampleTcpEndpoint "play-b" $env:BINGO_PLAY_B_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "play-b-spot-router" $env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "play-b-spot-pub" $env:BINGO_PLAY_B_SPOT_ENDPOINT
 
-    Start-SampleDotnetAssembly -Name "session-a" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
+    Start-SampleDotnetAssembly -Name "session-a" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["session-a"]) | Out-Null
     Wait-SampleTcpEndpoint "session-a-router" $env:BINGO_SESSION_A_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "session-a-stream" $env:BINGO_SESSION_A_STREAM_ENDPOINT
-    Start-SampleDotnetAssembly -Name "session-b" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--node", "b") | Out-Null
+    Start-SampleDotnetAssembly -Name "session-b" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["session-b"]) | Out-Null
     Wait-SampleTcpEndpoint "session-b-router" $env:BINGO_SESSION_B_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "session-b-stream" $env:BINGO_SESSION_B_STREAM_ENDPOINT
 
     $clientLog = Join-Path $LogDir "client.log"
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-a-endpoint", $env:BINGO_SESSION_A_STREAM_ENDPOINT, "--stream-b-endpoint", $env:BINGO_SESSION_B_STREAM_ENDPOINT) *> $clientLog
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--config", $configFiles["client"]) *> $clientLog
     if (-not (Select-String -Path $clientLog -Pattern "bingo=completed" -Quiet)) {
         throw "Bingo client did not complete."
     }

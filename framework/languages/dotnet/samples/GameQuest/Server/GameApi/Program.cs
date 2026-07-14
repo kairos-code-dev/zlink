@@ -20,15 +20,22 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var topology = GameQuestTopology.FromEnvironment();
-        var apiName = Environment.GetEnvironmentVariable("GAMEQUEST_API_NAME") ?? "api-a";
+        var configuration = GameQuestTopology.Load(args);
+        var topology = configuration.Topology;
+        var apiName = configuration.InstanceName;
+        var streamEndpoint = configuration.StreamBindEndpoint;
         var builder = WebApplication.CreateBuilder(args);
+        builder.WebHost.UseUrls(
+            string.Equals(apiName, "api-b", StringComparison.Ordinal)
+                ? topology.GameApiBHttpBaseUrl
+                : topology.GameApiAHttpBaseUrl);
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("GAMEQUEST_LOG_DIR"),
+            configuration.LogDirectory,
             apiName);
 
         builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton<GameQuestStore>();
         builder.Services.AddSingleton<IGameplayEventStore>(sp => sp.GetRequiredService<GameQuestStore>());
         builder.Services.AddSingleton<IQuestSessionStore>(sp => sp.GetRequiredService<GameQuestStore>());
@@ -46,7 +53,7 @@ internal static class Program
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(apiName))
+                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.AddClientServerChannel(SampleNames.GameApiChannel)
@@ -58,8 +65,7 @@ internal static class Program
             options.AddClientServerChannel(SampleNames.QuestOwnerChannelFor("mission-b"))
                 .EnableClient();
             options.AddStreamNode(SampleNames.StreamNode)
-                .Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
-                      ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."))
+                .Bind(streamEndpoint)
                 .RegisterSession<GameQuestSession>();
             options.AddSpotMesh(SampleNames.SessionSpotDiscovery)
                 .EnableRouter(topology.GameApiSpotRouterEndpoint(apiName))
@@ -84,7 +90,7 @@ internal static class Program
                 return;
             }
 
-            await BridgeWebSocketToStreamAsync(context);
+            await BridgeWebSocketToStreamAsync(context, streamEndpoint);
         });
 
         app.MapGet("/quest/progress/{playerId}", async (
@@ -197,11 +203,9 @@ internal static class Program
         await app.RunAsync();
     }
 
-    private static async Task BridgeWebSocketToStreamAsync(HttpContext context)
+    private static async Task BridgeWebSocketToStreamAsync(HttpContext context, string streamEndpoint)
     {
-        var bindEndpoint = Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
-                           ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required.");
-        var target = new Uri(bindEndpoint);
+        var target = new Uri(streamEndpoint);
         using var tcp = new TcpClient();
         await tcp.ConnectAsync(target.Host, target.Port, context.RequestAborted);
         await using var stream = tcp.GetStream();

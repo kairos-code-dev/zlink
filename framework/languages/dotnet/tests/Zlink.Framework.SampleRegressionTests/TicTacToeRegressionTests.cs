@@ -179,7 +179,8 @@ public sealed partial class RegressionTests
         var playServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
 
         Assert.Contains("string RedisKeyPrefix", settings, StringComparison.Ordinal);
-        Assert.Contains("case \"--redis-key-prefix\"", settings, StringComparison.Ordinal);
+        Assert.Contains("section[nameof(RedisKeyPrefix)]", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"--redis-key-prefix\"", settings, StringComparison.Ordinal);
         Assert.Contains("SetKeyPrefix(settings.RedisKeyPrefix)", playServer, StringComparison.Ordinal);
     }
 

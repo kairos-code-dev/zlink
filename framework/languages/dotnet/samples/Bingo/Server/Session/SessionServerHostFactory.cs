@@ -14,13 +14,14 @@ public static class SessionServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
-        SampleSessionNode session)
+        SampleSessionNode session,
+        string logDirectory)
     {
         var traceLabel = $"session-{session.RoutingId}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            logDirectory,
             traceLabel);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(session);
@@ -32,7 +33,7 @@ public static class SessionServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(traceLabel))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);

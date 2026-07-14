@@ -1,4 +1,5 @@
 using GameQuest.GameApi.Domain;
+using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 
 namespace GameQuest.GameApi.Application;
@@ -7,9 +8,10 @@ internal sealed class GameplayActionService(
     IGameplayEventStore store,
     IGameplayEventOwnerDispatcher ownerDispatcher,
     IQuestProgressSynchronizer quests,
+    GameQuestRuntimeConfiguration configuration,
     ILogger<GameplayActionService> logger)
 {
-    private readonly string _apiName = Environment.GetEnvironmentVariable("GAMEQUEST_API_NAME") ?? "api";
+    private readonly string _apiName = configuration.InstanceName;
 
     public async ValueTask<KillMonsterRes> KillMonsterAsync(
         KillMonsterReq request,

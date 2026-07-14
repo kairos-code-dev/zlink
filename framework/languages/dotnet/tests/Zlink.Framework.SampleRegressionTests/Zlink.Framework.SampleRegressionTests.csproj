@@ -29,6 +29,7 @@
         <Compile Include="GameQuestRegressionTests.cs"/>
         <Compile Include="E2ERunnerRegressionTests.cs"/>
         <Compile Include="Regression.cs"/>
+        <Compile Include="SampleConfigurationPolicyRegressionTests.cs"/>
         <Compile Include="ShoppingMallRegressionTests.cs"/>
         <Compile Include="SupportChatRegressionTests.cs"/>
         <Compile Include="TicTacToeRegressionTests.cs"/>

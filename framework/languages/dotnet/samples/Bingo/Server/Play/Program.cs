@@ -6,15 +6,13 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
-        var topology = SampleTopology.Create();
-        using var host = PlayServerHostFactory.Build(topology, topology.Play(ReadNode(args)));
+        var configuration = SampleTopology.Load(args);
+        using var host = PlayServerHostFactory.Build(
+            configuration.Topology,
+            configuration.Topology.Play(configuration.NodeName),
+            configuration.LogDirectory);
 
         await host.RunAsync();
     }
 
-    private static string ReadNode(string[] args)
-    {
-        var index = Array.IndexOf(args, "--node");
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : "a";
-    }
 }

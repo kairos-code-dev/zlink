@@ -22,13 +22,14 @@ public static class PlayServerHostFactory
     public static IHost Build(
         SampleTopology topology,
         SamplePlayNode node,
+        string logDirectory,
         bool enableMetrics = true)
     {
         var traceLabel = $"play-{node.NodeRid}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            logDirectory,
             traceLabel);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(node);
@@ -47,7 +48,7 @@ public static class PlayServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(traceLabel))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);

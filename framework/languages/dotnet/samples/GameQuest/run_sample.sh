@@ -171,38 +171,73 @@ start_server() {
 }
 
 wait_port redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
+MISSION_A_CONFIG_FILE="${RUN_DIR}/appsettings.mission-a.json"
+MISSION_B_CONFIG_FILE="${RUN_DIR}/appsettings.mission-b.json"
+API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
+API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
+CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
+python3 - "${MISSION_A_CONFIG_FILE}" "${MISSION_B_CONFIG_FILE}" "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
+import json
+import sys
 
-ASPNETCORE_URLS="${GAMEQUEST_MISSION_A_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-a" \
-  start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
+settings = {
+    "LogDirectory": "${GAMEQUEST_LOG_DIR}",
+    "RedisEndpoint": "${GAMEQUEST_REDIS_ENDPOINT}",
+    "RedisKeyPrefix": "${GAMEQUEST_REDIS_KEY_PREFIX}",
+    "GameApiAHttpBaseUrl": "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}",
+    "GameApiBHttpBaseUrl": "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}",
+    "MissionAHttpBaseUrl": "${GAMEQUEST_MISSION_A_HTTP_URL}",
+    "MissionBHttpBaseUrl": "${GAMEQUEST_MISSION_B_HTTP_URL}",
+    "GameApiAStreamEndpoint": "${GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT}",
+    "GameApiBStreamEndpoint": "${GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT}",
+    "GameApiAStreamBindEndpoint": "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}",
+    "GameApiBStreamBindEndpoint": "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}",
+    "GameApiAChannelEndpoint": "${GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT}",
+    "GameApiBChannelEndpoint": "${GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT}",
+    "MissionAChannelEndpoint": "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}",
+    "MissionBChannelEndpoint": "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}",
+    "MissionASpotEndpoint": "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}",
+    "MissionASpotRouterEndpoint": "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}",
+    "MissionBSpotEndpoint": "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}",
+    "MissionBSpotRouterEndpoint": "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}",
+    "GameApiASpotEndpoint": "${GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT}",
+    "GameApiASpotRouterEndpoint": "${GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT}",
+    "GameApiBSpotEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT}",
+    "GameApiBSpotRouterEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}",
+}
+for path, instance_name in zip(sys.argv[1:], ["mission-a", "mission-b", "api-a", "api-b", "client"]):
+    with open(path, "w", encoding="utf-8") as output:
+        json.dump({"Sample": {**settings, "InstanceName": instance_name}}, output, indent=2)
+PY
+
+start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_A_CONFIG_FILE}"
 wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-a-spot-pub "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}"
 wait_port mission-a-channel "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
-ASPNETCORE_URLS="${GAMEQUEST_MISSION_B_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-b" \
-  start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
+start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_B_CONFIG_FILE}"
 wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-b-spot-pub "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}"
 wait_port mission-b-channel "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 
-ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-a" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}" \
-  start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
+start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a-stream "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}"
 wait_port api-a-channel "${GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT}"
 wait_port api-a-spot "${GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT}"
 wait_port api-a-spot-router "${GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT}"
 wait_http api-a "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}"
 
-ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-b" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}" \
-  start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
+start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
 wait_port api-b-channel "${GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT}"
 wait_port api-b-spot "${GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT}"
 wait_port api-b-spot-router "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" >"${LOG_DIR}/client.log" 2>&1
+dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" -- \
+  --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "gamequest api event routed" "${LOG_DIR}/api-a.log"
 grep -q "gamequest api event routed" "${LOG_DIR}/api-b.log"

@@ -159,26 +159,55 @@ REDIS_CONTAINER="zlink-shoppingmall-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER SHOPPINGMALL_REDIS_ENDPOINT "zlink-shoppingmall-dotnet-redis" redis:7.2-alpine
 export SHOPPINGMALL_REDIS_ENDPOINT
 wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
+WORKFLOW_A_CONFIG_FILE="${RUN_DIR}/appsettings.workflow-a.json"
+WORKFLOW_B_CONFIG_FILE="${RUN_DIR}/appsettings.workflow-b.json"
+API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
+API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
+CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
+python3 - "${WORKFLOW_A_CONFIG_FILE}" "${WORKFLOW_B_CONFIG_FILE}" "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
+import json
+import sys
 
-start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-a
+settings = {
+    "LogDirectory": "${SHOPPINGMALL_LOG_DIR}",
+    "RedisEndpoint": "${SHOPPINGMALL_REDIS_ENDPOINT}",
+    "RedisKeyPrefix": "${SHOPPINGMALL_REDIS_KEY_PREFIX}",
+    "ApiAHttpUrl": "${SHOPPINGMALL_API_A_HTTP_URL}",
+    "ApiBHttpUrl": "${SHOPPINGMALL_API_B_HTTP_URL}",
+    "WorkflowAHttpUrl": "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}",
+    "WorkflowBHttpUrl": "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}",
+    "WorkflowAChannelEndpoint": "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}",
+    "WorkflowBChannelEndpoint": "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}",
+    "WorkflowASpotEndpoint": "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}",
+    "WorkflowASpotRouterEndpoint": "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}",
+    "WorkflowBSpotEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}",
+    "WorkflowBSpotRouterEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}",
+}
+for path, instance_id in zip(sys.argv[1:], ["workflow-a", "workflow-b", "api-a", "api-b", "client"]):
+    with open(path, "w", encoding="utf-8") as output:
+        json.dump({"Sample": {**settings, "InstanceId": instance_id}}, output, indent=2)
+PY
+
+start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_A_CONFIG_FILE}"
 wait_port workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
 wait_port workflow-a-spot-router "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}"
 wait_port workflow-a-spot-pub "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}"
 wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}"
 
-start_server workflow-b "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-b
+start_server workflow-b "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_B_CONFIG_FILE}"
 wait_port workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
 wait_port workflow-b-spot-router "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}"
 wait_port workflow-b-spot-pub "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}"
 wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}"
 
-start_server api-a "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --instance api-a
+start_server api-a "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --config "${API_A_CONFIG_FILE}"
 wait_http api-a "${SHOPPINGMALL_API_A_HTTP_URL}"
 
-start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --instance api-b
+start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --config "${API_B_CONFIG_FILE}"
 wait_http api-b "${SHOPPINGMALL_API_B_HTTP_URL}"
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj" >"${LOG_DIR}/client.log" 2>&1
+dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj" -- \
+  --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "shoppingmall=completed" "${SHOPPINGMALL_LOG_DIR}/client.log"
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-a.log"

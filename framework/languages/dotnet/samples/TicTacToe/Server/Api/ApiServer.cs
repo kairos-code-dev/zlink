@@ -18,7 +18,7 @@ internal sealed class ApiServer(SampleSettings settings)
         {
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
+                .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(ApiServer));
 

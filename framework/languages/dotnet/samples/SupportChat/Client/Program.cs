@@ -9,10 +9,10 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var streamEndpoint = ReadOption(args, "--stream-endpoint")
-                             ?? throw new ArgumentException("Missing --stream-endpoint.");
+        var configuration = SupportChat.Server.Configuration.SampleTopology.Load(args);
+        var streamEndpoint = configuration.Topology.StreamEndpoint;
         using var loggerFactory = SampleLogging.CreateFactory(
-            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            configuration.LogDirectory,
             "client");
         var logger = loggerFactory.CreateLogger("SupportChat.Client");
 
@@ -43,11 +43,5 @@ internal static class Program
             RequestTimeout = SampleNames.RequestTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 }

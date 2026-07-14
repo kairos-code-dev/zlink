@@ -9,12 +9,12 @@ namespace SupportChat.Server.Api;
 
 public static class ApiServerHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleTopology topology, string logDirectory)
     {
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            logDirectory,
             "api");
         builder.Services.AddZLinkFramework(options =>
         {
@@ -23,7 +23,7 @@ public static class ApiServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("api"))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, "api"))
                 .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.AddClientServerChannel(SampleNames.ApiChannel)

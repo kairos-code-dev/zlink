@@ -16,12 +16,12 @@ namespace SupportChat.Server.Support;
 
 public static class SupportServerHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleTopology topology, string logDirectory)
     {
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            logDirectory,
             "support");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<IConversationStarter, ConversationStarter>();
@@ -38,7 +38,7 @@ public static class SupportServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("support"))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, "support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.AddClientServerChannel(SampleNames.SupportChannel)

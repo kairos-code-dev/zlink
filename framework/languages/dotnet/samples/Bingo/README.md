@@ -68,8 +68,8 @@ framework configuration shown by the common sample specification.
 Redis is required for two responsibilities: framework location store data and
 the Bingo match queue. The runner always provisions a dedicated Redis Docker
 container for the current execution, asks Docker to assign a free loopback host
-port, derives `BINGO_REDIS_ENDPOINT` from that container, and removes only that
+port, writes that endpoint to each role's temporary config file, and removes only that
 container on success or failure. It does not reuse an externally supplied Redis
-endpoint. The runner also supplies a `BINGO_REDIS_KEY_PREFIX` that includes the
+container. The runner also writes a Redis key prefix that includes the
 sample name and execution id so parallel sample runs do not share location store
 or match queue keys.

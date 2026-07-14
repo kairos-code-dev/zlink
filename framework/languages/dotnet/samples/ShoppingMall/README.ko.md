@@ -27,7 +27,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Server/Shared/`는 서버 역할 사이에서 공유하는 저장소와 도메인 코드를 담는다.
 - 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
 - 주문 이벤트 스트림, 조회 모델, 장바구니·재고·결제·멱등 상태도 같은 Redis 안에 저장한다.
-  Redis key는 실행별 `SHOPPINGMALL_REDIS_KEY_PREFIX` 아래에만 만들어진다.
+  Redis key는 역할별 임시 config 파일에 기록한 실행 전용 key prefix 아래에만 만들어진다.
 - `run_sample.sh`와 `run_sample.ps1`는 실행마다 전용 Redis Docker 컨테이너를 직접 띄운다.
   외부 Redis endpoint 재사용 mode는 제공하지 않는다. 컨테이너 이름, Docker host port,
   Redis key prefix, log directory가 모두 실행별로 달라서 동시에 도는 다른 테스트와 섞이지 않는다.

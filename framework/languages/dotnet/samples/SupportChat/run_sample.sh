@@ -121,13 +121,14 @@ wait_port() {
 start_server() {
   local name="$1"
   local project="$2"
+  shift 2
   local project_dir
   local project_name
   local assembly
   project_dir="$(cd "$(dirname "${project}")" && pwd)"
   project_name="$(basename "${project}" .csproj)"
   assembly="${project_dir}/bin/Debug/net8.0/${project_name}.dll"
-  dotnet "${assembly}" >"${LOG_DIR}/${name}.log" 2>&1 &
+  dotnet "${assembly}" "$@" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
@@ -152,24 +153,44 @@ REDIS_CONTAINER="zlink-supportchat-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER SUPPORTCHAT_REDIS_ENDPOINT "zlink-supportchat-dotnet-redis" redis:7.2-alpine
 export SUPPORTCHAT_REDIS_ENDPOINT
 wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
+CONFIG_FILE="${RUN_DIR}/appsettings.json"
+python3 - "${CONFIG_FILE}" <<PY
+import json
+import sys
+
+settings = {
+    "LogDirectory": "${SUPPORTCHAT_LOG_DIR}",
+    "RedisEndpoint": "${SUPPORTCHAT_REDIS_ENDPOINT}",
+    "RedisKeyPrefix": "${SUPPORTCHAT_REDIS_KEY_PREFIX}",
+    "ApiChannelEndpoint": "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}",
+    "SupportChannelEndpoint": "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}",
+    "SessionSpotEndpoint": "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}",
+    "SessionRouterEndpoint": "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}",
+    "SupportEntrySpotEndpoint": "${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT}",
+    "SupportEntrySpotRouterEndpoint": "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}",
+    "StreamEndpoint": "${SUPPORTCHAT_STREAM_ENDPOINT}",
+}
+with open(sys.argv[1], "w", encoding="utf-8") as output:
+    json.dump({"Sample": settings}, output, indent=2)
+PY
 
 dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 
-start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj"
+start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj" --config "${CONFIG_FILE}"
 wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"
 wait_port support-spot-router "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}"
 wait_port support-spot-pub "${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT}"
 
-start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj"
+start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --config "${CONFIG_FILE}"
 wait_port api "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}"
 
-start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj"
+start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj" --config "${CONFIG_FILE}"
 wait_port session-route "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj" -- \
-  --stream-endpoint "${SUPPORTCHAT_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "supportchat=completed" "${LOG_DIR}/client.log"
 grep -q "supportchat-closed-typing-ignore=verified" "${LOG_DIR}/client.log"

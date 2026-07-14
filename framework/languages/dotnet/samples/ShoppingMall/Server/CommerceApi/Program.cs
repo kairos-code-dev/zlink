@@ -19,14 +19,13 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var instanceId = ReadOption(args, "--instance") ??
-                         Environment.GetEnvironmentVariable("SHOPPINGMALL_INSTANCE") ?? "api-a";
-        var topology = SampleTopology.Create();
-        var instance = topology.ForInstance(instanceId);
+        var configuration = SampleTopology.Load(args);
+        var topology = configuration.Topology;
+        var instance = topology.ForInstance(configuration.InstanceId);
         var builder = WebApplication.CreateBuilder(args);
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            configuration.LogDirectory,
             instance.InstanceId);
 
         builder.WebHost.UseUrls(instance.HttpUrl);
@@ -50,7 +49,7 @@ internal static class Program
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
+                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.AddClientServerChannel(SampleNames.OrderWorkflowChannelFor("workflow-a"))
                 .EnableClient();
@@ -222,12 +221,6 @@ internal static class Program
         });
 
         await app.RunAsync();
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
     private static bool HasSequence(

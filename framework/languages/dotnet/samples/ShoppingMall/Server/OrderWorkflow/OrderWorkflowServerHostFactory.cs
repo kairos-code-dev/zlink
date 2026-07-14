@@ -23,12 +23,13 @@ public static class OrderWorkflowServerHostFactory
     public static WebApplication Build(
         SampleTopology topology,
         WorkflowInstanceTopology instance,
+        string logDirectory,
         string[]? args = null)
     {
         var builder = WebApplication.CreateBuilder(args ?? []);
         SampleLogging.Configure(
             builder.Logging,
-            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            logDirectory,
             instance.InstanceId);
 
         builder.WebHost.UseUrls(instance.HttpUrl);
@@ -51,7 +52,7 @@ public static class OrderWorkflowServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
+                .TraceLogFile(SampleFlowLog.Path(logDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
             options.AddClientServerChannel(SampleNames.OrderWorkflowChannelFor(instance.InstanceId))

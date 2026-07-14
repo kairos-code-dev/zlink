@@ -8,9 +8,10 @@ internal sealed class QuestEventProcessor(
     IQuestStore store,
     IGameApiSnapshotClient snapshots,
     IQuestProgressNotifier notifications,
+    QuestMissionInstanceTopology instance,
     ILogger<QuestEventProcessor> logger)
 {
-    private readonly string _missionName = Environment.GetEnvironmentVariable("GAMEQUEST_MISSION_NAME") ?? "mission";
+    private readonly string _missionName = instance.MissionName;
     private readonly QuestProjectionBuilder _projectionBuilder = new();
 
     public async ValueTask ProcessAsync(

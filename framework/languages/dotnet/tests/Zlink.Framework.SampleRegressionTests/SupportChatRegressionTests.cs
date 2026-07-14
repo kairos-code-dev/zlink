@@ -147,8 +147,9 @@ public sealed partial class RegressionTests
         Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("SUPPORTCHAT_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
 
-        Assert.Contains("SUPPORTCHAT_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
-        Assert.Contains("SUPPORTCHAT_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        Assert.Contains("RedisEndpoint", topology, StringComparison.Ordinal);
+        Assert.Contains("RedisKeyPrefix", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("Environment.GetEnvironmentVariable", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("public sealed record ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("EnsureSupportUserActorReq", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
@@ -172,7 +173,8 @@ public sealed partial class RegressionTests
         Assert.Contains("ExpectTimeoutAsync", clientScenario, StringComparison.Ordinal);
 
         Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
-        Assert.Contains("실행별 `SUPPORTCHAT_REDIS_KEY_PREFIX`", readme, StringComparison.Ordinal);
+        Assert.Contains("실행별 key prefix를 역할들이 읽는 임시 config 파일에 기록한다", readme,
+            StringComparison.Ordinal);
         Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("message-flow evidence", readme, StringComparison.Ordinal);
     }

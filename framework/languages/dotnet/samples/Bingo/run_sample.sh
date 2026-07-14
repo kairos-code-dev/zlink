@@ -103,6 +103,13 @@ export BINGO_SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp:/
 export BINGO_PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
 export BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
 export BINGO_API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
+API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
+API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
+PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
+PLAY_B_CONFIG_FILE="${RUN_DIR}/appsettings.play-b.json"
+SESSION_A_CONFIG_FILE="${RUN_DIR}/appsettings.session-a.json"
+SESSION_B_CONFIG_FILE="${RUN_DIR}/appsettings.session-b.json"
+CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
 
 endpoint_host() {
   local endpoint="$1"
@@ -154,6 +161,34 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER BINGO_REDIS_ENDPOINT "zlink-bing
 export BINGO_REDIS_ENDPOINT
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
+python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" "${SESSION_A_CONFIG_FILE}" "${SESSION_B_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
+import json
+import sys
+
+settings = {
+    "LogDirectory": "${BINGO_LOG_DIR}",
+    "RedisEndpoint": "${BINGO_REDIS_ENDPOINT}",
+    "RedisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}",
+    "ApiAChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}",
+    "ApiBChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}",
+    "PlayAChannelEndpoint": "${BINGO_PLAY_A_CHANNEL_ENDPOINT}",
+    "PlayBChannelEndpoint": "${BINGO_PLAY_B_CHANNEL_ENDPOINT}",
+    "PlayASpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}",
+    "PlayBSpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}",
+    "PlayASpotRouterEndpoint": "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}",
+    "PlayBSpotRouterEndpoint": "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}",
+    "SessionASpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
+    "SessionBSpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
+    "SessionARouterEndpoint": "${BINGO_SESSION_A_ROUTER_ENDPOINT}",
+    "SessionBRouterEndpoint": "${BINGO_SESSION_B_ROUTER_ENDPOINT}",
+    "SessionAStreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}",
+    "SessionBStreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}",
+}
+for path, node_name in zip(sys.argv[1:], ["a", "b", "a", "b", "a", "b", "client"]):
+    with open(path, "w", encoding="utf-8") as output:
+        json.dump({"Sample": {**settings, "NodeName": node_name}}, output, indent=2)
+PY
+
 start_server() {
   local name="$1"
   local project="$2"
@@ -170,30 +205,29 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
-start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node a
+start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
 wait_port play-a "${BINGO_PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
 wait_port play-a-spot-pub "${BINGO_PLAY_A_SPOT_ENDPOINT}"
-start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node b
+start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_B_CONFIG_FILE}"
 wait_port play-b "${BINGO_PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
 wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 
-start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node a
+start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
-start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node b
+start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
 
-start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node a
+start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_A_CONFIG_FILE}"
 wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"
 wait_port session-a-stream "${BINGO_SESSION_A_STREAM_ENDPOINT}"
-start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node b
+start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_B_CONFIG_FILE}"
 wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
-  --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \
-  --stream-b-endpoint "${BINGO_SESSION_B_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
 
 # Server-side evidence is written asynchronously after the client exits;

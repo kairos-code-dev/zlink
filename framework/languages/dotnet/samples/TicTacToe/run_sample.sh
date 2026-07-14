@@ -225,7 +225,8 @@ wait_port api-b-http "${API_B_BIND_URL}"
 wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
-  --api-url "${API_A_PUBLIC_URL}" >"${LOG_DIR}/client.log" 2>&1
+  --api-url "${API_A_PUBLIC_URL}" \
+  --log-dir "${SAMPLE_LOG_DIR}" >"${LOG_DIR}/client.log" 2>&1
 wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"

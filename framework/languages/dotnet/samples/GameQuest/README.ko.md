@@ -31,8 +31,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
   session binding은 framework actor/session lifecycle이 location store를 통해 관리하며, 샘플이
   별도 binding schema를 만들지 않는다.
 - shell/PowerShell runner는 실행마다 전용 Redis Docker 컨테이너를 직접 띄운다. 외부 Redis endpoint
-  재사용 mode는 제공하지 않는다. container 이름, host port, `GAMEQUEST_REDIS_KEY_PREFIX`, log directory는
-  sample 이름과 실행 id를 포함해 매 실행마다 달라서 동시에 도는 다른 테스트와 섞이지 않는다.
+  재사용 mode는 제공하지 않는다. container 이름, host port, Redis key prefix, log directory는
+  sample 이름과 실행 id를 포함해 매 실행마다 달라지며 역할별 임시 config 파일에 기록한다.
 - `Server/Configuration/`은 역할별 endpoint, channel, packet 설정을 모은다.
 
 ## 성공 조건

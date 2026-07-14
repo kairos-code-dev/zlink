@@ -4,12 +4,13 @@ using SupportChat.Server.Session;
 
 internal static class Program
 {
-    private static async Task Main()
+    private static async Task Main(string[] args)
     {
-        var topology = SampleTopology.Create();
+        var configuration = SampleTopology.Load(args);
         await SessionServerHostFactory.Build(
-                topology,
-                topology.PrimarySession)
+                configuration.Topology,
+                configuration.Topology.PrimarySession,
+                configuration.LogDirectory)
             .RunAsync();
     }
 }

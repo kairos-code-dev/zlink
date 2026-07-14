@@ -4,9 +4,10 @@ using SupportChat.Server.Support;
 
 internal static class Program
 {
-    private static async Task Main()
+    private static async Task Main(string[] args)
     {
-        await SupportServerHostFactory.Build(SampleTopology.Create())
+        var configuration = SampleTopology.Load(args);
+        await SupportServerHostFactory.Build(configuration.Topology, configuration.LogDirectory)
             .RunAsync();
     }
 }

@@ -98,6 +98,8 @@ int main ()
       read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
     const auto runner = read_file (e2e_root / "run_e2e_all.sh");
     const auto spot_service_runner = read_file (e2e_root / "SpotService/run_e2e.sh");
+    const auto registration_codec_runner =
+      read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
@@ -293,6 +295,12 @@ int main ()
     }
     gate.require (all_scenario_list.find ("SM-Q9") == std::string::npos, "E2E-CP-05",
                   "SpotService all mode includes non-contract SM-Q9");
+
+    /* E2E-CP-30 — RC-A6 is a startup-negative path, not a client scenario. */
+    gate.require (registration_codec_runner.find ("== rc-a*") == std::string::npos,
+                  "E2E-CP-30", "RegistrationCodec routes RC-A6 through the client glob");
+    gate.require (registration_codec_runner.find ("== rc-a[1-5]") != std::string::npos,
+                  "E2E-CP-30", "RegistrationCodec client selector does not name RC-A1 through A5");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

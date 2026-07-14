@@ -163,7 +163,7 @@ wait_port codec-requester-http "$REQUESTER_HTTP"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == rc-a* || "$SCENARIO_LOWER" == rc-b[1-4] ]]; then
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == rc-a[1-5] || "$SCENARIO_LOWER" == rc-b[1-4] ]]; then
   ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
   ZLINK_CPP_E2E_API_ENDPOINT="$API" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \

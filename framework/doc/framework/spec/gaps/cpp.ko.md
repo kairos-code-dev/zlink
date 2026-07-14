@@ -547,7 +547,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-27** (결함) — **`RC-A1`·`RC-A2`(P0)가 `RC-A3`와 완전히 같은 등록 호출**이다. config의 변주 축이 0개
 - [ ] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다
 - [ ] **E2E-CP-29** (미구현) — **`RC-B4`(P0)의 JSON fallback 규칙이 검증되지 않는다.** 미지원 타입을 보내지 않는다
-- [ ] **E2E-CP-30** (결함) — **`./run_e2e.sh RC-A6`가 항상 실패한다**(client에 branch가 없다)
+- [x] **E2E-CP-30** (결함) — **`./run_e2e.sh RC-A6`가 항상 실패한다**(client에 branch가 없다)
+  - 근거: 수정 전 target-contract gate가 `rc-a*` glob이 RC-A6를 일반 client로 보내는 것과 A1~A5 명시 selector 부재를 검출했다. client selector를 `rc-a[1-5]`로 좁힌 뒤 gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.
 - [ ] **E2E-CP-31** (결함) — **`RL-D1`·`RL-C2` client scenario가 dead code**다. `main.cpp`가 부르지 않는다
 - [ ] **E2E-CP-32** (결함) — **`RL-B2`(P1) 단언이 실패할 수 없다.** 500ms timeout이라 crash와 무관하게 통과
 - [ ] **E2E-CP-33** (결함) — **`RL-D5` soak가 순차 burst**이고, **`RL-D4` wire 호환이 검증되지 않는다**

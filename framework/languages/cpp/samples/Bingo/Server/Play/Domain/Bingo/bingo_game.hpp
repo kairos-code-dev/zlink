@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,9 @@ class bingo_game_t
     void submit_card (const std::string &actor_id, const std::vector<int> &numbers)
     {
         auto &player = find_player (actor_id);
+        if (!player.card.empty ()) {
+            throw std::runtime_error ("bingo card has already been submitted");
+        }
         const bingo_card_t card (numbers);
         player.card.assign (card.numbers ().begin (), card.numbers ().end ());
         player.marks.assign (card.marks ().begin (), card.marks ().end ());

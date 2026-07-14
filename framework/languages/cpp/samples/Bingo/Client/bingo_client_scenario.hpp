@@ -152,6 +152,16 @@ class bingo_client_scenario_t
                   return player.actor_id == client2_auth.actor_id && player.card.size () == 9;
               }));
 
+            bool duplicate_card_rejected = false;
+            try {
+                (void) co_await client2.request (client2_card_request)
+                  .async<submit_bingo_card_res_t> ();
+            }
+            catch (const std::exception &) {
+                duplicate_card_rejected = true;
+            }
+            ensure (duplicate_card_rejected, "a player must not replace a submitted card");
+
             trace ("client1 submit card");
             constexpr int expected_draw_count = 3;
             auto reward_future = observer.wait_for<bingo_reward_announced_notify_t> ()

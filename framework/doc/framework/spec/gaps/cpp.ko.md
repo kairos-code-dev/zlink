@@ -464,7 +464,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 **아래는 샘플 서버 인프라를 정독해 나온 것이다. 진짜 버그가 5건 더 나왔다.**
 
 - [ ] **SMP-CP-51** (**버그**) — **거절된 actor join이 정상 응답으로 나간다.** `std::visit`이 **양쪽 대안에 다 컴파일**된다 (Bingo·TicTacToe)
-- [ ] **SMP-CP-52** (**버그**) — **Bingo가 draw 진행 중 카드 재제출을 받아** 이미 뽑힌 번호를 새 카드에 소급 적용한다. **승리를 조작할 수 있다**
+- [x] **SMP-CP-52** (**버그**) — **Bingo가 draw 진행 중 카드 재제출을 받아** 이미 뽑힌 번호를 새 카드에 소급 적용한다. **승리를 조작할 수 있다**
+  - 근거: 수정 전 공개 client의 중복 제출 오류 단언이 실패했다. domain이 이미 제출된 카드를 거부하도록 수정한 뒤 `./run_sample.sh`의 전체 client/server self-check와 관련 ctest 3개가 통과했다.
 - [ ] **SMP-CP-53** (**버그**) — **Bingo `StopObservingBingoEventsReq`에 가드가 0개**다. **게임 중인 player를 방에서 쫓아낼 수 있다**
 - [ ] **SMP-CP-54** (**버그**) — **TicTacToe `LeaveGameReq`가 상태·소속 검사 없이** 게임 도중 나가기를 허용한다
 - [ ] **SMP-CP-55** (**버그**) — **DeliveryDispatch Tracking이 고객을 `"customer-1"`로 하드코딩**한다. 계약에 `customer_id`가 없다

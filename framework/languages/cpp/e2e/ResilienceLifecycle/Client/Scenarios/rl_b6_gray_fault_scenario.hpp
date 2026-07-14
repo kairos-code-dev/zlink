@@ -26,7 +26,9 @@ inline void run_rl_b6_gray_fault_scenario ()
                 ++healthy_successes;
             }
         }
-        catch (const std::exception &) {
+        catch (const zlink::framework::framework_exception_t &error) {
+            ensure (error.kind () == zlink::framework::framework_error_kind_t::request_failed,
+                    "RL-B6 gray request returned an unexpected public error");
             ++failures;
         }
     }

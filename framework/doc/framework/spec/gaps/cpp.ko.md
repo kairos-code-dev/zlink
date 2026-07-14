@@ -577,7 +577,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 동시 transition request와 persistent consumer 부재 및 `catch (...)` 재시도를 검출했다. store consumer에서 16개 bounded slow request를 동시에 시작한 뒤 runner가 `api-b`를 정상 종료하고, 모든 future를 정상 provider reply 또는 명시한 public error로 회수하도록 바꿨다. row 제거 뒤 retry settle 구간은 삭제하고 즉시 20개 request가 `api-a`로만 가는지 확인한다. client target 빌드, gate, `./run_e2e.sh RM-B2`가 통과했다.
 - [x] **E2E-CP-25** (결함) — **`RM-A2`(P0)가 manual-vs-auto 우선순위를 전혀 검증하지 않는다**
   - 근거: 수정 전 E2E gate가 별도 manual channel과 persistent consumer·in-flight 검증 부재를 검출했고, builder unit gate는 manual→discovery 조합에서 종료 코드 73으로 실패했다. `enable_client()`와 `enable_client(endpoint)`가 호출 순서와 무관하게 discovery와 manual endpoint를 함께 보존하도록 기존 builder 합성을 고쳤다. RM-A2는 같은 channel의 manual `api-a` request가 auto `api-b` 추가 중에도 완료되고 이후 두 endpoint가 모두 사용되는지 확인한다. builder unit은 종료 코드 0, consumer/client 빌드와 `./run_e2e.sh RM-A2`는 통과했다.
-- [ ] **E2E-CP-26** (미구현) — **Config 1·5 어디에서도 public error kind를 분류하지 않는다.** 초과 payload 거절이 timeout과 구분 불가
+- [x] **E2E-CP-26** (미구현) — **Config 1·5 어디에서도 public error kind를 분류하지 않는다.** 초과 payload 거절이 timeout과 구분 불가
+  - 근거: 수정 전 target-contract gate가 두 config의 client scenario 전체에서 `error_type` 단언 0건을 검출했다. 기존 failure DTO가 exception message 대신 result의 public kind 또는 timeout error code를 안정된 이름으로 투영하도록 바꿨다. Config 1은 RM-C2 `RouteNotConnected`, RM-C4 `TimeoutException`, RM-C5 `HandlerNotFound`, RM-C8 `RequestFailed`를 단언해 초과 payload와 timeout을 구분한다. Config 5는 RL-B1·B6·D2·D3·D4에서 같은 방식으로 분류한다. 관련 provider/consumer/client target 빌드와 아홉 scenario runner가 모두 통과했다.
 - [ ] **E2E-CP-27** (결함) — **`RC-A1`·`RC-A2`(P0)가 `RC-A3`와 완전히 같은 등록 호출**이다. config의 변주 축이 0개
 - [ ] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다
 - [ ] **E2E-CP-29** (미구현) — **`RC-B4`(P0)의 JSON fallback 규칙이 검증되지 않는다.** 미지원 타입을 보내지 않는다

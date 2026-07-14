@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Infrastructure/scenario_state.hpp"
+#include "../../Shared/public_error_type.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -162,9 +163,7 @@ class http_route_missing_handler_t
                       .timeout (std::chrono::milliseconds (300))
                       .async<scenario_route_res_t> ();
         return {.failed = !call.result ().has_value (),
-                .error_type = call.result ().error ()
-                                ? call.result ().error ()->what ()
-                                : "route request failed"};
+                .error_type = public_error_type (call.result ())};
     }
 
   private:

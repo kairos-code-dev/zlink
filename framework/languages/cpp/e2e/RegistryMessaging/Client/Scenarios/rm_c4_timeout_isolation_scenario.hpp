@@ -15,6 +15,8 @@ inline void run_rm_c4_timeout_isolation_scenario ()
     const auto timeout = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/slow-request", profile_req_t{.value = "slow"});
     ensure (timeout.failed, "RM-C4 expected the slow request to time out");
+    ensure (timeout.error_type == "TimeoutException",
+            "RM-C4 timeout error type mismatch: " + timeout.error_type);
     auto after = post_json<profile_req_t, profile_res_t> (
       consumer, "/profile/request", profile_req_t{.value = "rm-c4-after-timeout"});
     ensure (after.value == "profile:rm-c4-after-timeout", "RM-C4 post-timeout reply mismatch");

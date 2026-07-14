@@ -22,6 +22,8 @@ inline void run_rl_d4_missing_request_handler_scenario ()
                            .body (profile_req_t{.value = "fast", .marker = "rl-d4-missing"})
                            .fetch<request_failure_res_t> ();
     ensure (failure.failed, "RL-D4 expected public failure payload");
+    ensure (failure.error_type == "HandlerNotFound",
+            "RL-D4 missing handler error type mismatch: " + failure.error_type);
     wait_provider_evidence_contains ("DispatchError", "handler_missing:reply_error",
                                      std::chrono::milliseconds (5000));
     std::cout << "scenario RL-D4 passed\n";

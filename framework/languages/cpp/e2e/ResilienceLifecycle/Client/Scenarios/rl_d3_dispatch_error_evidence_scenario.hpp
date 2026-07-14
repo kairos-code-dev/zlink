@@ -13,6 +13,8 @@ inline void run_rl_d3_dispatch_error_evidence_scenario ()
 {
     const auto missing = post_consumer_missing ("rl-d3-missing");
     ensure (missing.failed, "RL-D3 missing request unexpectedly succeeded");
+    ensure (missing.error_type == "HandlerNotFound",
+            "RL-D3 missing handler error type mismatch: " + missing.error_type);
     post_consumer_command ("rl-d3-missing-send", "/profile/command/missing");
     const auto normal = post_consumer_profile ("rl-d3-normal");
     ensure (normal.value == "profile:rl-d3-normal",

@@ -36,6 +36,8 @@ inline void run_rm_c2_targeted_route_scenario ()
     auto missing = post_json<scenario_route_req_t, request_failure_res_t> (
       provider_a_url, "/profile/route/missing", scenario_route_req_t{.value = "missing"});
     ensure (missing.failed, "RM-C2 missing rid unexpectedly succeeded");
+    ensure (missing.error_type == "RouteNotConnected",
+            "RM-C2 missing rid error type mismatch: " + missing.error_type);
     std::cout << "scenario RM-C2 passed\n";
 }
 

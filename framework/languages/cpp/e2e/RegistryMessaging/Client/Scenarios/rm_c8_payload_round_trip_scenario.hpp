@@ -42,6 +42,8 @@ inline void run_rm_c8_max_message_size_scenario ()
       payload_req_t{.marker = "oversized", .payload = oversized_payload},
       std::chrono::milliseconds (2500));
     ensure (oversized.failed, "RM-C8 oversized payload should fail");
+    ensure (oversized.error_type == "RequestFailed",
+            "RM-C8 oversized payload error type mismatch: " + oversized.error_type);
 
     auto follow_up = post_json<profile_req_t, profile_res_t> (
       consumer, "/profile/request", profile_req_t{.value = "rm-c8-after"});

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../../../Shared/registry_messaging_contracts.hpp"
+#include "../../Shared/public_error_type.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -111,7 +112,7 @@ class slow_request_handler_t
             return {.failed = false, .error_type = ""};
         }
         return {.failed = true,
-                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+                .error_type = public_error_type (reply)};
     }
 
   private:
@@ -140,7 +141,7 @@ class missing_request_handler_t
             return {.failed = false, .error_type = ""};
         }
         return {.failed = true,
-                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+                .error_type = public_error_type (reply)};
     }
 
   private:
@@ -212,7 +213,7 @@ class payload_over_limit_handler_t
             return {.failed = false, .error_type = ""};
         }
         return {.failed = true,
-                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+                .error_type = public_error_type (reply)};
     }
 
   private:

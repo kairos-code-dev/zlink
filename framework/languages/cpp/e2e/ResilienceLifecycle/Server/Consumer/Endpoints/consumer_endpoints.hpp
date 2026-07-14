@@ -3,6 +3,7 @@
 
 #include "../../../Shared/resilience_lifecycle_contracts.hpp"
 #include "../../Shared/location_store.hpp"
+#include "../../Shared/public_error_type.hpp"
 #include "../Configuration/consumer_options.hpp"
 
 #include <zlink/framework.hpp>
@@ -299,7 +300,7 @@ class slow_request_handler_t
             return {.failed = false, .error_type = ""};
         }
         return {.failed = true,
-                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+                .error_type = resilience_lifecycle::public_error_type (reply)};
     }
 
   private:
@@ -328,7 +329,7 @@ class missing_request_handler_t
             return {.failed = false, .error_type = ""};
         }
         return {.failed = true,
-                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+                .error_type = resilience_lifecycle::public_error_type (reply)};
     }
 
   private:

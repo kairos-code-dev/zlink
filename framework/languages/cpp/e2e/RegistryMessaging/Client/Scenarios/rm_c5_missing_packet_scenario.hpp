@@ -15,6 +15,8 @@ inline void run_rm_c5_missing_packet_scenario ()
     auto missing = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/missing-request", profile_req_t{.value = "missing"});
     ensure (missing.failed, "RM-C5 missing request unexpectedly succeeded");
+    ensure (missing.error_type == "HandlerNotFound",
+            "RM-C5 missing handler error type mismatch: " + missing.error_type);
     auto dropped = post_json<profile_msg_t, operation_status_t> (
       consumer, "/profile/missing-command", profile_msg_t{.command_id = "missing-send"});
     ensure (dropped.status == "sent", "RM-C5 missing send endpoint failed");

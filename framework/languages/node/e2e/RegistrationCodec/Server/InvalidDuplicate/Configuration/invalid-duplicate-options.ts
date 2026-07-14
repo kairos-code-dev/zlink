@@ -2,6 +2,7 @@ export interface InvalidDuplicateOptions {
   readonly rid: string;
   readonly logDir: string;
   readonly channelEndpoint: string;
+  readonly invalidCase: 'duplicate' | 'missing-handler-group' | 'mixed-channel-kinds';
 }
 
 export function validateInvalidDuplicateOptions(value: unknown): InvalidDuplicateOptions {
@@ -10,8 +11,16 @@ export function validateInvalidDuplicateOptions(value: unknown): InvalidDuplicat
   return {
     rid: optional(values, 'rid') ?? 'invalid-duplicate',
     logDir: optional(values, 'logDir') ?? 'logs',
-    channelEndpoint: required(values, 'channelEndpoint')
+    channelEndpoint: required(values, 'channelEndpoint'),
+    invalidCase: invalidCase(values.invalidCase)
   };
+}
+
+function invalidCase(value: unknown): InvalidDuplicateOptions['invalidCase'] {
+  if (value === 'duplicate' || value === 'missing-handler-group' || value === 'mixed-channel-kinds') {
+    return value;
+  }
+  throw new Error("Configuration value 'e2e.invalidCase' is invalid.");
 }
 
 function optional(values: Record<string, unknown>, name: string): string | undefined {

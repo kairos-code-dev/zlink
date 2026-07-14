@@ -3,7 +3,9 @@ export interface ClientOptions {
   readonly jsonOnlyUrl: string;
   readonly codecRequesterUrl: string;
   readonly invalidMain: string;
-  readonly invalidConfig: string;
+  readonly invalidDuplicateConfig: string;
+  readonly invalidHandlerGroupConfig: string;
+  readonly invalidChannelKindsConfig: string;
   readonly logDir: string;
   readonly scenario: string;
 }
@@ -22,7 +24,9 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     jsonOnlyUrl: required(values, 'json-only-url'),
     codecRequesterUrl: required(values, 'codec-requester-url'),
     invalidMain: required(values, 'invalid-main'),
-    invalidConfig: required(values, 'invalid-config'),
+    invalidDuplicateConfig: required(values, 'invalid-duplicate-config'),
+    invalidHandlerGroupConfig: required(values, 'invalid-handler-group-config'),
+    invalidChannelKindsConfig: required(values, 'invalid-channel-kinds-config'),
     logDir: required(values, 'log-dir'),
     scenario: values.get('scenario') ?? 'all'
   };

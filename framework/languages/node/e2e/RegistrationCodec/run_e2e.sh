@@ -138,6 +138,21 @@ INVALID_CONFIG="$LOG_DIR/invalid-duplicate.config.json"
 node "$ROOT_DIR/write-config.mjs" "$INVALID_CONFIG" \
   --rid invalid-duplicate \
   --channel-endpoint "$INVALID_CHANNEL" \
+  --invalid-case duplicate \
+  --log-dir "$LOG_DIR"
+
+INVALID_HANDLER_GROUP_CONFIG="$LOG_DIR/invalid-handler-group.config.json"
+node "$ROOT_DIR/write-config.mjs" "$INVALID_HANDLER_GROUP_CONFIG" \
+  --rid invalid-handler-group \
+  --channel-endpoint "$INVALID_CHANNEL" \
+  --invalid-case missing-handler-group \
+  --log-dir "$LOG_DIR"
+
+INVALID_CHANNEL_KINDS_CONFIG="$LOG_DIR/invalid-channel-kinds.config.json"
+node "$ROOT_DIR/write-config.mjs" "$INVALID_CHANNEL_KINDS_CONFIG" \
+  --rid invalid-channel-kinds \
+  --channel-endpoint "$INVALID_CHANNEL" \
+  --invalid-case mixed-channel-kinds \
   --log-dir "$LOG_DIR"
 
 node "$CLIENT_MAIN" \
@@ -146,7 +161,9 @@ node "$CLIENT_MAIN" \
   --json-only-url "$JSON_ONLY_URL" \
   --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-main "$INVALID_MAIN" \
-  --invalid-config "$INVALID_CONFIG" \
+  --invalid-duplicate-config "$INVALID_CONFIG" \
+  --invalid-handler-group-config "$INVALID_HANDLER_GROUP_CONFIG" \
+  --invalid-channel-kinds-config "$INVALID_CHANNEL_KINDS_CONFIG" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

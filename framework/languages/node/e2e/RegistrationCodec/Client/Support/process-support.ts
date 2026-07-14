@@ -27,7 +27,7 @@ export async function expectStartupFailure(
   fs.writeFileSync(path.join(logDir, `${name}.stdout.log`), stdout);
   fs.writeFileSync(path.join(logDir, `${name}.stderr.log`), stderr);
   if (exitCode === null || exitCode === 0) {
-    throw new Error('RC-A6 expected duplicate registration server startup to fail.');
+    throw new Error(`RC-A6 expected '${name}' server startup to fail.`);
   }
   return `${stdout}\n${stderr}`;
 }

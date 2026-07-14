@@ -34,8 +34,18 @@ function createInvalidDuplicateModule(): Function {
               .traceLabel(options.rid);
           const channel = builder.addClientServerChannel(RegistrationCodecNames.channel)
             .enableServer(options.channelEndpoint);
-          channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
-          channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
+          if (options.invalidCase === 'missing-handler-group') {
+            channel.addHandlerGroup('missing-handler-group');
+          } else {
+            channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
+          }
+          if (options.invalidCase === 'duplicate') {
+            channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
+          }
+          if (options.invalidCase === 'mixed-channel-kinds') {
+            builder.addFanoutChannel(RegistrationCodecNames.channel)
+              .enablePublisher(options.channelEndpoint);
+          }
           return builder.build();
         }
       })

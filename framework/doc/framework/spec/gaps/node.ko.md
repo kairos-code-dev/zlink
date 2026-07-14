@@ -397,3 +397,40 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 |----|------|----------------|
 | **E2E-ND-01** | [e2e §2·§2.2·§2.4·§2.5](../../common/e2e/README.ko.md): 역할 서버 + 시나리오 ID당 클라이언트 파일 하나. **test-runner로 대체하지 않는다**. §5: e2e는 in-process contract test가 **아니다** | `e2e/ObservabilityOps/`에 **`run_e2e.sh`와 `feature-map.ko.md` 둘뿐이다.** `Server/`도 `Client/`도 `Shared/`도 없다. runner는 **폐기된 config-8(ATD)을 재실행**해 로그를 grep하고, **in-process contract test**를 돌린 뒤, 이렇게 통과시킨다 — `for scenario in OBS-A1 … ; do echo "$scenario … PASS"; done`. **`echo`가 검증이다.** 그리고 feature-map은 13개를 전부 "구현"으로 적는다. **[gaps §4.7]이 "OBS-A1~C5 evidence와 함께 통과했다"고 기록하고 있는데 — 거짓이다** |
 | **E2E-ND-02** | [config-1 RM-A1(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): live-owner peer row와 **두 provider로의 연결 상태**를 확인한다 | `RegistryMessaging/Server/LocationProbe/Endpoints/location-probe-endpoints.ts:24-28` — 모든 row를 `serviceRole: Router`, `state: Ready` **리터럴로** 매핑한다. 클라이언트는 `serviceRole === Router && state === Ready`를 단언한다. ⇒ **절대 실패할 수 없는 단언이다.** 살아 있는 검증은 `rows >= 2` 하나뿐. `ResilienceLifecycle/Server/TopologyProbe`도 `state: Ready`를 하드코딩한다. 게다가 이 probe 서버들은 **application 역할이 없어** §2.4가 금지하는 형태다 |
+
+## 라운드 5 — 샘플 · e2e 심층
+
+**Node에는 좋은 소식이 하나 있다.** **Bingo가 C++ 버그 전부에 대해 깨끗하다** — 시작 notify를
+제외 필터 없이 **전원에게** 보내고, 카드 재제출을 거부하고, 관전 종료에 진짜 멤버십 가드가 있고,
+방을 **실제로 닫고 타이머를 취소한다.** 그리고 **클라이언트 게이트가 두 player 모두** 시작 notify를
+기다리고 둘 다 `Running`을 단언한다 — **C++ 버그를 가렸던 약한 게이트가 여기엔 없다.**
+`DeliveryDispatch`는 배송 상태 **도착 순서를 진짜로 단언한다**(`.NET`·C++은 못 한다).
+
+### 진짜 버그
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-ND-06** (**버그**) | [supportchat §11](../../common/sample/supportchat/README.ko.md): `OpenConversationRes.State`는 8필드 `ConversationState`다 | `support-entry-handlers.ts:58-67` — **채널 응답에서 `conversationId`만 가져오고 나머지를 손으로 지어낸다**: `status: WaitingForAgent`(하드코딩), `subject`는 **요청자가 보낸 값을 에코**, `lastMessageSeq: 0`. 도메인이 낸 진짜 status는 **버린다** — 그 시점엔 이미 **상담원이 배정돼 `Active`**인데. ⇒ 상담원이 붙었는데 고객은 **"대기 중"이라고 듣는다.** 그리고 클라이언트 단언 **5개가 하드코딩된 리터럴을 검사한다 — 실패할 수 없다** |
+| **SMP-ND-07** (**버그**) | [25 §8](../server/25-stage-wrapper-on-spot.ko.md): spot 종료 뒤 추가 callback을 만들지 않는다 | SupportChat이 대화마다 **50ms 타이머**를 걸고 `context.close()`를 **한 번도 부르지 않는다**(grep 0건). 대화가 `Closed`가 돼도 타이머는 **초당 20회 영원히 돈다.** ⇒ 대화 1,000건을 처리한 서버가 **초당 2만 번 헛돌고** 죽은 Spot 1,000개를 프로세스 수명 내내 붙든다. TicTacToe도 같다(1초 주기) |
+| **SMP-ND-08** (**버그**) | [supportchat §13](../../common/sample/supportchat/README.ko.md): `WaitingForClose → Active`로 가는 **유일한 입력은 새 `SendChatMessageReq`**다 | `conversation.ts:74-81` — **상담원이 재접속해 re-join하면** 상태 가드 없이 `Active`로 되돌리고 **close 기한을 지운다.** ⇒ 대화가 idle로 넘어가 양쪽이 알림을 받은 뒤 상담원 스트림이 끊겼다 붙으면, 방이 **조용히 되살아나고 `ConversationClosedNotify`가 영영 안 온다.** 고객은 "곧 종료됩니다"에 **영원히 갇힌다** |
+| **SMP-ND-09** (**버그**) | [tictactoe §9](../../common/sample/tictactoe/README.ko.md): 승리는 **라인 완성**이다. timeout은 승리 조건이 아니다 | `tictactoe-match.ts:99-103` — turn timeout 시 **상대를 승자로 만들고**, `lastMoveActorId`를 **수를 두지 않은 쪽**으로, `lastMoveCell`을 `null`로 세팅한다. 게다가 `publishWinMilestone`은 `status === Won`일 때만 도는데 **`TurnTimedOut`은 거기 도달할 수 없다.** ⇒ 99승인 host가 **timeout으로 100승을 채우면 milestone이 영영 발행되지 않고**, 두 클라이언트는 **수를 두지도 않은 player가 `null` 칸에 뒀다**고 렌더한다 |
+| **SMP-ND-10** (**버그**) | [tictactoe §7](../../common/sample/tictactoe/README.ko.md): `PlayActorObserveMilestoneHandler`를 `EntrySpot/Handlers/`에 둔다 | **그 파일이 없다.** 대신 `play-session-factory.ts:30`이 **`new PlayEntrySpot(...)`** — framework lifecycle 밖에서 만든 Spot이라 `context`가 **영영 할당되지 않는다.** 세션이 **packet-name switch**로 그 고아 객체의 메서드를 부른다. ⇒ `observeMilestone`에 `this.context.*`를 **한 줄만 추가해도** 모든 `ObserveMilestoneReq`가 **TypeError로 죽는다** |
+
+### 실패할 수 없는 e2e 게이트
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-ND-12** (**가짜 통과**) | [config-3 PS-A1(**P0**)](../../common/e2e/config-3-pubsub.ko.md): fanout 전달을 **순서대로** 확인한다 | warm-up이 **`seq 1..120`을 같은 `runId`·같은 topic**으로 발행한 뒤, 측정 구간이 **`seq 100..111`** — **warm-up 범위 안에 통째로 들어 있다.** 판정기는 `runId`·topic·seq 범위로만 거르고 **`value`를 읽지 않는다**(`warmup-100`과 `measure-100`을 구분하는 유일한 필드다). ⇒ **측정 발행을 전부 지워도, 그 시점에 fanout이 완전히 깨져도 통과한다.** 게다가 12개 중 `>= 3`이고 **순서 검사가 없다** |
+| **E2E-ND-13** (**가짜 통과**) | [config-1 RM-C9](../../common/e2e/config-1-location-messaging.ko.md): 송신 큐를 **HWM까지 채운다** | `consumer-endpoints.ts:107-112` — `submitProfileUnderPressure`가 `.submit()`을 **await하지도 확인하지도 않고** `return 'Submitted'` 한다. 클라이언트는 `outcomes.every(o => o === 'Submitted')`를 단언한다. ⇒ **문자열 리터럴이 성공 판정기다. 전송이 전부 실패해도 통과한다** |
+| **E2E-ND-14** (**미구현**) | [config-3 §2](../../common/e2e/config-3-pubsub.ko.md): **모든 노드에 Redis location store**를 두고 peer row를 framework가 관리한다 | `publisher-host-factory.ts:35`·`subscriber-host-factory.ts:48` — **`useInMemoryLocationStores()`**다. subscriber는 `--publisher-endpoint`로 **하드와이어**돼 있고 `run_e2e.sh`에 **"redis"가 0건**이다. ⇒ 이 config의 존재 이유인 **store 기반 fanout이 한 번도 실행되지 않는다.** feature-map에 기록 없음 |
+| **E2E-ND-15** (**가짜 통과**) | [config-9 TA-B1(**P0**)](../../common/e2e/config-9-to-actor-messaging.ko.md): **형식은 맞지만 stale한 ref**를 넘긴다 | 클라이언트가 `actor`를 **아예 안 넘기고**, caller의 `requireActorRef`가 `request.actor === undefined`에 **자기가 예외를 던진다** — `sendToActor`에 **도달하지 않는다.** ⇒ framework의 actor-route 분류를 **통째로 지워도 통과한다** |
+| **E2E-ND-16** (**가짜 통과**) | [config-10 ST-F1·ST-F3(**둘 다 P0**)](../../common/e2e/config-10-spot-actor-transfer.ko.md): `P1 → P2 → P3` 순서를 단언한다 | `assertOrder`가 **`entry.kind`만 비교하고 `entry.value`를 안 읽는다.** ST-F1은 `['packet_handler','packet_handler','packet_handler']` — **같은 kind 셋**이라 **어떤 순열이든 통과한다.** `P1/P2/P3`는 `value`에 있다. ⇒ **"3개가 도착했다"로 퇴화한다.** 필수 marker `source_cleanup`은 **트리 전체에 0건** |
+| **E2E-ND-17** (**가짜 통과**) | [config-1 RM-A4(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): consumer **재시작 없이** peer handover를 확인한다 | 교체 후 요청을 **replacement 프로세스 자신의 HTTP**로 보낸다. p1을 resolve했던 클라이언트가 **하나도 살아남지 않아** handover 경로가 **구조적으로 관측 불가능**하다. `v1Count === 0` 단언도 죽은 프로세스의 연결 실패를 삼키고 `[]`를 반환해 **항상 참**이다 |
+
+**Config 8이 Node에 없다** — `TD-*` grep 0건. 대신 폐기된 `ATD-*` 앱이 **기본 스윕에 남아 있고**,
+**Config 11의 P0 증거가 그 폐기된 앱과 in-process contract test에서 나온다**(e2e README §5가 e2e가
+아니라고 명시한 것이다).
+
+> **감사자 자신의 한계 보고:** samples는 수렴했으나 **e2e는 수렴하지 않았다.** config-2(SpotService,
+> 시나리오 51개)와 config-11을 C++ 수준 깊이로 보지 못했다. **SpotService가 가장 크고 거의 확실히
+> 더 있다.**

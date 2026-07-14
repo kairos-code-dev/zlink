@@ -13,10 +13,7 @@ inline task_t<void> tictactoe_game_spot_t::handle_game_tick (const timer_tick_t 
     }
     const auto &state = snapshot ();
     const auto notify = game_state_notify_t{state.room_id, state.next_turn, state};
-    publisher.publish_game_state (notify);
-    for (auto &[_, actor] : actors) {
-        actor->context.bound_session ().send (notify).submit ();
-    }
+    publisher.publish (notify);
 }
 
 inline task_t<void>

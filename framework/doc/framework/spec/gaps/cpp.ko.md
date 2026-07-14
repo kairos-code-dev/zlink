@@ -427,7 +427,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-16** (결함) — **ShoppingMall이 전역 Redis 키 하나 + 전역 락 하나**로 모든 주문을 직렬화한다. owner-spot 모델이 무효화된다
 - [x] **SMP-CP-17** (결함) — **SupportChat customer가 자기를 상담원으로 등록할 수 있다**(role 검사 없음)
   - 근거: 수정 전 공개 client에 customer의 `SetAgentAvailableReq` 실패 단언을 추가하자 전체 runner가 `customer must not set agent availability`로 실패했다. Entry Spot handler가 인증된 actor role을 검사해 customer 요청을 `request_rejected`로 반환하도록 수정한 뒤 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
-- [ ] **SMP-CP-18** (결함) — **TicTacToe notification publisher가 아무것도 발행하지 않는다.** vector에 쌓기만 하고 읽는 곳이 0
+- [x] **SMP-CP-18** (결함) — **TicTacToe notification publisher가 아무것도 발행하지 않는다.** vector에 쌓기만 하고 읽는 곳이 0
+  - 근거: 수정 전 contract gate가 publisher의 session 전송 부재와 읽히지 않는 vector 보관을 모두 검출했다. room actor registry를 주입받은 publisher가 제외 대상을 처리하고 bound session으로 직접 전송하도록 책임을 모은 뒤 TicTacToe parity 8건과 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-19** (결함) — **SupportChat이 Api hop을 Support actor에서 Session으로 옮기고 payload를 고쳐 쓴다**
 - [ ] **SMP-CP-20** (결함) — **GameQuest가 event마다 문서에 없는 blocking ensure 왕복**을 하고, owner를 샘플이 직접 해시한다
 - [ ] **SMP-CP-21** (결함) — **ShoppingMall이 owner routing 대신 named mesh 2개 + 샘플 해시 + node 지정 request**를 쓴다

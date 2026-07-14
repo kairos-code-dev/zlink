@@ -12,7 +12,6 @@
 #include "../../samples/TicTacToe/Server/Configuration/sample_names.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
 #include "../../samples/TicTacToe/Shared/Contracts/messages.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Notifications/game_notification_publisher.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
@@ -286,11 +285,6 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[0].packet_name, join_game_req_t::packet_name);
     EXPECT_EQ (entry_handlers[1].packet_name, observe_milestone_req_t::packet_name);
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
-
-    game_notification_publisher_t publisher;
-    publisher.game_state.push_back (
-      game_state_notify_t{created.room_id, projected_join.state.next_turn, projected_join.state});
-    EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
@@ -430,6 +424,19 @@ TEST (CppFrameworkSampleParity, TicTacToeOwnsTurnTimeoutLifecycle)
       << "match domain must own timeout state transitions";
     EXPECT_NE (messages.find ("TurnTimedOut"), std::string::npos)
       << "timeout must have the shared terminal status used by the reference sample";
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeNotificationPublisherDeliversToRoomActors)
+{
+    const auto publisher = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+        "TicTacToeGameSpot/Notifications/game_notification_publisher.hpp");
+
+    EXPECT_NE (publisher.find ("bound_session ().send"), std::string::npos)
+      << "the notification publisher must deliver through each room actor session";
+    EXPECT_EQ (publisher.find ("std::vector"), std::string::npos)
+      << "the notification publisher must not retain an unread parallel event history";
 }
 
 TEST (CppFrameworkSampleParity, DeliveryDispatchTrackingHasNoDeadSpotModel)

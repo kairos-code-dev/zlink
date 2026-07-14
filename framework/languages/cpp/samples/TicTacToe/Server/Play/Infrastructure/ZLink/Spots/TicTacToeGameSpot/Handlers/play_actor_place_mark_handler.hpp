@@ -16,12 +16,10 @@ tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
     }
     auto state = place (actor.actor_id, request);
     game_state_notify_t state_notify{state.room_id, state.next_turn, state};
-    publisher.publish_game_state (state_notify);
-    send_to_other_actors (actor.actor_id, state_notify);
+    publisher.publish (state_notify, actor.actor_id);
     if (state.status == tictactoe_status_t::won || state.status == tictactoe_status_t::draw) {
         game_ended_notify_t ended_notify{state.room_id, state.winner, state.draw, state};
-        publisher.publish_game_ended (ended_notify);
-        send_to_other_actors (actor.actor_id, ended_notify);
+        publisher.publish (ended_notify, actor.actor_id);
         publish_win_milestone (actor, state);
     }
     return {state};

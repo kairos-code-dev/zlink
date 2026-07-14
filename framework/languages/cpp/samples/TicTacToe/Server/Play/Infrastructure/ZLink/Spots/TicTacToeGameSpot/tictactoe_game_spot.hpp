@@ -32,6 +32,10 @@ class tictactoe_game_timer_handler_t
 
 class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 {
+  private:
+    std::map<std::string, player_actor_t *> actors;
+    game_notification_publisher_t publisher{actors};
+
   public:
     tictactoe_game_spot_t () : tictactoe_match_t ("") {}
 
@@ -106,12 +110,10 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             actor.actor_id == state.x_actor_id ? tictactoe_marks_t::x : tictactoe_marks_t::o,
             state
         };
-        publisher.publish_player_joined (notify);
-        send_to_other_actors (actor.actor_id, notify);
+        publisher.publish (notify, actor.actor_id);
 
         game_state_notify_t state_notify{state.room_id, state.next_turn, state};
-        publisher.publish_game_state (state_notify);
-        send_to_other_actors (actor.actor_id, state_notify);
+        publisher.publish (state_notify, actor.actor_id);
     }
 
     void on_leave_actor (const player_actor_t &actor)
@@ -120,29 +122,15 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         players.erase (actor.actor_id);
         const auto &state = snapshot ();
         game_ended_notify_t notify{state.room_id, state.winner, state.draw, state};
-        publisher.publish_game_ended (notify);
-        send_to_other_actors (actor.actor_id, notify);
+        publisher.publish (notify, actor.actor_id);
     }
 
     void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
-
-    game_notification_publisher_t publisher;
 
   private:
     friend class tictactoe_game_timer_handler_t;
 
     task_t<void> handle_game_tick (const timer_tick_t &);
-
-    template <typename TNotify>
-    void send_to_other_actors (const std::string &source_actor_id, const TNotify &notify)
-    {
-        for (auto &[actor_id, actor] : actors) {
-            if (actor_id == source_actor_id || actor == nullptr) {
-                continue;
-            }
-            actor->context.bound_session ().send (notify).submit ();
-        }
-    }
 
     void publish_win_milestone (const player_actor_t &actor, const tictactoe_state_t &state)
     {
@@ -169,7 +157,6 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     }
 
     spot_context_t _context;
-    std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_info_t> players;
     std::map<std::string, tictactoe_game_join_req_t> _pending_joins;
     framework::timer_t _game_timer;

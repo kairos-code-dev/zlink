@@ -1446,6 +1446,57 @@ test('spot manager local actor join awaits entry leave before commit and joined 
   result.reply.close();
 });
 
+test('user Spot join runs source leave on the caller turn without target-to-source deadlock', async () => {
+  const events = [];
+  class RoomSpot {
+    constructor(context) {
+      this.context = context;
+    }
+    async onActorJoin(actorId) {
+      events.push(`admit:${this.context.spotRid}:${actorId}`);
+      return { accepted: true };
+    }
+    async onLeaveActor(actor) {
+      events.push(`leave:${this.context.spotRid}:${actor.actorId}`);
+    }
+    async onJoinedActor(actor) {
+      events.push(`joined:${this.context.spotRid}:${actor.actorId}`);
+    }
+  }
+  let manager;
+  manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    entrySpotCallbacks: {
+      onLeaveActor(actor) {
+        return manager.executeOnSpot(RoomSpot, actor.sourceSpotRid, (source) =>
+          source.onLeaveActor(actor));
+      }
+    }
+  });
+  await manager.getOrCreate(RoomSpot, 'room-a');
+  await manager.getOrCreate(RoomSpot, 'room-b');
+  const actor = { actorId: 'alice', sourceSpotRid: 'room-a' };
+  const request = zlink.Message.from('move');
+
+  const move = manager.executeOnSpot(RoomSpot, 'room-a', () =>
+    manager.admitActorJoin('room-b', actor, request, () => {
+      events.push('commit:room-b:alice');
+    }));
+  const outcome = await Promise.race([
+    move.then(() => 'completed'),
+    new Promise((resolve) => setTimeout(() => resolve('timed-out'), 50))
+  ]);
+
+  assert.equal(outcome, 'completed');
+  assert.deepEqual(events, [
+    'admit:room-b:alice',
+    'leave:room-a:alice',
+    'commit:room-b:alice',
+    'joined:room-b:alice'
+  ]);
+  request.close();
+});
+
 test('spot manager rolls local membership back when joined callback fails', async () => {
   const events = [];
   let committed = false;

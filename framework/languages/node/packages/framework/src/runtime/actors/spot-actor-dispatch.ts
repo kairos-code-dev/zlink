@@ -171,18 +171,34 @@ export class ZLinkSpotActorDispatcher {
     request: Message,
     commit: () => Promise<void> | void
   ): Promise<ZLinkSpotActorJoinResponse> {
+    return this.evaluateActorJoin(actor, request).then(async (result) => {
+      if (result.accepted) {
+        await this.commitActorJoin(actor, commit);
+      }
+      return result;
+    });
+  }
+
+  evaluateActorJoin(
+    actor: ZLinkActor,
+    request: Message
+  ): Promise<ZLinkSpotActorJoinResponse> {
     return this.execute(async () => {
       const payload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
       const onActorJoin = (this.options.spot as Partial<ZLinkSpot>).onActorJoin;
-      const result = onActorJoin === undefined
+      return onActorJoin === undefined
         ? { accepted: false }
         : await onActorJoin.call(this.options.spot, actor.actorId, payload);
-      if (!result.accepted) {
-        return result;
-      }
+    });
+  }
+
+  commitActorJoin(
+    actor: ZLinkActor,
+    commit: () => Promise<void> | void
+  ): Promise<void> {
+    return this.execute(async () => {
       await commit();
       await this.options.spot.onJoinedActor(actor);
-      return result;
     });
   }
 

@@ -48,7 +48,8 @@ export class ZLinkSpotActorMembership {
     actor: ZLinkActor,
     request: Message,
     commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    leaveSource?: () => Promise<void>
   ): Promise<ZLinkSpotActorJoinResponse> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
@@ -60,13 +61,20 @@ export class ZLinkSpotActorMembership {
     } = { committed: false };
     let response: ZLinkSpotActorJoinResponse;
     try {
-      response = await dispatcher.admitActorJoin(actor, request, async () => {
-        await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
-        const rollback = await commit(activation.spot);
-        if (rollback !== undefined) transaction.rollbackExternal = rollback;
-        transaction.rollbackMembership = activation.commitActorJoin(actor);
-        transaction.committed = true;
-      });
+      response = await dispatcher.evaluateActorJoin(actor, request);
+      if (response.accepted) {
+        if (leaveSource === undefined) {
+          await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
+        } else {
+          await leaveSource();
+        }
+        await dispatcher.commitActorJoin(actor, async () => {
+          const rollback = await commit(activation.spot);
+          if (rollback !== undefined) transaction.rollbackExternal = rollback;
+          transaction.rollbackMembership = activation.commitActorJoin(actor);
+          transaction.committed = true;
+        });
+      }
     } catch (error) {
       if (transaction.committed) {
         transaction.rollbackMembership?.();

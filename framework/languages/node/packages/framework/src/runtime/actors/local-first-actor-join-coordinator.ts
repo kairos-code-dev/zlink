@@ -12,6 +12,7 @@ import type { DefaultZLinkSpotManager } from '../spots';
 import type { ZLinkActorJoinCoordinator } from './actor-runtime-contracts';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
+import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkLocalFirstActorJoinCoordinatorOptions {
   readonly localSpotManager: () => DefaultZLinkSpotManager | undefined;
@@ -50,16 +51,55 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
     ) {
       return this.options.native.joinSpot(actor, state, spotRid, request, timeoutMs, signal);
     }
-    const result = await localSpotManager.admitActorJoin(
-      spotRid,
-      actor,
-      request,
-      (spot: ZLinkSpot) => {
-        state.setJoinedSpot(spotRid, spot);
-        return () => state.clearJoinedSpot();
-      },
-      signal
-    );
+    const sourceSpotRid = state.spotRid;
+    const sourceSpot = state.spot;
+    const movesFromLocalUserSpot = sourceSpotRid !== undefined
+      && !routingIdsEqual(sourceSpotRid, spotRid)
+      && localSpotManager.hasActiveSpot(sourceSpotRid);
+    let sourcePrepared = false;
+    let result: Awaited<ReturnType<DefaultZLinkSpotManager['admitActorJoin']>>;
+    try {
+      result = await localSpotManager.admitActorJoin(
+        spotRid,
+        actor,
+        request,
+        (spot: ZLinkSpot) => {
+          state.setJoinedSpot(spotRid, spot);
+          return () => {
+            if (sourceSpotRid !== undefined && sourceSpot !== undefined) {
+              state.setJoinedSpot(sourceSpotRid, sourceSpot);
+            } else {
+              state.clearJoinedSpot();
+            }
+          };
+        },
+        signal,
+        movesFromLocalUserSpot
+          ? async () => {
+              await localSpotManager.beginActorTransfer(sourceSpotRid, actor.actorId);
+              try {
+                await localSpotManager.prepareActorLeaveForTransfer(sourceSpotRid, actor, signal);
+                sourcePrepared = true;
+              } catch (error) {
+                await localSpotManager.cancelActorTransfer(sourceSpotRid, actor.actorId);
+                throw error;
+              }
+            }
+          : undefined
+      );
+    } catch (error) {
+      if (sourcePrepared && sourceSpotRid !== undefined) {
+        await localSpotManager.restoreActorAfterFailedTransfer(sourceSpotRid, actor, signal);
+      }
+      throw error;
+    }
+    if (result.accepted && sourcePrepared && sourceSpotRid !== undefined) {
+      try {
+        await localSpotManager.commitActorLeaveAfterTransfer(sourceSpotRid, actor.actorId);
+      } catch (error) {
+        this.options.postCommitErrorReporter?.(error);
+      }
+    }
     const nativeActorRef = state.nativeActorRef;
     const actorRef = nativeActorRef === undefined
       ? localActorRef(nodeRidForLocalActor(this.options.nativeNode), actor.actorId)

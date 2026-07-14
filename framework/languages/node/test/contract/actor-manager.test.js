@@ -842,6 +842,130 @@ test('local actor join publishes committed location only after joined callback c
   ]);
 });
 
+test('local user Spot join prepares the source before target commit and removes source after commit', async () => {
+  const events = [];
+  const sourceSpot = { name: 'room-a' };
+  const targetSpot = { name: 'room-b' };
+  const actor = { actorId: 'alice' };
+  const state = {
+    spotRid: 'room-a',
+    spot: sourceSpot,
+    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
+    setJoinedSpot(spotRid, spot) {
+      this.spotRid = spotRid;
+      this.spot = spot;
+      events.push(`membership:${spotRid}`);
+    },
+    clearJoinedSpot() {
+      this.spotRid = undefined;
+      this.spot = undefined;
+    }
+  };
+  const spotManager = {
+    hasActiveSpot: () => true,
+    async admitActorJoin(_spotRid, _actor, _request, commit, _signal, leaveSource) {
+      events.push('admission');
+      await leaveSource();
+      await commit(targetSpot);
+      events.push('joined');
+      return { accepted: true };
+    },
+    async beginActorTransfer(spotRid, actorId) {
+      events.push(`begin:${spotRid}:${actorId}`);
+    },
+    async prepareActorLeaveForTransfer(spotRid, joinedActor) {
+      events.push(`leave:${spotRid}:${joinedActor.actorId}`);
+    },
+    async cancelActorTransfer() {
+      events.push('cancel');
+    },
+    async restoreActorAfterFailedTransfer() {
+      events.push('restore');
+    },
+    async commitActorLeaveAfterTransfer(spotRid, actorId) {
+      events.push(`source-removed:${spotRid}:${actorId}`);
+    }
+  };
+  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
+    localSpotManager: () => spotManager,
+    nativeNode: () => ({ routingId: rid('node-a') }),
+    native: { joinSpot() { throw new Error('native join must not run'); } }
+  });
+
+  const result = await coordinator.joinSpot(actor, state, 'room-b', zlink.Message.from('join'));
+
+  assert.equal(result.accepted, true);
+  assert.equal(state.spotRid, 'room-b');
+  assert.deepEqual(events, [
+    'admission',
+    'begin:room-a:alice',
+    'leave:room-a:alice',
+    'membership:room-b',
+    'joined',
+    'source-removed:room-a:alice'
+  ]);
+});
+
+test('local user Spot join restores source membership when target commit fails', async () => {
+  const events = [];
+  const sourceSpot = { name: 'room-a' };
+  const actor = { actorId: 'alice' };
+  const state = {
+    spotRid: 'room-a',
+    spot: sourceSpot,
+    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
+    setJoinedSpot(spotRid, spot) {
+      this.spotRid = spotRid;
+      this.spot = spot;
+      events.push(`membership:${spotRid}`);
+    },
+    clearJoinedSpot() {
+      this.spotRid = undefined;
+      this.spot = undefined;
+    }
+  };
+  const spotManager = {
+    hasActiveSpot: () => true,
+    async admitActorJoin(_spotRid, _actor, _request, commit, _signal, leaveSource) {
+      events.push('admission');
+      await leaveSource();
+      const rollback = await commit({ name: 'room-b' });
+      try {
+        throw new Error('target joined callback failed');
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+    },
+    async beginActorTransfer() { events.push('begin'); },
+    async prepareActorLeaveForTransfer() { events.push('leave'); },
+    async cancelActorTransfer() { events.push('cancel'); },
+    async restoreActorAfterFailedTransfer() { events.push('restore'); },
+    async commitActorLeaveAfterTransfer() { events.push('source-removed'); }
+  };
+  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
+    localSpotManager: () => spotManager,
+    nativeNode: () => ({ routingId: rid('node-a') }),
+    native: { joinSpot() { throw new Error('native join must not run'); } }
+  });
+
+  await assert.rejects(
+    () => coordinator.joinSpot(actor, state, 'room-b', zlink.Message.from('join')),
+    /target joined callback failed/
+  );
+
+  assert.equal(state.spotRid, 'room-a');
+  assert.equal(state.spot, sourceSpot);
+  assert.deepEqual(events, [
+    'admission',
+    'begin',
+    'leave',
+    'membership:room-b',
+    'membership:room-a',
+    'restore'
+  ]);
+});
+
 test('post-commit actor binding failure is retried without changing an accepted join to failure', async () => {
   let bindAttempts = 0;
   const reported = [];

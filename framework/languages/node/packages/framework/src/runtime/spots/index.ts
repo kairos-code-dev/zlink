@@ -360,10 +360,18 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     actor: ZLinkActor,
     request: Message,
     commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    leaveSource?: () => Promise<void>
   ): Promise<ZLinkSpotActorJoinResponse> {
     this.options.admission?.requireRequest('Actor join admission');
-    return await this.actorMembership.admitActorJoin(spotRid, actor, request, commit, signal);
+    return await this.actorMembership.admitActorJoin(
+      spotRid,
+      actor,
+      request,
+      commit,
+      signal,
+      leaveSource
+    );
   }
 
   async leaveActor(

@@ -12,10 +12,13 @@
         <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks"/>
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+        <PackageReference Include="Zlink.HttpClient">
+            <VersionOverride Condition="'$(PackageVersion)' != '$(Version)'">$(PackageVersion)</VersionOverride>
+        </PackageReference>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>
-        <ProjectReference Include="../Zlink.HttpClient/Zlink.HttpClient.csproj"/>
+        <ProjectReference Include="../Zlink.HttpClient/Zlink.HttpClient.csproj" PrivateAssets="all"/>
     </ItemGroup>
 </Project>

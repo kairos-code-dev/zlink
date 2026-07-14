@@ -107,6 +107,7 @@ start_role() {
 }
 
 start_role mission-a "$(app_bin Server/QuestMission QuestMission)" "$mission_a_config"
+mission_a_pid="${pids[${#pids[@]}-1]}"
 start_role mission-b "$(app_bin Server/QuestMission QuestMission)" "$mission_b_config"
 wait_port "$mission_a_channel"
 wait_port "$mission_b_channel"
@@ -126,4 +127,15 @@ cat "$LOG_DIR/client.log"
 
 grep -q "gamequest-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "gamequest=completed" "$LOG_DIR/client.log"
+
+kill "$mission_a_pid"
+wait "$mission_a_pid" || true
+start_role mission-a-restarted "$(app_bin Server/QuestMission QuestMission)" "$mission_a_config"
+wait_port "$mission_a_channel"
+wait_http "$mission_a_http"
+alice_events="$(curl --fail --silent "$mission_a_http/self-check/events")"
+grep -q '"questId":"first-hunt"' <<<"$alice_events"
+grep -q '"eventType":"QuestProgressReconciledEvent"' <<<"$alice_events"
+grep -q '"currentCount":5' <<<"$alice_events"
+echo "gamequest startup replay restored player-alice"
 echo "gamequest full client/server self-check completed"

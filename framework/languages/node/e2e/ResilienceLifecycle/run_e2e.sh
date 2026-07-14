@@ -11,6 +11,7 @@ LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
+RL_D1_SUBSCRIBER_COUNT="${RL_D1_SUBSCRIBER_COUNT:-8}"
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -108,11 +109,13 @@ API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
 API_B_REMAP_PORT="$(pick_port)"
 API_B_GREEN_PORT="$(pick_port)"
+FANOUT_PORT="$(pick_port)"
 
 API_A="tcp://127.0.0.1:$API_A_PORT"
 API_B="tcp://127.0.0.1:$API_B_PORT"
 API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
 API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
+FANOUT_ENDPOINT="tcp://127.0.0.1:$FANOUT_PORT"
 
 start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
@@ -145,6 +148,7 @@ start_configured_server api-a "$PROVIDER_MAIN" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
+  --fanout-endpoint "$FANOUT_ENDPOINT" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
@@ -160,12 +164,31 @@ start_configured_server api-b "$PROVIDER_MAIN" \
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
 start_configured_server consumer "$CONSUMER_MAIN" \
+  --rid consumer-1 \
   --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --trace-label consumer \
+  --evidence-file "$LOG_DIR/consumer-1.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
+
+FANOUT_SUBSCRIBER_URLS=("http://127.0.0.1:$CONSUMER_HTTP_PORT")
+for index in $(seq 2 "$RL_D1_SUBSCRIBER_COUNT"); do
+  subscriber_port="$(pick_port)"
+  subscriber_url="http://127.0.0.1:$subscriber_port"
+  start_configured_server "consumer-$index" "$CONSUMER_MAIN" \
+    --rid "consumer-$index" \
+    --http-url "$subscriber_url" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --trace-label "consumer-$index" \
+    --evidence-file "$LOG_DIR/consumer-$index.evidence.log" \
+    --log-dir "$LOG_DIR"
+  wait_health "$subscriber_url" "consumer-$index"
+  FANOUT_SUBSCRIBER_URLS+=("$subscriber_url")
+done
+FANOUT_SUBSCRIBER_URL_LIST="$(IFS=,; echo "${FANOUT_SUBSCRIBER_URLS[*]}")"
 
 node "$CLIENT_MAIN" \
   --topology-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
@@ -174,6 +197,7 @@ node "$CLIENT_MAIN" \
   --provider-b-remap-url "http://127.0.0.1:$PROVIDER_B_REMAP_HTTP_PORT" \
   --provider-b-green-url "http://127.0.0.1:$PROVIDER_B_GREEN_HTTP_PORT" \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+  --fanout-subscriber-urls "$FANOUT_SUBSCRIBER_URL_LIST" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --redis-container "$REDIS_CONTAINER_ID" \

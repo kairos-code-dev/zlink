@@ -9,6 +9,7 @@ export interface ServerOptions {
   readonly redisEndpoint?: string;
   readonly redisKeyPrefix?: string;
   readonly channelEndpoint?: string;
+  readonly fanoutEndpoint?: string;
 }
 
 export function validateServerOptions(value: unknown, defaultRole = 'provider'): ServerOptions {
@@ -21,6 +22,7 @@ export function validateServerOptions(value: unknown, defaultRole = 'provider'):
     rid: optionalString(values, 'rid') ?? 'node',
     redisEndpoint: optionalString(values, 'redisEndpoint'),
     redisKeyPrefix: optionalString(values, 'redisKeyPrefix'),
-    channelEndpoint: optionalString(values, 'channelEndpoint')
+    channelEndpoint: optionalString(values, 'channelEndpoint'),
+    fanoutEndpoint: optionalString(values, 'fanoutEndpoint')
   };
 }

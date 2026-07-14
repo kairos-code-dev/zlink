@@ -5,12 +5,15 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
+import { PacketNames, ResilienceNames } from '../../Shared/messages';
 import { validateConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
 import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../configuration';
 import { createConsumerEndpoints, requestProfile } from './Endpoints/consumer-endpoints';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
+import { LoadEventHandler } from './Handlers/load-event-handler';
+import { EvidenceStore } from './Infrastructure/evidence-store';
 
 export async function startConsumerHost(): Promise<void> {
   let stopping = false;
@@ -18,9 +21,10 @@ export async function startConsumerHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ConsumerOptions;
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const evidence = app.get(EvidenceStore, { strict: false });
   const server = await startHttpServer(
     options.httpUrl,
-    createConsumerEndpoints(channel, (request) => requestWithNewClient(options, request), () => { stopping = true; })
+    createConsumerEndpoints(channel, evidence, (request) => requestWithNewClient(options, request), () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -39,8 +43,19 @@ function createConfiguredConsumerModule(): Function {
       ZLinkModule.forRootFactory({
         imports: [configuration],
         inject: [RESILIENCE_OPTIONS],
-        useFactory: (value: unknown) => buildFramework(value as ConsumerOptions)
+        useFactory: (value: unknown) => buildFramework(value as ConsumerOptions, undefined, true)
       })
+    ],
+    providers: [
+      {
+        provide: EvidenceStore,
+        inject: [RESILIENCE_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as ConsumerOptions;
+          return new EvidenceStore(options.rid, options.evidenceFile);
+        }
+      },
+      LoadEventHandler
     ]
   })(ConsumerModule);
   return ConsumerModule;
@@ -72,7 +87,7 @@ function createConsumerModule(options: ConsumerOptions, traceLabel = options.tra
   return ConsumerModule;
 }
 
-function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabel) {
+function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabel, includeFanout = false) {
   fs.mkdirSync(options.logDir, { recursive: true });
   const builder = zlinkFramework();
   builder.configureDispatch()
@@ -84,6 +99,11 @@ function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabe
     builder.addLocationStore(createRedisLocationStore({ redisEndpoint: options.redisEndpoint, redisKeyPrefix: options.redisKeyPrefix }));
     Object.assign(builder.configureLocations(), resilienceLocationOptions());
     profile.enableClient();
+    if (includeFanout) {
+      builder.addFanoutChannel(ResilienceNames.fanoutChannel)
+        .enableSubscriber()
+        .addPublishHandler(PacketNames.loadEvent, LoadEventHandler);
+    }
   } else {
     profile.enableClient(options.providerEndpoints);
   }

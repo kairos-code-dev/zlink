@@ -1,30 +1,46 @@
-import type { ProfileRes } from '../../Shared/messages';
+import { randomUUID } from 'node:crypto';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
-import { profileReq } from '../Support/resilience-helpers';
+import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
-export async function runRlD1(options: ClientOptions): Promise<void> {
-  const replies = await Promise.all(
-    Array.from({ length: 120 }, (_unused, index) => postJson<ProfileRes>(
-      options.consumerUrl,
-      '/profile/request',
-      profileReq(`rl-d1-${index}`)
-    ))
-  );
-  ensure(
-    replies.length === 120 && replies.every((reply) => reply.value === 'profile:fast'),
-    'RL-D1 high request fanout did not complete.'
-  );
+const eventCount = 120;
 
-  const evidence = await Promise.any([
-    postJson<string[]>(options.providerAUrl, '/evidence/wait', { contains: 'marker=rl-d1-' }),
-    postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-d1-' })
-  ]);
-  ensure(
-    evidence.some((line) => line.includes('marker=rl-d1-')),
-    'RL-D1 did not record expected evidence.'
-  );
+export async function runRlD1(options: ClientOptions): Promise<void> {
+  ensure(options.fanoutSubscriberUrls.length >= 8, 'RL-D1 requires at least eight fanout subscribers.');
+  const warmupRun = `warmup-${randomUUID().replaceAll('-', '')}`;
+  for (let sequence = 1; sequence <= 40; sequence += 1) {
+    await publish(options.providerAUrl, warmupRun, sequence);
+  }
+  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
+    contains: `run=${warmupRun}|`,
+    timeoutMilliseconds: 10_000
+  })));
+  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson(url, '/evidence/clear', {})));
+
+  const runId = randomUUID().replaceAll('-', '');
+  for (let sequence = 1; sequence <= eventCount; sequence += 1) {
+    await publish(options.providerAUrl, runId, sequence);
+  }
+  await Promise.all(options.fanoutSubscriberUrls.map((url) => postJson<string[]>(url, '/evidence/wait', {
+    contains: `run=${runId}|seq=${eventCount}|`,
+    timeoutMilliseconds: 20_000
+  })));
+
+  for (const subscriber of options.fanoutSubscriberUrls) {
+    const evidence = await getJson<string[]>(subscriber, '/evidence');
+    const sequences = evidence
+      .filter((line) => line.includes(`load-event|`) && line.includes(`run=${runId}|`))
+      .map((line) => Number.parseInt(line.match(/\|seq=(\d+)\|/)?.[1] ?? '0', 10));
+    ensure(sequences.length === eventCount, `RL-D1 subscriber ${subscriber} did not receive every event.`);
+    ensure(
+      sequences.every((sequence, index) => sequence === index + 1),
+      `RL-D1 subscriber ${subscriber} observed a missing, duplicate, or reordered event.`
+    );
+  }
 
   console.log('scenario RL-D1 passed');
+}
+
+async function publish(providerUrl: string, runId: string, sequence: number): Promise<void> {
+  await postJson(providerUrl, '/fanout/publish', { runId, sequence });
 }

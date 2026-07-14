@@ -11,14 +11,27 @@ import {
   type TimeoutRes
 } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
+import type { EvidenceStore } from '../Infrastructure/evidence-store';
 
 export function createConsumerEndpoints(
   channel: ZLinkChannelClient,
+  evidence: EvidenceStore,
   requestWithNewClient: (request: ProfileReq) => Promise<ProfileRes>,
   stop: () => void
 ): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
+    { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
+    {
+      method: 'POST', path: '/evidence/wait', handle: async (body) => {
+        const request = body as { readonly contains: string; readonly timeoutMilliseconds?: number };
+        return await evidence.waitUntil(
+          (entries) => entries.some((entry) => entry.includes(request.contains)),
+          Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000))
+        );
+      }
+    },
     { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, (body as ProfileReq[]).map(toProfileReq)) },
     { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, toProfileReq(body), 5000) },
     { method: 'POST', path: '/profile/request/no-retry', handle: (body) => requestProfileOnce(channel, toProfileReq(body), 10000) },

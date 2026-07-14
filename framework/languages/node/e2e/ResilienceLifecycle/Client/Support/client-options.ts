@@ -3,6 +3,7 @@ export interface ClientOptions {
   readonly providerAUrl: string;
   readonly providerBUrl: string;
   readonly consumerUrl: string;
+  readonly fanoutSubscriberUrls: readonly string[];
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
   readonly redisContainer: string;
@@ -34,6 +35,7 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     providerAUrl: required(values, 'provider-a-url'),
     providerBUrl: required(values, 'provider-b-url'),
     consumerUrl: required(values, 'consumer-url'),
+    fanoutSubscriberUrls: required(values, 'fanout-subscriber-urls').split(',').filter((value) => value.length > 0),
     redisEndpoint: required(values, 'redis-endpoint'),
     redisKeyPrefix: required(values, 'redis-key-prefix'),
     redisContainer: required(values, 'redis-container'),

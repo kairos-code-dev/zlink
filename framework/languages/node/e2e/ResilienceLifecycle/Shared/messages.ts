@@ -5,7 +5,13 @@ export const PacketNames = {
   profileMsg: 'ProfileMsg',
   payloadReq: 'PayloadReq',
   missingProfileReq: 'MissingProfileReq',
-  missingProfileMsg: 'MissingProfileMsg'
+  missingProfileMsg: 'MissingProfileMsg',
+  loadEvent: 'LoadEvent'
+} as const;
+
+export const ResilienceNames = {
+  fanoutChannel: 'resilience.events',
+  loadTopic: 'load'
 } as const;
 
 export class ProfileReq {
@@ -22,6 +28,13 @@ export interface ProfileRes {
 
 export class ProfileMsg {
   constructor(readonly commandId: string) {}
+}
+
+export class LoadEvent {
+  constructor(
+    readonly runId: string,
+    readonly sequence: number
+  ) {}
 }
 
 export class MissingProfileReq {

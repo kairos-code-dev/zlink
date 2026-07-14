@@ -23,7 +23,7 @@
 | RL-C2 | 구현 | provider B crash 뒤 topology 이탈, new-client follow-up의 `api-a` 수렴, provider B 재시작 후 restored traffic과 evidence marker를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-C3 | 구현 | provider B shutdown으로 단절을 모사하고, down 중 `api-a` 처리와 provider B 재시작 뒤 restored traffic/evidence를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-C4 | 구현 | Redis location store outage 중 기존 channel request가 계속 성공하는지 확인하고, store 복구 뒤 topology 재조회와 follow-up evidence를 검증했다. 로그: `logs/20260703-211853-78546` |
-| RL-D1 | 구현 | 120개 concurrent request burst가 모두 정상 reply를 받고 provider evidence marker가 기록되는지 검증했다. 로그: `logs/20260703-211853-78546` |
+| RL-D1 | 구현 | Redis location row로 연결한 subscriber 8개에 fanout event 120개를 발행하고, 각 subscriber가 같은 순서를 누락·중복 없이 수신하는지 검증했다. 로그: `logs/20260715-075646-2279409` |
 | RL-D2 | 구현 | dispatch-error observer fault를 주입하고 missing request 실패, dispatch-error evidence, observer 예외 이후 follow-up request 성공을 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D3 | 구현 | missing request handler 실패 뒤 provider dispatch-error evidence에 `packet=MissingProfileReq` marker가 남는지 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D4 | 구현 | missing request handler public failure와 provider dispatch-error evidence의 `packet=MissingProfileReq` marker를 검증했다. 로그: `logs/20260703-211853-78546` |
@@ -33,5 +33,6 @@
 
 - `framework/languages/node/e2e/ResilienceLifecycle/run_e2e.sh`
   - PASS: `logs/20260703-211853-78546`
+  - RL-D1 실제 fanout 단독 PASS: `logs/20260715-075646-2279409`
 - 남은 scenario: 없음
 - 미착수 scenario: 없음

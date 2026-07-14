@@ -5,11 +5,12 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_FANOUT_CLIENT,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
-import { PacketNames } from '../../Shared/messages';
+import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions, ZLinkFanoutClient } from '@zlink-systems/framework';
+import { PacketNames, ResilienceNames } from '../../Shared/messages';
 import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
 import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../configuration';
@@ -34,11 +35,13 @@ export async function startProviderHost(): Promise<void> {
   const evidence = app.get(EvidenceStore, { strict: false });
   const fault = app.get(FaultState, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const fanout = app.get(ZLINK_FANOUT_CLIENT, { strict: false }) as ZLinkFanoutClient;
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
   const server = await startHttpServer(options.httpUrl, createProviderEndpoints(
     evidence,
     fault,
     channel,
+    fanout,
     runtimeOptions,
     () => { stopping = true; }
   ));
@@ -85,6 +88,10 @@ function createProviderModule(): Function {
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
               .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);
+          }
+          if (options.fanoutEndpoint !== undefined) {
+            builder.addFanoutChannel(ResilienceNames.fanoutChannel)
+              .enablePublisher(options.fanoutEndpoint);
           }
           return builder.build();
         }

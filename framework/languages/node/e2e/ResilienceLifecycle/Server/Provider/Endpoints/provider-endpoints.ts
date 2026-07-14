@@ -1,7 +1,9 @@
-import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
+import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions, ZLinkFanoutClient } from '@zlink-systems/framework';
 import {
+  LoadEvent,
   ProfileMsg,
   ProfileReq,
+  ResilienceNames,
   type EvidenceWaitReq,
   type ProfileRes,
   type WeightWaitReq,
@@ -14,12 +16,26 @@ export function createProviderEndpoints(
   evidence: EvidenceStore,
   fault: FaultState,
   channel: ZLinkChannelClient,
+  fanout: ZLinkFanoutClient,
   runtimeOptions: ZLinkChannelRuntimeOptions,
   stop: () => void
 ): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'provider', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'POST',
+      path: '/fanout/publish',
+      handle: (body) => {
+        const event = body as LoadEvent;
+        fanout.publish(
+          ResilienceNames.fanoutChannel,
+          ResilienceNames.loadTopic,
+          new LoadEvent(event.runId, Number(event.sequence))
+        ).submit();
+        return { status: 'published', sequence: event.sequence };
+      }
+    },
     {
       method: 'POST',
       path: '/profile/request',

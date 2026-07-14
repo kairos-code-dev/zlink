@@ -30,7 +30,12 @@ export ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
+if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
+  echo "StoreFailure must use a 5s route settle limit" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"
@@ -463,7 +468,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}
 start_provider api-a "${API_A}" api-a
 start_provider api-b "${API_B}" api-b
 start_consumer "consumer-SF-A1" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -480,7 +485,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; HTTP_C="$(http "${CPH}")"; C
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 start_consumer "consumer-SF-A2" "${CONSUMER_HTTP}" polling
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A2" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -521,7 +526,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 start_consumer "consumer-SF-B1" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -563,7 +568,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 start_consumer "consumer-SF-B2" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -608,7 +613,7 @@ start_provider api-a "${API_A}" api-a
 start_provider api-b "${API_B}" api-b
 API_B_PID="${LAST_PID}"
 start_consumer "consumer-SF-C1" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -639,7 +644,7 @@ start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 API_B_PID="${LAST_PID}"
 start_consumer "consumer-SF-C2" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -670,7 +675,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 start_consumer "consumer-SF-D1" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -722,7 +727,7 @@ start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 API_B_PID="${LAST_PID}"
 start_consumer "consumer-SF-D2" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -771,7 +776,7 @@ HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}
 start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 start_consumer "consumer-SF-D3" "${CONSUMER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-D3-HEALTHY" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
@@ -822,7 +827,7 @@ start_provider api-a "${API_A}" api-a "${HTTP_A}"
 start_provider api-b "${API_B}" api-b "${HTTP_B}"
 ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${SF_E1_PROXY_ENDPOINT}"
 start_consumer "consumer-SF-E1" "${CONSUMER_HTTP}" delay
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-E1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \

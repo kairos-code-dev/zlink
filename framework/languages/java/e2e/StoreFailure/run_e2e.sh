@@ -36,6 +36,11 @@ if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
   echo "StoreFailure must use a 5s route settle limit" >&2
   exit 1
 fi
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
+    Client/src/main/java Shared/src/main/java --glob '*.java'; then
+  echo "StoreFailure client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

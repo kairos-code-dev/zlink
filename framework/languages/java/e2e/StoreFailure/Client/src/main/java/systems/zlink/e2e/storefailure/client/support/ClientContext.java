@@ -11,17 +11,18 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import systems.zlink.e2e.storefailure.shared.Contracts;
-import systems.zlink.e2e.storefailure.shared.HttpSupport;
 import systems.zlink.e2e.storefailure.shared.Wait;
 
-public final class ClientContext {
+public final class ClientContext implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int STORE_DELAY_MILLISECONDS = 1200;
 
     private final ClientOptions options;
+    private final StoreFailureHttpClient http;
 
     public ClientContext(ClientOptions options) {
         this.options = options;
+        this.http = new StoreFailureHttpClient(options.consumerHttpEndpoint());
     }
 
     public DiscoveryApiResult runStoreFailureBaseline() {
@@ -178,7 +179,7 @@ public final class ClientContext {
             Contracts.ProfileReq request =
                 new Contracts.ProfileReq("msg-" + index, "marker-" + index);
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request/wait", request, JSON);
+                String body = http.postJson("/profile/request/wait", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:msg-" + index), "reply payload mismatch");
                 providers.add(reply.providerRid());
@@ -204,7 +205,7 @@ public final class ClientContext {
             Contracts.ProfileReq request =
                 new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request/wait", request, JSON);
+                String body = http.postJson("/profile/request/wait", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
                     scenarioName + " reply payload mismatch");
@@ -237,7 +238,7 @@ public final class ClientContext {
                 new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             Instant started = Instant.now();
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request", request, JSON);
+                String body = http.postJson("/profile/request", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
                     "SF-E1 reply payload mismatch");
@@ -253,11 +254,7 @@ public final class ClientContext {
 
     private void setStoreDelay(int delayMilliseconds) {
         try {
-            HttpSupport.postJson(
-                options.consumerHttpEndpoint(),
-                "/admin/store-delay",
-                new Contracts.StoreDelayReq(delayMilliseconds),
-                JSON);
+            http.postJson("/admin/store-delay", new Contracts.StoreDelayReq(delayMilliseconds));
         } catch (Exception error) {
             throw new IllegalStateException("failed to set store delay", error);
         }
@@ -287,7 +284,7 @@ public final class ClientContext {
             Contracts.ProfileReq request =
                 new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request", request, JSON);
+                String body = http.postJson("/profile/request", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
                     scenarioName + " reply payload mismatch");
@@ -318,7 +315,7 @@ public final class ClientContext {
             Contracts.ProfileReq request =
                 new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request", request, JSON);
+                String body = http.postJson("/profile/request", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
                     scenarioName + " reply payload mismatch");
@@ -349,7 +346,7 @@ public final class ClientContext {
             Contracts.ProfileReq request =
                 new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             try {
-                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request", request, JSON);
+                String body = http.postJson("/profile/request", request);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
                     scenarioName + " reply payload mismatch");
@@ -383,7 +380,7 @@ public final class ClientContext {
             "consumer location query missing expected peer rows " + options.expectedRids(),
             () -> {
                 try {
-                    JsonNode root = JSON.readTree(HttpSupport.get(consumerEndpoint, "/locations/peers"));
+                    JsonNode root = JSON.readTree(http.get("/locations/peers"));
                     Set<String> rids = new HashSet<>();
                     for (JsonNode entry : root) {
                         String rid = entry.path("nodeRid").asText("");
@@ -408,7 +405,7 @@ public final class ClientContext {
             "consumer location query still includes removed provider " + deadRid,
             () -> {
                 try {
-                    JsonNode root = JSON.readTree(HttpSupport.get(consumerEndpoint, "/locations/peers"));
+                    JsonNode root = JSON.readTree(http.get("/locations/peers"));
                     Set<String> rids = new HashSet<>();
                     for (JsonNode entry : root) {
                         String rid = entry.path("nodeRid").asText("");
@@ -436,7 +433,7 @@ public final class ClientContext {
         Exception lastError = null;
         while (System.nanoTime() < deadline) {
             try {
-                status = JSON.readTree(HttpSupport.get(consumerEndpoint, "/locations/status"));
+                status = JSON.readTree(http.get("/locations/status"));
                 if (status.path("storeHealthy").asBoolean(false)) {
                     break;
                 }
@@ -466,7 +463,7 @@ public final class ClientContext {
             Duration.ofSeconds(10),
             "consumer location runtime status did not report polling-only mode",
             () -> {
-                JsonNode current = JSON.readTree(HttpSupport.get(consumerEndpoint, "/locations/status"));
+                JsonNode current = JSON.readTree(http.get("/locations/status"));
                 boolean healthy = current.path("storeHealthy").asBoolean(false);
                 boolean watchEnabled = current.path("watchEnabled").asBoolean(true);
                 long pollingMillis = current.path("pollingIntervalMillis").asLong(0);
@@ -512,7 +509,7 @@ public final class ClientContext {
             failureMessage,
             () -> {
                 try {
-                    JsonNode current = JSON.readTree(HttpSupport.get(consumerEndpoint, "/locations/status"));
+                    JsonNode current = JSON.readTree(http.get("/locations/status"));
                     return accept.test(current) ? current : null;
                 } catch (Exception error) {
                     return null;
@@ -527,6 +524,11 @@ public final class ClientContext {
             }
         }
         return true;
+    }
+
+    @Override
+    public void close() {
+        http.close();
     }
 
 }

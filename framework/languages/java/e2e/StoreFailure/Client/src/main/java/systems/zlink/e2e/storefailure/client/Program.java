@@ -24,8 +24,10 @@ public final class Program {
     public static void main(String[] args) throws Exception {
         ClientOptions options = ClientOptions.fromEnv();
         ClientScenario scenario = scenario(options.scenario());
-        DiscoveryApiResult result = scenario.run(new ClientContext(options));
-        System.out.println("scenario " + options.scenario() + " passed providers=" + result.providers());
+        try (ClientContext context = new ClientContext(options)) {
+            DiscoveryApiResult result = scenario.run(context);
+            System.out.println("scenario " + options.scenario() + " passed providers=" + result.providers());
+        }
     }
 
     private static ClientScenario scenario(String name) {

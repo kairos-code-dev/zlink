@@ -7,11 +7,7 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 
 public final class HttpSupport {
     private HttpSupport() {
@@ -62,33 +58,4 @@ public final class HttpSupport {
         shutdown.start();
     }
 
-    public static String get(String baseUrl, String path) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
-            .timeout(Duration.ofSeconds(5))
-            .GET()
-            .build();
-        return send(request);
-    }
-
-    public static String postJson(
-        String baseUrl,
-        String path,
-        Object body,
-        ObjectMapper json) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
-            .timeout(Duration.ofSeconds(10))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(body)))
-            .build();
-        return send(request);
-    }
-
-    private static String send(HttpRequest request) throws IOException, InterruptedException {
-        HttpResponse<String> response = HttpClient.newHttpClient()
-            .send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("HTTP " + response.statusCode() + " from " + request.uri());
-        }
-        return response.body();
-    }
 }

@@ -235,7 +235,8 @@
 - [ ] **IMP-DN-04** (결함) — 51
 - [ ] **IMP-DN-05** (결함) — 05 §2.4.3
 - [ ] **IMP-DN-06** (결함) — 40 §3·§8.2
-- [ ] **IMP-DN-07** (결함) — 20 §8
+- [x] **IMP-DN-07** (결함) — 20 §8
+  — registration validator가 노드 전체의 Entry Spot 타입을 추적해 같은 타입의 중복을 `AddZLinkFramework` 단계에서 거부한다. registration 테스트 40건과 전체 unit 628건이 통과했다.
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 

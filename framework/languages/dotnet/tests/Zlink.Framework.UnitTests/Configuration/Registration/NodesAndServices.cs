@@ -24,6 +24,26 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_Rejects_TheSameEntrySpotType_AcrossNodes()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("entry-a")
+                    .EnableRouter("inproc://entry-a")
+                    .AddEntrySpot<TestEntrySpot>();
+                options.AddSpotMesh("entry-b")
+                    .EnableRouter("inproc://entry-b")
+                    .AddEntrySpot<TestEntrySpot>();
+            }));
+
+        Assert.Contains("Duplicate Entry Spot", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(TestEntrySpot).ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Spot_Connection_Role_Names_Expose_The_Documented_Capability_State()
     {
         var services = new ServiceCollection();

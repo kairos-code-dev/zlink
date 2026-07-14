@@ -6,6 +6,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         registration.FreezeScannedHandlerCatalog();
         var globalSpotFactories = new HashSet<Type>();
+        var globalEntrySpots = new HashSet<Type>();
         var channelHandlerEndpoints = registration.ScannedHandlerCatalog.ChannelEndpoints;
         var routeHandlerEndpoints = registration.ScannedHandlerCatalog.RouteEndpoints;
         var handlerExposure = ZLinkHandlerExposureCatalog.Build(channelHandlerEndpoints, routeHandlerEndpoints);
@@ -32,7 +33,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateSpotNode(
                 spotNode,
                 registration,
-                globalSpotFactories);
+                globalSpotFactories,
+                globalEntrySpots);
 
         var actorCapableNodes = registration.SpotNodes.Values
             .Where(static spotNode => spotNode.ActorFactories.Count > 0)

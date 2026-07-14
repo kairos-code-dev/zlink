@@ -5,7 +5,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateSpotNode(
         ZLinkSpotNodeRegistration spotNode,
         ZLinkFrameworkRegistration registration,
-        ISet<Type> globalSpotFactories)
+        ISet<Type> globalSpotFactories,
+        ISet<Type> globalEntrySpots)
     {
         if (registration.SpotDiscovery is null) ValidateSpotNodeWithoutMesh(spotNode);
 
@@ -42,6 +43,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         ValidateUniqueSpotFactories(spotNode, globalSpotFactories);
+        ValidateUniqueEntrySpot(spotNode, globalEntrySpots);
     }
 
     private static void ValidateSpotNodeWithoutMesh(ZLinkSpotNodeRegistration spotNode)
@@ -60,5 +62,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             if (!globalSpotFactories.Add(spotFactory))
                 throw new ZLinkConfigurationException(
                     $"Duplicate SPOT factory '{spotFactory}' across nodes.");
+    }
+
+    private static void ValidateUniqueEntrySpot(
+        ZLinkSpotNodeRegistration spotNode,
+        ISet<Type> globalEntrySpots)
+    {
+        if (spotNode.EntrySpotType is { } entrySpotType
+            && !globalEntrySpots.Add(entrySpotType))
+            throw new ZLinkConfigurationException(
+                $"Duplicate Entry Spot '{entrySpotType}' across nodes.");
     }
 }

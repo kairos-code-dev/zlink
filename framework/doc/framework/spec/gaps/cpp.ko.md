@@ -556,7 +556,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 `rc-a*` glob이 RC-A6를 일반 client로 보내는 것과 A1~A5 명시 selector 부재를 검출했다. client selector를 `rc-a[1-5]`로 좁힌 뒤 gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.
 - [x] **E2E-CP-31** (결함) — **`RL-D1`·`RL-C2` client scenario가 dead code**다. `main.cpp`가 부르지 않는다
   - 근거: 수정 전 target-contract gate가 runner 소유 검증과 중복된 RL-C2·RL-D1 client include와 파일 네 곳을 모두 검출했다. 약한 dead wrapper와 RL-C2의 도달하지 않는 branch를 제거한 뒤 client target 빌드와 gate가 통과했고, 실제 runner 소유 경로인 `./run_e2e.sh RL-C2`의 crash·복구 및 `./run_e2e.sh RL-D1`의 120회 burst가 각각 통과했다.
-- [ ] **E2E-CP-32** (결함) — **`RL-B2`(P1) 단언이 실패할 수 없다.** 500ms timeout이라 crash와 무관하게 통과
+- [x] **E2E-CP-32** (결함) — **`RL-B2`(P1) 단언이 실패할 수 없다.** 500ms timeout이라 crash와 무관하게 통과
+  - 근거: 수정 전 target-contract gate가 1초 provider handler보다 짧은 500ms outer HTTP timeout과 내부 3초 channel deadline보다 긴 제한의 부재를 검출했다. outer timeout을 5초로 바꿔 provider가 유지되면 정상 reply가 도착해 negative가 실패하도록 만든 뒤 client target 빌드, gate, 실제 SIGKILL을 수행한 `./run_e2e.sh RL-B2`가 통과했다.
 - [ ] **E2E-CP-33** (결함) — **`RL-D5` soak가 순차 burst**이고, **`RL-D4` wire 호환이 검증되지 않는다**
 - [ ] **E2E-CP-34** (결함) — **`MON-A2`(P0)에 trigger가 없고 원리적으로 실패할 수 없다**(IMP-CP-13이 매 tick 발행)
 - [ ] **E2E-CP-35** (결함) — **`MON-D1`·`MON-A4`가 전이가 아니라 카운터를 센다.** `MON-A1`은 `RoutingId`를 아예 기록하지 않는다

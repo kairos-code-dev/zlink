@@ -104,6 +104,8 @@ int main ()
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
     const auto resilience_client =
       read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
+    const auto resilience_b2 = read_file (
+      e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
@@ -354,6 +356,14 @@ int main ()
     gate.require (pubsub_runner.find ("fast subscriber isolation exceeded 2500 ms")
                     != std::string::npos,
                   "E2E-CP-47", "PS-B1 cannot fail when fast delivery is head-of-line blocked");
+
+    /* E2E-CP-32 — the outer HTTP deadline must not preempt the 1s provider handler. */
+    gate.require (resilience_b2.find (".timeout (std::chrono::milliseconds (500))")
+                    == std::string::npos,
+                  "E2E-CP-32", "RL-B2 still times out before the slow provider can reply");
+    gate.require (resilience_b2.find (".timeout (std::chrono::milliseconds (5000))")
+                    != std::string::npos,
+                  "E2E-CP-32", "RL-B2 has no outer deadline longer than its channel deadline");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

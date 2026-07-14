@@ -97,7 +97,7 @@ inline void run_inflight_crash_scenario ()
                                    .build ();
             auto response = slow_consumer.post ("/profile/request/manual-b")
                               .body (profile_req_t{.value = "slow", .marker = marker})
-                              .timeout (std::chrono::milliseconds (500))
+                              .timeout (std::chrono::milliseconds (5000))
                               .submit<profile_res_t> ()
                               .result ();
             return response.has_value ();

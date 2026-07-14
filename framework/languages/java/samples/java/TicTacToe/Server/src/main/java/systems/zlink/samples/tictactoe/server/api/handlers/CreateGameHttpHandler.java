@@ -1,5 +1,6 @@
 package systems.zlink.samples.tictactoe.server.api.handlers;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -14,6 +15,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 public final class CreateGameHttpHandler {
     private final ZLinkClient client;
     private final systems.zlink.samples.tictactoe.server.configuration.SampleSettings settings;
+    private final AtomicInteger nextOwnerIndex = new AtomicInteger();
 
     public CreateGameHttpHandler(
         ZLinkClient client,
@@ -25,7 +27,7 @@ public final class CreateGameHttpHandler {
     @PostMapping("/games")
     public java.util.concurrent.CompletionStage<CreateGameHttpRes> handle(@RequestBody CreateGameHttpReq request) {
         return client.requestToChannel(
-                    SampleNames.playChannel(selectOwner(settings.playChannelEndpoints().size())),
+                    SampleNames.playChannel(selectOwner()),
                     new CreateGameReq(gameName(request)))
                 .timeout(SampleNames.RequestTimeout)
             .submit(CreateGameRes.class)
@@ -40,7 +42,11 @@ public final class CreateGameHttpHandler {
             : request.gameName();
     }
 
-    private static int selectOwner(int playNodeCount) {
-        return Math.min(0, playNodeCount - 1);
+    private int selectOwner() {
+        int playNodeCount = settings.playChannelEndpoints().size();
+        if (playNodeCount == 0) {
+            throw new IllegalStateException("At least one Play endpoint is required.");
+        }
+        return Math.floorMod(nextOwnerIndex.getAndIncrement(), playNodeCount);
     }
 }

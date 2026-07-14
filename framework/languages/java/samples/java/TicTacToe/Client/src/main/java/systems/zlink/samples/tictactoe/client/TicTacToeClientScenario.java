@@ -26,9 +26,13 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 public final class TicTacToeClientScenario {
     public void run(TicTacToeClientOptions options) throws Exception {
         CreateGameHttpRes game;
+        CreateGameHttpRes nextGame;
         try (ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl()).build()) {
             game = api.post("/games")
                 .body(new CreateGameHttpReq(options.gameName()))
+                .fetch(CreateGameHttpRes.class);
+            nextGame = api.post("/games")
+                .body(new CreateGameHttpReq(options.gameName() + "-round-robin"))
                 .fetch(CreateGameHttpRes.class);
         }
         String observerEndpoint = nonOwnerEndpoint(game);
@@ -42,7 +46,9 @@ public final class TicTacToeClientScenario {
             observer.connect().submit().toCompletableFuture().join();
 
             ensure(game.roomId() != null && !game.roomId().isBlank());
+            ensure(!game.roomId().equals(nextGame.roomId()));
             ensure(game.ownerPlayEndpoint() != null && !game.ownerPlayEndpoint().isBlank());
+            ensure(!game.ownerPlayEndpoint().equals(nextGame.ownerPlayEndpoint()));
             ensure(options.gameName().equals(game.gameName()));
             ensure(game.requiredLevel() == 3);
 

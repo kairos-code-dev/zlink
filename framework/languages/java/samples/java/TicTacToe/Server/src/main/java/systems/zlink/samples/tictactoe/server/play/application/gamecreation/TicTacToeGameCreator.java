@@ -16,7 +16,9 @@ public final class TicTacToeGameCreator {
 
     public GameRoom nextRoom(String gameName) {
         String normalized = gameName == null || gameName.isBlank() ? "tic-tac-toe" : gameName;
-        return new GameRoom("ttt-room-%03d".formatted(sequence.incrementAndGet()), normalized);
+        return new GameRoom(
+            "ttt-%s-room-%03d".formatted(settings.playSpotNodeRid(), sequence.incrementAndGet()),
+            normalized);
     }
 
     public CreateGameRes created(GameRoom room) {

@@ -754,9 +754,12 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 
 ### 진짜 버그
 
+- [x] **SMP-JV-23** (**버그**) — TicTacToe room owner가 항상 첫 Play로 고정된다.
+  - 근거: 동일 API의 연속 생성 두 건이 서로 다른 Play와 서로 다른 room ID를 반환하도록 self-check를 추가했으며, 수정 전 단언 실패와 수정 후 `PASS TicTacToe.Java`를 확인했다.
+
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-JV-23** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): room owner는 **deterministic round-robin**으로 고른다 — 첫 room은 `play-a`, 다음은 `play-b` | `CreateGameHttpHandler.java:43-45` — `return Math.min(0, playNodeCount - 1);` **항상 `0`이다.** `floorMod(counter, n)`을 잘못 쓴 것이고 카운터 자체가 없다. Kotlin도 `0.coerceAtMost(n-1)`로 같다. ⇒ **`play-b`가 방 owner가 되는 일이 한 번도 없다.** 이 샘플의 존재 이유(API 2개 × Play 2개 행렬)의 **절반이 검증되지 않는다** |
+| **SMP-JV-23** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): room owner는 **deterministic round-robin**으로 고른다 — 첫 room은 `play-a`, 다음 room은 `play-b`처럼 선택한다 | **해결:** API handler가 프로세스 로컬 원자 카운터로 Play를 선택한다. 게이트를 복구하면서 Play별 로컬 시퀀스가 같은 `RoomId`를 만드는 추가 결함이 드러나 SpotNode rid를 room ID에 포함했다. 공유 wire는 바꾸지 않았다. Kotlin의 별도 결함은 이 작업 범위에서 수정하지 않았다. |
 | **SMP-JV-24** (**버그**) | [tictactoe §16](../../common/sample/tictactoe/README.ko.md): 조건을 만족하지 못하면 **join을 거부하거나 오류 response를 반환해야 한다** | `PlayActorJoinGameHandler.java:26-30` — `joined.reply()`를 **분기 없이** 부르고, `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다. ⇒ 거절된 join이면 actor의 게임 소속은 **이미 커밋됐고**, `Rejected(null).reply()`가 **NPE**가 되거나 payload가 있으면 클라이언트가 **일어나지도 않은 join에 성공 응답**을 받는다. Entry Spot에 앉은 채로 `PlaceMarkReq`가 handler 없는 곳으로 dispatch된다. **[갭 인덱스 §15.5]가 예측한 바로 그 실수다.** SupportChat handler 2곳은 `instanceof Accepted`로 제대로 분기한다 |
 | **SMP-JV-25** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md) | SupportChat Java가 `connectRouter(...)`를 **두 곳에서** 쓴다(`support/Program.java:82-84`, `session/Program.java:64-66`). **Kotlin은 안 쓴다 — Kotlin이 맞다.** ⇒ 자동 연결이 회귀해도 Java SupportChat은 **초록으로 남는다.** 절대 규칙이 막으려던 바로 그 실패다 |
 | **SMP-JV-26** (**버그**) | [tictactoe §4](../../common/sample/tictactoe/README.ko.md): payload codec은 **JSON**이다. **MessagePack이나 Protobuf로 바꾸지 않는다** | Java·Kotlin 모두 `ZLinkMessagePackCodec`을 등록한다. ⇒ **JSON 경로의 정본 예제가 JSON을 안 쓴다** |

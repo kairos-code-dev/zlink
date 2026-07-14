@@ -1,10 +1,8 @@
-import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
+import { postBestEffort, startServiceB, waitForPortState } from '../Support/managed-service';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runMonD1(options: ClientOptions): Promise<void> {
@@ -12,7 +10,7 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
   await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForPortState(options.serviceBUrl, false, 'MON-D1 expected service-b to stop.');
 
-  const restarted = startServiceB(options);
+  const restarted = startServiceB(options, 'svc-b-restart');
   try {
     await waitForPortState(options.serviceBUrl, true, 'MON-D1 expected service-b to restart.');
 
@@ -48,51 +46,6 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
   console.log('scenario MON-D1 passed');
 }
 
-function startServiceB(options: ClientOptions): ManagedProcess {
-  const stdout = fs.openSync(`${options.logDir}/svc-b-restart.stdout.log`, 'w');
-  const stderr = fs.openSync(`${options.logDir}/svc-b-restart.stderr.log`, 'w');
-  const child = spawn(process.execPath, [
-    options.serviceMain,
-    '--config', options.serviceBConfig
-  ], {
-    env: { ...process.env, ZLINK_E2E_RID: 'svc-b' },
-    stdio: ['ignore', stdout, stderr]
-  });
-  return new ManagedProcess(child);
-}
-
-class ManagedProcess {
-  constructor(private readonly child: ChildProcess) {}
-
-  async stop(): Promise<void> {
-    try {
-      await this.wait(5000);
-      return;
-    } catch {
-    }
-
-    this.child.kill('SIGTERM');
-    try {
-      await this.wait(5000);
-      return;
-    } catch {
-    }
-
-    this.child.kill('SIGKILL');
-    await this.wait(5000);
-  }
-
-  async wait(timeoutMs = 30000): Promise<void> {
-    if (this.child.exitCode !== null || this.child.signalCode !== null) {
-      return;
-    }
-    await Promise.race([
-      new Promise<void>((resolve) => this.child.once('exit', () => resolve())),
-      new Promise<void>((_resolve, reject) => setTimeout(() => reject(new Error('Service process did not exit.')), timeoutMs))
-    ]);
-  }
-}
-
 async function waitForTopologyContinuity(options: ClientOptions, baseline: number): Promise<string[]> {
   const deadline = Date.now() + 15000;
   while (Date.now() <= deadline) {
@@ -126,38 +79,4 @@ function readEvidenceFile(path: string): string[] {
   } catch {
     return [];
   }
-}
-
-async function postBestEffort(baseUrl: string, path: string): Promise<void> {
-  try {
-    await postJson<object>(baseUrl, path, {});
-  } catch {
-  }
-}
-
-async function waitForPortState(baseUrl: string, shouldBeOpen: boolean, failureMessage: string): Promise<void> {
-  const url = new URL(baseUrl);
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (await canConnect(url.hostname, Number(url.port)) === shouldBeOpen) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(failureMessage);
-}
-
-async function canConnect(host: string, port: number): Promise<boolean> {
-  return await new Promise<boolean>((resolve) => {
-    const socket = net.createConnection({ host, port });
-    socket.setTimeout(200);
-    socket.once('connect', () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once('timeout', () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.once('error', () => resolve(false));
-  });
 }

@@ -142,7 +142,10 @@ function locationEventDetails(event: ZLinkLocationRuntimeEvent): string {
     case ZLinkLocationRuntimeEventKind.TopologyChanged:
       return `topology=${event.topology.length}|summary=-1|storeHealthy=<none>`;
     case ZLinkLocationRuntimeEventKind.ServiceSummaryChanged:
-      return `topology=-1|summary=${event.serviceSummary.length}|storeHealthy=<none>`;
+      return `topology=-1|summary=${event.serviceSummary.length}`
+        + `|summaryTotal=${event.serviceSummary.reduce((total, entry) => total + entry.totalCount, 0)}`
+        + `|summaryReady=${event.serviceSummary.reduce((total, entry) => total + entry.readyCount, 0)}`
+        + '|storeHealthy=<none>';
     case ZLinkLocationRuntimeEventKind.StoreFailure:
     case ZLinkLocationRuntimeEventKind.StoreRecovered:
       return 'topology=-1|summary=-1|storeHealthy=<none>';

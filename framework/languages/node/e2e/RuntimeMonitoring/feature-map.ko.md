@@ -9,7 +9,7 @@
 | Scenario | 상태 | 근거 |
 |----------|------|------|
 | MON-A1 | 구현 | trigger transient client가 service channel에 연결/해제하고 service socket monitoring evidence의 `Connected`/`ConnectionReady`와 `Disconnected`/`Closed` marker를 검증했다. 로그: `logs/20260703-220339-17357` |
-| MON-A2 | 구현 | service에 등록한 location runtime monitoring source가 Redis location store를 polling해 `TopologyChanged`와 `ServiceSummaryChanged` evidence marker를 기록하는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-A2 | 구현 | `svc-b`를 종료하고 재기동해 `svc-a`의 `TopologyChanged` node 수와 `ServiceSummaryChanged` total 수가 감소한 뒤 복구되는지 검증했다. 로그: `logs/20260715-075251-2259558` |
 | MON-A3 | 구현 | service spot monitoring source가 `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed` evidence marker를 기록하고 failing timer 이름을 함께 남기는지 검증했다. 로그: `logs/20260703-220339-17357` |
 | MON-A4 | 구현 | service admin endpoint가 public `ZLinkChannelRuntimeOptions`로 server socket weight를 0으로 낮추고 복구하며, trigger client socket monitoring evidence의 `PeerAdmissionChanged`, service drain evidence, location runtime `TopologyChanged` evidence를 검증했다. 로그: `logs/20260703-220339-17357` |
 | MON-A5 | 구현 | malformed raw TCP attempt가 native `Disconnected` event의 handshake failure reason으로 들어올 때 Node monitoring mapper가 public `HandshakeFailed` kind로 노출하고, location runtime/spot status와 `TimerStoppedAfterUnhandledException`도 함께 검증했다. 로그: `logs/20260703-220339-17357` |
@@ -22,6 +22,7 @@
 
 - `framework/languages/node/e2e/RuntimeMonitoring/run_e2e.sh`
   - PASS: `logs/20260703-220339-17357`
+  - MON-A2 topology change 단독 PASS: `logs/20260715-075251-2259558`
   - MON-D1 단독 PASS: `logs/20260703-220318-16504`
   - `svc-a.evidence.log`에는 malformed raw TCP attempt의 `HandshakeFailed` socket evidence와 spot fixed kind evidence가 함께 남는다.
 - 미착수 scenario: 없음

@@ -8,12 +8,14 @@ import { runMonB2 } from './Scenarios/mon-b2-registration-validation-scenario';
 import { runMonC1 } from './Scenarios/mon-c1-dispatch-failure-scenario';
 import { runMonD1 } from './Scenarios/mon-d1-failure-recovery-scenario';
 import { parseClientOptions } from './Support/client-options';
+import type { ManagedProcess } from './Support/managed-service';
 
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
+  let serviceBProcess: ManagedProcess | undefined;
   const scenarios: Record<string, () => Promise<void>> = {
     'MON-A1': () => runMonA1(options),
-    'MON-A2': () => runMonA2(options),
+    'MON-A2': async () => { serviceBProcess = await runMonA2(options); },
     'MON-A3': () => runMonA3(options),
     'MON-A4': () => runMonA4(options),
     'MON-A5': () => runMonA5(options),
@@ -25,21 +27,23 @@ async function main(): Promise<void> {
   const gaps: Record<string, string> = {};
   const defaultScenarioIds = ['MON-A1', 'MON-A2', 'MON-A3', 'MON-A4', 'MON-A5', 'MON-B1', 'MON-B2', 'MON-C1', 'MON-D1'];
 
-  if (options.scenario.toLowerCase() === 'all') {
-    for (const scenarioId of defaultScenarioIds) {
-      await scenarios[scenarioId]();
+  try {
+    if (options.scenario.toLowerCase() === 'all') {
+      for (const scenarioId of defaultScenarioIds) await scenarios[scenarioId]();
+    } else {
+      const selected = options.scenario.toUpperCase();
+      const gap = gaps[selected];
+      if (gap !== undefined) {
+        throw new Error(`Scenario ${selected} is a public contract gap: ${gap}`);
+      }
+      const scenario = scenarios[selected];
+      if (scenario === undefined) {
+        throw new Error(`Unknown scenario '${options.scenario}'.`);
+      }
+      await scenario();
     }
-  } else {
-    const selected = options.scenario.toUpperCase();
-    const gap = gaps[selected];
-    if (gap !== undefined) {
-      throw new Error(`Scenario ${selected} is a public contract gap: ${gap}`);
-    }
-    const scenario = scenarios[selected];
-    if (scenario === undefined) {
-      throw new Error(`Unknown scenario '${options.scenario}'.`);
-    }
-    await scenario();
+  } finally {
+    await serviceBProcess?.stop();
   }
 
   console.log('runtime-monitoring e2e result=passed');

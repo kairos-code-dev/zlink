@@ -2,7 +2,8 @@ import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import {
-  PacketNames
+  PacketNames,
+  SubscribeDeliveryRes
 } from '../../Shared/Contracts/messages';
 import { CustomerActorDirectory } from './customer-actor';
 import type {
@@ -15,8 +16,7 @@ import type {
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import type {
-  SubscribeDeliveryReq,
-  SubscribeDeliveryRes
+  SubscribeDeliveryReq
 } from '../../Shared/Contracts/messages';
 
 const CustomerId = 'customer-1';
@@ -59,7 +59,7 @@ class CustomerSession implements ZLinkSession {
     active.subscribe(request.deliveryId);
     await this.context.actors.bindOrGet(resolved.actorRef);
     console.error(`deliverydispatch session: bound customer actor=${resolved.actorRef.actorId}`);
-    await this.context.client.reply({ deliveryId: request.deliveryId } satisfies SubscribeDeliveryRes).submit();
+    await this.context.client.reply(new SubscribeDeliveryRes(request.deliveryId)).submit();
   }
 }
 

@@ -3,6 +3,7 @@ import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { zlinkActorRefSnapshotToActorRef } from '@zlink-systems/framework';
 import { SampleNames, SampleTimings } from '../../Configuration/sample-names';
 import {
+  AuthenticateRes,
   PacketNames,
   SupportChatRoles,
   authenticateUser,
@@ -11,7 +12,6 @@ import {
 } from '../../../Shared/Contracts/messages';
 import type {
   AuthenticateReq,
-  AuthenticateRes,
   AuthenticateUserRes,
   EnsureAgentConversationRes,
   EnsureSupportUserActorRes,
@@ -92,11 +92,11 @@ class SupportChatSession implements ZLinkSession {
     this.actorId = authenticated.actorId;
     this.displayName = authenticated.displayName;
     this.role = authenticated.role;
-    this.context.client.reply({
-      actorId: authenticated.actorId,
-      displayName: authenticated.displayName,
-      role: authenticated.role
-    } satisfies AuthenticateRes).submit();
+    this.context.client.reply(new AuthenticateRes(
+      authenticated.actorId,
+      authenticated.displayName,
+      authenticated.role
+    )).submit();
   }
 
   private requireIdentity(packetName: string): ZLinkSessionActor {

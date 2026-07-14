@@ -29,9 +29,7 @@ type EnsureCustomerActorRes = {
 
 class SubscribeDeliveryReq { constructor(readonly deliveryId: string) {} }
 
-type SubscribeDeliveryRes = {
-  deliveryId: string;
-};
+class SubscribeDeliveryRes { constructor(readonly deliveryId: string) {} }
 
 class BindCourierReq { constructor(readonly courierId: string, readonly sessionRoute: string) {} }
 
@@ -277,6 +275,7 @@ export {
   FindCustomerActorReq,
   EnsureCustomerActorReq,
   SubscribeDeliveryReq,
+  SubscribeDeliveryRes,
   BindCourierReq,
   BindCourierSessionReq,
   FindCourierActorReq,
@@ -314,6 +313,5 @@ export type {
   EnsureCourierActorRes,
   FindCourierActorRes,
   ServerAssertionReq,
-  ServerAssertionRes,
-  SubscribeDeliveryRes
+  ServerAssertionRes
 };

@@ -3,6 +3,7 @@ import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import { GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import {
+  JoinSessionRes,
   PacketNames,
   getQuestProgressReq
 } from '../../Shared/Contracts/messages';
@@ -43,7 +44,7 @@ class GameQuestSession implements ZLinkSession {
       await this.context.actors.bindOrGet(actorRef);
       this.playerId = request.playerId;
       const current = await this.getProjection(request.playerId);
-      this.context.client.reply({ activeQuests: current.activeQuests }).submit();
+      this.context.client.reply(new JoinSessionRes(current.activeQuests)).submit();
       return;
     }
     if (isPlayerPacket(dispatch.packetName)) {

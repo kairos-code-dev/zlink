@@ -4,7 +4,9 @@ type SupportRole = 'Agent' | 'Customer';
 type ConversationStatus = 'WaitingForAgent' | 'Active' | 'WaitingForClose' | 'Closed';
 
 class AuthenticateReq { constructor(readonly accessToken: string) {} }
-type AuthenticateRes = { actorId: string; displayName: string; role: SupportRole };
+class AuthenticateRes {
+  constructor(readonly actorId: string, readonly displayName: string, readonly role: SupportRole) {}
+}
 class AuthenticateUserReq { constructor(readonly accessToken: string) {} }
 type AuthenticateUserRes = {
   accepted: boolean;
@@ -129,6 +131,7 @@ const closeConversation = (reason?: string) => new CloseConversationReq(reason);
 export {
   PacketNames,
   AuthenticateReq,
+  AuthenticateRes,
   AuthenticateUserReq,
   EnsureSupportUserActorReq,
   EnsureAgentConversationReq,
@@ -165,7 +168,6 @@ export {
 export type {
   SupportRole,
   ConversationStatus,
-  AuthenticateRes,
   AuthenticateUserRes,
   EnsureSupportUserActorRes,
   EnsureAgentConversationRes,

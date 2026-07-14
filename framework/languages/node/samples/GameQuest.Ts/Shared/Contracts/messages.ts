@@ -19,7 +19,7 @@ class UnlockFeatureReq {
 }
 type UnlockFeatureRes = { eventId: string };
 class JoinSessionReq { constructor(readonly playerId: string) {} }
-type JoinSessionRes = { activeQuests: QuestProgress[] };
+class JoinSessionRes { constructor(readonly activeQuests: QuestProgress[]) {} }
 class GetQuestProgressReq { constructor(readonly playerId: string) {} }
 type GetQuestProgressRes = { activeQuests: QuestProgress[] };
 class SyncQuestProgressReq { constructor(readonly playerId: string) {} }
@@ -223,6 +223,7 @@ export {
   EnterAreaReq,
   UnlockFeatureReq,
   JoinSessionReq,
+  JoinSessionRes,
   GetQuestProgressReq,
   SyncQuestProgressReq,
   DeleteQuestProjectionReq,
@@ -251,7 +252,6 @@ export type {
   CompleteMissionRes,
   EnterAreaRes,
   UnlockFeatureRes,
-  JoinSessionRes,
   GetQuestProgressRes,
   SyncQuestProgressRes,
   DeleteQuestProjectionRes,

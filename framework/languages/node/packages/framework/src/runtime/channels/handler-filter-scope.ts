@@ -1,0 +1,29 @@
+import type {
+  Type,
+  ZLinkHandlerContext,
+  ZLinkProviderResolver
+} from '../../contracts';
+
+export interface ZLinkHandlerFilterScopeResolver {
+  resolve<T>(type: Type<T>): Promise<T>;
+}
+
+export type ZLinkHandlerFilterScopeRunner = <T>(
+  context: ZLinkHandlerContext,
+  callback: (resolver: ZLinkHandlerFilterScopeResolver) => Promise<T>
+) => Promise<T>;
+
+const handlerFilterScopes = new WeakMap<ZLinkProviderResolver, ZLinkHandlerFilterScopeRunner>();
+
+export function registerHandlerFilterScope(
+  providerResolver: ZLinkProviderResolver,
+  runner: ZLinkHandlerFilterScopeRunner
+): void {
+  handlerFilterScopes.set(providerResolver, runner);
+}
+
+export function handlerFilterScope(
+  providerResolver: ZLinkProviderResolver | undefined
+): ZLinkHandlerFilterScopeRunner | undefined {
+  return providerResolver === undefined ? undefined : handlerFilterScopes.get(providerResolver);
+}

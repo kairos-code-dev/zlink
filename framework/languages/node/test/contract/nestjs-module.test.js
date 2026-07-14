@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { Inject, Module } = require('@nestjs/common');
+const { Inject, Injectable, Module, Scope } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 
 const framework = require('../../packages/framework/dist/internal');
@@ -399,6 +399,81 @@ test('ZLinkModule.forRoot maps zlinkRequestHandler providers from NestJS DI', as
   );
 
   await app.close();
+});
+
+test('request-scoped handler filters share the channel dispatch scope with the handler', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
+  let dispatchSequence = 0;
+
+  class DispatchState {
+    constructor() {
+      this.id = ++dispatchSequence;
+    }
+  }
+  Injectable({ scope: Scope.REQUEST })(DispatchState);
+
+  class RequestScopeFilter {
+    constructor(state) {
+      this.state = state;
+    }
+
+    async invoke(_invocation, next) {
+      this.state.filtered = true;
+      return next();
+    }
+  }
+  Inject(DispatchState)(RequestScopeFilter, undefined, 0);
+  Injectable({ scope: Scope.REQUEST })(RequestScopeFilter);
+
+  class ScopedProfileHandler {
+    constructor(state) {
+      this.state = state;
+    }
+
+    async handle(request) {
+      return {
+        profileId: request.profileId,
+        dispatchId: this.state.id,
+        filtered: this.state.filtered === true
+      };
+    }
+  }
+  Inject(DispatchState)(ScopedProfileHandler, undefined, 0);
+  Injectable({ scope: Scope.REQUEST })(ScopedProfileHandler);
+  nestjs.zlinkRequestHandler('api', 'GetProfile')(ScopedProfileHandler);
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .options({ filters: [RequestScopeFilter] })
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .enableClient(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
+    providers: [DispatchState, RequestScopeFilter, ScopedProfileHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  try {
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT);
+    class GetProfile {
+      constructor(profileId) {
+        this.profileId = profileId;
+      }
+    }
+    const first = await client.requestToChannel('api', new GetProfile('p1'))
+      .timeout(1000)
+      .submit();
+    const second = await client.requestToChannel('api', new GetProfile('p2'))
+      .timeout(1000)
+      .submit();
+
+    assert.deepEqual(first, { profileId: 'p1', dispatchId: 1, filtered: true });
+    assert.deepEqual(second, { profileId: 'p2', dispatchId: 2, filtered: true });
+  } finally {
+    await app.close();
+  }
 });
 
 test('ZLinkModule.forRoot maps decorated custom NestJS provider objects', async () => {

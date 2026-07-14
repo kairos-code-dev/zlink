@@ -60,6 +60,10 @@ import {
   ZLinkSpotSerialExecutor
 } from './runtime/spots';
 import { ZLinkSpotWorkerRuntime } from './runtime/workers';
+export {
+  registerHandlerFilterScope as registerIntegrationHandlerFilterScope,
+  type ZLinkHandlerFilterScopeRunner
+} from './runtime/channels/handler-filter-scope';
 
 export interface ZLinkNestIntegrationRuntimeHost {
   readonly channelRuntimeOptions: unknown;

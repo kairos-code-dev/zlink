@@ -260,7 +260,6 @@ export class ZLinkChannelRuntimeLifecycle {
         codecs: this.options.codecs,
         dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
         handlers,
-        filters: this.options.dispatchServices.handlerFilters(),
         unhandled: this.options.registration.dispatch?.unhandled,
         replySubmitter: this.options.sockets.requireSubmitter(router),
         spotRouteBridge,

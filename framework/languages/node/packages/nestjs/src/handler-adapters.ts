@@ -13,6 +13,7 @@ import { framework } from './framework-loader';
 import type { ZLinkNestManualHandlerOptions } from './contracts';
 import type { ZLinkNestHandlerMetadata } from './handler-metadata';
 import type { DiscoveredNestProvider } from './provider-discovery';
+import { currentNestDispatchContext } from './dispatch-scope';
 
 export function createDiscoveredRequestHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
@@ -196,8 +197,11 @@ async function resolveHandlerInstance(
   token: InjectionToken,
   context: ManualHandlerContext
 ): Promise<Record<string, unknown>> {
-  const contextId = ContextIdFactory.create();
-  moduleRef.registerRequestByContextId({ zlinkContext: context }, contextId);
+  const currentContextId = currentNestDispatchContext();
+  const contextId = currentContextId ?? ContextIdFactory.create();
+  if (currentContextId === undefined) {
+    moduleRef.registerRequestByContextId({ zlinkContext: context }, contextId);
+  }
   return await moduleRef.resolve(token, contextId, { strict: false }) as Record<string, unknown>;
 }
 

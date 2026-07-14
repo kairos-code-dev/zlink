@@ -2,6 +2,7 @@ import type {
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind,
   ZLinkHandlerFilter,
+  ZLinkHandlerInvocation,
   ZLinkMessageFlowOutcome,
   ZLinkProviderResolver
 } from '../../contracts';
@@ -18,6 +19,8 @@ import {
 } from '../diagnostics';
 import type { ZLinkRuntimeErrorSink } from '../execution';
 import { ZLinkDispatchErrorReporter } from './dispatch-error-reporter';
+import { invokeZLinkHandlerFilters } from '../handlers';
+import { handlerFilterScope } from './handler-filter-scope';
 
 export interface ZLinkChannelOutboundTrace {
   readonly surface: ZLinkDispatchErrorSurface;
@@ -73,16 +76,36 @@ export class ZLinkChannelDispatchServices {
     if (this.handlerFiltersValue !== undefined) {
       return this.handlerFiltersValue;
     }
-    this.handlerFiltersValue = this.registration.filterTypes.map((filterType) => {
-      const filter = this.providerResolver?.get?.(filterType);
+    this.handlerFiltersValue = this.registration.filterTypes.length === 0
+      ? []
+      : [{ invoke: (invocation, next) => this.invokeHandlerFilters(invocation, next) }];
+    return this.handlerFiltersValue;
+  }
+
+  private async invokeHandlerFilters(
+    invocation: ZLinkHandlerInvocation,
+    next: () => Promise<unknown>
+  ): Promise<unknown> {
+    const scoped = handlerFilterScope(this.providerResolver);
+    if (scoped !== undefined) {
+      return scoped(invocation.context, async (resolver) => invokeZLinkHandlerFilters(
+        await Promise.all(this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))),
+        invocation,
+        next
+      ));
+    }
+
+    const filters = await Promise.all(this.registration.filterTypes.map(async (filterType) => {
+      const filter = await this.providerResolver?.create?.(filterType)
+        ?? this.providerResolver?.get?.(filterType);
       if (filter === undefined) {
         throw new ZLinkConfigurationException(
           `Handler filter '${filterType.name}' is not registered in the provider resolver.`
         );
       }
       return filter;
-    });
-    return this.handlerFiltersValue;
+    }));
+    return invokeZLinkHandlerFilters(filters, invocation, next);
   }
 
   traceOutbound(

@@ -2823,6 +2823,13 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   const remoteDealer = zlink.createDealerSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
+  let filterInvocations = 0;
+  class ChannelOnlyFilter {
+    async invoke(_invocation, next) {
+      filterInvocations += 1;
+      return next();
+    }
+  }
   class RoutePingHandler {
     async handle(payload, context) {
       events.push(`request:${context.channelName}:${context.packetName}:${context.routerChannelId}:${payload.value}`);
@@ -2832,12 +2839,13 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .options({ filters: [ChannelOnlyFilter] })
       .addRouteMeshChannel('mesh')
         .enableRouter(endpoint)
         .routingId('node-a')
         .addRequestHandler('RoutePing', RoutePingHandler)
       .build())],
-    providers: [RoutePingHandler]
+    providers: [ChannelOnlyFilter, RoutePingHandler]
   })(HandlerModule);
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
   const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
@@ -2870,6 +2878,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
     assert.equal(envelope.header.kind, 2);
     assert.deepEqual(envelope.body, { value: 'pong' });
     assert.match(events[0], /^request:mesh:RoutePing:mesh:ping$/);
+    assert.equal(filterInvocations, 0);
     reply.forEach((part) => part.close());
   } finally {
     remoteDealer.close();

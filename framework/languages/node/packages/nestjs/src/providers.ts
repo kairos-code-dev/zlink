@@ -34,6 +34,7 @@ import {
 } from './handler-metadata';
 import { framework, type FrameworkRuntimeHost } from './framework-loader';
 import { ZLinkDrainHealthIndicator } from './drain-health-indicator';
+import { resolveInNestDispatchScope, runInNestDispatchScope } from './dispatch-scope';
 
 type RuntimeHostWithNestLifecycle = FrameworkRuntimeHost & OnModuleInit & OnModuleDestroy;
 
@@ -357,7 +358,7 @@ function discoverRuntimeEventHandlers(discovery: DiscoveryService): ZLinkRuntime
 }
 
 function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryService): ZLinkProviderResolver {
-  return {
+  const resolver: ZLinkProviderResolver = {
     get<T>(type: Type<T>): T | undefined {
       const discovered = findDiscoveredProviderInstance<T>(discovery, type);
       if (discovered !== undefined) {
@@ -379,6 +380,15 @@ function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryServi
       return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
     }
   };
+  framework.registerIntegrationHandlerFilterScope(
+    resolver,
+    (context, callback) => runInNestDispatchScope(
+      moduleRef,
+      context,
+      () => callback({ resolve: (type) => resolveInNestDispatchScope(moduleRef, type) })
+    )
+  );
+  return resolver;
 }
 
 function findDiscoveredProviderInstance<T>(discovery: DiscoveryService | undefined, type: Type<T>): T | undefined {

@@ -485,6 +485,25 @@ int main ()
     gate.require (transfer_server.find ("location_committed") != std::string::npos,
                   "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
 
+    /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
+    const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
+    const auto st_d1_local_end =
+      transfer_client.find ("void remote_location_commit_timing ()", st_d1_local_begin);
+    const auto st_d1_local =
+      st_d1_local_begin != std::string::npos && st_d1_local_end != std::string::npos
+        ? transfer_client.substr (st_d1_local_begin, st_d1_local_end - st_d1_local_begin)
+        : std::string{};
+    gate.require (st_d1_local.find ("after.generation > before.generation")
+                    != std::string::npos,
+                  "E2E-CP-55",
+                  "ST-D1 local commit does not require the published generation to advance");
+    gate.require (st_d1_local.find ("{\"ST-D1\", \"during-joined-wait\"}")
+                    != std::string::npos
+                    && st_d1_local.find ("blocked_probe.wait_for") != std::string::npos
+                    && st_d1_local.find ("probe.spot_rid == spot_rid") != std::string::npos,
+                  "E2E-CP-55",
+                  "ST-D1 does not observe actor packet routing across the delayed local commit");
+
     /* E2E-CP-16 — the default SpotService gate includes the implemented SM-D2 P0 scenario. */
     const auto all_scenarios = spot_service_runner.find ("for scenario in");
     const auto all_scenarios_end = spot_service_runner.find ("; do", all_scenarios);

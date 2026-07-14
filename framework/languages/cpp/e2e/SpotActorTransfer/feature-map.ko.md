@@ -23,7 +23,7 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 | ST-C1 | `deferred` | commit 전 source 중단과 target negative를 검사하지만 pending admission timeout cleanup evidence가 없다(`E2E-CP-52`, `E2E-CP-56`). |
 | ST-C2 | `deferred` | target commit 뒤 source 중단 후 location과 bound push를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-C3 | `deferred` | callback failure 네 종류를 실행하지만 joined 실패 뒤 packet negative는 실제 packet을 보내지 않아 판별력이 없다(`E2E-CP-52`, `E2E-CP-56`). |
-| ST-D1 | `deferred` | remote location commit 시점은 검사하지만 local generation 검사가 값의 변화를 보장하지 못한다(`E2E-CP-55`, `E2E-CP-56`). |
+| ST-D1 | `deferred` | local·remote location은 joined 완료 전 기존 ref를 유지하고 완료 뒤 committed ref로 바뀌며, local 지연 중 packet이 target handler에 먼저 도달하지 않고 commit 뒤 target에서 처리되는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-D2 | `deferred` | transfer 뒤 대기와 재조회만 수행하며 stale source cleanup 지연과 실행을 주입하지 않는다(`E2E-CP-52`, `E2E-CP-56`). |
 | ST-E1 | `deferred` | transfer 전후 같은 connector의 bound push 수신을 검사한다. 별도 session gateway 역할이 없다(`E2E-CP-56`). |
 | ST-E2 | `deferred` | 실패한 transfer의 route 비오염 대신 성공한 transfer 뒤 새 session rebind를 검사한다(`E2E-CP-49`, `E2E-CP-56`). |

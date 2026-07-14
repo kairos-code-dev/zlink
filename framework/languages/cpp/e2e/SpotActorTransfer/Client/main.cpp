@@ -1043,16 +1043,31 @@ class scenario_runner_t
         require (during.generation == before.generation,
                  "ST-D1 local actor generation changed before joined completed.");
 
+        auto blocked_probe = std::async (std::launch::async, [&] {
+            return probe_actor (_nodes.a, actor_id, {"ST-D1", "during-joined-wait"});
+        });
+        require (blocked_probe.wait_for (std::chrono::milliseconds (500))
+                   == std::future_status::timeout,
+                 "ST-D1 actor packet completed before the local location commit.");
+        require_no_contains (get_evidence (_nodes.a),
+                             "ST-D1|" + actor_id + "|packet_handler|during-joined-wait",
+                             "ST-D1 actor packet reached the target before commit.");
+
         release_joined_gate (_nodes.a, spot_rid);
         const auto join = join_task.get ();
         require (join.accepted, "ST-D1 local join was rejected.");
         const auto after = get_actor_ref (_nodes.a, actor_id);
-        require (after.generation >= before.generation,
-                 "ST-D1 local actor generation regressed after commit.");
+        require (after.generation > before.generation,
+                 "ST-D1 local actor generation did not advance after commit.");
+        const auto probe = blocked_probe.get ();
+        require (probe.spot_rid == spot_rid,
+                 "ST-D1 delayed actor packet did not resume on the committed target spot.");
 
         wait_evidence (_nodes.a, {
                                    "ST-D1|" + actor_id + "|joined_released|" + spot_rid,
                                    "transfer|" + actor_id + "|joined|" + spot_rid + ":51",
+                                   "ST-D1|" + actor_id
+                                     + "|packet_handler|during-joined-wait",
                                    "ST-D1|" + actor_id + "|success_reply|" + spot_rid,
                                  });
     }

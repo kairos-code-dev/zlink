@@ -612,7 +612,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-52** (결함) — **`ST-D2`·`ST-B2`·`ST-C1`·`ST-C3`·`ST-F5`가 이름뿐**이거나 **실패할 수 없는 단언**을 갖는다
 - [ ] **E2E-CP-53** (결함) — **`ST-F2`(P0)·`ST-F3`이 자기 경합 창을 스스로 닫는다.** `join_task.get()` 뒤에 보내 backlog가 이미 빠졌다
 - [ ] **E2E-CP-54** (결함) — **`ST-F4`가 G1/G2의 message kind를 바꿔** 진짜 발산을 피해 간다. **send였다면 문서가 실패라 부른 동작이 조용히 일어난다**
-- [ ] **E2E-CP-55** (결함) — **`ST-D1`(P0)의 local 절반이 항진명제**다(`>=`)
+- [x] **E2E-CP-55** (결함) — **`ST-D1`(P0)의 local 절반이 항진명제**다(`>=`)
+  - 근거: 재검증에서 C++ local move는 기존 owner row를 유지해 별도 pending row를 쓰지 않으므로 conditional pending evidence 주장은 제외했다. 수정 전 target-contract gate가 commit 뒤 generation 증가와 지연 중 actor packet route 관찰 부재를 각각 검출했고, ST-D1이 generation 증가, commit 전 target handler 미도달, commit 뒤 target 처리까지 단언하도록 보강한 뒤 gate와 `./run_e2e.sh ST-D1`이 통과했다.
 - [ ] **E2E-CP-56** (결함) — **Config 10의 topology가 문서와 다르다.** actor 노드 3개, session gateway·transfer controller **0개**
 - [ ] **E2E-CP-57** (결함) — **Track F 관측이 env로 게이트된 stderr 사이드 채널**이다. 문서가 **"단순 로그 문자열 grep이 아니라"**고 명시적으로 금지한 것
 - [ ] **E2E-CP-58** (결함) — **`TA-B1`의 error kind를 e2e caller가 스스로 만들어 던진다.** framework 분류를 **지워도 통과**한다. send를 존재 확인 수단으로 쓴다(문서가 이름 짚어 금지)

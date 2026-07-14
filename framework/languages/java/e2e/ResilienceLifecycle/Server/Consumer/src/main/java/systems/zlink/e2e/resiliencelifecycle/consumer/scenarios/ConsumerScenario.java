@@ -557,8 +557,9 @@ public final class ConsumerScenario {
             "RL-B3 pre-shutdown reply payload mismatch");
 
         post(adminB() + "/admin/shutdown");
-        waitForTopology(1);
-        Set<String> providers = collectStableProvidersWithout("b3-after-shutdown", "api-b", "api-a");
+        waitForTopologyWithout("api-b", 30);
+        Set<String> providers = collectStableProvidersWithoutFailures(
+            "b3-after-shutdown", "api-b", "api-a");
         ensure(providers.contains("api-a"), "RL-B3 did not converge to api-a after api-b shutdown");
         System.out.println("scenario RL-B3 passed");
     }

@@ -102,7 +102,7 @@ result_t<metadata_t> metadata_codec_t::decode (const std::vector<std::uint8_t> &
                                                   "Metadata value length is missing.");
         }
         const auto value_size = read_u16 (bytes, offset);
-        if (value_size == 0 || bytes.size () - offset < value_size) {
+        if (bytes.size () - offset < value_size) {
             return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
                                                   "Metadata value is invalid.");
         }

@@ -635,7 +635,9 @@ int main ()
             ? metadata_codec.decode (encoded_metadata.value ())
             : zlink::stream_connector::result_t<zlink::stream_connector::metadata_t>::failure (
                 zlink::stream_connector::error_code_t::validation_failed, "metadata encode failed");
+        const auto empty_value_metadata = metadata_codec.decode ({1, 1, 'k', 0, 0});
         if (!decoded_metadata || decoded_metadata.value ().values.at ("trace") != "abc"
+            || !empty_value_metadata || empty_value_metadata.value ().values.at ("k") != ""
             || metadata_codec.decode ({}).error_code ()
                  != zlink::stream_connector::error_code_t::frame_decode_failed
             || metadata_codec.decode ({1}).error_code ()
@@ -643,8 +645,6 @@ int main ()
             || metadata_codec.decode ({1, 0}).error_code ()
                  != zlink::stream_connector::error_code_t::frame_decode_failed
             || metadata_codec.decode ({1, 1, 'k'}).error_code ()
-                 != zlink::stream_connector::error_code_t::frame_decode_failed
-            || metadata_codec.decode ({1, 1, 'k', 0, 0}).error_code ()
                  != zlink::stream_connector::error_code_t::frame_decode_failed
             || metadata_codec.decode ({1, 1, 'k', 0, 1, 'v', 1}).error_code ()
                  != zlink::stream_connector::error_code_t::frame_decode_failed) {

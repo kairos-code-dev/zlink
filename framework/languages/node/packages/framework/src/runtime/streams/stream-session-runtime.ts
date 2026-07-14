@@ -28,6 +28,9 @@ import {
   decodeStreamHeader,
   messageToBytes,
   type ZLinkStreamFrameHeader,
+  ZLINK_STREAM_HEARTBEAT_PING,
+  ZLINK_STREAM_HEARTBEAT_PONG,
+  ZLinkStreamCloseReasonCode,
   ZLinkStreamMessageKind
 } from './protocol';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
@@ -39,6 +42,25 @@ import { DefaultZLinkSessionContext } from './session-context';
 import { ZLinkStreamSessionSerialExecutor } from './session-serial-executor';
 
 const ZLINK_SEND_DONT_WAIT = 1;
+const ZLINK_STREAM_HEARTBEAT_INTERVAL_MS = 1_000;
+const ZLINK_STREAM_HEARTBEAT_TIMEOUT_MS = 5_000;
+const ZLINK_STREAM_APPLICATION_IDLE_TIMEOUT_MS = 30_000;
+
+interface ZLinkStreamLivenessClock {
+  now(): number;
+  setTimer(callback: () => void, delayMs: number): unknown;
+  clearTimer(timer: unknown): void;
+}
+
+interface ZLinkStreamLivenessOptions {
+  readonly livenessClock?: ZLinkStreamLivenessClock;
+}
+
+const systemLivenessClock: ZLinkStreamLivenessClock = {
+  now: () => Date.now(),
+  setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>)
+};
 
 export interface ZLinkStreamSessionContextFactory {
   createSessionContext(
@@ -80,12 +102,17 @@ export class ZLinkStreamSessionRuntime {
   private disposed = false;
   private closeReason = 'client_close';
   private metricsClosed = false;
+  private readonly livenessClock: ZLinkStreamLivenessClock;
+  private lastApplicationActivityAt = 0;
+  private awaitingPongSince: number | undefined;
+  private livenessTimer: unknown;
 
   constructor(
-    private readonly options: ZLinkStreamSessionRuntimeOptions,
+    private readonly options: ZLinkStreamSessionRuntimeOptions & ZLinkStreamLivenessOptions,
     routingId: unknown,
     private readonly removeSession: (sessionId: string, session: ZLinkStreamSessionRuntime) => void = () => {}
   ) {
+    this.livenessClock = options.livenessClock ?? systemLivenessClock;
     this.stream = new ZLinkManagedStream(options.socket, routingId, options.messageSerializers);
     this.context = options.bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
     const sessionOrPromise = options.sessionFactory(this.context);
@@ -136,6 +163,7 @@ export class ZLinkStreamSessionRuntime {
       return;
     }
     this.disconnected = true;
+    this.stopLivenessChecks();
     this.enqueue(async () => this.complete(error, true));
   }
 
@@ -146,6 +174,7 @@ export class ZLinkStreamSessionRuntime {
       return;
     }
     this.disconnected = true;
+    this.stopLivenessChecks();
     this.enqueue(async () => this.complete(undefined, true));
   }
 
@@ -154,6 +183,7 @@ export class ZLinkStreamSessionRuntime {
       return;
     }
     this.disposed = true;
+    this.stopLivenessChecks();
     await this.serial.dispose();
     if (!this.disconnected) {
       this.disconnected = true;
@@ -167,6 +197,7 @@ export class ZLinkStreamSessionRuntime {
     this.closeReason = 'server_drain';
     await this.serial.run(async () => {
       if (this.disposed) return;
+      this.stopLivenessChecks();
       await this.stream.closeForDrain();
     });
   }
@@ -177,6 +208,8 @@ export class ZLinkStreamSessionRuntime {
       return;
     }
     this.connected = true;
+    this.lastApplicationActivityAt = this.livenessClock.now();
+    this.scheduleLivenessCheck();
     this.options.metrics?.change('zlink.stream.connections.active', 1);
     this.options.metrics?.count('zlink.stream.connections.opened');
     const session = await this.requireSession();
@@ -186,13 +219,20 @@ export class ZLinkStreamSessionRuntime {
   private async dispatchPacket(header: Message, payload: Message): Promise<void> {
     let decodedHeader: ZLinkStreamFrameHeader | undefined;
     let dispatchPayload = payload;
+    let enteredDispatch = false;
     try {
       decodedHeader = decodeStreamHeader(messageToBytes(header));
+      if (decodedHeader.kind === ZLinkStreamMessageKind.Control) {
+        await this.handleControl(decodedHeader, payload);
+        return;
+      }
+      this.lastApplicationActivityAt = this.livenessClock.now();
       dispatchPayload = this.context.payloadForHeader(decodedHeader, payload);
       if (this.context.tryCompleteResponse(decodedHeader, dispatchPayload)) {
         return;
       }
       this.context.enterDispatch(decodedHeader);
+      enteredDispatch = true;
       const session = await this.requireSession();
       const streamKind = decodedHeader.kind === ZLinkStreamMessageKind.Request
         ? ZLinkDispatchMessageKind.Request
@@ -248,7 +288,7 @@ export class ZLinkStreamSessionRuntime {
         await this.context.close();
       }
     } finally {
-      if (decodedHeader !== undefined) {
+      if (enteredDispatch) {
         this.context.exitDispatch();
       }
       header.close();
@@ -256,6 +296,104 @@ export class ZLinkStreamSessionRuntime {
         dispatchPayload.close();
       }
       payload.close();
+    }
+  }
+
+  private async handleControl(header: ZLinkStreamFrameHeader, payload: Message): Promise<void> {
+    if (messageToBytes(payload).length !== 0) {
+      await this.closeForLiveness(
+        ZLinkStreamCloseReasonCode.ProtocolError,
+        'protocol_error',
+        'Control heartbeat payload must be empty.'
+      );
+      return;
+    }
+    if (header.name === ZLINK_STREAM_HEARTBEAT_PONG) {
+      this.awaitingPongSince = undefined;
+      return;
+    }
+    if (header.name === ZLINK_STREAM_HEARTBEAT_PING) {
+      if (!this.stream.writeControl(ZLINK_STREAM_HEARTBEAT_PONG)) {
+        await this.closeForLiveness(
+          ZLinkStreamCloseReasonCode.TransportError,
+          'transport_error',
+          'Heartbeat pong send failed.'
+        );
+      }
+      return;
+    }
+    await this.closeForLiveness(
+      ZLinkStreamCloseReasonCode.ProtocolError,
+      'protocol_error',
+      `Unknown stream control frame: ${header.name}`
+    );
+  }
+
+  private scheduleLivenessCheck(): void {
+    if (this.disposed || this.disconnected || this.livenessTimer !== undefined) {
+      return;
+    }
+    this.livenessTimer = this.livenessClock.setTimer(() => {
+      this.livenessTimer = undefined;
+      this.enqueue(async () => this.runLivenessCheck());
+    }, ZLINK_STREAM_HEARTBEAT_INTERVAL_MS);
+  }
+
+  private async runLivenessCheck(): Promise<void> {
+    if (this.disposed || this.disconnected || !this.connected) {
+      return;
+    }
+    const now = this.livenessClock.now();
+    if (now - this.lastApplicationActivityAt >= ZLINK_STREAM_APPLICATION_IDLE_TIMEOUT_MS) {
+      await this.closeForLiveness(
+        ZLinkStreamCloseReasonCode.IdleTimeout,
+        'idle_timeout',
+        'Application idle timeout.'
+      );
+      return;
+    }
+    if (
+      this.awaitingPongSince !== undefined
+      && now - this.awaitingPongSince >= ZLINK_STREAM_HEARTBEAT_TIMEOUT_MS
+    ) {
+      await this.closeForLiveness(
+        ZLinkStreamCloseReasonCode.HeartbeatTimeout,
+        'heartbeat_timeout',
+        'Heartbeat timeout.'
+      );
+      return;
+    }
+    if (!this.stream.writeControl(ZLINK_STREAM_HEARTBEAT_PING)) {
+      await this.closeForLiveness(
+        ZLinkStreamCloseReasonCode.TransportError,
+        'transport_error',
+        'Heartbeat ping send failed.'
+      );
+      return;
+    }
+    this.awaitingPongSince ??= now;
+    this.scheduleLivenessCheck();
+  }
+
+  private async closeForLiveness(
+    reason: ZLinkStreamCloseReasonCode,
+    closeReason: string,
+    diagnostic: string
+  ): Promise<void> {
+    if (this.disconnected) {
+      return;
+    }
+    this.disconnected = true;
+    this.closeReason = closeReason;
+    this.stopLivenessChecks();
+    await this.stream.closeForReason(reason, diagnostic);
+    await this.complete(undefined, true);
+  }
+
+  private stopLivenessChecks(): void {
+    if (this.livenessTimer !== undefined) {
+      this.livenessClock.clearTimer(this.livenessTimer);
+      this.livenessTimer = undefined;
     }
   }
 
@@ -347,7 +485,9 @@ export class ZLinkStreamSessionNodeRuntime {
   private activityVersion = 0;
   private stopped = false;
 
-  constructor(private readonly options: ZLinkStreamSessionNodeRuntimeOptions) {}
+  constructor(
+    private readonly options: ZLinkStreamSessionNodeRuntimeOptions & ZLinkStreamLivenessOptions
+  ) {}
 
   start(): void {
     this.options.socket.onFramedPacket((routingId, header, payload) => {

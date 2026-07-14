@@ -152,6 +152,100 @@ test('stream session node runtime dispatches framed packets through one session 
   ]);
 });
 
+test('stream session runtime sends heartbeat ping and consumes pong outside application dispatch', async () => {
+  const socket = new FakeStreamSocket();
+  const clock = new FakeLivenessClock();
+  let dispatches = 0;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    livenessClock: clock,
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch() { dispatches += 1; }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('heartbeat-session');
+  await clock.flush();
+  await clock.advance(1000);
+  assert.equal(controlHeader(socket.sent[0]).name, '$zlink.heartbeat.ping');
+
+  socket.emitPacket('heartbeat-session', fakeHeader({
+    kind: connector.ZlinkStreamMessageKind.Control,
+    codec: connector.ZlinkStreamCodec.Raw,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: '$zlink.heartbeat.pong'
+  }), fakeMessage(''));
+  await clock.flush();
+
+  socket.emitPacket('heartbeat-session', fakeHeader({
+    kind: connector.ZlinkStreamMessageKind.Control,
+    codec: connector.ZlinkStreamCodec.Raw,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: '$zlink.heartbeat.ping'
+  }), fakeMessage(''));
+  await clock.flush();
+
+  assert.equal(dispatches, 0);
+  assert.equal(controlHeader(socket.sent.at(-1)).name, '$zlink.heartbeat.pong');
+  assert.deepEqual(socket.disconnects, []);
+  await runtime.dispose();
+});
+
+test('stream session runtime closes an unanswered heartbeat with heartbeat_timeout', async () => {
+  const socket = new FakeStreamSocket();
+  const clock = new FakeLivenessClock();
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    livenessClock: clock,
+    sessionFactory(context) { return { context }; }
+  });
+
+  runtime.start();
+  runtime.markConnected('heartbeat-timeout-session');
+  await clock.flush();
+  await clock.advance(6000);
+
+  const closing = decodeSessionClosing(socket.sent.at(-1));
+  assert.equal(closing.header.name, 'session-closing');
+  assert.equal(closing.payload[1], 3);
+  assert.deepEqual(socket.disconnects, ['heartbeat-timeout-session']);
+  await runtime.dispose();
+});
+
+test('stream session runtime closes application-idle sessions with idle_timeout', async () => {
+  const socket = new FakeStreamSocket();
+  const clock = new FakeLivenessClock();
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    livenessClock: clock,
+    sessionFactory(context) { return { context }; }
+  });
+
+  runtime.start();
+  runtime.markConnected('idle-timeout-session');
+  await clock.flush();
+  for (let second = 0; second < 29; second += 1) {
+    await clock.advance(1000);
+    socket.emitPacket('idle-timeout-session', fakeHeader({
+      kind: connector.ZlinkStreamMessageKind.Control,
+      codec: connector.ZlinkStreamCodec.Raw,
+      flags: connector.ZlinkStreamHeaderFlags.None,
+      name: '$zlink.heartbeat.pong'
+    }), fakeMessage(''));
+    await clock.flush();
+  }
+  await clock.advance(1000);
+
+  const closing = decodeSessionClosing(socket.sent.at(-1));
+  assert.equal(closing.payload[1], 2);
+  assert.deepEqual(socket.disconnects, ['idle-timeout-session']);
+  await runtime.dispose();
+});
+
 test('stream session node runtime serializes dispatch and disconnect callbacks per session', async () => {
   const socket = new FakeStreamSocket();
   const events = [];
@@ -980,6 +1074,59 @@ class FakeStreamSocket {
   async bindActor() {}
   async unbindActor() {}
   sendBoundActor() { return true; }
+}
+
+class FakeLivenessClock {
+  constructor() {
+    this.current = 0;
+    this.nextTimer = 1;
+    this.timers = new Map();
+  }
+
+  now = () => this.current;
+
+  setTimer = (callback, delayMs) => {
+    const id = this.nextTimer++;
+    this.timers.set(id, { callback, due: this.current + delayMs });
+    return id;
+  };
+
+  clearTimer = (id) => {
+    this.timers.delete(id);
+  };
+
+  async advance(delayMs) {
+    const target = this.current + delayMs;
+    for (;;) {
+      const next = [...this.timers.entries()]
+        .filter(([, timer]) => timer.due <= target)
+        .sort((left, right) => left[1].due - right[1].due)[0];
+      if (next === undefined) break;
+      const [id, timer] = next;
+      this.timers.delete(id);
+      this.current = timer.due;
+      timer.callback();
+      await this.flush();
+    }
+    this.current = target;
+    await this.flush();
+  }
+
+  async flush() {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function controlHeader(sent) {
+  return decodeSessionClosing(sent).header;
+}
+
+function decodeSessionClosing(sent) {
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(sent.payload.data());
+  return {
+    header: protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header),
+    payload: frame.payload
+  };
 }
 
 function fakeMessage(text) {

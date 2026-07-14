@@ -18,7 +18,11 @@ import type {
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
 import { Message as NativeMessage } from '@zlink-systems/zlink';
-import { encodeSessionClosingFrame } from './protocol';
+import {
+  encodeSessionClosingFrame,
+  encodeStreamControlFrame,
+  ZLinkStreamCloseReasonCode
+} from './protocol';
 
 export class ZLinkManagedStream implements ZLinkStream {
   private currentLocalAddr: string | undefined;
@@ -70,8 +74,25 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   async closeForDrain(signal?: AbortSignal): Promise<void> {
+    await this.closeForReason(ZLinkStreamCloseReasonCode.ServerDrain, 'server drain', signal);
+  }
+
+  writeControl(name: string): boolean {
+    const control = NativeMessage.from(encodeStreamControlFrame(name));
+    try {
+      return this.socket.send(this.backendRoutingId(), control, 0);
+    } finally {
+      control.close();
+    }
+  }
+
+  async closeForReason(
+    reason: ZLinkStreamCloseReasonCode,
+    diagnostic: string,
+    signal?: AbortSignal
+  ): Promise<void> {
     throwIfAborted(signal);
-    const closing = NativeMessage.from(encodeSessionClosingFrame('server drain'));
+    const closing = NativeMessage.from(encodeSessionClosingFrame(diagnostic, reason));
     try {
       this.socket.send(this.backendRoutingId(), closing, 0);
     } finally {

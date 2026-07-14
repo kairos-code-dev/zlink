@@ -40,6 +40,18 @@ export enum ZLinkStreamHeaderFlags {
   HasFlowId = 0x10
 }
 
+export enum ZLinkStreamCloseReasonCode {
+  ClientClose = 1,
+  IdleTimeout = 2,
+  HeartbeatTimeout = 3,
+  ServerDrain = 4,
+  ProtocolError = 5,
+  TransportError = 6
+}
+
+export const ZLINK_STREAM_HEARTBEAT_PING = '$zlink.heartbeat.ping';
+export const ZLINK_STREAM_HEARTBEAT_PONG = '$zlink.heartbeat.pong';
+
 export interface ZLinkStreamFrameHeader {
   readonly kind: ZLinkStreamMessageKind;
   readonly codec: ZLinkStreamCodec;
@@ -79,12 +91,25 @@ export function encodeStreamFrame(header: ZLinkStreamFrameHeader, payload: Uint8
   return encodeStreamWireFrame(encodeStreamHeader(header), payload);
 }
 
-export function encodeSessionClosingFrame(diagnostic = ''): Uint8Array {
+export function encodeStreamControlFrame(name: string): Uint8Array {
+  return encodeStreamFrame({
+    kind: ZLinkStreamMessageKind.Control,
+    codec: ZLinkStreamCodec.Raw,
+    flags: ZLinkStreamHeaderFlags.None,
+    name,
+    metadata: new Map()
+  }, new Uint8Array());
+}
+
+export function encodeSessionClosingFrame(
+  diagnostic = '',
+  reason = ZLinkStreamCloseReasonCode.ServerDrain
+): Uint8Array {
   const diagnosticBytes = utf8Encode(diagnostic);
   if (diagnosticBytes.length > 512) throw new Error('Session-closing diagnostic is too large.');
   const payload = new Uint8Array(4 + diagnosticBytes.length);
   payload[0] = 1;
-  payload[1] = 4;
+  payload[1] = reason;
   payload[2] = diagnosticBytes.length >>> 8;
   payload[3] = diagnosticBytes.length & 0xff;
   payload.set(diagnosticBytes, 4);

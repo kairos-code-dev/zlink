@@ -3,9 +3,6 @@ package systems.zlink.e2e.automaticturn.client.Support;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +11,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import systems.zlink.e2e.automaticturn.shared.Contracts;
 import systems.zlink.e2e.automaticturn.shared.Env;
+import systems.zlink.httpclient.RawHttpResponse;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -1055,14 +1054,20 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     private static String get(String url) throws Exception {
-        HttpResponse<String> response = HttpClient.newHttpClient().send(
-            HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(3))
-                .GET()
-                .build(),
-            HttpResponse.BodyHandlers.ofString());
-        ensure(response.statusCode() >= 200 && response.statusCode() < 300,
-            "GET " + url + " returned " + response.statusCode());
+        URI target = URI.create(url);
+        String baseUrl = target.getScheme() + "://" + target.getRawAuthority();
+        String path = target.getRawPath();
+        if (target.getRawQuery() != null) {
+            path += "?" + target.getRawQuery();
+        }
+        RawHttpResponse response = ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(3))
+            .get(path)
+            .submitRaw()
+            .toCompletableFuture()
+            .join();
+        ensure(response.status() >= 200 && response.status() < 300,
+            "GET " + url + " returned " + response.status());
         return response.body();
     }
 

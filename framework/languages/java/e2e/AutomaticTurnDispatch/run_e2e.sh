@@ -27,6 +27,10 @@ LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
 ROUTE_SETTLE_SECONDS=5
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Client/src/main/java --glob '*.java'; then
+  echo "AutomaticTurnDispatch client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

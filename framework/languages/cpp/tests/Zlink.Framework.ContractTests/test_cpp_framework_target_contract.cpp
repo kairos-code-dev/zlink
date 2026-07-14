@@ -97,6 +97,7 @@ int main ()
     const auto error_hpp =
       read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
     const auto runner = read_file (e2e_root / "run_e2e_all.sh");
+    const auto spot_service_runner = read_file (e2e_root / "SpotService/run_e2e.sh");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
@@ -273,6 +274,16 @@ int main ()
                   "CPP-G0-E2E-004", "ST-A1 has no cross-kind evidence order assertion");
     gate.require (transfer_server.find ("location_committed") != std::string::npos,
                   "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
+
+    /* E2E-CP-16 — the default SpotService gate includes the implemented SM-D2 P0 scenario. */
+    const auto all_scenarios = spot_service_runner.find ("for scenario in");
+    const auto all_scenarios_end = spot_service_runner.find ("; do", all_scenarios);
+    gate.require (all_scenarios != std::string::npos && all_scenarios_end != std::string::npos
+                    && spot_service_runner.substr (all_scenarios,
+                                                   all_scenarios_end - all_scenarios)
+                         .find ("SM-D2")
+                         != std::string::npos,
+                  "E2E-CP-16", "SpotService all mode omits the implemented SM-D2 P0 scenario");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

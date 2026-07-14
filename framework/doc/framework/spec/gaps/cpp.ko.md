@@ -531,7 +531,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
 - [ ] **E2E-CP-14** (미구현) — **§3.1 "route mesh 없음 × 분리 배치" 조합이 아예 만들어지지 않는다**
 - [ ] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
-- [ ] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**
+- [x] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**
+  - 근거: 수정 전 target-contract gate가 SpotService `all` 목록의 `SM-D2` 누락을 검출했다. 기본 scenario inventory에 `SM-D2`를 추가한 뒤 gate와 `./run_e2e.sh SM-D2`의 client·play-a·play-b·session-a evidence 검증이 모두 통과했다.
 - [ ] **E2E-CP-17** (결함) — **`SM-F5`가 자기 계약의 정반대를 단언한다.** Spot을 닫지 않고 "살아 있음"을 확인한다
 - [ ] **E2E-CP-18** (결함) — **`SM-E1`(P0)이 자기 존재 이유인 message-flow error evidence를 단언하지 않는다**
 - [ ] **E2E-CP-19** (결함) — **`SM-F4`(P0)가 request 절반만 본다.** send drop·failure counter·flow 분류가 없다

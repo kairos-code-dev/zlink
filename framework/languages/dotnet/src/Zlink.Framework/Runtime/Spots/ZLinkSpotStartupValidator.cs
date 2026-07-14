@@ -12,7 +12,7 @@ internal static class ZLinkSpotStartupValidator
         foreach (var spotType in spotNode.SpotFactories)
         {
             await using var scope = services.CreateAsyncScope();
-            var context = new PacketRegistrationContext();
+            var context = new StartupConfigurationContext();
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 scope.ServiceProvider,
                 spotType,
@@ -22,36 +22,20 @@ internal static class ZLinkSpotStartupValidator
                     $"SPOT '{spotType}' must expose the context provided by the runtime.");
 
             foreach (var handler in registration.ScannedHandlerCatalog.SpotHandlers)
-            {
-                context.AddScannedPacket(spotType, handler);
-                ValidateScannedTimer(spotType, handler);
-            }
+                context.AddScannedHandler(spotType, handler);
 
             spot.Configure();
             context.Validate(spot);
         }
     }
 
-    private static void ValidateScannedTimer(
-        Type spotType,
-        ZLinkScannedSpotHandler handler)
-    {
-        if (handler.Kind != ZLinkScannedSpotHandlerKind.Timer
-            || handler.SpotType != spotType) return;
-
-        ZLinkSpotTimerRegistry.ValidateRegistration(
-            handler.TimerName ?? string.Empty,
-            handler.TimerPeriod,
-            null);
-    }
-
-    private sealed class PacketRegistrationContext :
+    private sealed class StartupConfigurationContext :
         IZLinkSpotContext,
         IZLinkSpotHandlerRegistrySink
     {
         private readonly ZLinkSpotPacketRegistry _packets = new();
 
-        public PacketRegistrationContext()
+        public StartupConfigurationContext()
         {
             Handlers = new ZLinkSpotHandlerRegistrySurface(this);
         }
@@ -108,14 +92,24 @@ internal static class ZLinkSpotStartupValidator
         {
         }
 
-        public void AddScannedPacket(
+        public void AddScannedHandler(
             Type spotType,
             ZLinkScannedSpotHandler handler)
         {
-            if (handler.Kind != ZLinkScannedSpotHandlerKind.Packet
-                || handler.SpotType != spotType) return;
+            if (handler.SpotType != spotType) return;
 
-            _packets.Add(handler);
+            switch (handler.Kind)
+            {
+                case ZLinkScannedSpotHandlerKind.Packet:
+                    _packets.Add(handler);
+                    break;
+                case ZLinkScannedSpotHandlerKind.Timer:
+                    ZLinkSpotTimerRegistry.ValidateRegistration(
+                        handler.TimerName ?? string.Empty,
+                        handler.TimerPeriod,
+                        null);
+                    break;
+            }
         }
 
         public void Validate(IZLinkSpot spot) => _packets.Bind(spot);

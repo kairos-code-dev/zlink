@@ -243,3 +243,32 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 | **E2E-DN-19** (결함) | [e2e §3.1](../../common/e2e/README.ko.md): **수렴 직후 첫 요청**을 재시도나 sleep으로 가리지 않는다 | TA-B3의 **복구 후 첫 요청**을 10초 재시도 루프로 감싼다(`AssertCallWithRetryAsync`). 실패 분류 단언도 마찬가지라, **10초 동안 틀린 kind가 나와도 통과한다** |
 | **E2E-DN-20** (미구현) | [e2e §3.1](../../common/e2e/README.ko.md): **`route mesh 없음` 축이 Config 9의 P0**다 | `Server/Caller/Program.cs:27-28`이 `ConnectRouter`를 **하드와이어**한다. route mesh 없는 변형을 **실행할 수 없다.** README가 그 축이 잡는 버그 부류까지 명시했는데(원격 actor join relay가 route mesh 등록을 전제하던 구현) **feature-map에 기록도 없다** |
 | **E2E-DN-21** (결함) | [e2e §2.5](../../common/e2e/README.ko.md) | Config 9에 **`Client/Scenarios/`가 없다** — 7개 시나리오가 `Program.cs`의 람다 딕셔너리다 |
+
+## 라운드 5 — ZoneWorld (`shared_sample`, **작업 중**)
+
+> **ZoneWorld dotnet은 아직 커밋되지 않은 작업 중 코드다.** 아래는 현재 워킹트리 기준이며,
+> 완성 전에 반영하면 된다.
+
+### 진짜 버그
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-DN-09** (**버그**) | [zoneworld §2.4·§2.5](../../common/sample/zoneworld/README.ko.md): border snapshot은 **`Tick`이 보관 중인 값보다 작거나 같으면 무시**한다. zone spot 생성 시 **`Tick = 0`**이다 | `ZoneState.cs:19` — `_adjacentHighWater`를 별도로 들고, `ExpireStaleSnapshots`(`:60-68`)가 **`_adjacent`만 지우고 `_adjacentHighWater`는 영영 안 지운다.** ⇒ zone-node-2를 재시작하면 그 spot의 `Tick`이 **0부터 다시 시작**하는데, 살아남은 zone-node-1의 high-water는 **≈400**이다. 재시작된 노드가 보내는 `Tick=1,2,3…`이 전부 `tick <= newest`에 걸려 **영구히 버려진다. 그 순간부터 border sync가 죽는다.** 만료된 뒤엔 "보관 중인 값"이 없으므로 새 `Tick=1`은 **받아들여야** 한다. **runner가 실제로 zone-node-2를 재시작하는데**(ZW-B4·C2·C3·E5), **이걸 잡을 ZW-B1이 첫 재시작 앞에서 돌아** 스위트는 초록으로 남는다 |
+| **SMP-DN-10** (**가짜 통과**) | [zoneworld §8.1·§11 ZW-C1](../../common/sample/zoneworld/README.ko.md): `Registered`는 **location event**에서, `Connected`는 **socket event**에서 온다. 문서가 위험을 직접 적어 뒀다 — *"각각 다른 출처에서 오므로, 하나만 보면 다른 하나의 배선이 죽어 있어도 통과한다"* | `NodeRegistry.cs:29-36` — 1초마다 오는 **report 메시지가 `Registered = true`를 찍는다.** ⇒ **두 플래그가 같은 배선(report channel)에서 나온다.** `LocationEventHandler`를 **통째로 지워도 ZW-C1이 통과한다.** 문서가 경고한 바로 그 실패다 |
+| **SMP-DN-11** (결함) | [zoneworld §2.4](../../common/sample/zoneworld/README.ko.md): 같은 `PlayerId` 재입장 시 **좌표와 zone은 유지된다** | `ZoneEntrySpot.cs:70-74` — `JoinWorldReq` handler가 **무조건 고정 스폰(25,25)으로 재입장**시킨다. 게다가 그 handler는 **entry spot에 있을 때만** dispatch되므로, zone spot에 살아 있는 actor에겐 `JoinWorldReq` handler가 **아예 없다.** 시나리오는 매번 GUID 접미사를 붙여서 **같은 `PlayerId`로 재입장하는 경우가 한 번도 없다** |
+
+### 규약 위반
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-DN-12** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md): **TicTacToe만** 수동 연결을 쓸 수 있다 | `ZoneNode/Program.cs:88-91,107` — `ConnectRouter`·`ConnectPeerPub`·`EnableClient(endpoint)`. peer endpoint가 `ZoneWorldSettings.cs`에 박혀 있고 **주석이 후속 에이전트에게 지우지 말라고 지시한다.** [갭 인덱스 §13.2] 참조 |
+| **SMP-DN-13** (결함) | [샘플 규약](../../common/sample/README.ko.md): 앱 코드가 쓸 수 있는 **환경변수는 0개** | `ZoneWorldSettings.cs:20-35`에서 **21개**를 읽는다. 그중 둘은 설정이 아니라 **동작 스위치**다 — `ZONEWORLD_FAULT_TICK_ZONE`을 **모든 zone spot의 100ms tick마다 환경에서 다시 읽어** 예외를 던지고, `ZONEWORLD_DISABLE_BOTS`도 마찬가지다. **다른 5개 샘플은 최근 커밋에서 전부 config 파일로 옮겼다** |
+| **SMP-DN-14** (결함) | [샘플 규약](../../common/sample/README.ko.md): 실행마다 **전용 Docker Redis**를 만든다. **host Redis 공유 금지, key prefix만 다르게 하는 것도 안 된다** | `run_sample.sh:12-13,43-44` — **host Redis 6379**를 쓰고 key prefix로만 격리한다. 게다가 시작할 때 `pkill -f "bin/Debug/net8.0/ZoneWorld.Server"`를 해서 **동시에 도는 다른 실행을 죽인다** |
+
+**깨끗한 축(확인함):** actor cross-node transfer(상태 유실 없음, 좌표·zone 교차검증), bot이 bound
+session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드 목록을 모름, border band·인접·병합
+규칙, move 검증 순서, tick 순서, 자동 handler 등록, 계층 디렉토리.
+
+**`.NET` `Client/`는 위반이 아니다** — [zoneworld §0.2](../../common/sample/zoneworld/README.ko.md)가
+언어별 headless 시나리오 client를 명시적으로 허용한다. 상위 README의 "client는 TypeScript 하나만"은
+**브라우저 client**를 말한다. (다만 그 TS client는 **아직 계약 파일 두 개뿐**이라 사실상 미착수다.)

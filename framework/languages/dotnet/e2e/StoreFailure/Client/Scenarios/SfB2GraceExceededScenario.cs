@@ -36,13 +36,12 @@ internal static class SfB2GraceExceededScenario
 
         await SfProbe.WaitStatusAsync(
             consumer,
-            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true },
-            options.HeartbeatInterval * 8,
+            SfProbe.Status(options.HeartbeatInterval * 8, storeHealthy: true, ownerLeaseHealthy: true),
             "SF-B2: the consumer's runtime status did not recover after the outage.");
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+                present: ["api-a", "api-b"]),
             "SF-B2: provider rows did not return to the live list after recovery.");
 
         Console.WriteLine("scenario SF-B2 passed");

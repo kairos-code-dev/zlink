@@ -19,8 +19,8 @@ internal static class SfC1CrashLeaseExpiryScenario
 
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => !SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl * 2 + options.PollingInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl * 2 + options.PollingInterval * 4,
+                absent: ["api-b"]),
             "SF-C1: the crashed provider's row was not excluded after its lease expired.");
 
         // Give the consumer's reconcile a tick to drop the dead target,

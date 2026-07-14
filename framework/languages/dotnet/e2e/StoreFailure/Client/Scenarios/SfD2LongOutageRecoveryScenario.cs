@@ -46,16 +46,15 @@ internal static class SfD2LongOutageRecoveryScenario
         // api-a re-registers its lease and row before any disconnect diff.
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => SfProbe.HasRid(peers, "api-a"),
-            options.HeartbeatInterval * 6,
+            SfProbe.PeerRows(options.HeartbeatInterval * 6, present: ["api-a"]),
             "SF-D2: the surviving provider did not re-register after recovery.");
 
         // The dead peer drops out after the one-heartbeat re-registration
         // grace; the survivor keeps serving.
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => !SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4,
+                absent: ["api-b"]),
             "SF-D2: the provider that died during the outage was not dropped after recovery.");
         await WaitForDeadProviderDisconnectAsync(consumer, options);
 

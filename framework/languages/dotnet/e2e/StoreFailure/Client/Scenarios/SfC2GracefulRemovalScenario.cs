@@ -23,9 +23,7 @@ internal static class SfC2GracefulRemovalScenario
 
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => peers.Any(row =>
-                string.Equals(row.Rid, "api-b", StringComparison.Ordinal) && row.Draining),
-            options.OwnerLeaseTtl,
+            SfProbe.PeerRows(options.OwnerLeaseTtl, draining: ["api-b"]),
             "SF-C2: api-b did not publish its draining marker promptly.");
 
         var drainingStatus = await SfProbe.GetStatusAsync(provider);
@@ -79,8 +77,7 @@ internal static class SfC2GracefulRemovalScenario
 
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => !SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl,
+            SfProbe.PeerRows(options.OwnerLeaseTtl, absent: ["api-b"]),
             "SF-C2: the gracefully stopped provider's row did not disappear promptly.");
         stopwatch.Stop();
 

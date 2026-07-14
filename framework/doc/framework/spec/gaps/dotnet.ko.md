@@ -424,7 +424,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — 송수신 HWM을 4로 제한하고 느린 처리보다 빠르게 64건을 제출한다. 역할 서버의 bounded wait로 HWM 초과 처리와 적체 정지를 확인한 뒤 후속 request와 provider evidence 회복을 검증한다. RM-C9와 regression 35건이 통과했다.
 - [x] **E2E-DN-07** (결함) — 역할 서버가 **30초 재시도 루프로 route 수렴 실패를 가린다**
   — request/send/route endpoint가 첫 framework 호출 결과를 그대로 반환한다. RM-A1/A2/C1/C2와 regression 34건이 통과했다.
-- [ ] **E2E-DN-08** (결함) — 클라이언트가 bounded wait endpoint 대신 **GET 폴링 루프**를 돈다(24개 파일)
+- [x] **E2E-DN-08** (결함) — 클라이언트가 bounded wait endpoint 대신 **GET 폴링 루프**를 돈다(실측 5개 파일)
+  — LocationMessaging topology, StoreFailure peer/status, ResilienceLifecycle evidence 관찰을 역할 서버의 bounded wait endpoint로 옮겼다. 관련 8개 시나리오와 regression 36건이 통과했다.
 - [ ] **E2E-DN-09** (결함) — 시나리오 파일 명명·커버리지 장부
 
 ### 가장 무거운 것

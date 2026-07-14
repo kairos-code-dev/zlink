@@ -19,6 +19,14 @@ public sealed record PeerLocationRow(
     string OwnerId,
     long Generation);
 
+public sealed record PeerLocationWaitReq(
+    string MeshName,
+    string Role,
+    string NodeRid,
+    bool Present,
+    string? Endpoint = null,
+    int TimeoutMilliseconds = 30000);
+
 public sealed record LocationStatusRes(
     bool StoreHealthy,
     bool OwnerLeaseHealthy);

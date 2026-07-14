@@ -15,8 +15,8 @@ internal static class SfE1StoreDelayNonBlockingScenario
     {
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+                present: ["api-a", "api-b"]),
             "SF-E1: baseline peers were not ready.");
 
         var baseline = await MeasureRequestsAsync(consumer, "SF-E1-baseline", 10);
@@ -57,8 +57,7 @@ internal static class SfE1StoreDelayNonBlockingScenario
         var sw = Stopwatch.StartNew();
         var peers = await SfProbe.WaitPeersAsync(
             consumer,
-            rows => SfProbe.HasRid(rows, "api-a") && SfProbe.HasRid(rows, "api-b"),
-            TimeSpan.FromSeconds(10),
+            SfProbe.PeerRows(TimeSpan.FromSeconds(10), present: ["api-a", "api-b"]),
             "SF-E1: delayed peer query did not return both providers.");
         sw.Stop();
         ScenarioAssert.That(peers.Length >= 2, "SF-E1: delayed peer query returned too few rows.");

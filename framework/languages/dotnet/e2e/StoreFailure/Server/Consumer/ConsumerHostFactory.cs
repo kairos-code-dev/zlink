@@ -104,6 +104,56 @@ internal static class ConsumerHostFactory
                 return Results.Problem(error.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         });
+        app.MapPost("/query/peers/wait", async (
+            PeerRowsWaitReq request,
+            IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var deadline = DateTimeOffset.UtcNow
+                           + TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                try
+                {
+                    var rows = (await query.ListPeerLocationsAsync(
+                            new ZLinkPeerLocationFilter(), cancellationToken))
+                        .Select(peer => new PeerRowRes(
+                            peer.NodeRid?.ToString(), peer.Endpoint, peer.OwnerId, peer.Draining))
+                        .ToArray();
+                    var reached = request.PresentRids.All(rid => rows.Any(row => row.Rid == rid))
+                                  && request.AbsentRids.All(rid => rows.All(row => row.Rid != rid))
+                                  && request.DrainingRids.All(rid =>
+                                      rows.Any(row => row.Rid == rid && row.Draining));
+                    if (reached) return Results.Ok(rows);
+                }
+                catch
+                {
+                    // A store outage is a transient observation while this bounded wait is active.
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            }
+
+            return Results.Problem("Peer rows did not reach the requested state.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
+        app.MapPost("/query/status/wait", async (
+            RuntimeStatusWaitReq request,
+            IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await RuntimeStatusWaiter.WaitAsync(async token =>
+            {
+                var status = await query.GetStatusAsync(token);
+                return new RuntimeStatusRes(
+                    status.StoreHealthy, status.WatchEnabled, status.LastError,
+                    status.OwnerLeaseHealthy, status.OwnerLeaseRenewedAt, status.LastRefreshAt);
+            }, request, cancellationToken);
+            if (response is not null) return Results.Ok(response);
+
+            return Results.Problem("Runtime status did not reach the requested state.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         app.MapPost("/profile/request", async (
             ProfileReq request,
             IZLinkChannelClient channel) =>

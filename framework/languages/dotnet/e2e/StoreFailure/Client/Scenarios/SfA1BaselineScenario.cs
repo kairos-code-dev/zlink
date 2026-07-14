@@ -16,8 +16,8 @@ internal static class SfA1BaselineScenario
     {
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl + options.PollingInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.PollingInterval * 4,
+                present: ["api-a", "api-b"]),
             "SF-A1: both provider rows did not appear in the consumer's peer list.");
 
         var served = new HashSet<string>(StringComparer.Ordinal);
@@ -34,8 +34,8 @@ internal static class SfA1BaselineScenario
         {
             var status = await SfProbe.WaitStatusAsync(
                 node,
-                current => current is { StoreHealthy: true, OwnerLeaseHealthy: true },
-                options.HeartbeatInterval * 4,
+                SfProbe.Status(options.HeartbeatInterval * 4,
+                    storeHealthy: true, ownerLeaseHealthy: true),
                 $"SF-A1: {name} runtime status did not report a healthy store and lease.");
             ScenarioAssert.That(
                 status.LastRefreshAt is not null,

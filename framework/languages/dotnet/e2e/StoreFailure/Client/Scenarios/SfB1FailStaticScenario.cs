@@ -27,13 +27,12 @@ internal static class SfB1FailStaticScenario
 
             await SfProbe.WaitStatusAsync(
                 consumer,
-                status => status is { StoreHealthy: false, LastError: not null },
-                options.HeartbeatInterval * 6,
+                SfProbe.Status(options.HeartbeatInterval * 6,
+                    storeHealthy: false, requireLastError: true),
                 "SF-B1: the consumer's runtime status did not record the store outage.");
             await SfProbe.WaitStatusAsync(
                 consumer,
-                status => !status.OwnerLeaseHealthy,
-                options.HeartbeatInterval * 6,
+                SfProbe.Status(options.HeartbeatInterval * 6, ownerLeaseHealthy: false),
                 "SF-B1: the consumer's owner lease heartbeat failure did not surface in status.");
         }
         finally
@@ -43,8 +42,7 @@ internal static class SfB1FailStaticScenario
 
         await SfProbe.WaitStatusAsync(
             consumer,
-            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true },
-            options.HeartbeatInterval * 8,
+            SfProbe.Status(options.HeartbeatInterval * 8, storeHealthy: true, ownerLeaseHealthy: true),
             "SF-B1: the consumer's runtime status did not recover after the outage.");
 
         Console.WriteLine("scenario SF-B1 passed");

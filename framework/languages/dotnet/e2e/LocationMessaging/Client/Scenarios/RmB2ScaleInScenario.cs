@@ -130,19 +130,9 @@ internal static class RmB2ScaleInScenario
 
     private static async Task WaitForPeerRowGoneAsync(ZLinkHttpClient http, string rid)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var present = (await http.Get("/locations/peers?mesh=profile")
-                .SubmitAsync<PeerLocationRow[]>()).Body
-                .Any(row => row.Role == "Router" && row.NodeRid == rid);
-            if (!present) return;
-
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-        }
-
-        throw new InvalidOperationException(
-            $"RM-B2 timed out waiting for peer row rid={rid} to be removed after graceful shutdown.");
+        await http.Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq("profile", "Router", rid, Present: false))
+            .SubmitAsync<PeerLocationRow[]>();
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)

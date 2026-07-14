@@ -59,6 +59,11 @@ internal static class ProviderTrafficProbe
         string? evidencePattern = null)
     {
         var pattern = evidencePattern ?? $"marker={markerPrefix}-";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var evidence = provider.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([pattern], [], 30000))
+            .SubmitAsync<string[]>(timeout.Token)
+            .AsTask();
         for (var round = 0; round < 300; round++)
         {
             var marker = $"{markerPrefix}-{round}";
@@ -69,21 +74,13 @@ internal static class ProviderTrafficProbe
                 reply.Value == "profile:fast",
                 $"{scenario} request returned an unexpected value.");
 
-            try
-            {
-                var snapshot = (await provider.Get("/evidence").SubmitAsync<string[]>()).Body;
-                if (snapshot.Any(entry => entry.Contains(pattern, StringComparison.Ordinal))) return;
-            }
-            catch
-            {
-                // The provider may still be settling after a stop/start cycle;
-                // keep sending while its dealer link finishes reconnecting.
-            }
-
-            await Task.Delay(100);
+            if (evidence.IsCompleted) break;
+            await Task.WhenAny(evidence, Task.Delay(100, timeout.Token));
         }
 
-        throw new InvalidOperationException(
+        var snapshot = (await evidence).Body;
+        ScenarioAssert.That(
+            snapshot.Any(entry => entry.Contains(pattern, StringComparison.Ordinal)),
             $"{scenario}: provider did not receive '{markerPrefix}' traffic before the probe deadline.");
     }
 }

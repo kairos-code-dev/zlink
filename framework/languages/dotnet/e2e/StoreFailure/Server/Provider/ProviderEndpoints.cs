@@ -23,6 +23,23 @@ internal static class ProviderEndpoints
                 status.OwnerLeaseRenewedAt,
                 status.LastRefreshAt));
         });
+        app.MapPost("/query/status/wait", async (
+            RuntimeStatusWaitReq request,
+            Zlink.Framework.Contracts.Locations.IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await RuntimeStatusWaiter.WaitAsync(async token =>
+            {
+                var status = await query.GetStatusAsync(token);
+                return new RuntimeStatusRes(
+                    status.StoreHealthy, status.WatchEnabled, status.LastError,
+                    status.OwnerLeaseHealthy, status.OwnerLeaseRenewedAt, status.LastRefreshAt);
+            }, request, cancellationToken);
+            if (response is not null) return Results.Ok(response);
+
+            return Results.Problem("Runtime status did not reach the requested state.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
             EvidenceWaitReq request,

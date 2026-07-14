@@ -34,13 +34,12 @@ internal static class SfD1ShortOutageRecoveryScenario
 
         await SfProbe.WaitStatusAsync(
             consumer,
-            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true },
-            options.HeartbeatInterval * 8,
+            SfProbe.Status(options.HeartbeatInterval * 8, storeHealthy: true, ownerLeaseHealthy: true),
             "SF-D1: runtime status did not return to healthy after the short outage.");
         await SfProbe.WaitPeersAsync(
             consumer,
-            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
-            options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+                present: ["api-a", "api-b"]),
             "SF-D1: provider rows were not all live after the short outage.");
 
         Console.WriteLine("scenario SF-D1 passed");

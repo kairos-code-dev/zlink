@@ -32,6 +32,19 @@ public sealed record RegistryHealthWaitReq(
     bool ExpectedHealthy,
     int TimeoutMilliseconds = 30000);
 
+public sealed record PeerRowsWaitReq(
+    string[] PresentRids,
+    string[] AbsentRids,
+    string[] DrainingRids,
+    int TimeoutMilliseconds = 30000);
+
+public sealed record RuntimeStatusWaitReq(
+    bool? StoreHealthy,
+    bool? OwnerLeaseHealthy,
+    bool RequireLastError = false,
+    bool RequireLastRefresh = false,
+    int TimeoutMilliseconds = 30000);
+
 public sealed record RuntimeStatusRes(
     bool StoreHealthy,
     bool WatchEnabled,

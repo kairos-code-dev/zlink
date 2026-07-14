@@ -68,20 +68,14 @@ internal static class RmA4SameRidFailoverScenario
 
     private static async Task WaitForSingleLiveRowAsync(ZLinkHttpClient client, string expectedEndpoint)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var rows = (await client.Get("/locations/peers?mesh=profile")
-                .SubmitAsync<PeerLocationRow[]>()).Body
-                .Where(row => row.Role == "Router" && row.NodeRid == "api-a")
-                .ToArray();
-            if (rows.Length == 1 && rows[0].Endpoint == expectedEndpoint) return;
-
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-        }
-
-        throw new InvalidOperationException(
-            "RM-A4 timed out waiting for the api-a peer row to hand over to the replacement endpoint.");
+        await client.Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq(
+                "profile",
+                "Router",
+                "api-a",
+                Present: true,
+                Endpoint: expectedEndpoint))
+            .SubmitAsync<PeerLocationRow[]>();
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client)

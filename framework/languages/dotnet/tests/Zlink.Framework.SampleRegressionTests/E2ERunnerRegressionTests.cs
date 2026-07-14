@@ -38,7 +38,6 @@ public sealed partial class RegressionTests
 
         Assert.DoesNotContain("WithRetryAsync", endpoints, StringComparison.Ordinal);
         Assert.DoesNotContain("IsRetriableRequestStartupFailure", endpoints, StringComparison.Ordinal);
-        Assert.DoesNotContain("Task.Delay", endpoints, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -56,5 +55,36 @@ public sealed partial class RegressionTests
         Assert.Contains("ReceiveHighWaterMark = 4", provider, StringComparison.Ordinal);
         Assert.Contains("evidence.Count(line => line.Contains(marker", scenario, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.Delay(TimeSpan.FromSeconds(10))", scenario, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_Observation_Uses_Role_Server_Bounded_Waits()
+    {
+        var root = ResolveE2eRoot();
+        var locationScenarios = new[]
+        {
+            "RmB1ScaleOutScenario.cs",
+            "RmB2ScaleInScenario.cs",
+            "RmA4SameRidFailoverScenario.cs"
+        };
+        foreach (var scenarioName in locationScenarios)
+        {
+            var source = File.ReadAllText(Path.Combine(
+                root, "LocationMessaging", "Client", "Scenarios", scenarioName));
+            Assert.DoesNotContain("Get(\"/locations/peers", source, StringComparison.Ordinal);
+            Assert.Contains("Post(\"/locations/peers/wait\")", source, StringComparison.Ordinal);
+        }
+
+        var storeProbe = File.ReadAllText(Path.Combine(
+            root, "StoreFailure", "Client", "Support", "SfProbe.cs"));
+        Assert.DoesNotContain("last = await TryGetPeersAsync", storeProbe, StringComparison.Ordinal);
+        Assert.DoesNotContain("last = await GetStatusAsync", storeProbe, StringComparison.Ordinal);
+        Assert.Contains("Post(\"/query/peers/wait\")", storeProbe, StringComparison.Ordinal);
+        Assert.Contains("Post(\"/query/status/wait\")", storeProbe, StringComparison.Ordinal);
+
+        var trafficProbe = File.ReadAllText(Path.Combine(
+            root, "ResilienceLifecycle", "Client", "Support", "ProviderTrafficProbe.cs"));
+        Assert.DoesNotContain("provider.Get(\"/evidence\")", trafficProbe, StringComparison.Ordinal);
+        Assert.Contains("provider.Post(\"/evidence/wait\")", trafficProbe, StringComparison.Ordinal);
     }
 }

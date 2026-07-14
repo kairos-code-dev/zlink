@@ -10,6 +10,21 @@ namespace StoreFailure.Client.Support;
 /// </summary>
 internal static class SfProbe
 {
+    public static PeerRowsWaitReq PeerRows(
+        TimeSpan timeout,
+        string[]? present = null,
+        string[]? absent = null,
+        string[]? draining = null) =>
+        new(present ?? [], absent ?? [], draining ?? [], ToMilliseconds(timeout));
+
+    public static RuntimeStatusWaitReq Status(
+        TimeSpan timeout,
+        bool? storeHealthy = null,
+        bool? ownerLeaseHealthy = null,
+        bool requireLastError = false,
+        bool requireLastRefresh = false) =>
+        new(storeHealthy, ownerLeaseHealthy, requireLastError, requireLastRefresh, ToMilliseconds(timeout));
+
     public static async Task<RuntimeStatusRes> GetStatusAsync(ZLinkHttpClient node)
     {
         return (await node.Get("/query/status").SubmitAsync<RuntimeStatusRes>()).Body;
@@ -30,48 +45,43 @@ internal static class SfProbe
 
     public static async Task<PeerRowRes[]> WaitPeersAsync(
         ZLinkHttpClient node,
-        Func<PeerRowRes[], bool> accept,
-        TimeSpan timeout,
+        PeerRowsWaitReq request,
         string failure)
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        PeerRowRes[]? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
+        try
         {
-            last = await TryGetPeersAsync(node);
-            if (last is not null && accept(last)) return last;
-
-            await Task.Delay(150);
+            return (await node.Post("/query/peers/wait")
+                .Body(request)
+                .SubmitAsync<PeerRowRes[]>()).Body;
         }
-
-        var seen = last is null
-            ? "<store unreachable>"
-            : string.Join(", ", last.Select(row => $"{row.Rid}@{row.Endpoint}"));
-        throw new InvalidOperationException($"{failure} (last peers: {seen})");
+        catch (Exception error)
+        {
+            throw new InvalidOperationException(failure, error);
+        }
     }
 
     public static async Task<RuntimeStatusRes> WaitStatusAsync(
         ZLinkHttpClient node,
-        Func<RuntimeStatusRes, bool> accept,
-        TimeSpan timeout,
+        RuntimeStatusWaitReq request,
         string failure)
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        RuntimeStatusRes? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
+        try
         {
-            last = await GetStatusAsync(node);
-            if (accept(last)) return last;
-
-            await Task.Delay(150);
+            return (await node.Post("/query/status/wait")
+                .Body(request)
+                .SubmitAsync<RuntimeStatusRes>()).Body;
         }
-
-        throw new InvalidOperationException(
-            $"{failure} (last status: healthy={last?.StoreHealthy}, lease={last?.OwnerLeaseHealthy}, error={last?.LastError})");
+        catch (Exception error)
+        {
+            throw new InvalidOperationException(failure, error);
+        }
     }
 
     public static bool HasRid(PeerRowRes[] peers, string rid) =>
         peers.Any(row => string.Equals(row.Rid, rid, StringComparison.Ordinal));
+
+    private static int ToMilliseconds(TimeSpan timeout) =>
+        (int)Math.Clamp(Math.Ceiling(timeout.TotalMilliseconds), 1, 60000);
 
     /// <summary>
     /// One request through the consumer with a bounded per-request

@@ -25,6 +25,37 @@ internal static class ProviderEndpoints
                 cancellationToken);
             return Results.Ok(peers.Select(ToPeerRow).ToArray());
         });
+        app.MapPost("/locations/peers/wait", async (
+            PeerLocationWaitReq request,
+            IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            var deadline = DateTimeOffset.UtcNow + timeout;
+            PeerLocationRow[] rows = [];
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                rows = (await query.ListPeerLocationsAsync(
+                        new ZLinkPeerLocationFilter(MeshName: request.MeshName),
+                        cancellationToken))
+                    .Select(ToPeerRow)
+                    .ToArray();
+                var matches = rows.Where(row =>
+                        row.Role == request.Role && row.NodeRid == request.NodeRid)
+                    .ToArray();
+                var reached = request.Present
+                    ? matches.Length == 1
+                      && (request.Endpoint is null || matches[0].Endpoint == request.Endpoint)
+                    : matches.Length == 0;
+                if (reached) return Results.Ok(rows);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            }
+
+            return Results.Problem(
+                $"Peer row did not reach the requested state for rid={request.NodeRid}.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         // Member-peer user surface check: cached resolver read with Refresh
         // freshness (doc §1 verification basis).
         app.MapGet("/locations/member-peers", async (

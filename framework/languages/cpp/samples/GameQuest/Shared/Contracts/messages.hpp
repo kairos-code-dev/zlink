@@ -215,6 +215,23 @@ struct gameplay_event_envelope_t
     long long created_at_unix_ms = 0;
 };
 
+/* 공통 sample spec §11.2: entry-spot → owner spot 게임플레이 event는 응답 없는 one-way send다. */
+struct gameplay_msg_t
+{
+    static constexpr const char *packet_name = "GameplayMsg";
+    gameplay_event_envelope_t event;
+};
+
+/* owner spot → player의 현재 연결 노드. 응답 없는 one-way이며, 대상 노드는 location store의
+ * session binding이 정한다(§12). */
+struct notify_quest_progress_msg_t
+{
+    static constexpr const char *packet_name = "NotifyQuestProgressMsg";
+    std::string player_id;
+    std::vector<quest_progress_t> projection;
+    std::string completed_quest_id;
+};
+
 struct notify_quest_progress_req_t
 {
     static constexpr const char *packet_name = "NotifyQuestProgressReq";
@@ -509,6 +526,26 @@ inline void from_json (const nlohmann::json &json, gameplay_event_envelope_t &va
     json.at ("count").get_to (value.count);
     json.at ("sourceApi").get_to (value.source_api);
     json.at ("createdAtUnixMs").get_to (value.created_at_unix_ms);
+}
+inline void to_json (nlohmann::json &json, const gameplay_msg_t &value)
+{
+    json = {{"event", value.event}};
+}
+inline void from_json (const nlohmann::json &json, gameplay_msg_t &value)
+{
+    json.at ("event").get_to (value.event);
+}
+inline void to_json (nlohmann::json &json, const notify_quest_progress_msg_t &value)
+{
+    json = {{"playerId", value.player_id},
+            {"projection", value.projection},
+            {"completedQuestId", value.completed_quest_id}};
+}
+inline void from_json (const nlohmann::json &json, notify_quest_progress_msg_t &value)
+{
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("projection").get_to (value.projection);
+    value.completed_quest_id = json.value ("completedQuestId", std::string{});
 }
 inline void to_json (nlohmann::json &json, const notify_quest_progress_req_t &value)
 {

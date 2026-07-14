@@ -8,9 +8,6 @@
 
 #include <zlink/framework.hpp>
 
-#include <boost/asio.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/http.hpp>
 
 #include <chrono>
 #include <ctime>
@@ -29,57 +26,6 @@ namespace zlink::samples::gamequest
 {
 
 using namespace framework;
-namespace beast = boost::beast;
-namespace http = beast::http;
-using tcp = boost::asio::ip::tcp;
-
-struct http_endpoint_t
-{
-    std::string host;
-    std::string port;
-};
-
-http_endpoint_t parse_http_url (const std::string &url)
-{
-    const std::string prefix = "http://";
-    const auto authority_begin = url.rfind (prefix, 0) == 0 ? prefix.size () : 0;
-    const auto path_begin = url.find ('/', authority_begin);
-    const auto authority = url.substr (authority_begin, path_begin - authority_begin);
-    const auto colon = authority.rfind (':');
-    if (colon == std::string::npos) {
-        return {authority, "80"};
-    }
-    return {authority.substr (0, colon), authority.substr (colon + 1)};
-}
-
-bool post_notify (const std::string &base_url, const notify_quest_progress_req_t &request)
-{
-    const auto endpoint = parse_http_url (base_url);
-    boost::asio::io_context io;
-    tcp::resolver resolver (io);
-    beast::tcp_stream stream (io);
-    stream.connect (resolver.resolve (endpoint.host, endpoint.port));
-
-    http::request<http::string_body> http_request{http::verb::post, "/internal/notify", 11};
-    http_request.set (http::field::host, endpoint.host + ":" + endpoint.port);
-    http_request.set (http::field::content_type, "application/json");
-    http_request.body () = nlohmann::json (request).dump ();
-    http_request.prepare_payload ();
-    http::write (stream, http_request);
-
-    beast::flat_buffer buffer;
-    http::response<http::string_body> response;
-    http::read (stream, buffer, response);
-    beast::error_code ignored;
-    stream.socket ().shutdown (tcp::socket::shutdown_both, ignored);
-    if (response.result_int () < 200 || response.result_int () >= 300) {
-        return false;
-    }
-    std::istringstream body (response.body ());
-    nlohmann::json decoded;
-    body >> decoded;
-    return decoded.get<notify_quest_progress_res_t> ().delivered;
-}
 
 /* 공통 sample spec §10: quest event stream이 진실의 원천(append-only)이고, projection은 그
  * stream을 fold해서 만든다. 같은 gameplay event가 다시 와도(재시도) event를 또 append하지
@@ -251,15 +197,15 @@ class quest_event_store_t
 class player_quest_spot_t : public spot_t
 {
   public:
-    player_quest_spot_t (quest_event_store_t &store, sample_topology_t topology) :
-        _store (store), _topology (std::move (topology))
+    player_quest_spot_t (quest_event_store_t &store, service_provider_t services) :
+        _store (store), _services (std::move (services))
     {
     }
 
     void configure (spot_context_t &context)
     {
         context.handlers ()
-          .add_handler<&player_quest_spot_t::apply> (apply_gameplay_event_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::apply> (gameplay_msg_t::packet_name)
           .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_req_t::packet_name)
           .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name);
     }
@@ -273,26 +219,30 @@ class player_quest_spot_t : public spot_t
         return spot_create_response_t::accept ();
     }
 
-    apply_gameplay_event_res_t apply (const apply_gameplay_event_req_t &request)
+    /* 공통 sample spec §11.2: gameplay event는 응답 없는 one-way다. 진행 notify는 player의 현재
+     * session binding이 가리키는 노드의 entry spot으로 route한다 — binding이 없으면 생략(§12). */
+    task_t<void> apply (const gameplay_msg_t &message)
     {
-        auto result = _store.apply (request.event);
-        bool delivered = false;
-        try {
-            delivered =
-              post_notify (_topology.api_http_url_for (request.event.source_api),
-                           notify_quest_progress_req_t{request.event.player_id,
-                                                       result.projection,
-                                                       result.completed_quest_id});
+        auto result = _store.apply (message.event);
+        auto scope = _services.create_scope ();
+        auto &actor_spots = scope.get_required<actor_spot_handle_resolver_t> ();
+        auto &routes = scope.get_required<route_client_t> ();
+
+        auto session_spot =
+          co_await actor_spots.resolve_actor_spot_handle (message.event.player_id);
+        if (!session_spot) {
+            std::cerr << "gamequest mission kept projection while the player has no session"
+                      << " binding. player=" << message.event.player_id << "\n";
+            co_return;
         }
-        catch (const std::exception &error) {
-            std::cerr << "gamequest mission projection kept while stream notify failed."
-                      << " player=" << request.event.player_id
-                      << " error=" << error.what () << "\n";
-        }
-        std::cerr << "gamequest mission notified source=" << request.event.source_api
-                  << " player=" << request.event.player_id
-                  << " delivered=" << (delivered ? "true" : "false") << "\n";
-        return apply_gameplay_event_res_t{true, result.projection, result.completed_quest_id};
+        routes
+          .send_to_spot (*session_spot,
+                         notify_quest_progress_msg_t{message.event.player_id, result.projection,
+                                                     result.completed_quest_id})
+          .submit ();
+        std::cerr << "gamequest mission notified player=" << message.event.player_id
+                  << " completed=" << result.completed_quest_id << "\n";
+        co_return;
     }
 
     sync_quest_progress_res_t sync (const sync_quest_progress_req_t &request)
@@ -307,7 +257,7 @@ class player_quest_spot_t : public spot_t
 
   private:
     quest_event_store_t &_store;
-    sample_topology_t _topology;
+    service_provider_t _services;
     std::string _player_id;
 };
 
@@ -359,18 +309,25 @@ int main (int argc, char **argv)
           .enable_server (topology.selected_mission_route_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
-        options.add_route_mesh (sample_names_t::quest_spot_route)
-          .enable_server (topology.selected_mission_spot_route_endpoint ())
-          .set_routing_id (topology.selected_mission_rid ());
+        /* 같은 spot route mesh를 양방향으로 쓴다. API 노드의 entry spot으로 notify를 보내려면 그
+         * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
+        auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
+        quest_spot_route.enable_server (topology.selected_mission_spot_route_endpoint ());
+        quest_spot_route.set_routing_id (topology.selected_mission_rid ());
+        quest_spot_route.enable_client ();
+        options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-a")] =
+          sample_names_t::quest_spot_route;
+        options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-b")] =
+          sample_names_t::quest_spot_route;
+        auto spot_services = options.services ().build_provider ();
         options.add_spot_mesh (sample_names_t::quest_spot_discovery)
           .enable_router (topology.selected_mission_spot_router_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .enable_pub_sub (topology.selected_mission_spot_endpoint ())
           .accept_route_mesh (sample_names_t::quest_spot_route)
           .add_spot<player_quest_spot_t> (
-            sample_names_t::player_quest_spot,
-            [quest_store_ptr, topology] {
-                return std::make_shared<player_quest_spot_t> (*quest_store_ptr, topology);
+            sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] {
+                return std::make_shared<player_quest_spot_t> (*quest_store_ptr, spot_services);
             });
         options.handlers ()
           .group ("quest-owner")

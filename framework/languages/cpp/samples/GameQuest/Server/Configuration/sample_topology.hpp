@@ -158,10 +158,27 @@ struct sample_topology_t
                                    : api_a_spot_router_endpoint;
     }
 
+    std::string api_a_spot_route_endpoint =
+      env_or ("GAMEQUEST_API_A_SPOT_ROUTE", "tcp://127.0.0.1:7621");
+    std::string api_b_spot_route_endpoint =
+      env_or ("GAMEQUEST_API_B_SPOT_ROUTE", "tcp://127.0.0.1:7622");
+
+    /* spot route mesh는 양방향이다: API는 owner spot으로 gameplay를 보내고, owner spot은 같은
+     * mesh로 player의 현재 노드에 notify를 보낸다. spot 노드는 route 채널 하나에만 bridge를
+     * 붙이므로, 별도 mesh를 더 두면 그쪽으로 온 프레임은 spot에 닿지 못한다. */
+    std::string selected_api_spot_route_endpoint () const
+    {
+        return api_name == "api-b" ? api_b_spot_route_endpoint : api_a_spot_route_endpoint;
+    }
+
+    std::string selected_api_node_rid () const
+    {
+        return api_name == "api-b" ? sample_names_t::api_b_rid : sample_names_t::api_a_rid;
+    }
+
     zlink::routing_id_t selected_api_rid () const
     {
-        return zlink::routing_id_t::from (
-          api_name == "api-b" ? sample_names_t::api_b_rid : sample_names_t::api_a_rid);
+        return zlink::routing_id_t::from (selected_api_node_rid ());
     }
 };
 

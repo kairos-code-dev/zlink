@@ -26,6 +26,13 @@ inline std::string quest_owner_channel_for (const std::string &instance_id)
     return std::string (sample_names_t::quest_owner_channel_prefix) + instance_id;
 }
 
+/* API 노드마다 자기 이름의 spot mesh를 연다. owner spot이 notify를 route하려면 이 mesh 이름에
+ * route 채널을 매핑해야 한다. */
+inline std::string api_spot_mesh_for (const std::string &api_name)
+{
+    return std::string (sample_names_t::quest_spot_discovery) + "." + api_name;
+}
+
 inline std::string quest_spot_route_channel_for (const std::string &instance_id)
 {
     return std::string (sample_names_t::quest_spot_route_channel_prefix) + instance_id;

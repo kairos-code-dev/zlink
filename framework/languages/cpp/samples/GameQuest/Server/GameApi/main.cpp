@@ -64,42 +64,43 @@ class game_api_store_t
         _events.push_back (event);
     }
 
-    bool notify (session_actor_manager_t &actors, const notify_quest_progress_req_t &request)
+    /* notify는 actor가 자기 bound session으로 push한다. store는 projection 기록만 맡는다. */
+    void push_notify (session_actor_manager_t &actors, const notify_quest_progress_msg_t &notify)
     {
         std::string session_id;
         {
             const std::lock_guard lock (_mutex);
-            _projections[request.player_id] = request.projection;
-            const auto found = _session_ids.find (request.player_id);
+            _projections[notify.player_id] = notify.projection;
+            const auto found = _session_ids.find (notify.player_id);
             if (found == _session_ids.end ()) {
-                return false;
+                std::cerr << "gamequest api: no bound session for player=" << notify.player_id
+                          << "\n";
+                return;
             }
             session_id = found->second;
         }
 
-        auto actor = actors.find (request.player_id);
+        auto actor = actors.find (notify.player_id);
         if (!actor) {
-            return false;
+            return;
         }
-
-        for (const auto &progress : request.projection) {
+        for (const auto &progress : notify.projection) {
             actor->bound_session ()
-              .send (quest_progress_notify_t{request.player_id, session_id, progress})
+              .send (quest_progress_notify_t{notify.player_id, session_id, progress})
               .submit ();
         }
-        if (!request.completed_quest_id.empty ()) {
+        if (!notify.completed_quest_id.empty ()) {
             const auto completed =
-              std::find_if (request.projection.begin (), request.projection.end (),
+              std::find_if (notify.projection.begin (), notify.projection.end (),
                             [&] (const quest_progress_t &progress) {
-                                return progress.quest_id == request.completed_quest_id;
+                                return progress.quest_id == notify.completed_quest_id;
                             });
-            if (completed != request.projection.end ()) {
+            if (completed != notify.projection.end ()) {
                 actor->bound_session ()
-                  .send (quest_completed_notify_t{request.player_id, session_id, *completed, true})
+                  .send (quest_completed_notify_t{notify.player_id, session_id, *completed, true})
                   .submit ();
             }
         }
-        return true;
     }
 
     server_assertion_res_t assert_state () const
@@ -144,6 +145,83 @@ class game_api_store_t
     std::map<std::string, std::string> _session_ids;
     std::map<std::string, std::vector<quest_progress_t>> _projections;
     std::vector<gameplay_event_envelope_t> _events;
+};
+
+class player_actor_t
+{
+  public:
+    explicit player_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
+
+    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    {
+        actor_ref = value;
+        actor_id = std::string (value.actor_id ());
+    }
+
+    void set_actor_context (actor_context_t value) { context = std::move (value); }
+
+    std::string actor_id;
+    zlink::framework::actor_ref_t actor_ref;
+    actor_context_t context;
+};
+
+struct player_actor_factory_t
+{
+    player_actor_t create (std::string actor_id) const
+    {
+        return player_actor_t (std::move (actor_id));
+    }
+};
+
+/* owner spot이 보낸 진행 notify가 이 노드의 entry spot으로 route돼 들어온다. 어느 노드로 갈지는
+ * location store의 session binding이 정하므로, API는 자기 노드의 actor만 보면 된다. */
+class player_entry_spot_t : public entry_spot_t
+{
+  public:
+    player_entry_spot_t (game_api_store_t &store, service_provider_t services) :
+        _store (store), _services (std::move (services))
+    {
+    }
+
+    void configure (entry_spot_context_t &context)
+    {
+        _context = context;
+        context.handlers ()
+          .add_handler<&player_entry_spot_t::quest_progress_notified> (
+            notify_quest_progress_msg_t::packet_name)
+          .add_actor_request<&player_entry_spot_t::join_session> (join_session_req_t::packet_name);
+    }
+
+    void configure (spot_context_t &context)
+    {
+        entry_spot_context_t entry_context (context);
+        configure (entry_context);
+    }
+
+    spot_actor_join_response_t on_actor_join (std::string_view, const zlink::message_t &)
+    {
+        return spot_actor_join_response_t::accept ();
+    }
+
+    /* session이 join을 actor로 relay한다. actor가 이 노드의 entry spot에 붙어 있어야 owner spot이
+     * session binding으로 이 노드를 찾을 수 있다. */
+    join_session_res_t join_session (player_actor_t &,
+                                     spot_actor_request_context_t &,
+                                     const join_session_req_t &request)
+    {
+        return {_store.projection (request.player_id)};
+    }
+
+    void quest_progress_notified (const notify_quest_progress_msg_t &notify)
+    {
+        auto scope = _services.create_scope ();
+        _store.push_notify (scope.get_required<session_actor_manager_t> (), notify);
+    }
+
+  private:
+    game_api_store_t &_store;
+    service_provider_t _services;
+    entry_spot_context_t _context;
 };
 
 class gamequest_session_t final : public packet_stream_session_t
@@ -203,16 +281,26 @@ class gamequest_session_t final : public packet_stream_session_t
                   actor.error () ? actor.error ()->what () : "gamequest session actor bind failed");
             }
             auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
+            (void) co_await bound.context ()
+              .join_entry_spot (node_rid_t::from_string (_topology.selected_api_node_rid ()),
+                                request)
+              .async ();
             _gateway.bind_session_stream (std::string (bound.actor_id ()), stream,
                                           stream_codec_t::json);
             _player_id = request.player_id;
             _store.bind (request.player_id, _topology.api_name, stream);
             auto synced = co_await sync_projection (request.player_id);
             _store.merge_projection (request.player_id, synced.updated_quests);
-            stream
-              .reply_packet (zlink::message_t::from_json (
-                join_session_res_t{synced.updated_quests}))
-              .submit ();
+            auto current = _actors.find (std::string (bound.actor_id ()));
+            if (!current) {
+                throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                                             "joined player actor route is not found");
+            }
+            auto reply = co_await current
+                           ->relay_request (join_session_req_t::packet_name,
+                                            zlink::message_t::from_json (request))
+                           .async ();
+            stream.reply_packet (reply).submit ();
             co_return;
         }
         if (packet == get_quest_progress_req_t::packet_name) {
@@ -237,51 +325,46 @@ class gamequest_session_t final : public packet_stream_session_t
             const auto request = payload.parse_json<kill_monster_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
                                           "MonsterKilled", request.monster_id, 1);
-            auto applied = co_await apply_event (event);
+            co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (kill_monster_res_t{event.event_id}))
               .submit ();
-            (void) applied;
             co_return;
         }
         if (packet == collect_item_req_t::packet_name) {
             const auto request = payload.parse_json<collect_item_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
                                           "ItemCollected", request.item_id, request.count);
-            auto applied = co_await apply_event (event);
+            co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (collect_item_res_t{event.event_id}))
               .submit ();
-            (void) applied;
             co_return;
         }
         if (packet == complete_mission_req_t::packet_name) {
             const auto request = payload.parse_json<complete_mission_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
                                           "MissionCompleted", request.mission_id, 1);
-            auto applied = co_await apply_event (event);
+            co_await apply_event (event);
             stream
               .reply_packet (zlink::message_t::from_json (complete_mission_res_t{event.event_id}))
               .submit ();
-            (void) applied;
             co_return;
         }
         if (packet == enter_area_req_t::packet_name) {
             const auto request = payload.parse_json<enter_area_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key, "AreaEntered",
                                           request.area_id, 1);
-            auto applied = co_await apply_event (event);
+            co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (enter_area_res_t{event.event_id}))
               .submit ();
-            (void) applied;
             co_return;
         }
         if (packet == unlock_feature_req_t::packet_name) {
             const auto request = payload.parse_json<unlock_feature_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
                                           "FeatureUnlocked", request.feature_id, 1);
-            auto applied = co_await apply_event (event);
+            co_await apply_event (event);
             stream.reply_packet (zlink::message_t::from_json (unlock_feature_res_t{event.event_id}))
               .submit ();
-            (void) applied;
             co_return;
         }
         throw framework_exception_t (framework_error_kind_t::request_failed,
@@ -326,19 +409,18 @@ class gamequest_session_t final : public packet_stream_session_t
         co_return synced;
     }
 
-    task_t<apply_gameplay_event_res_t> apply_event (const gameplay_event_envelope_t &event)
+    /* 공통 sample spec §11.2: gameplay event는 owner spot으로 보내는 응답 없는 one-way다.
+     * client에는 event id만 즉시 돌려주고, 진행은 notify로 돌아온다. */
+    task_t<void> apply_event (const gameplay_event_envelope_t &event)
     {
         co_await ensure_player_spot (event.player_id);
         auto target = co_await resolve_player_spot (event.player_id);
-        auto applied = co_await _routes
-                         .request_to_spot (std::move (target), apply_gameplay_event_req_t{event})
-                         .template async<apply_gameplay_event_res_t> ();
+        _routes.send_to_spot (std::move (target), gameplay_msg_t{event}).submit ();
         _store.record_event (event);
-        _store.merge_projection (event.player_id, applied.projection);
         std::cerr << "gamequest api event routed player=" << event.player_id
                   << " owner=" << owner_index (event.player_id) << " type=" << event.event_type
                   << "\n";
-        co_return applied;
+        co_return;
     }
 
     task_t<void> ensure_player_spot (const std::string &player_id)
@@ -384,30 +466,6 @@ class server_assertion_http_handler_t
     game_api_store_t &_store;
 };
 
-class notify_quest_progress_http_handler_t
-{
-  public:
-    using dependency_types = dependency_list_t<game_api_store_t, session_actor_manager_t>;
-    using request_type = notify_quest_progress_req_t;
-    using reply_type = notify_quest_progress_res_t;
-    static constexpr const char *topic_name = notify_quest_progress_req_t::packet_name;
-
-    notify_quest_progress_http_handler_t (game_api_store_t &store,
-                                          session_actor_manager_t &actors) :
-        _store (store), _actors (actors)
-    {
-    }
-
-    notify_quest_progress_res_t handle (const notify_quest_progress_req_t &request)
-    {
-        return {_store.notify (_actors, request)};
-    }
-
-  private:
-    game_api_store_t &_store;
-    session_actor_manager_t &_actors;
-};
-
 } // namespace zlink::samples::gamequest
 
 int main (int argc, char **argv)
@@ -423,32 +481,36 @@ int main (int argc, char **argv)
           .trace_log_file (gamequest_flow_log_path (topology.api_name))
           .trace_label (topology.api_name);
         options.services ().add_singleton<sample_topology_t> ();
-        options.services ().add_singleton<game_api_store_t> ();
+        auto api_store = std::make_unique<game_api_store_t> ();
+        auto *store_ptr = api_store.get ();
+        options.services ().add_singleton<game_api_store_t> (std::move (api_store));
+        auto spot_services = options.services ().build_provider ();
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
         options.add_client_server_channel (quest_owner_channel_for ("mission-a")).enable_client ();
         options.add_client_server_channel (quest_owner_channel_for ("mission-b")).enable_client ();
+        /* 같은 spot route mesh를 양방향으로 쓴다: API는 owner spot으로 gameplay를 보내고, owner
+         * spot은 같은 mesh로 이 노드의 entry spot에 notify를 보낸다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
-        quest_spot_route.enable_client (topology.mission_spot_route_endpoint_for ("mission-a"));
-        quest_spot_route.enable_client (topology.mission_spot_route_endpoint_for ("mission-b"));
+        quest_spot_route.enable_server (topology.selected_api_spot_route_endpoint ());
+        quest_spot_route.set_routing_id (topology.selected_api_rid ());
+        quest_spot_route.enable_client ();
         options.configure_locations ().spot_router_channels[sample_names_t::quest_spot_discovery] =
           sample_names_t::quest_spot_route;
-        options.add_spot_mesh (std::string (sample_names_t::quest_spot_discovery) + "."
-                               + topology.api_name)
+        options.add_spot_mesh (api_spot_mesh_for (topology.api_name))
           .set_routing_id (topology.selected_api_rid ())
           .enable_router (topology.selected_api_spot_router_endpoint ())
-          .connect_router (zlink::routing_id_t::from (sample_names_t::mission_a_rid),
-                           topology.mission_a_spot_router_endpoint)
-          .connect_router (zlink::routing_id_t::from (sample_names_t::mission_b_rid),
-                           topology.mission_b_spot_router_endpoint)
-          .accept_route_mesh (sample_names_t::quest_spot_route);
+          .accept_route_mesh (sample_names_t::quest_spot_route)
+          .add_entry_spot<player_entry_spot_t> ([store_ptr, spot_services] {
+              return std::make_shared<player_entry_spot_t> (*store_ptr, spot_services);
+          })
+          .add_actor_factory<player_actor_factory_t> (gamequest_player_actor_type);
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())
           .register_session<gamequest_session_t> ();
         options.http ()
           .listen (topology.selected_api_http_url ())
           .map_health ("/health")
-          .map_post<notify_quest_progress_http_handler_t> ("/internal/notify")
           .map_post<server_assertion_http_handler_t> ("/self-check/assert");
     });
     return app.run (argc, argv);

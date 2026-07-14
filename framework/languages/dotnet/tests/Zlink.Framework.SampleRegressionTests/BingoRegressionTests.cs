@@ -34,6 +34,19 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void Bingo_Client_Gate_Verifies_Submitted_Cards_And_Matching_Draw_State()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "BingoClientScenario.cs"));
+
+        Assert.Contains("client1Card.State.Players.Count == 2", scenario, StringComparison.Ordinal);
+        Assert.Contains("client1Card.State.Players.All(static player => player.Card.Count == 9)", scenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client2Drawn.Payload.State.Equals(client1Drawn.Payload.State)", scenario,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Runner_Uses_Isolated_Docker_Redis()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");

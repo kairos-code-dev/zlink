@@ -108,7 +108,6 @@ public static class DispatchServerHostFactory
                 DeliveryStatus.Assigned,
                 DeliveryStatus.Reassigned,
                 DeliveryStatus.Accepted,
-                DeliveryStatus.PickedUp,
                 DeliveryStatus.Delivered);
             return Results.Ok(new ServerAssertionRes(success && reassigned, evidence.ReadLines()));
         });

@@ -103,6 +103,10 @@ internal sealed class BingoClientScenario
             })
             .Async<SubmitBingoCardRes>(cancellationToken);
         Ensure(client1Card.State.Status == BingoRoomStatuses.Running);
+        // The second response is the first state captured after both submissions, so it must
+        // contain both complete cards rather than only acknowledging the last request.
+        Ensure(client1Card.State.Players.Count == 2);
+        Ensure(client1Card.State.Players.All(static player => player.Card.Count == 9));
 
         var drawnNumbers = new List<BingoNumberDrawnNotify>();
         // Number drawing is server-driven; clients only wait for draw notifications.
@@ -125,6 +129,9 @@ internal sealed class BingoClientScenario
             Ensure(client2Drawn.Payload.DrawSeq == expectedSeq);
             Ensure(client2Drawn.Payload.DrawSeq == client1Drawn.Payload.DrawSeq);
             Ensure(client2Drawn.Payload.Number == client1Drawn.Payload.Number);
+            // Both clients must observe the same room snapshot for this draw, not merely the
+            // same sequence number and drawn number.
+            Ensure(client2Drawn.Payload.State.Equals(client1Drawn.Payload.State));
 
             if (client1Drawn.Payload.State.Status == BingoRoomStatuses.Finished) break;
         }

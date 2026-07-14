@@ -5,6 +5,21 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void DeliveryDispatch_Client_Gate_Verifies_Status_Arrival_Order()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "DeliveryDispatchClientScenario.cs"));
+        var worker = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch", "DispatchWorker.cs"));
+
+        Assert.Contains("WaitForStatusSequenceAsync(", scenario, StringComparison.Ordinal);
+        Assert.Contains("DeliveryStatus.Assigned,", scenario, StringComparison.Ordinal);
+        Assert.Contains("DeliveryStatus.Reassigned,", scenario, StringComparison.Ordinal);
+        Assert.Contains("Ensure(message.Status == expectedStatus)", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("var assignedWait = WaitForStatusAsync", scenario, StringComparison.Ordinal);
+        Assert.Contains("if (offer.CandidateIndex == 0)", worker, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DeliveryDispatch_Runner_Uses_Isolated_Docker_Redis_And_Location_Store()
     {
         var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
@@ -104,10 +119,7 @@ public sealed partial class RegressionTests
         Assert.Contains("IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>",
             customerStatusHandler, StringComparison.Ordinal);
         Assert.Contains(".Actor.NodeRid", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned", clientScenario,
-            StringComparison.Ordinal);
-        Assert.Contains("WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned", clientScenario,
-            StringComparison.Ordinal);
+        Assert.Contains("WaitForStatusSequenceAsync(", clientScenario, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch courier-session: bound courier=courier-a", shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("deliverydispatch courier-session: bound courier=courier-b", shellRunner,

@@ -411,7 +411,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - [ ] **SMP-DN-06** (결함) — SupportChat의 **"반드시 오류로 검증한다" 5개 중 3개를 안 본다**
 - [x] ~~**SMP-DN-07** (결함) — ZoneWorld에 **`.NET` 전용 두 번째 클라이언트**가 있다(문서: TypeScript 하나만)~~
   — 갭 아님: 공통 문서는 TypeScript 브라우저 client와 언어별 headless 시나리오 client를 서로 다른 계약으로 명시한다.
-- [ ] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)
+- [x] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)
+  — Bingo가 제출 카드와 양쪽 draw state를 대조하고, DeliveryDispatch가 단일 수신 루프로 상태 도착 순서를 검증한다. 두 sample runner와 regression 31건이 통과했다.
 - [ ] **E2E-DN-01** (결함) — `ObservabilityOps`가 **e2e 앱이 아니다** — 샘플 바이너리를 셸로 구동한다
 - [ ] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
 - [ ] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**

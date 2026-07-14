@@ -63,10 +63,16 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
-        var assignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
-        var acceptedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
-        var pickedUpWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.PickedUp, cancellationToken);
-        var deliveredWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+        var statusSequenceTask = WaitForStatusSequenceAsync(
+            customer,
+            deliveryId,
+            [
+                DeliveryStatus.Assigned,
+                DeliveryStatus.Accepted,
+                DeliveryStatus.PickedUp,
+                DeliveryStatus.Delivered
+            ],
+            cancellationToken).AsTask();
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -86,10 +92,11 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        var assigned = await assignedWait;
-        var accepted = await acceptedWait;
-        var pickedUp = await pickedUpWait;
-        var delivered = await deliveredWait;
+        var statuses = await statusSequenceTask;
+        var assigned = statuses[0];
+        var accepted = statuses[1];
+        var pickedUp = statuses[2];
+        var delivered = statuses[3];
 
         Ensure(assigned.CourierId == "courier-a");
         Ensure(accepted.CourierId == "courier-a");
@@ -121,10 +128,16 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
-        var assignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
-        var reassignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned, cancellationToken);
-        var acceptedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
-        var deliveredWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+        var statusSequenceTask = WaitForStatusSequenceAsync(
+            customer,
+            deliveryId,
+            [
+                DeliveryStatus.Assigned,
+                DeliveryStatus.Reassigned,
+                DeliveryStatus.Accepted,
+                DeliveryStatus.Delivered
+            ],
+            cancellationToken).AsTask();
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -146,10 +159,11 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        var assigned = await assignedWait;
-        var reassigned = await reassignedWait;
-        var accepted = await acceptedWait;
-        var delivered = await deliveredWait;
+        var statuses = await statusSequenceTask;
+        var assigned = statuses[0];
+        var reassigned = statuses[1];
+        var accepted = statuses[2];
+        var delivered = statuses[3];
 
         Ensure(assigned.CourierId == "courier-a");
         Ensure(reassigned.CourierId == "courier-b");
@@ -158,17 +172,26 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         logger.LogInformation("deliverydispatch-reassignment=completed");
     }
 
-    private static async ValueTask<DeliveryStatusNotify> WaitForStatusAsync(
+    private static async ValueTask<IReadOnlyList<DeliveryStatusNotify>> WaitForStatusSequenceAsync(
         IZlinkStreamConnector customer,
         string deliveryId,
-        DeliveryStatus status,
+        IReadOnlyList<DeliveryStatus> expectedStatuses,
         CancellationToken cancellationToken)
     {
-        var message = await customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == status)
-            .Async(cancellationToken);
-        return message.Payload;
+        var statuses = new List<DeliveryStatusNotify>(expectedStatuses.Count);
+        foreach (var expectedStatus in expectedStatuses)
+        {
+            // Filter only by delivery id. Filtering by the expected status would hide an
+            // out-of-order notification and turn this release gate back into a presence check.
+            var received = await customer.WaitFor<DeliveryStatusNotify>()
+                .Where(message => message.Payload.DeliveryId == deliveryId)
+                .Async(cancellationToken);
+            var message = received.Payload;
+            Ensure(message.Status == expectedStatus);
+            statuses.Add(message);
+        }
+
+        return statuses;
     }
 
     private ValueTask AssertServerEvidenceAsync(

@@ -152,7 +152,16 @@ internal sealed class DispatchWorker(
         if (accepted)
         {
             await statusPublisher.PublishAsync(offer.Request, DeliveryStatus.Accepted, courierId, cancellationToken);
-            await statusPublisher.PublishAsync(offer.Request, DeliveryStatus.PickedUp, courierId, cancellationToken);
+            // The sample contract includes pickup only on direct acceptance. A reassigned
+            // delivery transitions from Accepted directly to Delivered.
+            if (offer.CandidateIndex == 0)
+            {
+                await statusPublisher.PublishAsync(
+                    offer.Request,
+                    DeliveryStatus.PickedUp,
+                    courierId,
+                    cancellationToken);
+            }
             await statusPublisher.PublishAsync(offer.Request, DeliveryStatus.Delivered, courierId, cancellationToken);
             offers.Close(offer.Request.DeliveryId);
             return;

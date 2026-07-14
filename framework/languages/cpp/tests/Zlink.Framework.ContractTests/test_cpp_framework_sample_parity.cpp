@@ -726,6 +726,17 @@ TEST (CppFrameworkSampleParity, TicTacToeClientGateChecksCommonContractFields)
     }
 }
 
+TEST (CppFrameworkSampleParity, DeliveryDispatchClientGateChecksStatusArrivalOrder)
+{
+    const auto client = read_file (
+      cpp_language_root () / "samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp");
+
+    EXPECT_NE (client.find ("wait_status_sequence"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == expected_status"), std::string::npos);
+    EXPECT_EQ (client.find ("sleep_for"), std::string::npos);
+    EXPECT_EQ (client.find ("wait_status ("), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 {
     const auto cpp_root = cpp_language_root ();

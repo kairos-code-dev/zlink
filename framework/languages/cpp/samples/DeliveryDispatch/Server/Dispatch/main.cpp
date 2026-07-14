@@ -192,7 +192,10 @@ class dispatch_worker_t
         const auto &courier_id = _couriers.candidates ()[offer.candidate_index];
         if (accepted) {
             co_await _statuses.publish (offer.request, delivery_status_t::accepted, courier_id);
-            co_await _statuses.publish (offer.request, delivery_status_t::picked_up, courier_id);
+            if (offer.candidate_index == 0) {
+                co_await _statuses.publish (offer.request, delivery_status_t::picked_up,
+                                            courier_id);
+            }
             co_await _statuses.publish (offer.request, delivery_status_t::delivered, courier_id);
             _state.close (offer.request.delivery_id);
             co_return;
@@ -443,7 +446,7 @@ class server_assertion_http_handler_t
         const auto reassigned = _evidence.has_sequence (
           request.reassigned_delivery_id,
           {delivery_status_t::assigned, delivery_status_t::reassigned, delivery_status_t::accepted,
-           delivery_status_t::picked_up, delivery_status_t::delivered});
+           delivery_status_t::delivered});
         return {success && reassigned, _evidence.read_lines ()};
     }
 

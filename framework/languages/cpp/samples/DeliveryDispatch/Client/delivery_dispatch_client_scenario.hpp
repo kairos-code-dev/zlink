@@ -13,7 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <thread>
+#include <vector>
 
 namespace zlink::samples::deliverydispatch
 {
@@ -104,11 +104,10 @@ class delivery_dispatch_client_scenario_t
         ensure (subscribed && subscribed.value ().delivery_id == delivery_id,
                 "delivery-success subscription failed");
         auto offer = wait_offer (courier, delivery_id, "courier-a");
-        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
-        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
-        auto picked_up = wait_status (customer, delivery_id, delivery_status_t::picked_up);
-        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
-        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        auto statuses = wait_status_sequence (
+          customer, delivery_id,
+          {delivery_status_t::assigned, delivery_status_t::accepted,
+           delivery_status_t::picked_up, delivery_status_t::delivered});
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {
             return http.post ("/deliveries")
@@ -120,10 +119,12 @@ class delivery_dispatch_client_scenario_t
         send_decision (courier, courier_offer.delivery_id, courier_offer.courier_id, true);
         auto created = created_future.get ();
         ensure (created.delivery_id == delivery_id, "delivery-success create failed");
-        ensure (assigned.get ().courier_id == "courier-a", "assigned courier mismatch");
-        ensure (accepted.get ().courier_id == "courier-a", "accepted courier mismatch");
-        ensure (picked_up.get ().courier_id == "courier-a", "picked-up courier mismatch");
-        ensure (delivered.get ().courier_id == "courier-a", "delivered courier mismatch");
+        auto received = statuses.result ();
+        ensure (static_cast<bool> (received), "delivery-success status sequence failed");
+        ensure (received.value ()[0].courier_id == "courier-a", "assigned courier mismatch");
+        ensure (received.value ()[1].courier_id == "courier-a", "accepted courier mismatch");
+        ensure (received.value ()[2].courier_id == "courier-a", "picked-up courier mismatch");
+        ensure (received.value ()[3].courier_id == "courier-a", "delivered courier mismatch");
     }
 
     static void run_reassigned_delivery (zlink::http_client::client_t &http,
@@ -144,11 +145,10 @@ class delivery_dispatch_client_scenario_t
                 "delivery-reassign subscription failed");
         auto first_offer = wait_offer (courier_a, delivery_id, "courier-a");
         auto second_offer = wait_offer (courier_b, delivery_id, "courier-b");
-        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
-        auto reassigned = wait_status (customer, delivery_id, delivery_status_t::reassigned);
-        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
-        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
-        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        auto statuses = wait_status_sequence (
+          customer, delivery_id,
+          {delivery_status_t::assigned, delivery_status_t::reassigned,
+           delivery_status_t::accepted, delivery_status_t::delivered});
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {
             return http.post ("/deliveries")
@@ -161,10 +161,12 @@ class delivery_dispatch_client_scenario_t
         send_decision (courier_b, accepted_offer.delivery_id, accepted_offer.courier_id, true);
         auto created = created_future.get ();
         ensure (created.delivery_id == delivery_id, "delivery-reassign create failed");
-        ensure (assigned.get ().courier_id == "courier-a", "assigned courier mismatch");
-        ensure (reassigned.get ().courier_id == "courier-b", "reassigned courier mismatch");
-        ensure (accepted.get ().courier_id == "courier-b", "accepted courier mismatch");
-        ensure (delivered.get ().courier_id == "courier-b", "delivered courier mismatch");
+        auto received = statuses.result ();
+        ensure (static_cast<bool> (received), "delivery-reassign status sequence failed");
+        ensure (received.value ()[0].courier_id == "courier-a", "assigned courier mismatch");
+        ensure (received.value ()[1].courier_id == "courier-b", "reassigned courier mismatch");
+        ensure (received.value ()[2].courier_id == "courier-b", "accepted courier mismatch");
+        ensure (received.value ()[3].courier_id == "courier-b", "delivered courier mismatch");
         std::cout << "deliverydispatch-reassignment=completed\n";
     }
 
@@ -177,15 +179,24 @@ class delivery_dispatch_client_scenario_t
         std::cout << "deliverydispatch-server-evidence=completed\n";
     }
 
-    static std::future<delivery_status_notify_t>
-    wait_status (connector_t &customer, const std::string &delivery_id, const std::string &status)
+    static zlink::stream_e2e_client::task_t<std::vector<delivery_status_notify_t>>
+    wait_status_sequence (connector_t &customer,
+                          const std::string &delivery_id,
+                          std::vector<std::string> expected_statuses)
     {
-        return customer.wait_for<delivery_status_notify_t> ()
-          .where ([delivery_id, status] (const delivery_status_notify_t &message) {
-              return message.delivery_id == delivery_id && message.status == status;
-          })
-          .timeout (std::chrono::seconds (12))
-          .to_future ("delivery status wait failed");
+        std::vector<delivery_status_notify_t> received;
+        received.reserve (expected_statuses.size ());
+        for (const auto &expected_status : expected_statuses) {
+            auto message = co_await customer.wait_for<delivery_status_notify_t> ()
+                             .where ([delivery_id] (const delivery_status_notify_t &candidate) {
+                                 return candidate.delivery_id == delivery_id;
+                             })
+                             .timeout (std::chrono::seconds (12))
+                             .async ();
+            ensure (message.status == expected_status, "delivery status arrived out of order");
+            received.push_back (std::move (message));
+        }
+        co_return received;
     }
 
     static std::future<offer_delivery_notify_t>

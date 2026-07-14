@@ -531,3 +531,33 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 **Java의 TicTacToe runner가 특정 Play 이름에 게이트를 건다**(`play-b` 포트, `play-node-2`,
 `play-a.log`) — 계약이 *"검증 기준은 특정 Play 이름이 아니다"*라고 못 박은 것이다.
 **SMP-JV-23을 고치는 순간 그 게이트가 깨진다.**
+
+## 라운드 5 — e2e Config 5·6·7·9·10·11 심층
+
+**"실패할 수 없는 단언"이 이 여섯 config를 관통한다.** 아래는 그중 게이트가 **구조적으로 실패
+불가능**한 것만 추렸다.
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-KT-05** (**빈 시나리오**) | [config-5 RL-D1](../../common/e2e/config-5-resilience-lifecycle.ko.md): **많은 subscriber/consumer로 높은 fanout 부하**를 주고 누락·붕괴 없이 처리되는지 본다 | Kotlin `RlD1HighFanoutScenario.kt` **파일 전체**가 이것이다 — `fun ClientScenarioContext.runHighFanoutEvidenceScenario() { println("scenario RL-D1 passed") }`. runner가 그 줄을 grep한다. **검증 코드가 0줄이다.** feature-map은 "high fanout burst에서 정상 reply를 유지하는지 확인한다"고 적는다 |
+| **E2E-JV-09** (**가짜 통과**) | [config-5 RL-B4(**P0**)](../../common/e2e/config-5-resilience-lifecycle.ko.md): drain 후 신규 request가 **그 노드 evidence에 더 기록되지 않고** 다른 노드가 받는다 | `collectProviders(prefix, attempts, 1)`이 **첫 성공 응답에서 반환한다.** ⇒ provider 2개에 drain이 **완전히 망가져도** 트래픽이 50/50이라 30번 중 한 번은 살아 있는 노드에 떨어져 통과한다. **drain된 노드의 `/evidence`를 한 번도 보지 않는다.** RL-A1/A2/A4/B2/B3/B5/C2가 전부 이 helper를 쓴다 |
+| **E2E-JV-10** (**가짜 통과**) | [config-5 RL-B3](../../common/e2e/config-5-resilience-lifecycle.ko.md): 종료 후 provider의 peer row가 store에서 **제거된다** | `waitForTopology(1)`이 `count >= expectedRouters`다. ⇒ 제거가 망가져 row가 2개로 남아 있어도 **`2 >= 1`이라 즉시 통과한다.** Kotlin은 올바른 helper(`waitForTopologyMissing`)를 **갖고 있으면서 여기 안 쓴다** |
+| **E2E-JV-11** (**가짜 통과**) | [config-6 §3](../../common/e2e/config-6-store-failure-recovery.ko.md): harness가 Redis process를 **정지했다가 재기동**한다. SF-D2는 복구 후 각 노드가 **자기 row를 다시 upsert**하는지 본다 | Java는 Redis 앞에 **파이썬 TCP 프록시**를 세우고 그 프록시를 `kill -STOP`한다. Kotlin은 `docker pause`. ⇒ **peer row도 Redis 연결도 그대로 살아 있다.** SF-D2가 잡아야 할 결함(복구 후 row를 다시 안 올리는 구현)이 **관측 불가능하고**, Redis 클라이언트 재연결도 **한 번도 실행되지 않는다** |
+| **E2E-JV-12** (**가짜 통과**) | [config-6 SF-E1](../../common/e2e/config-6-store-failure-recovery.ko.md): store client가 스레드나 이벤트 루프를 **점유하지 않음을 실측으로 증명**한다 | 지연을 **앱 데코레이터의 `CompletableFuture.delayedExecutor`**로 주입한다 — **정의상 스레드를 안 잡는 타이머**다. 진짜 Redis 클라이언트는 **전혀 느려지지 않는다.** 그리고 단언은 **자기가 넣은 타이머가 돌았는지**를 잰다. ⇒ **모든 Redis 호출마다 I/O 스레드를 붙잡는 store client도 통과한다** |
+| **E2E-JV-13** (**가짜 통과**) | [config-7 MON-A2·MON-A3(**P0**)](../../common/e2e/config-7-monitoring.ko.md): **노드를 추가/종료**하고 **spot subject를 바꾼다** | 두 시나리오 모두 **트리거가 없다.** `events()`가 **지금까지 기록된 모든 event 이름의 집합**을 반환하는데, svc-a/svc-b 부팅만으로 세 kind가 다 나온다. ⇒ **클라이언트가 돌기도 전에 조건이 만족된다** |
+| **E2E-JV-14** (**가짜 통과**) | [config-5 RL-D2](../../common/e2e/config-5-resilience-lifecycle.ko.md): observer 예외는 **runtime error sink로 보고된다** | Java는 **observer가 던지기 한 줄 전에 자기가 marker를 쓴다.** ⇒ framework가 그 예외를 **조용히 삼켜도** 통과한다. **Kotlin은 제대로 한다**(`RuntimeErrorEvidenceHandler`로 진짜 error sink를 본다) — **Kotlin이 앞선다** |
+| **E2E-JV-15** (**가짜 통과**) | [config-9 TA-B1(**P0**)](../../common/e2e/config-9-to-actor-messaging.ko.md): 실패 분류는 **framework가 낸 public error kind**여야 한다 | caller의 `/send`·`/request`가 `actors.find(id).orElseThrow(new ZLinkFrameworkException(ACTOR_ROUTE_NOT_FOUND))`다 — **e2e 앱이 그 예외를 만든다.** `sendToActor`에 **도달조차 하지 않는다.** ⇒ framework의 분류를 **통째로 지워도 4개 단언이 다 통과한다** |
+| **E2E-JV-16** (**미구현**) | [config-9 Track A(**P0 4개**)](../../common/e2e/config-9-to-actor-messaging.ko.md): **bind 상태 매트릭스**가 이 config의 표제다 | **session gateway도, stream connector도, bind도 없다.** `SERVER_ROLES=(actor caller)`뿐이다. TA-A1/A3/A4가 **TA-A2와 바이트 단위로 같은 흐름**이다. ⇒ **bind 오염 커버리지가 0이다** |
+| **E2E-JV-17** (**가짜 통과**) | [config-10 §5](../../common/e2e/config-10-spot-actor-transfer.ko.md): callback order는 **단순 로그 문자열 grep이 아니라** 역할 server evidence와 flow correlation id로 검증한다 | 필수 marker 6종(`commit_request`·`location_committed`·`source_cleanup`·`handoff_backlog`·`backlog_enqueued`·`commit_ack`) 중 **5개가 서버에 존재하지 않는다.** 그래서 ST-A1의 핵심 규칙("success reply 이전에 location row가 공개되면 실패")이 **검증되지 않는다.** 그나마 runner가 보는 것은 **flow 로그 문자열 grep** — §5가 명시적으로 배제한 방법이다 |
+| **E2E-JV-18** (**가짜 통과**) | [config-10](../../common/e2e/config-10-spot-actor-transfer.ko.md) | cross-node evidence 순서를 **세 JVM에서 각자 잰 `System.nanoTime()`**으로 정렬한다. `nanoTime`은 **프로세스마다 원점이 다르다.** ⇒ 원격 transfer 순서 단언 2개(P0)가 **시계 오프셋에 따라 통과/실패한다. 순서 검사가 아니다** |
+| **E2E-JV-19** (**가짜 통과**) | [config-11 OBS-A2(**P0**)](../../common/e2e/config-11-observability-ops.ko.md): **dispatch error 라인**에 `flow=`가 있어야 한다 | 그 error 라인을 **클라이언트 커넥터 자신의 stderr 트레이스**에서 뽑는다. ⇒ **서버의 에러 리포터에서 `flow=`를 통째로 지워도 통과한다.** 게다가 Verifier가 검사하는 `outcome=="error"`를 **추출기가 그 선택 조건으로 부여한다** — 이중으로 반증 불가능하다 |
+| **E2E-KT-06** (**가짜 통과**) | [config-11](../../common/e2e/config-11-observability-ops.ko.md) | **Kotlin config-11이 Java의 AutomaticTurnDispatch 바이너리를 역할 서버로 통째로 돌린다.** ⇒ **Kotlin 호스트가 하나도 안 뜬다.** Kotlin 고유의 metric·drain·flow 결함은 **원리적으로 안 보인다.** feature-map은 13행 전부 PASS |
+
+**공통:** 여섯 config 어디에도 `Client/Scenarios/`가 없거나 12줄 위임 껍데기다(본문은 532~959줄
+god-context). `§2.6` 환경변수 0개 규칙이 **전면 위반**인데 **feature-map 6개 중 기록한 곳이 0개**다.
+Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **README가 이름을 찍어 금지한
+시나리오 driver 서버**다 — **Kotlin은 둘 다 고쳤다.**
+
+**`AutomaticTurnDispatch`(Java·Kotlin)가 config-8인데 `ATD-*` 네임스페이스를 쓴다** — 계약의 ID는
+`TD-A1…TD-G1`이다. 두 feature-map이 **존재하지 않는 파일**(`config-8-automatic-turn-dispatch.ko.md`)을
+인용한다. Java `e2e/YieldDispatch`는 **소스가 없는 죽은 빌드 디렉토리**다.

@@ -827,6 +827,58 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Equal(1, tracker.DisposeCount);
     }
 
+    [Fact]
+    public async Task HostStartup_Rejects_Duplicate_UserSpot_Packet_Registration()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.DisableImplicitHandlerAutoRegistration();
+            options.AddSpotMesh("duplicate-packet")
+                .EnableRouter($"inproc://duplicate-packet-{Guid.NewGuid():N}")
+                .AddSpotFactory<DuplicatePacketSpot>();
+        });
+        using var host = builder.Build();
+
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains(
+            $"SPOT packet handler '{nameof(DuplicatePacketMessage)}' is already registered",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    private sealed record DuplicatePacketMessage(string Value);
+
+    private sealed class DuplicatePacketSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddPacket<FirstDuplicatePacketHandler>();
+            Context.Handlers.AddPacket<SecondDuplicatePacketHandler>();
+        }
+    }
+
+    private sealed class FirstDuplicatePacketHandler
+        : IZLinkSpotPacketHandler<DuplicatePacketSpot, DuplicatePacketMessage>
+    {
+        public ValueTask HandleAsync(
+            DuplicatePacketSpot spot,
+            DuplicatePacketMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class SecondDuplicatePacketHandler
+        : IZLinkSpotPacketHandler<DuplicatePacketSpot, DuplicatePacketMessage>
+    {
+        public ValueTask HandleAsync(
+            DuplicatePacketSpot spot,
+            DuplicatePacketMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
     private interface ITrackedLocationStore : IZLinkLocationStore, IAsyncDisposable;
 
     private class TrackedLocationStoreProxy : DispatchProxy

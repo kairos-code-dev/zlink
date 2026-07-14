@@ -10,6 +10,11 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
 {
     public async ValueTask<ZLinkFrameworkRuntimeState> CreateAsync()
     {
+        await ZLinkSpotStartupValidator.ValidateAsync(
+                frameworkRuntime.Services,
+                registration)
+            .ConfigureAwait(false);
+
         var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
         IZLinkBackendContext? context = null;
         ZLinkFrameworkRuntimeState? state = null;

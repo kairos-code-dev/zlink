@@ -90,10 +90,7 @@ internal sealed partial class ZLinkSpotActivation
         switch (handler.Kind)
         {
             case ZLinkScannedSpotHandlerKind.Packet:
-                if (handler.Method is { } packetMethod)
-                    _packets.Add(handler.HandlerType, packetMethod, handler.PacketName);
-                else
-                    _packets.Add(handler.HandlerType, handler.PacketName);
+                _packets.Add(handler);
                 return;
             case ZLinkScannedSpotHandlerKind.Subscription:
                 if (handler.SpotNodeName is not null

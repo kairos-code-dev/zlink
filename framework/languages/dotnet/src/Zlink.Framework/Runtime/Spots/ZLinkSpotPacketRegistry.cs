@@ -22,6 +22,14 @@ internal sealed class ZLinkSpotPacketRegistry
         _registrations.Add(new ZLinkSpotPacketRegistration(spotType, packetName, method));
     }
 
+    public void Add(ZLinkScannedSpotHandler handler)
+    {
+        if (handler.Method is { } method)
+            Add(handler.HandlerType, method, handler.PacketName);
+        else
+            Add(handler.HandlerType, handler.PacketName);
+    }
+
     public void Bind(object spot)
     {
         foreach (var packet in _registrations)

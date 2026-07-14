@@ -229,7 +229,8 @@
 
 - [x] **IMP-DN-01** (결함) — 20 §5
   — SPOT route send도 공통 dispatch decode 경계를 사용해 잘못된 payload를 `Drop`으로 끝낸다. 잘못된 payload 다음의 정상 메시지가 처리되는 회귀 게이트와 인접 dispatch 테스트 21건이 통과했다.
-- [ ] **IMP-DN-02** (결함) — 22 §5·20 §8
+- [x] **IMP-DN-02** (결함) — 22 §5·20 §8
+  — backend 생성 전 user Spot의 구성 단계와 스캔 descriptor를 공통 packet registry로 검증한다. 명시 handler 중복이 host 시작에서 설정 오류로 실패하는 게이트, unit 627건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-03** (결함) — 05 §3.3·31 §15
 - [ ] **IMP-DN-04** (결함) — 51
 - [ ] **IMP-DN-05** (결함) — 05 §2.4.3

@@ -158,7 +158,27 @@ public final class GameQuestClientScenario {
         ensure(reconciled.activeQuests().stream().anyMatch(progress ->
             progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() == 5));
 
-        apiAStream.close().submit().toCompletableFuture().join();
+        apiAStream.disconnect().submit().toCompletableFuture().join();
+        apiBStream.disconnect().submit().toCompletableFuture().join();
+        apiBStream.connect().submit().toCompletableFuture().join();
+        Messages.JoinSessionRes reconnectedAlice = apiBStream
+            .request(new Messages.JoinSessionReq("player-alice"))
+            .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
+        ensure(reconnectedAlice.activeQuests().stream().anyMatch(progress ->
+            progress.questId().equals(Messages.QuestIds.FirstHunt)
+                && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
+
+        CompletionStage<ZLinkStreamMessage<Messages.QuestProgressNotify>> reconnectedProgress =
+            apiBStream.waitFor(Messages.QuestProgressNotify.class)
+                .where(Messages.QuestProgressNotify.class, message ->
+                    message.payload().playerId().equals("player-alice")
+                        && message.payload().progress().questId().equals(Messages.QuestIds.HerbGathering))
+                .submit(Messages.QuestProgressNotify.class);
+        apiBStream.request(new Messages.CollectItemReq(
+                "player-alice", "healing-herb", 1, "reconnect-herb-1"))
+            .submit(Messages.CollectItemRes.class).toCompletableFuture().join();
+        ensure(reconnectedProgress.toCompletableFuture().join().payload().progress().currentCount() == 1);
+        apiBStream.disconnect().submit().toCompletableFuture().join();
 
         Messages.GameQuestServerAssertRes assertion = waitForServerAssertion();
         ensure(assertion.passed());

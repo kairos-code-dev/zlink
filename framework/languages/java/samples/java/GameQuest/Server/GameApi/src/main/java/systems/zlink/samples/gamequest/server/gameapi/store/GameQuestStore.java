@@ -108,6 +108,7 @@ public final class GameQuestStore implements AutoCloseable {
                 p.questId().equals(Messages.QuestIds.HerbGathering)
                     && p.status().equals(Messages.QuestStatuses.RewardGranted))),
             check(evidence, "missing:binding:player-bob:api-b", () -> bindingHistory.contains("player-bob:api-b")),
+            check(evidence, "missing:binding:player-alice:api-b", () -> bindingHistory.contains("player-alice:api-b")),
             check(evidence, "unexpected:active-binding:player-alice", () -> !activeBindings.contains("player-alice")),
             check(evidence, "missing:event:player-alice:first-hunt:QuestProgressedEvent:3",
                 () -> count(events, "player-alice", Messages.QuestIds.FirstHunt,

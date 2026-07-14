@@ -293,7 +293,8 @@
   — session ingress·reply와 actor/Entry/Spot dispatch가 wire의 correlation만 전파한다. correlation 없는 request 회귀 게이트, 관련 flow 테스트 8건, 전체 unit 631건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-10** (결함) — attribute로 선언한 SPOT timer 검증이 **startup이 아니라 spot 활성화 시점**
   — 등록된 Spot 타입의 스캔 timer를 host 시작에서 검증하고 runtime 생성과 같은 이름·주기·overrun 규칙을 사용한다. 관련 테스트 47건, 전체 unit 629건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-11** (결함) — connector가 **짝 없는 `Response`/`Error`를 수신 큐에 적재**한다
+- [x] **IMP-DN-11** (결함) — connector가 **짝 없는 `Response`/`Error`를 수신 큐에 적재**한다
+  — pending 매칭이 끝난 뒤 짝 없는 `Response`는 폐기하고 짝 없는 `Error`는 `RemoteError`로 전달한다. 두 실패 게이트, connector 전체 130건, framework unit 634건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-12** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘리고**, CONNECT는 인증 없이 나간다
 - [ ] **IMP-DN-13** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다
 
@@ -304,7 +305,7 @@
 | **IMP-DN-08** | [51 §5·§4.4b](../server/51-runtime-metrics.ko.md): 라벨은 **등록 시점의 닫힌 집합**만 붙인다. 앱이 room id를 인코딩한 동적 topic은 **금지 대상**이며, 미등록 topic은 라벨을 생략하고 합계만 기록한다 | `ZLinkSpotSubscriptionRegistry.cs:143` — `RecordFanoutReceived(message.Topic)`이 `_descriptorsByTopic.TryGetValue`(:152) **앞에** 있다. ⇒ 소켓에 도달하는 **모든 topic 값이 수집기에 새 시계열을 만든다.** ZoneWorld가 실제로 `zone.border.<from>.<to>` 같은 topic을 쓴다. 발행 측(`ZLinkSpotPublishCalls.cs:43,105`)은 올바르게 `null`을 넘긴다 |
 | **IMP-DN-09** | [52 §9](../server/52-message-flow-tracing.ko.md): `correlation_id`는 **보내는 client가 생성**하고 **server는 echo만** 한다. **서버는 ingress에서 생성하지 않는다** | 재검증에서 `ZLinkStreamSessionRuntime` 2곳뿐 아니라 session context와 actor/Entry/Spot dispatch 6곳도 `CorrelationId ?? RequestSeq`를 사용한다는 사실을 확인했다. `request_seq`는 연결별 값이라 서로 다른 세션을 같은 `corr`로 합친다. 여덟 fallback을 모두 제거해 wire correlation이 없으면 downstream 관측에도 correlation이 없다 |
 | **IMP-DN-10** | [25 §4.1](../server/25-stage-wrapper-on-spot.ko.md): 빈 이름·`period ≤ 0`·`catch-up ≤ 0`은 **host 시작 또는 등록 시점**의 설정 오류 | `ZLinkScannedSpotHandlers.cs:86-90` — scanner가 `[ZLinkSpotTimerHandler(name, 0)]`을 **검증 없이** descriptor로 만든다. 검사는 `ZLinkSpotTimerRegistry.cs:48-60`(**활성화 시점**)에만 있다. ⇒ host는 healthy로 기동하고 **첫 방 생성부터 전부 실패**한다. Java는 startup scan에서 잡는다 |
-| **IMP-DN-11** | [32 §10.1·§9](../stream-connector/32-stream-connector.ko.md): response·error·heartbeat는 **수신 한도에 넣지 않는다**. request id가 부합하지 않는 error는 `RemoteError` | `Runtime/ZlinkStreamReceiveDispatcher.cs:18-37` — `pending.TryComplete()`가 실패하면 `RequestSeq is null`인 `Error`만 오류 표면으로 가고 **나머지는 전부 수신 메시지 큐로 떨어진다.** ⇒ 30초에 timeout된 request의 응답이 31초에 도착하면 **읽지 않은 메시지 예산(1024)을 갉아먹고**, 짝 없는 `Error`가 `RemoteError`로 **영영 보고되지 않는다** |
+| **IMP-DN-11** | [32 §10.1·§9](../stream-connector/32-stream-connector.ko.md): response·error·heartbeat는 **수신 한도에 넣지 않는다**. request id가 부합하지 않는 error는 `RemoteError` | pending request와 매칭되지 않은 `Response`는 application 수신 큐에 넣지 않고 폐기한다. 매칭되지 않은 `Error`는 request sequence 유무와 관계없이 `RemoteError` 표면으로 전달한다 |
 | **IMP-DN-12** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md): proxy 인증 정보는 **대상 서버로 새지 않아야 한다**(**CONNECT tunnel 요청에만** 실림) | `Zlink.HttpClient/Runtime/RequestPerformer.cs:132-133` — `Proxy-Authorization`을 **매 요청 메시지 헤더**에 붙인다. `https://` 대상이면 그 헤더는 **CONNECT 터널 안쪽을 타고 원본 서버까지 간다.** 정작 `HttpTransportFactory.cs:27-31`의 `new WebProxy(...)`에는 **credential이 없어서 CONNECT 자체는 인증 없이** 나간다. ⇒ proxy 인증은 407로 실패하고, **그 자격증명은 엉뚱한 서버 손에 들어간다.** C++·Node는 올바르다 |
 | **IMP-DN-13** | [32 §4.7](../stream-connector/32-stream-connector.ko.md): 한도는 payload 바이트에만 적용하며 **압축을 쓰면 압축된 payload 기준**이다 | `ZlinkStreamFrameSender.cs:20-26` — 한도 검사가 **압축 전에** 돈다. ⇒ 80KB JSON을 `.compress()`하면(wire 6KB) **browser connector는 받고 .NET/Java/C++은 거부한다.** 압축이 존재하는 바로 그 이유가 막힌다 |
 

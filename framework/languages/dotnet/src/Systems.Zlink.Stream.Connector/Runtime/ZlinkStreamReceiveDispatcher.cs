@@ -27,7 +27,9 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
         if (pending.TryComplete(header, frame, ParseErrorPayload)) return;
 
-        if (header.Kind == ZlinkStreamMessageKind.Error && header.RequestSeq is null)
+        if (header.Kind == ZlinkStreamMessageKind.Response) return;
+
+        if (header.Kind == ZlinkStreamMessageKind.Error)
         {
             await callbacks.PublishErrorAsync(ParseErrorPayload(frame.Payload), cancellationToken)
                 .ConfigureAwait(false);

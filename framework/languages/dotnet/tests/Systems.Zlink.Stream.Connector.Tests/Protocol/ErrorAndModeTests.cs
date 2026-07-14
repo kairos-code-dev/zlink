@@ -8,7 +8,7 @@ using Xunit;
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public async Task PendingResponseRejectsMismatchedPacketName()
+    public async Task PendingResponseIgnoresMismatchedPacketName()
     {
         var requests = new ZlinkStreamPendingRequests();
         var pending = requests.Create("expected.response");
@@ -25,9 +25,10 @@ public sealed partial class StreamConnectorTests
             new ZlinkStreamFrame(ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
             _ => new ZlinkStreamError(ZlinkStreamErrorCode.RemoteError, "unused")));
 
-        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await requests.WaitAsync(pending, CancellationToken.None));
-        Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, exception.Error.Code);
+        var completion = await requests.WaitAsync(pending, CancellationToken.None);
+        Assert.Equal(pending.RequestSeq, completion.Header.RequestSeq);
+        Assert.Equal("unexpected.response", completion.Header.Name);
+        Assert.Null(completion.Error);
     }
 
     [Fact]

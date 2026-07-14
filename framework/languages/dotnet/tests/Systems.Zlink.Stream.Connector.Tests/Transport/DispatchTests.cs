@@ -119,6 +119,114 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task UnmatchedResponse_DoesNotConsumeReceivedMessageCapacity()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Response,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(999),
+                    "late.response",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                [1]);
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "kept",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                [2]);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1
+        });
+        var dropped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ErrorReceived += (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.ReceivedMessageDropped) dropped.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async();
+        await server;
+        await WaitUntilAsync(
+            () => connector.ReceivedCount("kept") == 1 || dropped.Task.IsCompleted,
+            TimeSpan.FromSeconds(5));
+
+        Assert.False(dropped.Task.IsCompleted);
+        Assert.Equal(0, connector.ReceivedCount("late.response"));
+        Assert.Equal(1, connector.ReceivedCount("kept"));
+    }
+
+    [Fact]
+    public async Task UnmatchedErrorWithRequestSequence_IsReportedAsRemoteError()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Error,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(999),
+                    "late.error",
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "{\"code\":\"late\",\"message\":\"late reply\"}"u8.ToArray());
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        var remoteError = new TaskCompletionSource<ZlinkStreamError>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ErrorReceived += (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.RemoteError) remoteError.TrySetResult(error);
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async();
+        await server;
+        await WaitUntilAsync(
+            () => remoteError.Task.IsCompleted || connector.ReceivedCount("late.error") == 1,
+            TimeSpan.FromSeconds(5));
+
+        var error = await remoteError.Task.WaitAsync(TimeSpan.FromMilliseconds(100));
+        Assert.Equal("late reply", error.Message);
+        Assert.Equal(0, connector.ReceivedCount("late.error"));
+    }
+
+    [Fact]
     public async Task ManualDispatchCallbackQueueDropsOldestCallbacksAtConfiguredLimit()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

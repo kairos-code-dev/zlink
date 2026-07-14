@@ -216,3 +216,30 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 | **E2E-DN-07** | [e2e §2](../../common/e2e/README.ko.md): **수렴 직후 첫 요청**은 **재시도나 sleep으로 가리지 않는다** — 첫 요청이 바로 성공하는 것 **자체가 검증 대상**이다. *"workaround를 넣은 테스트는 완료로 보지 않는다"* | `LocationMessaging/Server/Provider/Endpoints/ProviderEndpoints.cs:120-141` — `RequestProfileWithRetryAsync`가 **30초 동안 100ms 간격으로 재시도**하며 `ZLinkFrameworkException`을 삼킨다. Config 1의 **모든** `/profile/request`가 이걸 통과한다 |
 | **E2E-DN-06** | [config-1 RM-C9](../../common/e2e/config-1-location-messaging.ko.md): 처리 속도보다 빠르게 **다량** 보내 송신 큐를 **HWM까지 채운다** | `RmC9BackpressureScenario.cs:11` — `SlowSendCount = 8`. **one-way send 8번**으로는 어떤 HWM에도 못 닿는다. 그러고는 **10초 자고**(`:25`) 후속 request가 되는지 본다. **backpressure가 만들어지지 않는다** |
 | **E2E-DN-04** | [e2e §2.1](../../common/e2e/README.ko.md): local readiness **3초**. *"긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지 않는다"* | 모든 runner가 **기본 30초**(`SpotService` **60초**)이고 **환경변수로 덮어쓸 수 있다.** 문서는 환경변수를 "느린 CI나 진단용 override"로만 허용한다 |
+
+## 라운드 5 (2026-07-14) — e2e Config 7·9 심층
+
+**기준선의 e2e에도 "실패할 수 없는 단언"이 무더기로 있다.** 얕은 패스는 구조만 봤고, 시나리오
+파일을 한 줄씩 읽으니 나왔다.
+
+### 실패할 수 없는 단언
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-DN-10** (**가짜 통과**) | [config-7 §2·§5](../../common/e2e/config-7-monitoring.ko.md): socket 이벤트 kind는 **닫힌 enum**(`Connected`·`ConnectionReady`·`Disconnected`·`HandshakeFailed`·`PeerAdmissionChanged`·`Closed`)에 속해야 한다 | `MonA5FixedKindsScenario.cs:18-21` — `kind=HandshakeFailed` **또는 `kind=Internal`**을 받아들인다. `Internal`은 **그 닫힌 집합에 없다.** ⇒ 이 시나리오의 존재 이유가 "framework가 잘못된 handshake를 `HandshakeFailed`로 분류한다"를 증명하는 건데, **그 분류를 지우고 catch-all로 떨어져도 통과한다.** 게다가 evidence store가 누적이라 앞선 시나리오가 낸 아무 `Internal` 이벤트가 **트리거 전에 이미 조건을 만족시킨다.** feature-map은 `구현`으로 적으면서 본문엔 fallback을 **자백한다** |
+| **E2E-DN-11** (**가짜 통과**) | [config-7 MON-D1](../../common/e2e/config-7-monitoring.ko.md): svc-b가 **떠났다가 돌아오는 전이**를 관측한다 | `MonD1FailureRecoveryScenario.cs:84-86` — 누적 카운터에 대한 **`>= 3`**이다. MON-D1이 시작되기 전에 이미 부팅 수렴(≥1, MON-A2가 단언)과 MON-A4의 drain·restore(각 1)로 **문턱을 넘는다.** ⇒ **svc-b를 멈추기도 전에 첫 루프에서 통과한다.** 카운터를 세는 것으로는 remove/re-add 전이를 구분할 수 없다 |
+| **E2E-DN-12** (**가짜 통과**) | [config-7 MON-A2·MON-A3](../../common/e2e/config-7-monitoring.ko.md): **트리거를 발생시킨다**(svc-b 추가/종료, spot subject 변경) | 두 시나리오 모두 **`/evidence/wait` 한 번이 전부다**(MON-A2는 34줄). **아무것도 추가하지 않고 아무것도 멈추지 않는다.** ⇒ **부팅 수렴과 100ms 폴링의 초기 diff만으로 통과한다** |
+| **E2E-DN-13** (**가짜 통과**) | [e2e §2.3](../../common/e2e/README.ko.md): **시나리오 실행 전용 server가 만든 marker만으로 성공을 판정하지 않는다** | `MON-B2`의 evidence를 **`Server/Trigger`가 자기 안에서 임시 host를 만들어 단언하고 손으로 조립한 문자열**로 돌려준다(`TriggerValidation.cs:60` — **리터럴 상수**를 반환한다). 클라이언트는 그 문자열을 grep한다. **e2e 옷을 입은 in-process contract test다** |
+| **E2E-DN-14** (**가짜 통과**) | [config-7 MON-A4](../../common/e2e/config-7-monitoring.ko.md): **failover** + drain/restore | failover 다리가 **아예 없다.** 그리고 "drain evidence" 단언이 **방금 클라이언트가 호출한 그 엔드포인트가 무조건 쓰는 marker**다(`ServiceHostFactory.cs:125`) — 모니터링에 대해 **아무것도 단언하지 않는다** |
+
+### 구조 위반
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **E2E-DN-15** (결함) | [e2e §2.3·§2.4](../../common/e2e/README.ko.md): 시나리오 실행만 위임받는 server는 **폴더 이름이 달라도 금지 대상**이다. evidence는 **실제로 처리한 역할 server**가 노출한다 | `Server/Trigger`가 제품 기능이 없다. 그리고 **MON-C1이 다른 프로세스의 stderr 파일을 디스크에서 읽어** dispatch 실패를 검증한다(`TriggerLogReader.cs:15`). 그 로그 줄은 runner가 `ZLINK_DEBUG_FRAMEWORK_TASKS=1`을 켜야만 나온다. **C++에서 본 결함과 같다** |
+| **E2E-DN-16** (결함) | [e2e §2.4](../../common/e2e/README.ko.md): 하나의 서버 프로젝트를 mode로 역할 전환하지 않는다. **같은 `Program.cs`를 복사해 default role만 바꾸는 것도 금지** | `FilteredService`·`ThrowingService`가 **`ServiceHostFactory.Create(args, profile)` 하나에 enum으로 분기**한다. 결과: config-7이 요구하는 **동일한 두 service 노드** 중 `svc-b`에 **spot mesh가 아예 없다** |
+| **E2E-DN-17** (결함) | [config-9 §5](../../common/e2e/config-9-to-actor-messaging.ko.md): 실패 분류는 **framework가 낸 public error kind**여야 한다 | `Server/Caller/Program.cs:43-48` — 역할 서버가 **시나리오 ID로 분기**하고(`request.Scenario.StartsWith("TA-B1")`), **`ZLinkFrameworkErrorKind.ActorRouteNotFound`를 직접 만들어 던진다.** ⇒ 앞으로 `/request`를 타는 시나리오는 **진짜와 구별되지 않는 가짜 분류**를 받는다 |
+| **E2E-DN-18** (미구현) | [config-9 §2·§5](../../common/e2e/config-9-to-actor-messaging.ko.md): actor의 **bound-session snapshot marker**로 bind 비오염을 대조한다 | 그 marker가 **어디에도 없다.** TA-A2/A3는 대신 **push를 시도해 실패하는 것**을 bind 상태 프로브로 쓴다 — config-9이 존재 검사에 대해 **명시적으로 금지한 형태**다. TA-A1의 "새 bind가 생기지 않았다"는 negative는 **session gateway가 marker를 내는데도 읽지 않는다** |
+| **E2E-DN-19** (결함) | [e2e §3.1](../../common/e2e/README.ko.md): **수렴 직후 첫 요청**을 재시도나 sleep으로 가리지 않는다 | TA-B3의 **복구 후 첫 요청**을 10초 재시도 루프로 감싼다(`AssertCallWithRetryAsync`). 실패 분류 단언도 마찬가지라, **10초 동안 틀린 kind가 나와도 통과한다** |
+| **E2E-DN-20** (미구현) | [e2e §3.1](../../common/e2e/README.ko.md): **`route mesh 없음` 축이 Config 9의 P0**다 | `Server/Caller/Program.cs:27-28`이 `ConnectRouter`를 **하드와이어**한다. route mesh 없는 변형을 **실행할 수 없다.** README가 그 축이 잡는 버그 부류까지 명시했는데(원격 actor join relay가 route mesh 등록을 전제하던 구현) **feature-map에 기록도 없다** |
+| **E2E-DN-21** (결함) | [e2e §2.5](../../common/e2e/README.ko.md) | Config 9에 **`Client/Scenarios/`가 없다** — 7개 시나리오가 `Program.cs`의 람다 딕셔너리다 |

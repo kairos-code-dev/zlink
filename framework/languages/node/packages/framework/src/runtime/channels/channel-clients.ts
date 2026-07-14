@@ -5,6 +5,7 @@ import type {
   ZLinkRequestCall,
   ZLinkRouteClient,
   ZLinkSendCall,
+  SpotHandle,
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import {
@@ -17,6 +18,11 @@ import type {
   ZLinkSpotPublisherClientTransport
 } from './channel-transports';
 import { throwIfAborted } from '../abort';
+import {
+  requestToSpotHandle,
+  sendToSpotHandle,
+  type ZLinkSpotRoutedTransport
+} from '../spots/spot-outbound';
 
 export class DefaultZLinkChannelClient implements ZLinkChannelClient {
   constructor(
@@ -109,7 +115,8 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
 export class DefaultZLinkRouteClient implements ZLinkRouteClient {
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
-    private readonly transport?: ZLinkRouteClientTransport
+    private readonly transport?: ZLinkRouteClientTransport,
+    private readonly spotRouterChannelIdForMesh: (meshName: string) => string = (meshName) => meshName
   ) {}
 
   sendToNode(routerChannelId: string, targetNodeRid: string, message: unknown): ZLinkSendCall {
@@ -124,6 +131,35 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
       () => this.requireRouteChannel(routerChannelId),
       (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal),
       this.defaultRequestTimeout(routerChannelId)
+    );
+  }
+
+  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall {
+    return new DefaultZLinkSendCall(
+      () => { this.requireSpotTransport(); },
+      (_packetName, signal) => {
+        void sendToSpotHandle(this.requireSpotTransport(), spot, message, {
+          signal,
+          spotRouterChannelIdForMesh: this.spotRouterChannelIdForMesh
+        }).catch(() => undefined);
+      }
+    );
+  }
+
+  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall {
+    return new DefaultZLinkRequestCall(
+      () => { this.requireSpotTransport(); },
+      (_packetName, timeoutMs, signal) => requestToSpotHandle(
+        this.requireSpotTransport(),
+        spot,
+        request,
+        {
+          timeoutMs,
+          signal,
+          spotRouterChannelIdForMesh: this.spotRouterChannelIdForMesh
+        }
+      ),
+      this.registration.requestTimeoutMs ?? 30_000
     );
   }
 
@@ -144,6 +180,14 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
       throw new ZLinkConfigurationException('Route channel runtime is not started.');
     }
     return this.transport;
+  }
+
+  private requireSpotTransport(): ZLinkSpotRoutedTransport {
+    const transport = this.requireTransport();
+    if (transport.sendToSpot === undefined || transport.requestToSpot === undefined) {
+      throw new ZLinkConfigurationException('Route channel runtime does not support SpotHandle messaging.');
+    }
+    return transport as ZLinkSpotRoutedTransport;
   }
 
   private submitRouteOneWay(

@@ -37,6 +37,16 @@ export interface ZLinkRouteClientTransport {
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
+  sendToSpot?(
+    spotRouteTarget: ZLinkSpotRouteTarget,
+    message: unknown,
+    options: { readonly packetName?: string; readonly signal?: AbortSignal }
+  ): Promise<void>;
+  requestToSpot?<TReply = unknown>(
+    spotRouteTarget: ZLinkSpotRouteTarget,
+    request: unknown,
+    options: { readonly packetName?: string; readonly timeoutMs?: number; readonly signal?: AbortSignal }
+  ): Promise<TReply>;
 }
 
 interface ZLinkChannelTransportRuntime {

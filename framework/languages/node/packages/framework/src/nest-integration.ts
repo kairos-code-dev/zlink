@@ -126,7 +126,12 @@ export function createIntegrationRouteClient(
   registration: ZLinkFrameworkRegistration,
   runtime: ZLinkNestIntegrationRuntimeHost
 ): ZLinkRouteClient {
-  return new DefaultZLinkRouteClient(registration, runtimeHost(runtime).routeTransport);
+  const host = runtimeHost(runtime);
+  return new DefaultZLinkRouteClient(
+    registration,
+    host.routeTransport,
+    host.spotRouterChannelIdForMesh
+  );
 }
 
 export function createIntegrationSpotPublisherClient(

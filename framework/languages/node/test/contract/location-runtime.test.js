@@ -355,7 +355,7 @@ test('location lifecycle claims spots and binds actor session routes with takeov
   assert.equal(await store.resolveRoute({ routeKind: framework.ZLinkRouteKind.ActorSession, routeKey }), undefined);
 });
 
-test('store location resolvers return live spot actor and route rows without cache', async () => {
+test('store location resolvers seed reusable SpotHandle snapshots from live rows', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const node = await lifecycleNode(store, 'owner-a', 'node-a', 'play');
   const resolvers = resolversFor(store);
@@ -389,7 +389,7 @@ test('store location resolvers return live spot actor and route rows without cac
   assert.equal(firstTarget.nodeRid, String(rid('node-a')));
   assert.equal(firstTarget.spotKind, framework.ZLinkSpotKind.User);
   assert.equal(secondSpotRef.spotRid, String(rid('spot-1')));
-  assert.equal(spotResolveCount, 3);
+  assert.equal(spotResolveCount, 2);
 
   await node.runtime.stop();
   assert.equal(await resolvers.resolveSpotHandle(rid('spot-1')), undefined);

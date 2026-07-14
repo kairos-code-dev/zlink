@@ -424,14 +424,14 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   assert.match(sessionActors, /bindOrGet\(actor: ActorRef, signal\?: AbortSignal\): Promise<ZLinkSessionActor>/);
 });
 
-test('route client surface exposes node routing only', () => {
+test('route client surface exposes node and SpotHandle routing', () => {
   const declarations = readTree(declarationsRoot);
   const routeClient = declarationBody(declarations, 'ZLinkRouteClient');
 
   assert.match(routeClient, /sendToNode\(routerChannelId: string, targetNodeRid: RoutingId, message: unknown\): ZLinkSendCall/);
   assert.match(routeClient, /requestToNode\(routerChannelId: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
-  assert.equal(routeClient.includes('sendToSpot'), false);
-  assert.equal(routeClient.includes('requestToSpot'), false);
+  assert.match(routeClient, /sendToSpot\(spot: SpotHandle, message: unknown\): ZLinkSendCall/);
+  assert.match(routeClient, /requestToSpot\(spot: SpotHandle, request: unknown\): ZLinkRequestCall/);
 });
 
 test('old public contract names from the redesign rename table do not re-enter node surfaces', () => {

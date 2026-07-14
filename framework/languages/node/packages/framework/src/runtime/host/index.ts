@@ -150,6 +150,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionFactory: DefaultZLinkBoundSessionFactory;
+  readonly spotRouterChannelIdForMesh: (meshName: string) => string;
 
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
@@ -158,6 +159,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.metrics = new ZLinkRuntimeMetrics(options.registration.metrics?.meterProvider);
     this.metrics.change('zlink.drain.state', 1, { state: 'serving' });
     this.meshRouters = new MeshRouterResolver(options.registration);
+    this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
     this.locationOwner = new ZLinkLocationRuntimeOwner({
       registration: options.registration,
       runtimeEventPublisher: this.runtimeEventPublisher,

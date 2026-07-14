@@ -12,12 +12,20 @@ import type {
 import { ZLinkSpotKind } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts/Errors/ZLinkFrameworkException';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import type { ZLinkSpotRouteTarget } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import { resolveSpotHandle, type ResolvedSpotHandle } from './spot-handle';
+import {
+  refreshSpotHandle,
+  resolveSpotHandle,
+  type ResolvedSpotHandle
+} from './spot-handle';
 
 export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
   constructor(
@@ -175,17 +183,12 @@ function wrapRoutedSpotSendCall(
   return {
     submit() {
       void serial.execute(async () => {
-        const packetName = resolveFrameworkPacketName(message, undefined, 'SPOT');
-        const spotRouteTarget = spotRefToSpotRouteTarget(
-          await requireSpotRef(spot),
-          spotRouterChannelIdForMesh
+        await sendToSpotHandle(
+          transport,
+          spot,
+          message,
+          { spotRouterChannelIdForMesh, sourceSpot: sourceSpotProvider?.() }
         );
-        const sourceSpot = sourceSpotProvider?.();
-        if (sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
-          await transport.sendFromSpotToSpot(sourceSpot, spotRouteTarget, message, { packetName });
-          return;
-        }
-        await transport.sendToSpot(spotRouteTarget, message, { packetName });
       }).catch(() => undefined);
     }
   };
@@ -200,30 +203,14 @@ function wrapRoutedSpotRequestCall(
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
 ): ZLinkRequestCall {
   let selectedTimeoutMs: number | undefined;
-  const begin = <TReply>(signal?: AbortSignal) => startRequestOnSerial<TReply>(serial, async () => {
-    const packetName = resolveFrameworkPacketName(request, undefined, 'SPOT');
-    const spotRouteTarget = spotRefToSpotRouteTarget(
-      await requireSpotRef(spot, signal),
-      spotRouterChannelIdForMesh
-    );
-    const sourceSpot = sourceSpotProvider?.();
-    if (sourceSpot !== undefined && transport.requestFromSpotToSpot !== undefined) {
-      return {
-        pending: transport.requestFromSpotToSpot<TReply>(sourceSpot, spotRouteTarget, request, {
-          packetName,
-          timeoutMs: selectedTimeoutMs,
-          signal
-        })
-      };
-    }
-    return {
-      pending: transport.requestToSpot<TReply>(spotRouteTarget, request, {
-        packetName,
-        timeoutMs: selectedTimeoutMs,
-        signal
-      })
-    };
-  });
+  const begin = <TReply>(signal?: AbortSignal) => startRequestOnSerial<TReply>(serial, () => ({
+    pending: requestToSpotHandle<TReply>(transport, spot, request, {
+      timeoutMs: selectedTimeoutMs,
+      signal,
+      spotRouterChannelIdForMesh,
+      sourceSpot: sourceSpotProvider?.()
+    })
+  }));
   return {
     timeout(timeoutMs: number) {
       selectedTimeoutMs = timeoutMs;
@@ -235,6 +222,85 @@ function wrapRoutedSpotRequestCall(
       return insideCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
     }
   };
+}
+
+export interface ZLinkSpotHandleCallOptions {
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+  readonly spotRouterChannelIdForMesh?: (meshName: string) => string;
+  readonly sourceSpot?: ZLinkBackendSpot;
+}
+
+export async function sendToSpotHandle(
+  transport: ZLinkSpotRoutedTransport,
+  spot: SpotHandle,
+  message: unknown,
+  options: ZLinkSpotHandleCallOptions = {}
+): Promise<void> {
+  const packetName = resolveFrameworkPacketName(message, undefined, 'SPOT');
+  const target = spotRefToSpotRouteTarget(
+    await requireSpotRef(spot, options.signal),
+    options.spotRouterChannelIdForMesh
+  );
+  if (options.sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
+    await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
+      packetName,
+      signal: options.signal
+    });
+    return;
+  }
+  await transport.sendToSpot(target, message, { packetName, signal: options.signal });
+}
+
+export async function requestToSpotHandle<TReply = unknown>(
+  transport: ZLinkSpotRoutedTransport,
+  spot: SpotHandle,
+  request: unknown,
+  options: ZLinkSpotHandleCallOptions = {}
+): Promise<TReply> {
+  const packetName = resolveFrameworkPacketName(request, undefined, 'SPOT');
+  const requestResolved = async (resolved: ResolvedSpotHandle): Promise<TReply> => {
+    const target = spotRefToSpotRouteTarget(resolved, options.spotRouterChannelIdForMesh);
+    const transportOptions = {
+      packetName,
+      timeoutMs: options.timeoutMs,
+      signal: options.signal
+    };
+    if (options.sourceSpot !== undefined && transport.requestFromSpotToSpot !== undefined) {
+      return await transport.requestFromSpotToSpot<TReply>(
+        options.sourceSpot,
+        target,
+        request,
+        transportOptions
+      );
+    }
+    return await transport.requestToSpot<TReply>(target, request, transportOptions);
+  };
+
+  try {
+    return await requestResolved(await requireSpotRef(spot, options.signal));
+  } catch (error) {
+    if (!isSafeStaleSpotFailure(error)) {
+      throw error;
+    }
+    const refreshed = await refreshSpotHandle(spot, options.signal);
+    if (refreshed === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotRouteNotFound,
+        `Spot '${spot.spotRid}' has no live location after refresh.`,
+        false,
+        error
+      );
+    }
+    return await requestResolved(refreshed);
+  }
+}
+
+function isSafeStaleSpotFailure(error: unknown): boolean {
+  return error instanceof ZLinkFrameworkException && (
+    error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
+    || error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+  );
 }
 
 async function requireSpotRef(handle: SpotHandle, signal?: AbortSignal): Promise<ResolvedSpotHandle> {

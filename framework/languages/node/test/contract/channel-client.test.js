@@ -119,6 +119,100 @@ test('ZLinkRouteClient one-way calls use the required synchronous transport subm
   }]);
 });
 
+test('ZLinkRouteClient sends through SpotHandle snapshots and refreshes one stale request once', async () => {
+  const oldTarget = {
+    meshName: 'play',
+    nodeRid: 'node-old',
+    spotRid: 'spot-1',
+    spotKind: framework.ZLinkSpotKind.User
+  };
+  const newTarget = { ...oldTarget, nodeRid: 'node-new' };
+  let refreshCount = 0;
+  const handle = framework.createSpotHandle('spot-1', oldTarget, async () => {
+    refreshCount += 1;
+    return newTarget;
+  });
+  const sends = [];
+  const requests = [];
+  const client = new framework.DefaultZLinkRouteClient(
+    framework.createFrameworkRegistration({
+      routeChannels: [{ routerChannelId: 'play.route', manualConnections: ['inproc://play'] }]
+    }),
+    {
+      submit() {},
+      async request() {},
+      async sendToSpot(target, message, options) {
+        sends.push({ target, message, options });
+      },
+      async requestToSpot(target, request, options) {
+        requests.push({ target, request, options });
+        if (requests.length === 1) {
+          throw new framework.ZLinkFrameworkException(
+            framework.ZLinkFrameworkErrorKind.SpotRouteNotFound,
+            'stale spot route'
+          );
+        }
+        return { owner: String(target.targetNodeRid) };
+      }
+    },
+    (meshName) => `${meshName}.route`
+  );
+
+  client.sendToSpot(handle, typedPacket('Notice', { id: 1 })).submit();
+  await new Promise((resolve) => setImmediate(resolve));
+  const reply = await client
+    .requestToSpot(handle, typedPacket('Lookup', { id: 2 }))
+    .timeout(250)
+    .submit();
+
+  assert.equal(sends.length, 1);
+  assert.equal(String(sends[0].target.targetNodeRid), 'node-old');
+  assert.equal(sends[0].target.routerChannelId, 'play.route');
+  assert.equal(sends[0].options.packetName, 'Notice');
+  assert.deepEqual(requests.map((entry) => String(entry.target.targetNodeRid)), ['node-old', 'node-new']);
+  assert.deepEqual(requests.map((entry) => entry.target.routerChannelId), ['play.route', 'play.route']);
+  assert.deepEqual(requests.map((entry) => entry.options.timeoutMs), [250, 250]);
+  assert.deepEqual(reply, { owner: 'node-new' });
+  assert.equal(refreshCount, 1);
+});
+
+test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failure', async () => {
+  const target = {
+    meshName: 'play.route',
+    nodeRid: 'node-a',
+    spotRid: 'spot-1',
+    spotKind: framework.ZLinkSpotKind.User
+  };
+  let refreshCount = 0;
+  let requestCount = 0;
+  const handle = framework.createSpotHandle('spot-1', target, async () => {
+    refreshCount += 1;
+    return target;
+  });
+  const client = new framework.DefaultZLinkRouteClient(
+    framework.createFrameworkRegistration(),
+    {
+      submit() {},
+      async request() {},
+      async sendToSpot() {},
+      async requestToSpot() {
+        requestCount += 1;
+        throw new framework.ZLinkFrameworkException(
+          framework.ZLinkFrameworkErrorKind.RouteNotConnected,
+          'delivery outcome is uncertain'
+        );
+      }
+    }
+  );
+
+  await assert.rejects(
+    () => client.requestToSpot(handle, typedPacket('Lookup', { id: 3 })).submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+  );
+  assert.equal(requestCount, 1);
+  assert.equal(refreshCount, 0);
+});
+
 test('ZLinkChannelClient fluent request call passes packet and timeout to transport', async () => {
   const calls = [];
   const registration = framework.createFrameworkRegistration({

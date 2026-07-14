@@ -6,6 +6,16 @@ MODE="${1:-all}"
 source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+print(max(1, math.ceil(float(sys.argv[1]) / float(sys.argv[2]))))
+PY
+)"
 mkdir -p "$LOG_DIR"
 export BINGO_LOG_DIR="$LOG_DIR"
 export BINGO_REDIS_KEY_PREFIX="observability-ops:${RUN_ID}:"
@@ -99,11 +109,11 @@ dotnet build "$CLIENT_PROJECT" --no-restore --maxcpucount:1 >/dev/null
 
 wait_health() {
   local url="$1"
-  for _ in $(seq 1 300); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if curl -fsS --max-time 1 "$url/health" >/dev/null 2>&1; then return 0; fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $url" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $url" >&2
   return 1
 }
 
@@ -123,13 +133,13 @@ launch_role() {
 wait_role() {
   local role="$1"
   ROLE_URL=""
-  for _ in $(seq 1 300); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     ROLE_URL="$(sed -n "s/.*observability-ops ready role=${role} url=//p" "$LOG_DIR/${role}.stdout.log" | tail -1)"
     if [[ -n "$ROLE_URL" ]]; then break; fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   if [[ -z "$ROLE_URL" ]]; then
-    echo "Timed out waiting for ${role} evidence address" >&2
+    echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${role} evidence address" >&2
     return 1
   fi
   wait_health "$ROLE_URL"

@@ -610,16 +610,12 @@ test('detached runWorker completion observes entry spot state mutated after subm
 test('worker options are accepted on the framework options builder and validated', () => {
   const options = framework.createFrameworkOptions((builder) => {
     builder.configureWorker({
-      minThreads: 0,
       maxThreads: 8,
-      idleTimeoutMs: 30_000,
       maxQueueLength: 1024
     });
   });
   assert.deepEqual(options.worker, {
-    minThreads: 0,
     maxThreads: 8,
-    idleTimeoutMs: 30_000,
     maxQueueLength: 1024
   });
   const registration = framework.createFrameworkRegistration(options);
@@ -627,10 +623,7 @@ test('worker options are accepted on the framework options builder and validated
 
   for (const invalid of [
     { maxThreads: 0 },
-    { maxQueueLength: 0 },
-    { minThreads: -1 },
-    { idleTimeoutMs: -5 },
-    { minThreads: 4, maxThreads: 2 }
+    { maxQueueLength: 0 }
   ]) {
     assert.throws(
       () => framework.createFrameworkRegistration({ worker: invalid }),

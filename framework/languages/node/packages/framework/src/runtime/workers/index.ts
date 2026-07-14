@@ -9,17 +9,13 @@ import { createAbortError } from '../abort';
 export type ZLinkWorkerWork<T> = (signal: AbortSignal) => T | Promise<T>;
 
 export interface ZLinkSpotWorkerRuntimeOptions {
-  readonly minThreads: number;
   readonly maxThreads: number;
-  readonly idleTimeoutMs: number;
   readonly maxQueueLength: number;
 }
 
 export function resolveWorkerRuntimeOptions(options?: ZLinkWorkerOptions): ZLinkSpotWorkerRuntimeOptions {
   return {
-    minThreads: options?.minThreads ?? 0,
     maxThreads: options?.maxThreads ?? Math.max(2, os.availableParallelism() * 2),
-    idleTimeoutMs: options?.idleTimeoutMs ?? 30_000,
     maxQueueLength: options?.maxQueueLength ?? 1024
   };
 }

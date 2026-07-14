@@ -57,14 +57,11 @@ export interface ZLinkLocationRegistration {
  * The Node runtime projects these settings conservatively onto the
  * closure-based `runWorker(...)` deferral: `maxThreads` bounds the number of
  * concurrently in-flight jobs and `maxQueueLength` bounds the pending queue
- * (queue full fails the submit with `WorkerQueueFull`). `minThreads` and
- * `idleTimeoutMs` are accepted and validated for cross-language option parity.
+ * (queue full fails the submit with `WorkerQueueFull`).
  * It does not provide CPU thread offload.
  */
 export interface ZLinkWorkerOptions {
-  readonly minThreads?: number;
   readonly maxThreads?: number;
-  readonly idleTimeoutMs?: number;
   readonly maxQueueLength?: number;
 }
 

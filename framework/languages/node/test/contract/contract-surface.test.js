@@ -77,6 +77,16 @@ test('stream connector public root does not expose raw frame or header codecs', 
   assert.deepEqual(exposed, []);
 });
 
+test('worker options expose only scheduler limits that the Node runtime applies', () => {
+  const declarations = readTree(declarationsRoot);
+  const workerOptions = declarationBody(declarations, 'ZLinkWorkerOptions');
+
+  assert.equal(workerOptions.includes('maxThreads'), true);
+  assert.equal(workerOptions.includes('maxQueueLength'), true);
+  assert.equal(workerOptions.includes('minThreads'), false);
+  assert.equal(workerOptions.includes('idleTimeoutMs'), false);
+});
+
 test('monitoring options expose only common-spec socket location and Spot sources', () => {
   const contracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),

@@ -55,17 +55,8 @@ function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
   if (worker === undefined) {
     return;
   }
-  requireNonNegativeInteger('Worker minThreads', worker.minThreads);
   requirePositiveInteger('Worker maxThreads', worker.maxThreads);
-  requireNonNegativeInteger('Worker idleTimeoutMs', worker.idleTimeoutMs);
   requirePositiveInteger('Worker maxQueueLength', worker.maxQueueLength);
-  if (
-    worker.minThreads !== undefined
-    && worker.maxThreads !== undefined
-    && worker.minThreads > worker.maxThreads
-  ) {
-    throw new ZLinkConfigurationException('Worker minThreads must not exceed maxThreads.');
-  }
 }
 
 function validateMonitoring(registration: ZLinkFrameworkRegistration): void {

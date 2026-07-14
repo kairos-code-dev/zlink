@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
 import { PlayActorObserveMilestoneHandler } from './Handlers/play-actor-observe-milestone-handler';
 import { PlayActor } from '../../Actors/play-actor';
-import { observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
+import { joinGameRes, observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
 import { SampleNames } from '../../../../../Configuration/sample-settings';
 import type {
@@ -17,6 +17,7 @@ import type {
   PlayerInfo,
   PlayerWinMilestoneEvent,
   TicTacToeGameJoinReq,
+  TicTacToeGameJoinRes,
   TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
 
@@ -68,12 +69,15 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
         wins: player.wins
       }
     };
-    const joined = await actor.context.joinSpot(roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
+    const joined = await actor.context.joinSpot(roomId, request).submit<Partial<TicTacToeGameJoinRes & { error: string }>>();
     const reply = joined.reply;
     if (joined.status === 'rejected') {
       throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
     }
-    return reply as JoinGameRes;
+    if (reply.state === undefined) {
+      throw new Error(`Room '${roomId}' accepted actor '${actor.actorId}' without game state.`);
+    }
+    return joinGameRes(reply.state);
   }
 
   async observeMilestone(actor: PlayEntrySpotActor): Promise<ObserveMilestoneRes> {

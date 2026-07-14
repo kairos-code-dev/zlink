@@ -124,6 +124,10 @@ export interface TicTacToeGameJoinReq {
   player: PlayerInfo;
 }
 
+export interface TicTacToeGameJoinRes {
+  state: GameState;
+}
+
 export class ObserveMilestoneReq {
 }
 

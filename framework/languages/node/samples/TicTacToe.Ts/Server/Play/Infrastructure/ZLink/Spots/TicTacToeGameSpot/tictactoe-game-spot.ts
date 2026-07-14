@@ -6,7 +6,6 @@ import { TicTacToeMatch } from '../../../../Domain/TicTacToe/tictactoe-match';
 import {
   GameStatus,
   gameStateNotify,
-  joinGameRes,
   placeMarkRes,
   playerJoinedNotify,
   playerWinMilestoneEvent
@@ -21,10 +20,10 @@ import type {
   ZLinkTimer
 } from '@zlink-systems/framework';
 import type {
-  JoinGameRes,
   GameState,
   PlaceMarkRes,
   TicTacToeGameJoinReq,
+  TicTacToeGameJoinRes,
   TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
 import type { TicTacToeMatch as TicTacToeMatchType } from '../../../../Domain/TicTacToe/tictactoe-match';
@@ -185,7 +184,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       .submit();
   }
 
-  private admit(actorId: string, request: TicTacToeGameJoinReq): JoinGameRes {
+  private admit(actorId: string, request: TicTacToeGameJoinReq): TicTacToeGameJoinRes {
     const match = this.requireMatch();
     const roomId = this.requireRoomId();
     if (request.roomId !== roomId) {
@@ -206,7 +205,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     } as PlaySpotActor;
     const result = match.joinPlayer(placeholder);
     const state = result.state;
-    return joinGameRes(state);
+    return { state };
   }
 
   private requireRoomId(): string {

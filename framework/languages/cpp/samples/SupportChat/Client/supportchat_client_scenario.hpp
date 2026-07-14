@@ -88,8 +88,7 @@ class supportchat_client_scenario_t
         expect (available.is_available, "agent was not made available");
 
         auto assigned = wait_assigned_packet (agent);
-        auto joined = wait_packet<participant_joined_notify_t> (
-          customer, participant_joined_notify_t::packet_name, "participant join wait failed");
+        auto joined = wait_joined (customer, "participant join wait failed");
         auto agent_message = wait_chat (agent, "Payment keeps failing.");
         auto customer_typing = wait_typing (customer, "agent-1", true);
         auto customer_message = wait_chat (customer, "Please retry your card.");
@@ -141,9 +140,7 @@ class supportchat_client_scenario_t
         expect (second_auth.role == role_t::customer, "second customer role mismatch");
 
         auto second_assigned = wait_assigned_packet (agent);
-        auto second_joined = wait_packet<participant_joined_notify_t> (
-          second_customer, participant_joined_notify_t::packet_name,
-          "second participant join wait failed");
+        auto second_joined = wait_joined (second_customer, "second participant join wait failed");
         auto second_message = wait_chat (second_customer, "Checking your refund now.");
 
         auto second_opened =
@@ -313,27 +310,21 @@ class supportchat_client_scenario_t
     static std::future<conversation_assigned_notify_t> wait_assigned_packet (connector_t &agent)
     {
         return std::async (std::launch::async, [&agent] {
-            auto packet = agent
-                            .wait_for<zlink::stream_connector::packet_t> (
-                              conversation_assigned_notify_t::packet_name)
-                            .timeout (std::chrono::seconds (12))
-                            .to_future ("assignment packet wait failed")
-                            .get ();
-            return packet.payload.parse_json<conversation_assigned_notify_t> ();
+            return agent.wait_for<conversation_assigned_notify_t> ()
+              .timeout (std::chrono::seconds (12))
+              .to_future ("assignment packet wait failed")
+              .get ();
         });
     }
 
-    template <typename TMessage>
-    static std::future<TMessage> wait_packet (connector_t &connector,
-                                              const std::string &packet_name,
-                                              const char *failure_message)
+    static std::future<participant_joined_notify_t> wait_joined (connector_t &connector,
+                                                                 const char *failure_message)
     {
-        return std::async (std::launch::async, [&connector, packet_name, failure_message] {
-            auto packet = connector.wait_for<zlink::stream_connector::packet_t> (packet_name)
-                            .timeout (std::chrono::seconds (12))
-                            .to_future (failure_message)
-                            .get ();
-            return packet.payload.parse_json<TMessage> ();
+        return std::async (std::launch::async, [&connector, failure_message] {
+            return connector.wait_for<participant_joined_notify_t> ()
+              .timeout (std::chrono::seconds (12))
+              .to_future (failure_message)
+              .get ();
         });
     }
 
@@ -341,9 +332,9 @@ class supportchat_client_scenario_t
                                                          const std::string &text)
     {
         return std::async (std::launch::async, [&connector, text] {
-            auto message = wait_packet<chat_message_notify_t> (
-                             connector, chat_message_notify_t::packet_name,
-                             "chat message wait failed")
+            auto message = connector.wait_for<chat_message_notify_t> ()
+                             .timeout (std::chrono::seconds (12))
+                             .to_future ("chat message wait failed")
                              .get ();
             if (message.message.text != text) {
                 throw std::runtime_error ("chat message payload mismatch");
@@ -356,9 +347,9 @@ class supportchat_client_scenario_t
     wait_typing (connector_t &connector, const std::string &actor_id, bool is_typing)
     {
         return std::async (std::launch::async, [&connector, actor_id, is_typing] {
-            auto message = wait_packet<typing_changed_notify_t> (
-                             connector, typing_changed_notify_t::packet_name,
-                             "typing wait failed")
+            auto message = connector.wait_for<typing_changed_notify_t> ()
+                             .timeout (std::chrono::seconds (12))
+                             .to_future ("typing wait failed")
                              .get ();
             if (message.actor_id != actor_id || message.is_typing != is_typing) {
                 throw std::runtime_error ("typing payload mismatch");

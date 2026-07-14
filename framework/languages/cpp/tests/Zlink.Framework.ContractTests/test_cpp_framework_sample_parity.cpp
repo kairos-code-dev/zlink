@@ -1191,6 +1191,22 @@ TEST (CppFrameworkSampleParity, SupportChatReleaseGateUsesThePublicClient)
       << "SupportChat release gate must not accept the forged probe marker";
 }
 
+TEST (CppFrameworkSampleParity, SupportChatPushWaitsStayTyped)
+{
+    const auto scenario = read_file (
+      cpp_language_root () / "samples/SupportChat/Client/supportchat_client_scenario.hpp");
+
+    EXPECT_EQ (scenario.find ("wait_for<zlink::stream_connector::packet_t>"), std::string::npos)
+      << "SupportChat must not wait for raw connector packets";
+    EXPECT_EQ (scenario.find (".parse_json<"), std::string::npos)
+      << "SupportChat must not manually decode typed push payloads";
+    for (const auto *type : {"conversation_assigned_notify_t", "participant_joined_notify_t",
+                             "chat_message_notify_t", "typing_changed_notify_t"}) {
+        EXPECT_NE (scenario.find (std::string ("wait_for<") + type + ">"), std::string::npos)
+          << "SupportChat typed wait is missing for " << type;
+    }
+}
+
 TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)
 {
     const auto source = read_file (

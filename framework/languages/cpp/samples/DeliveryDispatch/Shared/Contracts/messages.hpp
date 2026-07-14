@@ -177,13 +177,27 @@ struct assign_delivery_msg_t
     std::string dropoff_address;
 };
 
-struct offer_delivery_req_t
+/* 공통 sample spec §7.4: 제안도 결정 결과도 응답 없는 one-way다. 사람이 버튼을 누르는 시간을
+ * 요청의 응답 시간에 묶지 않는다 — 묶으면 그 요청을 처리하던 실행 줄이 결정이 올 때까지 잡힌다.
+ * `attempt`는 이 배송의 몇 번째 제안인지이며, 늦게 도착한 결정을 버리는 데 쓴다. */
+struct offer_delivery_msg_t
 {
-    static constexpr const char *packet_name = "OfferDeliveryReq";
+    static constexpr const char *packet_name = "OfferDeliveryMsg";
     std::string courier_id;
     std::string delivery_id;
+    int attempt{0};
     std::string pickup_address;
     std::string dropoff_address;
+};
+
+struct offer_delivery_result_msg_t
+{
+    static constexpr const char *packet_name = "OfferDeliveryResultMsg";
+    std::string delivery_id;
+    std::string courier_id;
+    int attempt{0};
+    bool accepted{false};
+    std::string reason;
 };
 
 struct offer_delivery_notify_t
@@ -195,14 +209,6 @@ struct offer_delivery_notify_t
     std::string dropoff_address;
 };
 
-struct offer_delivery_res_t
-{
-    static constexpr const char *packet_name = "OfferDeliveryRes";
-    std::string delivery_id;
-    std::string courier_id;
-    bool accepted{false};
-    std::string reason;
-};
 
 struct courier_decision_msg_t
 {
@@ -490,20 +496,40 @@ inline void from_json (const nlohmann::json &json, assign_delivery_msg_t &value)
     value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
 }
 
-inline void to_json (nlohmann::json &json, const offer_delivery_req_t &value)
+inline void to_json (nlohmann::json &json, const offer_delivery_msg_t &value)
 {
     json = {{"courierId", value.courier_id},
             {"deliveryId", value.delivery_id},
+            {"attempt", value.attempt},
             {"pickupAddress", value.pickup_address},
             {"dropoffAddress", value.dropoff_address}};
 }
 
-inline void from_json (const nlohmann::json &json, offer_delivery_req_t &value)
+inline void from_json (const nlohmann::json &json, offer_delivery_msg_t &value)
 {
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.attempt = json.value ("attempt", 0);
     value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
     value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
+}
+
+inline void to_json (nlohmann::json &json, const offer_delivery_result_msg_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"courierId", value.courier_id},
+            {"attempt", value.attempt},
+            {"accepted", value.accepted},
+            {"reason", value.reason}};
+}
+
+inline void from_json (const nlohmann::json &json, offer_delivery_result_msg_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.attempt = json.value ("attempt", 0);
+    value.accepted = json.value ("accepted", false);
+    value.reason = json.value ("reason", std::string{});
 }
 
 inline void to_json (nlohmann::json &json, const offer_delivery_notify_t &value)
@@ -520,22 +546,6 @@ inline void from_json (const nlohmann::json &json, offer_delivery_notify_t &valu
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
     value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
-}
-
-inline void to_json (nlohmann::json &json, const offer_delivery_res_t &value)
-{
-    json = {{"deliveryId", value.delivery_id},
-            {"courierId", value.courier_id},
-            {"accepted", value.accepted},
-            {"reason", value.reason}};
-}
-
-inline void from_json (const nlohmann::json &json, offer_delivery_res_t &value)
-{
-    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.accepted = json.value ("accepted", false);
-    value.reason = json.value ("reason", "");
 }
 
 inline void to_json (nlohmann::json &json, const courier_decision_msg_t &value)

@@ -60,7 +60,7 @@
 |----|------|------|------|
 | SMP-DD-001 | `AssignDeliveryMsg`(one-way send) | `AssignDelivery` + `AssignDeliveryResult`(request/reply, 금지 접미어) | 닫힘 |
 | SMP-DD-002 | 역할 = Dispatch/CourierSession/CourierSpotNode×2/Tracking/CustomerGateway | Dispatch를 HTTP edge + DispatchWorker 한 프로세스로 합치고 CourierGateway를 제거했다. courier session route는 courier actor가 기억한다 | 닫힘 |
-| SMP-DD-003 | DispatchWorker가 배차 큐·선택 정책·timeout 재시도를 소유 | worker가 작업 큐(hosted service)·배송원 선택 정책·offer 요청 timeout을 소유한다. 노드의 결정 랑데부는 여전히 blocking wait이며, 이를 없애려면 외부에서 완료시키는 awaitable(다른 언어의 TaskCompletionSource/CompletableFuture 대응)이 C++ public 표면에 필요하다 — 계약 결정 전까지 draft 후보로 남긴다 | 부분(계약 후보) |
+| SMP-DD-003 | DispatchWorker가 배차 상태·선택 정책·제안 시한을 소유 | 제안을 request/reply에서 **send/send로 재설계**(공통 sample spec §7.4). worker가 제안 상태(`dispatch_state_t`: DeliveryId/CourierId/Attempt/Deadline)·배송원 선택 정책·제안 시한(`offer_deadline_sweeper_t`)을 소유하고, 노드와 세션은 배송원의 결정을 기다리지 않는다. 랑데부 blocking wait 제거 — 외부 완료 awaitable(TaskCompletionSource 대응)은 더 이상 필요 없어 draft 후보를 폐기했다. 타 언어 이관 지시는 `deliverydispatch-offer-send-send-handoff.ko.md` | 닫힘 |
 | SMP-DD-004 | `FindCourierActorReq/Res`, `FindCustomerActorReq/Res` | 두 계약을 추가하고, CourierSession·DispatchWorker·Tracking이 ensure 이전에 find를 먼저 부른다 | 닫힘 |
 | SMP-DD-005 | Tracking→CustomerEntrySpot `DeliveryStatusUpdatedMsg`→actor→`DeliveryStatusNotify` | fanout 채널을 걷어내고 Tracking이 고객 actor에 one-way로 보낸다. push는 actor가 bound session으로 한다. Tracking의 죽은 ensure 핸들러도 삭제 | 닫힘 |
 | SMP-DD-006 | `DeliveryStatusChangedReq` 필드 = `{DeliveryId, Status, CourierId, OccurredAt}` | wire DTO에서 `CustomerId` 제거(Tracking은 쓰지 않았음) | 닫힘 |

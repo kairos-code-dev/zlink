@@ -245,8 +245,9 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     EXPECT_STREQ (bind_courier_session_res_t::packet_name, "BindCourierSessionRes");
     EXPECT_STREQ (ensure_courier_actor_req_t::packet_name, "EnsureCourierActorReq");
     EXPECT_STREQ (ensure_courier_actor_res_t::packet_name, "EnsureCourierActorRes");
-    EXPECT_STREQ (offer_delivery_req_t::packet_name, "OfferDeliveryReq");
-    EXPECT_STREQ (offer_delivery_res_t::packet_name, "OfferDeliveryRes");
+    /* 공통 sample spec §7.4: 제안과 결정은 응답 없는 one-way send 쌍이다. */
+    EXPECT_STREQ (offer_delivery_msg_t::packet_name, "OfferDeliveryMsg");
+    EXPECT_STREQ (offer_delivery_result_msg_t::packet_name, "OfferDeliveryResultMsg");
     EXPECT_STREQ (delivery_status_notify_t::packet_name, "DeliveryStatusNotify");
     EXPECT_STREQ (offer_delivery_notify_t::packet_name, "OfferDeliveryNotify");
     EXPECT_STREQ (courier_decision_msg_t::packet_name, "CourierDecisionMsg");
@@ -266,8 +267,8 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
                                 "BindCourierRes",
                                 "EnsureCourierActorReq",
                                 "EnsureCourierActorRes",
-                                "OfferDeliveryReq",
-                                "OfferDeliveryRes",
+                                "OfferDeliveryMsg",
+                                "OfferDeliveryResultMsg",
                                 "EnsureCustomerActorReq",
                                 "EnsureCustomerActorRes",
                                 "DeliveryStatusChangedReq",
@@ -278,7 +279,7 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     for (const auto *stale_message : {"CreateDeliveryRequest",
                                       "CreateDeliveryResponse",
                                       "SubscribeDeliveryAccepted",
-                                      "OfferDeliveryResult",
+                                      "OfferDeliveryReq`",
                                       "CourierBound",
                                       "CourierActorEnsured",
                                       "CustomerActorEnsured",
@@ -297,7 +298,8 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
 
     const auto shared_contract =
       read_file (cpp_language_root () / "samples/DeliveryDispatch/Shared/Contracts/messages.hpp");
-    for (const auto *extra_message : {"SubscribeCustomerToDeliveryReq",
+    for (const auto *extra_message : {"OfferDeliveryReq\"",
+                                      "SubscribeCustomerToDeliveryReq",
                                       "SubscribeCustomerToDeliveryRes",
                                       "AssignDeliveryRes",
                                       "ReassignDeliveryMsg",
@@ -537,18 +539,27 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "DeliveryDispatch CourierActorNode must answer EnsureCourierActorReq on its entry spot";
     EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::offer_delivery_route>"),
                std::string::npos)
-      << "DeliveryDispatch CourierActorNode must answer OfferDeliveryReq on its entry spot";
-    EXPECT_EQ (courier_actor_node.find ("add_client_server_channel"), std::string::npos)
+      << "DeliveryDispatch CourierActorNode must relay OfferDeliveryMsg on its entry spot";
+    EXPECT_EQ (courier_actor_node.find ("enable_server"), std::string::npos)
       << "DeliveryDispatch CourierActorNode must be reached through the spot mesh, not a per-node "
          "client-server channel";
+    /* 공통 sample spec §7.4: 노드는 배송원의 결정을 기다리지 않는다. 결정이 오면 배차 채널로
+     * one-way로 돌려보낼 뿐이다. */
+    EXPECT_EQ (courier_actor_node.find ("condition_variable"), std::string::npos)
+      << "DeliveryDispatch CourierActorNode must not wait for the courier decision";
+    EXPECT_NE (courier_actor_node.find ("offer_delivery_result_msg_t"), std::string::npos)
+      << "DeliveryDispatch CourierActorNode must send the courier decision back to the dispatch "
+         "channel";
 
     const auto dispatch = read_file (cpp_root / "samples/DeliveryDispatch/Server/Dispatch/main.cpp");
-    EXPECT_NE (dispatch.find ("class dispatch_work_queue_t"), std::string::npos)
-      << "DeliveryDispatch Dispatch must own the dispatch work queue";
+    EXPECT_NE (dispatch.find ("class dispatch_state_t"), std::string::npos)
+      << "DeliveryDispatch Dispatch must record the offer state instead of awaiting the decision";
     EXPECT_NE (dispatch.find ("class dispatch_worker_t"), std::string::npos)
       << "DeliveryDispatch Dispatch must run the dispatch worker beside its HTTP edge";
     EXPECT_NE (dispatch.find ("class courier_selection_policy_t"), std::string::npos)
       << "DeliveryDispatch Dispatch worker must own the courier selection policy";
+    EXPECT_NE (dispatch.find ("class offer_deadline_sweeper_t"), std::string::npos)
+      << "DeliveryDispatch Dispatch worker must own the offer deadline and sweep expired offers";
 }
 
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)

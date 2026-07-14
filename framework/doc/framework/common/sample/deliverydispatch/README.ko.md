@@ -270,8 +270,8 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | `FindCourierActorRes` | actor directory/discovery -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 기존 배송원 actor가 있으면 위치를 반환한다. 없으면 비어 있는 결과를 반환한다. |
 | `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target SpotNode | `CourierId` | 기존 actor가 없을 때 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
 | `EnsureCourierActorRes` | target SpotNode -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
-| `OfferDeliveryReq` | DispatchWorker module -> target SpotNode -> CourierActor | `DeliveryId`, `CourierId`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다. |
-| `OfferDeliveryRes` | CourierActor -> target SpotNode -> DispatchWorker module | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원이 제안을 수락했는지 반환한다. |
+| `OfferDeliveryMsg` | DispatchWorker module -> target SpotNode -> CourierActor | `DeliveryId`, `CourierId`, `Attempt`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다(**응답 없는 one-way send**). `Attempt`는 이 배송의 몇 번째 제안인지다. |
+| `OfferDeliveryResultMsg` | CourierActor -> DispatchWorker module | `DeliveryId`, `CourierId`, `Attempt`, `Accepted`, `Reason` | 배송원의 결정을 배차 쪽으로 돌려준다(**응답 없는 one-way send**). `Attempt`가 현재 제안과 다르면 늦게 도착한 결정이므로 버린다. |
 
 ### 7.3 Tracking과 actor/session bind
 
@@ -294,6 +294,69 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | `Accepted` | 배송원이 제안을 수락했다. |
 | `PickedUp` | 배송원이 물건을 픽업했다. |
 | `Delivered` | 배송이 완료됐다. |
+
+## 7.4 배송 제안은 왜 request/reply가 아닌가 (구현 지침)
+
+**배송원의 결정을 request의 응답으로 받으면 안 된다.** 제안과 결정 사이에는 사람이 화면을 보고
+버튼을 누르는 시간이 들어간다. 그 시간을 응답 시간에 묶으면 요청 하나가 그동안 **열린 채로 남고**,
+그 요청을 처리하던 실행 줄(spot의 직렬 줄)이 결정이 올 때까지 잡힌다. 서버는 client에게 request를
+걸 수 없고 push만 할 수 있으므로, 결정은 애초에 **client가 자기 타이밍에 보내는 별개의 in-bound
+메시지**다. 인과가 이미 끊겨 있는 것을 하나의 RPC로 위장하는 셈이다.
+
+그래서 제안(`OfferDeliveryMsg`)도, 결정 결과(`OfferDeliveryResultMsg`)도 **둘 다 one-way send**로
+보낸다. 어느 쪽도 상대의 응답을 기다리지 않는다.
+
+기다리지 않는 대신, 진행 중인 제안의 **상태를 store에 기록**하고 그 기록이 다음 단계를 정한다.
+`DispatchWorker`가 소유하는 상태는 배송마다 아래 한 줄이다.
+
+```text
+DeliveryOffer {
+  DeliveryId, CourierId, Attempt: int, Deadline: timestamp,
+  Status: Offered | Accepted | Rejected | Expired
+}
+```
+
+처리 루프는 이렇게 돈다.
+
+```text
+1. AssignDeliveryMsg 수신
+     -> 선택 정책이 첫 배송원을 고른다
+     -> DeliveryOffer{Attempt=1, Deadline=now+제안 시한, Offered} 기록
+     -> Assigned 상태 event 기록
+     -> OfferDeliveryMsg(Attempt=1) send  ── 여기서 이 턴은 끝난다
+
+2. target SpotNode: OfferDeliveryMsg 수신
+     -> courier actor에게 one-way로 넘기고 즉시 리턴 (직렬 줄을 잡지 않는다)
+     -> actor: bound session으로 제안 push 하고 즉시 리턴
+
+3. 배송원이 결정 -> CourierSession -> CourierActor
+     -> actor가 OfferDeliveryResultMsg(Attempt) send
+
+4. DispatchWorker: OfferDeliveryResultMsg 수신
+     -> 기록된 Attempt와 다르면 늦게 온 결정이므로 버린다
+     -> Accepted  -> Accepted/PickedUp/Delivered 상태 event
+     -> Rejected  -> 다음 후보로 재제안(5와 같은 경로)
+
+5. 제안 시한 경과(sweeper)
+     -> DispatchWorker가 주기적으로 Deadline이 지난 Offered 기록을 훑는다
+     -> Expired로 표시하고 다음 후보에게 재제안:
+          Reassigned 상태 event 기록
+          DeliveryOffer{Attempt+1, Deadline 갱신, Offered}
+          OfferDeliveryMsg(Attempt+1) send
+     -> 후보가 더 없으면 Failed 상태 event로 종료
+```
+
+**지켜야 할 것:**
+
+- **어느 handler도 배송원의 결정을 기다리지 않는다.** 결정 대기를 위해 스레드를 재우거나
+  (`condition_variable`, `Future.get()`) task를 붙잡고 있으면 안 된다. 그러면 그 실행 줄로 오는
+  다른 제안·조회가 전부 그 배송원의 반응 시간만큼 밀린다.
+- **제안 시한은 `DispatchWorker`가 소유한다.** SpotNode가 시한을 세고 "거절"을 만들어 돌려주면
+  배차 정책이 노드에 숨는다. 노드는 제안을 전달하고 결정을 돌려줄 뿐이다.
+- **`Attempt`로 늦은 결정을 막는다.** 시한이 지나 재제안한 뒤 이전 배송원의 결정이 도착할 수 있다.
+  기록된 현재 `Attempt`와 다른 결정은 버린다.
+- **상태 기록이 곧 재개 지점이다.** 노드가 죽었다 살아나도 `Offered` + 지난 `Deadline` 기록만 보면
+  같은 sweeper 경로로 이어서 진행된다.
 
 ## 8. 도메인 흐름
 
@@ -349,16 +412,15 @@ sequenceDiagram
     CustomerClient->>DispatchHttp: POST /deliveries
     DispatchHttp->>DispatchWorker: AssignDeliveryMsg (enqueue work)
     DispatchHttp-->>CustomerClient: CreateDeliveryRes(deliveryId)
-    DispatchWorker->>CourierRoute: OfferDeliveryReq to courier-a node
+    DispatchWorker->>CourierRoute: OfferDeliveryMsg(Attempt=1) to courier-a node (one-way)
     CourierRoute->>CourierEntry: find actor owned by entry spot
-    CourierEntry->>CourierActor: dispatch offer
+    CourierEntry->>CourierActor: dispatch offer (one-way, 즉시 리턴)
     CourierActor->>CourierSession: push offer by session route
     CourierSession->>CourierClient: push offer
+    Note over DispatchWorker,CourierClient: 서버는 아무 실행 줄도 잡지 않고 결정을 기다린다
     CourierClient-->>CourierSession: accepted
-    CourierSession-->>CourierActor: decision
-    CourierActor-->>CourierEntry: OfferDeliveryRes accepted
-    CourierEntry-->>CourierRoute: OfferDeliveryRes accepted
-    CourierRoute-->>DispatchWorker: OfferDeliveryRes accepted
+    CourierSession-->>CourierActor: CourierDecisionMsg
+    CourierActor-->>DispatchWorker: OfferDeliveryResultMsg(Attempt=1, Accepted) (one-way)
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
     Tracking-->>DispatchWorker: DeliveryStatusChangedRes Assigned
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
@@ -440,33 +502,30 @@ sequenceDiagram
     CustomerClient->>DispatchHttp: POST /deliveries
     DispatchHttp->>DispatchWorker: AssignDeliveryMsg (enqueue work)
     DispatchHttp-->>CustomerClient: CreateDeliveryRes(deliveryId)
-    DispatchWorker->>CourierRouteA: OfferDeliveryReq to courier-a node
-    CourierRouteA->>CourierEntryA: find actor owned by entry spot
-    CourierEntryA->>CourierActorA: dispatch offer
-    CourierActorA->>CourierSession: push offer by session route
-    CourierSession->>CourierClientA: push offer
-    CourierClientA--x CourierSession: no response before timeout
-    CourierActorA--x CourierEntryA: no response before timeout
-    CourierEntryA--x CourierRouteA: no response before timeout
-    CourierRouteA--x DispatchWorker: no response before timeout
+    DispatchWorker->>DispatchWorker: DeliveryOffer{Attempt=1, Deadline} 기록
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
     Tracking-->>DispatchWorker: DeliveryStatusChangedRes Assigned
+    DispatchWorker->>CourierRouteA: OfferDeliveryMsg(Attempt=1) to courier-a node (one-way)
+    CourierRouteA->>CourierEntryA: find actor owned by entry spot
+    CourierEntryA->>CourierActorA: dispatch offer (one-way, 즉시 리턴)
+    CourierActorA->>CourierSession: push offer by session route
+    CourierSession->>CourierClientA: push offer
+    CourierClientA--x CourierSession: 시한까지 응답 없음
+    Note over DispatchWorker: sweeper가 Deadline 지난 Offered 기록을 훑어 Expired 처리
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Reassigned
     Tracking-->>DispatchWorker: DeliveryStatusChangedRes Reassigned
     Tracking->>CustomerEntry: DeliveryStatusUpdatedMsg(Reassigned)
     CustomerEntry->>CustomerActor: dispatch notify
     CustomerActor->>CustomerSession: DeliveryStatusNotify(Reassigned)
     CustomerSession->>CustomerClient: status stream notify(Reassigned)
-    DispatchWorker->>CourierRouteB: OfferDeliveryReq to courier-b node
+    DispatchWorker->>CourierRouteB: OfferDeliveryMsg(Attempt=2) to courier-b node (one-way)
     CourierRouteB->>CourierEntryB: find actor owned by entry spot
-    CourierEntryB->>CourierActorB: dispatch offer
+    CourierEntryB->>CourierActorB: dispatch offer (one-way, 즉시 리턴)
     CourierActorB->>CourierSession: push offer by session route
     CourierSession->>CourierClientB: push offer
     CourierClientB-->>CourierSession: accepted
-    CourierSession-->>CourierActorB: decision
-    CourierActorB-->>CourierEntryB: OfferDeliveryRes accepted
-    CourierEntryB-->>CourierRouteB: OfferDeliveryRes accepted
-    CourierRouteB-->>DispatchWorker: OfferDeliveryRes accepted
+    CourierSession-->>CourierActorB: CourierDecisionMsg
+    CourierActorB-->>DispatchWorker: OfferDeliveryResultMsg(Attempt=2, Accepted) (one-way)
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
     Tracking-->>DispatchWorker: DeliveryStatusChangedRes Accepted
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Delivered

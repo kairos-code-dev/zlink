@@ -4,7 +4,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
@@ -287,7 +286,7 @@ public final class TicTacToeClientScenario {
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
             2.0,
-            ZLinkMessagePackCodec.defaultCodec()));
+            null));
         connector.observeInbound(observation -> {
             if (observation.kind() != ZLinkStreamMessageKind.CONTROL) {
                 System.out.println(

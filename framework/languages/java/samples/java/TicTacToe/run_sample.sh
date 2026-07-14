@@ -15,6 +15,11 @@ if rg -n 'addHandlersFromPackageOf' Server/src/main/java --glob '*.java'; then
   echo "TicTacToe must register handlers explicitly" >&2
   exit 1
 fi
+if rg -n 'ZLinkMessagePackCodec|zlink-framework-codec-msgpack' \
+    Server/src/main/java Client/src/main/java Server/build.gradle.kts Client/build.gradle.kts; then
+  echo "TicTacToe must use the framework default JSON codec" >&2
+  exit 1
+fi
 if ! rg -q 'stream-inbound sample=TicTacToe' Client/src/main/java --glob '*.java'; then
   echo "TicTacToe client must register inbound observers before connect" >&2
   exit 1

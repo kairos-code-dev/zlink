@@ -1,6 +1,5 @@
 package systems.zlink.samples.tictactoe.server.api;
 
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -18,7 +17,6 @@ public final class ApiServer {
     public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "api");
-            options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleLogging.flowLogPath(settings, "api-" + settings.apiHttpPort()))

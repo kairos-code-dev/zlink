@@ -16,7 +16,6 @@ fun sampleRootPath(): String {
 dependencies {
     implementation(sampleProject("Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-framework-codec-msgpack:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-http-client:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation(zlinkLibs.zlink.bindings)

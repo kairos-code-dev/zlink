@@ -632,6 +632,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     | 'nativeActorNode'
     | 'nativeActorNodeProvider'
     | 'actorCreatedNodeRidProvider'
+    | 'actorRefResolver'
     | 'actorCreatedNotifier'
     | 'actorDestroyedCleanup'
     | 'locationLifecycle'

@@ -396,6 +396,22 @@ test('store location resolvers return live spot actor and route rows without cac
   assert.equal(await resolvers.resolveActorSpotHandle('actor-1'), undefined);
 });
 
+test('store location resolver returns a live remote ActorRef', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const runtime = runtimeFor(store, { ownerId: 'owner-a' });
+  await runtime.start(rid('node-a'));
+  const actorRef = { nodeRid: rid('node-b'), actorId: 'alice', generation: 9n };
+  await runtime.writeActor({
+    ...actor('owner-a', 0n),
+    actorId: 'alice',
+    actorRef,
+    nodeRid: rid('node-b')
+  }, framework.ZLinkLocationWriteIntent.NewClaim);
+
+  assert.deepEqual(await resolversFor(store).resolveActorRef('alice'), actorRef);
+  await runtime.stop();
+});
+
 test('location spot route resolver bridges internal routed transport', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const node = await lifecycleNode(store, 'owner-a', 'node-a', 'play');

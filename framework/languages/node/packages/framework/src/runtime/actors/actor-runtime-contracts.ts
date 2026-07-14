@@ -1,5 +1,6 @@
 import type {
   RoutingId,
+  ActorRef,
   Type,
   ZLinkActor,
   ZLinkActorFactory,
@@ -27,6 +28,7 @@ export interface ZLinkActorManagerOptions {
   readonly nativeActorNode?: ZLinkBackendSpotNode;
   readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
+  readonly actorRefResolver?: ZLinkActorRefResolver;
   readonly actorCreatedNotifier?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
@@ -40,6 +42,10 @@ export interface ZLinkActorManagerOptions {
   readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
   readonly shutdownSignal?: AbortSignal;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+}
+
+export interface ZLinkActorRefResolver {
+  resolveActorRef(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;

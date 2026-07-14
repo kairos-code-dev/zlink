@@ -901,6 +901,52 @@ test('actor directory find/ensure uses id lookup and exposes actor ref snapshots
   assert.equal(framework.zlinkActorRefSnapshotToActorRef({ ...snapshot, generation: '42' }).generation, 42n);
 });
 
+test('actor directory find and ensure reuse remote location refs without local creation', async () => {
+  const remote = { nodeRid: rid('node-b'), actorId: 'alice', generation: 7n };
+  let creates = 0;
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', {
+      create() {
+        creates += 1;
+        return { actorId: 'alice', context: {} };
+      }
+    }]]),
+    actorCreatedNodeRidProvider: () => rid('node-a'),
+    actorRefResolver: {
+      async resolveActorRef(actorId) {
+        return actorId === 'alice' ? remote : undefined;
+      }
+    }
+  });
+
+  assert.deepEqual(await manager.find('alice'), remote);
+  assert.deepEqual(
+    await manager.ensure('alice', { actorType: 'player' }, { preferredNodeRid: rid('node-b') }),
+    remote
+  );
+  assert.equal(creates, 0);
+});
+
+test('actor directory ensure rejects an unavailable preferred node before local creation', async () => {
+  let creates = 0;
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', {
+      create() {
+        creates += 1;
+        return { actorId: 'alice', context: {} };
+      }
+    }]]),
+    actorCreatedNodeRidProvider: () => rid('node-a'),
+    actorRefResolver: { async resolveActorRef() { return undefined; } }
+  });
+
+  await assert.rejects(
+    () => manager.ensure('alice', { actorType: 'player' }, { preferredNodeRid: rid('node-b') }),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+  );
+  assert.equal(creates, 0);
+});
+
 test('actor directory ensure rejects create failures with ActorCreateRejected', async () => {
   class FailingFactory {
     create() {

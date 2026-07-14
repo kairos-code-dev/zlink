@@ -3,7 +3,8 @@ import type {
   RoutingId,
   ZLinkActor,
   ZLinkActorDirectory,
-  ZLinkActorManager
+  ZLinkActorManager,
+  ZLinkActorPlacement
 } from '../../contracts';
 import {
   ZLinkEncodedPayload,
@@ -14,6 +15,7 @@ import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink
 import { ZLinkMessage } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { throwIfAborted } from '../abort';
+import { routingIdsEqual } from '../routing-id';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
@@ -115,7 +117,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     throwIfAborted(signal);
     const state = this.states.get(actorId);
     if (state?.actor === undefined) {
-      return undefined;
+      return await this.options.actorRefResolver?.resolveActorRef(actorId, signal);
     }
     return this.actorRefForState(state);
   }
@@ -170,9 +172,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   async ensure(
     actorId: string,
     createRequest: unknown,
-    _placement?: unknown,
+    placement?: ZLinkActorPlacement,
     signal?: AbortSignal
   ): Promise<ActorRef> {
+    const existing = await this.find(actorId, signal);
+    if (existing !== undefined) {
+      return existing;
+    }
+    this.ensurePlacementCanBeHostedHere(placement);
     const actorType = actorTypeFromCreateRequest(createRequest);
     try {
       const result = await this.createOrGet(actorId, actorType, false, createRequest, signal);
@@ -182,6 +189,10 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
         error instanceof ZLinkFrameworkException &&
         error.kind === ZLinkFrameworkErrorKind.ActorCreateFailed
       ) {
+        const raced = await this.find(actorId, signal);
+        if (raced !== undefined) {
+          return raced;
+        }
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.ActorCreateRejected,
           `Actor '${actorId}' create request was rejected.`,
@@ -190,6 +201,18 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
         );
       }
       throw error;
+    }
+  }
+
+  private ensurePlacementCanBeHostedHere(placement: ZLinkActorPlacement | undefined): void {
+    const preferred = placement?.preferredNodeRid;
+    if (preferred === undefined) return;
+    const local = this.options.actorCreatedNodeRidProvider?.();
+    if (local === undefined || !routingIdsEqual(local, preferred)) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        `Preferred actor node '${preferred}' is not connected to this actor directory.`
+      );
     }
   }
 

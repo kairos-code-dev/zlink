@@ -1,4 +1,4 @@
-import type { RoutingId } from '../../contracts/Common';
+import type { ActorRef, RoutingId } from '../../contracts/Common';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationKind,
@@ -155,6 +155,10 @@ export class ZLinkStoreLocationResolvers implements
       spotRid: String(spotRid),
       spotKind: row.locationKind
     };
+  }
+
+  async resolveActorRef(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
+    return (await this.resolveActorRow({ actorId }, signal))?.actorRef;
   }
 
   async resolveActorSpotHandle(actorId: string, signal?: AbortSignal): Promise<SpotHandle | undefined> {

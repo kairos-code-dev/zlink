@@ -68,6 +68,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'nativeActorNode'
     | 'nativeActorNodeProvider'
     | 'actorCreatedNodeRidProvider'
+    | 'actorRefResolver'
     | 'actorCreatedNotifier'
     | 'actorDestroyedCleanup'
     | 'locationLifecycle'
@@ -127,6 +128,7 @@ export class ZLinkActorRuntimeOptionsFactory {
         flowCreationEnabled: this.options.flowCreationEnabled
       }),
       actorCreatedNodeRidProvider: () => this.options.primarySpotNodeOrUndefined()?.routingId,
+      actorRefResolver: this.options.createActorLocationResolver(),
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {
         this.options.forgetDestroyedActorRef(actor.actorId);
         return this.options.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal);

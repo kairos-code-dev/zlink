@@ -27,6 +27,14 @@ inline void run_publisher_restart_scenario (const std::string &publisher_url)
                  "after-publisher-restart-" + std::to_string (index));
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
+    std::vector<std::vector<std::string>> expected;
+    for (int index = 20; index <= 42; ++index) {
+        expected.push_back (
+          accepted_evidence ("after-publisher-restart-" + std::to_string (index)));
+    }
+    for (const auto &subscriber_url : subscriber_urls ()) {
+        (void) wait_for_subscriber_evidence (subscriber_url, expected);
+    }
     std::cout << "scenario PS-B2 passed\n";
 }
 

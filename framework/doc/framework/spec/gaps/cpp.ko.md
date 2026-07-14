@@ -538,7 +538,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 `SpotActorTransfer` 누락과 문서 밖 `DeliveryDispatch` 등록을 모두 검출했다. 통합 목록을 공통 11개 config에 맞춘 뒤 gate가 통과했고, `./run_e2e_all.sh SpotActorTransfer:ST-A1`이 forward·reverse·shuffle 세 변형에서 모두 통과했다.
 - [ ] **E2E-CP-02** (결함) — **Config 9 Track A(P0 전부)가 이름만 그렇다.** session gateway 역할도 stream connector도 없다
 - [ ] **E2E-CP-03** (결함) — **Config 11이 구조 자체가 규약 밖**이다(Client 없음·env role 스위치·`OrderWorkflow` 역할 0건)
-- [ ] **E2E-CP-04** (결함) — **PubSub client 시나리오가 아무것도 단언하지 않는다**
+- [x] **E2E-CP-04** (결함) — **PubSub client 시나리오가 아무것도 단언하지 않는다**
+  - 근거: 수정 전 target-contract 검증이 client에서 제한 시간 안에 evidence를 기다리는 기능이 없고 7개 시나리오가 단언 없이 PASS를 출력하는 문제를 검출했다. HTTP 요청 처리는 client support에 모으고, 각 시나리오가 세 subscriber의 수신·필터·재연결·실패 경로 marker를 직접 단언하도록 옮겼다. shell runner의 중복 판정을 제거한 뒤 target-contract 검증과 `./run_e2e.sh all`의 7개 시나리오가 모두 통과했다.
 - [x] **E2E-CP-05** (결함) — **SpotService `all`이 문서 시나리오를 빼먹고**(SM-F3·F4·F5) **문서에 없는 걸 돌린다**(SM-Q9)
   - 근거: 수정 전 target-contract gate가 `all` 목록의 SM-F3·F4·F5 누락과 비계약 SM-Q9 포함을 네 건 모두 검출했다. 목록을 공통 scenario inventory에 맞춘 뒤 gate와 `./run_e2e.sh SM-F3`, `SM-F4`, `SM-F5`의 client·server evidence 검증이 모두 통과했다.
 - [ ] **E2E-CP-06** (미구현) — actor ref **`generation`이 리터럴 0**이고 검증하는 곳이 없다
@@ -597,7 +598,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-45** (결함) — **`SF-E1`이 store가 아니라 앱 데코레이터에 지연을 넣어** 자기 `sleep`을 잰다
 - [ ] **E2E-CP-46** (결함) — **`PS-A1`의 오라클이 계약이 허용하는 것보다 강하고**(무손실 전량), warm-up barrier가 없고, 순서를 안 본다
 - [x] **E2E-CP-47** (결함) — **`PS-B1`의 격리 단언에 시간 제한이 없어** 격리와 head-of-line 블로킹을 구분하지 못한다
-  - 근거: 수정 전 target-contract gate가 fast subscriber의 순차 wait, 2초 제한 부재, 2.5초 초과 실패 부재를 모두 검출했다. 두 fast subscriber의 16개 수신을 2초 server timeout으로 동시에 기다리고 총 2.5초를 넘으면 실패하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-B1`이 통과했으며 실제 fast 완료는 28ms였다. 이는 느린 subscriber의 직렬 처리 시간 16×250ms=4초보다 짧다.
+  - 근거: 수정 전 target-contract gate가 fast subscriber의 순차 wait, 2초 제한 부재, 2.5초 초과 실패 부재를 모두 검출했다. PubSub client가 두 fast subscriber의 16개 수신을 2초 server timeout으로 동시에 기다리고 총 2.5초를 넘으면 실패하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-B1`이 통과했다. 이 제한은 느린 subscriber의 직렬 처리 시간 16×250ms=4초보다 짧다.
 - [x] **E2E-CP-48** (미구현) — **`PS-C1`의 publisher 쪽 negative**(dispatch marker 없음)가 단언되지 않는다
   - 근거: 수정 전 target-contract gate가 publisher negative 성공 marker와 실패 가능한 dispatch-error 검사를 모두 누락으로 검출했다. PS-C1 종료 시 저장한 publisher evidence에서 `error|kind=publish|reason=handlerMissing|action=drop` 조합의 부재를 검사하도록 바꾼 뒤 gate와 `./run_e2e.sh PS-C1`이 `publisher dispatch negative passed`를 포함해 통과했다.
 

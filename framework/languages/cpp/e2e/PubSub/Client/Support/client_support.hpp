@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -112,10 +113,12 @@ inline std::string url_encode (const std::string &value)
     return encoded;
 }
 
-inline bool request_empty (const std::string &method,
-                           const std::string &base_url,
-                           const std::string &path_and_query,
-                           bool require_success = true)
+inline std::optional<std::string> request_text (const std::string &method,
+                                                const std::string &base_url,
+                                                const std::string &path_and_query,
+                                                const std::string &body = {},
+                                                const std::string &content_type = {},
+                                                bool require_success = true)
 {
     const auto endpoint = parse_http_endpoint (base_url);
     addrinfo hints{};
@@ -123,6 +126,9 @@ inline bool request_empty (const std::string &method,
     hints.ai_socktype = SOCK_STREAM;
     addrinfo *resolved = nullptr;
     if (getaddrinfo (endpoint.host.c_str (), endpoint.port.c_str (), &hints, &resolved) != 0) {
+        if (!require_success) {
+            return std::nullopt;
+        }
         throw std::runtime_error ("failed to resolve " + endpoint.host + ":" + endpoint.port);
     }
     int socket_fd = -1;
@@ -140,13 +146,24 @@ inline bool request_empty (const std::string &method,
     freeaddrinfo (resolved);
     if (socket_fd < 0) {
         if (!require_success) {
-            return false;
+            return std::nullopt;
         }
         throw std::runtime_error ("failed to connect to publisher HTTP endpoint");
     }
 
-    const auto request = method + " " + path_and_query + " HTTP/1.1\r\nHost: " + endpoint.host
-      + ":" + endpoint.port + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const auto timeout_ms = env_int_or ("ZLINK_CPP_E2E_HTTP_TIMEOUT_MS", 35000);
+    timeval socket_timeout{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
+    (void) setsockopt (socket_fd, SOL_SOCKET, SO_SNDTIMEO, &socket_timeout,
+                       sizeof (socket_timeout));
+    (void) setsockopt (socket_fd, SOL_SOCKET, SO_RCVTIMEO, &socket_timeout,
+                       sizeof (socket_timeout));
+
+    auto request = method + " " + path_and_query + " HTTP/1.1\r\nHost: " + endpoint.host + ":"
+      + endpoint.port + "\r\nContent-Length: " + std::to_string (body.size ()) + "\r\n";
+    if (!content_type.empty ()) {
+        request += "Content-Type: " + content_type + "\r\n";
+    }
+    request += "Connection: close\r\n\r\n" + body;
     const char *cursor = request.data ();
     auto remaining = request.size ();
     while (remaining > 0) {
@@ -154,7 +171,7 @@ inline bool request_empty (const std::string &method,
         if (sent <= 0) {
             close (socket_fd);
             if (!require_success) {
-                return false;
+                return std::nullopt;
             }
             throw std::runtime_error ("failed to send publisher HTTP request");
         }
@@ -169,7 +186,7 @@ inline bool request_empty (const std::string &method,
         if (received < 0) {
             close (socket_fd);
             if (!require_success) {
-                return false;
+                return std::nullopt;
             }
             throw std::runtime_error ("failed to read publisher HTTP response");
         }
@@ -181,11 +198,23 @@ inline bool request_empty (const std::string &method,
     close (socket_fd);
     if (response.rfind ("HTTP/1.1 200", 0) != 0 && response.rfind ("HTTP/1.0 200", 0) != 0) {
         if (!require_success) {
-            return false;
+            return std::nullopt;
         }
-        throw std::runtime_error ("publisher HTTP request failed: " + response.substr (0, 80));
+        throw std::runtime_error ("HTTP request failed: " + response.substr (0, 80));
     }
-    return true;
+    const auto body_offset = response.find ("\r\n\r\n");
+    if (body_offset == std::string::npos) {
+        throw std::runtime_error ("HTTP response is missing its header terminator");
+    }
+    return response.substr (body_offset + 4);
+}
+
+inline bool request_empty (const std::string &method,
+                           const std::string &base_url,
+                           const std::string &path_and_query,
+                           bool require_success = true)
+{
+    return request_text (method, base_url, path_and_query, {}, {}, require_success).has_value ();
 }
 
 inline void post_empty (const std::string &base_url, const std::string &path_and_query)
@@ -211,6 +240,75 @@ inline void publish (const std::string &publisher_url,
     const auto path = std::string (missing_packet ? "/publish/missing" : "/publish/event")
       + "?topic=" + url_encode (topic) + "&value=" + url_encode (value);
     post_empty (publisher_url, path);
+}
+
+inline std::vector<std::string> subscriber_urls ()
+{
+    const auto configured = env_or ("ZLINK_CPP_E2E_SUBSCRIBER_URLS");
+    std::vector<std::string> urls;
+    std::size_t begin = 0;
+    while (begin <= configured.size ()) {
+        const auto separator = configured.find (',', begin);
+        const auto end = separator == std::string::npos ? configured.size () : separator;
+        if (end > begin) {
+            urls.push_back (configured.substr (begin, end - begin));
+        }
+        if (separator == std::string::npos) {
+            break;
+        }
+        begin = separator + 1;
+    }
+    ensure (urls.size () == 3, "ZLINK_CPP_E2E_SUBSCRIBER_URLS must contain three URLs");
+    return urls;
+}
+
+inline std::vector<std::string> accepted_evidence (const std::string &value,
+                                                   const std::string &topic = topic_fanout)
+{
+    return {"accepted|", "topic=" + topic, "value=" + value};
+}
+
+inline std::vector<std::string> ignored_evidence (const std::string &value,
+                                                  const std::string &topic)
+{
+    return {"ignored|", "topic=" + topic, "value=" + value};
+}
+
+inline std::vector<std::string> dispatch_error_evidence (const std::string &packet,
+                                                         const std::string &topic = topic_fanout)
+{
+    return {"error|", "kind=publish", "reason=handlerMissing", "action=drop",
+            "packet=" + packet, "topic=" + topic};
+}
+
+inline std::vector<std::string> wait_for_subscriber_evidence (
+  const std::string &subscriber_url,
+  std::vector<std::vector<std::string>> line_groups,
+  int timeout_milliseconds = 10000)
+{
+    evidence_wait_req_t request;
+    request.contains_all_line_groups = std::move (line_groups);
+    request.timeout_milliseconds = timeout_milliseconds;
+    const auto body = request_text ("POST", subscriber_url, "/evidence/wait",
+                                    nlohmann::json (request).dump (), "application/json");
+    ensure (body.has_value (), "subscriber evidence request failed for " + subscriber_url);
+    return nlohmann::json::parse (*body).get<std::vector<std::string>> ();
+}
+
+inline void ensure_no_evidence_line (const std::vector<std::string> &lines,
+                                     const std::vector<std::string> &parts,
+                                     const std::string &message)
+{
+    for (const auto &line : lines) {
+        bool matched = true;
+        for (const auto &part : parts) {
+            if (line.find (part) == std::string::npos) {
+                matched = false;
+                break;
+            }
+        }
+        ensure (!matched, message);
+    }
 }
 
 inline void wait_http_health (const std::string &name, const std::string &base_url, bool expected_up)

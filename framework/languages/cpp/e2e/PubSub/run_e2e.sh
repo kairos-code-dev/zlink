@@ -10,7 +10,6 @@ LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS=35
 REDIS_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -334,6 +333,7 @@ run_client() {
   shift 2
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
   ZLINK_CPP_E2E_PUBLISHER_URL="$PUBLISHER_HTTP" \
+  ZLINK_CPP_E2E_SUBSCRIBER_URLS="$HTTP_1,$HTTP_2,$HTTP_3" \
   ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
   ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
@@ -354,127 +354,6 @@ start_client_waiting() {
     "$@" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
-}
-
-verify() {
-  local mode="$1"
-  shift
-  python3 - "$mode" "$BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS" "$@" <<'PY' | tee -a "$LOG_DIR/verify.log"
-import concurrent.futures
-import json
-import sys
-import time
-import urllib.request
-
-mode = sys.argv[1]
-http_timeout_seconds = float(sys.argv[2])
-endpoints = sys.argv[3:]
-
-def post_json(endpoint, path, payload):
-    request = urllib.request.Request(
-        endpoint + path,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST")
-    with urllib.request.urlopen(request, timeout=http_timeout_seconds) as response:
-        return json.loads(response.read().decode())
-
-def wait_lines(endpoint, *, contains_all=None, contains_any_groups=None,
-               contains_all_line_groups=None, contains_any_line_groups=None,
-               timeout_ms=10000):
-    return post_json(endpoint, "/evidence/wait", {
-        "contains_all": contains_all or [],
-        "contains_any_groups": contains_any_groups or [],
-        "contains_all_line_groups": contains_all_line_groups or [],
-        "contains_any_line_groups": contains_any_line_groups or [],
-        "timeout_milliseconds": timeout_ms,
-    })
-
-def accepted(value, topic="fanout"):
-    return ["accepted|", f"topic={topic}", f"value={value}"]
-
-def ignored(value, topic):
-    return ["ignored|", f"topic={topic}", f"value={value}"]
-
-def error_line(packet, topic="fanout"):
-    return ["error|", "kind=publish", "reason=handlerMissing", "action=drop",
-            f"packet={packet}", f"topic={topic}"]
-
-def has_line(lines, *parts):
-    return any(all(part in line for part in parts) for line in lines)
-
-def assert_no_line(lines, message, *parts):
-    if has_line(lines, *parts):
-        raise SystemExit(message + "\nlines=" + json.dumps(lines, sort_keys=True))
-
-if mode == "basic":
-    groups = [accepted(f"measure-{index}") for index in range(20)]
-    for endpoint in endpoints:
-        wait_lines(endpoint, contains_all_line_groups=groups)
-elif mode == "topic":
-    sub1 = wait_lines(endpoints[0],
-                      contains_all_line_groups=[accepted(f"alpha-{i}", "alpha") for i in range(8)]
-                      + [ignored(f"beta-{i}", "beta") for i in range(8)])
-    sub2 = wait_lines(endpoints[1],
-                      contains_all_line_groups=[accepted(f"beta-{i}", "beta") for i in range(8)]
-                      + [ignored(f"alpha-{i}", "alpha") for i in range(8)])
-    sub3 = wait_lines(endpoints[2],
-                      contains_all_line_groups=[accepted(f"alpha-{i}", "alpha") for i in range(8)]
-                      + [ignored(f"beta-{i}", "beta") for i in range(8)])
-    assert_no_line(sub1, "PS-A2 sub-1 accepted beta unexpectedly", "accepted|", "topic=beta")
-    assert_no_line(sub2, "PS-A2 sub-2 accepted alpha unexpectedly", "accepted|", "topic=alpha")
-    assert_no_line(sub3, "PS-A2 sub-3 accepted beta unexpectedly", "accepted|", "topic=beta")
-elif mode == "late":
-    early_groups = [accepted(f"before-late-{i}") for i in range(5)] \
-        + [accepted(f"after-late-{i}") for i in range(8)]
-    wait_lines(endpoints[0], contains_all_line_groups=early_groups)
-    wait_lines(endpoints[1], contains_all_line_groups=early_groups)
-    late = wait_lines(endpoints[2],
-                      contains_all_line_groups=[accepted(f"after-late-{i}") for i in range(8)])
-    assert_no_line(late, "PS-A3 late subscriber received pre-join event", "accepted|",
-                   "value=before-late-")
-elif mode == "reconnect":
-    stable_groups = [accepted(f"during-reconnect-{i}") for i in range(5)] \
-        + [accepted(f"after-reconnect-{i}") for i in range(8)]
-    wait_lines(endpoints[0], contains_all_line_groups=stable_groups)
-    wait_lines(endpoints[1], contains_all_line_groups=stable_groups)
-    rejoined = wait_lines(endpoints[2],
-                          contains_all_line_groups=[accepted(f"after-reconnect-{i}")
-                                                    for i in range(8)])
-    assert_no_line(rejoined, "PS-A4 rejoined subscriber received disconnect-gap event",
-                   "accepted|", "value=during-reconnect-")
-elif mode == "slow":
-    groups = [accepted(f"slow-isolation-{i}") for i in range(16)]
-    started = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        waits = [
-            executor.submit(
-                wait_lines,
-                endpoint,
-                contains_all_line_groups=groups,
-                timeout_ms=2000)
-            for endpoint in endpoints[1:]
-        ]
-        for wait in waits:
-            wait.result()
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    if elapsed_ms > 2500:
-        raise SystemExit(
-            f"fast subscriber isolation exceeded 2500 ms: elapsed_ms={elapsed_ms}"
-        )
-    print(f"fast subscriber isolation elapsed_ms={elapsed_ms}")
-elif mode == "publisher-restart":
-    groups = [accepted(f"after-publisher-restart-{i}") for i in range(20, 43)]
-    for endpoint in endpoints:
-        wait_lines(endpoint, contains_all_line_groups=groups)
-elif mode == "negative":
-    groups = [accepted("after-missing"), error_line("MissingEventMsg")]
-    for endpoint in endpoints:
-        wait_lines(endpoint, contains_all_line_groups=groups)
-else:
-    raise SystemExit("unknown verify mode " + mode)
-print(f"verify {mode} passed")
-PY
 }
 
 case "$SCENARIO" in
@@ -502,7 +381,6 @@ if should_run PS-A1 ps-a1; then
   touch "$START_CONTINUE"
   wait "$BASIC_CLIENT_PID"
   cat "$LOG_DIR/client-basic.stdout.log"
-  verify basic "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -519,7 +397,6 @@ if should_run PS-A2 ps-a2; then
   touch "$START_CONTINUE"
   wait "$TOPIC_CLIENT_PID"
   cat "$LOG_DIR/client-topic.stdout.log"
-  verify topic "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -543,7 +420,6 @@ if should_run PS-A3 ps-a3; then
   touch "$CONTINUE"
   wait "$LATE_CLIENT_PID"
   cat "$LOG_DIR/client-late.stdout.log"
-  verify late "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -564,7 +440,6 @@ if should_run PS-A4 ps-a4; then
   wait "$RECONNECT_CLIENT_PID"
   remember_pid_file "$RECONNECT_PID_FILE" SUB_PIDS
   cat "$LOG_DIR/client-reconnect.stdout.log"
-  verify reconnect "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -581,7 +456,6 @@ if should_run PS-B1 ps-b1; then
   touch "$START_CONTINUE"
   wait "$SLOW_CLIENT_PID"
   cat "$LOG_DIR/client-slow.stdout.log"
-  verify slow "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -602,7 +476,6 @@ if should_run PS-B2 ps-b2; then
   wait "$PUB_RESTART_CLIENT_PID"
   remember_pid_file "$RESTARTED_PUBLISHER_PID_FILE" PIDS
   cat "$LOG_DIR/client-publisher-before.stdout.log"
-  verify publisher-restart "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 
@@ -619,7 +492,6 @@ if should_run PS-C1 ps-c1; then
   touch "$START_CONTINUE"
   wait "$NEGATIVE_CLIENT_PID"
   cat "$LOG_DIR/client-negative.stdout.log"
-  verify negative "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
 

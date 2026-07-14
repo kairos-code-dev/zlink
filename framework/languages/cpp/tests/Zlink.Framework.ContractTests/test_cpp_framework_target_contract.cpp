@@ -81,6 +81,19 @@ int main ()
     const auto store_location_resolvers =
       read_file (root / "framework/src/runtime/locations/store_location_resolvers.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
+    const auto pubsub_client_root = e2e_root / "PubSub/Client";
+    const auto pubsub_client_support =
+      read_file (pubsub_client_root / "Support/client_support.hpp");
+    const auto pubsub_slow_scenario =
+      read_file (pubsub_client_root / "Scenarios/slow_subscriber_scenario.hpp");
+    const std::vector<std::string> pubsub_client_scenarios{
+      read_file (pubsub_client_root / "Scenarios/fanout_basic_delivery_scenario.hpp"),
+      read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
+      read_file (pubsub_client_root / "Scenarios/late_subscriber_scenario.hpp"),
+      read_file (pubsub_client_root / "Scenarios/subscriber_reconnect_scenario.hpp"),
+      pubsub_slow_scenario,
+      read_file (pubsub_client_root / "Scenarios/publisher_restart_scenario.hpp"),
+      read_file (pubsub_client_root / "Scenarios/missing_message_name_scenario.hpp")};
     gate_t gate;
 
     for (const auto &required :
@@ -189,6 +202,20 @@ int main ()
     gate.require (observability_runner.find ("PENDING") == std::string::npos,
                   "E2E-CP-11",
                   "runner contradicts the feature-map with a PENDING status");
+
+    /* E2E-CP-04 — each PubSub client scenario owns its bounded evidence oracle. */
+    gate.require (pubsub_client_support.find ("/evidence/wait") != std::string::npos,
+                  "E2E-CP-04",
+                  "PubSub client support cannot perform a bounded subscriber evidence wait");
+    bool every_pubsub_scenario_checks_evidence = true;
+    for (const auto &scenario : pubsub_client_scenarios) {
+        every_pubsub_scenario_checks_evidence =
+          every_pubsub_scenario_checks_evidence
+          && scenario.find ("wait_for_subscriber_evidence") != std::string::npos;
+    }
+    gate.require (every_pubsub_scenario_checks_evidence,
+                  "E2E-CP-04",
+                  "a PubSub client scenario prints PASS without checking subscriber evidence");
 
     /* IMP-CP-30 — application reliability policy is not a framework hook. */
     gate.require (zlink_builder_hpp.find ("on_retry") == std::string::npos
@@ -506,11 +533,12 @@ int main ()
                   "IMP-CP-33", "no-op include_native_diagnostics remains public");
 
     /* E2E-CP-47 — fast subscribers must finish inside a bound shorter than slow HOL work. */
-    gate.require (pubsub_runner.find ("ThreadPoolExecutor(max_workers=2)") != std::string::npos,
+    gate.require (pubsub_slow_scenario.find ("std::async (std::launch::async")
+                    != std::string::npos,
                   "E2E-CP-47", "PS-B1 fast-subscriber waits are not concurrent");
-    gate.require (pubsub_runner.find ("timeout_ms=2000") != std::string::npos,
+    gate.require (pubsub_slow_scenario.find ("expected, 2000") != std::string::npos,
                   "E2E-CP-47", "PS-B1 fast-subscriber wait has no isolation bound");
-    gate.require (pubsub_runner.find ("fast subscriber isolation exceeded 2500 ms")
+    gate.require (pubsub_slow_scenario.find ("fast subscriber evidence exceeded 2500 ms")
                     != std::string::npos,
                   "E2E-CP-47", "PS-B1 cannot fail when fast delivery is head-of-line blocked");
 

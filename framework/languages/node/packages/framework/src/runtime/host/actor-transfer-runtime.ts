@@ -58,6 +58,7 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   readonly clearRemoteActorPacketTarget: (actorId: string) => void;
   readonly reportPostCommitError?: (error: unknown) => void;
+  readonly onSourceDepartureCompleted?: (actorId: string) => void;
   readonly shutdownSignal?: () => AbortSignal | undefined;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
@@ -195,6 +196,7 @@ export class ZLinkActorTransferRuntime {
         if (sourceSpotRid !== undefined) {
           await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotRid, actor.actorId);
         }
+        this.options.onSourceDepartureCompleted?.(actor.actorId);
         return;
       } catch (error) {
         this.options.reportPostCommitError?.(error);

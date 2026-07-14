@@ -181,18 +181,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       forwardWindowMs: options.registration.actorTransferForwardWindowMs,
       requestTimeoutMs: options.registration.requestTimeoutMs,
       onMarker: (marker, actorId, index) => {
-        void this.runtimeEventPublisher.publish({
-          sourceName: 'zlink.framework.actor-handoff',
-          timestamp: new Date(),
-          marker,
-          actorId,
-          index
-        });
+        this.publishActorHandoffEvent({ marker, actorId, index });
       },
       onRequestFrame: (actorId, index, requestSeq, flags) => {
-        void this.runtimeEventPublisher.publish({
-          sourceName: 'zlink.framework.actor-handoff',
-          timestamp: new Date(),
+        this.publishActorHandoffEvent({
           marker: 'handoff_request_frame',
           actorId,
           index,
@@ -266,6 +258,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         this.boundSessionRelay.clearRemoteActorPacketTarget(actorId),
       reportPostCommitError: (error) =>
         (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException('source actor departure', error),
+      onSourceDepartureCompleted: (actorId) =>
+        this.publishActorHandoffEvent({ marker: 'source_cleanup', actorId }),
       shutdownSignal: () => this.state?.abortController.signal,
       metrics: this.metrics
     });
@@ -273,6 +267,20 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   get isStarted(): boolean {
     return this.state !== undefined;
+  }
+
+  private publishActorHandoffEvent(event: {
+    readonly marker: string;
+    readonly actorId: string;
+    readonly index?: number;
+    readonly requestSeq?: string;
+    readonly flags?: number;
+  }): void {
+    void this.runtimeEventPublisher.publish({
+      sourceName: 'zlink.framework.actor-handoff',
+      timestamp: new Date(),
+      ...event
+    });
   }
 
   get locationRuntimeQuery(): ZLinkLocationRuntimeQuery | undefined {

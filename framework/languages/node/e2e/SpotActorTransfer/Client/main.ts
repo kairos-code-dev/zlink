@@ -380,7 +380,8 @@ async function runF1(): Promise<void> {
   const targetEntries = await waitEvidence(nodeB, ['P1', 'P2', 'P3'].map(
     (marker) => `ST-F1|${actorId}|packet_handler|${marker}`
   ));
-  assertOrder(targetEntries, actorId, ['packet_handler', 'packet_handler', 'packet_handler']);
+  assertValuesInOrder(targetEntries, actorId, 'packet_handler', ['P1', 'P2', 'P3']);
+  await waitEvidence(nodeA, [`ST-F1|${actorId}|source_cleanup|`]);
   require(!has(await getEvidence(nodeA), actorId, 'packet_handler'), 'ST-F1 source dispatched moving packets.');
 }
 
@@ -436,7 +437,7 @@ async function runF3(): Promise<void> {
     const entries = await waitEvidence(nodeB, ['S1', 'S2', 'S3', 'S4'].map(
       (marker) => `ST-F3|${actorId}|packet_handler|${marker}`
     ));
-    assertOrder(entries, actorId, ['packet_handler', 'packet_handler', 'packet_handler', 'packet_handler']);
+    assertValuesInOrder(entries, actorId, 'packet_handler', ['S1', 'S2', 'S3', 'S4']);
   } finally {
     await connector.close();
   }
@@ -750,6 +751,21 @@ function assertOrder(entries: readonly ActorEvidence[], actorId: string, kinds: 
     require(next > cursor, `Expected '${kind}' after evidence index ${cursor}.`);
     cursor = next;
   }
+}
+
+function assertValuesInOrder(
+  entries: readonly ActorEvidence[],
+  actorId: string,
+  kind: string,
+  values: readonly string[]
+): void {
+  const actual = entries
+    .filter((entry) => entry.actorId === actorId && entry.kind === kind)
+    .map((entry) => entry.value);
+  require(
+    values.every((value, index) => actual[index] === value),
+    `Expected ${kind} values '${values.join(',')}', got '${actual.join(',')}'.`
+  );
 }
 
 function mergeEvidence(...groups: readonly (readonly ActorEvidence[])[]): readonly ActorEvidence[] {

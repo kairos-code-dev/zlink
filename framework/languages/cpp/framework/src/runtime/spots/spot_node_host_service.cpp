@@ -478,6 +478,14 @@ void spot_node_host_service_t::start (service_provider_t &services)
                             reconcile_spot_mesh (*native, configured->snapshot, *_location_store);
                         }
                     }
+                    //  Draining also reaches native configuration calls, which throw. Keeping it
+                    //  inside the guard is what stops one of those from unwinding out of this
+                    //  thread and terminating the process.
+                    native->runtime.publish_peer_snapshot_if_changed ();
+                    dispatched += native->runtime.cleanup_expired_actor_admissions ();
+                    dispatched += native->runtime.drain_actor_packets (services, serializers);
+                    dispatched += native->runtime.drain_routed_packets (services, serializers);
+                    dispatched += native->runtime.drain_subscriptions (services, serializers);
                 }
                 catch (const std::exception &error) {
                     if (native->local_peer) {
@@ -486,11 +494,6 @@ void spot_node_host_service_t::start (service_provider_t &services)
                 }
                 catch (...) {
                 }
-                native->runtime.publish_peer_snapshot_if_changed ();
-                dispatched += native->runtime.cleanup_expired_actor_admissions ();
-                dispatched += native->runtime.drain_actor_packets (services, serializers);
-                dispatched += native->runtime.drain_routed_packets (services, serializers);
-                dispatched += native->runtime.drain_subscriptions (services, serializers);
             }
             if (dispatched == 0) {
                 std::this_thread::sleep_for (std::chrono::milliseconds (1));

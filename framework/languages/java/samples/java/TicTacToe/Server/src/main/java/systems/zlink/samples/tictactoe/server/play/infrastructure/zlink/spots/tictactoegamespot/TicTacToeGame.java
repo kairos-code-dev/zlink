@@ -75,6 +75,10 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
         validateJoin(joinRequest.roomId(), joinRequest.player());
+        if (!match.canJoin(actorId)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.reject(new TicTacToeGameJoinRes(match.snapshot())));
+        }
         TicTacToeMatch.JoinResult preview = match.previewJoin(actorId);
         pendingJoins.put(actorId, joinRequest);
         return java.util.concurrent.CompletableFuture.completedFuture(

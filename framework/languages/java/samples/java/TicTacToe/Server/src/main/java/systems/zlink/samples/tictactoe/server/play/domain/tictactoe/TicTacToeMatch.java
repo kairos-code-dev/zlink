@@ -69,6 +69,11 @@ public final class TicTacToeMatch {
         return new JoinResult(true, mark, state);
     }
 
+    public boolean canJoin(String actorId) {
+        return players.size() < 2 || players.stream()
+            .anyMatch(player -> player.actorId().equals(actorId));
+    }
+
     public GameState placeMark(String actorId, int cell, Instant now, Duration turnTimeout) {
         PlayerSlot slot = player(actorId);
         if (!status.equals("InProgress")) {

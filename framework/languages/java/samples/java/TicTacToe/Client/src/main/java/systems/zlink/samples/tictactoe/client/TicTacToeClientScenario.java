@@ -102,6 +102,15 @@ public final class TicTacToeClientScenario {
             ensure("InProgress".equals(guestJoin.state().status()));
             ensure(options.oActorId().equals(guestJoin.state().oActorId()));
 
+            boolean fullRoomJoinRejected = false;
+            try {
+                observer.request(new JoinGameReq(game.roomId()))
+                    .submit(JoinGameRes.class).toCompletableFuture().join();
+            } catch (java.util.concurrent.CompletionException expected) {
+                fullRoomJoinRejected = true;
+            }
+            ensure(fullRoomJoinRejected);
+
             PlayerJoinedNotify guestJoinNotify = hostSawGuestJoin.toCompletableFuture().join().payload();
             ensure("O".equals(guestJoinNotify.mark()));
             ensure("InProgress".equals(guestJoinNotify.state().status()));

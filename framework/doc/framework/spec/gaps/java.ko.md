@@ -756,11 +756,13 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 
 - [x] **SMP-JV-23** (**버그**) — TicTacToe room owner가 항상 첫 Play로 고정된다.
   - 근거: 동일 API의 연속 생성 두 건이 서로 다른 Play와 서로 다른 room ID를 반환하도록 self-check를 추가했으며, 수정 전 단언 실패와 수정 후 `PASS TicTacToe.Java`를 확인했다.
+- [x] **SMP-JV-24** (**버그**) — 거절된 room join을 성공처럼 커밋한다.
+  - 근거: 세 번째 actor의 typed rejection이 성공 응답으로 바뀌는 실패 게이트를 확인한 뒤 `Accepted`에서만 actor 상태를 갱신하도록 수정했고, `PASS TicTacToe.Java`를 확인했다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **SMP-JV-23** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): room owner는 **deterministic round-robin**으로 고른다 — 첫 room은 `play-a`, 다음 room은 `play-b`처럼 선택한다 | **해결:** API handler가 프로세스 로컬 원자 카운터로 Play를 선택한다. 게이트를 복구하면서 Play별 로컬 시퀀스가 같은 `RoomId`를 만드는 추가 결함이 드러나 SpotNode rid를 room ID에 포함했다. 공유 wire는 바꾸지 않았다. Kotlin의 별도 결함은 이 작업 범위에서 수정하지 않았다. |
-| **SMP-JV-24** (**버그**) | [tictactoe §16](../../common/sample/tictactoe/README.ko.md): 조건을 만족하지 못하면 **join을 거부하거나 오류 response를 반환해야 한다** | `PlayActorJoinGameHandler.java:26-30` — `joined.reply()`를 **분기 없이** 부르고, `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다. ⇒ 거절된 join이면 actor의 게임 소속은 **이미 커밋됐고**, `Rejected(null).reply()`가 **NPE**가 되거나 payload가 있으면 클라이언트가 **일어나지도 않은 join에 성공 응답**을 받는다. Entry Spot에 앉은 채로 `PlaceMarkReq`가 handler 없는 곳으로 dispatch된다. **[갭 인덱스 §15.5]가 예측한 바로 그 실수다.** SupportChat handler 2곳은 `instanceof Accepted`로 제대로 분기한다 |
+| **SMP-JV-24** (**버그**) | [tictactoe §16](../../common/sample/tictactoe/README.ko.md): 조건을 만족하지 못하면 **join을 거부하거나 오류 response를 반환해야 한다** | **해결:** room이 가득 찬 경우 상태를 담은 typed rejection을 반환하고, entry handler는 `Accepted` 결과에서만 actor의 room 소속을 갱신한다. 세 번째 actor의 request가 오류로 끝나는 self-check가 rejection 분기를 직접 검증한다. |
 | **SMP-JV-25** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md) | SupportChat Java가 `connectRouter(...)`를 **두 곳에서** 쓴다(`support/Program.java:82-84`, `session/Program.java:64-66`). **Kotlin은 안 쓴다 — Kotlin이 맞다.** ⇒ 자동 연결이 회귀해도 Java SupportChat은 **초록으로 남는다.** 절대 규칙이 막으려던 바로 그 실패다 |
 | **SMP-JV-26** (**버그**) | [tictactoe §4](../../common/sample/tictactoe/README.ko.md): payload codec은 **JSON**이다. **MessagePack이나 Protobuf로 바꾸지 않는다** | Java·Kotlin 모두 `ZLinkMessagePackCodec`을 등록한다. ⇒ **JSON 경로의 정본 예제가 JSON을 안 쓴다** |
 | **SMP-JV-27** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): leave는 **게임 종료 후** 단계다 | `TicTacToe Game.java:258-264` — `LeaveGameReq`에 **상태·소속 가드가 `roomId` 일치 하나뿐**이다. 게다가 `onLeaveActor`는 **push 목록만** 지우고 **도메인의 `players` 슬롯은 안 지운다.** ⇒ 게임 중에 guest가 나가면 actor는 파괴되는데 match는 **여전히 두 명이라 믿는다.** 다음 수 뒤 `nextTurn`이 **존재하지 않는 actor**를 가리키고, 방은 15초 turn timeout까지 **멈춘다.** 나간 쪽은 오류도 못 받고, 남은 쪽은 **알림도 못 받는다** |

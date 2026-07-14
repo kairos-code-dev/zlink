@@ -1,6 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -25,8 +26,12 @@ public final class PlayActorJoinGameHandler {
                 new TicTacToeGameJoinReq(request.roomId(), actor.requirePlayer()))
             .submit(TicTacToeGameJoinRes.class)
             .thenApply(joined -> {
+                if (!(joined instanceof ZLinkActorJoinResult.Accepted<?> accepted)) {
+                    throw new IllegalStateException("Tic-tac-toe room join was rejected");
+                }
+                TicTacToeGameJoinRes reply = (TicTacToeGameJoinRes) accepted.reply();
                 actor.joinGame(request.roomId());
-                return new JoinGameRes(joined.reply().state());
+                return new JoinGameRes(reply.state());
             });
     }
 }

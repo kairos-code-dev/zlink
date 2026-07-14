@@ -18,7 +18,6 @@ internal sealed class ZlinkStreamFrameSender(
         ZlinkStreamRequestSeq? requestSeq)
     {
         var payloadBytes = payload.Payload;
-        ZlinkStreamFrameCodec.ValidateSendPayload(payloadBytes.Length, options.MaxSendPayloadSize);
         var flags = requestSeq is null
             ? ZlinkStreamHeaderFlags.None
             : ZlinkStreamHeaderFlags.HasRequestSeq;
@@ -28,6 +27,8 @@ internal sealed class ZlinkStreamFrameSender(
             payloadBytes = CompressPayload(payloadBytes);
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
+
+        ZlinkStreamFrameCodec.ValidateSendPayload(payloadBytes.Length, options.MaxSendPayloadSize);
 
         // Client always stamps a correlation id on non-control packets so the server
         // can trace/echo it regardless of either side's tracing mode.

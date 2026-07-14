@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 
@@ -95,6 +96,66 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void CompressedSendPayloadLimit_UsesCompressedWireSize()
+    {
+        var options = new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri("tcp://127.0.0.1:1"),
+            MaxSendPayloadSize = 64
+        };
+        var sender = new ZlinkStreamFrameSender(
+            options,
+            new ZlinkStreamHeaderCodec(),
+            new ZlinkStreamLz4CompressionCodec(),
+            new SemaphoreSlim(1, 1),
+            static () => null);
+
+        var frame = sender.BuildOutboundFrame(
+            ZlinkStreamMessageKind.Send,
+            "compressed",
+            new ZlinkStreamEncodedPayload(
+                ZlinkStreamCodec.Raw,
+                Enumerable.Repeat((byte)'A', 1024).ToArray()),
+            ZlinkStreamMetadata.Empty,
+            compress: true,
+            requestSeq: null);
+
+        Assert.True(frame.PayloadBytes.Length <= options.MaxSendPayloadSize);
+        Assert.True(
+            new ZlinkStreamHeaderCodec()
+                .Decode(frame.HeaderBytes)
+                .Flags
+                .HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed));
+    }
+
+    [Fact]
+    public void CompressedSendPayloadLimit_RejectsExpandedWirePayload()
+    {
+        var options = new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri("tcp://127.0.0.1:1"),
+            MaxSendPayloadSize = 1,
+            CompressionCodec = new ExpandingCompressionCodec()
+        };
+        var sender = new ZlinkStreamFrameSender(
+            options,
+            new ZlinkStreamHeaderCodec(),
+            options.CompressionCodec,
+            new SemaphoreSlim(1, 1),
+            static () => null);
+
+        var exception = Assert.Throws<ZlinkStreamException>(() => sender.BuildOutboundFrame(
+            ZlinkStreamMessageKind.Send,
+            "expanded",
+            new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }),
+            ZlinkStreamMetadata.Empty,
+            compress: true,
+            requestSeq: null));
+
+        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+    }
+
+    [Fact]
     public async Task RequestPayloadLimitIsEnforcedBeforeTransportWrite()
     {
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -123,6 +184,21 @@ public sealed partial class StreamConnectorTests
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await Task.CompletedTask;
+    }
+
+    private sealed class ExpandingCompressionCodec : IZlinkStreamCompressionCodec
+    {
+        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+        {
+            return new byte[payload.Length + 1];
+        }
+
+        public ReadOnlyMemory<byte> Decompress(
+            ReadOnlyMemory<byte> payload,
+            int maxDecompressedPayloadSize)
+        {
+            return payload;
+        }
     }
 
     [Theory]

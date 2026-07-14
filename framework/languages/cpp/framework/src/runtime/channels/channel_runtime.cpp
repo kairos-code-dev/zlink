@@ -184,17 +184,10 @@ result_t<void> validate_channel_native_reply (const runtime::messaging::message_
     return result_t<void>::success ();
 }
 
-class pending_operation_controller_t
+class outbound_request_controller_t
 {
   public:
-    struct hook_dispatch_t
-    {
-        channel_reliability_event_t event;
-        retry_hook_t retry_hook;
-        dead_letter_hook_t dead_letter_hook;
-    };
-
-    explicit pending_operation_controller_t (channel_runtime_state_t &state) : _state (state) {}
+    explicit outbound_request_controller_t (channel_runtime_state_t &state) : _state (state) {}
 
     result_t<std::uint64_t> reserve_request (std::string channel_name)
     {
@@ -206,22 +199,6 @@ class pending_operation_controller_t
         _state.pending_requests.register_request (request_seq, std::move (channel_name));
         ++_state.pending;
         return result_t<std::uint64_t>::success (request_seq);
-    }
-
-    result_t<std::uint64_t> queue_send (std::string channel_name, std::string idempotency_key)
-    {
-        if (auto admission = ensure_admission (); !admission) {
-            return detail::propagate_failure<std::uint64_t> (admission, "channel send was rejected");
-        }
-
-        const auto operation_id = _state.pending_requests.next_request_seq ();
-        _state.pending_operations.emplace (
-          operation_id, channel_reliability_event_t{
-                          std::move (channel_name), std::move (idempotency_key),
-                          framework_error_kind_t::request_failed,
-                          "pending operation timed out"});
-        ++_state.pending;
-        return result_t<std::uint64_t>::success (operation_id);
     }
 
     result_t<void> complete_request (std::uint64_t request_seq)
@@ -242,51 +219,9 @@ class pending_operation_controller_t
         return result_t<void>::success ();
     }
 
-    result_t<void> mark_send_ready (std::uint64_t operation_id)
-    {
-        const auto found = _state.pending_operations.find (operation_id);
-        if (found == _state.pending_operations.end ()) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "send-ready does not match a pending operation");
-        }
-        _state.pending_operations.erase (found);
-        decrement_pending ();
-        return result_t<void>::success ();
-    }
-
-    result_t<hook_dispatch_t> expire (std::uint64_t operation_id)
-    {
-        const auto found = _state.pending_operations.find (operation_id);
-        if (found == _state.pending_operations.end ()) {
-            return result_t<hook_dispatch_t>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "timeout does not match a pending operation");
-        }
-
-        auto event = found->second;
-        auto hook = _state.dead_letter_hook;
-        _state.pending_operations.erase (found);
-        decrement_pending ();
-        return result_t<hook_dispatch_t>::success (
-          hook_dispatch_t{std::move (event), retry_hook_t{}, std::move (hook)});
-    }
-
-    result_t<hook_dispatch_t> retry (std::uint64_t operation_id)
-    {
-        const auto found = _state.pending_operations.find (operation_id);
-        if (found == _state.pending_operations.end ()) {
-            return result_t<hook_dispatch_t>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "retry does not match a pending operation");
-        }
-        return result_t<hook_dispatch_t>::success (
-          hook_dispatch_t{found->second, _state.retry_hook, dead_letter_hook_t{}});
-    }
-
     void drain () noexcept
     {
         _state.pending_requests.clear ();
-        _state.pending_operations.clear ();
         _state.pending = 0;
     }
 
@@ -475,73 +410,19 @@ result_t<std::uint64_t> channel_runtime_t::reserve_outbound_request (std::string
         return detail::boundary_failure<std::uint64_t> (detail::boundary_error_t::disconnected,
                                                  "channel client is not connected");
     }
-    return pending_operation_controller_t (*_state).reserve_request (std::move (channel_name));
-}
-
-result_t<std::uint64_t> channel_runtime_t::queue_pending_send (std::string channel_name,
-                                                               std::string idempotency_key)
-{
-    std::lock_guard lock (_state->mutex);
-    return pending_operation_controller_t (*_state).queue_send (std::move (channel_name),
-                                                                std::move (idempotency_key));
+    return outbound_request_controller_t (*_state).reserve_request (std::move (channel_name));
 }
 
 result_t<void> channel_runtime_t::complete_outbound_reply (std::uint64_t request_seq)
 {
     std::lock_guard lock (_state->mutex);
-    return pending_operation_controller_t (*_state).complete_request (request_seq);
+    return outbound_request_controller_t (*_state).complete_request (request_seq);
 }
 
 result_t<void> channel_runtime_t::cancel_outbound_request (std::uint64_t request_seq)
 {
     std::lock_guard lock (_state->mutex);
-    return pending_operation_controller_t (*_state).cancel_request (request_seq);
-}
-
-result_t<void> channel_runtime_t::mark_send_ready (std::uint64_t operation_id)
-{
-    std::lock_guard lock (_state->mutex);
-    return pending_operation_controller_t (*_state).mark_send_ready (operation_id);
-}
-
-result_t<void> channel_runtime_t::expire_pending (std::uint64_t operation_id)
-{
-    result_t<pending_operation_controller_t::hook_dispatch_t> dispatch =
-      result_t<pending_operation_controller_t::hook_dispatch_t>::failure (
-        framework_error_kind_t::request_failed, "pending operation expire was not attempted");
-    {
-        std::lock_guard lock (_state->mutex);
-        dispatch = pending_operation_controller_t (*_state).expire (operation_id);
-    }
-    if (!dispatch) {
-        return result_t<void>::failure (dispatch.error_kind (),
-                                        dispatch.error () ? dispatch.error ()->what ()
-                                                          : "pending operation expire failed");
-    }
-    if (dispatch.value ().dead_letter_hook) {
-        dispatch.value ().dead_letter_hook (dispatch.value ().event);
-    }
-    return detail::boundary_failure<void> (detail::boundary_error_t::timed_out, "pending operation timed out");
-}
-
-result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
-{
-    result_t<pending_operation_controller_t::hook_dispatch_t> dispatch =
-      result_t<pending_operation_controller_t::hook_dispatch_t>::failure (
-        framework_error_kind_t::request_failed, "pending operation retry was not attempted");
-    {
-        std::lock_guard lock (_state->mutex);
-        dispatch = pending_operation_controller_t (*_state).retry (operation_id);
-    }
-    if (!dispatch) {
-        return result_t<void>::failure (dispatch.error_kind (),
-                                        dispatch.error () ? dispatch.error ()->what ()
-                                                          : "pending operation retry failed");
-    }
-    if (dispatch.value ().retry_hook) {
-        dispatch.value ().retry_hook (dispatch.value ().event);
-    }
-    return result_t<void>::success ();
+    return outbound_request_controller_t (*_state).cancel_request (request_seq);
 }
 
 void channel_runtime_t::close () noexcept
@@ -621,7 +502,7 @@ void channel_runtime_t::mark_auto_connect_active ()
 void channel_runtime_t::drain () noexcept
 {
     std::lock_guard lock (_state->mutex);
-    pending_operation_controller_t (*_state).drain ();
+    outbound_request_controller_t (*_state).drain ();
 }
 
 void channel_runtime_t::publish_socket_event (const std::string &channel_name,
@@ -1841,18 +1722,6 @@ zlink_builder_t &zlink_builder_t::default_request_timeout (std::chrono::millisec
                                      "request timeout must be greater than zero");
     }
     _state->runtime->default_request_timeout = timeout;
-    return *this;
-}
-
-zlink_builder_t &zlink_builder_t::on_retry (retry_hook_t hook)
-{
-    _state->runtime->retry_hook = std::move (hook);
-    return *this;
-}
-
-zlink_builder_t &zlink_builder_t::on_dead_letter (dead_letter_hook_t hook)
-{
-    _state->runtime->dead_letter_hook = std::move (hook);
     return *this;
 }
 

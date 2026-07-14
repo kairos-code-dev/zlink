@@ -78,14 +78,6 @@ struct channel_snapshot_t
     channel_capability_snapshot_t subscriber;
 };
 
-struct channel_reliability_event_t
-{
-    std::string channel_name;
-    std::string idempotency_key;
-    framework_error_kind_t error_kind;
-    std::string message;
-};
-
 struct route_handler_context_t
 {
     std::string router_channel_id;
@@ -946,8 +938,5 @@ class publisher_t
   private:
     message_bus_t _bus;
 };
-
-using retry_hook_t = std::function<void (const channel_reliability_event_t &)>;
-using dead_letter_hook_t = std::function<void (const channel_reliability_event_t &)>;
 
 } // namespace zlink::framework

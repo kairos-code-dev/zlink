@@ -92,6 +92,10 @@ int main ()
     }
 
     const auto actor_hpp = read_file (include_root / "zlink/framework/contracts/actors/actor.hpp");
+    const auto channel_hpp =
+      read_file (include_root / "zlink/framework/contracts/channels/channel.hpp");
+    const auto zlink_builder_hpp =
+      read_file (include_root / "zlink/framework/contracts/configuration/zlink_builder.hpp");
     const auto spot_hpp = read_file (include_root / "zlink/framework/contracts/spots/spot.hpp");
     const auto app_hpp =
       read_file (include_root / "zlink/framework/contracts/configuration/app.hpp");
@@ -185,6 +189,17 @@ int main ()
     gate.require (observability_runner.find ("PENDING") == std::string::npos,
                   "E2E-CP-11",
                   "runner contradicts the feature-map with a PENDING status");
+
+    /* IMP-CP-30 — application reliability policy is not a framework hook. */
+    gate.require (zlink_builder_hpp.find ("on_retry") == std::string::npos
+                    && zlink_builder_hpp.find ("on_dead_letter") == std::string::npos,
+                  "IMP-CP-30",
+                  "zlink builder still exposes C++-only reliability hooks");
+    gate.require (channel_hpp.find ("channel_reliability_event_t") == std::string::npos
+                    && channel_hpp.find ("retry_hook_t") == std::string::npos
+                    && channel_hpp.find ("dead_letter_hook_t") == std::string::npos,
+                  "IMP-CP-30",
+                  "channel contract still exposes C++-only reliability event types");
 
     /* IMP-CP-08 — session-owned transport failures reach the session callback. */
     gate.require (stream_host.find ("stream_session_error_t::transport_error")

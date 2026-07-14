@@ -129,7 +129,6 @@ class channel_runtime_state_t
     std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
     std::map<std::string, std::uint64_t> weighted_discovery_cursors;
     std::map<std::string, std::string> last_discovery_request_endpoints;
-    std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
     dispatch_options_t dispatch;
     serializer_registry_t *serializers = nullptr;
@@ -137,8 +136,6 @@ class channel_runtime_state_t
     bool auto_connect_active = false;
     bool shutdown = false;
     bool closed = false;
-    retry_hook_t retry_hook;
-    dead_letter_hook_t dead_letter_hook;
 };
 
 class zlink_builder_state_t
@@ -178,13 +175,8 @@ class channel_runtime_t
                                   std::string_view content_type = "") const;
 
     result_t<std::uint64_t> reserve_outbound_request (std::string channel_name);
-    result_t<std::uint64_t> queue_pending_send (std::string channel_name,
-                                                std::string idempotency_key = {});
     result_t<void> complete_outbound_reply (std::uint64_t request_seq);
     result_t<void> cancel_outbound_request (std::uint64_t request_seq);
-    result_t<void> mark_send_ready (std::uint64_t operation_id);
-    result_t<void> expire_pending (std::uint64_t operation_id);
-    result_t<void> retry_pending (std::uint64_t operation_id);
     void close () noexcept;
     void shutdown () noexcept;
     /* Live manual endpoint mutation for a client channel (endpoint

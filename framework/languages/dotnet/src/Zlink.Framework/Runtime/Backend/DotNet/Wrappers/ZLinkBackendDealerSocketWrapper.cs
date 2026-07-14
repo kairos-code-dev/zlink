@@ -49,6 +49,11 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         nativeSocket.SetRoutingId(routingId);
     }
 
+    public void SetProbe(bool enabled)
+    {
+        nativeSocket.Options.Probe = enabled;
+    }
+
     public void OnSendReady(Action handler)
     {
         nativeSocket.OnSendReady(handler);

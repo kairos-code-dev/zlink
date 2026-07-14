@@ -321,7 +321,8 @@
 ### 체크리스트
 
 - [ ] **IMP-DN-14** (결함) — `IZLinkSocketConfig` 14개 중 **9개를 적용하지 않고**, `Linger`는 **앱 몰래 0으로 강제**한다
-- [ ] **IMP-DN-15** (결함) — `IZLinkRouteConfig`/`IZLinkOutboundRouteConfig`가 **설정만 되고 읽히지 않는다**
+- [x] **IMP-DN-15** (결함) — `IZLinkRouteConfig`/`IZLinkOutboundRouteConfig`가 **설정만 되고 읽히지 않는다**
+  — client-server bundle 생성 시 server ROUTER의 mandatory·handover·probe·connect routing id와 client DEALER의 probe 설정을 backend option으로 적용한다. 설정 매핑 테스트 3건, 전체 unit 636건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-16** (결함) — SpotNode의 role config 표면이 **완전한 no-op**이다
 - [ ] **IMP-DN-17** (결함) — **actor가 든 spot을 닫을 수 있다** (check-then-act 경합)
 - [ ] **IMP-DN-18** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **같은 spot을 기다리는 다른 호출자 전부를 실패**시킨다
@@ -331,7 +332,7 @@
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **IMP-DN-14** | `IZLinkSocketConfig`의 각 항목은 소켓에 적용된다 | 적용 경로(`ZLinkChannelBundleFactory.cs:167-176`)가 다루는 건 `MaxMessageSize`·`SendHighWaterMark`·`ReceiveHighWaterMark` **셋뿐**이다. `Linger`·`TcpNoDelay`·`IPv6`·`Immediate`·`ConnectTimeout`·`HandshakeInterval`·`SendBufferSize`·`ReceiveBufferSize`·`ReceiveTimeout`은 **읽는 곳이 없다.** 더 나쁜 건 `ZLinkDotNetBackendAdapters.cs:23,31,39,47,75`가 DEALER/ROUTER/PUB/SUB에 **`Linger = TimeSpan.Zero`를 하드코딩**한다는 것이다. ⇒ `Linger = 1s`를 설정하면 **수락되고 getter로 1초로 읽히는데** 소켓은 Linger 0으로 돈다. 종료 시 큐에 남은 메시지가 **전부 버려진다** — 그 설정이 막으려던 바로 그 일이 |
-| **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 읽는 곳이 **없다.** 대신 `ZLinkRouteChannelInitializer.cs:50-51`이 `SetMandatory(true); SetHandover(true);`를, `ZLinkRouteConnectionSet.cs:118-119`가 `SetProbe(true)`를 **상수로** 박아 둔다. client-server의 **server ROUTER는 셋 중 어느 것도 부르지 않아** `ConfigureServerRouting()`이 **자기가 이름 붙인 바로 그 소켓에서 무효**다 |
+| **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 재검증 결과 상수 정책이 있는 `ZLinkRouteChannelInitializer`·`ZLinkRouteConnectionSet`은 별도 route-mesh 경로였다. 실제 결함은 client-server bundle이 `ConfigureServerRouting()`과 `ConfigureClientRouting()` 결과를 읽지 않는 점이었다. bundle factory가 server ROUTER와 client DEALER 생성 시 각 routing option을 적용한다 |
 | **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | 살아 있는 config 객체를 돌려주는데 **읽는 곳이 0개**다. 애초에 불가능하다 — `IZLinkBackendSpotNode`에 **소켓 옵션 setter가 아예 없다.** ⇒ SPOT fan-out이 backpressure에서 조용히 드롭하는 걸 막으려고 `SendHighWaterMark = 100_000; NoDrop = true`를 걸면 **오류 없이 수락되고 버려진다** |
 | **IMP-DN-17** | [21 §close](../server/21-spot-node.ko.md): **actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다** | `ZLinkSpotNodeCatalog.cs:429-437` — `if (activation.JoinedActorCount > 0) return false;`로 **검사한 뒤 닫는다.** `JoinedActorCount`는 자기 `_gate`가 지키는데, join commit(`ZLinkSpotActivationActors.cs:339`)은 **spot의 직렬 줄**에서 돌며 그 락을 잡지 않는다. ⇒ "0명 확인 → close 등록" 사이에 join commit이 끼면 **actor가 든 방이 파괴된다.** `OnLeaveActor`가 안 돌아 앱 장부엔 그 actor가 남고, actor의 location row는 **해제된 spot을 가리킨다.** C++만 이걸 제대로 한다(`node->mutex`로 검사와 close를 함께 감싼다) |
 | **IMP-DN-18** | [21](../server/21-spot-node.ko.md): `GetOrCreate`는 하나의 activation을 모든 호출자가 공유한다. [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | `ZLinkSpotNodeCatalog.cs:340-375` — 소유자가 **자기 token**으로 생성을 돌리고, 실패하면 `pending.Fail(...)`로 **공유 TCS를 그 실패로 완료**한다. ⇒ 1초 deadline인 A와 30초 deadline인 B가 같은 방을 요청하면, **A가 1초에 취소될 때 B도 함께 죽는다** — B에겐 29초가 남아 있었는데. 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** |

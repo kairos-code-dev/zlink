@@ -36,6 +36,8 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
 {
     void SetRoutingId(RoutingId routingId);
 
+    void SetProbe(bool enabled);
+
     void OnSendReady(Action handler);
 
     bool Send(Message message, SendFlags flags);

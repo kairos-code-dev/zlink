@@ -37,6 +37,37 @@ public sealed class RouteCodecTests
     }
 
     [Fact]
+    public void ChannelBundleFactory_Applies_ServerRoutingConfig_To_BackendRouter()
+    {
+        var socket = new RecordingRouter();
+        var config = new ZLinkRouteConfig
+        {
+            RequireKnownPeer = true,
+            AllowPeerHandover = true,
+            EnablePeerProbe = true,
+            ConnectRoutingId = RoutingId.From("next-peer")
+        };
+
+        ZLinkChannelBundleFactory.ApplyServerRoutingConfig(socket, config);
+
+        Assert.True(socket.Mandatory);
+        Assert.True(socket.Handover);
+        Assert.True(socket.Probe);
+        Assert.Equal(config.ConnectRoutingId, socket.ConnectRoutingId);
+    }
+
+    [Fact]
+    public void ChannelBundleFactory_Applies_ClientRoutingConfig_To_BackendDealer()
+    {
+        var socket = new RecordingRoutingDealer();
+        var config = new ZLinkOutboundRouteConfig { ProbeRouterOnConnect = true };
+
+        ZLinkChannelBundleFactory.ApplyClientRoutingConfig(socket, config);
+
+        Assert.True(socket.ProbeRouterOnConnect);
+    }
+
+    [Fact]
     public async Task RouteHandlerInvoker_Uses_Configured_Codec()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
@@ -417,6 +448,58 @@ public sealed class RouteCodecTests
         }
     }
 
+    private sealed class RecordingRoutingDealer : IZLinkBackendDealerSocket
+    {
+        public bool ProbeRouterOnConnect { get; private set; }
+
+        public void SetProbe(bool enabled)
+        {
+            ProbeRouterOnConnect = enabled;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public void Bind(string endpoint) => throw new NotSupportedException();
+
+        public void SetChannelName(string channelName) => throw new NotSupportedException();
+
+        public void SetMaxMessageSize(long value) => throw new NotSupportedException();
+
+        public void SetSendHighWaterMark(int value) => throw new NotSupportedException();
+
+        public void SetReceiveHighWaterMark(int value) => throw new NotSupportedException();
+
+        public void Connect(string endpoint) => throw new NotSupportedException();
+
+        public void Disconnect(string endpoint) => throw new NotSupportedException();
+
+        public void SetPeerWeight(int weight) => throw new NotSupportedException();
+
+        public int GetPeerWeight() => throw new NotSupportedException();
+
+        public void SetRoutingId(RoutingId routingId) => throw new NotSupportedException();
+
+        public void OnSendReady(Action handler) => throw new NotSupportedException();
+
+        public bool Send(Message message, SendFlags flags) => throw new NotSupportedException();
+
+        public bool Send(IReadOnlyList<Message> parts, SendFlags flags) => throw new NotSupportedException();
+
+        public bool Request(
+            Message message,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout) => throw new NotSupportedException();
+
+        public bool Request(
+            IReadOnlyList<Message> parts,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout) => throw new NotSupportedException();
+
+        public Received? Recv(RecvFlags flags = RecvFlags.None) => throw new NotSupportedException();
+    }
+
     private sealed class RecordingRouter : IZLinkBackendRouterSocket
     {
         private int _disposeCount;
@@ -432,6 +515,14 @@ public sealed class RouteCodecTests
         public string? ReplyContentType { get; private set; }
 
         public string? ReplyBody { get; private set; }
+
+        public bool Mandatory { get; private set; }
+
+        public bool Handover { get; private set; }
+
+        public bool Probe { get; private set; }
+
+        public RoutingId ConnectRoutingId { get; private set; }
 
         public async ValueTask DisposeAsync()
         {
@@ -499,19 +590,22 @@ public sealed class RouteCodecTests
 
         public void SetConnectRoutingId(RoutingId routingId)
         {
+            ConnectRoutingId = routingId;
         }
 
         public void SetProbe(bool enabled)
         {
+            Probe = enabled;
         }
 
         public void SetMandatory(bool mandatory)
         {
-            throw new NotSupportedException();
+            Mandatory = mandatory;
         }
 
         public void SetHandover(bool enabled)
         {
+            Handover = enabled;
         }
 
         public Received? Recv(RecvFlags flags = RecvFlags.None)

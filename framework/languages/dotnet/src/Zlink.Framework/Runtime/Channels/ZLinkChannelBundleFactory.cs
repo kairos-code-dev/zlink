@@ -28,6 +28,7 @@ internal sealed class ZLinkChannelBundleFactory(
 
             // weight 는 bind/connect 前에 적용해 default-weight 노출 창을 없앤다.
             dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
+            ApplyClientRoutingConfig(dealer, channel.Client.RoutingConfig);
             if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint)) dealer.Bind(channel.Client.BindEndpoint);
 
             bundle = new ZLinkChannelRuntimeBundle(
@@ -75,6 +76,7 @@ internal sealed class ZLinkChannelBundleFactory(
 
             // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다(peer 가 그 사이 연결할 수 있다).
             router.SetPeerWeight(channel.Server.SocketConfig.Weight);
+            ApplyServerRoutingConfig(router, channel.Server.RoutingConfig);
             router.Bind(channel.Server!.BindEndpoint!);
             bundle = new ZLinkChannelRuntimeBundle(router, localRid: localRid, socketRole: "router");
 
@@ -173,6 +175,23 @@ internal sealed class ZLinkChannelBundleFactory(
         if (config.SendHighWaterMark > 0) socket.SetSendHighWaterMark(config.SendHighWaterMark);
 
         if (config.ReceiveHighWaterMark > 0) socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
+    }
+
+    internal static void ApplyServerRoutingConfig(
+        IZLinkBackendRouterSocket socket,
+        IZLinkRouteConfig config)
+    {
+        socket.SetMandatory(config.RequireKnownPeer);
+        socket.SetHandover(config.AllowPeerHandover);
+        socket.SetProbe(config.EnablePeerProbe);
+        if (config.ConnectRoutingId.Size > 0) socket.SetConnectRoutingId(config.ConnectRoutingId);
+    }
+
+    internal static void ApplyClientRoutingConfig(
+        IZLinkBackendDealerSocket socket,
+        IZLinkOutboundRouteConfig config)
+    {
+        socket.SetProbe(config.ProbeRouterOnConnect);
     }
 
     private static async ValueTask ThrowAfterCleanupAsync(

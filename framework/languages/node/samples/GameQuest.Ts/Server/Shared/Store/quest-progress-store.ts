@@ -199,7 +199,13 @@ class GameQuestSelfCheckStore {
     const passed = rewardCount === 1 && sourceCount === 3 &&
       aliceEventEvidence.ownerLifecycle.filter((entry) => entry.includes(':rehydrate:')).length >= 2 &&
       bobReconcile.map((event) => event.eventType).join(',') === 'QuestReconciled,QuestCompleted,QuestRewardGranted' &&
-      ['missed-publish:player-bob', 'owner-close:mission-a:player-alice', 'projection-rebuild:player-bob:herb-gathering']
+      [
+        'owner:mission-a:player-alice',
+        'owner:mission-b:player-bob',
+        'missed-publish:player-bob',
+        'owner-close:mission-a:player-alice',
+        'projection-rebuild:player-bob:herb-gathering'
+      ]
         .every((entry) => evidence.some((candidate) => candidate === entry || candidate.startsWith(`${entry}:`)));
     return { passed, evidence };
   }

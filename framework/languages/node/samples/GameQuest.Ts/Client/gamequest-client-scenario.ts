@@ -87,8 +87,6 @@ class GameQuestClientScenario {
     ensure(() => !('targetConnectionId' in firstProgressPush.payload));
     ensure(() => firstHerbPush.payload.progress.questId === QuestIds.HerbGathering);
     ensure(() => firstHerbPush.payload.progress.currentCount === 1);
-    console.log('gamequest-concurrent-owners=completed');
-
     const completeFirstHunt = waitForQuestCompletion(apiAStream, QuestIds.FirstHunt, signal);
     await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'), Object)
       .packetName(PacketNames.killMonsterReq)
@@ -247,6 +245,9 @@ class GameQuestClientScenario {
     await apiBReconnectStream.close();
     const assertion = await waitForServerAssertion(apiA, signal);
     ensure(() => assertion.passed);
+    ensure(() => assertion.evidence.includes('owner:mission-a:player-alice'));
+    ensure(() => assertion.evidence.includes('owner:mission-b:player-bob'));
+    console.log('gamequest-concurrent-owners=completed');
     console.log('gamequest-server-evidence=completed');
   }
 }

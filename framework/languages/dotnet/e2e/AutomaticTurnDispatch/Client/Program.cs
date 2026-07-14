@@ -19,41 +19,51 @@ switch (options.Scenario)
         });
         await client.Connect.Async();
 
-        var (trackASpotRid, _) = await AtdA1SingleTerminatorScenario.RunAsync(client);
-        await AtdA2AwaitTerminatorScenario.RunAsync(client, trackASpotRid);
-        await AtdA3ContinuationContextScenario.RunAsync(client, trackASpotRid);
-        await AtdA4WorkerAwaitScenario.RunAsync(client, trackASpotRid);
-        await AtdE1TimeoutScenario.RunAsync(client);
-        var (timerSpotRid, _) = await AtdC1TimerIsolationScenario.RunAsync(client);
-        await AtdC2TimerReentryScenario.RunAsync(client, timerSpotRid);
-        await AtdD2RemoteSpotAwaitScenario.RunAsync(client);
-        await AtdD3RouteBridgeAwaitScenario.RunAsync(client);
-        await AtdE2CancellationScenario.RunAsync(client);
-
-        var spotRid = $"await-track-b-{Guid.NewGuid():N}";
-        var actorA = $"actor-a-{Guid.NewGuid():N}";
-        var actorB = $"actor-b-{Guid.NewGuid():N}";
-        var bound = await client.Request(new BindAwaitActorsReq(spotRid, [actorA, actorB]))
-            .PacketName("BindAwaitActorsReq")
-            .Timeout(TimeSpan.FromSeconds(30))
-            .Async<BindAwaitActorsRes>();
-        ScenarioAssert.That(bound.Actors.Length == 2, "ATD-B bind actor count mismatch.");
-
-        var actors = new AwaitActorScenarioContext(spotRid, actorA, actorB);
-        await AtdB1OtherActorProgressScenario.RunAsync(client, actors);
-        await AtdB2SameActorReentryScenario.RunAsync(client, actors);
-        await AtdB3ActorJoinAwaitScenario.RunAsync(client, actors);
-        await AtdC3ActorTimerIsolationScenario.RunAsync(client, actors);
-        await AtdD4SessionRelayActorAwaitScenario.RunAsync(client, options.SessionBStreamEndpoint, actors);
+        var suite = new ExecutionTurnScenarioSuite(client, options.SessionBStreamEndpoint);
+        var scenarios = new (string Id, Func<Task> Run)[]
+        {
+            ("TD-A1", () => TdA1TerminatorSurfaceScenario.RunAsync(suite)),
+            ("TD-A2", () => TdA2AsyncCompletionOrderScenario.RunAsync(suite)),
+            ("TD-A3", () => TdA3AsyncCounterSerializationScenario.RunAsync(suite)),
+            ("TD-A4", () => TdA4DelayedAsyncCompletionScenario.RunAsync(suite)),
+            ("TD-A5", () => TdA5AsyncTimerExclusionScenario.RunAsync(suite)),
+            ("TD-B1", () => TdB1YieldProbeInterleaveScenario.RunAsync(suite)),
+            ("TD-B2", () => TdB2YieldQueuedProbeOrderScenario.RunAsync(suite)),
+            ("TD-B3", () => TdB3YieldLostUpdateScenario.RunAsync(suite)),
+            ("TD-B4", () => TdB4YieldTimerInterleaveScenario.RunAsync(suite)),
+            ("TD-C1", () => TdC1HttpYieldInterleaveScenario.RunAsync(suite)),
+            ("TD-C2", () => TdC2HttpAsyncExclusionScenario.RunAsync(suite)),
+            ("TD-C3", () => TdC3IoWorkerCapacityScenario.RunAsync(suite)),
+            ("TD-C4", () => TdC4CpuWorkerTurnOrderScenario.RunAsync(suite)),
+            ("TD-C5", () => TdC5CpuWorkerSourceGateScenario.RunAsync(suite)),
+            ("TD-D1", () => TdD1CrossActorYieldInterleaveScenario.RunAsync(suite)),
+            ("TD-D2", () => TdD2SameActorNoReentryScenario.RunAsync(suite)),
+            ("TD-D3", () => TdD3TimerNoReentryScenario.RunAsync(suite)),
+            ("TD-E1", () => TdE1EntryToUserSpotJoinScenario.RunAsync(suite)),
+            ("TD-E2", () => TdE2UserToUserSpotJoinScenario.RunAsync(suite)),
+            ("TD-E3", () => TdE3OppositeSpotJoinScenario.RunAsync(suite)),
+            ("TD-F1", () => TdF1RemoteSpotContinuationScenario.RunAsync(suite)),
+            ("TD-F2", () => TdF2RouteBridgeYieldScenario.RunAsync(suite)),
+            ("TD-F3", () => TdF3SessionRelayYieldScenario.RunAsync(suite)),
+            ("TD-F4", () => TdF4RequestTimeoutRecoveryScenario.RunAsync(suite)),
+            ("TD-F5", () => TdF5CancellationShutdownRecoveryScenario.RunAsync(suite)),
+            ("TD-F6", () => TdF6SelfRequestTimeoutRecoveryScenario.RunAsync(suite)),
+            ("TD-G1", () => TdG1TerminatorConformanceScenario.RunAsync(suite))
+        };
+        foreach (var scenario in scenarios)
+        {
+            await scenario.Run();
+            Console.WriteLine($"{scenario.Id} result=passed");
+        }
 
         Console.WriteLine("automatic-turn-dispatch client result=passed");
         break;
     }
     case "shutdown-wait":
-        await ShutdownAwaitScenario.RunWaitAsync(options);
+        await ShutdownAwaitProbe.RunWaitAsync(options);
         break;
     case "shutdown-recovery":
-        await ShutdownAwaitScenario.RunRecoveryAsync(options);
+        await ShutdownAwaitProbe.RunRecoveryAsync(options);
         break;
     default:
         throw new ArgumentException($"Unknown scenario: {options.Scenario}");

@@ -36,7 +36,7 @@ internal static class MonC1DispatchFailureScenario
             .Body(new EvidenceWaitReq(
                 [],
                 [["monitor-socket|"], ["monitor-throw|"]]))
-            .SubmitAsync<string[]>();
+            .Async<string[]>();
         var evidence = (await evidenceTask).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("monitor-throw|", StringComparison.Ordinal)))

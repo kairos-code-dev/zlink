@@ -44,7 +44,7 @@ public sealed class HttpClientContractTests
             "PATCH" => client.Patch("/r"),
             _ => client.Options("/r")
         };
-        var response = await request.SubmitRawAsync();
+        var response = await request.AsyncRaw();
 
         Assert.Equal(200, response.Status);
         Assert.Equal(method, seen);
@@ -61,7 +61,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        var response = await client.Head("/r").SubmitRawAsync();
+        var response = await client.Head("/r").AsyncRaw();
 
         Assert.Equal(200, response.Status);
         Assert.Equal(string.Empty, response.Body);
@@ -79,7 +79,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        await client.Get("/search").Query("q", "a b&c").Query("k", "v/w").SubmitRawAsync();
+        await client.Get("/search").Query("q", "a b&c").Query("k", "v/w").AsyncRaw();
 
         Assert.Equal("/search?q=a%20b%26c&k=v%2Fw", rawUrl);
     }
@@ -99,7 +99,7 @@ public sealed class HttpClientContractTests
             .DefaultHeader("authorization", "Bearer token-123")
             .Build();
 
-        await client.Get("/r").Header("x-trace", "abc").SubmitRawAsync();
+        await client.Get("/r").Header("x-trace", "abc").AsyncRaw();
 
         Assert.Equal("Bearer token-123", auth);
         Assert.Equal("abc", trace);
@@ -117,7 +117,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        var response = await client.Post("/games").Body(new CreateGameReq("ranked-0611")).SubmitAsync<CreateGameRes>();
+        var response = await client.Post("/games").Body(new CreateGameReq("ranked-0611")).Async<CreateGameRes>();
 
         Assert.Equal("ranked-0611", received!.Name);
         Assert.Equal("game-7", response.Body.Id);
@@ -144,7 +144,7 @@ public sealed class HttpClientContractTests
 
         var response = await client.Post("/proto")
             .Body(new StringValue { Value = "ping" })
-            .SubmitAsync<StringValue>();
+            .Async<StringValue>();
 
         Assert.Equal("application/x-protobuf", contentType);
         Assert.Equal("ping", received!.Value);
@@ -171,7 +171,7 @@ public sealed class HttpClientContractTests
 
         var response = await client.Post("/packed")
             .Body(new PackedPlayer { Id = 7, Name = "request" })
-            .SubmitAsync<PackedPlayer>();
+            .Async<PackedPlayer>();
 
         Assert.Equal("application/x-msgpack", contentType);
         Assert.Equal(7, received!.Id);
@@ -187,7 +187,7 @@ public sealed class HttpClientContractTests
             await ctx.Response.WriteAsync(200, """{"id":7,"name":"Aria"}"""));
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        var player = await Task.Run(() => client.Get("/players/7").Fetch<Player>());
+        var player = await Task.Run(() => client.Get("/players/7").Async<Player>().AsTask().GetAwaiter().GetResult().Body);
 
         Assert.Equal(7, player.Id);
         Assert.Equal("Aria", player.Name);
@@ -206,7 +206,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        await client.Post("/raw").Body("plain text", "text/plain").SubmitRawAsync();
+        await client.Post("/raw").Body("plain text", "text/plain").AsyncRaw();
 
         Assert.Equal("plain text", body);
         Assert.StartsWith("text/plain", contentType);
@@ -225,7 +225,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
-        await client.Post("/form").Form("name", "a b").Form("city", "x/y").SubmitRawAsync();
+        await client.Post("/form").Form("name", "a b").Form("city", "x/y").AsyncRaw();
 
         Assert.Equal("application/x-www-form-urlencoded", contentType);
         Assert.Equal("name=a%20b&city=x%2Fy", body);
@@ -247,7 +247,7 @@ public sealed class HttpClientContractTests
         await client.Post("/upload")
             .Multipart("field", "value")
             .MultipartFile("file", "a.txt", "file-content", "text/plain")
-            .SubmitRawAsync();
+            .AsyncRaw();
 
         Assert.StartsWith("multipart/form-data; boundary=", contentType);
         Assert.Contains("name=\"field\"", body);
@@ -268,7 +268,7 @@ public sealed class HttpClientContractTests
             .BodyStream(
                 () => chunks.Count > 0 ? Encoding.UTF8.GetBytes(chunks.Dequeue()) : null,
                 "application/octet-stream")
-            .SubmitRawAsync();
+            .AsyncRaw();
 
         Assert.Equal("part-1;part-2;part-3", await server.CapturedBody);
     }
@@ -297,7 +297,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await client.Get("/players/0").SubmitAsync<Player>());
+            await client.Get("/players/0").Async<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -310,7 +310,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await client.Get("/players/7").SubmitAsync<Player>());
+            await client.Get("/players/7").Async<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
     }
@@ -333,7 +333,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).FollowRedirects(3).Build();
 
-        var response = await client.Post("/start").Body(new CreateGameReq("x")).SubmitAsync<CreateGameRes>();
+        var response = await client.Post("/start").Body(new CreateGameReq("x")).Async<CreateGameRes>();
 
         Assert.Equal("GET", finalMethod);
         Assert.Equal("game-1", response.Body.Id);
@@ -358,7 +358,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl)
             .BearerToken("secret").FollowRedirects(3).Build();
 
-        await client.Get("/start").SubmitRawAsync();
+        await client.Get("/start").AsyncRaw();
 
         Assert.Equal("Bearer secret", authAtResult);
     }
@@ -381,7 +381,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(origin.BaseUrl)
             .BearerToken("secret").FollowRedirects(3).Build();
 
-        await client.Get("/start").SubmitRawAsync();
+        await client.Get("/start").AsyncRaw();
 
         Assert.Null(authAtOther);
     }
@@ -398,7 +398,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl).FollowRedirects(2).Build();
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await client.Get("/loop").SubmitRawAsync());
+            await client.Get("/loop").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -410,7 +410,7 @@ public sealed class HttpClientContractTests
         using var server = new FlakyRawServer(1);
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Retry(3).Build();
 
-        var response = await client.Get("/r").SubmitRawAsync();
+        var response = await client.Get("/r").AsyncRaw();
 
         Assert.Equal(200, response.Status);
         Assert.True(server.ConnectionCount >= 2, $"connections={server.ConnectionCount}");
@@ -429,7 +429,7 @@ public sealed class HttpClientContractTests
             .Timeout(TimeSpan.FromMilliseconds(60)).Retry(2).Build();
 
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/slow").SubmitRawAsync());
+            async () => await client.Get("/slow").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
         Assert.True(failure.IsRetriable);
         Assert.IsType<TimeoutException>(failure.InnerException);
@@ -460,9 +460,9 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Cookies().Build();
 
-        await client.Get("/login").SubmitRawAsync();
-        await client.Get("/secure/data").SubmitRawAsync();
-        await client.Get("/open").SubmitRawAsync();
+        await client.Get("/login").AsyncRaw();
+        await client.Get("/secure/data").AsyncRaw();
+        await client.Get("/open").AsyncRaw();
 
         Assert.Equal("session=abc", cookieAtScoped);
         Assert.Null(cookieAtRoot);
@@ -486,7 +486,7 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Compression().Build();
 
-        var response = await client.Get("/data").SubmitAsync<Player>();
+        var response = await client.Get("/data").Async<Player>();
 
         Assert.Equal(42, response.Body.Id);
         Assert.False(response.Headers.ContainsKey("Content-Encoding"));
@@ -504,7 +504,7 @@ public sealed class HttpClientContractTests
             .Timeout(TimeSpan.FromMilliseconds(80)).Build();
 
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/slow").SubmitRawAsync());
+            async () => await client.Get("/slow").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
         Assert.True(failure.IsRetriable);
         Assert.IsType<TimeoutException>(failure.InnerException);
@@ -518,7 +518,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl).MaxResponseBodySize(1024).Build();
 
         var ex =
-            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/big").SubmitRawAsync());
+            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/big").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -535,7 +535,7 @@ public sealed class HttpClientContractTests
 
         var stopwatch = Stopwatch.StartNew();
         var tasks = Enumerable.Range(0, 20)
-            .Select(_ => client.Get("/r").SubmitRawAsync().AsTask())
+            .Select(_ => client.Get("/r").AsyncRaw().AsTask())
             .ToArray();
         await Task.WhenAll(tasks);
         stopwatch.Stop();
@@ -573,7 +573,7 @@ public sealed class HttpClientContractTests
         Assert.Throws<ZLinkFrameworkException>(() => client.Get("no-slash"));
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await client.Post("/r").Body("a", "text/plain").Form("b", "c").SubmitRawAsync());
+            await client.Post("/r").Body("a", "text/plain").Form("b", "c").AsyncRaw());
         Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, ex.Kind);
     }
 
@@ -589,12 +589,12 @@ public sealed class HttpClientContractTests
 
         using (var basic = ZLinkHttpClient.Create(server.BaseUrl).BasicAuth("aria", "secret").Build())
         {
-            await basic.Get("/a").SubmitRawAsync();
+            await basic.Get("/a").AsyncRaw();
         }
 
         using (var bearer = ZLinkHttpClient.Create(server.BaseUrl).BearerToken("tok-9").Build())
         {
-            await bearer.Get("/b").SubmitRawAsync();
+            await bearer.Get("/b").AsyncRaw();
         }
 
         Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("aria:secret")), seen[0]);
@@ -628,9 +628,9 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Cookies().Build();
 
-        await client.Get("/set-secure").SubmitRawAsync();
-        await client.Get("/check-1").SubmitRawAsync();
-        await client.Get("/check-2").SubmitRawAsync();
+        await client.Get("/set-secure").AsyncRaw();
+        await client.Get("/check-1").AsyncRaw();
+        await client.Get("/check-2").AsyncRaw();
 
         Assert.Equal("keep=1", cookieAfterSecure); // secure cookie withheld over http
         Assert.Null(cookieAfterDelete); // keep deleted by Max-Age=0
@@ -650,7 +650,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Compression().Build();
 
         var ex =
-            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/bad").SubmitRawAsync());
+            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/bad").AsyncRaw());
 
         Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
     }
@@ -667,7 +667,7 @@ public sealed class HttpClientContractTests
                 .TrustCertificateFile(certPath)
                 .Build();
 
-            var response = await client.Get("/secure").SubmitRawAsync();
+            var response = await client.Get("/secure").AsyncRaw();
 
             Assert.Equal(200, response.Status);
         }
@@ -692,7 +692,7 @@ public sealed class HttpClientContractTests
                 .TrustCertificateFile(otherCertPath)
                 .Build();
 
-            await Assert.ThrowsAnyAsync<Exception>(async () => await client.Get("/secure").SubmitRawAsync());
+            await Assert.ThrowsAnyAsync<Exception>(async () => await client.Get("/secure").AsyncRaw());
         }
         finally
         {
@@ -716,7 +716,7 @@ public sealed class HttpClientContractTests
                 .ClientCertificateFile(clientCertPath, clientKeyPath)
                 .Build();
 
-            var response = await client.Get("/mtls").SubmitRawAsync();
+            var response = await client.Get("/mtls").AsyncRaw();
             var presented = await server.PresentedClientCertificate;
 
             Assert.Equal(200, response.Status);
@@ -755,7 +755,7 @@ public sealed class HttpClientContractTests
         });
 
         var player = await ZLinkHttpClient.Create(server.BaseUrl).Put("/players/3")
-            .Body(new Player(3, "OneShot")).SubmitAsync<Player>();
+            .Body(new Player(3, "OneShot")).Async<Player>();
 
         Assert.Equal("PUT", method);
         Assert.Equal(3, player.Body.Id);

@@ -5,7 +5,7 @@ namespace Zlink.Framework.UnitTests;
 public sealed class WorkerPoolTests
 {
     [Fact]
-    public async Task RunWorker_Async_Holds_Serial_Turn_Until_Work_Completes()
+    public async Task RunCpuWorker_Async_Holds_Serial_Turn_Until_Work_Completes()
     {
         using var pool = CreatePool(1);
         await using var queue = CreateQueue();
@@ -55,7 +55,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Yield_Releases_And_Resumes_Through_Serial_Turn()
+    public async Task RunCpuWorker_Yield_Releases_And_Resumes_Through_Serial_Turn()
     {
         using var pool = CreatePool(1);
         await using var queue = CreateQueue();
@@ -109,7 +109,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Async_Returns_Result_From_Pool_Thread()
+    public async Task RunCpuWorker_Async_Returns_Result_From_Pool_Thread()
     {
         using var pool = CreatePool(2);
         await using var queue = CreateQueue();
@@ -121,7 +121,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Queue_Full_Fails_Fast_With_WorkerQueueFull()
+    public async Task RunCpuWorker_Queue_Full_Fails_Fast_With_WorkerQueueFull()
     {
         using var pool = CreatePool(1, 1);
         await using var queue = CreateQueue();
@@ -158,7 +158,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Timeout_Drops_Late_Completion()
+    public async Task RunCpuWorker_Timeout_Drops_Late_Completion()
     {
         using var pool = CreatePool(2);
         await using var queue = CreateQueue();
@@ -187,7 +187,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Idle_Threads_Shrink_After_Idle_Timeout()
+    public async Task RunCpuWorker_Idle_Threads_Shrink_After_Idle_Timeout()
     {
         using var pool = new ZLinkWorkerPool(
             0,
@@ -204,7 +204,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Worker_Exception_Maps_To_WorkerFailed()
+    public async Task RunCpuWorker_Worker_Exception_Maps_To_WorkerFailed()
     {
         using var pool = CreatePool(2);
         await using var queue = CreateQueue();
@@ -222,7 +222,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Second_Terminator_Throws()
+    public async Task RunCpuWorker_Second_Terminator_Throws()
     {
         using var pool = CreatePool(2);
         await using var queue = CreateQueue();
@@ -296,7 +296,7 @@ public sealed class WorkerPoolTests
         ZLinkSerialExecutionQueue dispatcherQueue)
     {
         _ = dispatcherQueue;
-        return new ZLinkWorkerCall<TResult>(pool, work);
+        return new ZLinkWorkerCall<TResult>(pool, work, new ZLinkRuntimeErrorSink());
     }
 
     private static ZLinkSerialExecutionQueue CreateQueue()

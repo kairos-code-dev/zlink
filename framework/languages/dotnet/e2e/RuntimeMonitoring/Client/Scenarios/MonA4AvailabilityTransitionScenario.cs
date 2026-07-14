@@ -14,9 +14,9 @@ internal static class MonA4AvailabilityTransitionScenario
         var before = await trigger.RequestAsync(new ProfileReq("drain", "mon-a4-before-drain"));
         ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 direct trigger did not hit drained service.");
 
-        await service.Post("/admin/drain").SubmitRawAsync();
+        await service.Post("/admin/drain").AsyncRaw();
         var triggerEvidence = await WaitForTriggerDrainEvidenceAsync(trigger);
-        await service.Post("/admin/restore").SubmitRawAsync();
+        await service.Post("/admin/restore").AsyncRaw();
 
         ScenarioAssert.That(
             triggerEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
@@ -55,7 +55,7 @@ internal static class MonA4AvailabilityTransitionScenario
             .Body(new EvidenceWaitReq(
                 ["monitor-location-runtime|source=location-runtime"],
                 [["kind=TopologyChanged"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 
     private static async Task<string[]> WaitForServiceDrainEvidenceAsync(ZLinkHttpClient service)
@@ -64,7 +64,7 @@ internal static class MonA4AvailabilityTransitionScenario
             .Body(new EvidenceWaitReq(
                 ["admin|"],
                 [["action=drain"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         if (evidence.Any(line => line.Contains("admin|", StringComparison.Ordinal)
                                  && line.Contains("action=drain", StringComparison.Ordinal)))
             return evidence;

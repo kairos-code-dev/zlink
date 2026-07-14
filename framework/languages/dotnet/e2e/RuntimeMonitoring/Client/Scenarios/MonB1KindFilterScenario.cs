@@ -33,7 +33,7 @@ internal static class MonB1KindFilterScenario
             .Body(new EvidenceWaitReq(
                 ["monitor-socket|"],
                 [["kind=ConnectionReady"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                  && line.Contains("kind=ConnectionReady", StringComparison.Ordinal))
             && evidence.Where(line => line.Contains("monitor-socket|", StringComparison.Ordinal))

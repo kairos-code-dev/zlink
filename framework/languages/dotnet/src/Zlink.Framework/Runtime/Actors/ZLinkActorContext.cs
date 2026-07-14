@@ -66,6 +66,14 @@ internal sealed class ZLinkActorJoinSpotCall(
         return ExecuteAsync(cancellationToken);
     }
 
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync(cancellationToken),
+            "actor Spot join submit",
+            runtime.ErrorSink);
+    }
+
     public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
     {
         return _turn is null
@@ -98,6 +106,11 @@ internal sealed class ZLinkActorJoinSpotCall(
         }
     }
 
+    private async ValueTask ObserveAsync(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
 }
 
 internal sealed class ZLinkActorJoinEntrySpotCall(
@@ -119,6 +132,14 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
     public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync(cancellationToken);
+    }
+
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync(cancellationToken),
+            "actor Entry Spot join submit",
+            runtime.ErrorSink);
     }
 
     public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
@@ -148,6 +169,11 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         {
             throw new TimeoutException($"Entry SPOT actor join timed out after {timeout}.");
         }
+    }
+
+    private async ValueTask ObserveAsync(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
 
 }

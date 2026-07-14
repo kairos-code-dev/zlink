@@ -10,6 +10,8 @@ namespace Zlink.HttpClient.Runtime;
 /// </summary>
 internal sealed class HttpClientOptions
 {
+    public IZLinkHttpExecutionScheduler? ExecutionScheduler { get; init; }
+
     public required string BaseUrl { get; init; }
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(3000);

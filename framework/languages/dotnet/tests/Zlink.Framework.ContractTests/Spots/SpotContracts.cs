@@ -456,10 +456,16 @@ public sealed class SpotContracts
             return ValueTask.FromResult<IZLinkTimer>(new Timer());
         }
 
-        public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        public IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
             Func<CancellationToken, TResult> work)
         {
             return new WorkerCall<TResult>(work);
+        }
+
+        public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+            Func<CancellationToken, ValueTask<TResult>> work)
+        {
+            return new IoWorkerCall<TResult>(work);
         }
 
         public void AddHandler<THandler>()
@@ -552,10 +558,16 @@ public sealed class SpotContracts
             return ValueTask.FromResult<IZLinkTimer>(new Timer());
         }
 
-        public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        public IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
             Func<CancellationToken, TResult> work)
         {
             return new WorkerCall<TResult>(work);
+        }
+
+        public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+            Func<CancellationToken, ValueTask<TResult>> work)
+        {
+            return new IoWorkerCall<TResult>(work);
         }
 
         public void AddHandler<THandler>()
@@ -618,6 +630,11 @@ public sealed class SpotContracts
 
     private sealed class WorkerCall<TResult>(Func<CancellationToken, TResult> work) : IZLinkWorkerCall<TResult>
     {
+        public void Submit(CancellationToken cancellationToken = default)
+        {
+            _ = work(cancellationToken);
+        }
+
         public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout)
         {
             return this;
@@ -633,6 +650,30 @@ public sealed class SpotContracts
             return Async(cancellationToken);
         }
 
+    }
+
+    private sealed class IoWorkerCall<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work) : IZLinkWorkerCall<TResult>
+    {
+        public void Submit(CancellationToken cancellationToken = default)
+        {
+            _ = work(cancellationToken);
+        }
+
+        public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
+
+        public ValueTask<TResult> Async(CancellationToken cancellationToken = default)
+        {
+            return work(cancellationToken);
+        }
+
+        public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
+        {
+            return work(cancellationToken);
+        }
     }
 
     private sealed class SpotManager : IZLinkSpotManager
@@ -748,6 +789,10 @@ public sealed class SpotContracts
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
+        public void Submit<TReply>(CancellationToken cancellationToken = default)
+        {
+        }
+
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;

@@ -38,24 +38,24 @@ internal sealed class ToActorScenarioContext : IDisposable
 
     public async Task EnsureActorBAsync(string actorId)
     {
-        await _actorBHttp.Post($"/actors/{actorId}/ensure").Body(new { }).SubmitAsync<object>();
+        await _actorBHttp.Post($"/actors/{actorId}/ensure").Body(new { }).Async<object>();
     }
 
     public async Task DestroyActorAAsync(string actorId, string scenario)
     {
         await _actorHttp.Post($"/actors/{actorId}/destroy?scenario={scenario}")
             .Body(new { })
-            .SubmitAsync<DestroyActorReply>();
+            .Async<DestroyActorReply>();
     }
 
     public async Task DisconnectCallerAsync()
     {
-        await _callerHttp.Post("/route/disconnect").Body(new { }).SubmitAsync<object>();
+        await _callerHttp.Post("/route/disconnect").Body(new { }).Async<object>();
     }
 
     public async Task ReconnectCallerAsync()
     {
-        await _callerHttp.Post("/route/reconnect").Body(new { }).SubmitAsync<object>();
+        await _callerHttp.Post("/route/reconnect").Body(new { }).Async<object>();
     }
 
     public async Task AssertCallAsync(string scenario, string actorId, string value, string expected, bool send)
@@ -80,20 +80,20 @@ internal sealed class ToActorScenarioContext : IDisposable
     {
         return (await _callerHttp.Post($"/refs/{actorId}/capture")
             .Body(new { })
-            .SubmitAsync<ActorRefSnapshot>()).Body;
+            .Async<ActorRefSnapshot>()).Body;
     }
 
     public async Task<ActorEvidence[]> GetAllActorEvidenceAsync()
     {
-        var actorA = (await _actorHttp.Get("/evidence").SubmitAsync<ActorEvidence[]>()).Body;
-        var actorB = (await _actorBHttp.Get("/evidence").SubmitAsync<ActorEvidence[]>()).Body;
+        var actorA = (await _actorHttp.Get("/evidence").Async<ActorEvidence[]>()).Body;
+        var actorB = (await _actorBHttp.Get("/evidence").Async<ActorEvidence[]>()).Body;
         return actorA.Concat(actorB).ToArray();
     }
 
     public async Task AssertRouteAbsentAsync(string actorId)
     {
         var status = (await _callerHttp.Get($"/directory/{actorId}")
-            .SubmitAsync<ActorRouteStatus>()).Body;
+            .Async<ActorRouteStatus>()).Body;
         Require(!status.Exists, $"Actor route '{actorId}' was created unexpectedly.");
     }
 
@@ -184,7 +184,7 @@ internal sealed class ToActorScenarioContext : IDisposable
             {
                 reply = (await _actorHttp.Post($"/actors/{actorId}/push")
                     .Body(new BoundPushRequest(scenario, actorId, value))
-                    .SubmitAsync<BoundPushReply>()).Body;
+                    .Async<BoundPushReply>()).Body;
                 break;
             }
             catch (Exception error)
@@ -226,7 +226,7 @@ internal sealed class ToActorScenarioContext : IDisposable
         {
             last = (await actor.Post($"/actors/{actorId}/push")
                 .Body(new BoundPushRequest(scenario, actorId, value))
-                .SubmitAsync<BoundPushReply>()).Body;
+                .Async<BoundPushReply>()).Body;
             if (!last.Submitted && last.ErrorKind == "ActorSessionNotBound") return;
             await Task.Delay(100);
         }
@@ -239,7 +239,7 @@ internal sealed class ToActorScenarioContext : IDisposable
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var entries = (await _sessionAHttp.Get("/evidence").SubmitAsync<string[]>()).Body;
+            var entries = (await _sessionAHttp.Get("/evidence").Async<string[]>()).Body;
             if (entries.Any(entry => entry.Contains(marker, StringComparison.Ordinal))) return;
             await Task.Delay(100);
         }
@@ -249,7 +249,7 @@ internal sealed class ToActorScenarioContext : IDisposable
     public async Task AssertNoActorEvidenceAsync(string actorId)
     {
         await Task.Delay(300);
-        var entries = (await _actorHttp.Get("/evidence").SubmitAsync<ActorEvidence[]>()).Body;
+        var entries = (await _actorHttp.Get("/evidence").Async<ActorEvidence[]>()).Body;
         Require(entries.All(item => item.ActorId != actorId),
             $"Missing actor '{actorId}' unexpectedly produced handler or lifecycle evidence.");
     }
@@ -296,12 +296,12 @@ internal sealed class ToActorScenarioContext : IDisposable
 
     private async Task PostActorAAsync(string path)
     {
-        await _actorHttp.Post(path).Body(new { }).SubmitAsync<object>();
+        await _actorHttp.Post(path).Body(new { }).Async<object>();
     }
 
     private async Task<T> PostJsonAsync<T>(string path, object body)
     {
-        return (await _callerHttp.Post(path).Body(body).SubmitAsync<T>()).Body
+        return (await _callerHttp.Post(path).Body(body).Async<T>()).Body
                ?? throw new InvalidOperationException($"Endpoint '{path}' returned null.");
     }
 

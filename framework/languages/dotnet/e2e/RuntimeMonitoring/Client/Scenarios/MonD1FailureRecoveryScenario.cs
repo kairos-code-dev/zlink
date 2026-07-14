@@ -18,7 +18,7 @@ internal static class MonD1FailureRecoveryScenario
             .Timeout(TimeSpan.FromSeconds(20))
             .Build();
 
-        await serviceB.Post("/shutdown").SubmitAsync<object>();
+        await serviceB.Post("/shutdown").Async<object>();
         var serviceBUri = new Uri(options.ServiceBUrl);
         await WaitForPortStateAsync(
             serviceBUri.Host,
@@ -59,7 +59,7 @@ internal static class MonD1FailureRecoveryScenario
                 .Body(new EvidenceWaitReq(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
                     []))
-                .SubmitAsync<string[]>()).Body;
+                .Async<string[]>()).Body;
             ScenarioAssert.That(
                 serviceBEvidence.Any(line => line.Contains(
                     "profile-request|rid=svc-b|marker=mon-d1-request|value=restart",
@@ -77,7 +77,7 @@ internal static class MonD1FailureRecoveryScenario
                     .Body(new EvidenceWaitReq(
                         ["monitor-location-runtime|source=location-runtime"],
                         [["kind=TopologyChanged"]]))
-                    .SubmitAsync<string[]>()).Body;
+                    .Async<string[]>()).Body;
                 continuitySeen = observerEvidence.Count(line => line.Contains(
                     "monitor-location-runtime|source=location-runtime|kind=TopologyChanged",
                     StringComparison.Ordinal)) >= 3;
@@ -169,7 +169,7 @@ internal static class MonD1FailureRecoveryScenario
     {
         try
         {
-            await http.Post(path).SubmitAsync<object>();
+            await http.Post(path).Async<object>();
         }
         catch (HttpRequestException)
         {

@@ -1,25 +1,33 @@
-# .NET AutomaticTurnDispatch E2E feature map
+# .NET ExecutionTurn E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-8-automatic-turn-dispatch.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-8-execution-turn.ko.md`
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| ATD-A1 | 구현 | request, actor join, worker call이 `.Async(...)` 하나만 완료 terminator로 제공하는지 contract test로 확인하고, 배포 fixture의 `HoldReq`가 같은 표면으로 정상 완료되는 marker를 검증한다. |
-| ATD-A2 | 구현 | stream connector request가 session gateway를 거쳐 play 노드에 도달한다. `AwaitReq`가 `RequestToChannel(...).Async<TRes>()`로 기다리는 동안 같은 Spot의 `ProbeReq`가 먼저 실행되는 marker를 검증한다. |
-| ATD-A3 | 구현 | request id, spot rid, correlation id, await continuation marker order를 검증한다. stream metadata 직접 노출은 Spot request handler public surface가 아니므로 이 시나리오의 완료 조건에 넣지 않는다. |
-| ATD-A4 | 구현 | stream connector request가 session gateway를 거쳐 play 노드에 도달한다. `RunWorker(...).Async(...)`가 worker 완료를 기다리는 동안 Spot turn을 반납하고, continuation이 원래 Spot mailbox에서 재개되는 marker를 검증한다. |
-| ATD-B1 | 구현 | stream connector request가 session gateway에서 actor relay로 이어진다. actor A가 `RequestToChannel(...).Async<TRes>()`로 기다리는 동안 actor B의 fast request가 먼저 완료되는 marker를 검증한다. |
-| ATD-B2 | 구현 | 같은 stream session actor relay 경로에서 actor A의 fast request가 actor A의 await continuation과 completion 뒤에 실행되는 marker를 검증한다. entry spot actor request handler가 actor mailbox를 통과하는 runtime 회귀도 함께 검증한다. |
-| ATD-B3 | 구현 | actor A handler가 `JoinSpot(...).Async(...)`로 user spot join을 기다리는 동안 actor B의 fast request가 먼저 완료되는 marker를 검증한다. |
-| ATD-C1 | 구현 | stream connector request가 timer scenario를 시작한다. timer A가 `RequestToChannel(...).Async<TRes>()`로 기다리는 동안 timer B tick이 먼저 완료되는 marker를 검증한다. |
-| ATD-C2 | 구현 | 같은 timer의 다음 tick이 이전 await tick의 continuation과 completion 뒤에 실행되는 marker를 검증한다. |
-| ATD-C3 | 구현 | 같은 stream connector session에서 actor bind/relay를 먼저 만든 뒤, actor A가 await 중일 때 같은 Spot의 timer fast tick이 완료되는 순서와 timer await 중 actor B fast request가 완료되는 순서를 모두 검증한다. scenario 시작과 교차 request는 session gateway connector request로 들어간다. |
-| ATD-D1 | 구현 | `play-a`와 `delay-a`의 local topology에서 A/B/C/E1 marker를 검증한다. 모든 scenario 시작 packet은 stream connector에서 session gateway로 들어간다. |
-| ATD-D2 | 구현 | `play-a` Spot handler가 `RequestToSpot(...).Async<TRes>()`로 `play-b` target Spot을 기다린다. `play-a`에는 owner continuation marker가 남고, `play-b`에는 target Spot handler marker만 남는 것을 검증한다. |
-| ATD-D3 | 구현 | stream connector request가 session gateway를 거쳐 `play-b` route mesh control로 relay되고, `play-b`가 target Spot route request handler에서 `RequestToChannel(...).Async<TRes>()`를 수행한다. await 중 같은 target Spot의 probe가 먼저 실행되는 marker도 검증한다. |
-| ATD-D4 | 구현 | actor request는 실제 stream session에서 actor bind/relay로 play 노드에 도달한다. actor handler가 await 뒤 bound session으로 push를 보내고, session-b의 bind하지 않은 connector에는 push가 오지 않는 것을 검증한다. |
-| ATD-E1 | 구현 | stream connector request가 session gateway를 거쳐 play 노드에 도달한다. `RequestToChannel(...).Timeout(...).Async<TRes>()` timeout 뒤 같은 Spot mailbox가 `ProbeReq`를 처리하는 marker를 검증한다. |
-| ATD-E2 | 구현 | server-side cancellation token이 `Await<TRes>(token)` 대기를 취소하고, cancellation catch와 completion marker가 원래 Spot mailbox에서 이어진 뒤 같은 Spot mailbox가 post-cancel `ProbeReq`를 처리하는 marker를 검증한다. 이 scenario가 `ZLinkSerialTurn`의 await cancellation 회귀를 잡는다. |
-| ATD-E3 | 구현 | `shutdown-wait`가 long-running request의 `await-released` marker 뒤 play-a를 종료한다. session gateway가 client timeout보다 짧은 downstream deadline으로 public remote error를 반환하며, client-side `RequestTimeout`은 성공으로 인정하지 않는다. play-a 재시작 뒤 같은 Spot handle이 refresh되어 recovery probe가 통과하는지도 검증한다. |
-| ATD-E4 | 구현 | runner가 HTTP trigger/client 사용, Play Spot/Entry Spot handler 밖의 `.Await` 사용, connector를 만들지 않는 client scenario 파일을 정적으로 검사한다. |
-| ATD-E5 | 구현 | .NET report는 공통 scenario id와 marker 이름을 사용한다. 여러 framework 언어의 Config 8 report를 한 번에 모아 비교하는 집계 단계는 별도 cross-language parity gate에서 수행한다. |
+| TD-A1 | 구현 | request, actor join, worker, framework HTTP client가 `Submit`/`Async`/`Yield`를 공개하고 blocking 완료 API를 노출하지 않는지 확인한다. |
+| TD-A2 | 구현 | `Async` 대기 뒤 continuation과 completion이 끝난 다음 같은 Spot probe가 실행되는 순서를 확인한다. |
+| TD-A3 | 구현 | 같은 Spot에서 여덟 개 read-modify-write를 `Async`로 실행하고 counter가 정확히 8인지 확인한다. |
+| TD-A4 | 구현 | 1초 `Async` 대기의 응답이 별도 completion 경로로 도착해 timeout 없이 재개되는지 확인한다. |
+| TD-A5 | 구현 | `Async` 대기 중 같은 Spot timer가 지연되고 대기 완료 뒤 실행되는지 확인한다. |
+| TD-B1 | 구현 | `Yield` 대기 중 같은 Spot probe가 실행되고 continuation이 이후 재개되는지 확인한다. |
+| TD-B2 | 구현 | `Yield` continuation 앞에 큐에 들어간 세 probe가 순서대로 실행되는지 확인한다. |
+| TD-B3 | 구현 | 여덟 개 read-modify-write가 `Yield` 구간에서 같은 이전 값을 관측해 lost update가 발생함을 확인한다. |
+| TD-B4 | 구현 | `Yield` 대기 중 같은 Spot timer가 실행되는지 확인한다. |
+| TD-C1 | 구현 | DI로 주입한 framework HTTP client의 `Yield`가 외부 HTTP API 대기 중 Spot probe를 허용하는지 확인한다. |
+| TD-C2 | 구현 | 같은 HTTP 호출의 `Async`가 completion까지 Spot turn을 유지하는지 확인한다. |
+| TD-C3 | 구현 | CPU worker pool보다 많은 비동기 HTTP 작업을 `RunIoWorker(...).Yield(...)`로 완료하고 `WorkerQueueFull`이 없는지 확인한다. |
+| TD-C4 | 구현 | CPU worker 스레드 증거와 `Async`/`Yield`에 따른 같은 Spot probe 순서 차이를 확인한다. |
+| TD-C5 | 구현 | CPU worker delegate에 blocking I/O 언래핑이 없는지 source gate로 확인한다. |
+| TD-D1 | 구현 | actor A가 `Yield` 중일 때 actor B handler가 실행되는지 확인한다. |
+| TD-D2 | 구현 | actor A의 `Yield` 구간에도 같은 actor A의 두 번째 handler가 재진입하지 않는지 확인한다. |
+| TD-D3 | 구현 | timer의 `Yield` 구간에도 같은 timer의 다음 tick이 이전 tick 완료 뒤 시작하는지 확인한다. |
+| TD-E1 | 구현 | Entry Spot actor handler의 `JoinSpot(...).Async(...)`가 user Spot join을 완료하는지 확인한다. |
+| TD-E2 | 구현 | user Spot actor handler의 `JoinSpot(...).Async(...)`가 다른 user Spot으로 이동을 완료하는지 확인한다. |
+| TD-E3 | 구현 | 서로 반대 방향으로 시작한 두 user Spot join이 모두 timeout 없이 완료되는지 확인한다. |
+| TD-F1 | 구현 | 다른 노드의 Spot request를 기다린 continuation이 caller 노드로 돌아오는지 확인한다. |
+| TD-F2 | 구현 | route bridge로 도달한 `play-b` Spot에서도 `Yield` 의미와 marker 순서가 같은지 확인한다. |
+| TD-F3 | 구현 | session relay로 도달한 actor handler에서도 `Yield`의 mailbox 의미가 같은지 확인한다. |
+| TD-F4 | 구현 | request timeout 뒤 같은 Spot probe가 정상 실행되는지 확인한다. |
+| TD-F5 | 구현 | cancellation 뒤 같은 Spot probe가 정상 실행되며 별도 shutdown runner가 runtime 종료와 recovery를 확인한다. |
+| TD-F6 | 구현 | 현재 Spot으로 되돌아오는 `Async` request가 timeout으로 끝나고 다음 probe가 실행되는지 확인한다. |
+| TD-G1 | 구현 | 공통 terminator 표면과 `Async`/`Yield` marker 순서를 .NET 결과로 고정한다. |

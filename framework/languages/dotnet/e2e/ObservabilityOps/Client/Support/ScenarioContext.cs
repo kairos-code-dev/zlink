@@ -55,7 +55,7 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
     {
         return (await PlayA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(markers, []))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 
     public string RequireSharedFlow(string packetName, params string[] roleLabels)
@@ -86,7 +86,7 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
         return (await client.Post("/drain/wait")
             .Query("timeoutMs", ((int)timeout.TotalMilliseconds).ToString())
             .Timeout(timeout + TimeSpan.FromSeconds(2))
-            .SubmitAsync<DrainStatus>()).Body;
+            .Async<DrainStatus>()).Body;
     }
 
     private static string? FlowId(string line) =>

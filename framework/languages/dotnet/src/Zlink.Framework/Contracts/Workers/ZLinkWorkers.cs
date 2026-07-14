@@ -4,6 +4,8 @@ public interface IZLinkWorkerCall<TResult>
 {
     IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout);
 
+    void Submit(CancellationToken cancellationToken = default);
+
     ValueTask<TResult> Async(CancellationToken cancellationToken = default);
 
     ValueTask<TResult> Yield(CancellationToken cancellationToken = default);

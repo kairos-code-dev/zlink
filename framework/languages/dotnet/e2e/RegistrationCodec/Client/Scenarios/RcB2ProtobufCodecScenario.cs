@@ -8,7 +8,7 @@ internal static class RcB2ProtobufCodecScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        var result = (await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioRes>()).Body;
+        var result = (await server.Post("/codec/roundtrip").Async<CodecScenarioRes>()).Body;
         ScenarioAssert.That(result.ProtobufValue.Contains("echo:rc-b2", StringComparison.Ordinal),
             "RC-B2 Protobuf reply mismatch.");
         ScenarioAssert.That(

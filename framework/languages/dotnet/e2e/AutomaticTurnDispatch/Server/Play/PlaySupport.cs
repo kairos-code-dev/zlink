@@ -1,5 +1,6 @@
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
+using Zlink.Framework.Contracts.Channels;
 
 namespace AutomaticTurnDispatch.Server.Play;
 
@@ -95,6 +96,7 @@ internal sealed record PlayOptions(
     string RedisKeyPrefix,
     string ControlEndpoint,
     string DelayEndpoint,
+    string ExternalApiBaseUrl,
     string SpotRouterEndpoint,
     string SpotPubEndpoint,
     string SpotRouteEndpoint,
@@ -112,6 +114,7 @@ internal sealed record PlayOptions(
             Cli.Required(values, "redis-key-prefix"),
             Cli.Required(values, "control-endpoint"),
             Cli.Required(values, "delay-endpoint"),
+            Cli.Required(values, "external-api-base-url"),
             Cli.Required(values, "spot-router-endpoint"),
             Cli.Required(values, "spot-pub-endpoint"),
             Cli.Required(values, "spot-route-endpoint"),
@@ -193,5 +196,21 @@ internal static class ActorReplies
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             marker);
+    }
+}
+
+internal static class TurnTerminator
+{
+    public static ValueTask<TReply> Complete<TReply>(
+        IZLinkRequestCall call,
+        string terminator,
+        CancellationToken cancellationToken)
+    {
+        return terminator switch
+        {
+            "async" => call.Async<TReply>(cancellationToken),
+            "yield" => call.Yield<TReply>(cancellationToken),
+            _ => throw new InvalidOperationException($"Unknown execution terminator '{terminator}'.")
+        };
     }
 }

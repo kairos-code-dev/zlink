@@ -177,7 +177,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
             try
             {
                 using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(2)).Build();
-                if ((await http.Get("/health").SubmitRawAsync()).Status == 200) return;
+                if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
             catch
             {
@@ -209,7 +209,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         }
 
         using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
-        await http.Post("/shutdown").SubmitRawAsync();
+        await http.Post("/shutdown").AsyncRaw();
         _shutdownRequested = true;
     }
 
@@ -219,7 +219,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
             throw new InvalidOperationException("Cannot drain an exited process.");
 
         using var http = ZLinkHttpClient.Create(healthUrl).Timeout(GracefulExitTimeout).Build();
-        return (await http.Post("/drain").SubmitAsync<DrainResultRes>()).Body;
+        return (await http.Post("/drain").Async<DrainResultRes>()).Body;
     }
 
     public async Task WaitForGracefulExitAsync()

@@ -24,7 +24,7 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             .Build();
         var room = api.Post("/games")
             .Body(new CreateGameHttpReq(options.GameName))
-            .Fetch<CreateGameHttpRes>();
+            .Async<CreateGameHttpRes>().AsTask().GetAwaiter().GetResult().Body;
 
         Ensure(!string.IsNullOrWhiteSpace(room.RoomId));
         Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint));

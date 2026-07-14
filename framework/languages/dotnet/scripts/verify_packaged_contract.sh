@@ -33,6 +33,7 @@ PROJECTS=(
   src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj
   src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj
   src/Zlink.Framework.Locations.Redis/Zlink.Framework.Locations.Redis.csproj
+  src/Zlink.HttpClient/Zlink.HttpClient.csproj
   src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj
 )
 PACKAGE_IDS=(
@@ -41,11 +42,10 @@ PACKAGE_IDS=(
   Zlink.Framework.Codecs.MessagePack
   Zlink.Framework.Codecs.Protobuf
   Zlink.Framework.Locations.Redis
+  Zlink.HttpClient
   Systems.Zlink.Stream.Connector
 )
-OUT_OF_SCOPE_PACKABLE_PROJECTS=(
-  src/Zlink.HttpClient/Zlink.HttpClient.csproj
-)
+OUT_OF_SCOPE_PACKABLE_PROJECTS=()
 
 packable_projects=()
 mapfile -t all_projects < <(rg --files "$DOTNET_ROOT" -g '*.csproj' | sort)
@@ -192,6 +192,7 @@ cat >"$CONSUMER_DIR/NuGet.Config" <<EOF
       <package pattern="Zlink.Framework.Codecs.MessagePack" />
       <package pattern="Zlink.Framework.Codecs.Protobuf" />
       <package pattern="Zlink.Framework.Locations.Redis" />
+      <package pattern="Zlink.HttpClient" />
       <package pattern="Systems.Zlink.Stream.Connector" />
     </packageSource>
     <packageSource key="bindings">
@@ -227,6 +228,7 @@ cat >"$SOURCE_CONSUMER_DIR/SourceConsumer.csproj" <<EOF
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Locations.Redis/Zlink.Framework.Locations.Redis.csproj" />
+    <ProjectReference Include="$DOTNET_ROOT/src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
   </ItemGroup>
 </Project>
@@ -239,6 +241,7 @@ using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Locations.Redis;
+using Zlink.HttpClient;
 
 var assemblies = new[]
 {
@@ -247,6 +250,7 @@ var assemblies = new[]
     typeof(ZLinkMessagePackCodec).Assembly,
     typeof(ZLinkProtobufCodec).Assembly,
     typeof(ZLinkRedisLocationStore).Assembly,
+    typeof(ZLinkHttpClient).Assembly,
     typeof(IZlinkStreamConnector).Assembly
 };
 File.WriteAllText(args[0], PublicContractSnapshot.Render(assemblies));
@@ -266,6 +270,7 @@ cat >"$CONSUMER_DIR/Consumer.csproj" <<EOF
     <PackageReference Include="Zlink.Framework.Codecs.MessagePack" Version="$VERSION" />
     <PackageReference Include="Zlink.Framework.Codecs.Protobuf" Version="$VERSION" />
     <PackageReference Include="Zlink.Framework.Locations.Redis" Version="$VERSION" />
+    <PackageReference Include="Zlink.HttpClient" Version="$VERSION" />
     <PackageReference Include="Systems.Zlink.Stream.Connector" Version="$VERSION" />
   </ItemGroup>
 </Project>
@@ -280,6 +285,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Locations.Redis;
+using Zlink.HttpClient;
 
 var assembly = typeof(IZLinkRequestCall).Assembly;
 var removedContracts = new[]
@@ -308,13 +314,15 @@ var packagedAssemblies = new[]
     typeof(ZLinkMessagePackCodec).Assembly,
     typeof(ZLinkProtobufCodec).Assembly,
     typeof(ZLinkRedisLocationStore).Assembly,
+    typeof(ZLinkHttpClient).Assembly,
     typeof(IZlinkStreamConnector).Assembly
 };
-if (packagedAssemblies.Select(static item => item.GetName().Name).Distinct(StringComparer.Ordinal).Count() != 6)
+if (packagedAssemblies.Select(static item => item.GetName().Name).Distinct(StringComparer.Ordinal).Count() != 7)
     throw new InvalidOperationException("Every framework contract package must load its own public assembly.");
 if (typeof(ZLinkMessagePackCodec).GetProperty(nameof(ZLinkMessagePackCodec.Default)) is null
     || typeof(ZLinkProtobufCodec).GetProperty(nameof(ZLinkProtobufCodec.Default)) is null
     || typeof(ZLinkRedisLocationStore).GetConstructor([typeof(ZLinkRedisLocationOptions)]) is null
+    || typeof(ZLinkHttpClient).GetMethod(nameof(ZLinkHttpClient.Create), Type.EmptyTypes) is null
     || typeof(ServiceCollectionExtensions).GetMethod(nameof(ServiceCollectionExtensions.AddZLinkFramework)) is null
     || typeof(ZlinkStreamConnectorFactory).GetMethod(nameof(ZlinkStreamConnectorFactory.Create)) is null)
     throw new InvalidOperationException("A supporting package public entry point is missing.");

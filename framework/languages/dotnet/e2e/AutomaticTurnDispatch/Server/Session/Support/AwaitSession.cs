@@ -168,6 +168,41 @@ internal sealed partial class AwaitSession(
                 await RelaySpotCommandAsync<AwaitMsg>(dispatch, payload, cancellationToken);
                 return;
             }
+            case "CounterResetMsg":
+            {
+                await RelaySpotCommandAsync<CounterResetMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "CounterAwaitMsg":
+            {
+                await RelaySpotCommandAsync<CounterAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "CounterReadReq":
+            {
+                await ReplySpotRequestAsync<CounterReadReq, CounterReadRes>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "HttpAwaitMsg":
+            {
+                await RelaySpotCommandAsync<HttpAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "IoWorkerAwaitMsg":
+            {
+                await RelaySpotCommandAsync<IoWorkerAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "CpuWorkerAwaitMsg":
+            {
+                await RelaySpotCommandAsync<CpuWorkerAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "SelfCycleMsg":
+            {
+                await RelaySpotCommandAsync<SelfCycleMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
             case "WorkerAwaitMsg":
             {
                 await RelaySpotCommandAsync<WorkerAwaitMsg>(dispatch, payload, cancellationToken);

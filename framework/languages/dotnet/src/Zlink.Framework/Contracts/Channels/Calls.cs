@@ -9,6 +9,8 @@ public interface IZLinkRequestCall
 {
     IZLinkRequestCall Timeout(TimeSpan timeout);
 
+    void Submit<TReply>(CancellationToken cancellationToken = default);
+
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
 
     ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);

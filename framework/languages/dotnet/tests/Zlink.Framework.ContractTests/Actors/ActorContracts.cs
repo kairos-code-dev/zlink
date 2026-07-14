@@ -241,6 +241,10 @@ public sealed class ActorContracts
 
     private sealed class JoinSpotCall(ZLinkMessage reply) : IZLinkActorJoinSpotCall
     {
+        public void Submit(CancellationToken cancellationToken = default)
+        {
+        }
+
         public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout)
         {
             return this;
@@ -262,6 +266,10 @@ public sealed class ActorContracts
 
     private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
     {
+        public void Submit(CancellationToken cancellationToken = default)
+        {
+        }
+
         public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
         {
             return this;

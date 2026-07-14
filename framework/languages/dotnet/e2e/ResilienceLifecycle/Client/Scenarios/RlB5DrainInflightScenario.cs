@@ -12,24 +12,24 @@ internal static class RlB5DrainInflightScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerA.Post("/admin/restore").SubmitRawAsync();
-        await providerB.Post("/admin/restore").SubmitRawAsync();
+        await providerA.Post("/admin/restore").AsyncRaw();
+        await providerB.Post("/admin/restore").AsyncRaw();
         await WaitForWeightAsync(providerA, 100);
         await WaitForWeightAsync(providerB, 100);
 
         var slowMarker = $"rl-b5-slow-{Guid.NewGuid():N}";
         var slowTask = consumer.Post("/profile/request")
             .Body(new ProfileReq("slow", slowMarker))
-            .SubmitAsync<ProfileRes>();
+            .Async<ProfileRes>();
 
         var slowProvider = await WaitForSlowStartAsync(providerA, providerB, slowMarker);
         var drainedProvider = slowProvider == "api-a" ? providerA : providerB;
         var healthyProvider = slowProvider == "api-a" ? "api-b" : "api-a";
-        await drainedProvider.Post("/admin/drain").SubmitRawAsync();
+        await drainedProvider.Post("/admin/drain").AsyncRaw();
         await WaitForWeightAsync(drainedProvider, 0);
         await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
             consumer, slowProvider, "rl-b5-propagation", "RL-B5");
-        var beforeDrain = (await drainedProvider.Get("/evidence").SubmitAsync<string[]>()).Body;
+        var beforeDrain = (await drainedProvider.Get("/evidence").Async<string[]>()).Body;
 
         for (var i = 0; i < 12; i++)
         {
@@ -45,7 +45,7 @@ internal static class RlB5DrainInflightScenario
             slowReply.ProviderRid == slowProvider && slowReply.Marker == slowMarker,
             "RL-B5 in-flight slow reply did not complete on the drained provider.");
 
-        var afterDrain = (await drainedProvider.Get("/evidence").SubmitAsync<string[]>()).Body;
+        var afterDrain = (await drainedProvider.Get("/evidence").Async<string[]>()).Body;
         ScenarioAssert.That(
             CountNew(afterDrain, beforeDrain, $"profile-request|rid={slowProvider}|marker=rl-b5-drained-") == 0,
             "RL-B5 drained provider accepted new requests after drain.");
@@ -54,20 +54,20 @@ internal static class RlB5DrainInflightScenario
                 line.Contains($"profile-request|rid={slowProvider}|marker={slowMarker}", StringComparison.Ordinal)),
             "RL-B5 in-flight completion evidence missing.");
 
-        await drainedProvider.Post("/admin/restore").SubmitRawAsync();
+        await drainedProvider.Post("/admin/restore").AsyncRaw();
         await WaitForWeightAsync(drainedProvider, 100);
 
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", $"rl-b5-after-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-B5 restored request returned an unexpected value.");
         }
 
         await drainedProvider.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"profile-request|rid={slowProvider}|marker=rl-b5-after-"], []))
-            .SubmitAsync<string[]>();
+            .Async<string[]>();
 
         Console.WriteLine("scenario RL-B5 passed");
     }
@@ -80,11 +80,11 @@ internal static class RlB5DrainInflightScenario
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var waitA = providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"profile-start|rid=api-a|marker={marker}"], []))
-            .SubmitAsync<string[]>(timeout.Token)
+            .Async<string[]>(timeout.Token)
             .AsTask();
         var waitB = providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
-            .SubmitAsync<string[]>(timeout.Token)
+            .Async<string[]>(timeout.Token)
             .AsTask();
 
         var completed = await Task.WhenAny(waitA, waitB);
@@ -97,7 +97,7 @@ internal static class RlB5DrainInflightScenario
     {
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(expected))
-            .SubmitRawAsync();
+            .AsyncRaw();
     }
 
     private static int CountNew(string[] after, string[] before, string pattern)

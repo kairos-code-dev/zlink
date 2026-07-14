@@ -11,7 +11,7 @@ internal static class ObsA1FlowCorrelationScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-a1-{suffix}";
         var roomRid = $"room-a1-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).SubmitRawAsync();
+        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         await using var connector = await context.ConnectAsync();
         var authenticated = await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         ScenarioContext.Require(authenticated.ActorId == actorId, "OBS-A1 authentication actor mismatch.");

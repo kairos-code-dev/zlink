@@ -18,6 +18,7 @@ public sealed class ZLinkHttpClientBuilder
     private bool _compression;
     private bool _cookies;
     private int _followRedirects;
+    private IZLinkHttpExecutionScheduler? _executionScheduler;
     private long _maxResponseBodySize = 16 * 1024 * 1024;
     private string? _proxy;
     private (string User, string Password)? _proxyCredentials;
@@ -148,6 +149,13 @@ public sealed class ZLinkHttpClientBuilder
         return this;
     }
 
+    internal ZLinkHttpClientBuilder ExecutionScheduler(IZLinkHttpExecutionScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        _executionScheduler = scheduler;
+        return this;
+    }
+
     /// <summary>Builds an immutable client. Validation mirrors the C++ <c>build()</c>.</summary>
     public ZLinkHttpClient Build()
     {
@@ -161,6 +169,7 @@ public sealed class ZLinkHttpClientBuilder
 
         var options = new HttpClientOptions
         {
+            ExecutionScheduler = _executionScheduler,
             BaseUrl = _baseUrl,
             Timeout = _timeout,
             MaxResponseBodySize = _maxResponseBodySize,

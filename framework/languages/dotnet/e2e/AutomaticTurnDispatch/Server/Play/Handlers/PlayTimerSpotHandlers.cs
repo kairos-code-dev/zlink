@@ -25,7 +25,7 @@ internal sealed class TimerStartHandler(EvidenceStore evidence)
             evidence.Add(
                 $"timer-start-duplicate-ignored|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
-            return AwaitReplies.Reply("ATD-C", request.RequestId, spot, "timer-started");
+            return AwaitReplies.Reply("probe-C", request.RequestId, spot, "timer-started");
         }
 
         state.Timer = await spot.Context.AddTimer<AwaitTimerHandler>(
@@ -36,7 +36,7 @@ internal sealed class TimerStartHandler(EvidenceStore evidence)
         evidence.Add(
             $"timer-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
-        return AwaitReplies.Reply("ATD-C", request.RequestId, spot, "timer-started");
+        return AwaitReplies.Reply("probe-C", request.RequestId, spot, "timer-started");
     }
 }
 
@@ -84,7 +84,7 @@ internal sealed class TimerStopHandler
     {
         cancellationToken.ThrowIfCancellationRequested();
         await spot.StopScenarioTimersAsync(request.RequestId);
-        return AwaitReplies.Reply("ATD-C", request.RequestId, spot, "timer-stopped");
+        return AwaitReplies.Reply("probe-C", request.RequestId, spot, "timer-stopped");
     }
 }
 
@@ -126,30 +126,33 @@ internal sealed class AwaitTimerHandler(EvidenceStore evidence)
         }
 
         if (tickNumber == 1
-            && (string.Equals(state.Mode, "await-on-first", StringComparison.Ordinal)
-                || string.Equals(state.Mode, "await-then-next", StringComparison.Ordinal)))
+            && (string.Equals(state.Mode, "async-on-first", StringComparison.Ordinal)
+                || string.Equals(state.Mode, "yield-on-first", StringComparison.Ordinal)))
         {
+            var terminator = state.Mode.StartsWith("yield", StringComparison.Ordinal) ? "yield" : "async";
             evidence.Add(
-                $"timer-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             var call = spot.Context.Outbound.RequestToChannel(
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(state.RequestId, state.DelayMs, state.TimerName))
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
-                $"timer-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-{(terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
-            await call.Async<DelayRes>(cancellationToken);
+            await TurnTerminator.Complete<DelayRes>(call, terminator, cancellationToken);
             evidence.Add(
-                $"timer-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             evidence.Add(
-                $"timer-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             return;
         }
 
-        if (string.Equals(state.Mode, "await-then-next", StringComparison.Ordinal) && tickNumber == 2)
+        if ((string.Equals(state.Mode, "async-on-first", StringComparison.Ordinal)
+             || string.Equals(state.Mode, "yield-on-first", StringComparison.Ordinal))
+            && tickNumber == 2)
         {
             evidence.Add(
                 $"timer-next-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"

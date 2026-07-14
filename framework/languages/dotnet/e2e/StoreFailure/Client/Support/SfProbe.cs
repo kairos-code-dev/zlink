@@ -27,14 +27,14 @@ internal static class SfProbe
 
     public static async Task<RuntimeStatusRes> GetStatusAsync(ZLinkHttpClient node)
     {
-        return (await node.Get("/query/status").SubmitAsync<RuntimeStatusRes>()).Body;
+        return (await node.Get("/query/status").Async<RuntimeStatusRes>()).Body;
     }
 
     public static async Task<PeerRowRes[]?> TryGetPeersAsync(ZLinkHttpClient node)
     {
         try
         {
-            return (await node.Get("/query/peers").SubmitAsync<PeerRowRes[]>()).Body;
+            return (await node.Get("/query/peers").Async<PeerRowRes[]>()).Body;
         }
         catch
         {
@@ -52,7 +52,7 @@ internal static class SfProbe
         {
             return (await node.Post("/query/peers/wait")
                 .Body(request)
-                .SubmitAsync<PeerRowRes[]>()).Body;
+                .Async<PeerRowRes[]>()).Body;
         }
         catch (Exception error)
         {
@@ -69,7 +69,7 @@ internal static class SfProbe
         {
             return (await node.Post("/query/status/wait")
                 .Body(request)
-                .SubmitAsync<RuntimeStatusRes>()).Body;
+                .Async<RuntimeStatusRes>()).Body;
         }
         catch (Exception error)
         {
@@ -95,7 +95,7 @@ internal static class SfProbe
     {
         return (await consumer.Post($"/profile/request/timeout/{timeoutMilliseconds}")
             .Body(new ProfileReq("fast", marker))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
     }
 
     /// <summary>

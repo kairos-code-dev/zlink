@@ -55,8 +55,11 @@ internal static class ZLinkSpotStartupValidator
             CancellationToken cancellationToken = default)
             where THandler : class => throw ConfigurationOnly();
 
-        public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        public IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
             Func<CancellationToken, TResult> work) => throw ConfigurationOnly();
+
+        public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+            Func<CancellationToken, ValueTask<TResult>> work) => throw ConfigurationOnly();
 
         public ValueTask LeaveActorAsync(
             IZLinkActor actor,

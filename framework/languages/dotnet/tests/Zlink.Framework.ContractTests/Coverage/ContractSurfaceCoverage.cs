@@ -7,6 +7,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Locations.Redis;
+using Zlink.HttpClient;
 
 namespace Zlink.Framework.ContractTests.Coverage;
 
@@ -34,7 +35,7 @@ public sealed class ContractSurfaceCoverage
         Assert.Contains(typeof(IZLinkActorJoinCall).GetMethods(), method => method.Name == "Yield");
         Assert.DoesNotContain(typeof(IZLinkActorContext).GetMembers(), member => member.Name is "IsJoined" or "GetSpot");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Yield");
-        Assert.DoesNotContain(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Submit");
+        Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Submit");
         Assert.DoesNotContain(typeof(IZLinkDispatchOptions).GetProperties(), property => property.Name.EndsWith("DispatchMode", StringComparison.Ordinal));
 
         Assert.True(typeof(ZLinkActorJoinResult).IsAbstract);
@@ -166,6 +167,7 @@ public sealed class ContractSurfaceCoverage
                 typeof(ZLinkMessagePackCodec).Assembly,
                 typeof(ZLinkProtobufCodec).Assembly,
                 typeof(ZLinkRedisLocationStore).Assembly,
+                typeof(ZLinkHttpClient).Assembly,
                 typeof(IZlinkStreamConnector).Assembly
             }
             .Distinct()

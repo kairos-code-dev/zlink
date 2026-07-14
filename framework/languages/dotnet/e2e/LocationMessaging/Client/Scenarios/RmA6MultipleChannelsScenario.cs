@@ -19,7 +19,7 @@ internal static class RmA6MultipleChannelsScenario
 
         var profileReply = (await providerA.Post("/profile/request")
             .Body(new ProfileReq(profileMarker))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(profileReply.Value == $"profile:{profileMarker}", "RM-A6 profile reply value mismatch.");
         ScenarioAssert.That(
             profileReply.ProviderRid is "api-a" or "api-b",
@@ -27,7 +27,7 @@ internal static class RmA6MultipleChannelsScenario
 
         var workflowReply = (await workflow.Post("/workflow/request")
             .Body(new WorkflowReq(workflowMarker))
-            .SubmitAsync<WorkflowRes>()).Body;
+            .Async<WorkflowRes>()).Body;
         ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}",
             "RM-A6 workflow reply value mismatch.");
         ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a",
@@ -35,8 +35,8 @@ internal static class RmA6MultipleChannelsScenario
 
         // Mesh-name filtered runtime query rows must not mix across channels
         // even though they share one store and key prefix (doc RM-A6).
-        var profileRows = providerA.Get("/locations/peers?mesh=profile").Fetch<PeerLocationRow[]>();
-        var workflowRows = providerA.Get("/locations/peers?mesh=workflow").Fetch<PeerLocationRow[]>();
+        var profileRows = providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
+        var workflowRows = providerA.Get("/locations/peers?mesh=workflow").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
         ScenarioAssert.That(
             profileRows.Length > 0 && profileRows.All(row => row.MeshName == "profile"),
             "RM-A6 profile mesh filter returned rows from another mesh.");
@@ -50,17 +50,17 @@ internal static class RmA6MultipleChannelsScenario
 
         var providerWaitA = providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(profileMarker))
-            .SubmitAsync<string[]>()
+            .Async<string[]>()
             .AsTask();
         var providerWaitB = providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(profileMarker))
-            .SubmitAsync<string[]>()
+            .Async<string[]>()
             .AsTask();
         var providerCompleted = await Task.WhenAny(providerWaitA, providerWaitB);
         var providerEvidence = (await providerCompleted).Body;
         var workflowEvidence = (await workflow.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(workflowMarker))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         ScenarioAssert.That(
             providerEvidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
                                          && line.Contains(profileMarker, StringComparison.Ordinal)),

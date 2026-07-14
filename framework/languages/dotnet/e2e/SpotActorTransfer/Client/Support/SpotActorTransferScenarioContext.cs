@@ -32,7 +32,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         string mode = "accept")
     {
         return (await client.Post("/spots").Body(new CreateSpotReq(spotRid, mode))
-                   .SubmitAsync<CreateSpotRes>()).Body
+                   .Async<CreateSpotRes>()).Body
                ?? throw new InvalidOperationException("Create spot response was null.");
     }
 
@@ -43,31 +43,31 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         int stateVersion)
     {
         return (await client.Post("/actors").Body(new ActorCreateReq(actorId, actorType, stateVersion))
-                   .SubmitAsync<ActorCreateRes>()).Body
+                   .Async<ActorCreateRes>()).Body
                ?? throw new InvalidOperationException("Create actor response was null.");
     }
 
     public async Task<GateReleaseRes> ReleaseJoinedGateAsync(ZLinkHttpClient client, string spotRid)
     {
-        return (await client.Post($"/joined-gates/{spotRid}/release").SubmitAsync<GateReleaseRes>()).Body
+        return (await client.Post($"/joined-gates/{spotRid}/release").Async<GateReleaseRes>()).Body
                ?? throw new InvalidOperationException("Gate release response was null.");
     }
 
     public async Task<ActorRefSnapshotRes> GetActorRefAsync(ZLinkHttpClient client, string actorId)
     {
-        return (await client.Get($"/actors/{actorId}/ref").SubmitAsync<ActorRefSnapshotRes>()).Body
+        return (await client.Get($"/actors/{actorId}/ref").Async<ActorRefSnapshotRes>()).Body
                ?? throw new InvalidOperationException("Actor ref response was null.");
     }
 
     public async Task<IReadOnlyList<ActorEvidence>> GetEvidenceAsync(ZLinkHttpClient client)
     {
-        return (await client.Get("/evidence").SubmitAsync<IReadOnlyList<ActorEvidence>>()).Body
+        return (await client.Get("/evidence").Async<IReadOnlyList<ActorEvidence>>()).Body
                ?? throw new InvalidOperationException("Evidence response was null.");
     }
 
     public async Task ShutdownAsync(ZLinkHttpClient client)
     {
-        await client.Post("/shutdown").SubmitRawAsync();
+        await client.Post("/shutdown").AsyncRaw();
     }
 
     public async Task<JoinTargetRes> JoinAsync(
@@ -84,13 +84,13 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         JoinTargetReq request)
     {
         return (await client.Post($"/actors/{actorId}/join").Body(request)
-                   .SubmitAsync<JoinResponse>()).Body
+                   .Async<JoinResponse>()).Body
                ?? throw new InvalidOperationException("Join response was null.");
     }
 
     public async Task<ProbeRes> ProbeAsync(ZLinkHttpClient client, string actorId, ProbeReq request)
     {
-        return (await client.Post($"/actors/{actorId}/probe").Body(request).SubmitAsync<ProbeRes>()).Body
+        return (await client.Post($"/actors/{actorId}/probe").Body(request).Async<ProbeRes>()).Body
                ?? throw new InvalidOperationException("Probe response was null.");
     }
 
@@ -108,7 +108,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                        actor.NodeRid,
                        actor.Generation,
                        checked((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds)))
-                   .SubmitAsync<ActorRefProbeRes>()).Body
+                   .Async<ActorRefProbeRes>()).Body
                ?? throw new InvalidOperationException("Actor ref probe response was null.");
     }
 
@@ -120,7 +120,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     {
         await client.Post($"/actors/{actorId}/send-ref")
             .Body(new ActorRefProbeReq(packet.Scenario, packet.Marker, actor.NodeRid, actor.Generation))
-            .SubmitRawAsync();
+            .AsyncRaw();
     }
 
     public async Task<BoundPushRes> BoundPushAsync(
@@ -129,7 +129,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         BoundPushReq request)
     {
         return (await client.Post($"/actors/{actorId}/bound-push").Body(request)
-                   .SubmitAsync<BoundPushRes>()).Body
+                   .Async<BoundPushRes>()).Body
                ?? throw new InvalidOperationException("Bound push response was null.");
     }
 
@@ -171,7 +171,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         string[] containsAll)
     {
         var evidence = (await client.Post("/evidence/wait").Body(new EvidenceWaitReq(containsAll))
-                .SubmitAsync<IReadOnlyList<ActorEvidence>>()).Body
+                .Async<IReadOnlyList<ActorEvidence>>()).Body
             ?? throw new InvalidOperationException("Evidence response was null.");
         foreach (var expected in containsAll)
             RequireContains(evidence, expected, $"Expected evidence marker was not observed: {expected}");

@@ -11,7 +11,7 @@ internal static class ObsC2ActorHandoffScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-c2-{suffix}";
         var roomRid = $"room-c2-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).SubmitRawAsync();
+        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
@@ -25,14 +25,14 @@ internal static class ObsC2ActorHandoffScenario
             .Async<ReturnToLobbyRes>();
         ScenarioContext.Require(lobby.NodeRid == "play-a",
             "OBS-C2 actor did not leave the completed room on play-a.");
-        await context.PlayA.Post($"/rooms/{roomRid}/close").SubmitRawAsync();
-        await context.PlayA.Post("/drain?deadlineMs=30000").SubmitRawAsync();
+        await context.PlayA.Post($"/rooms/{roomRid}/close").AsyncRaw();
+        await context.PlayA.Post("/drain?deadlineMs=30000").AsyncRaw();
         var location = await WaitActorLocationAsync(context, actorId);
         ScenarioContext.Require(location.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-b"),
             "OBS-C2 actor location did not commit to play-b.");
         var result = await ScenarioContext.WaitForDrainAsync(
             context.PlayA, TimeSpan.FromSeconds(40));
-        var metrics = (await context.PlayA.Get("/evidence").SubmitAsync<EvidenceSnapshot>()).Body.Metrics;
+        var metrics = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
         var forced = string.Join(",", metrics
             .Where(sample => sample.Name == "zlink.drain.forced")
             .Select(sample => $"{sample.Tags.GetValueOrDefault("kind")}={sample.Value}"));
@@ -67,7 +67,7 @@ internal static class ObsC2ActorHandoffScenario
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = (await context.PlayB.Get("/evidence").SubmitAsync<EvidenceSnapshot>()).Body;
+            var snapshot = (await context.PlayB.Get("/evidence").Async<EvidenceSnapshot>()).Body;
             if (snapshot.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-b")) return snapshot;
             await Task.Delay(100);
         }

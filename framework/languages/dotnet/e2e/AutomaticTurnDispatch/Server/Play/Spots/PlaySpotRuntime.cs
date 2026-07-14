@@ -11,8 +11,15 @@ internal sealed class AwaitProbeSpot(
 {
     private readonly object _timerGate = new();
     private readonly Dictionary<string, AwaitTimerState> _timers = new(StringComparer.Ordinal);
+    private int _counter;
 
     public IZLinkSpotContext Context { get; } = context;
+
+    public int ReadCounter() => _counter;
+
+    public void WriteCounter(int value) => _counter = value;
+
+    public void ResetCounter() => _counter = 0;
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         string actorId,

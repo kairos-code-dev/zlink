@@ -12,20 +12,20 @@ internal static class RlB4RuntimeDrainScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/drain").SubmitRawAsync();
+        await providerB.Post("/admin/drain").AsyncRaw();
         await WaitForWeightAsync(providerB, 0);
         await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
             consumer, "api-b", "rl-b4-propagation", "RL-B4");
         var retainedRows = (await consumer.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1, ExpectedWeight: 0))
-            .SubmitAsync<TopologyEntryRes[]>()).Body;
+            .Async<TopologyEntryRes[]>()).Body;
         ScenarioAssert.That(
             retainedRows.Length >= 1,
             "RL-B4 runtime drain removed api-b's peer row instead of retaining it.");
         ScenarioAssert.That(
             retainedRows.All(row => row.Weight == 0),
             "RL-B4 runtime drain did not publish api-b's zero weight.");
-        var beforeDrain = (await providerB.Get("/evidence").SubmitAsync<string[]>()).Body;
+        var beforeDrain = (await providerB.Get("/evidence").Async<string[]>()).Body;
 
         for (var i = 0; i < 20; i++)
         {
@@ -36,16 +36,16 @@ internal static class RlB4RuntimeDrainScenario
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-B4 drained api-b received a new request.");
         }
 
-        var afterDrain = (await providerB.Get("/evidence").SubmitAsync<string[]>()).Body;
+        var afterDrain = (await providerB.Get("/evidence").Async<string[]>()).Body;
         ScenarioAssert.That(
             CountNew(afterDrain, beforeDrain, "profile-request|rid=api-b|marker=rl-b4-drained-") == 0,
             "RL-B4 api-b evidence changed after drain.");
 
         await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["profile-request|rid=api-a|marker=rl-b4-drained-"], []))
-            .SubmitAsync<string[]>();
+            .Async<string[]>();
 
-        await providerB.Post("/admin/restore").SubmitRawAsync();
+        await providerB.Post("/admin/restore").AsyncRaw();
         await WaitForWeightAsync(providerB, 100);
 
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
@@ -58,7 +58,7 @@ internal static class RlB4RuntimeDrainScenario
     {
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(expected))
-            .SubmitRawAsync();
+            .AsyncRaw();
     }
 
     private static int CountNew(string[] after, string[] before, string pattern)

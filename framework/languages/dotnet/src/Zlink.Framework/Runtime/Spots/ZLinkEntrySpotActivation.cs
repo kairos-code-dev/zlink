@@ -239,13 +239,24 @@ internal sealed partial class ZLinkEntrySpotActivation :
         _actors.RemoveIfCurrent(actor);
     }
 
-    public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+    public IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
         Func<CancellationToken, TResult> work)
     {
         ArgumentNullException.ThrowIfNull(work);
         return new ZLinkWorkerCall<TResult>(
             _runtime.WorkerPool,
-            work);
+            work,
+            _runtime.ErrorSink);
+    }
+
+    public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        return new ZLinkIoWorkerCall<TResult>(
+            _runtime.WorkerPool.ShutdownToken,
+            work,
+            _runtime.ErrorSink);
     }
 
     public void Configure()

@@ -235,8 +235,11 @@ public interface IZLinkSpotCommonContext
         CancellationToken cancellationToken = default)
         where THandler : class;
 
-    IZLinkWorkerCall<TResult> RunWorker<TResult>(
+    IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
         Func<CancellationToken, TResult> work);
+
+    IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work);
 }
 
 public interface IZLinkSpotContext : IZLinkSpotCommonContext

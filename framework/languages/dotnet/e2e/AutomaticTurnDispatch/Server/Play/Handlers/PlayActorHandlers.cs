@@ -29,16 +29,16 @@ internal sealed class EntryActorAwaitHandler(EvidenceStore evidence)
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Async<DelayRes>(cancellationToken);
+        await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
             $"actor-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         evidence.Add(
             $"actor-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        return ActorReplies.Reply("ATD-B", request.RequestId, actor, entrySpot, "actor-await-completed");
+        return ActorReplies.Reply("probe-B", request.RequestId, actor, entrySpot, "actor-await-completed");
     }
 }
 
@@ -64,7 +64,7 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
             $"actor-fast-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
-        return ValueTask.FromResult(ActorReplies.Reply("ATD-B", request.RequestId, actor, entrySpot, request.Marker));
+        return ValueTask.FromResult(ActorReplies.Reply("probe-B", request.RequestId, actor, entrySpot, request.Marker));
     }
 }
 
@@ -89,16 +89,16 @@ internal sealed class SpotActorAwaitHandler(EvidenceStore evidence)
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Async<DelayRes>(cancellationToken);
+        await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
             $"actor-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         evidence.Add(
             $"actor-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        return ActorReplies.Reply("ATD-B", request.RequestId, actor, spot, "actor-await-completed");
+        return ActorReplies.Reply("probe-B", request.RequestId, actor, spot, "actor-await-completed");
     }
 }
 
@@ -124,7 +124,7 @@ internal sealed class SpotActorFastHandler(EvidenceStore evidence)
             $"actor-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
-        return ValueTask.FromResult(ActorReplies.Reply("ATD-B", request.RequestId, actor, spot, request.Marker));
+        return ValueTask.FromResult(ActorReplies.Reply("probe-B", request.RequestId, actor, spot, request.Marker));
     }
 }
 
@@ -164,7 +164,7 @@ internal sealed class SpotActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        return ActorReplies.Reply("ATD-D4", request.RequestId, actor, spot, "actor-push-await-completed");
+        return ActorReplies.Reply("probe-D4", request.RequestId, actor, spot, "actor-push-await-completed");
     }
 }
 
@@ -198,7 +198,34 @@ internal sealed class EntryActorJoinAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-join-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|accepted={accepted}");
-        return ActorReplies.Reply("ATD-B3", request.RequestId, actor, entrySpot, "actor-join-await-completed");
+        return ActorReplies.Reply("probe-B3", request.RequestId, actor, entrySpot, "actor-join-await-completed");
+    }
+}
+
+[ZLinkSpotActorRequestHandler("ActorJoinAwaitReq")]
+internal sealed class SpotActorJoinAwaitHandler(EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes>
+{
+    public async ValueTask<ActorAwaitRes> HandleAsync(
+        AwaitProbeSpot spot,
+        AwaitActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorJoinAwaitReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        evidence.Add(
+            $"actor-join-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|actor={actor.ActorId}"
+            + $"|request={request.RequestId}|target={request.TargetSpotRid}");
+        var joined = await actor.Context.JoinSpot(
+                RoutingId.From(request.TargetSpotRid),
+                ZLinkMessage.From(new DelayReq(request.RequestId, 25, "join")))
+            .Async(cancellationToken);
+        var accepted = joined is ZLinkActorJoinResult.Accepted;
+        evidence.Add(
+            $"actor-join-completed|rid={evidence.Rid}|spot={request.TargetSpotRid}|actor={actor.ActorId}"
+            + $"|request={request.RequestId}|accepted={accepted}");
+        return ActorReplies.Reply("TD-E2", request.RequestId, actor, spot, "actor-join-completed");
     }
 }
 
@@ -238,6 +265,6 @@ internal sealed class EntryActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        return ActorReplies.Reply("ATD-D4", request.RequestId, actor, entrySpot, "actor-push-await-completed");
+        return ActorReplies.Reply("probe-D4", request.RequestId, actor, entrySpot, "actor-push-await-completed");
     }
 }

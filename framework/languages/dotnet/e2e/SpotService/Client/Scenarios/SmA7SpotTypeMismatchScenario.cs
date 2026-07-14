@@ -1,0 +1,26 @@
+using SpotService.Client.Support;
+using SpotService.Shared;
+using Zlink.HttpClient;
+
+namespace SpotService.Client.Scenarios;
+
+internal static class SmA7SpotTypeMismatchScenario
+{
+    public static async Task RunAsync(ZLinkHttpClient playA)
+    {
+        var spotRid = $"spot-sm-a7-{Guid.NewGuid():N}";
+        var mismatch = (await playA.Post("/spot/type-mismatch")
+            .Body(new SpotTypeMismatchReq(spotRid))
+            .Async<SpotTypeMismatchRes>()).Body;
+        ScenarioAssert.That(mismatch.Failed, "SM-A7 expected SpotTypeMismatch.");
+        ScenarioAssert.That(mismatch.ErrorKind == "SpotTypeMismatch", "SM-A7 error kind mismatch.");
+        var expectedEvidence = new[] { $"spot-type-mismatch|rid=play-a|spot={mismatch.SpotRid}|kind=SpotTypeMismatch" };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(expectedEvidence))
+            .Async<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+            "SM-A7 evidence did not include SpotTypeMismatch.");
+        Console.WriteLine("operation SpotService.sm-a7 passed");
+    }
+}

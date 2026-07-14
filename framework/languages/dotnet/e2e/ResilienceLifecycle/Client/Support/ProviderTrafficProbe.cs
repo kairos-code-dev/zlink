@@ -25,7 +25,7 @@ internal static class ProviderTrafficProbe
             {
                 var reply = (await consumer.Post("/profile/request/timeout/1000")
                     .Body(new ProfileReq("fast", $"{markerPrefix}-{probe}"))
-                    .SubmitAsync<ProfileRes>(deadline.Token)).Body;
+                    .Async<ProfileRes>(deadline.Token)).Body;
                 consecutiveSurvivorReplies = reply.ProviderRid == excludedProviderRid
                     ? 0
                     : consecutiveSurvivorReplies + 1;
@@ -49,7 +49,7 @@ internal static class ProviderTrafficProbe
         CancellationToken cancellationToken = default) =>
         (await consumer.Post("/profile/request/timeout/1000")
             .Body(request)
-            .SubmitAsync<ProfileRes>(cancellationToken)).Body;
+            .Async<ProfileRes>(cancellationToken)).Body;
 
     public static async Task DriveUntilProviderServesAsync(
         ZLinkHttpClient consumer,
@@ -62,14 +62,14 @@ internal static class ProviderTrafficProbe
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var evidence = provider.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([pattern], [], 30000))
-            .SubmitAsync<string[]>(timeout.Token)
+            .Async<string[]>(timeout.Token)
             .AsTask();
         for (var round = 0; round < 300; round++)
         {
             var marker = $"{markerPrefix}-{round}";
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(
                 reply.Value == "profile:fast",
                 $"{scenario} request returned an unexpected value.");

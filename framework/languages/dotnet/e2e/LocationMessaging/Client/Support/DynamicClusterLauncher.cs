@@ -168,7 +168,7 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
 
             try
             {
-                await client.Get("/health").SubmitAsync<string>();
+                await client.Get("/health").Async<string>();
                 return;
             }
             catch
@@ -192,7 +192,7 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                 using var client = ZLinkHttpClient.Create(HttpUrl)
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Build();
-                await client.Post("/shutdown").SubmitRawAsync();
+                await client.Post("/shutdown").AsyncRaw();
             }
             catch
             {

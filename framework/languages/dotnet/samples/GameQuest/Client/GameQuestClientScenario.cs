@@ -61,7 +61,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction);
         Ensure(auctionCompletePush.Payload.RewardGranted);
         var closeOwner = await apiA.Post("/self-check/owner/player-alice/close")
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(closeOwner.Status is >= 200 and < 300);
 
         var tutorial = await apiAStream.Request(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
@@ -74,7 +74,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
 
         // Simulate an authoritative server event while Bob has no bound session.
         var offlineItem = apiA.Post("/self-check/gameplay/collect/player-bob/healing-herb/1/herb-1")
-            .Fetch<CollectItemRes>();
+            .Async<CollectItemRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
         await apiBStream.Connect.Async(cancellationToken);
@@ -100,19 +100,19 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(herbCompletedOnReconnectedStreamPush.Payload.Progress.Status == QuestStatuses.RewardGranted);
 
         var deleteBobProjection = await apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/delete")
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(deleteBobProjection.Status is >= 200 and < 300);
         var missingProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         Ensure(missingProjection.All(progress => progress.QuestId != QuestIds.HerbGathering));
         var rebuilt = apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/rebuild")
-            .Fetch<QuestProgress>();
+            .Async<QuestProgress>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(rebuilt is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted });
         var rebuiltProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         Ensure(rebuiltProjection.Any(progress =>
             progress is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }));
 
         var killWithoutPublish = await apiB.Post("/self-check/gameplay/kill-without-publish/player-alice")
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(killWithoutPublish.Status is >= 200 and < 300);
         var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice"))
             .Async<SyncQuestProgressRes>(cancellationToken);
@@ -139,7 +139,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         GameQuestServerAssertRes? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            last = api.Post("/self-check/assert").Fetch<GameQuestServerAssertRes>();
+            last = api.Post("/self-check/assert").Async<GameQuestServerAssertRes>().AsTask().GetAwaiter().GetResult().Body;
             if (last.Passed) return last;
 
             await Task.Delay(50, cancellationToken);
@@ -157,13 +157,13 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var response = api.Get($"/quest/progress/{playerId}").Fetch<GetQuestProgressRes>();
+            var response = api.Get($"/quest/progress/{playerId}").Async<GetQuestProgressRes>().AsTask().GetAwaiter().GetResult().Body;
             if (response.ActiveQuests.Any(predicate)) return response.ActiveQuests;
 
             await Task.Delay(50, cancellationToken);
         }
 
-        return api.Get($"/quest/progress/{playerId}").Fetch<GetQuestProgressRes>().ActiveQuests;
+        return api.Get($"/quest/progress/{playerId}").Async<GetQuestProgressRes>().AsTask().GetAwaiter().GetResult().Body.ActiveQuests;
     }
 
     private static async ValueTask<QuestProgress[]> WaitForStreamProjectionAsync(

@@ -16,12 +16,12 @@ internal static class RlD5MixedBurstScenario
         {
             return (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", $"rl-d5-req-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
         });
         var sendTasks = Enumerable.Range(0, 60).Select(i =>
             consumer.Post("/profile/command")
                 .Body(new ProfileMsg($"rl-d5-cmd-{i}"))
-                .SubmitRawAsync().AsTask());
+                .AsyncRaw().AsTask());
         var replies = await Task.WhenAll(requestTasks);
         await Task.WhenAll(sendTasks);
         ScenarioAssert.That(
@@ -32,9 +32,9 @@ internal static class RlD5MixedBurstScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-req-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-req-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             requestEvidence = (await completed).Body;
             timeout.Cancel();
@@ -47,9 +47,9 @@ internal static class RlD5MixedBurstScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-cmd-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-cmd-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             commandEvidence = (await completed).Body;
             timeout.Cancel();

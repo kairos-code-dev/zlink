@@ -9,8 +9,8 @@ namespace Zlink.HttpClient;
 /// <summary>
 ///     Fluent builder for a single request. Mirrors the C++ <c>request_builder_t</c>. Submission
 ///     returns a <see cref="ValueTask{T}" />; no thread is parked while the request is in flight. The
-///     blocking <see cref="Fetch{T}" /> convenience is intended for tests and CLI scenarios — framework
-///     handler code should <c>await</c> <see cref="SubmitAsync{T}" />.
+///     <c>Async</c> keeps a server Spot turn while <c>Yield</c> releases it through an injected
+///     execution scheduler. Standalone clients provide <c>Async</c> and <c>Submit</c> only.
 /// </summary>
 public sealed class ZLinkHttpRequestBuilder
 {
@@ -153,7 +153,7 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>Submits the request and returns the raw response.</summary>
-    public async ValueTask<RawHttpResponse> SubmitRawAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<RawHttpResponse> AsyncRaw(CancellationToken cancellationToken = default)
     {
         var client = ResolveClient();
         try
@@ -187,10 +187,26 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>Submits the request and decodes the JSON body to <typeparamref name="T" />.</summary>
-    public async ValueTask<HttpResponse<T>> SubmitAsync<T>(CancellationToken cancellationToken = default)
+    public ValueTask<HttpResponse<T>> Async<T>(CancellationToken cancellationToken = default)
+    {
+        return ExecuteTypedAsync<T>(cancellationToken);
+    }
+
+    public ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)
+    {
+        var scheduler = ResolveScheduler();
+        return scheduler.YieldAsync(ExecuteTypedAsync<T>, cancellationToken);
+    }
+
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = ObserveSubmissionAsync(cancellationToken);
+    }
+
+    private async ValueTask<HttpResponse<T>> ExecuteTypedAsync<T>(CancellationToken cancellationToken)
     {
         var codecs = ResolveCodecs();
-        var raw = await SubmitRawAsync(cancellationToken).ConfigureAwait(false);
+        var raw = await AsyncRaw(cancellationToken).ConfigureAwait(false);
         if (raw.Status >= 400)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestFailed,
@@ -221,13 +237,31 @@ public sealed class ZLinkHttpRequestBuilder
         };
     }
 
-    /// <summary>
-    ///     Blocking convenience that unwraps the typed body and throws on failure. For tests and CLI
-    ///     scenarios; handler/runtime code should <c>await</c> <see cref="SubmitAsync{T}" /> instead.
-    /// </summary>
-    public T Fetch<T>()
+    private IZLinkHttpExecutionScheduler ResolveScheduler()
     {
-        return SubmitAsync<T>().AsTask().GetAwaiter().GetResult().Body;
+        var client = _client ?? _clientFactory?.Build();
+        if (client is null || client.Runtime.Options.ExecutionScheduler is not { } scheduler)
+        {
+            client?.Dispose();
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                "HTTP Yield requires a server client with an execution scheduler.");
+        }
+
+        if (_client is null) _client = client;
+        return scheduler;
+    }
+
+    private async Task ObserveSubmissionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await AsyncRaw(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Submit is one-way. Callers that need an observable result use Async or Yield.
+        }
     }
 
     private HttpRequestSpec MakeRequest(Action<ReadOnlyMemory<byte>>? sink)

@@ -116,13 +116,24 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
-    public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+    public IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
         Func<CancellationToken, TResult> work)
     {
         ArgumentNullException.ThrowIfNull(work);
         return new ZLinkWorkerCall<TResult>(
             _runtime.WorkerPool,
-            work);
+            work,
+            _runtime.ErrorSink);
+    }
+
+    public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        return new ZLinkIoWorkerCall<TResult>(
+            _runtime.WorkerPool.ShutdownToken,
+            work,
+            _runtime.ErrorSink);
     }
 
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)

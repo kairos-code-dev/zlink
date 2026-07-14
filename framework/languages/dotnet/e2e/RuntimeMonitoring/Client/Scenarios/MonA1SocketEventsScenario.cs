@@ -38,7 +38,7 @@ internal static class MonA1SocketEventsScenario
             .Body(new EvidenceWaitReq(
                 ["monitor-socket|", "source=monitor.profile.server"],
                 [["kind=Connected", "kind=ConnectionReady"], ["kind=Disconnected", "kind=Closed"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                  && line.Contains("source=monitor.profile.server", StringComparison.Ordinal)
                                  && (line.Contains("kind=Connected", StringComparison.Ordinal)

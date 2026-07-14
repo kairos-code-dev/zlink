@@ -12,8 +12,8 @@ internal static class ObsB2QueueAndTransferMetricsScenario
         var actorId = $"obs-b2-{suffix}";
         var sourceRoom = $"room-b2-source-{suffix}";
         var targetRoom = $"room-b2-target-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(sourceRoom)).SubmitRawAsync();
-        await context.PlayB.Post("/rooms").Body(new CreateRoomReq(targetRoom)).SubmitRawAsync();
+        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(sourceRoom)).AsyncRaw();
+        await context.PlayB.Post("/rooms").Body(new CreateRoomReq(targetRoom)).AsyncRaw();
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await connector.Request(new JoinRoomReq(sourceRoom)).Async<JoinRoomRes>();
@@ -55,5 +55,5 @@ internal static class ObsB2QueueAndTransferMetricsScenario
         IReadOnlyDictionary<string, string>? tags = null) =>
         (await context.PlayA.Post("/metrics/wait")
             .Body(new MetricWaitReq(name, minimum, RequiredTags: tags))
-            .SubmitAsync<MetricSample[]>()).Body;
+            .Async<MetricSample[]>()).Body;
 }

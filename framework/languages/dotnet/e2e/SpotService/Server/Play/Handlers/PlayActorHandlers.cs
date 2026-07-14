@@ -292,7 +292,7 @@ internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Destroy request actor does not match dispatched actor.");
 
-        await entrySpot.Context.RunWorker(_ => true).Async(cancellationToken);
+        await entrySpot.Context.RunCpuWorker(_ => true).Async(cancellationToken);
         await entrySpot.Context.DestroyActorAsync(actor, cancellationToken);
         evidence.Add($"actor-destroyed|rid={evidence.Rid}|actor={actor.ActorId}");
         return new DestroyActorRes(actor.ActorId, true);

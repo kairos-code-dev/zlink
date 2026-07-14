@@ -2,9 +2,42 @@ using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 namespace AutomaticTurnDispatch.Server.Play.Handlers;
+
+[ZLinkSpotPacketHandler("SelfCycleMsg")]
+internal sealed class SelfCycleHandler(
+    EvidenceStore evidence,
+    IZLinkSpotHandleResolver spots)
+    : IZLinkSpotPacketHandler<AwaitProbeSpot, SelfCycleMsg>
+{
+    public async ValueTask HandleAsync(
+        AwaitProbeSpot spot,
+        SelfCycleMsg request,
+        CancellationToken cancellationToken)
+    {
+        evidence.Add(
+            $"self-cycle-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+        try
+        {
+            var handle = await spots.ResolveSpotHandleAsync(spot.Context.SpotRid, cancellationToken)
+                         ?? throw new InvalidOperationException("The current Spot handle was not found.");
+            await spot.Context.Outbound.RequestToSpot(handle, new ProbeReq(request.RequestId, "self-cycle"))
+                .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
+                .Async<AutomaticTurnDispatchRes>(cancellationToken);
+            evidence.Add(
+                $"self-cycle-unexpected-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+        }
+        catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
+        {
+            evidence.Add(
+                $"self-cycle-timed-out|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                + $"|error={ex.GetType().Name}");
+        }
+    }
+}
 
 [ZLinkSpotRequestHandler("AwaitTimeoutReq")]
 internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
@@ -28,7 +61,7 @@ internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
             await call.Async<DelayRes>(cancellationToken);
             evidence.Add(
                 $"timeout-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new AwaitTimeoutRes("ATD-E1", request.RequestId, spot.Context.SpotRid.ToString(),
+            return new AwaitTimeoutRes("probe-E1", request.RequestId, spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
@@ -37,7 +70,7 @@ internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
                 $"timeout-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
             return new AwaitTimeoutRes(
-                "ATD-E1",
+                "probe-E1",
                 request.RequestId,
                 spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(),
@@ -103,7 +136,7 @@ internal sealed class AwaitCancelHandler(EvidenceStore evidence)
             await call.Async<DelayRes>(cts.Token);
             evidence.Add(
                 $"cancel-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new AwaitCancelRes("ATD-E2", request.RequestId, spot.Context.SpotRid.ToString(),
+            return new AwaitCancelRes("probe-E2", request.RequestId, spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is OperationCanceledException or ZLinkFrameworkException)
@@ -112,7 +145,7 @@ internal sealed class AwaitCancelHandler(EvidenceStore evidence)
                 $"cancel-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
             return new AwaitCancelRes(
-                "ATD-E2",
+                "probe-E2",
                 request.RequestId,
                 spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(),

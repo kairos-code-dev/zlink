@@ -41,7 +41,7 @@ internal sealed class RemoteSpotAwaitHandler(
         evidence.Add(
             $"remote-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|targetNode={targetReply.NodeRid}|handler=spot");
-        return AwaitReplies.Reply("ATD-D2", request.RequestId, spot, "remote-await-completed");
+        return AwaitReplies.Reply("probe-D2", request.RequestId, spot, "remote-await-completed");
     }
 }
 

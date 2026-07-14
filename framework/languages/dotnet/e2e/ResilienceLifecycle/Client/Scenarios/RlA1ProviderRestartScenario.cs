@@ -14,12 +14,12 @@ internal static class RlA1ProviderRestartScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/shutdown").SubmitRawAsync();
+        await providerB.Post("/shutdown").AsyncRaw();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
+                var health = await providerB.Get("/health").AsyncRaw();
                 if (health.Status != 200) break;
             }
             catch
@@ -33,31 +33,31 @@ internal static class RlA1ProviderRestartScenario
         await processes.WaitInitialProviderBExitedAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
 
         for (var i = 0; i < 12; i++)
         {
             var marker = $"rl-a1-down-{i}";
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a",
                 "RL-A1 request during api-b restart did not use surviving provider.");
         }
 
         await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["marker=rl-a1-down-"], []))
-            .SubmitAsync<string[]>();
+            .Async<string[]>();
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
+                var health = await providerB.Get("/health").AsyncRaw();
                 if (health.Status == 200) break;
             }
             catch

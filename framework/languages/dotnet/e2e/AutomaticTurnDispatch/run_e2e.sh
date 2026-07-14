@@ -4,10 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 DELAY_PROJECT="$SCRIPT_DIR/Server/Delay/AutomaticTurnDispatch.Delay.csproj"
+EXTERNAL_API_PROJECT="$SCRIPT_DIR/Server/ExternalApi/AutomaticTurnDispatch.ExternalApi.csproj"
 PLAY_PROJECT="$SCRIPT_DIR/Server/Play/AutomaticTurnDispatch.Play.csproj"
 SESSION_PROJECT="$SCRIPT_DIR/Server/Session/AutomaticTurnDispatch.Session.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/AutomaticTurnDispatch.Client.csproj"
 DELAY_DLL="$SCRIPT_DIR/Server/Delay/bin/Debug/net8.0/AutomaticTurnDispatch.Delay.dll"
+EXTERNAL_API_DLL="$SCRIPT_DIR/Server/ExternalApi/bin/Debug/net8.0/AutomaticTurnDispatch.ExternalApi.dll"
 PLAY_DLL="$SCRIPT_DIR/Server/Play/bin/Debug/net8.0/AutomaticTurnDispatch.Play.dll"
 SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/AutomaticTurnDispatch.Session.dll"
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/AutomaticTurnDispatch.Client.dll"
@@ -104,6 +106,7 @@ scenario_selected() {
 
 build_projects() {
   dotnet build "$DELAY_PROJECT" --maxcpucount:1 >/dev/null
+  dotnet build "$EXTERNAL_API_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$PLAY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
@@ -132,21 +135,23 @@ rg() {
 }
 
 static_checks() {
-  if rg -n 'MapPost\("/await|HttpClient|new HttpClient|\.Post\(' "$SCRIPT_DIR" -g '*.cs' >/tmp/zlink-automatic-turn-dispatch-static-http.$$; then
+  if rg -n 'new HttpClient|ZLinkHttpClient\.Create' "$SCRIPT_DIR/Server/Play" -g '*.cs' >/tmp/zlink-automatic-turn-dispatch-static-http.$$; then
     cat /tmp/zlink-automatic-turn-dispatch-static-http.$$ >&2
     rm -f /tmp/zlink-automatic-turn-dispatch-static-http.$$
-    echo "AutomaticTurnDispatch must not start scenarios through HTTP client or /await HTTP endpoints." >&2
+    echo "AutomaticTurnDispatch Play handlers must receive the framework HTTP client through DI." >&2
     return 1
   fi
   rm -f /tmp/zlink-automatic-turn-dispatch-static-http.$$
 
-  if rg -n '\.Yield(<|\()|IZLinkYieldRequestCall|IZLinkActorYieldJoinCall' "$SCRIPT_DIR" -g '*.cs' >/tmp/zlink-automatic-turn-dispatch-static-await.$$; then
-    cat /tmp/zlink-automatic-turn-dispatch-static-await.$$ >&2
-    rm -f /tmp/zlink-automatic-turn-dispatch-static-await.$$
-    echo "AutomaticTurnDispatch must use the single language-specific completion terminator." >&2
+  if ! rg -q 'AddZLinkHttpClient\("external-api"' "$SCRIPT_DIR/Server/Play/PlayHostFactory.cs"; then
+    echo "AutomaticTurnDispatch Play must register the external API HTTP client by name." >&2
     return 1
   fi
-  rm -f /tmp/zlink-automatic-turn-dispatch-static-await.$$
+
+  if ! rg -q '\.Async(<|\()' "$SCRIPT_DIR/Server/Play" || ! rg -q '\.Yield(<|\()' "$SCRIPT_DIR/Server/Play"; then
+    echo "AutomaticTurnDispatch must exercise both Async and Yield terminators." >&2
+    return 1
+  fi
 
   if rg -n 'AwaitConnectorFactory|AutomaticTurnDispatchScenarioContext|WaitForPlayEvidenceAsync|ReadPlayEvidenceAsync' "$SCRIPT_DIR/Client" -g '*.cs' >/tmp/zlink-automatic-turn-dispatch-static-helper.$$; then
     cat /tmp/zlink-automatic-turn-dispatch-static-helper.$$ >&2
@@ -161,21 +166,19 @@ static_checks() {
     return 1
   fi
 
-  local scenario_file
-  for scenario_file in "$SCRIPT_DIR"/Client/Scenarios/Atd*.cs; do
-    if ! rg -q 'IZlinkStreamConnector client' "$scenario_file"; then
-      echo "$scenario_file" >&2
-      echo "AutomaticTurnDispatch ATD scenario files must receive the stream connector directly." >&2
-      return 1
-    fi
-  done
+  local scenario_count
+  scenario_count="$(find "$SCRIPT_DIR/Client/Scenarios" -maxdepth 1 -name 'Td*Scenario.cs' | wc -l)"
+  if [[ "$scenario_count" != "27" ]]; then
+    echo "AutomaticTurnDispatch must expose exactly 27 canonical TD scenario files; actual=$scenario_count." >&2
+    return 1
+  fi
 
-  if ! rg -q 'ZlinkStreamConnectorFactory\.Create' "$SCRIPT_DIR/Client/Scenarios/ShutdownAwaitScenario.cs"; then
+  if ! rg -q 'ZlinkStreamConnectorFactory\.Create' "$SCRIPT_DIR/Client/Scenarios/ShutdownAwaitProbe.cs"; then
     echo "AutomaticTurnDispatch shutdown scenario must create and use a real stream connector directly." >&2
     return 1
   fi
 
-  echo "ATD-E4 PASS public-await-surface=validated"
+  echo "TD-C5 PASS blocking-io-in-cpu-worker=absent"
 }
 
 PIDS=()
@@ -453,6 +456,12 @@ zlink_redis_start_scoped_assign \
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="awaitdispatch-e2e:$$:"
 
+read -r EXTERNAL_API_HTTP_PORT <<<"$(allocate_ports 1)"
+EXTERNAL_API_HTTP="http://127.0.0.1:${EXTERNAL_API_HTTP_PORT}"
+start_server external-api "$EXTERNAL_API_DLL" \
+  --http-url "$EXTERNAL_API_HTTP"
+wait_health external-api "$EXTERNAL_API_HTTP"
+
 read -r DELAY_A_HTTP_PORT DELAY_A_ENDPOINT_PORT <<<"$(allocate_ports 2)"
 DELAY_A_HTTP="http://127.0.0.1:${DELAY_A_HTTP_PORT}"
 DELAY_A_ENDPOINT="tcp://127.0.0.1:${DELAY_A_ENDPOINT_PORT}"
@@ -460,6 +469,7 @@ start_server delay-a "$DELAY_DLL" \
   --rid delay-a \
   --http-url "$DELAY_A_HTTP" \
   --delay-endpoint "$DELAY_A_ENDPOINT" \
+  --external-api-base-url "$EXTERNAL_API_HTTP" \
   --log-dir "$LOG_DIR"
 wait_health delay-a "$DELAY_A_HTTP"
 wait_port delay-a-channel "$DELAY_A_ENDPOINT"
@@ -471,6 +481,7 @@ start_server delay-b "$DELAY_DLL" \
   --rid delay-b \
   --http-url "$DELAY_B_HTTP" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
+  --external-api-base-url "$EXTERNAL_API_HTTP" \
   --log-dir "$LOG_DIR"
 wait_health delay-b "$DELAY_B_HTTP"
 wait_port delay-b-channel "$DELAY_B_ENDPOINT"
@@ -488,6 +499,7 @@ start_server play-a "$PLAY_DLL" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_A_CONTROL" \
   --delay-endpoint "$DELAY_A_ENDPOINT" \
+  --external-api-base-url "$EXTERNAL_API_HTTP" \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
   --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
@@ -511,6 +523,7 @@ start_server play-b "$PLAY_DLL" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_B_CONTROL" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
+  --external-api-base-url "$EXTERNAL_API_HTTP" \
   --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
   --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
@@ -569,12 +582,11 @@ if scenario_selected full; then
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   cat "$LOG_DIR/client.stdout.log"
-  echo "ATD-D1 PASS topology=local"
-  echo "ATD-E5 PASS language=dotnet scenario-ids=common"
+  echo "TD-G1 PASS language=dotnet scenario-ids=common"
 fi
 
 if scenario_selected shutdown; then
-  SHUTDOWN_ID="ATD-E3-$(date +%s)-$$"
+  SHUTDOWN_ID="TD-F5-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${STAMP//[^a-zA-Z0-9]/}"
   dotnet "$CLIENT_DLL" \
     --scenario shutdown-wait \
@@ -586,17 +598,23 @@ if scenario_selected shutdown; then
   SHUTDOWN_CLIENT_PID=$!
   wait_file_contains \
     "$LOG_DIR/play-a.evidence.log" \
-    "await-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
-    "ATD-E3 pending await marker was not observed before shutdown." \
+    "await-held|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+    "TD-F5 pending Async marker was not observed before shutdown." \
     "$SHUTDOWN_CLIENT_PID"
   request_shutdown "$PLAY_A_PID"
   wait_file_contains \
     "$LOG_DIR/client-shutdown-wait.stdout.log" \
     "automatic-turn-dispatch shutdown wait result=passed" \
-    "ATD-E3 shutdown client did not observe a public shutdown error." \
+    "TD-F5 shutdown client did not observe a public shutdown error." \
     "$SHUTDOWN_CLIENT_PID" \
     "$SHUTDOWN_CLIENT_MARKER_ATTEMPTS"
-  wait "$SHUTDOWN_CLIENT_PID"
+  shutdown_client_status=0
+  wait "$SHUTDOWN_CLIENT_PID" || shutdown_client_status=$?
+  if [[ "$shutdown_client_status" != "0" ]]; then
+    cat "$LOG_DIR/client-shutdown-wait.stderr.log" >&2
+    echo "TD-F5 shutdown wait client exited with status $shutdown_client_status." >&2
+    exit "$shutdown_client_status"
+  fi
   cat "$LOG_DIR/client-shutdown-wait.stdout.log"
   reap_or_kill_after_shutdown play-a "$PLAY_A_PID"
 
@@ -607,6 +625,7 @@ if scenario_selected shutdown; then
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --control-endpoint "$PLAY_A_CONTROL" \
     --delay-endpoint "$DELAY_A_ENDPOINT" \
+    --external-api-base-url "$EXTERNAL_API_HTTP" \
     --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
     --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \

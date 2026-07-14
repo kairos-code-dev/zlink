@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
@@ -44,6 +45,26 @@ public static class ServiceCollectionExtensions
 
         ZLinkMonitoringServiceRegistrar.AddMonitoringRuntime(services, registration);
 
+        return services;
+    }
+
+    public static IServiceCollection AddZLinkHttpClient(
+        this IServiceCollection services,
+        string name,
+        Action<ZLinkHttpClientBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.TryAddSingleton<IZLinkHttpExecutionScheduler, ZLinkSpotHttpExecutionScheduler>();
+        services.AddKeyedSingleton<ZLinkHttpClient>(name, (provider, _) =>
+        {
+            var builder = ZLinkHttpClient.Create()
+                .ExecutionScheduler(provider.GetRequiredService<IZLinkHttpExecutionScheduler>());
+            configure(builder);
+            return builder.Build();
+        });
         return services;
     }
 

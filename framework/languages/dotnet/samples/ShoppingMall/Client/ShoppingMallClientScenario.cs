@@ -24,7 +24,7 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-ok",
             "order-success-001");
-        var success = apiA.Post("/orders/start").Body(successReq).Fetch<StartOrderRes>();
+        var success = apiA.Post("/orders/start").Body(successReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(success.Status == OrderStatuses.Created);
         Ensure(!string.IsNullOrWhiteSpace(success.OrderId));
 
@@ -38,7 +38,7 @@ internal sealed class ShoppingMallClientScenario
         Ensure(confirmed.Amount == 120.00m);
         Ensure(confirmed.Currency == "USD");
 
-        var duplicate = apiB.Post("/orders/start").Body(successReq).Fetch<StartOrderRes>();
+        var duplicate = apiB.Post("/orders/start").Body(successReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(duplicate.OrderId == success.OrderId);
 
         var concurrentReq = new StartOrderReq(
@@ -46,9 +46,9 @@ internal sealed class ShoppingMallClientScenario
             "addr-office",
             "pm-ok",
             "order-concurrent-001");
-        var concurrentA = Task.Run(() => apiA.Post("/orders/start").Body(concurrentReq).Fetch<StartOrderRes>(),
+        var concurrentA = Task.Run(() => apiA.Post("/orders/start").Body(concurrentReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body,
             cancellationToken);
-        var concurrentB = Task.Run(() => apiB.Post("/orders/start").Body(concurrentReq).Fetch<StartOrderRes>(),
+        var concurrentB = Task.Run(() => apiB.Post("/orders/start").Body(concurrentReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body,
             cancellationToken);
         await Task.WhenAll(concurrentA, concurrentB);
         Ensure(concurrentA.Result.OrderId == concurrentB.Result.OrderId);
@@ -68,9 +68,9 @@ internal sealed class ShoppingMallClientScenario
                 OrderId = "order-pending-0001",
                 OwnerInstanceId = "api-a"
             })
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(pendingHook.Status is >= 200 and < 300);
-        var pending = apiB.Post("/orders/start").Body(pendingReq).Fetch<StartOrderRes>();
+        var pending = apiB.Post("/orders/start").Body(pendingReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(pending.OrderId == "order-pending-0001");
         Ensure(pending.Status == OrderStatuses.Created);
         var pendingCreated = await GetOrderAsync(apiA, pending.OrderId, cancellationToken);
@@ -84,10 +84,10 @@ internal sealed class ShoppingMallClientScenario
             "order-resume-001");
         var inventoryReserved = apiA.Post("/self-check/workflow/inventory-reserved")
             .Body(resumeReq)
-            .Fetch<StartOrderRes>();
+            .Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(inventoryReserved.Status == OrderStatuses.InventoryReserved);
         var resumed = apiB.Post($"/self-check/workflow/{inventoryReserved.OrderId}/continue")
-            .Fetch<ContinueOrderWorkflowRes>();
+            .Async<ContinueOrderWorkflowRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(resumed.State.Status == OrderStatuses.Confirmed);
         Ensure(resumed.State.ReservationId == $"reservation-{inventoryReserved.OrderId}");
         Ensure(resumed.State.PaymentId == $"payment-{inventoryReserved.OrderId}");
@@ -97,7 +97,7 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-ok",
             "order-inventory-001");
-        var inventoryStarted = apiA.Post("/orders/start").Body(inventoryReq).Fetch<StartOrderRes>();
+        var inventoryStarted = apiA.Post("/orders/start").Body(inventoryReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         var inventoryFailed =
             await WaitForStatusAsync(apiA, inventoryStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(inventoryFailed.Reason?.Contains("inventory", StringComparison.OrdinalIgnoreCase) == true);
@@ -107,24 +107,24 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-decline",
             "order-payment-001");
-        var paymentStarted = apiB.Post("/orders/start").Body(paymentReq).Fetch<StartOrderRes>();
+        var paymentStarted = apiB.Post("/orders/start").Body(paymentReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         var paymentFailed =
             await WaitForStatusAsync(apiB, paymentStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(paymentFailed.ReservationId is not null);
         Ensure(paymentFailed.Reason?.Contains("payment", StringComparison.OrdinalIgnoreCase) == true);
 
         var deleteProjection = await apiA.Post($"/self-check/projection/{success.OrderId}/delete")
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(deleteProjection.Status is >= 200 and < 300);
         var healedByContinue = apiB.Post($"/self-check/workflow/{success.OrderId}/continue")
-            .Fetch<ContinueOrderWorkflowRes>();
+            .Async<ContinueOrderWorkflowRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(healedByContinue.State.Status == OrderStatuses.Confirmed);
 
         var deleteProjectionAgain = await apiA.Post($"/self-check/projection/{success.OrderId}/delete")
-            .SubmitRawAsync(cancellationToken);
+            .AsyncRaw(cancellationToken);
         Ensure(deleteProjectionAgain.Status is >= 200 and < 300);
         var rebuilt = apiA.Post($"/self-check/projection/{success.OrderId}/rebuild")
-            .Fetch<RebuildOrderProjectionRes>();
+            .Async<RebuildOrderProjectionRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(rebuilt.State.Status == OrderStatuses.Confirmed);
         var rebuiltRead = await GetOrderAsync(apiB, success.OrderId, cancellationToken);
         Ensure(rebuiltRead.Status == OrderStatuses.Confirmed);
@@ -139,7 +139,7 @@ internal sealed class ShoppingMallClientScenario
             "addr-office",
             "pm-ok",
             "order-scale-001");
-        var scale = apiB.Post("/orders/start").Body(scaleReq).Fetch<StartOrderRes>();
+        var scale = apiB.Post("/orders/start").Body(scaleReq).Async<StartOrderRes>().AsTask().GetAwaiter().GetResult().Body;
         var scaleConfirmed = await WaitForStatusAsync(apiA, scale.OrderId, OrderStatuses.Confirmed, cancellationToken);
         Ensure(scaleConfirmed.Status == OrderStatuses.Confirmed);
 
@@ -152,7 +152,7 @@ internal sealed class ShoppingMallClientScenario
                 inventoryStarted.OrderId,
                 paymentStarted.OrderId,
                 scale.OrderId))
-            .Fetch<ServerAssertionRes>();
+            .Async<ServerAssertionRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(assertion.Passed);
     }
 
@@ -161,7 +161,7 @@ internal sealed class ShoppingMallClientScenario
         string orderId,
         CancellationToken cancellationToken)
     {
-        var response = api.Get($"/orders/{orderId}").Fetch<GetOrderStateRes>();
+        var response = api.Get($"/orders/{orderId}").Async<GetOrderStateRes>().AsTask().GetAwaiter().GetResult().Body;
         return ValueTask.FromResult(response.State);
     }
 

@@ -83,6 +83,14 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return ExecuteAsync<TReply>(cancellationToken);
     }
 
+    public void Submit<TReply>(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync<TReply>(cancellationToken),
+            "channel request submit",
+            runtime.ErrorSink);
+    }
+
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return _turn is null
@@ -162,6 +170,11 @@ internal sealed class ZLinkRequestCall<TMessage>(
         {
             ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
         }
+    }
+
+    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
     }
 
 }

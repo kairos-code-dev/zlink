@@ -172,7 +172,7 @@ internal sealed class WorkerStartHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"worker-start|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
-        var marker = await spot.Context.RunWorker(ct =>
+        var marker = await spot.Context.RunCpuWorker(ct =>
             {
                 ct.ThrowIfCancellationRequested();
                 Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));

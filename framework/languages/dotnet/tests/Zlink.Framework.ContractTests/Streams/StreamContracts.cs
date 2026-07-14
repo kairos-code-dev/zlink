@@ -346,6 +346,10 @@ public sealed class StreamContracts
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
+        public void Submit<TReply>(CancellationToken cancellationToken = default)
+        {
+        }
+
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;

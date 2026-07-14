@@ -1,14 +1,15 @@
 namespace Zlink.Framework.Runtime.Execution;
 
 /// <summary>
-///     Fluent worker offload call. The work delegate runs on a pool thread. The
+///     Fluent CPU worker call. The work delegate runs on a pool thread. The
 ///     <c>Async()</c> keeps the current framework turn, while <c>Yield()</c>
 ///     releases it and resumes through the serial queue. A late completion
 ///     after a timeout is dropped.
 /// </summary>
 internal sealed class ZLinkWorkerCall<TResult>(
     ZLinkWorkerPool pool,
-    Func<CancellationToken, TResult> work) : IZLinkWorkerCall<TResult>
+    Func<CancellationToken, TResult> work,
+    IZLinkRuntimeErrorSink errorSink) : IZLinkWorkerCall<TResult>
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private int _terminated;
@@ -28,6 +29,15 @@ internal sealed class ZLinkWorkerCall<TResult>(
         return ExecuteAsync(cancellationToken);
     }
 
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        EnsureSingleTerminator();
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync(cancellationToken),
+            "CPU worker submit",
+            errorSink);
+    }
+
     public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
     {
         EnsureSingleTerminator();
@@ -45,6 +55,11 @@ internal sealed class ZLinkWorkerCall<TResult>(
             error => completion.TrySetException(error),
             cancellationToken);
         return new ValueTask<TResult>(completion.Task);
+    }
+
+    private async ValueTask ObserveAsync(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void Start(
@@ -74,7 +89,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
     {
         if (Interlocked.Exchange(ref _terminated, 1) != 0)
             throw new InvalidOperationException(
-                "RunWorker call already has a terminator. Call Async or Yield once.");
+                "CPU worker call already has a terminator. Call Async or Yield once.");
     }
 
     private sealed class Execution(

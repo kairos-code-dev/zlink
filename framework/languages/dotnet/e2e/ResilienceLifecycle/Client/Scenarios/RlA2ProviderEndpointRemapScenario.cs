@@ -13,7 +13,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         ResilienceProcessManager processes,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/shutdown").SubmitRawAsync();
+        await providerB.Post("/shutdown").AsyncRaw();
         await WaitUntilUnavailableAsync(providerB);
 
         var replacement = await processes.StartProviderBRemapAsync();
@@ -22,21 +22,21 @@ internal static class RlA2ProviderEndpointRemapScenario
             .Build();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer, replacementProvider, "rl-a2-rescheduled", "RL-A2");
 
-        await replacementProvider.Post("/shutdown").SubmitRawAsync();
+        await replacementProvider.Post("/shutdown").AsyncRaw();
         await WaitUntilUnavailableAsync(replacementProvider);
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
 
         await processes.StartProviderBAsync();
         await WaitUntilAvailableAsync(providerB);
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer, providerB, "rl-a2-original-restored", "RL-A2");
 
@@ -52,7 +52,7 @@ internal static class RlA2ProviderEndpointRemapScenario
             var marker = $"{markerPrefix}-{i}";
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A2 request returned an unexpected value.");
         }
     }
@@ -63,7 +63,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         {
             try
             {
-                var health = await http.Get("/health").SubmitRawAsync();
+                var health = await http.Get("/health").AsyncRaw();
                 if (health.Status == 200) return;
             }
             catch
@@ -82,7 +82,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         {
             try
             {
-                var health = await http.Get("/health").SubmitRawAsync();
+                var health = await http.Get("/health").AsyncRaw();
                 if (health.Status != 200) return;
             }
             catch

@@ -5,7 +5,7 @@
     <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">9.0.4</ZLinkBindingsPackageVersion>
     <!-- e2e/sample consumers pin the local http-client snapshot; bump deliberately after
          republishing (framework/doc/http-client/http-client-unification-plan.ko.md Phase 2). -->
-    <ZLinkHttpClientPackageVersion Condition="'$(ZLinkHttpClientPackageVersion)' == ''">0.3.0</ZLinkHttpClientPackageVersion>
+    <ZLinkHttpClientPackageVersion Condition="'$(ZLinkHttpClientPackageVersion)' == ''">0.4.0</ZLinkHttpClientPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

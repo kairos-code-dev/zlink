@@ -17,7 +17,7 @@ internal static class RlA3ReconnectStormScenario
             var marker = $"rl-a3-{index}";
             var reply = (await consumer.Post("/profile/request/new-client")
                 .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(
                 reply.Value == "profile:fast" && reply.ProviderRid is "api-a" or "api-b",
                 "RL-A3 storm request returned an unexpected reply.");
@@ -27,10 +27,10 @@ internal static class RlA3ReconnectStormScenario
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(["marker=rl-a3-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(["marker=rl-a3-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();

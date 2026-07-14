@@ -23,7 +23,7 @@ internal static class RmB1ScaleOutScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq($"{markerBefore}-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RM-B1 before scale-out should reach api-a.");
         }
 
@@ -50,7 +50,7 @@ internal static class RmB1ScaleOutScenario
         {
             var warm = (await requester.Post("/profile/request")
                 .Body(new ProfileReq($"rm-b1-warm-{attempt}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             warmSeen.Add(warm.ProviderRid);
             if (warmSeen.Count < 2) await Task.Delay(150);
         }
@@ -70,7 +70,7 @@ internal static class RmB1ScaleOutScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq(value))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             replies.Add(reply);
         }
 
@@ -101,18 +101,18 @@ internal static class RmB1ScaleOutScenario
     {
         await http.Post("/locations/peers/wait")
             .Body(new PeerLocationWaitReq("profile", "Router", rid, expected))
-            .SubmitAsync<PeerLocationRow[]>();
+            .Async<PeerLocationRow[]>();
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
     {
-        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+        return (await http.Get("/evidence").Async<string[]>()).Body;
     }
 
     private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
     {
         return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(contains))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 }

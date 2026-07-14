@@ -32,7 +32,7 @@ internal static class RmB2ScaleInScenario
         {
             var warm = (await requester.Post("/profile/request")
                 .Body(new ProfileReq($"rm-b2-warm-{attempt}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             warmSeen.Add(warm.ProviderRid);
             if (warmSeen.Count < 2) await Task.Delay(150);
         }
@@ -47,7 +47,7 @@ internal static class RmB2ScaleInScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq(value))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             repliesBefore.Add(reply);
         }
 
@@ -89,7 +89,7 @@ internal static class RmB2ScaleInScenario
             {
                 var settleReply = (await requester.Post("/profile/request")
                     .Body(new ProfileReq($"rm-b2-settle-{attempt}"))
-                    .SubmitAsync<ProfileRes>()).Body;
+                    .Async<ProfileRes>()).Body;
                 settled = settleReply.ProviderRid == "api-a" ? settled + 1 : 0;
             }
             catch
@@ -112,7 +112,7 @@ internal static class RmB2ScaleInScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq(value))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             repliesAfter.Add(reply);
         }
 
@@ -132,12 +132,12 @@ internal static class RmB2ScaleInScenario
     {
         await http.Post("/locations/peers/wait")
             .Body(new PeerLocationWaitReq("profile", "Router", rid, Present: false))
-            .SubmitAsync<PeerLocationRow[]>();
+            .Async<PeerLocationRow[]>();
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
     {
-        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+        return (await http.Get("/evidence").Async<string[]>()).Body;
     }
 
     private static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient http)
@@ -156,6 +156,6 @@ internal static class RmB2ScaleInScenario
     {
         return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(contains))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 }

@@ -48,7 +48,7 @@ internal static class MonA5FixedKindsScenario
                     ["monitor-spot|source=monitor.spot|kind=TimerStoppedAfterUnhandledException"],
                     ["timer=stopping"]
                 ]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         if (HasFixedKinds(evidence)) return evidence;
 
         throw new InvalidOperationException("MON-A5 fixed monitoring evidence was incomplete.");

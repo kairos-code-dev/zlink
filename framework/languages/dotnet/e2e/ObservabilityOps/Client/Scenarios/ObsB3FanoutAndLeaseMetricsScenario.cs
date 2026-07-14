@@ -15,20 +15,20 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
         var beforeB = await EvidenceAsync(context.WorkflowB);
         var suffix = Guid.NewGuid().ToString("N");
         var owner = $"workflow-b3-owner-{suffix}";
-        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(owner)).SubmitRawAsync();
+        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(owner)).AsyncRaw();
         await context.WorkflowA.Post("/workflows")
-            .Body(new CreateWorkflowReq($"workflow-b3-a-{suffix}", "subscriber")).SubmitRawAsync();
+            .Body(new CreateWorkflowReq($"workflow-b3-a-{suffix}", "subscriber")).AsyncRaw();
         await context.WorkflowB.Post("/workflows")
-            .Body(new CreateWorkflowReq($"workflow-b3-b-{suffix}", "subscriber")).SubmitRawAsync();
+            .Body(new CreateWorkflowReq($"workflow-b3-b-{suffix}", "subscriber")).AsyncRaw();
         await context.WorkflowA.Post($"/workflows/{owner}/advance")
-            .Body(new AdvanceWorkflowReq("obs-b3-state")).SubmitRawAsync();
+            .Body(new AdvanceWorkflowReq("obs-b3-state")).AsyncRaw();
         await context.WorkflowA.Post($"/workflows/{owner}/publish")
-            .Body(new PublishProjectionReq("obs-b3-fanout")).SubmitRawAsync();
+            .Body(new PublishProjectionReq("obs-b3-fanout")).AsyncRaw();
         var marker = $"rid={owner}|version=1|marker=obs-b3-fanout";
         await context.WorkflowA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq([marker], [["projection-received|"]])).SubmitRawAsync();
+            .Body(new EvidenceWaitReq([marker], [["projection-received|"]])).AsyncRaw();
         await context.WorkflowB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq([marker], [["projection-received|"]])).SubmitRawAsync();
+            .Body(new EvidenceWaitReq([marker], [["projection-received|"]])).AsyncRaw();
 
         await using (var redis = await ConnectionMultiplexer.ConnectAsync(context.Options.RedisEndpoint))
         {
@@ -65,5 +65,5 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
         samples.Where(sample => sample.Name == name).Sum(sample => sample.Value);
 
     private static async Task<EvidenceSnapshot> EvidenceAsync(Zlink.HttpClient.ZLinkHttpClient client) =>
-        (await client.Get("/evidence").SubmitAsync<EvidenceSnapshot>()).Body;
+        (await client.Get("/evidence").Async<EvidenceSnapshot>()).Body;
 }

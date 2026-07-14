@@ -9,12 +9,12 @@ internal static class RcB4CodecCoexistenceScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioRes>();
+        await server.Post("/codec/roundtrip").Async<CodecScenarioRes>();
         var evidence = (await server.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([
                 "codec-request|codec=json", "codec-request|codec=protobuf", "codec-request|codec=msgpack"
             ]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         ScenarioAssert.That(
             EvidenceText.HasCodec(evidence, "json", "application/json")
             && EvidenceText.HasCodec(evidence, "protobuf", "application/x-protobuf")

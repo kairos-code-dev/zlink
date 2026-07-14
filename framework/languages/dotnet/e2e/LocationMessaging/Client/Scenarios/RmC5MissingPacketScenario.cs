@@ -15,12 +15,12 @@ internal static class RmC5MissingPacketScenario
     {
         var missingRequest = (await storeConsumer.Post("/profile/missing-request")
             .Body(new ProfileReq("missing-request"))
-            .SubmitAsync<RequestFailureRes>()).Body;
+            .Async<RequestFailureRes>()).Body;
         ScenarioAssert.That(missingRequest.Failed, "RM-C5 missing request should fail.");
 
         await storeConsumer.Post("/profile/missing-command")
             .Body(new ProfileMsg("missing-send"))
-            .SubmitAsync<object>();
+            .Async<object>();
 
         var evidence = (await WaitForDispatchErrorEvidenceAsync(
                 providerA,
@@ -42,7 +42,7 @@ internal static class RmC5MissingPacketScenario
 
         var reply = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c5-after"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:rm-c5-after", "RM-C5 normal request after negative path failed.");
     }
 
@@ -52,8 +52,8 @@ internal static class RmC5MissingPacketScenario
         string packetName)
     {
         var wait = new EvidenceWaitReq(packetName);
-        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
-        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
+        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
+        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
         await Task.WhenAll(providerAEvidence, providerBEvidence);
         return providerAEvidence.Result.Body.Concat(providerBEvidence.Result.Body).ToArray();
     }

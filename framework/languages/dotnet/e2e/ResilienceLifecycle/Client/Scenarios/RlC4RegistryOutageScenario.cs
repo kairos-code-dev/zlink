@@ -17,7 +17,7 @@ internal static class RlC4RegistryOutageScenario
     {
         var before = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-before-outage"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(before.Value == "profile:fast", "RL-C4 request failed before the store outage.");
 
         // The store goes away; every established connection must keep
@@ -26,16 +26,16 @@ internal static class RlC4RegistryOutageScenario
 
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-during-outage"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(during.Value == "profile:fast", "RL-C4 existing channel failed during the store outage.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-before-outage"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-before-outage"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-before-outage"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-before-outage"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -47,10 +47,10 @@ internal static class RlC4RegistryOutageScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-during-outage"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-during-outage"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-during-outage"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-during-outage"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -61,27 +61,27 @@ internal static class RlC4RegistryOutageScenario
         }
 
         await processes.UnpauseStoreAsync();
-        await providerA.Post("/shutdown").SubmitRawAsync();
+        await providerA.Post("/shutdown").AsyncRaw();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerA),
             "RL-C4 expected api-a restart after store recovery.");
         await processes.WaitInitialProviderAExitedAsync();
         await processes.StartProviderAAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-a", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
 
         var after = (await consumer.Post("/profile/request/new-client")
             .Body(new ProfileReq("fast", "rl-c4-after-restart"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(after.Value == "profile:fast", "RL-C4 follow-up request failed after store recovery.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-after-restart"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-after-restart"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c4-after-restart"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c4-after-restart"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -98,7 +98,7 @@ internal static class RlC4RegistryOutageScenario
     {
         try
         {
-            return (await provider.Get("/health").SubmitRawAsync()).Status == 200;
+            return (await provider.Get("/health").AsyncRaw()).Status == 200;
         }
         catch
         {

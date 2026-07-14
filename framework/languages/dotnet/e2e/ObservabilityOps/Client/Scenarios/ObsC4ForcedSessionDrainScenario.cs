@@ -29,7 +29,7 @@ internal static class ObsC4ForcedSessionDrainScenario
             });
         await connector.Request(new AuthenticateReq($"obs-c4-{Guid.NewGuid():N}"))
             .Async<AuthenticateRes>();
-        await context.Session.Post("/drain?deadlineMs=100").SubmitRawAsync();
+        await context.Session.Post("/drain?deadlineMs=100").AsyncRaw();
         await closingObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
         var reason = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         ScenarioContext.Require(reason == ZlinkStreamCloseReason.ServerDrain,
@@ -38,7 +38,7 @@ internal static class ObsC4ForcedSessionDrainScenario
             context.Session, TimeSpan.FromSeconds(10));
         ScenarioContext.Require(result.Result == "ForceStopped" && result.Reason == "DeadlineExceeded",
             $"OBS-C4 short deadline returned {result.Result}/{result.Reason}.");
-        var metrics = (await context.Session.Get("/evidence").SubmitAsync<EvidenceSnapshot>()).Body.Metrics;
+        var metrics = (await context.Session.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
         ScenarioContext.Require(metrics.Any(sample => sample.Name == "zlink.drain.forced"
                                                       && sample.Tags.GetValueOrDefault("kind") == "session"
                                                       && sample.Value >= 1),

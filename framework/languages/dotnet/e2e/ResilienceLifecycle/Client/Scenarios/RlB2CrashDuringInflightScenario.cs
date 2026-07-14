@@ -14,27 +14,27 @@ internal static class RlB2CrashDuringInflightScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerA.Post("/admin/drain").SubmitRawAsync();
+        await providerA.Post("/admin/drain").AsyncRaw();
         await providerA.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(0))
-            .SubmitRawAsync();
+            .AsyncRaw();
 
         var marker = $"rl-b2-slow-{Guid.NewGuid():N}";
         var inFlight = consumer.Post("/profile/request")
             .Body(new ProfileReq("slow", marker))
-            .SubmitAsync<ProfileRes>();
+            .Async<ProfileRes>();
 
         await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
-            .SubmitAsync<string[]>();
+            .Async<string[]>();
 
-        await providerB.Post("/admin/crash").SubmitRawAsync();
+        await providerB.Post("/admin/crash").AsyncRaw();
         await processes.WaitProviderBExitedAsync();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
+                var health = await providerB.Get("/health").AsyncRaw();
                 if (health.Status != 200) break;
             }
             catch
@@ -57,17 +57,17 @@ internal static class RlB2CrashDuringInflightScenario
 
         ScenarioAssert.That(failed, "RL-B2 in-flight request unexpectedly completed after provider crash.");
 
-        await providerA.Post("/admin/restore").SubmitRawAsync();
+        await providerA.Post("/admin/restore").AsyncRaw();
         await providerA.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(100))
-            .SubmitRawAsync();
+            .AsyncRaw();
 
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b2-after-crash"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
 
         var restarted = await processes.StartProviderBAsync();
@@ -76,12 +76,12 @@ internal static class RlB2CrashDuringInflightScenario
             .Build();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
-                var health = await restartedProviderB.Get("/health").SubmitRawAsync();
+                var health = await restartedProviderB.Get("/health").AsyncRaw();
                 if (health.Status == 200) break;
             }
             catch

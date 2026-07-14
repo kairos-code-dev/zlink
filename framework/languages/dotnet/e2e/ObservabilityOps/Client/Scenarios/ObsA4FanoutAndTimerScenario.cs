@@ -11,27 +11,27 @@ internal static class ObsA4FanoutAndTimerScenario
         var owner = $"workflow-owner-{suffix}";
         var subscriberA = $"projection-a-{suffix}";
         var subscriberB = $"projection-b-{suffix}";
-        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(owner)).SubmitRawAsync();
-        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(subscriberA, "subscriber")).SubmitRawAsync();
-        await context.WorkflowB.Post("/workflows").Body(new CreateWorkflowReq(subscriberB, "subscriber")).SubmitRawAsync();
+        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(owner)).AsyncRaw();
+        await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(subscriberA, "subscriber")).AsyncRaw();
+        await context.WorkflowB.Post("/workflows").Body(new CreateWorkflowReq(subscriberB, "subscriber")).AsyncRaw();
         await context.WorkflowA.Post($"/workflows/{owner}/advance")
-            .Body(new AdvanceWorkflowReq("obs-a4-state")).SubmitRawAsync();
+            .Body(new AdvanceWorkflowReq("obs-a4-state")).AsyncRaw();
         await context.WorkflowA.Post($"/workflows/{owner}/publish")
-            .Body(new PublishProjectionReq("obs-a4-fanout")).SubmitRawAsync();
+            .Body(new PublishProjectionReq("obs-a4-fanout")).AsyncRaw();
         var expected = $"rid={owner}|version=1|marker=obs-a4-fanout";
         var receivedA = (await context.WorkflowA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([expected], [["projection-received|"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         var receivedB = (await context.WorkflowB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([expected], [["projection-received|"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         ScenarioContext.Require(receivedA.Any(line => line.Contains($"subscriber={subscriberA}", StringComparison.Ordinal)),
             "OBS-A4 workflow-a subscriber did not receive the fanout.");
         ScenarioContext.Require(receivedB.Any(line => line.Contains($"subscriber={subscriberB}", StringComparison.Ordinal)),
             "OBS-A4 workflow-b subscriber did not receive the fanout.");
 
         var roomRid = $"timer-room-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).SubmitRawAsync();
+        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         var timer = await context.WaitPlayAEvidenceAsync($"timer-tick|room={roomRid}");
         ScenarioContext.Require(timer.Any(line => line.Contains($"timer-tick|room={roomRid}", StringComparison.Ordinal)),
             "OBS-A4 timer origin evidence missing.");

@@ -14,24 +14,24 @@ internal static class RlC2TopologyRecoveryScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/crash").SubmitRawAsync();
+        await providerB.Post("/admin/crash").AsyncRaw();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerB), "RL-C2 expected api-b crash.");
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
 
         for (var i = 0; i < 8; i++)
         {
             var reply = (await consumer.Post("/profile/request/new-client")
                 .Body(new ProfileReq("fast", $"rl-c2-after-crash-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
         }
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer,
             providerB,
@@ -42,10 +42,10 @@ internal static class RlC2TopologyRecoveryScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).Async<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -61,7 +61,7 @@ internal static class RlC2TopologyRecoveryScenario
     {
         try
         {
-            return (await provider.Get("/health").SubmitRawAsync()).Status == 200;
+            return (await provider.Get("/health").AsyncRaw()).Status == 200;
         }
         catch
         {

@@ -7,7 +7,7 @@ namespace Zlink.HttpClient;
 /// <summary>
 ///     ZLink-style fluent HTTP client. Wraps <c>System.Net.Http.HttpClient</c> behind a builder so
 ///     transport types never leak into application code. A general HTTP client; the typed-JSON path
-///     (<c>Body(dto)</c> / <c>SubmitAsync&lt;T&gt;()</c> / <c>Fetch&lt;T&gt;()</c>) is a convenience
+///     (<c>Body(dto)</c> / <c>Async&lt;T&gt;()</c>) is a convenience
 ///     layer on top. Mirrors the C++ <c>zlink::http_client::client_t</c>.
 /// </summary>
 public sealed class ZLinkHttpClient : IDisposable

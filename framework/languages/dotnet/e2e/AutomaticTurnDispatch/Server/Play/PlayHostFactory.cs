@@ -25,6 +25,9 @@ internal static class PlayHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
+        builder.Services.AddZLinkHttpClient("external-api", http => http
+            .BaseUrl(options.ExternalApiBaseUrl)
+            .Timeout(TimeSpan.FromSeconds(5)));
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis

@@ -20,7 +20,7 @@ internal static class RmA4SameRidFailoverScenario
 
         var first = (await providerV1Client.Post("/profile/request")
             .Body(new ProfileReq("rm-a4-v1"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(
             first.ProviderRid == "api-a",
             "RM-A4 initial request should reach api-a.");
@@ -45,7 +45,7 @@ internal static class RmA4SameRidFailoverScenario
         {
             var reply = (await providerV2Client.Post("/profile/request")
                 .Body(new ProfileReq($"{marker}-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             ScenarioAssert.That(
                 reply.ProviderRid == "api-a",
                 "RM-A4 replacement request should reach api-a.");
@@ -75,12 +75,12 @@ internal static class RmA4SameRidFailoverScenario
                 "api-a",
                 Present: true,
                 Endpoint: expectedEndpoint))
-            .SubmitAsync<PeerLocationRow[]>();
+            .Async<PeerLocationRow[]>();
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client)
     {
-        return (await client.Get("/evidence").SubmitAsync<string[]>()).Body;
+        return (await client.Get("/evidence").Async<string[]>()).Body;
     }
 
     private static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient client)
@@ -99,6 +99,6 @@ internal static class RmA4SameRidFailoverScenario
     {
         return (await client.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(contains))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 }

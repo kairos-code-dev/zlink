@@ -16,7 +16,7 @@ internal static class MonA2RegistryEventsScenario
             .Body(new EvidenceWaitReq(
                 ["monitor-location-runtime|source=location-runtime"],
                 [["kind=TopologyChanged"], ["kind=ServiceSummaryChanged"]]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line =>
                 line.Contains("monitor-location-runtime|source=location-runtime|kind=TopologyChanged", StringComparison.Ordinal)

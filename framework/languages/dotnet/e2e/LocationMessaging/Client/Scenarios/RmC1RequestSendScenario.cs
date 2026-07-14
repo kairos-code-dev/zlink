@@ -12,13 +12,13 @@ internal static class RmC1RequestSendScenario
     {
         var reply = (await providerA.Post("/profile/request")
             .Body(new ProfileReq("rm-c1-request"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:rm-c1-request", "RM-C1 request reply mismatch.");
 
         var commandId = $"cmd-{Guid.NewGuid():N}";
         await providerA.Post("/profile/command")
             .Body(new ProfileMsg(commandId))
-            .SubmitAsync<object>();
+            .Async<object>();
 
         var evidence = await WaitForProviderEvidenceAsync(providerA, providerB, commandId);
         ScenarioAssert.That(
@@ -36,8 +36,8 @@ internal static class RmC1RequestSendScenario
         string commandId)
     {
         var wait = new EvidenceWaitReq($"command={commandId}");
-        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
-        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
+        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
+        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
         await Task.WhenAll(providerAEvidence, providerBEvidence);
         return providerAEvidence.Result.Body.Concat(providerBEvidence.Result.Body).ToArray();
     }

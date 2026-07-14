@@ -42,7 +42,7 @@ internal static class MonA3SpotEventsScenario
                     ["kind=TimerHandlerFailed"],
                     ["timer=failing"]
                 ]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         if (evidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=StatusChanged", StringComparison.Ordinal))
             && evidence.Any(line =>

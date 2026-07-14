@@ -14,14 +14,14 @@ internal static class RlD3DispatchErrorEvidenceScenario
     {
         var failed = await consumer.Post("/profile/request/missing")
             .Body(new ProfileReq("fast", "rl-d3-missing"))
-            .SubmitRawAsync();
+            .AsyncRaw();
         ScenarioAssert.That(failed.Status >= 500, "RL-D3 expected missing request handler failure.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var request = new EvidenceWaitReq(["dispatch-error|"], [["packet=MissingProfileReq"]]);
-            var waitA = providerA.Post("/evidence/wait").Body(request).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(request).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(request).Async<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(request).Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();

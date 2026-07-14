@@ -37,7 +37,7 @@ internal static class RmC7WeightedProviderScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq(value))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             replies.Add(reply);
         }
 
@@ -72,14 +72,14 @@ internal static class RmC7WeightedProviderScenario
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
     {
-        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+        return (await http.Get("/evidence").Async<string[]>()).Body;
     }
 
     private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
     {
         return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(contains, 20000))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
     }
 
     private static async Task WaitForBothProvidersAsync(ZLinkHttpClient requester)
@@ -89,7 +89,7 @@ internal static class RmC7WeightedProviderScenario
         {
             var reply = (await requester.Post("/profile/request")
                 .Body(new ProfileReq($"rm-c7-warm-{attempt}"))
-                .SubmitAsync<ProfileRes>()).Body;
+                .Async<ProfileRes>()).Body;
             seen.Add(reply.ProviderRid);
             if (seen.Count < 2) await Task.Delay(150);
         }

@@ -33,13 +33,31 @@ public sealed record DelayReq(string RequestId, int DelayMs, string Marker);
 
 public sealed record DelayRes(string RequestId, string Marker, string NodeRid);
 
+public sealed record ExternalDelayRes(string RequestId, string Marker);
+
 public sealed record HoldReq(string RequestId, int DelayMs);
 
 public sealed record HoldMsg(string RequestId, int DelayMs);
 
-public sealed record AwaitReq(string RequestId, int DelayMs, string CorrelationId);
+public sealed record AwaitReq(string RequestId, int DelayMs, string CorrelationId, string Terminator = "async");
 
-public sealed record AwaitMsg(string RequestId, int DelayMs, string CorrelationId);
+public sealed record AwaitMsg(string RequestId, int DelayMs, string CorrelationId, string Terminator = "async");
+
+public sealed record CounterResetMsg(string RequestId);
+
+public sealed record CounterAwaitMsg(string RequestId, string OperationId, int DelayMs, string Terminator);
+
+public sealed record CounterReadReq(string RequestId);
+
+public sealed record CounterReadRes(string RequestId, int Value);
+
+public sealed record HttpAwaitMsg(string RequestId, int DelayMs, string Terminator);
+
+public sealed record IoWorkerAwaitMsg(string RequestId, string OperationId, int DelayMs);
+
+public sealed record CpuWorkerAwaitMsg(string RequestId, int DelayMs, string Terminator);
+
+public sealed record SelfCycleMsg(string RequestId, int TimeoutMs);
 
 public sealed record WorkerAwaitReq(string RequestId, int DelayMs);
 
@@ -73,7 +91,7 @@ public sealed record TimerStopReq(string RequestId);
 
 public sealed record TimerStopMsg(string RequestId);
 
-public sealed record ActorAwaitReq(string RequestId, int DelayMs);
+public sealed record ActorAwaitReq(string RequestId, int DelayMs, string Terminator = "async");
 
 public sealed record ActorFastReq(string RequestId, string Marker);
 

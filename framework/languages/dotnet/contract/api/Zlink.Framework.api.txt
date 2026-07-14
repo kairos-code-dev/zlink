@@ -41,6 +41,7 @@ assembly Zlink.Framework
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult<TReply?>> Async<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
+    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult> Yield(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult<TReply?>> Yield<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
@@ -161,6 +162,8 @@ assembly Zlink.Framework
     method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Channels.IZLinkRequestCall
     method abstract System.Threading.Tasks.ValueTask<TReply?> Async<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic TReply variance=invariant nullable=unspecified
+    method abstract System.Void Submit<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
     method abstract Zlink.Framework.Contracts.Channels.IZLinkRequestCall Timeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<TReply?> Yield<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -1772,7 +1775,9 @@ assembly Zlink.Framework
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Timers.IZLinkTimer> AddTimer<THandler>(System.String name [nullability=read:not-null,write:not-null], System.TimeSpan period [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Timers.ZLinkTimerOptions? options = null [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic THandler variance=invariant nullable=unspecified
       where THandler : class
-    method abstract Zlink.Framework.Contracts.Workers.IZLinkWorkerCall<TResult?> RunWorker<TResult>(System.Func<System.Threading.CancellationToken, TResult?> work [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Workers.IZLinkWorkerCall<TResult?> RunCpuWorker<TResult>(System.Func<System.Threading.CancellationToken, TResult?> work [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic TResult variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Workers.IZLinkWorkerCall<TResult?> RunIoWorker<TResult>(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult?>> work [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TResult variance=invariant nullable=nullable
   type interface Zlink.Framework.Contracts.Spots.IZLinkSpotContext : Zlink.Framework.Contracts.Spots.IZLinkSpotCommonContext
     method abstract System.Threading.Tasks.ValueTask<System.Boolean> CloseAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -2143,6 +2148,7 @@ assembly Zlink.Framework
   type interface Zlink.Framework.Contracts.Workers.IZLinkWorkerCall<TResult>
     generic TResult variance=invariant nullable=nullable
     method abstract System.Threading.Tasks.ValueTask<TResult?> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Workers.IZLinkWorkerCall<TResult?> Timeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<TResult?> Yield(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Workers.IZLinkWorkerOptions

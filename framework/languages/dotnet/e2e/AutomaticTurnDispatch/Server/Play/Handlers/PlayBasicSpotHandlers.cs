@@ -25,7 +25,7 @@ internal sealed class HoldHandler(EvidenceStore evidence)
             $"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         evidence.Add(
             $"hold-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        return AwaitReplies.Reply("ATD-A1", request.RequestId, spot, "hold-completed");
+        return AwaitReplies.Reply("probe-A1", request.RequestId, spot, "hold-completed");
     }
 }
 
@@ -61,24 +61,26 @@ internal sealed class AwaitHandler(EvidenceStore evidence)
         AwaitReq request,
         CancellationToken cancellationToken)
     {
+        var prefix = request.Terminator == "yield" ? "yield" : "async";
         evidence.Add(
-            $"await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
         var call = spot.Context.Outbound.RequestToChannel(
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "await"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{(prefix == "yield" ? "yield-released" : "await-held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        await call.Async<DelayRes>(cancellationToken);
+        await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
-            $"await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
         evidence.Add(
-            $"await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        return AwaitReplies.Reply("ATD-A2", request.RequestId, spot, "await-completed");
+        return AwaitReplies.Reply(prefix == "yield" ? "TD-B1" : "TD-A2", request.RequestId, spot,
+            $"{prefix}-completed");
     }
 }
 
@@ -91,22 +93,23 @@ internal sealed class AwaitCommandHandler(EvidenceStore evidence)
         AwaitMsg request,
         CancellationToken cancellationToken)
     {
+        var prefix = request.Terminator == "yield" ? "yield" : "async";
         evidence.Add(
-            $"await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
         var call = spot.Context.Outbound.RequestToChannel(
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "await"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{(prefix == "yield" ? "yield-released" : "await-held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        await call.Async<DelayRes>(cancellationToken);
+        await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
-            $"await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
         evidence.Add(
-            $"await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"{prefix}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
     }
 }
@@ -122,7 +125,7 @@ internal sealed class WorkerAwaitHandler(EvidenceStore evidence)
     {
         evidence.Add(
             $"worker-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        var call = spot.Context.RunWorker(ct =>
+        var call = spot.Context.RunCpuWorker(ct =>
         {
             ct.ThrowIfCancellationRequested();
             Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
@@ -135,7 +138,7 @@ internal sealed class WorkerAwaitHandler(EvidenceStore evidence)
             $"worker-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         evidence.Add(
             $"worker-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        return AwaitReplies.Reply("ATD-A4", request.RequestId, spot, "worker-await-completed");
+        return AwaitReplies.Reply("probe-A4", request.RequestId, spot, "worker-await-completed");
     }
 }
 
@@ -150,7 +153,7 @@ internal sealed class WorkerAwaitCommandHandler(EvidenceStore evidence)
     {
         evidence.Add(
             $"worker-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        var call = spot.Context.RunWorker(ct =>
+        var call = spot.Context.RunCpuWorker(ct =>
         {
             ct.ThrowIfCancellationRequested();
             Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
@@ -182,7 +185,7 @@ internal sealed class ProbeHandler(EvidenceStore evidence)
         evidence.Add(
             $"probe-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=spot");
-        return ValueTask.FromResult(AwaitReplies.Reply("ATD-PROBE", request.RequestId, spot, request.Marker));
+        return ValueTask.FromResult(AwaitReplies.Reply("probe-PROBE", request.RequestId, spot, request.Marker));
     }
 }
 

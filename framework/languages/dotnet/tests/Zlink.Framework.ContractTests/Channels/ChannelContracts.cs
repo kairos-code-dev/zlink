@@ -230,6 +230,10 @@ public sealed class ChannelContracts
             return ValueTask.FromResult((TReply)reply!);
         }
 
+        public void Submit<TReply>(CancellationToken cancellationToken = default)
+        {
+        }
+
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
         {
             return Async<TReply>(cancellationToken);
@@ -258,6 +262,10 @@ public sealed class ChannelContracts
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult((TReply)reply);
+        }
+
+        public void Submit<TReply>(CancellationToken cancellationToken = default)
+        {
         }
 
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)

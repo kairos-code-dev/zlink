@@ -18,25 +18,25 @@ try
 {
     var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreCase)
     {
-        ["PS-A1"] = () => FanoutBasicDeliveryScenario.RunAsync(publisher, subscribers),
-        ["PS-A2"] = () => TopicFilterScenario.RunAsync(publisher, subscribers),
-        ["PS-A3"] = () => LateSubscriberScenario.RunAsync(
+        ["PS-A1"] = () => PsA1FanoutBasicDeliveryScenario.RunAsync(publisher, subscribers),
+        ["PS-A2"] = () => PsA2TopicFilterScenario.RunAsync(publisher, subscribers),
+        ["PS-A3"] = () => PsA3LateSubscriberScenario.RunAsync(
             publisher,
             lateSubscriber,
             processLauncher,
             options.LateSubscriberUrl),
-        ["PS-A4"] = () => SubscriberReconnectScenario.RunAsync(
+        ["PS-A4"] = () => PsA4SubscriberReconnectScenario.RunAsync(
             publisher,
             lateSubscriber,
             subscribers.Take(2).ToArray(),
             processLauncher,
             options.LateSubscriberUrl),
-        ["PS-B1"] = () => SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]),
-        ["PS-B2"] = async () => restartedPublisher = await PublisherRestartScenario.RunAsync(
+        ["PS-B1"] = () => PsB1SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]),
+        ["PS-B2"] = async () => restartedPublisher = await PsB2PublisherRestartScenario.RunAsync(
             publisher,
             subscribers,
             processLauncher),
-        ["PS-C1"] = () => MissingMessageNameScenario.RunAsync(publisher, subscribers)
+        ["PS-C1"] = () => PsC1MissingMessageNameScenario.RunAsync(publisher, subscribers)
     };
 
     foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
@@ -51,7 +51,7 @@ finally
 {
     if (restartedPublisher is { HasExited: false })
     {
-        await publisher.Post("/shutdown").SubmitRawAsync();
+        await publisher.Post("/shutdown").AsyncRaw();
         await restartedPublisher.WaitForExitAsync();
     }
 

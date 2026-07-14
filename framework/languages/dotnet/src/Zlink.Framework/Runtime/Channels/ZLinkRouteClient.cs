@@ -79,6 +79,14 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
         return ExecuteAsync<TReply>(cancellationToken);
     }
 
+    public void Submit<TReply>(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync<TReply>(cancellationToken),
+            "route request submit",
+            runtime.ErrorSink);
+    }
+
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return _turn is null
@@ -96,6 +104,11 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
             request,
             timeout,
             cancellationToken);
+    }
+
+    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
     }
 }
 
@@ -149,6 +162,14 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
         return ExecuteAsync<TReply>(cancellationToken);
     }
 
+    public void Submit<TReply>(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(
+            ObserveAsync<TReply>(cancellationToken),
+            "route Spot request submit",
+            runtime.ErrorSink);
+    }
+
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return _turn is null
@@ -189,5 +210,10 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
             "SPOT route request reply is empty.",
             $"SPOT route request failed for '{packetName}'.",
             runtime.Registration.Codecs);
+    }
+
+    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
     }
 }

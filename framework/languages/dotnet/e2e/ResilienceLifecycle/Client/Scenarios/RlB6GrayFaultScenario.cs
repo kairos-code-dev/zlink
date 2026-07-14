@@ -12,7 +12,7 @@ internal static class RlB6GrayFaultScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/fault/gray").SubmitRawAsync();
+        await providerB.Post("/admin/fault/gray").AsyncRaw();
 
         var failures = 0;
         var successes = 0;
@@ -21,7 +21,7 @@ internal static class RlB6GrayFaultScenario
             {
                 var reply = (await consumer.Post("/profile/request")
                     .Body(new ProfileReq(i % 3 == 0 ? "gray" : "fast", $"rl-b6-{i}"))
-                    .SubmitAsync<ProfileRes>()).Body;
+                    .Async<ProfileRes>()).Body;
                 if (reply.ProviderRid == "api-a") successes++;
             }
             catch
@@ -30,18 +30,18 @@ internal static class RlB6GrayFaultScenario
             }
 
         ScenarioAssert.That(successes > 0 && failures > 0, "RL-B6 expected both healthy successes and gray failures.");
-        await providerB.Post("/admin/fault/none").SubmitRawAsync();
+        await providerB.Post("/admin/fault/none").AsyncRaw();
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b6-after"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:fast", "RL-B6 follow-up request failed after clearing fault.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-b6-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-b6-"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
@@ -51,9 +51,9 @@ internal static class RlB6GrayFaultScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-b6-after"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-b6-after"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();

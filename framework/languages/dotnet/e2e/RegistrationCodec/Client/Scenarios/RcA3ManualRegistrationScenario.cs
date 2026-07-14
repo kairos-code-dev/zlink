@@ -1,0 +1,24 @@
+using RegistrationCodec.Client.Support;
+using RegistrationCodec.Shared;
+using Zlink.HttpClient;
+
+namespace RegistrationCodec.Client.Scenarios;
+
+// RC-A3: verifies manually registered handlers for request and send messages.
+internal static class RcA3ManualRegistrationScenario
+{
+    public static async Task RunAsync(ZLinkHttpClient server)
+    {
+        var reply = (await server.Post("/registration/manual").Async<EchoRes>()).Body;
+        ScenarioAssert.That(reply.Value == "echo:rc-a3", "RC-A3 request reply mismatch.");
+
+        var evidence = (await server.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(["echo-command|variant=manual|id=cmd-rc-a3"]))
+            .Async<string[]>()).Body;
+        ScenarioAssert.That(
+            evidence.Any(line => line.Contains("echo-command|variant=manual|id=cmd-rc-a3", StringComparison.Ordinal)),
+            "RC-A3 send evidence missing.");
+
+        Console.WriteLine("scenario RC-A3 passed");
+    }
+}

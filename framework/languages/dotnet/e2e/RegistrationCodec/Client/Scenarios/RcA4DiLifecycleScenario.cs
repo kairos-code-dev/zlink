@@ -9,7 +9,7 @@ internal static class RcA4DiLifecycleScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        var replies = (await server.Post("/registration/di-filter-order").SubmitAsync<EchoRes[]>()).Body;
+        var replies = (await server.Post("/registration/di-filter-order").Async<EchoRes[]>()).Body;
         var first = replies[0];
         var second = replies[1];
         ScenarioAssert.That(
@@ -18,7 +18,7 @@ internal static class RcA4DiLifecycleScenario
 
         var evidence = (await server.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["di|value=rc-a4-1", "di|value=rc-a4-2"]))
-            .SubmitAsync<string[]>()).Body;
+            .Async<string[]>()).Body;
         var di = evidence.Where(line => line.Contains("di|", StringComparison.Ordinal)).ToArray();
         var singletonIds = di.Select(line => EvidenceText.ExtractValue(line, "singleton"))
             .Distinct(StringComparer.Ordinal)

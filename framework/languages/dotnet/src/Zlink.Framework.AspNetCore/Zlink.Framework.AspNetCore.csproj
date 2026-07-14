@@ -16,5 +16,6 @@
 
     <ItemGroup>
         <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../Zlink.HttpClient/Zlink.HttpClient.csproj"/>
     </ItemGroup>
 </Project>

@@ -4,7 +4,7 @@
         <AssemblyName>Zlink.HttpClient</AssemblyName>
         <RootNamespace>Zlink.HttpClient</RootNamespace>
         <Description>ZLink-style fluent HTTP client wrapping System.Net.Http for the ZLink framework.</Description>
-        <Version>0.3.0</Version>
+        <Version>0.4.0</Version>
         <IsPackable>true</IsPackable>
         <!-- Consumers own their Zlink.Framework reference (the framework is never snapshot-
              pinned), so the local package declares no dependencies. -->
@@ -20,5 +20,6 @@
     </ItemGroup>
     <ItemGroup>
         <InternalsVisibleTo Include="Zlink.HttpClient.UnitTests"/>
+        <InternalsVisibleTo Include="Zlink.Framework.AspNetCore"/>
     </ItemGroup>
 </Project>

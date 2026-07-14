@@ -80,7 +80,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Fetch<CreateDeliveryRes>();
+            .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(created.DeliveryId == deliveryId);
 
         // courier-a receives the offer through its bound stream session and accepts it.
@@ -145,7 +145,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Fetch<CreateDeliveryRes>();
+            .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(created.DeliveryId == deliveryId);
 
         // courier-a intentionally does not answer. The dispatch server times out and offers the
@@ -201,7 +201,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         // The final HTTP check proves that server-side tracking saw the full status sequences.
         var assertion = http.Post("/self-check/assert")
             .Body(new ServerAssertionReq("delivery-success", "delivery-reassign"))
-            .Fetch<ServerAssertionRes>();
+            .Async<ServerAssertionRes>().AsTask().GetAwaiter().GetResult().Body;
         Ensure(assertion.Passed);
         logger.LogInformation("deliverydispatch-server-evidence=completed");
         return ValueTask.CompletedTask;

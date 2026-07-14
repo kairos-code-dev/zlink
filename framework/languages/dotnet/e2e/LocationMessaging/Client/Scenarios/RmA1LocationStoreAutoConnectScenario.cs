@@ -17,28 +17,28 @@ internal static class RmA1LocationStoreAutoConnectScenario
     {
         var reply = (await providerA.Post("/profile/request")
             .Body(new ProfileReq("rm-a1"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
 
         ScenarioAssert.That(reply.Value == "profile:rm-a1", "RM-A1 reply value mismatch.");
         ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "RM-A1 provider rid was not api-a/api-b.");
 
-        var rawPeers = providerA.Get("/locations/peers?mesh=profile").Fetch<PeerLocationRow[]>();
+        var rawPeers = providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
         var liveProviderRows = rawPeers.Count(row =>
             row.Role == "Router" && row.NodeRid is "api-a" or "api-b");
         ScenarioAssert.That(
             liveProviderRows >= 2,
             "RM-A1 expected live peer location rows for both profile providers in the runtime query.");
 
-        var memberPeers = providerA.Get("/locations/member-peers?mesh=profile").Fetch<PeerLocationRow[]>();
+        var memberPeers = providerA.Get("/locations/member-peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
         ScenarioAssert.That(
             memberPeers.Count(row => row.Role == "Router" && row.NodeRid is "api-a" or "api-b") >= 2,
             "RM-A1 expected both providers on the member-peer resolver surface (Refresh).");
 
-        var status = providerA.Get("/locations/status").Fetch<LocationStatusRes>();
+        var status = providerA.Get("/locations/status").Async<LocationStatusRes>().AsTask().GetAwaiter().GetResult().Body;
         ScenarioAssert.That(status.StoreHealthy, "RM-A1 expected a healthy location store.");
 
-        var providerEvidence = providerA.Get("/evidence").Fetch<string[]>()
-            .Concat(providerB.Get("/evidence").Fetch<string[]>())
+        var providerEvidence = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body
+            .Concat(providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body)
             .ToArray();
         ScenarioAssert.That(
             providerEvidence.Any(line => line.Contains("value=rm-a1", StringComparison.Ordinal)),

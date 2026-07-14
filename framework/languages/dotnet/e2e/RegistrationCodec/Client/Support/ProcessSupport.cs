@@ -36,7 +36,7 @@ internal static class ProcessSupport
 
             try
             {
-                if ((await http.Get("/health").SubmitRawAsync()).Status == 200) return;
+                if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
             catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
             {

@@ -12,25 +12,25 @@ internal static class RlD2ObserverFaultScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/fault/observer-throws").SubmitRawAsync();
+        await providerB.Post("/admin/fault/observer-throws").AsyncRaw();
         var missing = await consumer.Post("/profile/request/missing")
             .Body(new ProfileReq("fast", "rl-d2-error"))
-            .SubmitRawAsync();
+            .AsyncRaw();
         ScenarioAssert.That(missing.Status >= 500, "RL-D2 missing handler request should fail.");
 
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-d2-after"))
-            .SubmitAsync<ProfileRes>()).Body;
+            .Async<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:fast",
             "RL-D2 messaging did not continue after observer failure.");
-        await providerB.Post("/admin/fault/none").SubmitRawAsync();
+        await providerB.Post("/admin/fault/none").AsyncRaw();
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d2-after"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d2-after"], []))
-                .SubmitAsync<string[]>(timeout.Token).AsTask();
+                .Async<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();

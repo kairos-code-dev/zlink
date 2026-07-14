@@ -8,7 +8,7 @@ internal static class RcB3MessagePackCodecScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        var result = (await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioRes>()).Body;
+        var result = (await server.Post("/codec/roundtrip").Async<CodecScenarioRes>()).Body;
         ScenarioAssert.That(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal),
             "RC-B3 MessagePack reply mismatch.");
         ScenarioAssert.That(

@@ -11,10 +11,10 @@ internal static class ObsA3FlowPropagationScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-a3-{suffix}";
         var roomRid = $"room-a3-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).SubmitRawAsync();
+        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         var sessionActionLinesBefore = context.ReadFlowLines("session-a")
             .Count(line => line.Contains("packet=GameActionReq", StringComparison.Ordinal));
-        await context.Session.Post("/message-flow/off").SubmitRawAsync();
+        await context.Session.Post("/message-flow/off").AsyncRaw();
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();

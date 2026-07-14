@@ -94,5 +94,5 @@ internal static class SfE1StoreDelayNonBlockingScenario
     private static async Task SetDelayAsync(ZLinkHttpClient consumer, int milliseconds) =>
         await consumer.Post("/admin/store-delay")
             .Body(new StoreDelayReq(milliseconds))
-            .SubmitRawAsync();
+            .AsyncRaw();
 }

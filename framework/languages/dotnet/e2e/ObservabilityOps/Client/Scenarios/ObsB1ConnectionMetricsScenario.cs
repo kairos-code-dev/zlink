@@ -22,7 +22,7 @@ internal static class ObsB1ConnectionMetricsScenario
             }
             var active = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.active", 3))
-                .SubmitAsync<MetricSample[]>()).Body;
+                .Async<MetricSample[]>()).Body;
             ScenarioContext.Require(active.Any(sample => sample.Name == "zlink.stream.connections.active"
                                                          && sample.Value == 3),
                 "OBS-B1 active connection gauge did not reach three.");
@@ -31,13 +31,13 @@ internal static class ObsB1ConnectionMetricsScenario
             connectors.Clear();
             var closed = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.closed", 3))
-                .SubmitAsync<MetricSample[]>()).Body;
+                .Async<MetricSample[]>()).Body;
             ScenarioContext.Require(closed.Any(sample => sample.Name == "zlink.stream.connections.closed"
                                                          && sample.Value >= 3),
                 "OBS-B1 closed connection counter did not increase by three.");
             var inactive = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.active", 0, 0))
-                .SubmitAsync<MetricSample[]>()).Body;
+                .Async<MetricSample[]>()).Body;
             ScenarioContext.Require(inactive.Any(sample => sample.Name == "zlink.stream.connections.active"
                                                            && sample.Value == 0),
                 "OBS-B1 active connection gauge did not return to zero.");

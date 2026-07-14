@@ -956,7 +956,7 @@ class redis_location_store_t final : public location_store_t,
     {
         const auto row_key = detail::redis_location_key_schema_t::encode_actor_key (
           actor_location_key_t{actor.actor_id});
-        return write_row (location_kind_t::actor, row_key, actor.spot_mesh_name, actor.owner_id,
+        return write_row (location_kind_t::actor, row_key, std::nullopt, actor.owner_id,
                           actor.generation, detail::redis_location_row_codec_t::encode_actor (actor),
                           intent);
     }

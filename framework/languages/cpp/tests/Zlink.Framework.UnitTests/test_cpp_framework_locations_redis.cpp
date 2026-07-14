@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <sw/redis++/redis++.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -324,6 +325,16 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
       zlink::framework::location_write_intent_t::new_claim);
     ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
     ASSERT_GT (claim.result ().value ().generation, 0);
+
+    sw::redis::Redis redis (options->connection_string);
+    const auto actor_hash_key = redis_location_key_schema_t::row_key (
+      options->key_prefix, location_kind_t::actor,
+      redis_location_key_schema_t::encode_actor_key (actor_location_key_t{.actor_id = "alice"}));
+    std::vector<std::string> actor_hash_fields;
+    redis.hkeys (actor_hash_key, std::back_inserter (actor_hash_fields));
+    EXPECT_EQ (4u, actor_hash_fields.size ());
+    EXPECT_EQ (actor_hash_fields.end (),
+               std::find (actor_hash_fields.begin (), actor_hash_fields.end (), "mesh"));
 
     const auto after =
       store.get_change_stamp ({.kind = location_kind_t::actor, .mesh_name = std::nullopt})

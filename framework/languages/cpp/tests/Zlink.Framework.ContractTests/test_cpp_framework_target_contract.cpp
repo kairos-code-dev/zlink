@@ -391,6 +391,12 @@ int main ()
                     != std::string::npos,
                   "IMP-CP-38", "owner lease snapshot is not returned by one Redis script");
 
+    /* IMP-CP-37 — actor physical rows use the common four-field, global-stamp schema. */
+    gate.require (redis_hpp.find (
+                    "write_row (location_kind_t::actor, row_key, std::nullopt, actor.owner_id")
+                    != std::string::npos,
+                  "IMP-CP-37", "actor writes still add the C++-only mesh hash field");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

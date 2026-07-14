@@ -355,7 +355,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
   - 근거: 수정 전 구조 게이트가 `close_erased()`의 callback 상태 전이가 `callback_mutex` 밖에서 수행됨을 검출했다. depth 확인·close 요청 기록과 `close_now()`의 요청 초기화를 기존 `callback_mutex`로 보호하고, 별도 스레드의 callback을 barrier로 유지한 채 close가 callback 종료까지 Spot을 보존하는 회귀 테스트를 추가했다. spot timer/runtime ctest 2개가 통과했다.
 - [ ] **IMP-CP-35** (결함) — framework runtime에 **owner-lease join이 아예 없다.** store에 떠넘겼다
 - [ ] **IMP-CP-36** (결함) — Redis 페이징이 SSCAN 커서가 아니라 **SMEMBERS + 정수 오프셋**이다
-- [ ] **IMP-CP-37** (결함) — actor row에 **다른 셋에는 없는 `mesh` hash 필드**를 쓴다
+- [x] **IMP-CP-37** (결함) — actor row에 **다른 셋에는 없는 `mesh` hash 필드**를 쓴다
+  - 근거: 수정 전 target-contract gate가 actor write에 `spot_mesh_name`을 넘기는 C++ 전용 물리 schema를 검출했다. actor write도 remove와 같이 global stamp용 `nullopt`를 사용하도록 바꾸고 live Redis integration test에서 actor hash field가 정확히 4개이며 `mesh`가 없음을 직접 확인한 뒤 gate와 `RedisServerRoundTripUsesStoreSchema`가 통과했다.
 - [x] **IMP-CP-38** (결함) — lease remove/list가 **자기 Lua script를 쓰지 않는다**(그 script는 dead code)
   - 근거: 수정 전 target-contract gate가 lease remove와 list의 단일-script `eval` 부재를 각각 검출했다. remove script가 삭제 여부를 함께 반환하고 list script가 같은 Redis `TIME` 기준 lease triples를 반환하도록 연결한 뒤 gate와 Redis unit test가 통과했다. 임시 Redis 7 container를 사용한 실제 integration run에서도 `RedisServerRoundTripUsesStoreSchema`와 `LuaScriptsPreserveDotnetAtomicStoreContract`를 포함한 13개 test가 통과했다.
 

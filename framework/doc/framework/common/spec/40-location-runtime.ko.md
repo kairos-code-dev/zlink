@@ -63,7 +63,7 @@ location row, Redis row JSON, 운영 조회가 쓰는 enum 값은 언어별 ordi
 | `LocationAutoConnectType` | `Invalid=0`, `RouteMesh=1`, `ClientServer=2`, `DealerMesh=3`, `Fanout=4`, `SpotMesh=5` | `route-mesh` / `client-server` / `dealer-mesh` / `fanout` / `spot-mesh` |
 | `LocationRole` | `Invalid=0`, `Spot=2`, `Router=3`, `Dealer=4`, `Pub=5`, `Sub=6` | `spot` / `router` / `dealer` / `pub` / `sub` |
 | `RouteKind` | `Invalid=0`, `ActorSession=1`, `SpotName=2`, `FrameworkRoute=3` | - |
-| `LocationKind` | `Invalid=0`, `Peer=1`, `Spot=2`, `Actor=3`, `Route=4` | - |
+| `LocationKind` | `Invalid=0`, `Peer=1`, `Spot=2`, `Actor=3`, `Route=4` | `peer` / `spot` / `actor` / `route` |
 | `WriteIntent` | `NewClaim=1`, `Renew=2`, `Takeover=3` | - |
 | `WriteStatus` | `Stored=1`, `IgnoredStale=2`, `RejectedConflict=3` | - |
 | `LocationChangeType` | `Upserted=1`, `Removed=2`, `Expired=3` | - |
@@ -72,6 +72,17 @@ location row, Redis row JSON, 운영 조회가 쓰는 enum 값은 언어별 ordi
 
 `LocationRole`은 core service role의 `uint16` 값과 맞춘다. 값 `1`은 제거된 gateway role의
 예약 결번이며 다시 쓰지 않는다. 이 숫자는 core wire와 Redis row JSON에 드러나므로 변경할 수 없다.
+
+**`LocationKind` enum과 actor row의 `LocationKind` 필드는 서로 다른 값 집합이다.** 혼동하지 않는다.
+
+| 이름 | 용도 | 값 |
+|------|------|-----|
+| `LocationKind` **enum** | store row의 **종류 태그**. watch·stamp·key prefix 선택에 쓴다 | `Peer=1`, `Spot=2`, `Actor=3`, `Route=4` |
+| actor row의 `LocationKind` **필드**(§2.3) | 그 actor가 들어 있는 **spot의 종류**. 타입은 `SpotKind`다 | `Entry=1`, `User=2` |
+
+`LocationAutoConnectType.DealerMesh`는 location 계층에만 존재한다. channel 등록 API는 이 값을
+받지 않으므로 application이 dealer mesh channel을 만들 수는 없다
+([10 channel topology §5](10-channel-topology.ko.md)).
 
 ### 2.1 peer location
 
@@ -90,8 +101,10 @@ true로 갱신한다. 이 마커는 **"신규 배치 제외"와 "기존 연결 �
 삭제하면 §6의 자동 연결 diff가 기존 연결을 끊어 in-flight reply·actor 핸드오프가 깨지므로, 삭제 대신
 마커를 쓴다. 마커의 소비 규칙:
 
-- **배치 결정(spot `GetOrCreate` 노드 선택, actor join target, Entry Spot 배정, owner routing)**은
-  `Draining=true` peer를 후보에서 제외한다.
+- **drain handoff 대상 노드 선택**과 **remote user Spot으로의 actor join**은 `Draining=true` peer를
+  제외한다. 그 밖의 경로(로컬 spot `GetOrCreate`, 호출자가 노드를 지정하는 Entry Spot join, 기존
+  owner routing)는 이 마커를 읽지 않는다 — 자세한 경계는
+  [54 §3.1](54-graceful-drain-handoff.ko.md)이 소유한다.
 - **자동 연결(§6)**은 마커만으로 disconnect하지 않는다 — draining peer로의 기존 연결을 유지한다.
 
 `Draining`은 기본값 false인 필수 typed 필드다. 이번 framework 계약 교체에서는 구형 row decoder나
@@ -109,14 +122,21 @@ capability이며 application metadata로 대신 기록하지 않는다.
 ### 2.2 spot location
 
 `spot rid`가 어느 node에 있는지. `MeshName`, `SpotRid`, `SpotType`(선택), `NodeRid`,
-`SpotKind`(`ENTRY_SPOT`/`USER_SPOT`), `RouteEndpoint`(선택), `OwnerId`, `Generation`,
-`UpdatedAt`. spot lifecycle이 자동 갱신한다.
+`SpotKind`(§2.0의 `SpotKind` enum, **숫자로 직렬화**한다), `RouteEndpoint`(선택), `OwnerId`,
+`Generation`, `UpdatedAt`. spot lifecycle이 자동 갱신한다.
 
 ### 2.3 actor location
 
-actor가 어느 node/spot에 있는지. `ActorId`, `ActorType`, `ActorRef`, `NodeRid`, `SpotRid`,
-`LocationKind`(entry spot actor / user spot actor), `SpotMeshName`, `OwnerId`, `Generation`,
-`UpdatedAt`. actor lifecycle이 자동 갱신한다.
+actor가 어느 node/spot에 있는지. `ActorId`, `ActorType`, `ActorRef`(nullable), `NodeRid`,
+`SpotRid`(nullable), `LocationKind`(**타입은 `SpotKind`** — `Entry=1` / `User=2`, 숫자로
+직렬화한다), `SpotMeshName`, `OwnerId`, `Generation`, `UpdatedAt`. actor lifecycle이 자동
+갱신한다. actor row에는 `SpotKind`라는 이름의 별도 필드를 두지 않는다 — spot 종류는 이
+`LocationKind` 필드 하나로 표현한다.
+
+**`ActorRef`가 비어 있는 row는 아직 commit되지 않은 join이다.** target이 join commit 전에
+소유권 claim으로 먼저 쓴 row가 이 상태이며, resolver는 이 row를 **성공 결과로 반환하지 않고
+miss로 취급한다**(§5). commit이 끝나면 `ActorRef`, `LocationKind`, `SpotRid`가 함께 채워진다.
+별도의 pending 상태 필드는 두지 않는다.
 
 ### 2.4 route location
 
@@ -232,6 +252,10 @@ lease가 만료된 owner의 row, (b) 같은 key에 대해 이 runtime이 이미 
 오래된 generation의 row(복제 지연 guard)다. 조건 (b)를 위해 runtime은 관찰한 최신 generation을
 key별로 기억한다.
 
+**actor row는 조건 (c)를 하나 더 갖는다: `ActorRef`가 비어 있는 row**(§2.3, commit 전 claim)는
+성공 결과로 반환하지 않고 resolve miss로 처리한다. 이 규칙이 pending join을 성공한 join으로
+오인하지 않게 막는다([23 §7](23-spot-actor.ko.md)).
+
 ## 6. 자동 연결
 
 framework runtime은 store를 등록한 배포에서 자동 연결 가능한 socket(연결형 client socket)의
@@ -255,7 +279,7 @@ manual endpoint 연결(`EnableClient(endpoint)`)은 auto reconcile이 끊지 않
 
 ### 6.1 store 장애와 복구
 
-- 장애 중: fail-static. 기존 연결 유지, diff 계산 중단, `StoreUnavailable` 관측(§9).
+- 장애 중: fail-static. 기존 연결 유지, diff 계산 중단, `StoreFailure` 관측(§9).
   owner lease heartbeat는 backoff로 재시도한다.
 - `store failure grace` 초과: 새 outbound connect만 중단하고, 이미 ready인 연결은 transport가
   owner lease가 유효한 동안 유지한다.
@@ -323,14 +347,14 @@ kind는 닫힌 enum이다. 상세 계약은 [메시지 흐름 추적](52-message
 
 | source | kind |
 |--------|------|
-| `location-runtime` | `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreUnavailable`, `StoreRecovered` |
+| `location-runtime` | `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` |
 | `location-peer` | peer row update/remove, auto-connect desired set 변경 |
 | `location-spot` | spot row update/remove, spot resolve miss |
 | `location-actor` | actor row update/remove, actor reconnect resolve miss |
 | `location-route` | route row update/remove, route resolve miss |
 
 `location-runtime` source는 runtime query 표면의 polling diff로 발행된다. store 장애는 source를
-죽이지 않는다 — 조회 실패는 `StoreUnavailable` 이벤트로 강등되고 복구 시 `StoreRecovered`가
+죽이지 않는다 — 조회 실패는 `StoreFailure` 이벤트로 강등되고 복구 시 `StoreRecovered`가
 발행된다(fail-static).
 
 ## 10. 오류 규칙

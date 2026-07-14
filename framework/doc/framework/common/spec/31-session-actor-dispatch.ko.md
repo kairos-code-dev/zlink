@@ -74,9 +74,10 @@ reply matching은 framework helper가 맡는다. application은 actor
 
 ### 2.5 자동 연결 선언
 
-`TicTacToe(session-gateway)` sample은 자동 연결을 보여 주기 위해 공유 location store를
-등록한다. 이 결정은 맞다. 이 sample이 수동 연결을 쓰면 실제 서비스에서
-기대하는 topology와 달라지기 때문이다.
+session-gateway 형태의 sample(`Bingo`)은 자동 연결을 보여 주기 위해 공유 location store를
+등록한다. 이 결정은 맞다 — 실제 서비스가 기대하는 topology가 자동 연결이기 때문이다. 수동
+연결과 수동 등록의 대조를 보여 주는 것은 `TicTacToe` 하나뿐이다
+([샘플 규약](../sample/README.ko.md)).
 
 하지만 application code가 store 연결 정보, 연결 시점, routed channel의
 자동 연결 사용 여부를 너무 넓게 알아야 하면 sample의 초점이 흐려진다. store 등록은
@@ -480,8 +481,14 @@ framework는 이 결정을 자동으로 하지 않는다. 대신 아래 작업�
 
 ### 10.2 session context API
 
-session context는 handler registry를 갖지 않는다. 사용자는 기존 session callback 안에서
-직접 분기한다. session 표면이 노출하는 핵심 흐름은 셋이다.
+**session context는 packet handler registry를 갖는다.** session은 `Configure()` 안에서
+`Context.Handlers`에 packet handler를 등록하고(등록 창은 `Configure()` 실행 중으로 한정,
+같은 packet name 중복 등록은 startup 오류), inbound dispatch callback에서 그 registry로
+분기한다. **runtime이 registry를 자동으로 호출하지는 않는다** — session의 dispatch callback이
+registry의 `TryHandle` 계열 호출로 위임하고, 미등록 packet이면 그 호출이 실패를 반환한다.
+등록 축의 공통 계약은 [framework API §3.3](05-framework-api.ko.md)이 소유한다.
+
+session 표면이 노출하는 핵심 흐름은 셋이다.
 
 - **actor 생성 후 bind** — `IZLinkActorManager.GetOrCreateAsync(...)`로 현재 session
   host의 actor runtime에 actor를 만들거나 얻고, `session.Actors.BindAsync(...)`로
@@ -612,8 +619,9 @@ message를 보내거나 연결을 종료한다.
 | session ingress | auth, ping, reconnect 같은 session-local packet을 처리하거나 actor로 dispatch한다. | actor handle과 framework runtime 내부 |
 | bound session | 현재 actor가 client session으로 one-way send하거나 연결을 종료한다. | core actor-session binding |
 
-따라서 bound session은 message handler registry를 갖지 않는다. handler registry는
-actor, node, spot 실행 문맥에만 존재한다.
+따라서 **bound session**은 message handler registry를 갖지 않는다. bound session은 actor가
+client로 push하는 one-way 표면일 뿐이기 때문이다. handler registry는 actor, node, spot, 그리고
+**session**(§10.2) 실행 문맥에 존재한다.
 
 ## 11. Bound session 호출 표면
 
@@ -688,14 +696,17 @@ server-to-server wire는 multipart 경계를 유지한다는 점이다.
 **server 사이를 잇는 내부 route transport는 [message-model](03-message-model.ko.md)의 multipart
 계약을 따른다.** public API는 typed object 중심이지만, wire는 part로 나뉜다.
 
-**core의 actor gateway가 이 구간을 소유한다.** framework는 stream frame과 payload를 넘기고,
-gateway가 각 delivery를 다음 구성으로 만든다.
+**core의 actor gateway가 이 구간을 소유한다.** 아래 3-part 구성은 **core gateway의 하위 전송
+계층**이며 [03 message model](03-message-model.ko.md)의 framework envelope(`parts[0]`=header,
+`parts[1]`=payload)과 **다른 계층이다.** framework handler는 이 control part들을 보지 않는다 —
+언어별 framework runtime은 라우팅 정보를 wire part가 아니라 gateway가 제공하는 필드로 받을 수
+있다. framework는 stream frame과 payload를 넘기고, gateway가 각 delivery를 다음 구성으로 만든다.
 
 | part | 내용 |
 |---|---|
 | `parts[0]` | **routed control.** spot routed 계층이 붙이는 라우팅 head |
 | `parts[1]` | **actor gateway control.** kind, session rid, **actor id**, **generation**, multipart 종료 flag |
-| `parts[2]` | **payload part** |
+| `parts[2]` | **payload part** — framework envelope 또는 완전한 stream frame이 들어간다 |
 
 **gateway control에는 packet name이 없다.** routed control과 gateway control은 **target을
 결정할 뿐 application handler를 결정하지 않는다.** handler는 **payload part의 stream header를
@@ -751,7 +762,8 @@ sample 중심에 두면 실제 사용 모델과 어긋난다.
   참여한다.
 - service channel client와 routed channel은 location store가 등록되어 있으면
   store의 peer row로 peer를 찾는다.
-- 같은 역할에서 자동 연결과 수동 연결을 섞으면 startup에서 실패한다.
+- 같은 역할에 수동 endpoint가 있으면 그 역할은 수동 연결로 확정되고 자동 연결 reconcile이
+  돌지 않는다([10 §5](10-channel-topology.ko.md)). peer source가 아예 없으면 startup에서 실패한다.
 - sample은 자동 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
 - 바로 연결되지 않으면 location runtime query(status, peer list, runtime이 합성한 topology 보기)를
   먼저 확인할 수 있어야 한다.
@@ -775,9 +787,10 @@ framework public API 표면은 spot 호출이 node 경계를 넘을 때 spot loc
 resolver로 얻은 handle을 사용한다. session-gateway sample에서 game room이 같은 Play
 서버 안에만 있으면 resolve가 드러나지 않을 수 있지만, 문서의 cross-node 계약은
 handle 조회와 안전한 내부 갱신 규칙을 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
-Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. client는 match id나 room
-name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotRid` hex이며, actor가 join한
-room 안에서 `PlaceMarkReq`가 처리된다. location row는 actor play route sample,
+Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. **room 식별자는 application이
+정하는 도메인 값**(예: `RoomId`)이며, spot routing id는 그 값에서 파생한다. core routing id의
+hex 문자열을 client 계약에 그대로 노출하지 않는다([샘플 규약](../sample/README.ko.md)). actor가
+join한 room 안에서 `PlaceMarkReq`가 처리된다. location row는 actor play route sample,
 spot route sample, actor-session binding 보조 상태를 각각 분리해서 관리해야 한다.
 
 `SpotRid` 기반 public 호출에서 resolver 입력은 request 객체가 아니라

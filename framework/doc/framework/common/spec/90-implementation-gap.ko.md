@@ -57,17 +57,17 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 10 | [channel topology](10-channel-topology.ko.md) | O | O | O | O | O |
-| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | O | O | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
+| 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
 
 ### 2.3 SPOT · Actor (2x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락) | O |
+| 20 | [SPOT 메시징](20-spot-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
 | 21 | [SpotNode](21-spot-node.ko.md) | O | O | O | O | O |
-| 22 | [Actor 모델](22-actor-model.ko.md) | O | O | O | O | O |
-| 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | O | O | O | O |
-| 24 | [Spot 주소 메시징](24-spot-address-messaging.ko.md) | O | O | O | O | O |
+| 22 | [Actor 모델](22-actor-model.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
+| 23 | [Spot Actor Join/Transfer](23-spot-actor.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
+| 24 | [Spot 주소 메시징](24-spot-address-messaging.ko.md) | O | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.5](#125-spot-메시징-표면-누락-node) | O |
 | 25 | [Stage Wrapper](25-stage-wrapper-on-spot.ko.md) | O | O | O | O | O |
 
 ### 2.4 STREAM (3x)
@@ -75,22 +75,22 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 30 | [STREAM 서버 세션](30-stream-session.ko.md) | O | O | O | O | O |
-| 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | O | O | O |
-| 32 | [Stream Connector](32-stream-connector.ko.md) | O | O | O | O | O |
+| 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | O | **X** [§12.6](#126-session-handler-registry-키-node) | O |
+| 32 | [Stream Connector](32-stream-connector.ko.md) | O | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) [§12.3](#123-근거-없는-공개-표면-java) [§12.4](#124-connector-호출별-packet-name-override-java) | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) | O | O |
 
 ### 2.5 Location (4x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 40 | [location runtime](40-location-runtime.ko.md) | O | O | O | O | O |
+| 40 | [location runtime](40-location-runtime.ko.md) | O | O | O | **X** [§12.11](#1211-location-event-kind-이름-node) | O |
 | 41 | [Redis location store](41-location-store-redis.ko.md) | O | O | O | O | O |
 
 ### 2.6 관측 · 운영 (5x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | O | O | O | O |
-| 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | O | O | O | O | O |
+| 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | **△** [§12.8](#128-monitoring-표면-java) | **△** [§12.8](#128-monitoring-표면-java) | **X** [§12.11](#1211-location-event-kind-이름-node) | O |
+| 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | **△** [§12.7](#127-metric-drop-reason-라벨-도달-불가-net) | O | O | O | O |
 | 52 | [메시지 흐름 추적](52-message-flow-tracing.ko.md) | O | O | O | O | O |
 | 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | O | O | O | O |
 | 54 | [Graceful Drain](54-graceful-drain-handoff.ko.md) | O | O | O | O | O |
@@ -105,8 +105,20 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§4.13](#413-startup-validation-누락-해소) | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
+| [§12.1](#121-stream-connector-수신-큐-overflow-java) | **Java** | 수신 큐 overflow가 **가장 오래된 메시지를 버리고**(기준선은 새 메시지), 기본 상한이 사실상 무제한이며, drop 시 오류를 발생시키지 않는다 |
+| [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
+| [§12.3](#123-근거-없는-공개-표면-java) | **Java** | connector `disconnect()`/`reconnect()`와 `ZLinkActorPlacement`(remote node 지정)는 **공통 스펙에 근거가 없는 표면**이다 |
+| [§12.4](#124-connector-호출별-packet-name-override-java) | **Java** | 호출별 `packetName(...)` override가 없다([32 §5](32-stream-connector.ko.md)) |
+| [§12.5](#125-spot-메시징-표면-누락-node) | **Node** | route client에 `sendToSpot`/`requestToSpot`가 없고, spot 전송의 **stale 갱신·1회 재전송이 미구현**이다 |
+| [§12.6](#126-session-handler-registry-키-node) | **Node** | session handler registry가 **handler 클래스 이름**을 packet 키로 써서 wire packet name과 맞지 않는다 |
+| [§12.7](#127-metric-drop-reason-라벨-도달-불가-net) | **`.NET`** | `channel.messages.dropped`의 `decode_error`·`backpressure`·`stale_route` 라벨을 발생시키는 호출부가 없다 |
+| [§12.8](#128-monitoring-표면-java) | **Java** | runtime event 모델이 sealed 계층이 아니라 flat record + kind enum이고, `ZLinkMonitoringOptions`에 location 계열 source 등록 4개가 없으며, event handler가 `void`를 반환한다 |
+| [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
+| [§12.10](#1210-connector-transport-enum-부재-java) | **Java** | connector가 지원 transport를 나타내는 공개 enum을 노출하지 않는다 |
+| [§12.11](#1211-location-event-kind-이름-node) | **Node** | location runtime event kind가 `StoreUnavailable`이다. 닫힌 집합의 이름은 `StoreFailure`다 |
+| [§13](#13-샘플-연결등록-축-준수-현황) | **`.NET`, Java, Kotlin, Node** | TicTacToe가 **명시 등록** 대신 스캔·선언형 자동 등록을 쓴다. 샘플 규약상 TicTacToe만 수동 연결 + 수동 등록이다 |
 
-**connector wire 계약(§10.1~§10.7)은 2026-07-13에 3개 구현 모두 해소했다**(§10).
+**connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
 
 ## 3. Java/Kotlin
 
@@ -581,14 +593,11 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 10.1과 10.2의 wire 호환성, 10.5와 10.7의 언어별 관찰 결과 차이는 위 구현과
 회귀 검사로 같은 계약에 맞췄다.
 
-### 10.7b `FailCaller` action (C++)
+### 10.7b `FailCaller` action (C++) — 해소
 
-**미충족(C++).** [framework API §2.4.3](05-framework-api.ko.md)은 dispatch error event의 `action`에
-**`FailCaller`**(reply frame이 없는 경로에서 caller를 framework 오류로 완료)를 요구한다.
-
-C++ `dispatch_error_action_t`에는 **`reply_error`와 `drop` 두 값뿐**이다. `reply_path_missing`
-reason은 enum에 있으나 이를 표현할 action이 없어, **이 경로의 dispatch 실패를 관측할 수 없다.**
-`.NET`과 Node.js는 §10.7과 §4.11에서 해소했다.
+**해소.** C++ `dispatch_error_action_t`는 `reply_error`, `drop`, **`fail_caller`** 세 값을 모두
+제공한다. `.NET`과 Node.js는 §10.7과 §4.11에서 해소했다. 세 언어 모두
+[framework API §2.4.3](05-framework-api.ko.md)의 action 집합을 충족한다.
 
 ### 10.8 dispatch 실패의 로그 수준
 
@@ -622,3 +631,147 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 3. contract test가 전체 타입과 시그니처를 검증한다.
 4. 공통 E2E가 같은 기능과 관찰 가능한 결과를 검증한다.
 5. 이 문서에서 해당 차이를 제거한다.
+
+## 12. 2026-07-14 기준선 대조에서 확인한 차이
+
+`.NET` framework 구현을 기준선으로 각 언어의 public 표면과 동작을 대조해 확인한 차이다.
+
+### 12.1 STREAM connector 수신 큐 overflow (Java)
+
+**미충족(Java).** [32 §10](32-stream-connector.ko.md)은 수신 메시지 큐가 가득 차면 **새로 도착한
+메시지를 버리고** `ReceivedMessageDropped`를 보고하도록 규정한다. 기본 상한은 1024다.
+
+Java connector는 세 가지가 다르다.
+
+- overflow 시 **가장 오래된 메시지를 버린다.** 같은 부하에서 살아남는 메시지 집합이 뒤집힌다.
+- 수신 큐 기본 상한이 사실상 무제한이라 이 경로가 평소 발화하지 않는다.
+- drop 시 오류를 발생시키지 않아 **메시지가 조용히 유실된다.** `ZLinkStreamErrorCode`에
+  `RECEIVED_MESSAGE_DROPPED`가 없다.
+
+세 항목을 함께 고쳐야 계약을 충족한다.
+
+### 12.2 actor join admission이 선택 사항 (Java, C++)
+
+**미충족(Java, C++).** [22 §8](22-actor-model.ko.md)과 [23 §12](23-spot-actor.ko.md)는 actor join
+admission을 **필수 등록 축**으로 규정한다. `.NET`은 이를 default 구현 없는 interface member로 두어
+구현 누락 자체가 불가능하다.
+
+Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이다. C++은 duck typing으로 존재할
+때만 호출하며, 일반 spot에서 없으면 **거절**로 대체한다. 두 경우 모두 admission을 빠뜨리면
+컴파일과 시작은 통과하고 **모든 actor join이 조용히 거절**되는 실패 모드가 생긴다.
+
+### 12.3 근거 없는 공개 표면 (Java)
+
+**계약 위반(Java).** 다음 두 표면은 공통 스펙에 근거가 없고 다른 언어에도 없다.
+
+- connector `disconnect()` / `reconnect()` — [32 §6](32-stream-connector.ko.md)의 연결 lifecycle
+  표면은 connect / close / dispatch 셋뿐이며, 재연결은 자동 reconnect 옵션이 담당한다.
+- `ZLinkActorPlacement(preferredNodeRid, routeMesh)` — [22 §4](22-actor-model.ko.md)와
+  [31 §10.2](31-session-actor-dispatch.ko.md)는 remote node를 직접 지정하는 actor 생성 표면을 두지
+  않는다고 규정한다.
+
+### 12.4 connector 호출별 packet name override (Java)
+
+**미충족(Java).** [32 §5](32-stream-connector.ko.md)는 호출자가 명시한 packet name이 타입 기반
+기본 이름보다 우선한다고 규정한다. Java connector의 send/request call에는 `packetName(...)`이 없다.
+
+### 12.5 spot 메시징 표면 누락 (Node)
+
+**미충족(Node).** 두 항목이다.
+
+- route client에 `sendToSpot` / `requestToSpot`가 없다. spot node가 아닌 외부 client가 spot handle로
+  spot에 메시지를 보낼 수 없다([20 §6](20-spot-messaging.ko.md), [24 §3](24-spot-address-messaging.ko.md)).
+- spot 전송이 handle을 한 번 resolve한 뒤 그대로 보내고 끝난다. [24 §4](24-spot-address-messaging.ko.md)가
+  요구하는 **stale 실패 감지 → handle 갱신 → request 1회 재전송**이 없다.
+
+### 12.6 session handler registry 키 (Node)
+
+**미충족(Node).** [31 §10.2](31-session-actor-dispatch.ko.md)의 session handler registry는 packet
+name을 키로 dispatch해야 한다. Node 구현은 **handler 클래스 이름**을 키로 저장하므로 wire의 packet
+name과 우연히 일치하지 않으면 영구 미매치가 된다. 중복 등록 검출과 `Configure()` 등록 창 강제도
+없다.
+
+### 12.7 metric drop reason 라벨 도달 불가 (`.NET`)
+
+**미충족(`.NET`).** [51 §4.4](51-runtime-metrics.ko.md)의 `zlink.channel.messages.dropped`는
+`no_handler`, `decode_error`, `backpressure`, `stale_route` 네 라벨을 규정한다. 현재 `.NET`
+런타임에서 실제로 방출되는 값은 `no_handler` 하나뿐이다 — decode 실패 경로가 drop metric을
+기록하지 않고, `backpressure`와 `stale_route` 사유를 넘기는 호출부가 없다.
+
+### 12.8 monitoring 표면 (Java)
+
+**미충족(Java).** 세 항목이다.
+
+- runtime event 모델이 **sealed 계층이 아니라 flat record + kind enum**이다. 기준선은 event 종류마다
+  필요한 payload만 필수 인자로 갖는 sealed hierarchy이며, [00 §5](00-public-contract-governance.ko.md)의
+  "같은 상태를 kind와 nullable 값 두 축으로 표현하지 않는다"에 해당한다. Java 언어 스펙이 고정한 목표
+  선언(`ZLinkLocationRuntimeEvent` / `ZLinkSpotEvent` sealed interface + permitted record)을 따라야 한다.
+- `ZLinkMonitoringOptions`에 `addLocationPeerEvents` / `addLocationSpotEvents` /
+  `addLocationActorEvents` / `addLocationRouteEvents` 4개가 없다.
+- `ZLinkRuntimeEventHandler.handle`이 `void`를 반환해 비동기 handler를 표현할 수 없다. 계약은
+  `CompletionStage<Void>`다.
+
+### 12.9 spot 전송 표면에 channel 이름을 함께 받는다 (Java)
+
+**계약 위반(Java).** [24 §3](24-spot-address-messaging.ko.md)은 "handle이 전송 mesh를 소유하므로
+caller가 route channel을 함께 고르지 않는다"고 규정한다. Java `ZLinkRouteClient.sendToSpot` /
+`requestToSpot`은 `(channelName, SpotHandle, message)`를 받아 caller가 mesh를 다시 고르게 만든다.
+계약은 `(SpotHandle, message)`다.
+
+### 12.10 connector transport enum 부재 (Java)
+
+**미충족(Java).** Java 언어 스펙이 고정한 `ZLinkStreamTransport`(`TCP`/`TLS`/`WEB_SOCKET`/
+`WEB_SOCKET_SECURE`)가 구현에 없다. 지원 transport 집합을 공개 계약으로 관찰할 수 없다.
+
+### 12.11 location event kind 이름 (Node)
+
+**미충족(Node).** [40 §9](40-location-runtime.ko.md)와 [50 §3.1](50-runtime-monitoring.ko.md)이 고정한
+location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChanged`,
+`ServiceSummaryChanged`, **`StoreFailure`**, `StoreRecovered`다. `.NET`, Java, C++은 이 이름을
+쓰는데 Node 구현만 `StoreUnavailable`을 쓴다. 닫힌 enum의 멤버 이름은 관측 데이터의 안정 키이므로
+언어마다 다를 수 없다.
+
+## 13. 샘플 연결·등록 축 준수 현황
+
+[샘플 규약](../sample/README.ko.md)은 두 축을 고정한다.
+
+- **TicTacToe만** 수동 endpoint 연결 + **명시 handler 등록**을 사용한다. 이 대조를 보여 주는 것이
+  TicTacToe의 목적이다.
+- **나머지 정본 샘플**은 전부 location store 자동 연결 + **자동 등록**(스캔·선언형)을 사용한다.
+- **C++ 샘플은 예외**다. runtime reflection scanner가 없으므로 모든 샘플이 compile-time 명시
+  등록을 쓴다([05 §3.3](05-framework-api.ko.md)). C++은 이 표의 위반 대상이 아니다.
+
+이 축은 framework 구현이 아니라 **샘플이 지켜야 하는 규약**이다. `.NET` 구현이 기준선인 다른
+항목과 달리, 여기서는 규약이 정본이고 샘플 코드가 따라와야 한다.
+
+### 13.1 등록 축 현황 (2026-07-14 실측)
+
+| 샘플 | 규약 | `.NET` | Java/Kotlin | Node | C++ |
+|------|------|:---:|:---:|:---:|:---:|
+| **TicTacToe** | **명시 등록** | **X** 스캔 | **X** annotation | **△** 일부만 명시 | O (언어 예외) |
+| Bingo | 자동 등록 | O | O | O | O (언어 예외) |
+| SupportChat | 자동 등록 | O | O | O | O (언어 예외) |
+| DeliveryDispatch | 자동 등록 | O | O | O | O (언어 예외) |
+| ShoppingMall | 자동 등록 | O | O | O | O (언어 예외) |
+| GameQuest | 자동 등록 | O | O | O | O (언어 예외) |
+
+**미충족 내용:**
+
+- **`.NET` TicTacToe** — `AddHandlersFromAssemblyOf(...)` 스캔과
+  `[ZLinkSpotActorRequestHandler]`·`[ZLinkSpotSubscriptionHandler]`·`[ZLinkHandlerGroup]` attribute로
+  자동 등록한다. 규약대로면 spot `Configure()`와 channel builder에서 handler를 직접 등록하고 자동
+  등록을 꺼야 한다.
+- **Java/Kotlin TicTacToe** — `@ZLinkSpotActorRequest`, `@ZLinkSpotSubscription` annotation 기반
+  자동 등록을 쓴다. 같은 이유로 명시 등록으로 바꿔야 한다.
+- **Node TicTacToe** — 명시 등록과 선언형 등록이 섞여 있다. 전부 명시 등록으로 통일해야 한다.
+
+### 13.2 연결 축 현황
+
+연결 축은 규약과 일치한다. TicTacToe만 수동 endpoint(`EnableClient`/`ConnectRouter`/`ConnectPeerPub`)를
+쓰고, 나머지 정본 샘플은 `AddLocationStore(...)` 자동 연결을 쓴다.
+
+**단 ZoneWorld는 예외로 어긋나 있다.** ZoneWorld는 자동 연결 샘플인데 `dotnet` 구현이 zone 노드
+사이의 spot router·pub/sub·bridge를 수동 dial한다. [10 §5](10-channel-topology.ko.md)의 규칙상 수동
+endpoint가 하나라도 있으면 그 역할은 수동으로 확정되어 자동 연결 reconcile이 돌지 않으므로, 그
+수동 배선이 오히려 자동 연결을 무력화한다. 수동 dial을 걷어내야 한다
+([ZoneWorld README](../sample/zoneworld/README.ko.md) §4).

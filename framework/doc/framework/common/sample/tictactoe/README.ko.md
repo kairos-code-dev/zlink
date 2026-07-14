@@ -42,7 +42,7 @@ address resolver 계약 뒤에 숨긴다.
 - Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
 - room Spot은 board, turn, 승패 판정을 소유한다.
 - 연결은 location store 기반 자동 연결 없이 수동 endpoint 설정과 Redis room route store로 구성한다.
-- handler 등록은 attribute, annotation, decorator 같은 선언형 방식을 우선 사용한다.
+- handler 등록은 구성 코드에서 **직접 등록**한다(자동 스캔·선언형 등록을 쓰지 않는다).
 - TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
 
 Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 request에 넣은 값과 response,
@@ -126,7 +126,7 @@ graph LR
 
 Play 서버 안에서 stream session과 actor, room이 함께 움직인다. 두 Play 서버는 같은 역할을
 수행하지만, room Spot은 한 owner SpotNode에만 존재한다. 다른 Play 서버에 붙은 actor가 같은
-room에 join할 때는 Redis-backed location store에서 얻은 `SpotRef`가 owner SpotNode를 가리킨다.
+room에 join할 때는 Redis-backed location store에서 얻은 `SpotHandle`이 대상 room Spot을 가리킨다.
 
 ## 4. 디렉토리와 파일 구성
 
@@ -334,29 +334,21 @@ observer를 owner가 아닌 Play endpoint에 붙여 remote join 경로와 cross-
 검증한다. client는 API 응답의 `PlayNodes`에서 endpoint와 SpotNode rid의 매핑을 확인하므로,
 `ReceivingSpotNodeRid` 검증을 위해 샘플 설정의 내부 naming convention을 알 필요가 없다.
 
-### 6.2 Redis room route store
+### 6.2 room 위치 조회
 
-Play 서버는 room을 만든 직후 Redis에 owner route를 기록한다. Redis key와 field 이름은
-아래 공통 의미를 유지해야 한다. 언어별 코드의 record, class, struct 이름은 달라도 저장되는
-값과 resolver가 반환하는 의미는 같아야 한다.
+**샘플이 자체 Redis 스키마를 만들지 않는다.** Play 서버는 공식 Redis location store를
+`AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, room Spot을 만들면 framework
+lifecycle이 **spot location row**를 자동으로 기록한다. row schema, key 규약, owner lease와
+generation은 [41 Redis location store](../../spec/41-location-store-redis.ko.md)가 소유하며
+샘플이 다시 정의하지 않는다.
 
-```text
-tictactoe:rooms:{RoomId} {
-  RouteChannelId: string
-  OwnerNodeRid: string
-  SpotRid: string
-  SpotKind: "User"
-}
-```
+room Spot의 routing id는 `RoomId`에서 파생한다. 다른 노드가 그 room으로 보낼 때는 **spot handle
+resolver**로 spot rid에 해당하는 `SpotHandle`을 얻고, 전송 API는 그 handle을 받는다. handle은
+불투명하며 owner node rid와 전송 mesh는 framework가 소유한다 — 샘플 코드가 owner node rid를 읽거나
+보관하지 않는다([24 spot 주소 메시징](../../spec/24-spot-address-messaging.ko.md)).
 
-`SpotRid`는 `RoomId`에서 만든 room Spot routing id다. `OwnerNodeRid`는 그 room Spot을
-소유한 Play SpotNode의 routing id다. location store는 이 값을 `SpotRef`로 조회할 수 있게
-저장한다. 이 샘플에서는 별도 RouteMeshChannel을 만들지 않는다.
-
-언어별 구현은 framework의 public location store 계약을 사용한다. resolver는 Redis location
-store에서 `RoomId` 또는 `SpotRid`에 해당하는 `SpotRef`를 읽고, 전송 API는 그 ref를 받는다.
-모든 언어 샘플은 같은 resolver 의미를 사용해야 하며, 한 언어만 internal runtime 객체나 별도
-route helper로 이 경로를 우회하면 안 된다.
+이 샘플에서는 별도 RouteMeshChannel을 만들지 않는다. 모든 언어 샘플은 같은 resolver 의미를
+사용해야 하며, 한 언어만 internal runtime 객체나 별도 route helper로 이 경로를 우회하면 안 된다.
 
 Redis에 없는 room id는 재시도 가능한 route-not-found 오류로 처리한다. 없는 room을 샘플
 전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
@@ -430,17 +422,26 @@ C++ 샘플은 `redis-plus-plus`를 사용한다. C++ framework는 이미 C++20�
 
 ## 7. Handler 등록 방식
 
-TicTacToe는 선언형 handler 등록 방식을 우선 사용한다. 언어별 표현은 다를 수 있다.
+**TicTacToe는 명시 등록 샘플이다.** 구성 코드에서 handler를 직접 등록하고, assembly·module
+스캔이나 선언형 metadata에 의한 자동 등록에 기대지 않는다. 자동 등록을 켠 언어라도 이 샘플에서는
+꺼거나 사용하지 않는다.
 
-| 언어 계열 | 권장 표현 |
-|-----------|-----------|
-| .NET | attribute |
-| Java/Kotlin | annotation |
-| TypeScript/Node | decorator |
-| C++ 또는 선언형 metadata가 약한 언어 | 명시 등록으로 대체 |
+| 등록 축 | 표현 |
+|---------|------|
+| channel handler | 구성 단계의 channel builder에서 handler를 직접 등록한다 |
+| session handler | session `Configure()`에서 직접 등록한다 |
+| Entry Spot / user Spot handler | spot `Configure()`의 handler registry에 직접 등록한다 |
+| subscription | 등록 호출에 topic을 인자로 넘긴다 |
 
-명시 등록으로 대체하는 언어도 handler 역할은 같아야 한다. 예를 들어 room 생성,
-인증, join, leave, move 처리 handler는 같은 메시지 이름과 같은 책임을 유지한다.
+**이것이 수동 축을 보여 주는 샘플이라는 뜻이다.** TicTacToe는 연결도 수동(endpoint 직접 지정),
+등록도 수동이다. 자동 연결과 자동 등록은 나머지 정본 샘플이 맡는다
+([샘플 규약](../README.ko.md)). 이 대비 자체가 TicTacToe의 목적 중 하나다.
+
+**C++ 샘플은 원래 전 샘플이 명시 등록**이므로(runtime 스캔이 없다) TicTacToe에서 특별히 달라지는
+것이 없다. 다른 언어는 이 샘플에서만 자동 등록을 쓰지 않는다.
+
+등록 방식이 달라도 handler 역할은 같아야 한다. room 생성, 인증, join, leave, move 처리 handler는
+같은 메시지 이름과 같은 책임을 유지한다.
 
 ## 8. Play 서버 내부 레이어
 
@@ -965,7 +966,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 | Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
 | Play 서버 | 2개 Play가 stream session, actor, Entry Spot, room Spot, SpotNode route, Spot pub/sub을 함께 호스팅한다. | actor, Entry Spot, room Spot을 호스팅한다. |
 | 주요 목적 | 수동 endpoint scale-out, room Spot route 조회, Spot pub/sub fan-out | 분리된 session gateway 구조 |
-| Handler 등록 | 선언형 등록 우선 | typed handler 계약 명시 등록 |
+| Handler 등록 | **명시 등록**(구성 코드에서 직접) | 자동 등록(스캔·선언형) |
 
 ## 18. 완료 기준
 
@@ -976,11 +977,11 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
   수동으로 연결한다.
 - Play 서버끼리는 milestone event fan-out을 보낼 수 있도록 SpotNode pub/sub endpoint를
   수동으로 연결한다.
-- Redis location store에 `RoomId`에서 owner SpotNode 위치를 찾는 자료를 저장한다.
-- framework의 `SpotRef` resolver 계약은 Redis location store를 사용한다.
-- 모든 언어 샘플은 actor room join에 public actor/Spot API와 public `SpotRef`
-  resolver 계약을 사용한다. internal runtime 객체나 샘플 전용 route helper로 remote join을
-  우회하지 않는다.
+- 공식 Redis location store를 `AddLocationStore(...)`로 등록한다. room Spot의 위치는 framework가
+  spot location row로 자동 기록하며, 샘플이 자체 Redis 스키마를 만들지 않는다.
+- 모든 언어 샘플은 actor room join에 public actor/Spot API와 public **spot handle resolver**
+  계약을 사용한다(반환 값은 불투명한 `SpotHandle`). internal runtime 객체나 샘플 전용 route
+  helper로 remote join을 우회하지 않는다.
 - 모든 언어 샘플은 milestone 알림에 public Spot pub/sub API를 사용한다. internal socket,
   channel publish 우회, 샘플 전용 fan-out helper로 대체하지 않는다.
 - `run_sample`은 실행마다 전용 Docker Redis container를 준비하고 종료 시 자신이 만든 container만
@@ -1021,6 +1022,6 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 - actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
   정리한다.
 - request/reply는 message name이 아니라 stream request sequence로 매칭된다.
-- handler 등록은 가능한 언어에서 선언형 방식을 사용한다.
+- handler 등록은 모든 언어에서 구성 코드의 명시 등록을 사용한다. 자동 등록을 켜지 않는다.
 - smoke test는 room 생성, 세 client 인증, join, milestone 구독, 최소 한 판 종료까지
   검증한다.

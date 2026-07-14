@@ -37,7 +37,7 @@ grep된다. 실패는 같은 stream에 error reporter가 같은 토큰(`corr=`)�
 
 | 모드 | 의미 |
 |------|------|
-| `off` | 아무것도 찍지 않음. 에러 기본 로그까지 침묵. (observer/callback은 명시 구독이므로 계속 발화) |
+| `off` | **로그만 침묵한다.** 에러 기본 로그까지 찍지 않는다. **metric/counter와 observer 통지는 mode와 무관하게 계속 발생한다** — `off`는 로그 게이트일 뿐 관측 자체를 끄지 않는다 |
 | `errors_only` | (기본값) 에러 + `dropped` 전이만 |
 | `key_transitions` | + `received` / `dispatched` / `replied` / `sent` / `reply_received` |
 | `verbose` | + `include_message_sizes`일 때 `size=` 부가 |
@@ -86,7 +86,7 @@ struct message_flow_event_t {                 // surface/kind는 error 이벤트
     std::optional<std::size_t> message_size;   // verbose에서만, 값이 있을 때만
     // 아래 두 필드는 flow-correlation 확장이 소유한다(additive, 값 있을 때만):
     std::optional<std::string>   flow_id;      // §flow-correlation §2·§3
-    std::optional<flow_origin_t> flow_origin;  // inbound | timer, §flow-correlation §4.2
+    std::optional<flow_origin_t> flow_origin;  // inbound|timer|application|lifecycle, §flow-correlation §4.2
 };
 class message_flow_observer_t { virtual void on_message_flow(const message_flow_event_t&)=0; };
 // dispatch options: set_message_flow_observer(observer | callback)
@@ -149,8 +149,11 @@ class message_flow_observer_t { virtual void on_message_flow(const message_flow_
 폴백 로그 라인은 전 언어 동일 토큰을 쓴다(값이 있는 필드만 출력).
 
 ```
-zlink flow: phase=… surface=… kind=… packet=… channel=… topic=… corr=… src=… spot=… actor=… [size=]
+zlink flow: phase=… surface=… kind=… packet=… channel=… topic=… corr=… flow=… origin=… src=… spot=… actor=… [size=]
 ```
+
+`flow=`와 `origin=`은 **쌍이 모두 있을 때만** 출력한다(한쪽만 있는 불완전한 쌍은 둘 다 생략).
+두 토큰의 바이트 표현은 언어 간 동일해야 한다([53 §9](53-flow-correlation.ko.md)).
 
 > 언어별 주의: 각 언어 로깅 파사드가 다르므로 dispatch 옵션에 "로거 핸들/sink"를 실어 트레이서가
 > 닿게 하는 plumbing이 필요하다. channel/spot에는 dispatch 옵션이 자동 전파되지만 stream/actor
@@ -243,8 +246,11 @@ echo, route 전파. 두 노드 로그를 한 corr로 잇고 싶으면 이 전파
 **와이어 레이아웃** (connector `header_codec`와 framework `stream_runtime` 양쪽 바이트 동일)
 
 - `header_flags_t`에 `has_correlation_id = 0x08` 추가.
-- 바이트 배치: `kind, codec, flags, [request_seq], name(u8 len+bytes), [metadata], [correlation_id(u8 len+bytes)]`
-  — correlation_id는 **메타데이터 블록 뒤 마지막**에, flag가 set일 때만 `u8 길이 + 바이트`.
+- 바이트 배치: `format_marker(0xF2), kind, codec, flags, [request_seq], name(u8 len+bytes), [metadata], [correlation_id(u8 len+bytes)], [flow_id(36B) + flow_origin(u8)]`
+  — correlation_id는 **메타데이터 블록 뒤**에, flag가 set일 때만 `u8 길이 + 바이트`.
+- **header의 첫 바이트는 `format_marker = 0xF2`다**(값이 다르면 decode error). marker와 뒤따르는
+  flow 필드의 계약은 [32 §4](32-stream-connector.ko.md)와
+  [53 §3](53-flow-correlation.ko.md)이 소유한다 — 이 문서는 correlation_id 위치만 고정한다.
 - control 패킷은 flag 불가(기존 규칙 유지), send/request/response/error는 허용.
 - flag 미set이면 필드 없음 = 하위호환(코덱을 공유하는 엔진은 decode 자동 호환).
 

@@ -19,7 +19,7 @@
 >
 > **public 타입과 시그니처는 [handler-interfaces](02-handler-interfaces.ko.md)가 소유한다.**
 > **사용 예제와 튜토리얼은 [Node 가이드](../../../../node/guide/01-overview.ko.md)가 소유한다.**
-> client connector는 [stream-connector](03-stream-connector.ko.md)가 소유한다.
+> client connector는 [stream-connector](../typescript/03-stream-connector.ko.md)가 소유한다.
 
 ## 1. 패키지 구조
 

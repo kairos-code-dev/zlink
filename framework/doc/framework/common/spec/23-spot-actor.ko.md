@@ -530,7 +530,7 @@ sequenceDiagram
 | target `OnActorJoin` throws | 실패 | target membership을 만들지 않고 caller에 실패를 반환한다. |
 | target `OnActorJoin` rejects | rejected | source membership을 유지하고 joined/left callback을 호출하지 않는다. |
 | source `TransferOut` throws | 실패 | source `OnLeaveActor`, target `TransferIn`, target `OnJoinedActor`를 호출하지 않는다. source membership을 유지한다. |
-| source `OnLeaveActor` throws | 실패 | target `OnJoinedActor`를 호출하지 않는다. 가능한 경우 source membership을 유지한다. |
+| source `OnLeaveActor` throws | 실패 | target `OnJoinedActor`를 호출하지 않는다. **source membership은 callback 호출 전에 이미 제거되었으므로 복원하지 않는다** — actor를 runtime reconcile 대상으로 기록한다([22 §5.3](22-actor-model.ko.md)의 제거 → callback 순서). |
 | target `TransferIn` throws | 실패 | target membership을 만들지 않고 caller에 실패를 반환한다. source actor는 이미 left가 끝났으므로 runtime reconcile 대상으로 기록한다. |
 | target commit 실패 | 실패 | target `OnJoinedActor`를 호출하지 않는다. pending state를 cleanup한다. |
 | target `OnJoinedActor` throws | 실패 | caller에게 성공을 반환하지 않는다. target membership을 rollback한다. rollback할 수 없으면 actor packet dispatch를 중단하고 actor를 reconcile 대상으로 격리한다. |

@@ -50,7 +50,8 @@ stage 성격의 모델은 보통 다음을 함께 가진다.
 
 framework는 다음을 보장한다.
 
-- **같은 spot의 dispatch callback은 직렬화된다.**
+- **같은 spot의 dispatch callback은 하나의 실행 줄에서 직렬화된다.** 두 callback 본문이 동시에
+  실행되지 않는다.
 - routed packet, subscription, **channel reply**, timer가 **모두 같은 dispatch 축**으로 올라온다.
 - channel request의 reply continuation도 **request를 시작한 spot의 실행 문맥**에서 실행된다.
   임의의 thread에서 완료를 resolve하지 않는다.
@@ -63,6 +64,13 @@ framework는 다음을 보장한다.
 - channel reply continuation
 - join이 끝난 actor의 packet handler
 - actor session disconnect의 후속 처리
+
+**단 이 보장은 await를 가로지르지 않는다.** handler가 request·join·worker의 framework
+terminator를 await하면 그 지점에서 실행 줄을 양보하므로, 대기 중에 같은 spot의 다른 callback이
+실행되어 상태를 바꿀 수 있다([04 비동기 실행 정책](04-async-execution-policy.ko.md) section 1).
+lock이 필요 없는 구간은 **await와 await 사이의 각 동기 구간**이다. stage wrapper가 await를
+가로질러 유지해야 하는 불변식이 있으면 그 상태 전이를 await 이후로 모으거나, 같은 actor mailbox
+안에서 처리해 재진입 자체를 막아야 한다.
 
 **예외 두 가지:**
 

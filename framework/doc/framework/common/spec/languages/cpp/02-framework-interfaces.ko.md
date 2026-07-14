@@ -44,8 +44,6 @@ framework 구현은 아래 C++ binding 타입을 기준으로 삼는다.
 | request/reply channel | `zlink::router_socket_t`, `zlink::dealer_socket_t` | channel server/client 역할 구현에 사용한다. |
 | pub/sub channel | `zlink::pub_socket_t`, `zlink::sub_socket_t` | topic publish/subscribe 역할 구현에 사용한다. |
 | stream ingress | `zlink::stream_socket_t` | STREAM packet/session 역할 구현에 사용한다. |
-| discovery | `zlink::service::discovery_t` | registry 기반 channel/spot 연결에 사용한다. |
-| registry | `zlink::service::registry_t`, `zlink::service::registry_query_client_t` | embedded registry와 topology query에 사용한다. |
 | spot node | `zlink::service::spot_node_t` | spot lifecycle과 channel attach를 관리한다. |
 | spot | `zlink::service::spot_t` | spot publish, subscribe, direct routing, channel request/send에 사용한다. |
 | async request | `zlink::async_result_t<T>` | framework call object와 pending submit 구현의 내부 기반이다. |
@@ -73,15 +71,18 @@ zlink/framework/contracts/dispatch/*.hpp
 zlink/framework/contracts/errors/*.hpp
 zlink/framework/contracts/eventing/*.hpp
 zlink/framework/contracts/handlers/*.hpp
-zlink/framework/contracts/registry/*.hpp
+zlink/framework/contracts/http/*.hpp
+zlink/framework/contracts/locations/*.hpp
+zlink/framework/contracts/messaging/*.hpp
 zlink/framework/contracts/spots/*.hpp
 zlink/framework/contracts/streams/*.hpp
 zlink/framework/contracts/timers/*.hpp
+zlink/framework/contracts/workers/*.hpp
 ```
 
 `zlink/framework/runtime.hpp` 같은 public header는 만들지 않는다. runtime이라는 이름은
 구현 디렉토리 `framework/src/runtime/*`에만 사용한다. public API에서 runtime 객체가
-필요하면 `app_t`, `host_t`, `channel_client_t`, `spot_context_t`처럼 사용자가 이해하는
+필요하면 `app_t`, `channel_client_t`, `spot_context_t`처럼 사용자가 이해하는
 계약 이름으로 노출한다.
 
 `bindings/cpp`보다 framework 쪽의 분리를 더 강하게 잡는다. binding은 zlink core의
@@ -134,7 +135,7 @@ framework의 `Contracts/*`와 `Runtime/*` 구조를 C++ framework에 옮길 때�
 | timer | `contracts/timers/*` | `src/runtime/timers/*` | native timer token, `fire_count` drain loop, timer registry |
 | STREAM | `contracts/streams/*` | `src/runtime/streams/*` | frame codec, session table, session serial executor, transport loop |
 | actor relay | `contracts/actors/*`, 필요한 stream contract | `src/runtime/actors/*`, `src/runtime/streams/*` | actor mailbox, join coordinator, relay packet dispatcher |
-| registry/monitoring | `contracts/registry/*`, `contracts/eventing/*` | `src/runtime/registry/*`, `src/runtime/diagnostics/*` | topology cache, snapshot diff cache, backend query client owner |
+| location/monitoring | `contracts/locations/*`, `contracts/eventing/*` | `src/runtime/locations/*`, `src/runtime/diagnostics/*` | store row codec, owner lease tracker, snapshot diff cache, auto-connect reconciler |
 | execution/offload | `contracts/dispatch/*` | `src/runtime/dispatch/*`, `src/runtime/execution/*` | thread pool queue, work item storage, shutdown drain state |
 | backend substrate | 없음 | `src/runtime/backend/*`, `src/runtime/backend/contracts/*` | zlink binding adapter, backend private contract |
 
@@ -192,12 +193,14 @@ command/request envelope 작성, SPOT routed parts 전송, request sequence corr
 소유한다. native router socket adapter는 `src/runtime/backend/native_route_backend.*`가
 담당하고 public contract에 올리지 않는다.
 
-public `route_client_t`, `route_send_call_t`, `route_request_call_t`는 `.NET`의
-`IZLinkRouteClient`와 `ZLinkRouteClient`에
-대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
-route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
+public `route_client_t`와 `route_send_call_t`는 `.NET`의 `IZLinkRouteClient`에 대응한다.
+node 대상 호출은 `send_to_node(...)` / `request_to_node(...)`, spot 대상 호출은
+`send_to_spot(handle, ...)` / `request_to_spot(handle, ...)`이며 request 계열은
+`channel_request_call_t`를 반환한다. 사용자는 router channel id, target node routing id 또는
+불투명한 spot handle과 typed payload만 넘기고, route channel runtime lookup, envelope 작성,
+serializer 호출은 runtime owner가 처리한다.
 C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
-`request(...).metadata(...).timeout(...).async<TReply>()`으로
+`request_to_node(...).timeout(...).async<TReply>()`으로
 typed reply를 받는다. `.metadata(key, value)`로 넣은 값은 framework envelope header에 보존되며,
 route runtime lookup과 serializer 호출은 사용자에게 드러나지 않는다. typed reply completion은
 route runtime backend seam을 통해 검증되고,
@@ -365,7 +368,7 @@ template forwarding만 가진다.
 | `.NET Contracts/Handlers` | handler option, invocation context, filter contract | descriptor cache, DI resolve order, method invoker |
 | `.NET Contracts/Spots` | Spot context, Spot RID view, actor factory shape | activation table, native dispatch router, subscription pump |
 | `.NET Contracts/Streams` | stream header, session, bound session, stream error | frame codec, session table, serial executor |
-| `.NET Contracts/Registry` | registry options, query model, topology result | backend discovery owner, topology cache, route resolver state |
+| `.NET Contracts/Locations` | location store 계약, resolver, runtime query model | store row codec, owner lease tracker, auto-connect reconciler state |
 | `.NET Contracts/Timers` | timer handle, timer option, tick model | native timer token, fire-count drain loop |
 | `.NET Contracts/Eventing` | typed runtime event, sink registration | snapshot diff cache, telemetry backend |
 | `.NET Runtime/Execution` | public dispatch/offload option만 노출 | thread pool queue, work item storage, drain state |
@@ -398,8 +401,6 @@ class logging_builder_t;
 class metrics_builder_t;
 class health_builder_t;
 class zlink_builder_t;
-class registry_builder_t;
-class discovery_builder_t;
 class channel_builder_t;
 class spot_node_builder_t;
 class stream_builder_t;
@@ -567,7 +568,7 @@ options.services()
 ## 6. Runtime Builder
 
 runtime builder는 binding의 `zlink::context_t`, socket classes,
-`zlink::service::discovery_t`, `zlink::service::spot_node_t` 생성을 숨긴다.
+`zlink::service::spot_node_t` 생성을 숨긴다.
 
 ```cpp
 namespace zlink::framework {
@@ -576,23 +577,15 @@ class zlink_builder_t {
 public:
     zlink_builder_t &add_node(std::string node_name);
     zlink_builder_t &max_pending(std::size_t count);
-    registry_builder_t enable_registry();
-    discovery_builder_t discovery();
+    zlink_builder_t &default_request_timeout(std::chrono::milliseconds timeout);
     route_channel_builder_t route_channel(std::string route_channel_name);
     channel_builder_t channel(std::string channel_name);
     spot_node_builder_t add_spot_node(std::string spot_node_name);
     stream_builder_t stream(std::string stream_name);
 };
 
-class discovery_builder_t {
-public:
-    discovery_builder_t &connect_registry(std::string endpoint);
-};
-
-class registry_builder_t {
-public:
-    registry_builder_t &bind(std::string endpoint);
-};
+// 위치 기반 자동 연결은 registry가 아니라 location store로 구성한다.
+// zlink_framework_options_t::use_in_memory_location_stores() / add_location_store(store)
 
 class stream_builder_t {
 public:
@@ -622,7 +615,6 @@ framework 내부는 아래 binding 타입을 조합한다.
 - `zlink::dealer_socket_t`
 - `zlink::pub_socket_t`
 - `zlink::sub_socket_t`
-- `zlink::service::discovery_t`
 - `zlink::service::spot_node_t`
 - `zlink::stream_socket_t`
 
@@ -766,30 +758,40 @@ using typed_actor_join_result_t =
 
 using actor_join_result_t = typed_actor_join_result_t<message_t>;
 
+// 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §2.3).
 enum class framework_error_kind_t {
-    actor_route_not_found,
-    actor_create_failed,
-    actor_already_exists,
-    actor_type_mismatch,
-    spot_create_failed,
-    spot_route_not_found,
-    spot_type_mismatch,
-    actor_session_not_bound,
-    handler_not_found,
-    route_handler_not_found,
-    actor_dispatch_handler_not_found,
-    payload_decode_failed,
-    route_not_connected,
-    request_target_not_found,
-    request_rejected,
-    request_protocol_error,
-    request_failed
+    actor_route_not_found = 0,
+    actor_create_failed = 1,
+    actor_already_exists = 2,
+    actor_type_mismatch = 3,
+    spot_create_failed = 4,
+    spot_route_not_found = 5,
+    spot_type_mismatch = 6,
+    actor_session_not_bound = 7,
+    handler_not_found = 8,
+    route_handler_not_found = 9,
+    actor_dispatch_handler_not_found = 10,
+    payload_decode_failed = 11,
+    route_not_connected = 12,          // retriable
+    request_target_not_found = 13,
+    request_rejected = 14,
+    request_protocol_error = 15,
+    request_failed = 16,
+    worker_queue_full = 17,
+    worker_timed_out = 18,
+    worker_failed = 19,
+    actor_location_stale = 20,         // retriable
+    actor_create_rejected = 21
 };
 
 class framework_exception_t : public std::exception {
 public:
     framework_error_kind_t kind() const noexcept;
     bool is_retriable() const noexcept;
+    // 경계 상태(timed_out, shutdown, disconnected, closed, cancelled,
+    // stale_generation)는 public enum 값이 아니라 이 error_code로 노출한다(§8.1).
+    std::error_code code() const noexcept;
+    const char *what() const noexcept override;
 };
 
 template <typename TReply>
@@ -1094,30 +1096,30 @@ public:
 
 class route_client_t {
 public:
+    // node 대상 — infra 계층과 owner 일관 라우팅용
     template <typename TMessage>
-    route_send_call_t send(std::string router_channel_id,
+    route_send_call_t send_to_node(std::string router_channel_id,
       zlink::routing_id_t target_node_rid,
       TMessage message);
 
     template <typename TRequest>
-    route_request_call_t request(std::string router_channel_id,
+    channel_request_call_t request_to_node(std::string router_channel_id,
       zlink::routing_id_t target_node_rid,
       TRequest request);
 
+    // spot 대상 — 대상 인자는 불투명한 spot handle 하나다.
+    // spot rid와 node rid를 나란히 받는 overload는 두지 않는다(공통 스펙 24 §3).
+    template <typename TMessage>
+    route_send_call_t send_to_spot(const spot_handle_t &target, TMessage message);
+
+    template <typename TRequest>
+    channel_request_call_t request_to_spot(const spot_handle_t &target, TRequest request);
 };
 
 class route_send_call_t {
 public:
     route_send_call_t &metadata(std::string key, std::string value);
     void submit();
-};
-
-class route_request_call_t {
-public:
-    route_request_call_t &metadata(std::string key, std::string value);
-    route_request_call_t &timeout(std::chrono::milliseconds timeout);
-    template <typename TReply>
-    task_t<TReply> async();
 };
 
 } // namespace zlink::framework
@@ -2199,7 +2201,7 @@ enum class dispatch_error_reason_t
 { handler_missing, payload_decode_failed, handler_exception,
   invalid_frame, reply_path_missing, unexpected_reply };
 
-enum class dispatch_error_action_t { reply_error, drop };
+enum class dispatch_error_action_t { reply_error = 0, drop = 1, fail_caller = 2 };
 
 struct message_dispatch_error_event_t
 {
@@ -2218,9 +2220,9 @@ enum class flow_origin_t : std::uint8_t
 { inbound = 1, timer = 2, application = 3, lifecycle = 4 };  // wire 값 고정
 ```
 
-> **미충족.** 공통 스펙은 `action`에 **`fail_caller`** 를 요구한다(reply frame이 없는 경로에서
-> caller를 오류로 완료). C++ `dispatch_error_action_t`에는 **`reply_error`와 `drop` 두 값뿐**이다.
-> [구현 차이 §10.7b](../../90-implementation-gap.ko.md)이 이 gap을 소유한다.
+> `fail_caller`는 reply frame이 없는 경로(같은 process의 local actor call 등)에서 caller task를
+> framework 오류로 완료하고 그 실패를 관측하는 action이다. 세 값 모두 공통 스펙
+> [framework API §2.4.3](../../05-framework-api.ko.md)의 action 집합과 일치한다.
 
 ### 16.2 Dispatch 실행 정책
 

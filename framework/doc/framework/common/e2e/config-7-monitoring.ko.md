@@ -26,7 +26,7 @@ topology와 service summary 이벤트도 각 노드의 location runtime이 자�
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. |
-| service 노드 | 2 (`svc-a`, `svc-b`) | channel + spot 호스트. `AddRedisLocationStore(...)`로 store를 등록하고, 자기 socket·spot·location-runtime monitoring source를 colocate해 이벤트를 evidence에 기록. `/evidence`·`/health`. |
+| service 노드 | 2 (`svc-a`, `svc-b`) | channel + spot 호스트. `AddLocationStore(new ZLinkRedisLocationStore(...))`로 store를 등록하고, 자기 socket·spot·location-runtime monitoring source를 colocate해 이벤트를 evidence에 기록. `/evidence`·`/health`. |
 | trigger client | 시나리오별 | 연결·해제, provider scale, spot subject/peer 변화를 유발해 이벤트를 만든다. |
 
 각 host는 framework public monitoring API(`AddZLinkMonitoring(...)`)로 자기 source를 등록하고
@@ -35,7 +35,7 @@ event handler에서 관찰 이벤트를 evidence에 기록한다.
 이벤트 kind는 고정 enum이다(이 config가 기대해도 되는 것만):
 
 - socket: `Connected`, `ConnectionReady`, `Disconnected`, `HandshakeFailed`, `PeerAdmissionChanged`, `Closed`
-- location-runtime: `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged` (기존 registry source의 세 kind와 같은 의미이되, source와 payload의 기준이 registry process가 아니라 각 노드의 location runtime projection이다. store 장애 관련 kind는 draft 20.5에 별도로 정의되며 이 config의 검증 범위 밖이다.)
+- location-runtime: `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` (source와 payload의 기준은 registry process가 아니라 각 노드의 location runtime projection이다. 닫힌 kind 집합은 [40 §9](../spec/40-location-runtime.ko.md)가 소유한다. `StoreFailure`/`StoreRecovered`의 장애 사이클 검증은 config 6이 담당하고, 이 config는 kind가 위 닫힌 집합에 속하는지를 본다.)
 - spot: `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException`
 
 actor join/leave, spot 생성·소멸 같은 lifecycle 이벤트는 monitoring kind로는 존재하지 않는다.

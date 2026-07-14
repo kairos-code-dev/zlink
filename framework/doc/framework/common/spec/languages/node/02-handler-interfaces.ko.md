@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../node/README.ko.md) | [이전: 시스템 구조](01-system-structure.ko.md) | [다음: Stream Connector](03-stream-connector.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [이전: 시스템 구조](01-system-structure.ko.md) | [다음: Stream Connector](../typescript/03-stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # ZLink Framework Node.js 공개 interface
@@ -11,7 +11,7 @@ TypeScript declaration 전체를 고정한다. 현재 분모는 framework 268개
 
 기능의 의미와 동작 규칙은 [공통 스펙](../../README.ko.md)이 소유하고, 사용법과 예제는
 [Node.js guide](../../../../node/guide/01-overview.ko.md)가 소유한다. Stream Connector의 공개 계약은
-[별도 문서](03-stream-connector.ko.md)가 소유한다. 현재 구현과 목표 계약의 차이는
+[별도 문서](../typescript/03-stream-connector.ko.md)가 소유한다. 현재 구현과 목표 계약의 차이는
 [구현 차이 문서](../../90-implementation-gap.ko.md)에만 기록한다.
 
 아래 declaration은 배포 package와 이름 집합이 양방향으로 같아야 하며, 각 이름의 overload, generic,
@@ -2042,5 +2042,5 @@ AST로 비교한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../node/README.ko.md) | [이전: 시스템 구조](01-system-structure.ko.md) | [다음: Stream Connector](03-stream-connector.ko.md)
+[문서 목록](../../../../node/README.ko.md) | [이전: 시스템 구조](01-system-structure.ko.md) | [다음: Stream Connector](../typescript/03-stream-connector.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

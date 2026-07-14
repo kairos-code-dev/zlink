@@ -26,13 +26,13 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
-| [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
-| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 + Redis room route store | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
-| [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | typed handler와 domain event publisher | JSON |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | channel handler, Spot actor join | JSON |
-| [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | event-sourced OrderWorkflowSpot, 조회 모델 adapter | JSON |
-| [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | owner routing handler, event-sourced PlayerQuestSpot, 조회 모델 adapter | JSON |
-| [ZoneWorld](zoneworld/README.ko.md) **설계 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | zone spot, player actor, owner 일관 channel, fanout subscriber | JSON |
+| [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
+| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **명시 등록**(구성 코드에서 직접) | JSON |
+| [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [ZoneWorld](zoneworld/README.ko.md) **설계 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 
 > ZoneWorld의 browser connector 선행 조건은 충족됐다. 명시적 flow 전달 계약과 실제 Chromium의
 > `ws`·`wss`, request/reply, push, reconnect 검증이 완료됐다. 이 문서는 설계 초안이며 ZoneWorld
@@ -55,16 +55,18 @@ handler 계약이 달라지기 때문이다. 언어별 샘플과 e2e는 아래 �
 | request/reply | `Req` / `Res` | `Request(...)`, `RequestToChannel(...)`, route request, stream request, HTTP request처럼 응답을 기다리는 호출 |
 | send | `Msg` | `Send(...)`처럼 응답 없이 전달하는 단방향 메시지 |
 | client push | `Notify` | server가 stream/session으로 client에 밀어 주고 client가 기다려 받는 알림 |
+| publish (pub/sub · fanout) | `Event` | `Publish(...)`, `PublishSpot(...)`처럼 **발행자가 수신자를 모르는** fan-out 메시지. Spot pub/sub과 channel fanout이 여기에 해당한다 |
 
 request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Created`처럼 보여도 `Req`와
 `Res` 쌍으로 이름 붙인다. 예를 들어 상태 변경을 요청하고 ack를 기다리는 흐름은
 `DeliveryStatusChangedReq`와 `DeliveryStatusChangedRes`가 맞다. 반대로 server가 고객 client에
 상태 변경을 밀어 주는 흐름은 `DeliveryStatusNotify`처럼 `Notify`를 사용한다.
 
-`Event`, `Command`, `Result`, `Ack` 같은 접미어는 샘플의 wire message 이름으로 새로 늘리지
+`Command`, `Result`, `Ack` 같은 접미어는 샘플의 wire message 이름으로 새로 늘리지
 않는다. 이런 이름은 내부 도메인 event, 업무 명령, 처리 결과, transport 응답을 서로 섞어 보이게
-할 수 있다. 이미 존재하는 샘플 메시지를 손볼 때도 호출 방식 기준으로 `Req`/`Res`, `Msg`,
-`Notify` 중 하나로 정리한다.
+할 수 있다. 이미 존재하는 샘플 메시지를 손볼 때도 호출 방식 기준으로 위 표의 접미어 중 하나로
+정리한다. `Event`는 **publish 호출에만** 쓴다 — request나 send로 보내는 메시지에 `Event`를
+붙이지 않는다.
 
 이 규칙은 stream, channel, actor, Spot 경계를 실제로 넘나드는 ZLink wire message에
 적용한다. 아래 두 경우는 wire message가 아니므로 예외로 둔다.
@@ -120,9 +122,13 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   자동 연결이 실패하면 샘플에 수동 연결을 추가하지 말고 location store 등록·조회·연결
   lifecycle이 끊긴 framework 구현을 수정한다. 이 금지는 언어별 sample 전체에 적용하며,
   위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다.
-- framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
-  샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
-  누락을 client 시나리오가 늦게 발견하게 된다.
+- **자동 등록이 기본이다.** framework가 handler를 스캔하고 등록할 수 있는 언어에서는 별도 등록
+  호출 없이 handler를 자동 등록한다([05 §3.3](../spec/05-framework-api.ko.md)). 샘플마다 handler
+  목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가 누락을 client 시나리오가
+  늦게 발견하게 된다.
+- **절대 규칙: TicTacToe만 명시 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께
+  보여 주는 대조 샘플이므로, 구성 코드에서 handler를 직접 등록하고 자동 등록에 기대지 않는다.
+  나머지 정본 샘플은 어떤 이유로도 명시 등록으로 대체하지 않는다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
   등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/02-framework-interfaces.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.

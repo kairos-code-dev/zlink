@@ -104,8 +104,11 @@
   codec package를 제공하지 않고 raw `Message`/bytes API만 유지한다.
 - typed message의 packet name은 registration 시 message type descriptor에서 한 번
   확정한다. 선언적 metadata가 있으면 그 이름을 사용하고, 없으면 nominal type 이름을
-  사용한다. payload instance, 호출별 builder와 handler가 이름 결정 규칙을 다시
-  구현하지 않는다. raw message extension만 packet name을 명시적으로 받는다.
+  사용한다. **codec은 packet name에 관여하지 않는다** — codec을 바꿔도 dispatch key는
+  그대로다. payload instance와 handler가 이름 결정 규칙을 다시 구현하지 않는다.
+- packet name을 명시적으로 받는 표면은 셋으로 한정한다: raw message extension, handler 등록
+  호출의 packet name override, 그리고 **STREAM connector의 호출별 `PacketName(...)`
+  override**(호출자가 명시하면 그 이름이 우선한다).
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
 - send는 기본적으로 one-way submit으로 둔다. backpressure 처리는 호출자가
@@ -286,7 +289,9 @@ event 는 원본 native frame 이나 message ownership 을 노출하지 않는 �
 | `correlationId` | request correlation id 또는 sequence |
 | 오류 정보 | decode 실패나 handler 예외. **예외 객체를 그대로 노출할 의무는 없다** — 언어에 따라 오류 타입과 메시지 문자열로 투영할 수 있다. handler 없음에는 값이 없을 수 있다 |
 
-observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남아야 한다. observer callback 실패는
+observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남아야 한다. 다만 message flow
+trace mode 를 `off` 로 두면 **로그만 침묵**하고 metric/counter 와 observer 통지는 계속 발생한다
+([52 메시지 흐름 추적 §2](52-message-flow-tracing.ko.md)). observer callback 실패는
 별도 error sink 나 내부 로그로만 기록하고 dispatch loop, error reply 전송, shutdown 을 깨지 않는다.
 
 ### 2.5 public contract와 runtime 구현의 분리 기준
@@ -499,19 +504,21 @@ public void Configure()
 }
 ```
 
-Spot 메시지 handler 수동 등록은 Spot 객체 안에서 아래처럼 표현한다. actor request/send,
-Spot packet, Spot subscription 같은 메시지 handler는 모두 `AddHandler<THandler>()` 하나로
-등록한다. subscription topic처럼 handler interface만으로 알 수 없는 값은 handler metadata에
-둔다. timer는 메시지 dispatch handler가 아니며, timer 이름과 주기처럼 실행 계획에 속한 값이
-필요하므로 별도 timer 등록 API를 사용한다.
+Spot 메시지 handler 수동 등록은 Spot 객체 안에서 아래처럼 표현한다. actor request/send와
+Spot packet handler는 `AddHandler<THandler>()` 하나로 등록한다 — handler가 구현한 typed
+interface에서 종류와 메시지 타입을 추론하기 때문이다. **subscription은 topic이 필요하므로
+`AddSubscribe<THandler>(topic)`으로 등록한다.** 같은 topic을 선언적 metadata로 제공하는 handler는
+자동 등록으로도 붙는다. timer는 메시지 dispatch handler가 아니며, timer 이름과 주기처럼 실행
+계획에 속한 값이 필요하므로 별도 timer 등록 API를 사용한다.
 
 ```csharp
 public void Configure()
 {
-    Context.Handlers.AddHandler<JoinActorHandler>();    // actor request/send handler 등록
-    Context.Handlers.AddHandler<DomainEventHandler>();  // subscription topic은 handler metadata에서 읽는다
+    Context.Handlers.AddHandler<JoinActorHandler>();               // actor request/send handler
+    Context.Handlers.AddSubscribe<DomainEventHandler>("domain.events");  // subscription: topic이 인자다
 }
 
+// 자동 등록 경로에서는 같은 topic을 선언적 metadata로 준다.
 [ZLinkSpotSubscriptionHandler("domain.events")]
 public sealed class DomainEventHandler :
     IZLinkSpotSubscriptionHandler<DomainSpot, DomainEvent>
@@ -531,18 +538,19 @@ session context, Spot 타입, actor 타입, 메시지 타입, request/send/subsc
 
 ```csharp
 Context.Handlers.AddActorRequest<JoinHandler, PlayerActor>("JoinReq");
-Context.Handlers.AddPacket<StateHandler>();
-Context.Handlers.AddSubscribe<DomainEventHandler>("domain.events");
 ```
 
-위 형태는 actor 타입, request/send/subscription 종류, packet 이름, topic을 호출부가 다시
-알아야 하므로 handler 등록 표면을 얕게 만든다. 같은 의미는 아래처럼 표현한다.
+위 형태는 actor 타입, request/send 종류, packet 이름을 호출부가 다시 알아야 하므로 handler
+등록 표면을 얕게 만든다. 같은 의미는 아래처럼 표현한다.
 
 ```csharp
 Context.Handlers.AddHandler<JoinHandler>();
 Context.Handlers.AddHandler<StateHandler>();
-Context.Handlers.AddHandler<DomainEventHandler>();
 ```
+
+**subscription topic은 예외다.** topic은 handler interface에서 추론할 수 없는 값이므로,
+등록 호출의 인자로 받는 `AddSubscribe<THandler>(topic)` 형태를 정식 표면으로 둔다. 같은 topic을
+선언적 metadata로 제공하는 경로도 함께 지원한다(아래 참조).
 
 자동 등록은 assembly, module, package scan 으로 handler 후보를 찾는 기능이다. 자동 등록도
 수동 등록과 같은 추론 규칙을 사용한다. interface 기반 handler는 attribute 없이도 자동 등록
@@ -583,10 +591,11 @@ session 타입이 실행 문맥을 정한다. 언어별 runtime이 session 타�
 경우에만 context 타입을 보조 key로 사용할 수 있으며, 이 경우에도 한 실행 문맥 안에서 같은
 packet 이름이 둘 이상 등록되면 startup에서 실패해야 한다.
 
-subscription topic은 interface만으로 알 수 없지만, 같은 메시지 handler 등록 원칙을 깨지 않기
-위해 수동 등록 호출의 인자로 받지 않는다. subscription handler는 attribute, annotation,
-decorator, 또는 언어별 metadata 선언으로 topic을 제공하고, 등록 호출은
-`AddHandler<THandler>()`로 유지한다. timer 이름과 주기는 메시지 handler metadata가 아니라
+subscription topic은 handler interface만으로 알 수 없는 유일한 dispatch key다. 따라서 **두 경로를
+모두 제공한다**: 수동 등록에서는 `AddSubscribe<THandler>(topic)`처럼 topic을 등록 호출 인자로
+받고, 선언적 경로에서는 attribute·annotation·decorator가 topic을 제공한다. 두 경로는 같은
+subscription registry로 수렴하며, 같은 topic에 대해 서로 다른 handler가 중복 등록되면 startup
+validation 오류다. timer 이름과 주기는 메시지 handler metadata가 아니라
 timer 실행 계획이므로 `AddTimer<THandler>(name, period)`처럼 timer 등록 API에서 제공한다.
 반대로 actor send/request handler처럼 interface가 actor 타입, 메시지 타입, request/send
 종류를 모두 제공하는 경우 attribute를 필수로 요구하지 않는다.

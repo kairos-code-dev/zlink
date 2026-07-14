@@ -26,7 +26,7 @@ fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 
 
 판정은 public 표면으로만 한다: `IZLinkLocationRuntimeQuery.GetStatusAsync`(store health,
 watch/polling 상태, owner lease 갱신 상태, last error, last refresh),
-`IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`(raw peer location row, cache 없음), 실제
+`IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`(raw peer location row, cache 없음), 실제
 messaging 성공, 각 역할 server의 evidence.
 
 ## 1. 목적과 범위
@@ -45,14 +45,14 @@ messaging 성공, 각 역할 server의 evidence.
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 Redis instance. 실행마다 전용 key prefix. harness가 정지/재기동해 store 장애를 만든다. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | client-server channel server. `AddRedisLocationStore(...)`로 store를 등록하면 framework lifecycle이 peer location row와 owner lease를 자동 갱신한다. `/evidence`·`/health` + runtime query 조회용 HTTP endpoint. |
+| provider (api 노드) | 2 (`api-a`, `api-b`) | client-server channel server. `AddLocationStore(new ZLinkRedisLocationStore(...))`로 store를 등록하면 framework lifecycle이 peer location row와 owner lease를 자동 갱신한다. `/evidence`·`/health` + runtime query 조회용 HTTP endpoint. |
 | consumer | 1 | 같은 store를 등록하고 자동 연결로 provider에 붙는 client. 지속 request로 연결 유지 여부를 관측하고, 자기 runtime query 결과(status, peer list)를 HTTP endpoint로 노출한다. |
 | probe | 시나리오별 | 각 역할 server의 runtime query endpoint를 조회해 store health, peer row, lease 상태를 확인하는 client 흐름. |
 
 시간 관련 option(heartbeat interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: heartbeat 1초, lease TTL 3초,
-polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는 draft 20.4의 option 정의와 같아야
-한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
+polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는 [40 §8.2](../spec/40-location-runtime.ko.md)의
+option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 
 ## 3. 실행 모델
@@ -81,7 +81,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 **한마디로:** store가 정상일 때 자동 연결·row 등록·status가 모두 건강하게 보이는가(다른 시나리오의 baseline).
 
 - 절차: Redis store + provider 2 + consumer로 자동 연결을 만들고 request를 보낸다. probe가 각 노드의 runtime query를 조회한다.
-- 검증: `ListPeersAsync(filter)`에 두 provider의 peer row가 살아 있는 owner로 보인다. request가 둘 중 하나에서 처리된다. `GetStatusAsync`가 store healthy, owner lease 갱신 정상, last refresh 갱신을 보여준다. (Config 1 RM-A1과 같은 baseline)
+- 검증: `ListPeerLocationsAsync(filter)`에 두 provider의 peer row가 살아 있는 owner로 보인다. request가 둘 중 하나에서 처리된다. `GetStatusAsync`가 store healthy, owner lease 갱신 정상, last refresh 갱신을 보여준다. (Config 1 RM-A1과 같은 baseline)
 - 세부 동작: store 기반 자동 연결 + runtime status 기준값.
 
 #### SF-A2 polling fallback (watch 없는 store)
@@ -90,7 +90,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 
 **한마디로:** watch를 제공하지 않는 store 구성에서도, polling만으로 peer 변경이 polling interval 안에 같은 결과로 반영되는가.
 
-- 절차: watch를 구현하지 않은 store 구현체를 `AddPeerLocationStore<T>()` 계열 등록 지점으로 등록한 배포(또는 watch 없는 store 구성)에서, provider 하나를 추가로 띄웠다가 정상 종료한다.
+- 절차: watch를 구현하지 않은 store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서, provider 하나를 추가로 띄웠다가 정상 종료한다. 등록 표면은 통합 계약 인스턴스 하나뿐이며 책임별 개별 등록 함수는 없다([40 §3](../spec/40-location-runtime.ko.md)).
 - 검증: watch event 없이 polling만으로 추가/제거가 desired target set에 반영된다 — 추가 후 polling interval 몇 tick 안에 새 provider가 routing 대상이 되고, 제거 후 그 provider로 더 가지 않는다. `GetStatusAsync`가 watch가 꺼져 있고 polling이 동작 중임을 보여준다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다(watch는 latency 최적화일 뿐 correctness는 polling이 보장).
 - 세부 동작: polling이 correctness 경로임을 고정(watch는 선택 최적화).
 
@@ -125,7 +125,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 **한마디로:** provider가 row를 지우지 못하고 죽어도, owner lease 만료만으로 그 row가 성공 결과에서 빠지고 consumer가 연결을 정리하는가.
 
 - 절차: store는 정상인 상태에서 `api-b`를 SIGKILL한다(row remove 없이 죽음). owner lease TTL 경과를 기다린 뒤 peer list와 routing을 관측한다.
-- 검증: lease 만료 전에는 `api-b`의 row가 아직 보일 수 있지만, lease TTL 경과 후 `ListPeersAsync(filter)` 성공 결과에서 `api-b` row가 제외된다(물리 삭제는 background cleanup이 담당하므로 성공 결과 제외로 판정한다). consumer의 desired set에서 `api-b`가 빠져 disconnect되고, follow-up request는 `api-a`로만 간다. 죽은 endpoint로 반복 timeout 하지 않는다.
+- 검증: lease 만료 전에는 `api-b`의 row가 아직 보일 수 있지만, lease TTL 경과 후 `ListPeerLocationsAsync(filter)` 성공 결과에서 `api-b` row가 제외된다(물리 삭제는 background cleanup이 담당하므로 성공 결과 제외로 판정한다). consumer의 desired set에서 `api-b`가 빠져 disconnect되고, follow-up request는 `api-a`로만 간다. 죽은 endpoint로 반복 timeout 하지 않는다.
 - 세부 동작: row write 없는 crash 전파 — owner lease 만료 join으로 stale row 제외.
 
 #### SF-C2 graceful shutdown 대조 (drain 뒤 owner 정리)
@@ -139,7 +139,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
   배정되지 않는지 확인하고, 30초 기본 drain deadline 안에 process가 강제 종료 없이 종료되는지
   기다린다. terminal 종료 직후 owner row가 사라지는지 확인한다.
 - 검증: drain 중에는 row를 유지해 기존 연결과 작업을 정리하지만 신규 배정에서는 제외된다.
-  정상 종료가 완료되면 `ListPeersAsync(filter)`에서 `api-b` row가 별도 lease 만료 대기 없이
+  정상 종료가 완료되면 `ListPeerLocationsAsync(filter)`에서 `api-b` row가 별도 lease 만료 대기 없이
   사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리 강제 종료나 lease 만료만으로
   통과시키지 않는다.
 - 세부 동작: draining marker 게시 → 기존 작업 drain → owner 단위 row bulk remove와 lease 제거 →
@@ -164,7 +164,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 **한마디로:** 장애가 lease TTL보다 길어 모든 lease가 만료된 뒤 복구돼도, 각 노드가 재등록을 먼저 하고 한 heartbeat interval을 기다린 뒤에만 disconnect diff를 적용해, 살아 있는 peer를 한꺼번에 끊지 않는가.
 
 - 절차: store 장애를 owner lease TTL보다 길게 유지한다(복구 시점에 모든 owner lease가 만료된 상태). 장애 중 `api-b`를 SIGKILL해 "실제로 죽은 peer"도 하나 만든다. store를 재기동하고 복구 흐름을 관측한다.
-- 검증: 복구 직후 각 노드가 조회보다 먼저 자기 owner lease와 local peer row를 다시 upsert한다(`ListPeersAsync`로 재등록 확인). disconnect diff는 heartbeat interval 1회 유예 뒤에 적용된다 — 살아 있는 `api-a`와 consumer 사이 연결은 끊기지 않고 request가 전 구간 성공한다. 유예가 지난 뒤 재등록하지 못한 `api-b`만 desired set에서 빠져 disconnect된다.
+- 검증: 복구 직후 각 노드가 조회보다 먼저 자기 owner lease와 local peer row를 다시 upsert한다(`ListPeerLocationsAsync`로 재등록 확인). disconnect diff는 heartbeat interval 1회 유예 뒤에 적용된다 — 살아 있는 `api-a`와 consumer 사이 연결은 끊기지 않고 request가 전 구간 성공한다. 유예가 지난 뒤 재등록하지 못한 `api-b`만 desired set에서 빠져 disconnect된다.
 - 세부 동작: 복구 순서 — owner lease/local row 재등록 → heartbeat interval 유예 → 빠진 target만 disconnect.
 
 #### SF-D3 runtime status 전이 관측
@@ -174,7 +174,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 **한마디로:** 장애→복구 한 사이클 동안 runtime status가 실제 상태 전이(healthy → unhealthy/last error → healthy/last refresh)를 정확히 보여주는가.
 
 - 절차: SF-D1 또는 SF-D2 실행 중 probe가 각 노드의 `GetStatusAsync`를 단계별로 조회한다.
-- 검증: 정상 구간은 store healthy + owner lease 갱신 정상, 장애 구간은 store unhealthy + last error 기록 + lease 갱신 실패 표시, 복구 후 healthy 복귀 + last refresh 갱신이 순서대로 관측된다. watch/polling 상태와 cache entry count 같은 필드가 조회 가능하다.
+- 검증: 정상 구간은 store healthy + owner lease 갱신 정상, 장애 구간은 store unhealthy + last error 기록 + lease 갱신 실패 표시, 복구 후 healthy 복귀 + last refresh 갱신이 순서대로 관측된다. watch/polling 상태와 owner lease 갱신 상태 같은 필드가 조회 가능하다. **주소 cache가 없으므로 cache 관련 필드는 status에 없다**([40 §7](../spec/40-location-runtime.ko.md)).
 - 세부 동작: `ZLinkLocationRuntimeStatus` 필드의 장애 사이클 반영.
 
 ### Track E — store 응답 지연(장애 아님) 중 비블로킹
@@ -203,7 +203,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 
 - `P0` 시나리오(SF-A1·B1·C1·D1·D2)가 모두 통과한다.
 - 판정은 public 표면으로만 한다: `GetStatusAsync`의 store health·lease 갱신·last error·last
-  refresh, freshness 없는 `ListPeersAsync(filter)`의 성공 결과(살아 있는 row만), 실제 messaging
+  refresh, freshness 없는 `ListPeerLocationsAsync(filter)`의 성공 결과(살아 있는 row만), 실제 messaging
   성공, 역할 server evidence. framework 내부 상태를 직접 읽지 않는다.
 - stale row 판정은 "성공 결과에서 제외"로 검증한다. 물리 삭제 시점은 background cleanup의
   책임이므로 단언하지 않는다.

@@ -569,6 +569,13 @@ public readonly record struct ZLinkSpotActorJoinResult(
 }
 ```
 
+`DestroyActorAsync`: Entry Spot에 있는 actor의 native actor ref, framework registry,
+bound session mapping을 정리한다. user Spot에 있는 actor는 먼저 leave를 완료해야 하며,
+이 정리 과정에서는 actor lifecycle callback을 호출하지 않는다.
+
+session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다. session 종료 사실을
+actor에 전달해야 하면 application이 대상 actor를 선택해 별도의 disconnect 알림을 보낸다.
+
 `IZLinkActorTransferAdapter<TActor>` 등록은 remote transfer에서 직접 옮길 actor state가 있음을 나타낸다.
 등록이 없으면 framework는 빈 `ZLinkMessage`를 보내고, target에서 기존 actor factory 또는 public actor
 생성 경로로 `TActor` instance를 만든다.
@@ -605,10 +612,10 @@ reject를 반환하면 `OnInitializeAsync(...)`는 호출하지 않고 spot을 �
 
 다음 호출들은 이 `Configure()` 단계 안에서만 허용된다.
 
-- `Context.AddPacket(...)`
-- `Context.AddHandler(...)`
-- `Context.AddActorPacket(...)`
-- `Context.AddSubscribe(...)`
+- `Context.Handlers.AddPacket(...)`
+- `Context.Handlers.AddHandler(...)`
+- `Context.Handlers.AddActorPacket(...)`
+- `Context.Handlers.AddSubscribe(...)`
 
 초기화가 끝난 뒤에 handler 를 추가하면 어떻게 될까. native subscription 과
 dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 경우 예외를
@@ -650,7 +657,7 @@ Entry Spot 은 기본 실행 문맥이다. 즉 session 에서 막 생성된 acto
 
 이 단계에서 처리할 actor message 는 `IZLinkEntrySpot.Configure()` 안에서
 등록한다. 구체적으로는
-`IZLinkEntrySpotContext.AddHandler<THandler>()` 를 호출한다.
+`IZLinkEntrySpotContext.Handlers.AddHandler<THandler>()` 를 호출한다.
 
 Entry Spot handler 는 Entry Spot 인스턴스, actor, payload 를 함께 받는다.
 그래야 handler 가 Entry Spot 이 가진 입장 처리 상태나 helper 메서드를 직접
@@ -663,10 +670,10 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 
     public void Configure()
     {
-        Context.AddHandler<AuthenticateHandler>();
-        Context.AddHandler<JoinMatchHandler>();
-        Context.AddHandler<PlayerEntryJoinedHandler>();
-        Context.AddHandler<PlayerEntryLeftHandler>();
+        Context.Handlers.AddHandler<AuthenticateHandler>();
+        Context.Handlers.AddHandler<JoinMatchHandler>();
+        Context.Handlers.AddHandler<PlayerEntryJoinedHandler>();
+        Context.Handlers.AddHandler<PlayerEntryLeftHandler>();
     }
 }
 ```
@@ -704,7 +711,7 @@ registry 가 담당한다.
 
 user Spot 에 join 된 actor 의 message 는 `IZLinkSpot.Configure()` 안에서
 등록한다. 구체적으로는
-`IZLinkSpotContext.AddHandler<THandler>()` 를 호출한다. actor 타입을 호출 쪽에서
+`IZLinkSpotContext.Handlers.AddHandler<THandler>()` 를 호출한다. actor 타입을 호출 쪽에서
 명시해야 하거나 handler 가 여러 actor handler interface 를 구현하면
 `AddActorPacket<THandler, TActor>()` 같은 명시적 등록 메서드를 사용한다.
 
@@ -721,9 +728,9 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddHandler<PlaceMarkHandler>();
-        Context.AddHandler<PlayerMatchJoinedHandler>();
-        Context.AddHandler<PlayerMatchLeftHandler>();
+        Context.Handlers.AddHandler<PlaceMarkHandler>();
+        Context.Handlers.AddHandler<PlayerMatchJoinedHandler>();
+        Context.Handlers.AddHandler<PlayerMatchLeftHandler>();
     }
 }
 ```
@@ -808,7 +815,7 @@ generic Spot은 4.3.1의 `IZLinkSpotActorLifecycle<TActor>`를 상속한다.
 
 actor disconnected callback 은 join/leave lifecycle 과 별개다. session 이
 끊겼다는 사실을 actor 에 알려야 할 때 application 이
-`NotifyDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
+session actor handle 의 `NotifyDisconnectedAsync(CancellationToken)` 을 호출하면 그 handle 이 가리키는 actor 에 대해 실행된다(대상 actor 를 인자로 받지 않는다). 이
 callback 은 actor membership 을 바꾸지 않는다.
 
 `OnJoinedActorAsync(...)` 와 `OnLeaveActorAsync(...)` 는 호출 시점이
@@ -1003,8 +1010,8 @@ session 에서 actor 로 relay 되는 packet 의 처리 순서는 다음과 같�
 
 - 사용자는 `Recv(...)` 나 `Drain(...)` loop 를 직접 작성하지 않는다.
 - 사용자는 고수준 표면만 사용한다. 예를 들어
-  `Context.AddPacket<THandler>(...)`,
-  `Context.AddSubscribe<THandler>(...)`,
+  `Context.Handlers.AddPacket<THandler>(...)`,
+  `Context.Handlers.AddSubscribe<THandler>(...)`,
   `Context.AddTimer<THandler>(...)`, stream attach 같은 것들이다.
 - 같은 user Spot 에 속한 handler, timer handler, channel reply continuation
   은 framework 가 정의한 동일한 실행 문맥 규칙을 따른다.
@@ -1325,10 +1332,10 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 
 - `IZLinkActor`
 - `IZLinkActorContext.JoinSpot(...)`
-- `IZLinkEntrySpotContext.AddHandler<THandler>()`
-- `IZLinkEntrySpotContext.AddActorPacket<THandler, TActor>()`
-- `IZLinkSpotContext.AddHandler<THandler>()`
-- `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`
+- `IZLinkEntrySpotContext.Handlers.AddHandler<THandler>()`
+- `IZLinkEntrySpotContext.Handlers.AddActorPacket<THandler, TActor>()`
+- `IZLinkSpotContext.Handlers.AddHandler<THandler>()`
+- `IZLinkSpotContext.Handlers.AddActorPacket<THandler, TActor>()`
 - `IZLinkSpot<TActor>.OnActorJoinAsync(...)`
 - `IZLinkSpot<TActor>.OnJoinedActorAsync(...)`
 - `IZLinkSpot<TActor>.OnLeaveActorAsync(...)`
@@ -3139,9 +3146,6 @@ public interface IZLinkMonitoringOptions
         string sourceName,
         params ZLinkSocketEventKind[] events);
 
-    void AddRegistryEvents(
-        string sourceName,
-        TimeSpan interval);
 
     void AddSpotEvents(
         string sourceName,
@@ -3924,7 +3928,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
   노출할 필요는 없다.
 - `Spot`, packet handler, timer handler 는 framework 가 만든 per-spot
   scope 에서 resolve 한다. registration 함수는 handler 타입만 받는다.
-- 즉 `Context.AddPacket<THandler>()`, `Context.AddTimer<THandler>(...)`
+- 즉 `Context.Handlers.AddPacket<THandler>()`, `Context.AddTimer<THandler>(...)`
   같은 표면은 service locator 가 아니다. "이 타입을 spot scope 에서 사용해
   달라" 는 등록 선언이다.
 - `OnCreateAsync(...)` 와 `OnInitializeAsync(...)` 도 마찬가지다.

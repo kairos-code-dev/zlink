@@ -38,7 +38,7 @@ stateDiagram-v2
 | 상태 | 의미 | 배치 후보 | owner lease |
 |------|------|:---------:|:-----------:|
 | `Serving` | 정상 서비스 | O | 갱신 |
-| `Draining` | 신규 차단, 기존 마무리·핸드오프 진행 | **X** | **계속 갱신**(§3.2) |
+| `Draining` | 신규 차단, 기존 마무리·핸드오프 진행 | **X** | **계속 갱신**(§3.3) |
 | `Drained` | 마무리 완료, 종료 안전 | X | 제거 직전 |
 | `ForceStopping` | grace deadline 초과 → 강제 종료 | X | 제거 |
 
@@ -62,20 +62,46 @@ drain의 정확성은 [location runtime](40-location-runtime.ko.md)과의 상호
 채 배치에서만 제외**한다. lease renew와 registration writer는 현재 `Draining` 값을 보존하며 drain이
 시작된 generation을 `false`로 되돌릴 수 없다.
 
-**마커를 읽는 결정 지점**(전부 이 마커로 draining peer를 후보에서 제외):
+**마커를 읽는 결정 지점**은 둘이다. 그 밖의 경로는 marker를 읽지 않으므로 혼동하지 않는다.
 
 | 결정 지점 | 동작 |
 |-----------|------|
-| spot `GetOrCreate` 배치(신규 room/owner spot 생성 노드 선택) | draining peer 제외 |
-| actor join target 노드 선택 | draining peer 제외 |
-| Entry Spot 배정 | draining peer 제외 |
-| owner routing(신규 owner spot allocation) | draining peer 제외 |
+| **drain handoff 대상 노드 선택** | actor를 넘겨받을 후보에서 draining peer를 제외한다(§4) |
+| **remote user Spot으로의 actor join** | 대상 노드의 peer row가 draining이면 join을 거부한다 |
+| **local drain admission gate** | drain에 들어간 노드는 신규 actor·spot·session admission을 스스로 차단한다 |
 | **자동 연결 diff([location-runtime §6](40-location-runtime.ko.md))** | **마커만으로 disconnect하지 않음**(연결 유지) |
 
-`Weight`(0..100)를 0으로 두는 방법은 배치 로직이 Weight를 참조한다는 계약이 없으므로 채택하지
-않는다 — 명시적 `draining` 마커 + 위 결정 지점 계약이 정본이다.
+**marker를 읽지 않는 경로:**
 
-### 3.2 owner lease는 Draining 동안 계속 갱신한다
+- **spot `GetOrCreate`는 클러스터 배치 API가 아니다.** 호출한 프로세스가 등록한 로컬 SpotNode에서
+  spot을 만든다. 노드 선택 자체가 없으므로 marker도 weight도 보지 않는다.
+- **Entry Spot join은 호출자가 target node rid를 지정한다.** framework가 후보를 고르지 않는다.
+- **기존 owner routing**은 actor/spot row의 owner 주소를 그대로 쓴다. 이미 그 노드에 있는 대상에
+  보내는 것이므로 배치 결정이 아니다.
+
+### 3.2 `Draining` 마커와 socket `Weight`는 다른 장치다
+
+둘 다 존재하지만 목적과 발동 경로가 다르다. 하나로 다른 하나를 대체할 수 없다.
+
+| 축 | 무엇을 하나 | 누가 읽나 |
+|----|-------------|-----------|
+| **`Draining` 마커**(이 문서) | **graceful drain lifecycle**을 구성한다. 마커 전파를 기다린 뒤 admission을 차단하고 actor handoff·spot 정리·in-flight 완료 대기·session drain·owner 정리를 순서대로 수행한다 | §3.1의 결정 지점, drain executor |
+| **socket `Weight`**(0..100) | **transport 계층의 부하 가중치**다. core 소켓의 load balancing 후보와 rid 지정 routed send의 수락 여부를 정한다 | core 소켓 |
+
+**`Weight` 변경의 전파는 원자적이지 않다.** 런타임에 server socket weight를 바꾸면 ① core 소켓에
+즉시 반영되고 ② 연결된 peer에 **비동기로** 전달되며 ③ location auto-connect가 구성된 경우
+peer row의 `Weight`는 **다음 reconcile에서** 갱신된다. 따라서 local getter가 0을 돌려줬다고 해서
+모든 client에 전파가 끝난 것은 아니다 — 전파 완료를 확인하려면 실제 트래픽으로 관측해야 한다.
+
+`Weight = 0`인 peer는 core의 load balancing 후보에서 빠지고, **rid를 지정한 routed send도
+거부된다.** 즉 신규 request 유입을 막는 **transport 게이트**로는 유효하다. 그러나 `Weight = 0`은
+**graceful drain lifecycle을 시작하지 않는다** — `Draining` 마커, readiness, `zlink.drain.state`
+gauge, drain lifecycle event를 아무것도 바꾸지 않는다. actor handoff도 일어나지 않는다.
+
+**노드를 실제로 비우려면 `Draining` 마커 기반 drain lifecycle을 써야 한다.** `Weight = 0`은 그
+앞뒤에서 channel 부하를 빼는 보조 수단이다.
+
+### 3.3 owner lease는 Draining 동안 계속 갱신한다
 
 핸드오프는 곧 location row의 소유권 이동이다. [location-runtime §2.5](40-location-runtime.ko.md)에서
 owner lease heartbeat(기본 5s)가 끊기면 TTL(기본 15s) 후 **그 owner의 전 row가 stale**이 되어
@@ -91,7 +117,7 @@ owner lease heartbeat(기본 5s)가 끊기면 TTL(기본 15s) 후 **그 owner의
 4. row/lease 정리가 성공한 뒤에만 `Drained`로 전이하고 terminal result를 완료한다. 실패가 deadline까지
    계속되면 `ForceStopping` 정리 경로를 거쳐 `ForceStopped`를 반환한다.
 
-### 3.3 readiness flip의 전파 지연 — 정직한 상한
+### 3.4 readiness flip의 전파 지연 — 정직한 상한
 
 peer의 store 관찰은 polling(기본 1s)+k8s probe 주기라, 마커를 세운 뒤에도 **수 초간 신규 request/
 연결이 계속 도착**한다. 그래서 §5의 "신규 차단"과 "기존 연결 위 신규 request 정상 처리"가 겉보기
@@ -134,7 +160,7 @@ store 장애로 draining 마커를 게시하지 못해도 로컬 `IsReady`와 �
 
 | surface | Draining 진입 시 동작 |
 |---------|----------------------|
-| **channel/route server** | draining 마커로 신규 배정 제외. in-flight reply까지 마무리 후 unbind. 전파 지연 창의 신규 request는 정상 처리(§3.3) |
+| **channel/route server** | draining 마커로 신규 배정 제외. in-flight reply까지 마무리 후 unbind. 전파 지연 창의 신규 request는 정상 처리(§3.4) |
 | **STREAM session** | 신규 연결에 `session-closing(server_drain)`을 보낸 뒤 종료. 기존 세션은 §5.2 actor 핸드오프 + §7 종료 통지 |
 | **actor** | §5.2 정책 |
 | **SPOT** | §5.1 정책 |

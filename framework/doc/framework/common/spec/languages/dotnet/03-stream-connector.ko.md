@@ -157,8 +157,8 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 | 항목 | 계약 |
 |---|---|
 | `Manual`(기본) | 수신 callback·request callback·lifecycle event가 **`Dispatch.Async(...)`를 호출한 실행 문맥**에서 처리된다 |
-| `Immediate` | connector가 소유한 background dispatch 작업에서 처리한다 |
-| `MaxPendingDispatchCallbacks` | 수신 handler뿐 아니라 **이미 수락된 request의 완료 callback을 보존할 예약 슬롯**도 이 제한에 포함된다 |
+| `Immediate` | **receive 경로에서 인라인 실행한다**(별도 dispatch 작업 없음). 느린 handler는 receive loop를 막으므로 backpressure가 그대로 걸린다 |
+| `MaxPendingDispatchCallbacks` | **`Manual`에서만 적용된다.** 수신 handler뿐 아니라 이미 수락된 request의 완료 callback을 보존할 예약 슬롯도 이 제한에 포함된다. `Immediate`는 큐를 거치지 않으므로 이 bounded admission을 우회한다 |
 | outbound 전송 queue | dispatch 제한과 **별개인 순서 보존 queue**. 최대 **4096개** 전송을 보관하며, 넘치면 **즉시 오류**로 거부한다 |
 
 - **먼저 수락한 send는 뒤에 시작한 request보다 먼저 전송된다.** request는 **자기 frame의 실제 write가

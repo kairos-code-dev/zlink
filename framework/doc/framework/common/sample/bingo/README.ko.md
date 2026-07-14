@@ -36,7 +36,7 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
   topic으로 `BingoRewardAcquiredEvent`를 publish하고, 다른 Play 서버의 `BingoRoom`은
   event를 받아 observer client로 push한다.
 - 공유 location store를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
-- handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
+- handler는 typed handler 계약을 구현하고 스캔·선언형 metadata로 **자동 등록**된다.
 - Bingo의 stream, channel, actor, room Spot payload는 Protobuf를 사용한다.
 
 Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 각 request 응답과 server
@@ -344,7 +344,9 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   actor route, session route, Spot pub/sub peer discovery를 match queue Redis로 우회하면
   Bingo 샘플의 location store 자동 연결 목적이 흐려진다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 location
-  store 기반 `SpotRef` resolver 계약을 사용해야 한다. 샘플을 통과시키기
+  store 기반 **spot handle resolver** 계약을 사용해야 한다. resolver가 돌려주는 값은 불투명한
+  `SpotHandle`이며, `SpotRef`(내부 주소 snapshot)는 public 표면에 없다
+  ([24 §2](../../spec/24-spot-address-messaging.ko.md)). 샘플을 통과시키기
   위해 framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
 - Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다.
@@ -446,21 +448,22 @@ message로 바꾼다. card validation, draw order, winner 판정이 handler나 S
 
 ## 8. Handler 등록 방식
 
-Bingo 샘플은 typed handler 계약을 명시 등록하는 방식을 사용한다. 각 handler는
-framework가 정의한 handler 계약을 구현하고, 서버 구성 코드에서 scan 또는 명시
-등록으로 framework에 알려진다.
+**Bingo는 자동 등록 샘플이다.** handler는 framework가 정의한 typed handler 계약을 구현하고,
+서버는 assembly·module 스캔과 선언형 metadata로 그 handler를 **자동 등록**한다. 구성 코드에
+handler 목록을 다시 나열하지 않는다.
 
 이 방식의 목적은 아래와 같다.
 
-- handler가 어떤 request/response 계약을 처리하는지 타입 선언으로 드러난다.
+- handler가 어떤 request/response 계약을 처리하는지 **타입 선언과 선언형 metadata**로 드러난다.
 - Session, channel, Entry Spot, room Spot handler가 같은 등록 원칙을 공유한다.
-- attribute, annotation, decorator가 없는 언어에서도 같은 구조를 옮기기 쉽다.
+- handler를 추가하면 등록 호출을 잊어 조용히 빠지는 실수가 생기지 않는다.
 
-언어별 framework가 선언형 등록 기능을 제공하더라도 Bingo에서는 handler 계약을
-구성 코드에서 명시 등록하는 방식을 우선 사용한다. `.NET`이나 Java처럼 interface를
-자연스럽게 쓸 수 있는 언어는 interface로 표현하고, TypeScript처럼 runtime interface가
-사라지는 언어는 handler class와 명시 등록으로 같은 의미를 표현한다. 선언형 등록
-방식은 TicTacToe 샘플이 맡는다.
+언어별 표현은 `.NET` attribute, Java/Kotlin annotation, Node decorator다. **C++은 예외**로,
+runtime 스캔이 없으므로 compile-time 타입과 명시 builder 호출로 같은 handler 집합을 등록한다
+([05 §3.3](../../spec/05-framework-api.ko.md)). 등록 방식이 달라도 handler 역할과 메시지 이름은
+같다.
+
+수동 연결 + 수동 등록을 보여 주는 것은 **TicTacToe** 하나뿐이다([샘플 규약](../README.ko.md)).
 
 ## 9. 게임 규칙
 
@@ -771,8 +774,15 @@ bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하�
 relay한다.
 Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `EnsurePlayerActorReq`에
 담는다. `SessionA`는 `PlayA`를, `SessionB`는 `PlayB`를 preferred node로 사용한다.
-언어별 framework에 public targeted actor creation 또는 targeted channel request 표면이
-부족하면 샘플에서 우회하지 말고 framework public API를 먼저 보강해야 한다.
+
+**이 preferred node rid는 샘플이 정의한 application payload 필드이지 framework 표면이 아니다.**
+framework에는 remote node를 직접 지정하는 actor 생성 API가 없다
+([22 §4](../../spec/22-actor-model.ko.md), [31 §10.2](../../spec/31-session-actor-dispatch.ko.md)) —
+배치 결정은 framework runtime이 owner lease·capability·`Draining` 마커로 수행한다. 샘플은 그 위에서
+**application 수준 요청 라우팅**으로 선호 노드를 표현한다: 요청을 그 노드로 보내고, 그 노드가
+자기 local actor runtime에 actor를 만든다. 샘플을 통과시키려고 framework에 노드 지정 생성
+표면을 새로 추가하지 않는다 — 샘플은 새 public contract의 근거가 아니다
+([00 §3](../../spec/00-public-contract-governance.ko.md)).
 
 ## 13. Matching과 카드 제출 흐름
 
@@ -1054,7 +1064,7 @@ evidence를 남겨야 한다.
 - actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
   정리한다.
 - client는 API 서버나 Play 서버 endpoint를 직접 사용하지 않는다.
-- handler 등록은 typed handler 계약을 구성 코드에서 명시 등록하는 방식을 사용한다.
+- handler 등록은 스캔·선언형 metadata 기반 자동 등록을 사용한다(C++만 compile-time 명시 등록).
 - 카드 제출 flow는 제출 dispatch까지 이어지고, 각 timer tick은 별도 `origin=timer` flow로
   room dispatch와 해당 bound push까지 이어진다.
 - 언어 표준 meter/registry 연결 예제가 있고 Play는 `DrainNatural` 정책을 공개 API로 선언한다.

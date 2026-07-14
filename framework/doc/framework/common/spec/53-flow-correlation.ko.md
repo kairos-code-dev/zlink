@@ -205,7 +205,7 @@ MFT §3의 `message_flow_event_t`에 필드를 추가한다(값이 있을 때만
 enum class flow_origin_t { inbound, timer, application, lifecycle };  // §4.2
 struct message_flow_event_t {
     // ... 기존 MFT §3 필드 ...
-    std::optional<std::string>   flow_id;      // ≤64B ASCII, create-if-absent
+    std::optional<std::string>   flow_id;      // 정확히 36B ASCII(UUIDv7, §2), create-if-absent
     std::optional<flow_origin_t> flow_origin;  // inbound | timer | application | lifecycle
     // dispatch_error_event_t 에도 동일 flow_id 필드 추가 (§4.3)
 };

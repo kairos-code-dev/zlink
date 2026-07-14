@@ -62,8 +62,12 @@ Spot 실행 문맥의 outbound와 외부 route client는 `SpotHandle`과 메시�
 - spot rid와 node rid를 나란히 받는 전송 overload는 없다.
 - 첫 resolve와 이후 주소 갱신은 handle이 소유한다. outbound는 handle의 내부 snapshot을
   사용하되 application에 조회 순서를 요구하지 않는다.
-- 정상 전송마다 store를 읽지 않는다. handle은 location event로 snapshot을 갱신하고,
-  안전한 stale 실패가 발생한 경우에만 resolver를 한 번 호출한다.
+- **정상 전송 경로는 store를 읽지 않는다.** 전송은 handle의 in-memory snapshot만 본다.
+  snapshot 갱신 트리거는 셋뿐이다: ① location 변경 event ② framework가 소유한 **주기적
+  재조회**(살아 있는 handle 키를 polling interval마다 store에서 다시 읽는 백그라운드 작업)
+  ③ 안전한 stale 실패 시 resolver 1회 호출. ②는 전송 경로가 아니라 runtime의 백그라운드
+  작업이며, **주소에 TTL cache를 두는 것과는 다르다** — 임의 TTL cache는 두지 않는다
+  ([40 location runtime §1](40-location-runtime.ko.md)).
 - **원격 spot 전달의 wire form은 route socket 위의 spot route bridge relay framing
   하나로 고정한다.** 소켓 수준 framing과 혼용하면 수신 pump가 한쪽을 일반 envelope로
   오인해 drop한다. 포팅 언어는 이 framing 하나만 구현한다. 이 고정은 framework node 간
@@ -92,7 +96,8 @@ actor 대상 표면의 실패 분류는 [framework API 오류 계약](05-framewo
 |------|-----------|----------------|-----------|
 | local runtime이 대상 mesh 미참여 | local | 갱신하지 않음 | 구성 오류 |
 | mesh가 모르는 node rid | local | handle 갱신 후 한 번 재전송 | 다시 실패하면 `RequestTargetNotFound` |
-| node는 알지만 미연결 | local | 기존 send readiness 한계 안에서 연결 수렴을 기다림 | 한계를 넘으면 `RouteNotConnected` |
+| node는 알지만 미연결 | local | 기존 send readiness 한계 안에서 연결 수렴을 기다림 | 한계를 넘으면 request는 `RouteNotConnected`, **one-way send는 timeout 오류** |
+| spot route bridge가 아직 준비되지 않음 | local | 대기하지 않음 | 즉시 `RouteNotConnected` |
 | node 도달, spot 부재 | 수신측 | handler 미실행을 확인하고 handle 갱신 후 한 번 재전송 | 다시 실패하면 `SpotRouteNotFound` |
 | 전송 후 무응답 | timeout | 재전송하지 않음 | timeout |
 

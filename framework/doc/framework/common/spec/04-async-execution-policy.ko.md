@@ -20,12 +20,16 @@ runtime 상태 전이 호출은 기본적으로 비동기 실행 단위다. send
 전송 가능 상태와 backpressure 처리는 framework 내부 전송 경로가 맡는다.
 
 send와 publish의 one-way `submit()`은 입력 검증과 bounded local queue 수락까지만
-동기로 수행하고 완료 객체를 반환하지 않는다. queue가 가득 찼거나 route가 준비되지
-않으면 즉시 언어별 framework 예외를 발생시킨다. 수락 뒤 framework는 nonblocking send,
-pending queue와 ready notification으로 transport를 진행한다. 그 뒤의 실패는
-monitoring/error observer로 전달하며 이미 반환한 호출에 예외를 되돌리지 않는다.
-blocking send를 `Task.Run`, thread pool worker, virtual thread, coroutine worker로 감싸서
-async처럼 보이게 만들지 않는다.
+동기로 수행하고 완료 객체를 반환하지 않는다. queue가 가득 찼거나 대상 node 자체를 알 수
+없으면 즉시 언어별 framework 예외를 발생시킨다. 대상은 알지만 route가 아직 연결되지 않은
+구간은 즉시 실패시키지 않고 send readiness 한계 안에서 연결 수렴을 기다린다. 대기는
+polling이 아니라 transport의 send-ready 통지로 재시도하며, 한계는 framework 기본 send
+timeout이다. 한계를 넘긴 뒤의 실패 분류는
+[24 Spot 주소 메시징](24-spot-address-messaging.ko.md) section 5의 표를 따른다.
+수락 뒤 framework는 nonblocking send, pending queue와 ready notification으로 transport를
+진행한다. 그 뒤의 실패는 monitoring/error observer로 전달하며 이미 반환한 호출에 예외를
+되돌리지 않는다. blocking send를 `Task.Run`, thread pool worker, virtual thread, coroutine
+worker로 감싸서 async처럼 보이게 만들지 않는다.
 
 request는 두 단계로 본다.
 
@@ -34,7 +38,9 @@ request는 두 단계로 본다.
 
 Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 시작한다. handler가
 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 반환하면 framework는 그
-완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. callback 안에서
+완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. **유일한 예외는 아래에서
+정의하는 framework terminator await다.** `Task.Delay`나 외부 HTTP client처럼 framework
+terminator가 아닌 await는 양보 지점이 아니며 실행 줄 전체를 그대로 막는다. callback 안에서
 blocking wait로 완료 값을 기다리는 것은 금지한다.
 
 request, join과 worker에는 완료를 기다리는 terminator를 하나만 제공한다. `.NET`의
@@ -43,17 +49,35 @@ request, join과 worker에는 완료를 기다리는 terminator를 하나만 제
 별도 public terminator는 두지 않는다.
 
 framework는 현재 실행 문맥과 대상 실행 줄을 알고 있으므로, self-deadlock 없이 완료를
-기다리는 방법을 내부에서 선택한다. 재진입을 막는 보호 단위는 actor와 timer의 mailbox다:
-같은 actor나 timer의 보호 상태는 callback 완료까지 서로 무관한 callback이 접근하지
-못한다. Spot의 직렬 실행 줄은 handler가 완료 값을 기다리는 await 지점에서 양보하므로,
-같은 Spot의 독립 callback은 그 대기 중에 시작할 수 있다(자동 turn dispatch E2E ATD-A2가
-이 의미를 고정한다). 다만 현재 callback이 시작하고 직접 기다리는
-동일 실행 줄의 후속 작업은 같은 논리적 turn의 일부로 순서대로 실행할 수 있다. 이 인과
-관계가 없는 callback은 그 사이에 끼워 넣지 않는다. 이렇게 하면 보호 상태의 직렬성을
-유지하면서, 현재 callback의 결과를 만들기 위해 같은 실행 줄이 필요한 경우에도 교착하지
-않는다. 독립된 channel, 다른 actor, 다른 Spot과 worker 실행도 진행할 수 있어야 한다.
-continuation은 원래 실행 문맥으로 돌아온 뒤 재개한다. 따라서 호출자는 await 전에 turn을
-반납할지 판단하지 않는다.
+기다리는 방법을 내부에서 선택한다. 보호 장치는 두 겹이다.
+
+- **Spot 직렬 실행 줄**은 실행 구간 자체를 직렬화한다. 같은 Spot의 두 callback 본문이 동시에
+  실행되지 않는다.
+- **actor와 timer의 mailbox**는 **terminator 양보를 가로질러서도** 재진입을 막는다. 같은 actor나
+  같은 timer의 다음 callback은 현재 callback이 완전히 끝난 뒤에만 시작한다.
+
+Spot의 직렬 실행 줄은 handler가 **framework terminator로** 완료 값을 기다리는 지점에서
+양보하므로, 같은 Spot의 독립 callback은 그 대기 중에 시작할 수 있다(자동 turn dispatch E2E
+ATD-A2가 이 의미를 고정한다). 세 가지를 함께 기억한다.
+
+- **대기가 없으면 양보도 없다.** terminator가 기다릴 작업이 이미 동기 완료된 상태면 줄을
+  양보하지 않고 그대로 진행한다.
+- **continuation은 즉시 재개하지 않는다.** 양보한 줄에 다시 올라가 재개하므로, 그 사이 큐에
+  들어온 다른 작업이 먼저 실행될 수 있다. 재개 시점에는 줄을 다시 배타적으로 점유한다.
+- **재개 thread는 계약이 아니다.** 보장하는 것은 같은 논리적 실행 줄에서 순서대로 재개된다는
+  것뿐이며, 특정 thread로 돌아온다는 뜻이 아니다.
+
+현재 callback이 시작하고 직접 기다리는 동일 실행 줄의 후속 작업은 같은 논리적 turn의 일부로
+순서대로 실행할 수 있다. 이 인과 관계가 없는 callback은 그 사이에 끼워 넣지 않는다. 이렇게 하면
+보호 상태의 직렬성을 유지하면서, 현재 callback의 결과를 만들기 위해 같은 실행 줄이 필요한
+경우에도 교착하지 않는다. 독립된 channel, 다른 actor, 다른 Spot과 worker 실행도 진행할 수
+있어야 한다. 따라서 호출자는 await 전에 turn을 반납할지 판단하지 않는다.
+
+**Entry Spot actor packet은 이 규칙의 예외다.** Entry Spot의 actor packet은 Entry Spot 직렬 줄에
+올리지 않고 **대상 actor의 mailbox로 직렬화**하며, 실행 중에는 Spot turn을 잡지 않는다. 따라서 그
+handler 안의 terminator await는 Entry Spot 직렬 줄의 양보 지점이 아니고, Entry Spot의 다른
+callback과 **실제로 병행 실행될 수 있다.** Entry Spot에서는 spot 상태를 직렬성에 기대어 다루지
+않는다.
 
 짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
 `runWorker(...)`, `run_worker(...)` 표면을 사용한다. worker 함수는 Spot 상태를 직접

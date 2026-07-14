@@ -62,11 +62,11 @@
 - `profile.client`는 request/send용 outbound `DEALER(client)` 연결을 뜻한다.
 - `profile.subscriber`는 event subscribe용 `SUB` 연결을 뜻한다.
 
-같은 역할은 자동 연결과 수동 연결을 동시에 가질 수는 없다. 자동 연결이 관리하는
-`DEALER`의 연결 집합은 자동 연결 상태 맞추기 작업이 소유하므로 수동 `connect`와 섞이면 진실
-공급원이 둘이 되기 때문이다.
-따라서 framework는 `channel + capability`마다 연결 방식을 하나씩 고르고, 앱
-전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
+**한 역할의 peer 획득 방식은 하나로 확정된다.** 자동 연결이 관리하는 `DEALER`의 연결 집합은
+자동 연결 상태 맞추기 작업이 소유하므로, 수동 `connect`와 섞이면 진실 공급원이 둘이 되기
+때문이다. 실제 확정 규칙(수동 endpoint가 있으면 그 역할은 수동으로 확정되고 자동 reconcile이
+돌지 않는다)은 §5가 소유한다. 따라서 framework는 `channel + capability`마다 연결 방식을 하나씩
+고르고, 앱 전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
 
 이 구조가 일반적인 gateway 기반 호출 모델과 어떻게 다른지, 왜 gateway 없이도
 location transparency를 얻을 수 있는지는 [01-overview.ko.md](01-overview.ko.md)의
@@ -153,7 +153,7 @@ fanout channel에 server·client 역할을 켤 수 없다. **한 이름의 chann
 ([channel 메시징 §4](11-channel-messaging.ko.md)).
 
 outward API는 공용 client 하나로 보이더라도 내부 runtime은 channel마다
-역할별 역할을 가질 수 있다. 현재 스펙은 이 channel별 역할 구조를
+서로 다른 역할을 가질 수 있다. 현재 스펙은 이 channel별 역할 구조를
 기본 방향으로 본다.
 
 channel messaging의 일반 handler dispatch는 local `ROUTER(server)`가
@@ -192,6 +192,11 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 기본으로 넣지 않는다. 각 언어 binding은 framework 등록 단계에서 발견된 handler를
 어떤 inbound channel에 노출할지 명시하는 API를 제공해야 한다.
 
+**예외는 SPOT method attribute다.** spot node는 한 프로세스에 여러 개 있을 수 있고 method
+단위 선언은 자기가 붙을 spot node를 스스로 지목해야 하므로, SPOT method attribute는 spot node
+이름을 인자로 받는다. class 단위 SPOT handler attribute는 spot 타입이 실행 문맥을 정하므로
+node 이름을 받지 않는다.
+
 ## 5. 자동 연결과 수동 연결
 
 두 방식 모두 필요하다.
@@ -214,8 +219,10 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
   있다.
 - 수동 연결 역할은 startup 등록뿐 아니라 런타임 `connect`,
   `disconnect`, `list` 제어도 지원해야 한다.
-- 다만 같은 역할 안에서는 store 기반 자동 연결과 수동 연결을 섞지 않는다.
-  (수동 endpoint 연결은 auto reconcile이 끊지 않는다.)
+- **peer 획득 방식은 역할 단위로 하나만 확정된다.** 같은 역할에 수동 endpoint가 하나라도
+  있으면 그 역할은 수동 연결로 확정되고, location store를 함께 등록했더라도 그 역할의 자동
+  연결 reconcile은 돌지 않는다. **startup 오류가 아니라 수동이 우선한다.** 자동 연결로 확정된
+  역할에 런타임으로 수동 endpoint를 추가하려 하면 그때 거부된다.
 - actor 모델은 location store 기반 자동 연결을 권장한다. session-bound actor와
   actor location resolve는 reconnect, scale-in/out, 위치 갱신을 dynamic하게
   다루므로 manual peer set과 잘 맞지 않는다. manual 연결은 single-peer 테스트나
@@ -275,7 +282,8 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 
 ## 6. 범위 밖에 두는 것
 
-- `DEALER <-> DEALER`를 공용 모델로 노출하는 일
+- `DEALER <-> DEALER`를 **channel 등록 표면**에 공용 모델로 노출하는 일(location 계층에는
+  `DealerMesh` 종류가 있으나 channel 등록 API가 그 값을 받지 않는다)
 - `ROUTER -> DEALER` 임의 push를 channel messaging 공용 API로 노출하는 일
 - raw multipart header를 application handler 인자로 직접 노출하는 일
 

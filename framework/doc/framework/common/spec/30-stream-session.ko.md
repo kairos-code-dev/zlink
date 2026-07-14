@@ -43,7 +43,9 @@ application에 넘기지 않는다.
 ## 3. Dispatch 모델
 
 **session callback은 transport callback을 직접 실행하지 않는다.** framework가 관리하는 queue를
-거쳐 dispatch한다. 그래야 dispatch·DI·filter·logging을 일관되게 묶을 수 있다.
+거쳐 dispatch한다. 그래야 dispatch·DI·logging을 일관되게 묶을 수 있다. **handler filter
+파이프라인은 channel dispatch 전용이며 STREAM session dispatch에는 적용하지 않는다**
+([framework API §2.6](05-framework-api.ko.md)).
 
 - session callback이 받는 것은 **dispatch context**(packet name, metadata, request 정보 등)와
   **payload**다.
@@ -57,7 +59,7 @@ application에 넘기지 않는다.
 recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 표면으로 그대로 끌어올리면
 문제가 생긴다.
 
-- framework가 dispatch·DI·filter·logging을 일관되게 묶기 어려워진다.
+- framework가 dispatch·DI·logging을 일관되게 묶기 어려워진다.
 - **application이 loop·취소·backpressure를 직접 떠안게 된다.**
 - header 기반 packet dispatch를 일관된 모델로 설명하기 어려워진다.
 

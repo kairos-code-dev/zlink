@@ -101,8 +101,11 @@ publish 또는 attach된 channel client의 send/request로 푼다.
   [location runtime §5](40-location-runtime.ko.md)를 따른다.
 - framework가 **운영용** spot location row를 노출할 때는 Entry Spot과 user Spot을 구분한다.
 
-**actor ref publish·sync와 actor remote location에 별도 application public interface를 추가하지
-않는다.** application 메시징은 불투명한 spot handle을 사용한다.
+**actor ref를 publish·sync하거나 actor remote location을 조회하는 별도 application public
+interface는 추가하지 않는다.** `ActorRef`는 actor manager와 actor directory가 발급하며,
+application은 그것을 actor 메시징 표면(`SendToActor` / `RequestToActor`)의 대상 값으로 쓴다
+([22 actor 모델 §6](22-actor-model.ko.md)). **spot 대상 메시징**은 `ActorRef`가 아니라 불투명한
+spot handle을 사용한다 — 두 표면의 대상 값을 섞지 않는다.
 
 ## 5. 회귀 테스트
 

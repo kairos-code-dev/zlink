@@ -569,7 +569,7 @@ public interface ZLinkFrameworkOptions {
     void addLocationStore(ZLinkLocationStore store);
     ClientServerChannelBuilder addClientServerChannel(String channelName);
     FanoutChannelBuilder addFanoutChannel(String channelName);
-    RouteMeshChannelBuilder addRouteMesh(String channelName);
+    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
     ZLinkSpotNodeBuilder addSpotMesh(String channelName);
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
     void addActorFactory(
@@ -720,30 +720,32 @@ public interface ZLinkWorkerCall<T> {
 }
 
 public interface ZLinkRouteClient {
-    <TMessage> ZLinkSendCall sendTo(
-        String routerChannelId,
-        RoutingId targetNodeRid,
-        TMessage message);
+    ZLinkSendCall sendToNode(
+        String channelName,
+        RoutingId target,
+        Object message);
 
-    <TMessage> ZLinkSendCall sendToSpot(
-        SpotHandle target,
-        TMessage message);
+    ZLinkRequestCall requestToNode(
+        String channelName,
+        RoutingId target,
+        Object message);
 
-    <TMessage> ZLinkRequestCall requestTo(
-        String routerChannelId,
-        RoutingId targetNodeRid,
-        TMessage request);
+    // spot 대상은 handle 하나만 받는다. handle이 owner node와 전송 mesh를 소유하므로
+    // caller가 route channel을 함께 고르지 않는다(공통 스펙 24 §3).
+    ZLinkSendCall sendToSpot(
+        SpotHandle spot,
+        Object message);
 
-    <TMessage> ZLinkRequestCall requestToSpot(
-        SpotHandle target,
-        TMessage request);
+    ZLinkRequestCall requestToSpot(
+        SpotHandle spot,
+        Object message);
 }
 
 public interface ZLinkSpotPublisherClient {
-    <TEvent> ZLinkPublishCall publishSpot(
+    ZLinkPublishCall publish(
         String channelName,
         String topic,
-        TEvent message);
+        Object message);
 }
 
 public interface ZLinkFanoutClient {
@@ -951,7 +953,6 @@ diff를 함께 감싸는 운영 표면이다.
 ```java
 public interface ZLinkMonitoringOptions {
     void addSocketEvents(String sourceName, ZLinkSocketEventKind... events);
-    void addRegistryEvents(String sourceName, Duration interval);
     void addSpotEvents(String sourceName, Duration interval);
     void addLocationRuntimeEvents(String sourceName, Duration interval);
     void addLocationPeerEvents(String sourceName);

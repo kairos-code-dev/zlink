@@ -271,9 +271,13 @@ SupportChat은 typed handler와 domain event publisher를 함께 사용한다.
   반환한다.
 - notification publisher는 domain event를 server push message로 바꾸어 bound session으로 보낸다.
 
-언어별 framework가 선언형 등록을 제공하더라도 SupportChat에서는 handler가 어떤
-경계를 처리하는지 보이도록 typed handler 또는 명시 등록을 우선 사용한다. notification은
-handler 안에서 직접 여러 client에게 보내지 않고 domain event publisher 경로로 모은다.
+**SupportChat은 자동 등록 샘플이다.** 위 handler들은 typed 계약과 선언형 metadata로 선언하고,
+서버는 스캔으로 자동 등록한다. 구성 코드에 handler 목록을 다시 나열하지 않는다. **C++만 예외**로
+runtime 스캔이 없어 compile-time 명시 등록을 쓴다([05 §3.3](../../spec/05-framework-api.ko.md)).
+수동 등록을 시연하는 샘플은 TicTacToe 하나뿐이다([샘플 규약](../README.ko.md)).
+
+notification은 handler 안에서 직접 여러 client에게 보내지 않고 domain event publisher 경로로
+모은다.
 
 ## 9. 도메인 규칙
 

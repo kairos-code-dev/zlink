@@ -22,7 +22,7 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddRedisLocationStore(...)`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
 | play(actor) 노드 | 2 (`play-a`, `play-b`) | entry spot + user spot + actor mailbox 호스트. SpotNode(`EnableRouter`)에 entry/user spot·actor handler·spot timer. peer/spot location row 자동 등록. `/evidence`·`/health`. |
 | session(gateway) 노드 | 2 (`session-a`, `session-b`) | stream session 호스트. 로컬 SpotNode(`EnableRouter`) + `AddStreamNode(...)` — session relay 입구는 같은 프로세스의 SpotNode 로 자동 연결. 각자 stream endpoint. **연결 서버**(로직은 play 노드). |
 | consumer | 시나리오별 | channel client + stream client. entry spot은 location store 기반으로 resolve(자기도 같은 store를 등록). |
@@ -70,7 +70,7 @@ handler 동작(공유):
 **한마디로:** entry spot에 join을 보내면, user spot이 새로 만들어지고 그 id가 reply로 돌아오는가.
 
 - 절차: consumer가 location store 기반 resolve로 entry spot을 찾아 `JoinReq`를 보낸다.
-- 검증: entry spot이 user spot을 생성하고 reply에 spot id가 담긴다. spot evidence에 생성 기록. 생성된 user spot의 location row가 `IZLinkLocationRuntimeQuery.ListSpotsAsync(filter)`로 조회된다(spot lifecycle의 자동 row 등록 확인).
+- 검증: entry spot이 user spot을 생성하고 reply에 spot id가 담긴다. spot evidence에 생성 기록. 생성된 user spot의 location row가 `IZLinkLocationRuntimeQuery.ListSpotLocationsAsync(filter)`로 조회된다(spot lifecycle의 자동 row 등록 확인).
 - 세부 동작: entry spot dispatch + spot 생성 + spot location row 자동 등록.
 
 #### SM-A2 user spot request와 state mutation
@@ -347,7 +347,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 **한마디로:** 한 stream에 actor를 여럿 bind했을 때, `actor-id`로 지정한 actor에게만 정확히 가고(오배달 없이), id 없이 보내면 실패하는가.
 
 - 절차: 한 stream session에 여러 actor(예: `actor-x`, `actor-y`)를 bind한다. stream header metadata `actor-id`(`header.Metadata.Get("actor-id")`)에 대상 actor id를 실어 보내고, session handler가 `Context.Actors.Find(actorId)?.RelayAsync(...)`로 해당 actor에 relay한다. 각 actor가 push를 낸다.
-- 검증: 각 packet이 `actor-id`로 지정한 actor로만 relay되고(교차 오배달 없음), `actor-id` 없이 다중 bound 상태로 보내면 `ActorRouteNotFound`로 실패한다(기본 relay는 단일 bound일 때만). 각 actor push가 같은 session으로 relay되어 client가 actor별로 구분해 받는다.
+- 검증: 각 packet이 `actor-id`로 지정한 actor로만 relay되고(교차 오배달 없음), 각 actor push가 같은 session으로 relay되어 client가 actor별로 구분해 받는다. **relay 대상 선택은 application 책임이다** — framework에는 `actor-id` metadata 기반 자동 라우팅이나 단일 bound 기본 relay가 없으므로, session이 대상 actor를 찾지 못하면 그 실패 처리도 application이 정의한다([31 §10](../spec/31-session-actor-dispatch.ko.md)).
 - 세부 동작: 다중 actor bind + `actor-id` metadata 선택 relay (단일 bound만 기본 relay).
 
 #### SM-D5 session disconnect → 명시적 actor 통지
@@ -520,11 +520,13 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 이 트랙이 쓰는 공개 API(현재 제공, guide 05-spot 문서화):
 
-- 외부(spot 아닌) 코드는 `IZLinkRouteClient.Request(channelName, spotRid, req)`로 spot을 RoutingId로
-  타깃한다(spot↔spot은 `Context.Outbound.RequestToSpot/SendToSpot`).
-- 송신 노드는 route client로 target SpotNode와 spot RoutingId를 지정한다. 수신 프로세스에
-  같은 RouteMesh와 SpotMesh가 있으면 framework가 route packet과 spot route packet을 자동으로
-  분기한다.
+- 외부(spot 아닌) 코드는 `IZLinkRouteClient.RequestToSpot(handle, req)` / `SendToSpot(handle, msg)`로
+  spot을 타깃한다(spot↔spot은 `Context.Outbound.RequestToSpot/SendToSpot`, **같은 대상 인자**).
+- **대상 인자는 불투명한 `SpotHandle` 하나다.** channel 이름 + spot rid나 target node rid + spot rid를
+  낱개로 받는 overload는 공개 표면에 없다([24 §3](../spec/24-spot-address-messaging.ko.md)). handle은
+  spot handle resolver로 얻고, 그 안의 owner node·전송 mesh는 framework가 소유한다.
+- 수신 프로세스에 같은 RouteMesh와 SpotMesh가 있으면 framework가 route packet과 spot route packet을
+  자동으로 분기한다.
 - low-level relay packet은 직접 조립하지 않는다(framework가 처리).
 
 > Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
@@ -536,9 +538,9 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 우선순위: `P0`
 
-**한마디로:** 외부 코드가 route client로 특정 spot의 RoutingId를 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
+**한마디로:** 외부 코드가 route client로 spot handle을 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
 
-- 절차: 수신 프로세스가 RouteMesh와 SpotMesh를 함께 등록한다. 외부 consumer가 `IZLinkRouteClient.Request(channel, spotRid, req)`로 target spot RoutingId에 request와 send(one-way)를 보낸다.
+- 절차: 수신 프로세스가 RouteMesh와 SpotMesh를 함께 등록한다. 외부 consumer가 spot handle resolver로 target spot의 `SpotHandle`을 얻은 뒤 `IZLinkRouteClient.RequestToSpot(handle, req)`와 `SendToSpot(handle, msg)`를 보낸다.
 - 검증: request는 지정한 spot에서 처리되어 정확한 reply가 온다. send는 reply 없이 그 spot evidence에 command로 기록된다. 지정하지 않은 다른 spot에는 도달하지 않는다.
 - 세부 동작: route client를 통한 target spot request/send.
 
@@ -546,11 +548,11 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 우선순위: `P0`
 
-**한마디로:** route mesh channel로 target SpotNode(peer routing id)를 지정해 그 노드의 특정 spot으로 보내면, 노드 경계를 넘어 그 spot에서 처리되고 reply가 돌아오는가.
+**한마디로:** 다른 노드가 소유한 spot의 handle로 보내면, 노드 경계를 넘어 그 spot에서 처리되고 reply가 돌아오는가.
 
-- 절차: 외부 consumer가 route client로 target node(`play-b`)의 peer routing id를 지정해 그 노드의 target spot RoutingId로 request와 send를 보낸다. 수신 노드는 RouteMesh와 SpotMesh를 함께 등록해 자동 route ingress를 사용한다.
+- 절차: 외부 consumer가 다른 노드(`play-b`)가 소유한 spot의 `SpotHandle`을 resolver로 얻어 request와 send를 보낸다. **caller는 target node rid를 지정하지 않는다** — handle이 owner node와 전송 mesh를 소유한다. 수신 노드는 RouteMesh와 SpotMesh를 함께 등록해 자동 route ingress를 사용한다.
 - 검증: request가 target node로 relay되어 그 노드의 spot에서 처리되고 reply가 돌아온다. send는 그 노드 spot evidence에 기록된다. 지정하지 않은 노드에는 도달하지 않는다.
-- 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 RouteMesh 기반 spot routing 의미를 target node 지정 경로에서 확인한다.)
+- 세부 동작: route mesh(ROUTER) channel을 통한 cross-node spot egress. (SM-F1과 같은 RouteMesh 기반 spot routing 의미를 cross-node handle 경로에서 확인한다.)
 
 #### SM-F3 한 channel에 일반 packet과 spot route packet 혼재
 

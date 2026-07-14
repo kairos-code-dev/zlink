@@ -222,21 +222,35 @@ actor 실행 위치가 섞이지 않게 나눈다.
 |------|----------------|------|
 | `deliverydispatch.tracking` | client-server channel | `DispatchWorker module -> Tracking` |
 | `delivery-customers` | Spot mesh | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | Spot mesh + route mesh | `CourierSession/DispatchWorker module -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
+| `delivery-couriers` | Spot mesh | `CourierSession/DispatchWorker module -> SpotHandle -> CourierEntrySpot -> CourierActor` |
 
 `delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
-같은 mesh 안에 있고, courier id가 어느 SpotNode의 actor에 들어갈지는 placement policy가
-정한다. courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가
-기억한다. `DispatchWorker module`은 courier id가 들어 있는 offer를 target SpotNode의
-route handler로 보내고, route handler는 해당 node의 entry spot 아래 actor를 찾는다.
-`CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이다.
+같은 mesh 안에 있고, courier id가 어느 SpotNode의 actor에 들어갈지는 framework 배치가 정한다.
+courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가 기억한다.
 
-stream client가 다시 연결될 때는 courier와 customer 모두 같은 규칙을 따른다. 먼저 actor
-위치를 resolve로 찾고(`ResolveActorSpotRefAsync` — 모든 resolve는 location store에
-도달한다), 기존 actor가 있으면 새 session만 다시 bind한다. 기존 actor가 없을 때만 entry
-spot을 통해 actor를 만든다(claim-then-activate). 이렇게 해야 재연결해도 사용자가 보던
-actor 상태가 유지되고, session route만 최신 연결로 바뀐다. resolve 결과 `SpotRef`는 보관하되
-전송이 실패하면 재resolve한다 — 실패 분류와 재시도 의미는
+`DispatchWorker module`은 두 단계로 offer를 보낸다. 먼저 **샘플의 배치 정책**이 courier id에서
+그 배송원을 담당하는 CourierSpotNode를 정한다(샘플이 소유한 결정이며 framework 표면이 아니다).
+그 다음 **spot handle resolver**로 그 노드의 `CourierEntrySpot` handle을 얻어 offer를 그 handle로
+보낸다. 즉 전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 route mesh channel에
+node rid를 찍어 보내는 표면은 이 샘플에서 쓰지 않는다
+([10 §3.1](../../spec/10-channel-topology.ko.md), [24 §3](../../spec/24-spot-address-messaging.ko.md)).
+`CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이며, entry spot의 route handler가 그 노드
+안에서 대상 actor를 찾는다.
+
+stream client가 다시 연결될 때 두 역할의 경로가 다르다.
+
+- **courier**는 다른 노드에 있을 수 있으므로 배치 정책으로 담당 CourierSpotNode를 정하고, 그
+  노드의 entry spot `SpotHandle`로 "이 배송원 actor가 있는가"를 먼저 묻는다. 있으면 새 session만
+  다시 bind하고, 없을 때만 entry spot을 통해 actor를 만든다(claim-then-activate).
+- **customer**는 CustomerGateway가 자기 노드에서 직접 소유하므로 local `actor manager`의
+  get-or-create 하나로 끝난다. 별도 위치 조회가 없다.
+
+이렇게 해야 재연결해도 사용자가 보던 actor 상태가 유지되고, session route만 최신 연결로 바뀐다.
+
+**전송 대상은 불투명한 `SpotHandle`이며, 샘플 코드가 주소를 보관하거나 재resolve하지 않는다.**
+handle이 주소 snapshot과 갱신 시점을 소유하고, stale 실패 시 **framework가** handle을 갱신해
+request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있어 재전송하지 않는다).
+실패 분류와 재시도 의미는
 [spot 주소 메시징 스펙](../../spec/24-spot-address-messaging.ko.md)을 따른다.
 
 ## 7. Message 계약

@@ -21,10 +21,10 @@ contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름�
 이 config에는 registry process가 없다. 위치 정보의 기준 저장소는 location store이고, 연결
 상태의 검증 기준도 registry topology 조회가 아니라 아래 두 가지다.
 
-- peer location list: E2E는 cache 없이 store를 직접 읽는
-  `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로 raw peer row를 확인한다. member peer
-  조회를 사용자 기능으로 검증할 때는 cache/freshness를 가진
-  `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`를 쓴다.
+- peer location list: 운영 조회는 `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`로 raw peer
+  row를 확인하고, 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListLivePeersAsync(filter)`로
+  live peer를 확인한다. **두 표면 모두 cache를 두지 않으며 매 호출이 store에 도달한다** —
+  `Refresh` 같은 freshness 인자는 없다([40 §1](../spec/40-location-runtime.ko.md)).
 - framework connection state: 실제 messaging 성공과 각 역할 server의 evidence로 연결이
   실제로 성립했는지를 본다.
 
@@ -57,12 +57,13 @@ row update/remove API는 이 config에서 사용하지 않는다(위치는 자�
 store 등록은 각 역할의 `*HostFactory`에서 바로 보이게 둔다.
 
 ```csharp
-// 공식 Redis extension이 peer/spot/actor/route store와 owner lease store를 함께 등록한다.
-options.AddRedisLocationStore(redis =>
+// 공식 Redis extension은 peer/spot/actor/route store와 owner lease store를 결합한
+// 통합 계약 인스턴스 하나다. 전용 등록 함수는 없고 AddLocationStore로 등록한다.
+options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
 {
     redis.ConnectionString = redisConnectionString;
     redis.KeyPrefix = "zlink:e2e:cfg1:" + runId; // 실행별 전용 prefix로 격리
-});
+}));
 ```
 
 handler 동작(공유):
@@ -95,8 +96,8 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 
 **한마디로:** endpoint를 코드에 한 줄도 안 적고, 공유 location store만 보고 알아서 provider를 찾아 메시지를 보낼 수 있는가.
 
-- 절차: consumer가 endpoint 없이 channel을 등록하고 같은 location store(`AddRedisLocationStore`, 같은 key prefix)를 등록한 뒤, 자동 연결이 성립하면 `ProfileRequest`를 보낸다.
-- 검증: request가 `api-a`/`api-b` 중 하나에서 처리됨(reply의 provider rid로 확인). consumer는 endpoint를 코드에 적지 않았다. `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로 두 provider의 peer location row가 살아 있는 owner로 조회되고, 실제 messaging 성공으로 framework connection state가 두 provider와 연결되었음을 확인한다.
+- 절차: consumer가 endpoint 없이 channel을 등록하고 같은 location store(`AddLocationStore(...)`, 같은 key prefix)를 등록한 뒤, 자동 연결이 성립하면 `ProfileRequest`를 보낸다.
+- 검증: request가 `api-a`/`api-b` 중 하나에서 처리됨(reply의 provider rid로 확인). consumer는 endpoint를 코드에 적지 않았다. `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`로 두 provider의 peer location row가 살아 있는 owner로 조회되고, 실제 messaging 성공으로 framework connection state가 두 provider와 연결되었음을 확인한다.
 - 세부 동작: peer row 자동 등록 → store 조회/reconcile → endpoint 없는 messaging.
 
 #### RM-A2 수동 endpoint 연결 (대조군)
@@ -109,7 +110,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
-> custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 `SpotRef` resolver에서 다룬다.
+> custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 **spot handle resolver**가 담당하며, 반환 값은 불투명한 `SpotHandle`이다. `SpotRef`는 framework 내부 주소 snapshot이라 public 표면에 노출하지 않는다([24 §2](../spec/24-spot-address-messaging.ko.md)).
 
 #### RM-A4 같은 rid, 다른 endpoint failover
 
@@ -118,7 +119,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **한마디로:** 같은 rid의 provider가 죽고 다른 endpoint로 새로 떠도, consumer가 알아서 새 곳으로 갈아타는가(죽은 주소로 계속 안 가는가).
 
 - 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → runtime query의 peer location list가 rid `api-a`의 endpoint를 p2로 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
-- 검증: `ListPeersAsync(filter)`의 성공 결과에서 rid `api-a`의 살아 있는 row는 하나이고 endpoint가 p2다(v1의 row는 정상 종료 remove 또는 owner lease 만료로 성공 결과에서 제외된다). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
+- 검증: `ListPeerLocationsAsync(filter)`의 성공 결과에서 rid `api-a`의 살아 있는 row는 하나이고 endpoint가 p2다(v1의 row는 정상 종료 remove 또는 owner lease 만료로 성공 결과에서 제외된다). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
 - 세부 동작: 같은 peer key의 endpoint 변경을 peer handover로 반영 + stale 회피.
 
 > 런타임 연결 수립/재시도/해제 제어 handle은 channel messaging public API에 없다(endpoint는 startup 설정). timeout 규칙 검증은 RM-C4가 다룬다.
@@ -130,7 +131,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **한마디로:** 한 location store에 여러 channel(`api`, `workflow` 등)의 peer row가 섞여 있어도, 각 channel의 provider가 서로 섞이지 않고 독립적으로 관리되는가.
 
 - 절차: 같은 location store(같은 key prefix)에 서로 다른 channel(예: `api`, `workflow`)의 provider가 peer row를 등록하고, consumer가 각 channel로 자동 연결해 request를 보낸다.
-- 검증: `ListPeersAsync(filter)`를 mesh name으로 filter하면 각 channel의 peer row 집합이 섞이지 않는다. 같은 endpoint host라도 channel 이름이 다르면 독립 row로 관리된다. 한 channel의 scale-in이 다른 channel의 peer row와 routing에 영향을 주지 않는다.
+- 검증: `ListPeerLocationsAsync(filter)`를 mesh name으로 filter하면 각 channel의 peer row 집합이 섞이지 않는다. 같은 endpoint host라도 channel 이름이 다르면 독립 row로 관리된다. 한 channel의 scale-in이 다른 channel의 peer row와 routing에 영향을 주지 않는다.
 - 세부 동작: mesh name 기반 peer row 격리.
 
 > Track A의 번호 `A3`·`A5`는 비어 있다(이전 개정에서 빠진 번호 — A3 자리는 위 custom resolver 노트로 갈음). 신규 시나리오는 빈 번호를 재사용하지 않고 뒤에 이어 붙인다.
@@ -251,6 +252,6 @@ negative path를 하나씩 점검한다.
 ## 5. 완료 기준
 
 - Track A·B·C의 `P0` 시나리오가 모두 통과한다.
-- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다(framework 내부 우회 금지). raw peer row 상태 확인은 freshness 없는 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로, member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`로 나눈다.
+- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다(framework 내부 우회 금지). raw peer row 상태 확인은 `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`로, member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListLivePeersAsync(filter)`로 나눈다(둘 다 cache 없이 store에 도달한다).
 - Redis를 쓰는 실행은 전용 key prefix로 격리하고, 실행 후 key cleanup 또는 disposable Redis instance를 사용한다.
 - 실패 시 store 연결 상태와 provider/consumer 로그·evidence로 원인 레이어를 분리한다.

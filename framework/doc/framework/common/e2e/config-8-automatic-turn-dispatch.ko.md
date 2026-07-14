@@ -32,7 +32,7 @@ continuation은 원래 실행 문맥에서 재개해야 한다.
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddRedisLocationStore(...)`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
 | play 노드 | 2 (`play-a`, `play-b`) | Entry Spot + `AwaitProbeSpot` + actor mailbox + timer handler + worker offload. SpotNode는 router와 pub/sub를 켜고 peer/spot location row를 자동 등록한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | client-server channel request를 받아 지정한 시간 뒤 reply한다. handler가 `await`로 기다릴 외부 I/O 역할을 한다. route mesh request로는 `await`를 검증하지 않는다. |
 | session gateway | 2 (`session-a`, `session-b`) | stream session을 받고 play 노드에 시나리오 packet을 relay한다. actor bind/relay는 ATD-D4에서 검증한다. |

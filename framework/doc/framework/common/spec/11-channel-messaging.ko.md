@@ -122,8 +122,10 @@ request는 정상 처리한다** — 완전 차단은 분산 시스템에서 불
 - **application handler는 여전히 typed payload와 context를 받는다.** multipart 구조는 adapter
   내부의 transport 계약일 뿐이다.
 - **codec 등록은 binding core에 codec 구현을 직접 끼워 넣는 것이 아니다.** framework의 codec
-  registry에 codec extension을 등록하는 흐름이다. 같은 registry를 framework, HTTP client, stream
-  connector가 공유한다.
+  registry에 codec extension을 등록하는 흐름이다.
+- **공유되는 것은 codec extension이지 registry 인스턴스가 아니다.** framework와 STREAM
+  connector는 하나의 registry를 함께 쓰지만, **HTTP client는 자기 registry를 따로 가진다.** 같은
+  codec extension 객체를 양쪽에 각각 등록할 수 있으나, **등록은 host마다 따로 해야 한다.**
 
 ## 7. 회귀 테스트
 
@@ -134,4 +136,5 @@ request는 정상 처리한다** — 완전 차단은 분산 시스템에서 불
 | dispatch 실패 | request·send·publish가 §3대로 갈린다 |
 | observer 격리 | observer callback 실패가 reply·drop 결과를 바꾸지 않는다 |
 | startup validation | §4의 각 행이 그대로 동작한다 |
-| 종료 중 호출 | stopping 이후 pending submit이 예외로 완료된다 |
+| 종료 중 신규 호출 | stopping 이후의 `submit` 호출은 동기 예외로 즉시 거부된다 |
+| 종료 중 pending submit | stopping 시점에 큐에 남아 있던 submit은 실패하고 **runtime error sink로만** 보고된다(호출자에게 예외를 전달하지 않는다) |

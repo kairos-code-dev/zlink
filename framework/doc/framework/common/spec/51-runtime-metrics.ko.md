@@ -41,7 +41,7 @@ framework는 이미 두 관측 표면을 가진다. 메트릭은 이 둘과 **�
 | 표면 | 무엇 | 언제 |
 |------|------|------|
 | **메시지 흐름 추적**(MFT) | per-message 로그 라인(`corr=…`, phase) | "이 메시지가 dispatch 됐나" 디버깅 |
-| **location/runtime 이벤트**([location-runtime §9](40-location-runtime.ko.md)) | 상태 변화 통지(`TopologyChanged`, `StoreUnavailable` 등) | "무엇이 바뀌었나" 알림 |
+| **location/runtime 이벤트**([location-runtime §9](40-location-runtime.ko.md)) | 상태 변화 통지(`TopologyChanged`, `StoreFailure` 등) | "무엇이 바뀌었나" 알림 |
 | **런타임 메트릭**(이 문서) | 집계 시계열(counter/gauge/histogram) | "지금 상태가 정상인가" 그래프·알람 |
 
 **왜 이벤트/observer 훅으로 메트릭을 대체할 수 없나.** MFT의 `message_flow_observer`는 이벤트
@@ -146,8 +146,13 @@ pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않�
 | `zlink.channel.request.timeouts` | counter | `{request}` | 타임아웃 누계 |
 | `zlink.channel.messages.dropped` | counter | `{message}` | 폐기 누계(`surface`, `kind`, `reason` 라벨) |
 
-`reason` 라벨은 error reporter의 dropped 사유와 정합한다(닫힌 집합): `no_handler`, `decode_error`,
-`backpressure`, `stale_route`.
+`reason` 라벨은 **metric 전용 닫힌 집합**이다: `no_handler`, `decode_error`, `backpressure`,
+`stale_route`.
+
+**이 집합은 dispatch error observer의 `reason` enum과 다른 표면이다.** observer는
+`HandlerMissing`, `PayloadDecodeFailed`, `HandlerException`, `InvalidFrame`, `ReplyPathMissing`,
+`UnexpectedReply` 6값을 쓰며([framework API §2.4.3](05-framework-api.ko.md)), metric 라벨은 그중
+drop으로 이어진 사유를 위 4값으로 정규화한 것이다. 두 집합을 같은 값으로 맞추려 하지 않는다.
 
 ### 4.4b fanout (pub/sub)
 
@@ -192,7 +197,7 @@ pending request는 유실이 아니므로 `orphaned`라는 이름을 쓰지 않�
 
 | 계기 | 소유 스펙 |
 |------|-----------|
-| `zlink.drain.*`(`duration`/`actors.handed_off`/`rooms.drained`/`forced`) | [graceful drain & handoff](54-graceful-drain-handoff.ko.md) §9 |
+| `zlink.drain.*`(`state`/`duration`/`actors.handed_off`/`rooms.drained`/`forced`) | [graceful drain & handoff](54-graceful-drain-handoff.ko.md) §9 |
 
 **`session.bind.duration` 구간 정의**: 시작=STREAM 세션이 actor bind를 요청한 시점, 끝=
 [session-actor-dispatch](31-session-actor-dispatch.ko.md)의 bind 완료(actor location row 확정 +

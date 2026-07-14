@@ -116,7 +116,7 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
   동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다. fail-static은 마지막으로
   성공한 연결 판단을 유지하고 새 connect/disconnect 계산을 멈추는 정책이다.
 - Redis 응답 지연/실패가 framework runtime을 블록하면 안 된다 — 조회 실패는 상태
-  (`StoreUnavailable`)와 이벤트로 강등된다.
+  (`StoreFailure`)와 이벤트로 강등된다.
 
 ## 7. 격리와 테스트
 

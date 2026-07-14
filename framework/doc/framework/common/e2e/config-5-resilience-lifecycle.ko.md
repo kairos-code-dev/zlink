@@ -17,7 +17,7 @@
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 전용 key prefix. RL-C4에서 일시 정지 대상. |
-| provider | 2~3 | Config 1과 같은 channel provider(`AddRedisLocationStore(...)`로 store 등록, peer row 자동 갱신). 시나리오가 죽이고/재시작/교체한다. |
+| provider | 2~3 | Config 1과 같은 channel provider(`AddLocationStore(...)`로 store 등록, peer row 자동 갱신). 시나리오가 죽이고/재시작/교체한다. |
 | consumer | 시나리오별 | 지속 트래픽을 보내며 복구를 관측한다. |
 
 스크립트가 기본 배포를 띄운 뒤, 시나리오별로 provider 프로세스(또는 RL-C4의 store 프로세스)를
@@ -37,7 +37,7 @@ runner는 "시작 → cleanup → 종료"만 지원하므로, 아래 시나리�
 (`RouteNotConnected`·`RequestTargetNotFound`·`RequestRejected`·`RequestFailed`) 또는
 `TimeoutException`과, 그 retriable 여부·timeout window를 명시한다. 재시도가 framework 동작인지
 client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공 +
-`IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`의 peer location list에서 제거/추가 반영"처럼
+`IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`의 peer location list에서 제거/추가 반영"처럼
 **눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이 아니므로 직접 단언하지
 않는다).
 
@@ -139,7 +139,13 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 - 절차: provider 2대로 분산 중, 한 노드의 admin 경로에서 `IZLinkChannelRuntimeOptions.ClientServerChannel(name).ConfigureServerSocket().Weight = 0`으로 drain한다. consumer는 계속 request를 보낸다. 잠시 뒤 같은 노드를 `Weight = 100`으로 restore한다.
 - 검증: drain 후 신규 request는 그 노드 evidence에 더 기록되지 않고 살아 있는 다른 노드가 받는다(후보가 그 노드뿐이면 정해진 public error). 노드는 죽지 않고 peer location row도 store에 남아 있다(runtime query peer list로 확인). restore 후 다시 routing 대상이 되어 request를 받는다. consumer 재시작 없음.
-- 세부 동작: peer weight 기반 런타임 graceful drain·restore(노드/소켓 종료 아님). (drain·weight 의미 상세는 `framework-channel-drain-peer-weight-plan.ko.md` 참조.)
+- 세부 동작: peer weight 기반 런타임 graceful drain·restore(노드/소켓 종료 아님).
+
+> **`Weight`와 `Draining` 마커는 다른 축이다.** `Weight = 0`은 **transport 수준 부하 게이트**로,
+> client가 그 노드로 새 request를 보내지 않게 한다. framework의 **배치 결정**(actor join target,
+> spot `GetOrCreate` 노드 선택, Entry Spot 배정)은 weight를 보지 않고 `Draining` 마커만 본다
+> ([54 §3.1](../spec/54-graceful-drain-handoff.ko.md)). 이 시나리오는 channel request 부하 축만
+>검증한다 — actor/spot 배치 제외는 config 11의 drain 시나리오가 담당한다.
 
 #### RL-B5 drain 중 in-flight 완료
 

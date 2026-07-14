@@ -144,9 +144,12 @@ request는 일반 framework channel client 경로로 나간다. actor가 `Spot`�
 골라야 하는지 판단하지 않게 하려는 것이다.
 
 actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현재 callback은
-응답 또는 timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻은 아니지만, 같은
-`Spot`의 다음 dispatch, join, timer, subscription 처리는 현재 callback task가 끝난
-뒤에 실행된다. 명시 timeout이 없으면 framework default timeout을 사용한다.
+응답 또는 timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻도 아니고, 같은 `Spot`의
+다음 callback을 막는다는 뜻도 아니다. request, join, worker의 framework terminator await는
+Spot 직렬 실행 줄을 양보하는 지점이므로, 그 대기 중에 같은 `Spot`의 독립 callback이
+시작할 수 있다. 재진입을 막는 보호 단위는 actor와 timer의 mailbox이며, 자세한 규칙은
+[04 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) section 1이 소유한다.
+명시 timeout이 없으면 framework default timeout을 사용한다.
 
 이 직렬화 규칙은 user Spot 과 Entry Spot 의 lifecycle, route, subscription callback 에
 적용된다. Entry Spot actor packet 은 대상 actor 의 mailbox 에서 처리하므로, 서로 다른
@@ -167,7 +170,9 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 - 같은 이유로 channel messaging에서 일반 message dispatch는 local `ROUTER`
   ingress를 기준으로 설명하는 편이 맞다. outbound `DEALER` 수신은 우선 reply
   correlation 경로로 처리한다.
-- `dealer-dealer`는 현재 목표 범위에 넣지 않는다. RouteMesh도 `ROUTER` 구성원끼리
+- `dealer-dealer`는 **channel 등록 표면**에 노출하지 않는다. location 계층에는
+  `DealerMesh` auto-connect 종류가 존재하지만 channel 등록 API가 그 값을 받지 않으므로,
+  application이 dealer mesh channel을 만들 수는 없다. RouteMesh도 `ROUTER` 구성원끼리
   연결하며, endpoint가 없는 구성원을 `DEALER`로 바꾸지 않는다.
 - `SPOT`은 event 전파의 핵심 토대이지만, 필요할 때는 request/reply의 내부
   운반층으로도 쓸 수 있다. 다만 framework 공용 이름은 여전히 socket 이름보다

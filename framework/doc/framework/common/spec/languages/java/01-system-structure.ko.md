@@ -202,14 +202,14 @@ Java framework도 `.NET`과 같이 channel을 세 종류로 나눈다.
 |---------|------|
 | `addClientServerChannel(...)` | 일반 server/client request-send |
 | `addFanoutChannel(...)` | pub/sub fanout |
-| `addRouteMesh(...)` | target node `RoutingId`를 지정하는 routed channel |
+| `addRouteMeshChannel(...)` | target node `RoutingId` 또는 spot handle을 대상으로 하는 routed channel |
 
 route mesh는 session actor relay를 대체하지 않는다. application이 특정 node로
 route send/request를 보내야 할 때 쓴다. 같은 runtime 안의 local managed actor
 binding은 framework 내부 dispatch를 사용하고, remote actor binding은 stream node의
 
 ```java
-RouteMeshChannelBuilder route = framework.addRouteMesh("play-route")
+RouteMeshChannelBuilder route = framework.addRouteMeshChannel("play-route")
     .enableClient();
 route.setRoutingId(RoutingId.from("play-node"));
 ```
@@ -789,7 +789,6 @@ public class MonitoringConfig {
                 "profile.server",
                 ZLinkSocketEventKind.CONNECTION_READY,
                 ZLinkSocketEventKind.DISCONNECTED);
-            options.addRegistryEvents("registry", Duration.ofSeconds(1));
             options.addSpotEvents("stage-node", Duration.ofSeconds(1));
         };
     }
@@ -804,7 +803,6 @@ configurer가 없으면 monitoring runner를 만들지 않는다.
 | Source | 등록 메서드 | source name 기준 |
 |--------|-------------|------------------|
 | socket | `addSocketEvents(...)` | channel 역할 logical name |
-| registry | `addRegistryEvents(...)` | registry event source label |
 | spot | `addSpotEvents(...)` | SpotNode name |
 
 socket과 spot source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이
@@ -854,7 +852,7 @@ public interface ZLinkRuntimeEvent {
 }
 
 public interface ZLinkRuntimeEventHandler<T extends ZLinkRuntimeEvent> {
-    void handle(T event);
+    CompletionStage<Void> handle(T event);
 }
 ```
 

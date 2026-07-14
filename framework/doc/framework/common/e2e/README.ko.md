@@ -278,8 +278,9 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
   `Coordinator`, `Control`, `Scenario`처럼 바꿔도 시나리오 실행만 대신하고 실제 기능을 제공하지
   않는 server라면 만들 수 없다.
 - `Program.cs`는 실행 진입점만 둔다. host 구성, DI 등록, framework 설정은 `*HostFactory.cs`에 둔다.
-- `AddZLinkFramework` 설정과 location store 등록(`AddRedisLocationStore(...)` 또는
-  `Add...LocationStore<T>()` 계열)은 `*HostFactory.cs`에서 바로 보이게 작성한다.
+- `AddZLinkFramework` 설정과 location store 등록은 `*HostFactory.cs`에서 바로 보이게 작성한다.
+  등록 표면은 **통합 계약 인스턴스 하나를 받는 `AddLocationStore(instance)` 뿐이다** — extension
+  전용 등록 함수는 없다([40 §8](../spec/40-location-runtime.ko.md)).
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
 - `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트

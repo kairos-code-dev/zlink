@@ -10,7 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAX_ATTEMPTS="${ZLINK_SAMPLE_RETRY_ATTEMPTS:-3}"
-BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
+BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|already bound|errno=98"
 
 SAMPLE_RUNNERS=(
   java/ExampleSampleA/run_sample.sh

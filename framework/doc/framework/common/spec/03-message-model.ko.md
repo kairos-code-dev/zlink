@@ -36,9 +36,14 @@ serializer 구현처럼 byte payload 경계를 직접 다루는 곳에서만 사
 2. `payload`
 
 이 구조는 권장 구현 세부가 아니라 framework adapter의 서버 간 메시지 계약이다.
-framework가 `DEALER/ROUTER`, routed channel, `SPOT` channel, internal actor dispatch,
-internal bound-session 경로로 서버 사이에 메시지를 보낼 때는 header와 payload를 하나의
-직렬화된 객체로 합치지 않는다.
+framework가 `DEALER/ROUTER`, routed channel, `SPOT` channel로 서버 사이에 메시지를 보낼 때는
+header와 payload를 하나의 직렬화된 객체로 합치지 않는다.
+
+**이 계약은 framework envelope 계층의 것이다.** actor gateway와 bound-session 전달은 core가
+소유하는 **하위 전송 계층**이며, 그 계층은 이 envelope 앞에 자신의 routed control과 gateway
+control part를 덧붙인다. 그 구성은 [31 §12.1](31-session-actor-dispatch.ko.md)이 소유하며, 그
+계층의 payload part 안에 여기서 정의한 envelope 또는 완전한 stream frame이 들어간다. framework
+handler가 보는 part 인덱스는 언제나 아래 표의 것이다.
 
 기본 part 의미는 아래와 같다.
 

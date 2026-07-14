@@ -195,7 +195,7 @@ None
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
 | leaveActor | user Spot → Entry Spot 이동, source Spot `onLeaveActor`와 target Entry Spot `onJoinedActor` 호출 |
 | destroyActor | Entry Spot actor 정리, 내부 actor-session binding 해제, native actor ref 제거. `onLeaveActor`를 호출하지 않는다 |
-| disconnect | current stream binding 해제와 `onDisconnectActor` 호출. leave나 destroy를 자동 실행하지 않는다 |
+| disconnect | stream session이 끊기면 framework는 **session ↔ actor binding만 해제한다.** `onDisconnectActor`를 자동으로 호출하지 않고, leave나 destroy도 자동 실행하지 않는다. actor에게 접속 종료를 알려야 하면 **application이 session actor handle의 `NotifyDisconnected()`를 명시적으로 호출**하며, 그때 `onDisconnectActor`가 실행된다 |
 | session-bound actor 등록 | session-bound 경로에서는 local Spot node actor runtime의 actor 생성 또는 handle 준비와 session bind를 하나의 생성·bind 작업으로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
 
 application은 위 시점에 다음만 책임진다: factory 코드, actor 클래스의
@@ -270,14 +270,19 @@ packet은 해당 actor mailbox에서만 직렬화하므로 `actor A` handler가 
 
 user Spot 실행 queue는 Spot 인스턴스 하나의 상태를 보호한다. 같은 게임방 안에서
 `actor A`와 `actor B`가 모두 board 상태를 바꿀 수 있다면, 두 actor의 handler는 같은
-Spot queue에서 순서대로 실행되어야 한다.
+Spot queue에서 순서대로 dispatch된다. 다만 handler가 framework terminator를 await하면 그
+지점에서 실행 줄을 양보하므로, 두 handler는 **await 경계에서 인터리브될 수 있다.** await를
+가로질러 유지해야 하는 불변식이 있으면 그 구간을 terminator 없이 구성하거나 상태 전이를
+await 이후로 모아야 한다.
 
 Entry Spot은 user Spot처럼 room 상태를 소유하는 곳이 아니라 actor가 처음 거치는 공용
 입구다. Entry Spot의 packet, lifecycle, route, subscription, timer callback은 같은 Entry
 실행 줄에서 직렬화한다. callback이 비동기 완료 값을 반환하면 그 작업이 끝나기 전까지
-같은 실행 줄의 다음 callback은 시작하지 않는다. Entry actor packet은 이 실행 줄에 넣지
-않고 actor별 mailbox로 보낸다. timer에서 room, stage, match 상태를 직접 바꿔야 한다면
-그 상태를 소유하는 user Spot으로 작업을 전달한다.
+같은 실행 줄의 다음 callback은 시작하지 않는다. 단 request·join·worker의 **framework
+terminator await 지점에서는 실행 줄을 양보**하므로 그 대기 중에 같은 줄의 독립 callback이
+시작할 수 있다([04 비동기 실행 정책](04-async-execution-policy.ko.md) section 1). Entry actor
+packet은 이 실행 줄에 넣지 않고 actor별 mailbox로 보낸다. timer에서 room, stage, match 상태를
+직접 바꿔야 한다면 그 상태를 소유하는 user Spot으로 작업을 전달한다.
 
 ### 5.3 lifecycle callback 공개 방식
 
@@ -370,6 +375,7 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 | Entry Spot | actor runtime을 가진 서버 | Entry Spot context와 handler registry 설정 |
 | user Spot factory | user Spot을 만드는 서버 | Spot 타입 기준 factory 매핑 |
 | actor packet handler | Entry Spot 또는 user Spot | actor type + message kind + packet name을 handler에 매핑 |
+| actor join admission | Entry Spot 또는 user Spot | join 요청을 받아 입장 허용 여부를 결정한다. **필수 구현**이며 actor id와 join request만 받는다([23 §12](23-spot-actor.ko.md)) |
 | actor joined handler | Entry Spot 또는 user Spot | actor type별 join commit 후속 처리 등록 |
 | actor left handler | Entry Spot 또는 user Spot | actor type별 leave commit 후속 처리 등록 |
 | location store | 위치 조회가 필요한 host의 infrastructure 설정 | application이 store 구현을 등록하고 framework actor/spot resolver가 이를 사용 |

@@ -448,6 +448,36 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — LocationMessaging topology, StoreFailure peer/status, ResilienceLifecycle evidence 관찰을 역할 서버의 bounded wait endpoint로 옮겼다. 관련 8개 시나리오와 regression 36건이 통과했다.
 - [ ] **E2E-DN-09** (결함) — 시나리오 파일 명명·커버리지 장부
 
+### 재검증 후 중단한 항목
+
+아래 8건은 `.NET` 코드만 고쳐서는 정식 계약을 충족할 수 없어서 §0.8에 따라 구현을 중단했다.
+이 작업의 범위는 이 장부 외의 공통 spec과 갭 인덱스를 읽기 전용으로 제한하므로,
+결정 선택지는 여기에 기록하고 공통 문서는 수정하지 않았다.
+
+- **IMP-DN-03** — core의 send-ready 알림은 공개 `.NET` binding에 노출되지 않는다. 선택지는
+  binding에 대기 가능한 send-ready 공개 API를 추가해 bounded pending queue가 사용하게 하거나,
+  pending queue 계약을 바꾸는 것이다. 재시도·sleep·blocking send는 정본이 금지하므로 선택지가 아니다.
+- **IMP-DN-14** — socket config 중 `HandshakeInterval`만 공개 binding에서 설정할 수 없다.
+  선택지는 binding에 해당 option을 추가하거나 framework 공개 config에서 이 항목을 제거하도록
+  계약을 바꾸는 것이다. 나머지 option만 적용하는 부분 완료는 getter와 실제 동작의 불일치를 남긴다.
+- **IMP-DN-16** — 공개 `ISpotNode`에는 publisher·subscriber·router socket option setter가 없다.
+  선택지는 binding에 역할별 option API를 추가하거나 SpotNode config 표면을 계약에서 제거하는 것이다.
+- **SMP-DN-01** — Bingo player-record는 전 언어 공통 `yield` terminator 갭과 한 묶음이다.
+  먼저 `async`의 turn 유지와 `yield`의 turn 반납을 구현하는 순서, join·leave에서 실패와 취소를
+  처리하는 계약을 확정한 뒤 `.NET` 샘플과 client 단언을 추가해야 한다.
+- **SMP-DN-04** — DeliveryDispatch wire를 `.NET`만 바꾸면 기존 언어와의 호환 파손 방향만 바뀐다.
+  `Actor` 표현, status 문자열 인코딩, `CustomerId`와 서버 자기 단언 메시지의 포함 여부를 공통
+  wire 계약에서 결정한 뒤 모든 언어가 같은 변경을 적용해야 한다.
+- **SMP-DN-05** — GameQuest도 공통 wire 결정이 필요하다. `GameplayMsg` payload 형식,
+  `QuestProgress.Version`·`LastSourceEventId`, 추가 request/response 7종과 event 이름을 정본대로
+  통일할지 현재 구현을 계약으로 받아들일지 먼저 결정해야 한다.
+- **E2E-DN-03** — 분리된 transfer controller가 actor-a·actor-b에서 actor를 생성·join할 공개
+  framework 표면이 없다. 선택지는 원격 actor lifecycle 제어를 정식 공개 API로 설계하거나,
+  controller와 actor node 사이의 역할별 공개 제어 계약을 Config 10 문서에 먼저 정의하는 것이다.
+- **E2E-DN-09** — 단순 파일명 drift와 달리 Config 8의 `ATD-*` 19건은 정본 `TD-*` 27건과
+  동작 의미가 다르다. 파일명만 바꾸면 거짓 장부가 된다. `yield` terminator와 turn 유지 동작을
+  먼저 구현한 뒤 27개 정본 시나리오를 채우고, 그 다음 나머지 config의 파일명을 기계적으로 맞춘다.
+
 ### 가장 무거운 것
 
 | ID | 계약 | 구현이 하는 일 |

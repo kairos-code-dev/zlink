@@ -79,6 +79,10 @@ export class ZLinkSpotActivationRegistry {
     return [...this.activations.values()];
   }
 
+  closingOperation(spotRid: RoutingId): ZLinkSpotCloseOperation | undefined {
+    return this.closing.get(spotActivationKey(spotRid));
+  }
+
   whenEmpty(signal?: AbortSignal): Promise<void> {
     if (this.isEmpty()) return Promise.resolve();
     if (signal?.aborted === true) return Promise.reject(createAbortError());

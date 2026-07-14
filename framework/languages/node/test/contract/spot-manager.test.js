@@ -1947,6 +1947,35 @@ test('ZLinkSpotManager close rejects user spot while joined actors remain', asyn
   assert.deepEqual(events, ['closing']);
 });
 
+test('ZLinkSpotManager close rechecks actor occupancy after earlier serial work', async () => {
+  let actorCount = 0;
+  const turnStarted = createDeferred();
+  const releaseTurn = createDeferred();
+  class OccupiedSpot {}
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [OccupiedSpot],
+    actorCountProvider: () => actorCount
+  });
+  const created = await manager.create(OccupiedSpot);
+  const blockingTurn = manager.executeOnSpot(OccupiedSpot, created.spotRid, async () => {
+    turnStarted.resolve();
+    await releaseTurn.promise;
+  });
+  await turnStarted.promise;
+  const actorJoin = manager.executeOnSpot(OccupiedSpot, created.spotRid, () => {
+    actorCount = 1;
+  });
+  const closing = manager.close(created.spotRid);
+
+  releaseTurn.resolve();
+  await blockingTurn;
+  await actorJoin;
+
+  assert.equal(await closing, false);
+  assert.deepEqual(await manager.find(created.spotRid), { spotRid: created.spotRid });
+});
+
 test('spot timer rejects invalid options', async () => {
   class Handler {
     async handle() {}

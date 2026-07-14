@@ -292,12 +292,24 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   async close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {
+    const closing = this.activations.closingOperation(spotRid);
+    if (closing !== undefined) {
+      await closing.ready;
+      return true;
+    }
     const activation = this.activations.resolve(spotRid);
-    const currentTurn = activation?.serial.isCurrentTurn === true;
-    const operation = this.activations.startClose(spotRid, (target) => currentTurn
-      ? target.serial.post(() => this.activationLifecycle.closeInsideSerial(target, signal))
-      : this.activationLifecycle.close(target, signal),
-    (target) => this.activationLifecycle.resourcesReleased(target));
+    if (activation === undefined) {
+      return false;
+    }
+    const currentTurn = activation.serial.isCurrentTurn;
+    const beginClose = () => this.activations.startClose(
+      spotRid,
+      (target) => target.serial.post(() => this.activationLifecycle.closeInsideSerial(target, signal)),
+      (target) => this.activationLifecycle.resourcesReleased(target)
+    );
+    const operation = currentTurn
+      ? beginClose()
+      : await activation.serial.execute(beginClose);
     if (operation === undefined) {
       return false;
     }

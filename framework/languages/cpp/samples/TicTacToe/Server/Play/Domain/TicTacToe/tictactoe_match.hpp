@@ -79,6 +79,17 @@ class tictactoe_match_t
         return _state;
     }
 
+    void ensure_can_leave (const std::string &actor_id) const
+    {
+        if (_state.status != tictactoe_status_t::won
+            && _state.status != tictactoe_status_t::draw) {
+            throw std::runtime_error ("cannot leave before the game reaches a final state");
+        }
+        if (actor_id != _state.x_actor_id && actor_id != _state.o_actor_id) {
+            throw std::runtime_error ("only a game participant can leave the room");
+        }
+    }
+
     const tictactoe_state_t &snapshot () const noexcept { return _state; }
 
   private:

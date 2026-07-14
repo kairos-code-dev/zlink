@@ -92,15 +92,9 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     if (this.status !== GameStatus.InProgress || this.turnDeadline === null || now < this.turnDeadline) {
       return { state: this.snapshot(), changed: false };
     }
-    const timedOut = [...this.players.values()]
-      .find((player) => player.mark === this.nextTurn)?.actorId ?? null;
-    const winner = [...this.players.values()]
-      .find((player) => player.actorId !== timedOut)?.actorId ?? null;
     this.status = GameStatus.TurnTimedOut;
-    this.winner = winner;
+    this.winner = null;
     this.nextTurn = null;
-    this.lastMoveActorId = timedOut;
-    this.lastMoveCell = null;
     this.turnDeadline = null;
     return { state: this.snapshot(), changed: true };
   }

@@ -133,9 +133,33 @@ template <typename T> class serializer_t
     {
     }
 
-    encoded_payload_t serialize (const T &value) const { return _serialize (value); }
+    encoded_payload_t serialize (const T &value) const
+    {
+        try {
+            return _serialize (value);
+        }
+        catch (const framework_exception_t &) {
+            throw;
+        }
+        catch (...) {
+            throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                         "payload serialization failed");
+        }
+    }
 
-    T deserialize (const encoded_payload_t &payload) const { return _deserialize (payload); }
+    T deserialize (const encoded_payload_t &payload) const
+    {
+        try {
+            return _deserialize (payload);
+        }
+        catch (const framework_exception_t &) {
+            throw;
+        }
+        catch (...) {
+            throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                         "payload deserialization failed");
+        }
+    }
 
   private:
     serialize_fn_t _serialize;

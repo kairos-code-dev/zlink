@@ -121,6 +121,19 @@ int main ()
         return 7;
     }
 
+    bool json_decode_failed = false;
+    try {
+        (void) serializers.get<json_payload_t> ().deserialize (
+          zlink::framework::encoded_payload_t::from_string ("not-json"));
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        json_decode_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
+    }
+    if (!json_decode_failed) {
+        return 13;
+    }
+
     // Application codec configuration uses extensions. The extension registrar
     // installs custom serializers into the registry at startup.
     zlink::framework::serializer_registry_t config_serializers;

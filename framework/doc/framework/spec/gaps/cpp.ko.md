@@ -581,7 +581,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 두 config의 client scenario 전체에서 `error_type` 단언 0건을 검출했다. 기존 failure DTO가 exception message 대신 result의 public kind 또는 timeout error code를 안정된 이름으로 투영하도록 바꿨다. Config 1은 RM-C2 `RouteNotConnected`, RM-C4 `TimeoutException`, RM-C5 `HandlerNotFound`, RM-C8 `RequestFailed`를 단언해 초과 payload와 timeout을 구분한다. Config 5는 RL-B1·B6·D2·D3·D4에서 같은 방식으로 분류한다. 관련 provider/consumer/client target 빌드와 아홉 scenario runner가 모두 통과했다.
 - [x] **E2E-CP-27** ~~(결함) — **`RC-A1`·`RC-A2`(P0)가 `RC-A3`와 완전히 같은 등록 호출**이다. config의 변주 축이 0개~~
   - 근거: 재검증 결과 공통 framework spec은 C++을 runtime reflection 기반 자동 등록 원칙의 예외로 정하고 compile-time 타입과 명시 builder 호출을 요구하며, 공통 E2E도 RC-A2를 `.NET` attribute 등록으로 한정한다. 새 등록 표면이나 가짜 변주를 만들지 않고 feature-map의 A1/A2 상태를 `not-supported`로 바로잡았으며, 사용되지 않던 `topic_name` metadata를 제거한 뒤 RC-A1·A2·A3가 통과했다.
-- [ ] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다
+- [x] **E2E-CP-28** (결함) — **`RC-B5`가 "뭔가 실패했다"만 본다.** feature-map은 JSON fallback이라 적고 코드는 거절을 단언한다
+  - 근거: 수정 전 정확한 오류 이름을 요구한 실패 게이트가 기존 `passed` 결과를 거부했다. typed serializer가 기본 JSON decode 예외를 공개 `payload_decode_failed`로 정규화하도록 고치고 unit 회귀 테스트를 추가했다. requester와 client는 JSON-only peer의 정확한 공개 오류 이름과 뒤이은 정상 JSON request를 함께 단언하며 `./run_e2e.sh RC-B5`가 통과했다.
 - [ ] **E2E-CP-29** (미구현) — **`RC-B4`(P0)의 JSON fallback 규칙이 검증되지 않는다.** 미지원 타입을 보내지 않는다
 - [x] **E2E-CP-30** (결함) — **`./run_e2e.sh RC-A6`가 항상 실패한다**(client에 branch가 없다)
   - 근거: 수정 전 target-contract gate가 `rc-a*` glob과 RC-A6 client branch 부재를 검출했다. 처음에는 selector를 A1~A5로 좁혔고, E2E-CP-15에서 RC-A6 process lifecycle을 client scenario로 옮길 때 명시 selector를 A1~A6으로 확장했다. gate와 `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 기동 실패 검증이 모두 통과했다.

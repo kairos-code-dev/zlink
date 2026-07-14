@@ -42,7 +42,7 @@ annotation 의미인 packet kind/name override를 C++ handler 타입 metadata와
 | `Client/Scenarios/RcB2ProtobufCodecScenario.cs` | `Client/Scenarios/rc_b2_protobuf_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | C++ Protobuf codec extension request/send와 content-type evidence가 대응한다. |
 | `Client/Scenarios/RcB3MessagePackCodecScenario.cs` | `Client/Scenarios/rc_b3_messagepack_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | C++ MessagePack codec extension request/send와 content-type evidence가 대응한다. |
 | `Client/Scenarios/RcB4CodecCoexistenceScenario.cs` | `Client/Scenarios/rc_b4_codec_coexistence_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | JSON, Protobuf, MessagePack, custom serializer 공존을 검증한다. |
-| `Client/Scenarios/CodecMismatchScenario.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | scenario | done | HTTP-only client가 codec requester endpoint를 호출하고, requester가 JSON-only peer에 Protobuf content-type request를 보내 fallback 관측과 JSON recovery를 검증한다. |
+| `Client/Scenarios/CodecMismatchScenario.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | scenario | done | HTTP-only client가 codec requester endpoint를 호출하고, requester가 JSON-only peer의 공개 `payload_decode_failed`와 JSON recovery를 검증한다. |
 | `Server/Main/Program.cs` | `Server/main.cpp` | server-entry | done | 정상 server entry가 대응한다. |
 | `Server/Main/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | server-role | done | 정상 framework 구성이 대응한다. |
 | `Server/Main/ServerOptions.cs` | `Server/Configuration/server_options.hpp`; `run_e2e.sh` | configuration | done | env 기반 endpoint/log option이 대응한다. |
@@ -96,7 +96,7 @@ annotation 의미인 packet kind/name override를 C++ handler 타입 metadata와
 | `RC-B2` | `Client/Scenarios/rc_b2_protobuf_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | Protobuf codec extension request/send와 content-type evidence를 검증한다. |
 | `RC-B3` | `Client/Scenarios/rc_b3_messagepack_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | MessagePack codec extension request/send와 content-type evidence를 검증한다. |
 | `RC-B4` | `Client/Scenarios/rc_b4_codec_coexistence_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | JSON/Protobuf/MessagePack/custom serializer 공존을 검증한다. |
-| `RC-B5` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | done | codec requester가 JSON-only peer fallback 관측과 JSON recovery를 검증한다. |
+| `RC-B5` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | done | codec requester가 JSON-only peer의 공개 `payload_decode_failed`와 JSON recovery를 검증한다. |
 
 ## 검증
 

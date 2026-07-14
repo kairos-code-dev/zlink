@@ -84,6 +84,12 @@ request_failure_mapper_t::error_header_exception (const std::string &error_code,
           error_message.empty () ? operation_name + " failed because the handler was not found."
                                  : error_message);
     }
+    if (error_code == "payload_decode_failed") {
+        return framework_exception_t (
+          framework_error_kind_t::payload_decode_failed,
+          error_message.empty () ? operation_name + " failed because the payload could not be decoded."
+                                 : error_message);
+    }
     return framework_exception_t (framework_error_kind_t::request_failed,
                                   error_message.empty () ? operation_name + " failed."
                                                          : error_message);

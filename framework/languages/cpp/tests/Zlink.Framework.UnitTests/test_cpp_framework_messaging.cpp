@@ -202,6 +202,12 @@ int main ()
             != zlink::framework::framework_error_kind_t::handler_not_found) {
             return 21;
         }
+        const auto decode_header =
+          mapper.error_header_exception ("payload_decode_failed", "", "profile request");
+        if (decode_header.kind ()
+            != zlink::framework::framework_error_kind_t::payload_decode_failed) {
+            return 24;
+        }
     }
 
     using zlink::framework::runtime::messaging::pending_submit_t;

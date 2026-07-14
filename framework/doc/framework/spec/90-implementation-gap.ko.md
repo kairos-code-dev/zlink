@@ -581,6 +581,21 @@ endpoint가 하나라도 있으면 그 역할은 수동으로 확정되어 자�
 수동 배선이 오히려 자동 연결을 무력화한다. 수동 dial을 걷어내야 한다
 ([ZoneWorld README](../common/sample/zoneworld/README.ko.md) §4).
 
+### 13.3 샘플 계약 갭 — 전 언어 공통
+
+C++ 샘플 감사에서 나왔지만 **C++만의 문제가 아니다.** `.NET` 기준선에도 없어서
+**어느 언어도 이 계약을 구현하지 않았다.** 언어별 gap 문서가 아니라 여기가 소유한다.
+
+| ID | 계약 | 현황 |
+|----|------|------|
+| **SMP-X1** (미구현) | [bingo README:452-507,833-847](../common/sample/bingo/README.ko.md): room Spot의 actor join이 Api 서버에서 **`GetPlayerRecordReq/Res`**로 전적을 조회하고, leave가 **`ReportBingoResultReq/Res`**로 기록한다. 둘 다 **`yield`** 터미네이터를 쓴다([공통 샘플 §Spot 실행 turn](../common/sample/README.ko.md)). `BingoPlayerState`에 **`Wins`·`Losses`** 필드가 있다 | 문서는 10회 언급하는데 **C++ 0건, `.NET` 0건.** ⇒ [공통 샘플 §Spot 실행 turn](../common/sample/README.ko.md)이 `yield`의 **기준 사용처로 지목한 바로 그 자리**가 **어느 언어에도 구현돼 있지 않다.** `yield` 터미네이터 자체가 [§12.21](#1221-yield-terminator-부재-전-언어)의 미구현 항목이므로 **두 갭은 한 묶음**이다 — `yield`를 만들면서 이 샘플 지점을 함께 채운다 |
+| **SMP-X2** (결함) | [공통 샘플 §Client self-check:353](../common/sample/README.ko.md): **"인증 요청에 사용한 token 또는 actor id가 인증 응답의 actor id와 일치한다"**는 모든 샘플 client의 **첫 번째 필수 검증**이다. [gamequest:596](../common/sample/event/gamequest.ko.md)도 join의 "bind 검증"을 요구한다 | GameQuest의 `JoinSessionRes`가 **`ActiveQuests` 하나만** 싣는다 — player id도 actor id도 binding 증거도 없다(C++ `GameQuest/Shared/Contracts/messages.hpp:141-145`, `.NET` `GameQuest/Shared/Messages.cs:25` — **양쪽 동일**). ⇒ **응답을 요청한 `player-alice`와 대조할 방법이 계약에 없다.** 필수 검증 1번을 **어느 언어도 수행할 수 없다.** C++ client는 `active_quests.empty()`만 본다(`gamequest_client_scenario.hpp:41`). **계약(`JoinSessionRes`)에 player/actor 신원을 추가해야 닫힌다** |
+| **SMP-X3** (결함) | [deliverydispatch:681-685](../common/sample/deliverydispatch/README.ko.md): 배송 상태가 `Assigned → Accepted → PickedUp → Delivered` **순서대로 도착**한다 | C++·`.NET` **둘 다** 독립 wait future를 걸고 선언 순서로 회수할 뿐이라 **도착 순서를 단언하지 않는다**(C++ `delivery_dispatch_client_scenario.hpp:107-110,123-126`; `.NET` `DeliveryDispatchClientScenario.cs:66-69,89-97`). 순서 판정이 **서버가 계산한 bool**에 위임돼 있다. ⇒ 기준선도 같으므로 **공통 게이트를 고쳐야** 닫힌다 |
+
+**작업 순서:** [§12.21](#1221-yield-terminator-부재-전-언어)(`yield` terminator)을 먼저 닫고,
+그 다음 각 언어 샘플에서 SMP-X1을 채운다. 순서를 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어
+**샘플이 보여 주려던 대비 자체가 사라진다.** SMP-X2·SMP-X3는 `yield`와 무관하므로 독립적으로 닫는다.
+
 ## 14. 문서 소유권 중복 (스펙 트리 정리 후 잔여)
 
 spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 문서가 소유하는** 자리다. 계약이
@@ -631,7 +646,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | Java | 33 | 18 | **51** | [gaps/java](gaps/java.ko.md) |
 | Kotlin | Java 공유 | **10 (고유)** | — | [gaps/kotlin](gaps/kotlin.ko.md) |
 | Node / TypeScript | 33 | 15 | **48** | [gaps/node](gaps/node.ko.md) |
-| C++ | 38 | 26 | **64** | [gaps/cpp](gaps/cpp.ko.md) |
+| C++ | 40 | **104** | **144** | [gaps/cpp](gaps/cpp.ko.md) |
 
 **기준선에서 18건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
 언어를 맞추는 방식으로는 이 18건이 **영원히 안 보인다.**
@@ -691,6 +706,21 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 **그래서 규칙을 하나 세운다 — 완료 표시는 그 자체로 증거가 아니다.** feature-map·이전 라운드의
 "해소" 기록·"통과" 로그는 **재검증 대상**이지 통과의 근거가 아니다.
+
+#### e2e가 갭을 "못 잡는" 게 아니라, **잡을 수 없게 배치돼 있다**
+
+C++ 감사가 더 깊이 팠더니 이게 나왔다. **버그와 그것을 놓치는 게이트가 정확히 같은 자리에서 만난다.**
+
+| 갭 | 그것을 검증해야 할 e2e/게이트 | 왜 못 잡나 |
+|---|---|---|
+| **C++ Bingo가 2번째 player에게 start notify를 안 보낸다** | Bingo 클라이언트 게이트 | 게이트가 **client1에만** start 대기를 건다. client2는 아예 안 기다리고, `status == Running`도 안 본다. `.NET`은 양쪽에 걸고 둘 다 단언한다 |
+| **IMP-CP-06** (store 장애 유예 없음) | e2e Config 6 | 장애를 `docker pause`로만 만든다(문서는 stop/restart 요구). ⇒ **IMP-CP-06의 발동 조건이 아예 안 생긴다** |
+| **IMP-CP-35** (runtime에 lease join 없음) | e2e Config 6 | stale row 제외를 **Redis 확장이 대신 해 준다.** ⇒ framework가 lease를 join하든 말든 **초록이다** |
+| **IMP-CP-13** (모니터링이 diff 없이 매 tick 발행) | e2e `MON-A2` | **그 결함 덕분에** 통과한다 |
+| **IMP-CP-18** (폴백 로그가 `phase=` 대신 `outcome=`) | e2e `OBS-A2` | C++ 전용 토큰을 **오히려 못박는다** |
+
+**그래서 규칙 하나를 더 세운다 — 구현을 고친 뒤 해당 e2e가 여전히 통과한다면 그 e2e가 틀린 것이다.**
+고쳤는지 확인하려면 **먼저 그 e2e가 실패하는지부터 봐야 한다.**
 
 ### 15.5 판정이 필요한 항목 — 스펙끼리 충돌한다
 

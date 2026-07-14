@@ -161,9 +161,9 @@ if redis.replicate_commands then redis.replicate_commands() end
 local time = redis.call('TIME')
 local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 
-redis.call('DEL', KEYS[1])
+local removed = redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[2], ARGV[1])
-return nowMs
+return {nowMs, removed}
 )";
 
     static constexpr std::string_view list_leases = R"(
@@ -181,7 +181,7 @@ for _, ownerId in ipairs(owners) do
     else
         out[#out + 1] = ownerId
         out[#out + 1] = redis.call('GET', leaseKey)
-        out[#out + 1] = pttl
+        out[#out + 1] = tostring(pttl)
     end
 end
 return {nowMs, out}
@@ -1032,31 +1032,30 @@ class redis_location_store_t final : public location_store_t,
     {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
         return _worker.submit<owner_lease_snapshot_t> ([this] {
+          try {
+            const auto keys = std::vector<std::string>{
+              detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
+            const auto args = std::vector<std::string>{lease_key_prefix ()};
+            const auto result = redis_get (
+              client ().eval<std::tuple<long long, std::vector<std::string>>> (
+                std::string (detail::redis_location_scripts_t::list_leases), keys.begin (),
+                keys.end (), args.begin (), args.end ()));
             owner_lease_snapshot_t snapshot;
-            snapshot.store_now = redis_time ();
-            auto owner_values = redis_get (
-              client ().smembers<std::vector<std::string>> (
-                detail::redis_location_key_schema_t::leases_key (_options.key_prefix)));
-            for (const auto &owner_id : owner_values) {
-                const auto lease_key =
-                  detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id);
-                const auto remaining_ms = redis_get (client ().pttl (lease_key));
-                if (remaining_ms < 0) {
-                    redis_get (client ().srem (
-                      detail::redis_location_key_schema_t::leases_key (_options.key_prefix),
-                      owner_id));
-                    continue;
-                }
-                const auto value = redis_get (client ().get (lease_key));
-                if (!value) {
-                    continue;
-                }
-                auto lease = parse_lease_value (owner_id, *value);
-                lease.lease_expires_at = snapshot.store_now
-                                          + std::chrono::milliseconds (remaining_ms);
+            snapshot.store_now = detail::redis_location_script_result_t::from_unix_ms (
+              static_cast<std::int64_t> (std::get<0> (result)));
+            const auto &values = std::get<1> (result);
+            for (std::size_t index = 0; index + 2 < values.size (); index += 3) {
+                auto lease = parse_lease_value (values[index], values[index + 1]);
+                lease.lease_expires_at = snapshot.store_now + std::chrono::milliseconds (
+                                                               std::stoll (values[index + 2]));
                 snapshot.leases.push_back (std::move (lease));
             }
             return snapshot;
+          }
+          catch (const sw::redis::Error &error) {
+              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
+                                           true);
+          }
         });
 #else
         return unavailable_read<owner_lease_snapshot_t> ();
@@ -1286,9 +1285,11 @@ class redis_location_store_t final : public location_store_t,
               detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
               detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
             const auto args = std::vector<std::string>{owner_id};
-            const auto removed = redis_get (client ().del (keys[0]));
-            redis_get (client ().srem (keys[1], args[0]));
-            return removed > 0;
+            const auto result = redis_get (
+              client ().eval<std::tuple<long long, long long>> (
+                std::string (detail::redis_location_scripts_t::remove_lease), keys.begin (),
+                keys.end (), args.begin (), args.end ()));
+            return std::get<1> (result) > 0;
           }
           catch (const sw::redis::Error &error) {
               throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
@@ -1423,18 +1424,6 @@ class redis_location_store_t final : public location_store_t,
           client ().pttl (
             detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id)));
         return remaining_ms > 0;
-    }
-
-    std::chrono::system_clock::time_point redis_time ()
-    {
-        const auto parts = redis_get (client ().command<std::vector<std::string>> ("TIME"));
-        if (parts.size () < 2) {
-            throw sw::redis::Error ("invalid Redis TIME reply");
-        }
-        const auto seconds = std::stoll (parts[0]);
-        const auto microseconds = std::stoll (parts[1]);
-        return std::chrono::system_clock::time_point{
-          std::chrono::seconds (seconds) + std::chrono::microseconds (microseconds)};
     }
 
     static owner_lease_t parse_lease_value (std::string owner_id, const std::string &value)

@@ -356,7 +356,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-35** (결함) — framework runtime에 **owner-lease join이 아예 없다.** store에 떠넘겼다
 - [ ] **IMP-CP-36** (결함) — Redis 페이징이 SSCAN 커서가 아니라 **SMEMBERS + 정수 오프셋**이다
 - [ ] **IMP-CP-37** (결함) — actor row에 **다른 셋에는 없는 `mesh` hash 필드**를 쓴다
-- [ ] **IMP-CP-38** (결함) — lease remove/list가 **자기 Lua script를 쓰지 않는다**(그 script는 dead code)
+- [x] **IMP-CP-38** (결함) — lease remove/list가 **자기 Lua script를 쓰지 않는다**(그 script는 dead code)
+  - 근거: 수정 전 target-contract gate가 lease remove와 list의 단일-script `eval` 부재를 각각 검출했다. remove script가 삭제 여부를 함께 반환하고 list script가 같은 Redis `TIME` 기준 lease triples를 반환하도록 연결한 뒤 gate와 Redis unit test가 통과했다. 임시 Redis 7 container를 사용한 실제 integration run에서도 `RedisServerRoundTripUsesStoreSchema`와 `LuaScriptsPreserveDotnetAtomicStoreContract`를 포함한 13개 test가 통과했다.
 
 ### 상세
 

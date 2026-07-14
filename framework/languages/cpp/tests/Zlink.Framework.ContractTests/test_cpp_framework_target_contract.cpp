@@ -71,6 +71,8 @@ int main ()
     const auto include_root = root / "framework/include";
     const auto e2e_root = root / "e2e";
     const auto cmake = read_file (root / "CMakeLists.txt");
+    const auto redis_hpp = read_file (
+      root / "extensions/framework-locations-redis/include/zlink/locations/redis.hpp");
     gate_t gate;
 
     for (const auto &required :
@@ -380,6 +382,14 @@ int main ()
     gate.require (resilience_b2.find (".timeout (std::chrono::milliseconds (5000))")
                     != std::string::npos,
                   "E2E-CP-32", "RL-B2 has no outer deadline longer than its channel deadline");
+
+    /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
+    gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
+                    != std::string::npos,
+                  "IMP-CP-38", "owner lease removal is not a single scripted decision");
+    gate.require (redis_hpp.find ("eval<std::tuple<long long, std::vector<std::string>>>")
+                    != std::string::npos,
+                  "IMP-CP-38", "owner lease snapshot is not returned by one Redis script");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

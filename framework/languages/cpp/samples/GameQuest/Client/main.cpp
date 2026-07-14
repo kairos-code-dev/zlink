@@ -2,35 +2,40 @@
 
 #include "gamequest_client_scenario.hpp"
 
-#include <cstdlib>
 #include <iostream>
 #include <string>
 
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback)
+/* Standalone client는 직접 연결하는 endpoint만 CLI option으로 받는다(공통 정책 §4). */
+std::string read_option (int argc, char **argv, const std::string &name)
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    for (int index = 1; index + 1 < argc; ++index) {
+        if (argv[index] == name) {
+            return argv[index + 1];
+        }
     }
-    return fallback;
+    return {};
 }
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
-    const auto api_a_stream =
-      env_or ("GAMEQUEST_API_A_STREAM_ENDPOINT", "tcp://127.0.0.1:7421");
-    const auto api_b_stream =
-      env_or ("GAMEQUEST_API_B_STREAM_ENDPOINT", "tcp://127.0.0.1:7422");
-    const auto api_a_http =
-      env_or ("GAMEQUEST_API_A_HTTP_URL", "http://127.0.0.1:7423");
-    const auto api_b_http =
-      env_or ("GAMEQUEST_API_B_HTTP_URL", "http://127.0.0.1:7424");
-    if (!zlink::samples::gamequest::gamequest_client_scenario_t{}.run (
-          api_a_stream, api_b_stream, api_a_http, api_b_http)) {
+    const auto api_a_stream = read_option (argc, argv, "--api-a-stream-endpoint");
+    const auto api_b_stream = read_option (argc, argv, "--api-b-stream-endpoint");
+    const auto api_a_http = read_option (argc, argv, "--api-a-http-url");
+    const auto api_b_http = read_option (argc, argv, "--api-b-http-url");
+    if (api_a_stream.empty () || api_b_stream.empty () || api_a_http.empty ()
+        || api_b_http.empty ()) {
+        std::cerr << "usage: " << argv[0]
+                  << " --api-a-stream-endpoint <endpoint> --api-b-stream-endpoint <endpoint>"
+                     " --api-a-http-url <url> --api-b-http-url <url>\n";
+        return 2;
+    }
+    if (!zlink::samples::gamequest::gamequest_client_scenario_t{}.run (api_a_stream, api_b_stream,
+                                                                      api_a_http, api_b_http)) {
         std::cerr << "gamequest=failed\n";
         return 1;
     }

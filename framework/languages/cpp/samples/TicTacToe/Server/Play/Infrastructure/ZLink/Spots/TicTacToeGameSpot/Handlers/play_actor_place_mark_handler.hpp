@@ -14,9 +14,7 @@ tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
     if (context.packet_name.empty ()) {
         throw std::runtime_error ("packet name is required");
     }
-    trace_tictactoe_game_spot ("place-mark-enter", actor.actor_id, request.cell);
     auto state = place (actor.actor_id, request);
-    trace_tictactoe_game_spot ("place-mark-complete", actor.actor_id, request.cell);
     game_state_notify_t state_notify{state.room_id, state.next_turn, state};
     publisher.publish_game_state (state_notify);
     send_to_other_actors (actor.actor_id, state_notify);

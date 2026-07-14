@@ -2,7 +2,7 @@
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
 
 #include <zlink/framework.hpp>
@@ -294,12 +294,13 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::deliverydispatch;
 
-    const sample_topology_t topology;
     auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (deliverydispatch_log_dir () + "/flow-customer-gateway.log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("deliverydispatch-customer-gateway");
         auto sessions = std::make_unique<customer_session_directory_t> ();
         auto *sessions_ptr = sessions.get ();

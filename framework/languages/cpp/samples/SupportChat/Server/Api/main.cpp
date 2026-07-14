@@ -8,7 +8,7 @@
 
 #include "../../Shared/Contracts/messages.hpp"
 #include "../Configuration/location_store.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -117,12 +117,13 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::supportchat;
 
-    const sample_topology_t topology;
     auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (supportchat_log_dir () + "/flow-api.log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("supportchat-api");
         add_supportchat_location_store (options, topology);
         options.services ().add_singleton<user_directory_t> ();

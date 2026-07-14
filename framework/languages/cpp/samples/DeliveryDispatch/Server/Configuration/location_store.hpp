@@ -17,10 +17,10 @@ inline void add_deliverydispatch_location_store (
   const sample_topology_t &topology)
 {
     if (topology.redis_endpoint.empty ()) {
-        throw std::runtime_error ("DELIVERYDISPATCH_REDIS_ENDPOINT is required");
+        throw std::runtime_error ("sample.topology.redisEndpoint is required");
     }
     if (topology.redis_key_prefix.empty ()) {
-        throw std::runtime_error ("DELIVERYDISPATCH_REDIS_KEY_PREFIX is required");
+        throw std::runtime_error ("sample.topology.redisKeyPrefix is required");
     }
     framework.add_location_store (
       std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (

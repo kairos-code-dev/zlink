@@ -3,24 +3,10 @@
 
 #include <zlink/framework.hpp>
 
-#include <cstdlib>
 #include <string>
 
 namespace zlink::samples::shoppingmall
 {
-
-inline std::string env_or (const char *name, std::string fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-inline std::string shoppingmall_log_dir ()
-{
-    return env_or ("SHOPPINGMALL_LOG_DIR", "logs");
-}
 
 struct sample_names_t
 {
@@ -68,40 +54,48 @@ struct workflow_instance_topology_t
 
 struct sample_topology_t
 {
-    std::string redis_endpoint = env_or ("SHOPPINGMALL_REDIS_ENDPOINT", "");
-    std::string redis_key_prefix = env_or ("SHOPPINGMALL_REDIS_KEY_PREFIX", "shoppingmall:");
-    std::string api_a_http_url =
-      env_or ("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:48203");
-    std::string api_b_http_url =
-      env_or ("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:48204");
-    std::string api_a_route_endpoint =
-      env_or ("SHOPPINGMALL_API_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:48205");
-    std::string api_b_route_endpoint =
-      env_or ("SHOPPINGMALL_API_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:48206");
-    std::string api_a_spot_router_endpoint =
-      env_or ("SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48217");
-    std::string api_b_spot_router_endpoint =
-      env_or ("SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48218");
-    std::string workflow_a_http_url =
-      env_or ("SHOPPINGMALL_WORKFLOW_A_HTTP_URL", "http://127.0.0.1:48207");
-    std::string workflow_b_http_url =
-      env_or ("SHOPPINGMALL_WORKFLOW_B_HTTP_URL", "http://127.0.0.1:48208");
-    std::string workflow_a_route_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:48209");
-    std::string workflow_b_route_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:48210");
-    std::string workflow_a_spot_route_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT", "tcp://127.0.0.1:48215");
-    std::string workflow_b_spot_route_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT", "tcp://127.0.0.1:48216");
-    std::string workflow_a_spot_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT", "tcp://127.0.0.1:48211");
-    std::string workflow_a_spot_router_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48212");
-    std::string workflow_b_spot_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT", "tcp://127.0.0.1:48213");
-    std::string workflow_b_spot_router_endpoint =
-      env_or ("SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48214");
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string api_a_http_url;
+    std::string api_b_http_url;
+    std::string api_a_route_endpoint;
+    std::string api_b_route_endpoint;
+    std::string api_a_spot_router_endpoint;
+    std::string api_b_spot_router_endpoint;
+    std::string workflow_a_http_url;
+    std::string workflow_b_http_url;
+    std::string workflow_a_route_endpoint;
+    std::string workflow_b_route_endpoint;
+    std::string workflow_a_spot_route_endpoint;
+    std::string workflow_b_spot_route_endpoint;
+    std::string workflow_a_spot_endpoint;
+    std::string workflow_a_spot_router_endpoint;
+    std::string workflow_b_spot_endpoint;
+    std::string workflow_b_spot_router_endpoint;
+
+    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        sample_topology_t topology;
+        topology.redis_endpoint = section.require ("redisEndpoint");
+        topology.redis_key_prefix = section.require ("redisKeyPrefix");
+        topology.api_a_http_url = section.require ("apiAHttpUrl");
+        topology.api_b_http_url = section.require ("apiBHttpUrl");
+        topology.api_a_route_endpoint = section.require ("apiARouteEndpoint");
+        topology.api_b_route_endpoint = section.require ("apiBRouteEndpoint");
+        topology.api_a_spot_router_endpoint = section.require ("apiASpotRouterEndpoint");
+        topology.api_b_spot_router_endpoint = section.require ("apiBSpotRouterEndpoint");
+        topology.workflow_a_http_url = section.require ("workflowAHttpUrl");
+        topology.workflow_b_http_url = section.require ("workflowBHttpUrl");
+        topology.workflow_a_route_endpoint = section.require ("workflowARouteEndpoint");
+        topology.workflow_b_route_endpoint = section.require ("workflowBRouteEndpoint");
+        topology.workflow_a_spot_route_endpoint = section.require ("workflowASpotRouteEndpoint");
+        topology.workflow_b_spot_route_endpoint = section.require ("workflowBSpotRouteEndpoint");
+        topology.workflow_a_spot_endpoint = section.require ("workflowASpotEndpoint");
+        topology.workflow_a_spot_router_endpoint = section.require ("workflowASpotRouterEndpoint");
+        topology.workflow_b_spot_endpoint = section.require ("workflowBSpotEndpoint");
+        topology.workflow_b_spot_router_endpoint = section.require ("workflowBSpotRouterEndpoint");
+        return topology;
+    }
 
     api_instance_topology_t for_api_instance (const std::string &instance_id) const
     {
@@ -160,5 +154,6 @@ struct sample_topology_t
         return sum % 2;
     }
 };
+
 
 } // namespace zlink::samples::shoppingmall

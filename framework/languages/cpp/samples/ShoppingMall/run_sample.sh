@@ -14,9 +14,9 @@ fi
 RUN_DIR="${SHOPPINGMALL_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "$RUN_DIR")-$$-${RANDOM}"
 LOG_DIR="$RUN_DIR/logs"
-export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-$SCRIPT_DIR/logs}"
-mkdir -p "$LOG_DIR" "$SHOPPINGMALL_LOG_DIR"
-rm -f "$SHOPPINGMALL_LOG_DIR"/*.log
+FLOW_LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR" "$FLOW_LOG_DIR"
+rm -f "$FLOW_LOG_DIR"/*.log
 
 PIDS=()
 REDIS_CONTAINER_NAME=""
@@ -89,22 +89,22 @@ read -r SHOPPINGMALL_RESERVED_PORT SHOPPINGMALL_API_A_PORT SHOPPINGMALL_API_B_PO
 
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-shoppingmall" "redis:7-alpine"
-export SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-export SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:cpp:${RUN_ID}:}"
-export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_A_PORT}"
-export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_B_PORT}"
-export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_A_PORT}"
-export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_B_PORT}"
-export SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_ROUTE"
-export SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_ROUTE"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER"
-export SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_API_A_SPOT_ROUTER"
-export SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_API_B_SPOT_ROUTER"
+SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
+SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:cpp:${RUN_ID}:}"
+SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_A_PORT}"
+SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_B_PORT}"
+SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_A_PORT}"
+SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_B_PORT}"
+SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_ROUTE"
+SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_ROUTE"
+SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE"
+SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE"
+SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT"
+SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER"
+SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT"
+SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER"
+SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_API_A_SPOT_ROUTER"
+SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT="$SHOPPINGMALL_API_B_SPOT_ROUTER"
 
 port_of() {
   local endpoint="$1"
@@ -125,7 +125,7 @@ wait_port() {
     sleep 0.1
   done
   echo "timed out waiting for ${label} at ${endpoint}" >&2
-  for log in "$LOG_DIR"/*.log "$SHOPPINGMALL_LOG_DIR"/*.log; do
+  for log in "$LOG_DIR"/*.log "$FLOW_LOG_DIR"/*.log; do
     [[ -f "$log" ]] && { echo "===== $log" >&2; cat "$log" >&2; }
   done
   return 1
@@ -158,10 +158,75 @@ cmake --build "$BUILD_DIR" --target \
 
 wait_port redis "$SHOPPINGMALL_REDIS_ENDPOINT"
 
-start_role workflow-a "$BIN_DIR/sample_cpp_framework_shoppingmall_order_workflow" --instance workflow-a
-start_role workflow-b "$BIN_DIR/sample_cpp_framework_shoppingmall_order_workflow" --instance workflow-b
-start_role api-a "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --instance api-a
-start_role api-b "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --instance api-b
+
+CONFIG_DIR="$RUN_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
+# 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
+write_role_config() {
+  ROLE="$1" CONFIG_PATH="$CONFIG_DIR/$1.json" FLOW_LOG_DIR="$FLOW_LOG_DIR" \
+  REDIS_ENDPOINT="$SHOPPINGMALL_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$SHOPPINGMALL_REDIS_KEY_PREFIX" \
+  API_A_HTTP="$SHOPPINGMALL_API_A_HTTP_URL" API_B_HTTP="$SHOPPINGMALL_API_B_HTTP_URL" \
+  API_A_ROUTE="$SHOPPINGMALL_API_A_ROUTE" API_B_ROUTE="$SHOPPINGMALL_API_B_ROUTE" \
+  API_A_SPOT_ROUTER="$SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT" \
+  API_B_SPOT_ROUTER="$SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT" \
+  WORKFLOW_A_HTTP="$SHOPPINGMALL_WORKFLOW_A_HTTP_URL" \
+  WORKFLOW_B_HTTP="$SHOPPINGMALL_WORKFLOW_B_HTTP_URL" \
+  WORKFLOW_A_ROUTE="$SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT" \
+  WORKFLOW_B_ROUTE="$SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT" \
+  WORKFLOW_A_SPOT_ROUTE="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT" \
+  WORKFLOW_B_SPOT_ROUTE="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT" \
+  WORKFLOW_A_SPOT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT" \
+  WORKFLOW_A_SPOT_ROUTER="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT" \
+  WORKFLOW_B_SPOT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT" \
+  WORKFLOW_B_SPOT_ROUTER="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT" \
+  python3 - <<'CONFIG_PY'
+import json
+import os
+import stat
+
+document = {
+    "sample": {
+        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "topology": {
+            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
+            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+            "apiAHttpUrl": os.environ["API_A_HTTP"],
+            "apiBHttpUrl": os.environ["API_B_HTTP"],
+            "apiARouteEndpoint": os.environ["API_A_ROUTE"],
+            "apiBRouteEndpoint": os.environ["API_B_ROUTE"],
+            "apiASpotRouterEndpoint": os.environ["API_A_SPOT_ROUTER"],
+            "apiBSpotRouterEndpoint": os.environ["API_B_SPOT_ROUTER"],
+            "workflowAHttpUrl": os.environ["WORKFLOW_A_HTTP"],
+            "workflowBHttpUrl": os.environ["WORKFLOW_B_HTTP"],
+            "workflowARouteEndpoint": os.environ["WORKFLOW_A_ROUTE"],
+            "workflowBRouteEndpoint": os.environ["WORKFLOW_B_ROUTE"],
+            "workflowASpotRouteEndpoint": os.environ["WORKFLOW_A_SPOT_ROUTE"],
+            "workflowBSpotRouteEndpoint": os.environ["WORKFLOW_B_SPOT_ROUTE"],
+            "workflowASpotEndpoint": os.environ["WORKFLOW_A_SPOT"],
+            "workflowASpotRouterEndpoint": os.environ["WORKFLOW_A_SPOT_ROUTER"],
+            "workflowBSpotEndpoint": os.environ["WORKFLOW_B_SPOT"],
+            "workflowBSpotRouterEndpoint": os.environ["WORKFLOW_B_SPOT_ROUTER"],
+        },
+    }
+}
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+CONFIG_PY
+}
+
+write_role_config workflow-a
+write_role_config workflow-b
+write_role_config api-a
+write_role_config api-b
+
+start_role workflow-a "$BIN_DIR/sample_cpp_framework_shoppingmall_order_workflow" --config="$CONFIG_DIR/workflow-a.json"
+start_role workflow-b "$BIN_DIR/sample_cpp_framework_shoppingmall_order_workflow" --config="$CONFIG_DIR/workflow-b.json"
+start_role api-a "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --config="$CONFIG_DIR/api-a.json"
+start_role api-b "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --config="$CONFIG_DIR/api-b.json"
 
 wait_port workflow-a-route "$SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT"
 wait_port workflow-a-spot-route "$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT"
@@ -178,8 +243,10 @@ wait_http api-a "$SHOPPINGMALL_API_A_HTTP_URL"
 wait_port api-b-spot-router "$SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT"
 wait_http api-b "$SHOPPINGMALL_API_B_HTTP_URL"
 
-"$BIN_DIR/sample_cpp_framework_shoppingmall_client" >"$LOG_DIR/client.log" 2>&1 || {
-  for log in "$LOG_DIR"/*.log "$SHOPPINGMALL_LOG_DIR"/*.log; do
+"$BIN_DIR/sample_cpp_framework_shoppingmall_client" \
+  --api-a-http-url "$SHOPPINGMALL_API_A_HTTP_URL" \
+  --api-b-http-url "$SHOPPINGMALL_API_B_HTTP_URL" >"$LOG_DIR/client.log" 2>&1 || {
+  for log in "$LOG_DIR"/*.log "$FLOW_LOG_DIR"/*.log; do
     [[ -f "$log" ]] && { echo "===== $log" >&2; cat "$log" >&2; }
   done
   exit 1
@@ -189,10 +256,10 @@ grep -q "shoppingmall=completed" "$LOG_DIR/client.log"
 grep -q "shoppingmall order: started.*spot=" "$LOG_DIR/workflow-a.log"
 grep -q "shoppingmall order: started.*spot=" "$LOG_DIR/workflow-b.log"
 grep -q "shoppingmall evidence:" "$LOG_DIR/api-a.log"
-grep -Rq "message flow" "$SHOPPINGMALL_LOG_DIR"
-grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-api-a.log"
-grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-api-b.log"
-grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-workflow-a.log"
-grep -q "message flow" "$SHOPPINGMALL_LOG_DIR/flow-workflow-b.log"
+grep -Rq "message flow" "$FLOW_LOG_DIR"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-api-a.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-api-b.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-workflow-a.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-workflow-b.log"
 echo "shoppingmall-server-evidence=completed"
 echo "PASS ShoppingMall.Cpp"

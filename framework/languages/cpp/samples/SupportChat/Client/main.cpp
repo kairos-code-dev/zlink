@@ -3,28 +3,35 @@
 #include "supportchat_client_scenario.hpp"
 
 #include <exception>
-#include <cstdlib>
 #include <iostream>
 #include <string>
 
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback)
+/* Standalone client는 직접 연결하는 endpoint만 CLI option으로 받는다(공통 정책 §4). */
+std::string read_option (int argc, char **argv, const std::string &name)
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    for (int index = 1; index + 1 < argc; ++index) {
+        if (argv[index] == name) {
+            return argv[index + 1];
+        }
     }
-    return fallback;
+    return {};
 }
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
+    const auto stream_endpoint = read_option (argc, argv, "--stream-endpoint");
+    if (stream_endpoint.empty ()) {
+        std::cerr << "usage: " << argv[0] << " --stream-endpoint <endpoint>\n";
+        return 2;
+    }
     try {
         zlink::samples::supportchat::supportchat_client_scenario_t scenario;
-        scenario.run (env_or ("SUPPORTCHAT_SESSION_STREAM", "tcp://127.0.0.1:7505"));
+        scenario.run (stream_endpoint);
         return 0;
     } catch (const std::exception &error) {
         std::cerr << "supportchat client failed: " << error.what () << std::endl;

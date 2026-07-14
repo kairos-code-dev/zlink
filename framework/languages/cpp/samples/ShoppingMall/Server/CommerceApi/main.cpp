@@ -2,6 +2,7 @@
 
 #include "../Common/store.hpp"
 #include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_configuration.hpp"
 
 #include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
@@ -14,14 +15,6 @@
 namespace zlink::samples::shoppingmall
 {
 using namespace zlink::framework;
-
-inline std::string read_option (int argc, char **argv, const std::string &name)
-{
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (argv[i] == name) return argv[i + 1];
-    }
-    return "";
-}
 
 class commerce_api_handlers_t
 {
@@ -320,13 +313,12 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::shoppingmall;
 
-    const sample_topology_t topology;
-    auto instance_id = read_option (argc, argv, "--instance");
-    if (instance_id.empty ()) instance_id = env_or ("SHOPPINGMALL_INSTANCE", "api-a");
-    auto instance = topology.for_api_instance (instance_id);
+    auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
+    auto instance = topology.for_api_instance (configuration.role.name);
     redis_state_store_t store{topology};
     store.seed_defaults ();
-    auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.services ().add_singleton<sample_topology_t> (
           std::make_unique<sample_topology_t> (topology));
@@ -343,7 +335,7 @@ int main (int argc, char **argv)
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label (instance.instance_id);
         /* 공통 sample spec §16: 서버 발견은 registry 프로세스 없이 공유 location store가 맡는다.
          * endpoint를 코드에 박지 않는다. */

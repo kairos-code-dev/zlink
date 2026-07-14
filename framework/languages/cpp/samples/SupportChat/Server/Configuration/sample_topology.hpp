@@ -1,49 +1,45 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
+
 #include <string>
 
 namespace zlink::samples::supportchat
 {
 
-inline std::string env_or (const char *name, std::string fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-inline std::string supportchat_log_dir ()
-{
-    return env_or ("SUPPORTCHAT_LOG_DIR", "logs");
-}
-
 struct sample_topology_t
 {
-    std::string redis_endpoint = env_or ("SUPPORTCHAT_REDIS_ENDPOINT", "");
-    std::string redis_key_prefix = env_or ("SUPPORTCHAT_REDIS_KEY_PREFIX", "");
-    std::string api_route_endpoint =
-      env_or ("SUPPORTCHAT_API_ROUTE", "tcp://127.0.0.1:7501");
-    std::string support_route_endpoint =
-      env_or ("SUPPORTCHAT_SUPPORT_ROUTE", "tcp://127.0.0.1:7502");
-    std::string support_spot_router_endpoint =
-      env_or ("SUPPORTCHAT_SUPPORT_SPOT_ROUTER", "tcp://127.0.0.1:7503");
-    std::string support_spot_endpoint =
-      env_or ("SUPPORTCHAT_SUPPORT_SPOT", "tcp://127.0.0.1:7504");
-    std::string support_http_url =
-      env_or ("SUPPORTCHAT_SUPPORT_HTTP_URL", "http://127.0.0.1:7508");
-    std::string support_actor_route_endpoint =
-      env_or ("SUPPORTCHAT_SUPPORT_ACTOR_ROUTE", "tcp://127.0.0.1:7510");
-    std::string session_stream_endpoint =
-      env_or ("SUPPORTCHAT_SESSION_STREAM", "tcp://127.0.0.1:7505");
-    std::string session_spot_router_endpoint =
-      env_or ("SUPPORTCHAT_SESSION_SPOT_ROUTER", "tcp://127.0.0.1:7506");
-    std::string session_spot_endpoint =
-      env_or ("SUPPORTCHAT_SESSION_SPOT", "tcp://127.0.0.1:7507");
-    std::string session_actor_route_endpoint =
-      env_or ("SUPPORTCHAT_SESSION_ACTOR_ROUTE", "tcp://127.0.0.1:7509");
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string api_route_endpoint;
+    std::string support_route_endpoint;
+    std::string support_spot_router_endpoint;
+    std::string support_spot_endpoint;
+    std::string support_http_url;
+    std::string support_actor_route_endpoint;
+    std::string session_stream_endpoint;
+    std::string session_spot_router_endpoint;
+    std::string session_spot_endpoint;
+    std::string session_actor_route_endpoint;
+
+    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        sample_topology_t topology;
+        topology.redis_endpoint = section.require ("redisEndpoint");
+        topology.redis_key_prefix = section.require ("redisKeyPrefix");
+        topology.api_route_endpoint = section.require ("apiRouteEndpoint");
+        topology.support_route_endpoint = section.require ("supportRouteEndpoint");
+        topology.support_spot_router_endpoint = section.require ("supportSpotRouterEndpoint");
+        topology.support_spot_endpoint = section.require ("supportSpotEndpoint");
+        topology.support_http_url = section.require ("supportHttpUrl");
+        topology.support_actor_route_endpoint = section.require ("supportActorRouteEndpoint");
+        topology.session_stream_endpoint = section.require ("sessionStreamEndpoint");
+        topology.session_spot_router_endpoint = section.require ("sessionSpotRouterEndpoint");
+        topology.session_spot_endpoint = section.require ("sessionSpotEndpoint");
+        topology.session_actor_route_endpoint = section.require ("sessionActorRouteEndpoint");
+        return topology;
+    }
 };
 
 } // namespace zlink::samples::supportchat

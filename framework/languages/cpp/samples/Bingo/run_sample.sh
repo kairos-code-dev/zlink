@@ -5,9 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Message-flow logs land in the sample's own logs/ folder (git-ignored).
-export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$SCRIPT_DIR/logs}"
-mkdir -p "$BINGO_LOG_DIR"
-rm -f "$BINGO_LOG_DIR"/*.log
+FLOW_LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$FLOW_LOG_DIR"
+rm -f "$FLOW_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
@@ -227,51 +227,90 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
 BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
-topology_args=(
-  "--sample.topology.apiChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
-  "--sample.topology.apiAChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
-  "--sample.topology.apiBChannelEndpoint=$API_B_CHANNEL_ENDPOINT"
-  "--sample.topology.playChannelEndpoint=$PLAY_A_CHANNEL_ENDPOINT"
-  "--sample.topology.playAChannelEndpoint=$PLAY_A_CHANNEL_ENDPOINT"
-  "--sample.topology.playBChannelEndpoint=$PLAY_B_CHANNEL_ENDPOINT"
-  "--sample.topology.playARouteEndpoint=$PLAY_A_ROUTE_ENDPOINT"
-  "--sample.topology.playBRouteEndpoint=$PLAY_B_ROUTE_ENDPOINT"
-  "--sample.topology.playASpotEndpoint=$PLAY_A_SPOT_ENDPOINT"
-  "--sample.topology.playBSpotEndpoint=$PLAY_B_SPOT_ENDPOINT"
-  "--sample.topology.playASpotRouterEndpoint=$PLAY_A_SPOT_ROUTER_ENDPOINT"
-  "--sample.topology.playBSpotRouterEndpoint=$PLAY_B_SPOT_ROUTER_ENDPOINT"
-  "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT"
-  "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT"
-  "--sample.topology.sessionASpotNodeRid=1201-spot"
-  "--sample.topology.sessionBSpotNodeRid=1202-spot"
-  "--sample.topology.sessionAStreamEndpoint=$SESSION_A_STREAM_ENDPOINT"
-  "--sample.topology.sessionBStreamEndpoint=$SESSION_B_STREAM_ENDPOINT"
-  "--sample.topology.redisEndpoint=$BINGO_REDIS_ENDPOINT"
-  "--sample.topology.redisKeyPrefix=$BINGO_REDIS_KEY_PREFIX"
-)
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
+# 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
+write_role_config() {
+  ROLE="$1" API_NODE="$2" PLAY_NODE="$3" SESSION_NODE="$4" STREAM_ENDPOINT="$5" \
+  SESSION_SPOT_ENDPOINT="$6" SESSION_ROUTER_ENDPOINT="$7" CONFIG_PATH="$CONFIG_DIR/$1.json" \
+  FLOW_LOG_DIR="$FLOW_LOG_DIR" \
+  API_A_CHANNEL_ENDPOINT="$API_A_CHANNEL_ENDPOINT" API_B_CHANNEL_ENDPOINT="$API_B_CHANNEL_ENDPOINT" \
+  PLAY_A_CHANNEL_ENDPOINT="$PLAY_A_CHANNEL_ENDPOINT" \
+  PLAY_B_CHANNEL_ENDPOINT="$PLAY_B_CHANNEL_ENDPOINT" \
+  PLAY_A_ROUTE_ENDPOINT="$PLAY_A_ROUTE_ENDPOINT" PLAY_B_ROUTE_ENDPOINT="$PLAY_B_ROUTE_ENDPOINT" \
+  PLAY_A_SPOT_ENDPOINT="$PLAY_A_SPOT_ENDPOINT" PLAY_B_SPOT_ENDPOINT="$PLAY_B_SPOT_ENDPOINT" \
+  PLAY_A_SPOT_ROUTER_ENDPOINT="$PLAY_A_SPOT_ROUTER_ENDPOINT" \
+  PLAY_B_SPOT_ROUTER_ENDPOINT="$PLAY_B_SPOT_ROUTER_ENDPOINT" \
+  SESSION_A_STREAM_ENDPOINT="$SESSION_A_STREAM_ENDPOINT" \
+  SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM_ENDPOINT" \
+  REDIS_ENDPOINT="$BINGO_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$BINGO_REDIS_KEY_PREFIX" \
+  python3 - <<'CONFIG_PY'
+import json
+import os
+import stat
+
+document = {
+    "sample": {
+        "host": {"keepRunning": True},
+        "topology": {
+            "logDir": os.environ["FLOW_LOG_DIR"],
+            "apiNode": os.environ["API_NODE"],
+            "playNode": os.environ["PLAY_NODE"],
+            "sessionNode": os.environ["SESSION_NODE"],
+            "apiChannelEndpoint": os.environ["API_A_CHANNEL_ENDPOINT"],
+            "apiAChannelEndpoint": os.environ["API_A_CHANNEL_ENDPOINT"],
+            "apiBChannelEndpoint": os.environ["API_B_CHANNEL_ENDPOINT"],
+            "playChannelEndpoint": os.environ["PLAY_A_CHANNEL_ENDPOINT"],
+            "playAChannelEndpoint": os.environ["PLAY_A_CHANNEL_ENDPOINT"],
+            "playBChannelEndpoint": os.environ["PLAY_B_CHANNEL_ENDPOINT"],
+            "playARouteEndpoint": os.environ["PLAY_A_ROUTE_ENDPOINT"],
+            "playBRouteEndpoint": os.environ["PLAY_B_ROUTE_ENDPOINT"],
+            "playASpotEndpoint": os.environ["PLAY_A_SPOT_ENDPOINT"],
+            "playBSpotEndpoint": os.environ["PLAY_B_SPOT_ENDPOINT"],
+            "playASpotRouterEndpoint": os.environ["PLAY_A_SPOT_ROUTER_ENDPOINT"],
+            "playBSpotRouterEndpoint": os.environ["PLAY_B_SPOT_ROUTER_ENDPOINT"],
+            "sessionSpotEndpoint": os.environ["SESSION_SPOT_ENDPOINT"],
+            "sessionRouterEndpoint": os.environ["SESSION_ROUTER_ENDPOINT"],
+            "sessionASpotNodeRid": "1201-spot",
+            "sessionBSpotNodeRid": "1202-spot",
+            "streamEndpoint": os.environ["STREAM_ENDPOINT"],
+            "sessionAStreamEndpoint": os.environ["SESSION_A_STREAM_ENDPOINT"],
+            "sessionBStreamEndpoint": os.environ["SESSION_B_STREAM_ENDPOINT"],
+            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
+            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+        },
+    }
+}
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+CONFIG_PY
+}
+
+write_role_config play-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config play-b a b a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config api-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config api-b b a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config session-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
+write_role_config session-b a a b "$SESSION_B_STREAM_ENDPOINT" "$SESSION_B_SPOT_ENDPOINT" "$SESSION_B_ROUTER_ENDPOINT"
 
 start_server() {
   local name="$1"
   local binary="$2"
   shift 2
-  stdbuf -oL -eL "$binary" --sample.host.keepRunning true "${topology_args[@]}" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
-start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
-start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
-start_server api-a "$API_BIN" --sample.topology.apiNode=a
-start_server api-b "$API_BIN" --sample.topology.apiNode=b
-start_server session-a "$SESSION_BIN" \
-  --sample.topology.sessionNode=a \
-  "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT" \
-  "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT" \
-  "--sample.topology.streamEndpoint=$SESSION_A_STREAM_ENDPOINT"
-start_server session-b "$SESSION_BIN" \
-  --sample.topology.sessionNode=b \
-  "--sample.topology.sessionSpotEndpoint=$SESSION_B_SPOT_ENDPOINT" \
-  "--sample.topology.sessionRouterEndpoint=$SESSION_B_ROUTER_ENDPOINT" \
-  "--sample.topology.streamEndpoint=$SESSION_B_STREAM_ENDPOINT"
+start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
+start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
+start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
+start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
+start_server session-a "$SESSION_BIN" --config="$CONFIG_DIR/session-a.json"
+start_server session-b "$SESSION_BIN" --config="$CONFIG_DIR/session-b.json"
 
 wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
@@ -333,12 +372,12 @@ fi
 grep -q "zlink auto-connect publish .* type=spot mesh=bingo.rooms" "$LOG_DIR/play-a.log"
 grep -q "zlink auto-connect scan type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
 grep -q "zlink auto-connect dial type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
-grep -Rq "message flow" "$BINGO_LOG_DIR"
+grep -Rq "message flow" "$FLOW_LOG_DIR"
 # Bingo §17.2 — the ambient runtime metrics reach the sample's metric log:
 # Session sees the STREAM CCU counters, Play sees the room queue instruments.
-grep -Rq "zlink.stream.connections.active" "$BINGO_LOG_DIR"/bingo-session-*-metrics.log
-grep -Rq "zlink.spot.queue.depth" "$BINGO_LOG_DIR"/bingo-play-*-metrics.log
-grep -Rq "kind=user" "$BINGO_LOG_DIR"/bingo-play-*-metrics.log
+grep -Rq "zlink.stream.connections.active" "$FLOW_LOG_DIR"/bingo-session-*-metrics.log
+grep -Rq "zlink.spot.queue.depth" "$FLOW_LOG_DIR"/bingo-play-*-metrics.log
+grep -Rq "kind=user" "$FLOW_LOG_DIR"/bingo-play-*-metrics.log
 
 cleanup
 trap - EXIT

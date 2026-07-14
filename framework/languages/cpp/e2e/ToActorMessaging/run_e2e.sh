@@ -4,11 +4,30 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-${ZLINK_CPP_BUILD_DIR:-$SCRIPT_DIR/../../build}}"
-SCENARIO="${*:-all}"
+SCENARIO="all"
+E2E_START_ORDER="forward"
+REDIS_ENDPOINT=""
+REDIS_CONTAINER=""
+for argument in "$@"; do
+  case "$argument" in
+    --scenario=*) SCENARIO="${argument#*=}" ;;
+    --redis-endpoint=*) REDIS_ENDPOINT="${argument#*=}" ;;
+    --redis-container=*) REDIS_CONTAINER="${argument#*=}" ;;
+    --start-order=*) E2E_START_ORDER="${argument#*=}" ;;
+    --*) echo "Unknown ToActorMessaging runner option: $argument" >&2; exit 2 ;;
+    *)
+      if [[ "$SCENARIO" == "all" ]]; then
+        SCENARIO="$argument"
+      else
+        SCENARIO="$SCENARIO,$argument"
+      fi
+      ;;
+  esac
+done
+SCENARIO="${SCENARIO#,}"
 SCENARIO="${SCENARIO// /,}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -25,7 +44,6 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 pids=()
-REDIS_CONTAINER=""
 REDIS_CONTAINER_OWNED=0
 
 mkdir -p "$LOG_DIR"
@@ -38,10 +56,9 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_to_actor_messaging_caller \
   zlink_cpp_e2e_to_actor_messaging_client >/dev/null
 
-export ZLINK_CPP_E2E_LOCATION_KEY_PREFIX="${ZLINK_CPP_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:$RUN_ID}"
-export ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR"
-export ZLINK_CPP_E2E_ACTOR_RID="${ZLINK_CPP_E2E_ACTOR_RID:-actor-a}"
-export ZLINK_CPP_E2E_CALLER_RID="${ZLINK_CPP_E2E_CALLER_RID:-caller}"
+LOCATION_KEY_PREFIX="zlink:e2e:toactor:$RUN_ID"
+ACTOR_RID="actor-a"
+CALLER_RID="caller"
 
 reserve_ports() {
   python3 - <<'PY'
@@ -62,12 +79,12 @@ PY
 }
 
 read -r actor_http caller_http actor_spot caller_spot actor_pub caller_pub < <(reserve_ports)
-export ZLINK_CPP_E2E_ACTOR_HTTP="http://127.0.0.1:${actor_http}"
-export ZLINK_CPP_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
-export ZLINK_CPP_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
-export ZLINK_CPP_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
-export ZLINK_CPP_E2E_ACTOR_PUBSUB="tcp://127.0.0.1:${actor_pub}"
-export ZLINK_CPP_E2E_CALLER_PUBSUB="tcp://127.0.0.1:${caller_pub}"
+ACTOR_HTTP="http://127.0.0.1:${actor_http}"
+CALLER_HTTP="http://127.0.0.1:${caller_http}"
+ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
+CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
+ACTOR_PUBSUB="tcp://127.0.0.1:${actor_pub}"
+CALLER_PUBSUB="tcp://127.0.0.1:${caller_pub}"
 
 wait_tcp() {
   local host="$1"
@@ -98,22 +115,11 @@ PY
   return 1
 }
 
-if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT"
-  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+if [[ -n "$REDIS_CONTAINER" && -n "$REDIS_ENDPOINT" ]]; then
   echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-elif [[ -n "${ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+elif [[ -n "$REDIS_ENDPOINT" ]]; then
   echo "External Redis endpoint is not supported by the C++ ToActorMessaging e2e runner." >&2
   exit 2
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" ]]; then
-    REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-    REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
-    echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-  else
-    echo "External Redis endpoint is not supported by the C++ ToActorMessaging e2e runner." >&2
-    exit 2
-  fi
 else
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-cpp-e2e-toactormessaging" "redis:7-alpine"
@@ -121,11 +127,45 @@ else
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
-export ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT="$REDIS_ENDPOINT"
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
 REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
 wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
-echo "redis key prefix=$ZLINK_CPP_E2E_LOCATION_KEY_PREFIX"
+echo "redis key prefix=$LOCATION_KEY_PREFIX"
+
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
+python3 - "$CONFIG_DIR/actor.json" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
+  "$ACTOR_RID" "$ACTOR_HTTP" "$ACTOR_SPOT" "$ACTOR_PUBSUB" "$CALLER_RID" "$CALLER_SPOT" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, redis_endpoint, key_prefix, log_dir, node_rid, http_endpoint, spot_endpoint, pub_sub_endpoint, peer_rid, peer_spot = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"redis": {"endpoint": redis_endpoint, "keyPrefix": key_prefix},
+                       "logDir": log_dir, "nodeRid": node_rid,
+                       "httpEndpoint": http_endpoint, "spotEndpoint": spot_endpoint,
+                       "pubSubEndpoint": pub_sub_endpoint, "callerRid": peer_rid,
+                       "callerSpotEndpoint": peer_spot}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+python3 - "$CONFIG_DIR/caller.json" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
+  "$CALLER_RID" "$CALLER_HTTP" "$CALLER_SPOT" "$CALLER_PUBSUB" "$ACTOR_RID" "$ACTOR_SPOT" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, redis_endpoint, key_prefix, log_dir, node_rid, http_endpoint, spot_endpoint, pub_sub_endpoint, peer_rid, peer_spot = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"redis": {"endpoint": redis_endpoint, "keyPrefix": key_prefix},
+                       "logDir": log_dir, "nodeRid": node_rid,
+                       "httpEndpoint": http_endpoint, "spotEndpoint": spot_endpoint,
+                       "pubSubEndpoint": pub_sub_endpoint, "actorRid": peer_rid,
+                       "actorSpotEndpoint": peer_spot}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
 
 print_logs() {
   local status="$1"
@@ -159,6 +199,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  rm -rf "${CONFIG_DIR:-}"
   if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
     status=1
   fi
@@ -210,11 +251,13 @@ PY
 start_role() {
   case "$1" in
     actor)
-      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_actor" >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
+      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_actor" \
+        --config="$CONFIG_DIR/actor.json" >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
       pids+=("$!")
       ;;
     caller)
-      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_caller" >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
+      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_caller" \
+        --config="$CONFIG_DIR/caller.json" >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
       pids+=("$!")
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
@@ -223,8 +266,8 @@ start_role() {
 
 wait_role() {
   case "$1" in
-    actor) wait_http "$ZLINK_CPP_E2E_ACTOR_HTTP" ;;
-    caller) wait_http "$ZLINK_CPP_E2E_CALLER_HTTP" ;;
+    actor) wait_http "$ACTOR_HTTP" ;;
+    caller) wait_http "$CALLER_HTTP" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -237,5 +280,6 @@ for role in actor caller; do
   wait_role "$role"
 done
 
-ZLINK_CPP_E2E_SCENARIO="$SCENARIO" \
-  "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" > >(tee "$LOG_DIR/client.log") 2>"$LOG_DIR/client.stderr.log"
+"$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" \
+  --actor-http="$ACTOR_HTTP" --caller-http="$CALLER_HTTP" --scenario="$SCENARIO" \
+  > >(tee "$LOG_DIR/client.log") 2>"$LOG_DIR/client.stderr.log"

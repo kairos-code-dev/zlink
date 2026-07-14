@@ -16,21 +16,6 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
-inline bool tictactoe_session_trace_enabled ()
-{
-    const char *value = std::getenv ("ZLINK_CPP_TICTACTOE_SESSION_TRACE");
-    return value != nullptr && value[0] != '\0' && std::string_view (value) != "0";
-}
-
-inline void trace_tictactoe_session (std::string_view stage, std::string_view packet_name)
-{
-    if (!tictactoe_session_trace_enabled ()) {
-        return;
-    }
-    std::cerr << "zlink-cpp-tictactoe-session-trace side=play stage=" << stage
-              << " packet=" << packet_name << std::endl;
-}
-
 class play_session_t final : public packet_stream_session_t
 {
   public:
@@ -85,18 +70,13 @@ class play_session_t final : public packet_stream_session_t
             co_return;
         }
         if (dispatch.can_reply ()) {
-            trace_tictactoe_session ("relay-request-start", dispatch.packet_name ());
             auto reply =
               co_await actor.value ().relay_request (std::string (dispatch.packet_name ()), payload)
                 .async ();
-            trace_tictactoe_session ("relay-request-complete", dispatch.packet_name ());
             stream.reply_packet (reply).submit ();
-            trace_tictactoe_session ("reply-submit", dispatch.packet_name ());
             co_return;
         }
-        trace_tictactoe_session ("relay-send-start", dispatch.packet_name ());
         co_await actor.value ().relay (std::string (dispatch.packet_name ()), payload);
-        trace_tictactoe_session ("relay-send-complete", dispatch.packet_name ());
         co_return;
     }
 

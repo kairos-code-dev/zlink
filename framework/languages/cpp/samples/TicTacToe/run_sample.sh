@@ -4,10 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$SCRIPT_DIR/logs}"
-export ZLINK_CPP_STREAM_TRACE="${ZLINK_CPP_STREAM_TRACE:-0}"
-mkdir -p "$TICTACTOE_LOG_DIR"
-rm -f "$TICTACTOE_LOG_DIR"/*.log
+FLOW_LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$FLOW_LOG_DIR"
+rm -f "$FLOW_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
@@ -193,40 +192,81 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
 TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
 
-topology_args=(
-  "--sample.topology.apiEndpoint=$API_A_ENDPOINT"
-  "--sample.topology.apiAEndpoint=$API_A_ENDPOINT"
-  "--sample.topology.apiBEndpoint=$API_B_ENDPOINT"
-  "--sample.topology.apiHttpEndpoint=$API_A_HTTP_ENDPOINT"
-  "--sample.topology.apiAHttpEndpoint=$API_A_HTTP_ENDPOINT"
-  "--sample.topology.apiBHttpEndpoint=$API_B_HTTP_ENDPOINT"
-  "--sample.topology.playEndpoint=$PLAY_A_ENDPOINT"
-  "--sample.topology.playAEndpoint=$PLAY_A_ENDPOINT"
-  "--sample.topology.playBEndpoint=$PLAY_B_ENDPOINT"
-  "--sample.topology.playARouteEndpoint=$PLAY_A_ROUTE_ENDPOINT"
-  "--sample.topology.playBRouteEndpoint=$PLAY_B_ROUTE_ENDPOINT"
-  "--sample.topology.playASpotEndpoint=$PLAY_A_SPOT_ENDPOINT"
-  "--sample.topology.playBSpotEndpoint=$PLAY_B_SPOT_ENDPOINT"
-  "--sample.topology.playASpotRouterEndpoint=$PLAY_A_SPOT_ROUTER_ENDPOINT"
-  "--sample.topology.playBSpotRouterEndpoint=$PLAY_B_SPOT_ROUTER_ENDPOINT"
-  "--sample.topology.playAStreamEndpoint=$PLAY_A_STREAM_ENDPOINT"
-  "--sample.topology.playBStreamEndpoint=$PLAY_B_STREAM_ENDPOINT"
-  "--sample.topology.redisEndpoint=$TICTACTOE_CPP_REDIS_ENDPOINT"
-  "--sample.topology.redisKeyPrefix=$REDIS_KEY_PREFIX"
-)
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
+# 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
+write_role_config() {
+  ROLE="$1" API_NODE="$2" PLAY_NODE="$3" CONFIG_PATH="$CONFIG_DIR/$1.json" \
+  FLOW_LOG_DIR="$FLOW_LOG_DIR" API_A_ENDPOINT="$API_A_ENDPOINT" API_B_ENDPOINT="$API_B_ENDPOINT" \
+  API_A_HTTP_ENDPOINT="$API_A_HTTP_ENDPOINT" API_B_HTTP_ENDPOINT="$API_B_HTTP_ENDPOINT" \
+  PLAY_A_ENDPOINT="$PLAY_A_ENDPOINT" PLAY_B_ENDPOINT="$PLAY_B_ENDPOINT" \
+  PLAY_A_ROUTE_ENDPOINT="$PLAY_A_ROUTE_ENDPOINT" PLAY_B_ROUTE_ENDPOINT="$PLAY_B_ROUTE_ENDPOINT" \
+  PLAY_A_SPOT_ENDPOINT="$PLAY_A_SPOT_ENDPOINT" PLAY_B_SPOT_ENDPOINT="$PLAY_B_SPOT_ENDPOINT" \
+  PLAY_A_SPOT_ROUTER_ENDPOINT="$PLAY_A_SPOT_ROUTER_ENDPOINT" \
+  PLAY_B_SPOT_ROUTER_ENDPOINT="$PLAY_B_SPOT_ROUTER_ENDPOINT" \
+  PLAY_A_STREAM_ENDPOINT="$PLAY_A_STREAM_ENDPOINT" \
+  PLAY_B_STREAM_ENDPOINT="$PLAY_B_STREAM_ENDPOINT" \
+  REDIS_ENDPOINT="$TICTACTOE_CPP_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
+  python3 - <<'CONFIG_PY'
+import json
+import os
+import stat
+
+document = {
+    "sample": {
+        "host": {"keepRunning": True},
+        "topology": {
+            "logDir": os.environ["FLOW_LOG_DIR"],
+            "apiNode": os.environ["API_NODE"],
+            "playNode": os.environ["PLAY_NODE"],
+            "apiEndpoint": os.environ["API_A_ENDPOINT"],
+            "apiAEndpoint": os.environ["API_A_ENDPOINT"],
+            "apiBEndpoint": os.environ["API_B_ENDPOINT"],
+            "apiHttpEndpoint": os.environ["API_A_HTTP_ENDPOINT"],
+            "apiAHttpEndpoint": os.environ["API_A_HTTP_ENDPOINT"],
+            "apiBHttpEndpoint": os.environ["API_B_HTTP_ENDPOINT"],
+            "playEndpoint": os.environ["PLAY_A_ENDPOINT"],
+            "playAEndpoint": os.environ["PLAY_A_ENDPOINT"],
+            "playBEndpoint": os.environ["PLAY_B_ENDPOINT"],
+            "playARouteEndpoint": os.environ["PLAY_A_ROUTE_ENDPOINT"],
+            "playBRouteEndpoint": os.environ["PLAY_B_ROUTE_ENDPOINT"],
+            "playASpotEndpoint": os.environ["PLAY_A_SPOT_ENDPOINT"],
+            "playBSpotEndpoint": os.environ["PLAY_B_SPOT_ENDPOINT"],
+            "playASpotRouterEndpoint": os.environ["PLAY_A_SPOT_ROUTER_ENDPOINT"],
+            "playBSpotRouterEndpoint": os.environ["PLAY_B_SPOT_ROUTER_ENDPOINT"],
+            "playAStreamEndpoint": os.environ["PLAY_A_STREAM_ENDPOINT"],
+            "playBStreamEndpoint": os.environ["PLAY_B_STREAM_ENDPOINT"],
+            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
+            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+        },
+    }
+}
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+CONFIG_PY
+}
+
+write_role_config play-a a a
+write_role_config play-b a b
+write_role_config api-a a a
+write_role_config api-b b a
 
 start_server() {
   local name="$1"
   local binary="$2"
   shift 2
-  stdbuf -oL -eL "$binary" --sample.host.keepRunning true "${topology_args[@]}" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
-start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
-start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
-start_server api-a "$API_BIN" --sample.topology.apiNode=a
-start_server api-b "$API_BIN" --sample.topology.apiNode=b
+start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
+start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
+start_server api-a "$API_BIN" --config="$CONFIG_DIR/api-a.json"
+start_server api-b "$API_BIN" --config="$CONFIG_DIR/api-b.json"
 
 wait_port play-a-channel "$PLAY_A_ENDPOINT"
 wait_port play-a-stream "$PLAY_A_STREAM_ENDPOINT"
@@ -265,8 +305,8 @@ grep -q "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR"/play-*.log
 grep -q "actor: LeaveGameReq completed. actor=player-o" "$LOG_DIR"/play-*.log
 grep -q "entry spot: actor destroy completed. actor=player-x" "$LOG_DIR"/play-*.log
 grep -q "entry spot: actor destroy completed. actor=player-o" "$LOG_DIR"/play-*.log
-grep -Rq "packet=LeaveGameReq" "$TICTACTOE_LOG_DIR"
-grep -Rq "message flow" "$TICTACTOE_LOG_DIR"
+grep -Rq "packet=LeaveGameReq" "$FLOW_LOG_DIR"
+grep -Rq "message flow" "$FLOW_LOG_DIR"
 
 cleanup
 trap - EXIT

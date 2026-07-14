@@ -2,6 +2,7 @@
 
 #include "../Common/workflow_logic.hpp"
 #include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_configuration.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -12,14 +13,6 @@
 namespace zlink::samples::shoppingmall
 {
 using namespace zlink::framework;
-
-inline std::string read_option (int argc, char **argv, const std::string &name)
-{
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (argv[i] == name) return argv[i + 1];
-    }
-    return "";
-}
 
 struct order_workflow_spot_create_req_t
 {
@@ -159,14 +152,12 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::shoppingmall;
 
-    const sample_topology_t topology;
-    auto instance_id = read_option (argc, argv, "--instance");
-    if (instance_id.empty ())
-        instance_id = env_or ("SHOPPINGMALL_WORKFLOW_INSTANCE", "workflow-a");
-    auto instance = topology.for_workflow_instance (instance_id);
+    auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
+    auto instance = topology.for_workflow_instance (configuration.role.name);
     redis_state_store_t store{topology};
     store.seed_defaults ();
-    auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.services ()
           .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
@@ -177,7 +168,7 @@ int main (int argc, char **argv)
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label (instance.instance_id);
         options.add_route_mesh (order_workflow_channel_for (instance.instance_id))
           .enable_server (instance.route_endpoint)

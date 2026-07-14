@@ -5,7 +5,6 @@
 #include <zlink/http_client.hpp>
 
 #include <chrono>
-#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -18,12 +17,41 @@ namespace e2e = zlink::e2e::to_actor_messaging;
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback = {})
+struct client_configuration_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string actor_http;
+    std::string caller_http;
+    std::string scenario = "all";
+};
+
+client_configuration_t parse_client_configuration (int argc, char **argv)
+{
+    client_configuration_t configuration;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        const auto assign = [&] (const std::string &prefix, std::string &target) {
+            if (argument.rfind (prefix, 0) != 0) {
+                return false;
+            }
+            target = argument.substr (prefix.size ());
+            return true;
+        };
+        if (!assign ("--actor-http=", configuration.actor_http)
+            && !assign ("--caller-http=", configuration.caller_http)
+            && !assign ("--scenario=", configuration.scenario)) {
+            throw std::runtime_error ("unknown ToActorMessaging client option: " + argument);
+        }
     }
-    return fallback;
+    if (configuration.actor_http.empty ()) {
+        throw std::runtime_error ("--actor-http is required");
+    }
+    if (configuration.caller_http.empty ()) {
+        throw std::runtime_error ("--caller-http is required");
+    }
+    if (configuration.scenario.empty ()) {
+        throw std::runtime_error ("--scenario must not be empty");
+    }
+    return configuration;
 }
 
 void require (bool condition, const std::string &message)
@@ -192,11 +220,12 @@ void validate_selector (const std::vector<std::string> &selected)
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
-    auto actor = make_http (env_or ("ZLINK_CPP_E2E_ACTOR_HTTP"));
-    auto caller = make_http (env_or ("ZLINK_CPP_E2E_CALLER_HTTP"));
-    const auto selected = split_selector (env_or ("ZLINK_CPP_E2E_SCENARIO", "all"));
+    const auto configuration = parse_client_configuration (argc, argv);
+    auto actor = make_http (configuration.actor_http);
+    auto caller = make_http (configuration.caller_http);
+    const auto selected = split_selector (configuration.scenario);
     validate_selector (selected);
 
     if (should_run (selected, {"TA-A1", "ta-a1"})) {

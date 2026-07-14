@@ -563,6 +563,47 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
     return ok;
 }
 
+/* 공통 정책 sample-e2e-configuration-policy.ko.md §2.2, §8: sample과 E2E 애플리케이션 코드가
+ * 직접 읽을 수 있는 환경 변수는 0개다. 설정은 role별 설정 파일과 typed binding으로만 들어온다. */
+bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::path &root)
+{
+    bool ok = true;
+    /* TODO(e2e): e2e 픽스처는 아직 환경 변수를 읽는다. 이관 후 이 목록에 "e2e"를 넣는다. */
+    for (const auto *tree : {"samples"}) {
+        const auto tree_root = root / tree;
+        if (!std::filesystem::exists (tree_root)) {
+            continue;
+        }
+        for (const auto &entry : std::filesystem::recursive_directory_iterator (tree_root)) {
+            if (!entry.is_regular_file ()) {
+                continue;
+            }
+            const auto ext = entry.path ().extension ();
+            if (ext != ".hpp" && ext != ".cpp") {
+                continue;
+            }
+
+            std::ifstream input (entry.path ());
+            std::string line;
+            std::size_t line_no = 0;
+            while (std::getline (input, line)) {
+                ++line_no;
+                const bool reads_environment = line.find ("getenv (") != std::string::npos
+                                               || line.find ("getenv(") != std::string::npos
+                                               || line.find ("load_env (") != std::string::npos
+                                               || line.find ("load_env(") != std::string::npos;
+                if (reads_environment) {
+                    std::cerr << "sample/e2e application code must take configuration from its "
+                                 "config file, not the environment: "
+                              << entry.path () << ":" << line_no << "\n";
+                    ok = false;
+                }
+            }
+        }
+    }
+    return ok;
+}
+
 bool sample_server_code_does_not_block_on_task_result (const std::filesystem::path &root)
 {
     bool ok = true;
@@ -1518,6 +1559,7 @@ int main ()
       public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/axmol/include");
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
+    ok &= sample_and_e2e_code_does_not_read_the_environment (root);
     ok &= redesigned_cpp_contract_symbols_do_not_regress (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
     ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");

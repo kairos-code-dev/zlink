@@ -3,12 +3,13 @@
 
 #include "sample_topology.hpp"
 
-#include <cstdlib>
 #include <string>
 
 namespace zlink::samples::tictactoe
 {
 
+/* Standalone client는 직접 붙는 endpoint만 CLI option으로 받는다. 환경 변수는 읽지 않는다
+ * (공통 정책 sample-e2e-configuration-policy.ko.md §4). */
 inline sample_topology_t load_sample_topology (int argc, char **argv)
 {
     sample_topology_t topology;
@@ -21,9 +22,6 @@ inline sample_topology_t load_sample_topology (int argc, char **argv)
         else if (arg == "--api-http-endpoint" && index + 1 < argc) {
             topology.api_http_endpoint = argv[++index];
         }
-    }
-    if (const char *endpoint = std::getenv ("ZLINK_CPP_CLIENT_API_HTTP_ENDPOINT")) {
-        topology.api_http_endpoint = endpoint;
     }
     return topology;
 }

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include "sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 
 #include <algorithm>
@@ -18,8 +17,7 @@ namespace zlink::samples::deliverydispatch
 class evidence_store_t
 {
   public:
-    explicit evidence_store_t (std::string path = deliverydispatch_log_dir () + "/evidence.log") :
-        _path (std::move (path))
+    explicit evidence_store_t (std::string path) : _path (std::move (path))
     {
         std::filesystem::create_directories (std::filesystem::path (_path).parent_path ());
     }

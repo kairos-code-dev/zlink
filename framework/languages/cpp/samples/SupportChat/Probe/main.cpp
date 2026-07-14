@@ -6,7 +6,6 @@
  * 이 probe가 Support self-check endpoint로 확인한다. probe는 message-flow 로그를 직접
  * 쓰지 않는다 — dispatch 로그는 framework가 남긴다. */
 
-#include "../Server/Configuration/sample_topology.hpp"
 #include "../Shared/Contracts/messages.hpp"
 
 #include <zlink/http_client.hpp>
@@ -21,6 +20,18 @@
 namespace
 {
 
+/* Standalone probe는 framework host가 아니다. 직접 붙는 endpoint만 CLI option으로 받는다
+ * (공통 정책 sample-e2e-configuration-policy.ko.md §4). */
+std::string read_option (int argc, char **argv, const std::string &name)
+{
+    for (int index = 1; index + 1 < argc; ++index) {
+        if (argv[index] == name) {
+            return argv[index + 1];
+        }
+    }
+    return {};
+}
+
 void require_evidence (const std::vector<std::string> &evidence, const std::string &expected)
 {
     if (std::find (evidence.begin (), evidence.end (), expected) == evidence.end ()) {
@@ -30,14 +41,18 @@ void require_evidence (const std::vector<std::string> &evidence, const std::stri
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
     using namespace zlink::samples::supportchat;
 
+    const auto support_http_url = read_option (argc, argv, "--support-http-url");
+    if (support_http_url.empty ()) {
+        std::cerr << "usage: " << argv[0] << " --support-http-url <url>\n";
+        return 2;
+    }
     try {
-        const sample_topology_t topology;
         auto client = zlink::http_client::client_t::create ()
-                        .base_url (topology.support_http_url)
+                        .base_url (support_http_url)
                         .timeout (std::chrono::seconds (30))
                         .build ();
         const auto assertion = client.post ("/self-check/assert")

@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "$SUPPORTCHAT_LOG_DIR"
-rm -f "$SUPPORTCHAT_LOG_DIR"/*.log
+FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$FLOW_LOG_DIR"
+rm -f "$FLOW_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
@@ -15,7 +15,7 @@ if [[ ! -x "$BIN_DIR/sample_cpp_framework_supportchat_client" && -x "$BIN_DIR/li
 fi
 
 PIDS=()
-RUN_DIR="${SUPPORTCHAT_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
@@ -50,11 +50,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
-  if [[ "${SUPPORTCHAT_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=$RUN_DIR"
-  else
-    [[ -z "${SUPPORTCHAT_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
-  fi
+  rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1
   fi
@@ -105,18 +101,58 @@ fi
 # host Redis나 다른 실행 endpoint로 대체하지 않고 즉시 실패한다.
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-supportchat" "redis:7-alpine"
-export SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-supportchat:$$:}"
-export SUPPORTCHAT_API_ROUTE
-export SUPPORTCHAT_SUPPORT_ROUTE
-export SUPPORTCHAT_SUPPORT_SPOT_ROUTER
-export SUPPORTCHAT_SUPPORT_SPOT
-export SUPPORTCHAT_SUPPORT_HTTP_URL
-export SUPPORTCHAT_SUPPORT_ACTOR_ROUTE
-export SUPPORTCHAT_SESSION_STREAM
-export SUPPORTCHAT_SESSION_SPOT_ROUTER
-export SUPPORTCHAT_SESSION_SPOT
-export SUPPORTCHAT_SESSION_ACTOR_ROUTE
+SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
+SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:$$:"
+CONFIG_DIR="$RUN_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
+# 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
+write_role_config() {
+  ROLE="$1" CONFIG_PATH="$CONFIG_DIR/$1.json" FLOW_LOG_DIR="$FLOW_LOG_DIR" \
+  REDIS_ENDPOINT="$SUPPORTCHAT_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$SUPPORTCHAT_REDIS_KEY_PREFIX" \
+  API_ROUTE="$SUPPORTCHAT_API_ROUTE" SUPPORT_ROUTE="$SUPPORTCHAT_SUPPORT_ROUTE" \
+  SUPPORT_SPOT_ROUTER="$SUPPORTCHAT_SUPPORT_SPOT_ROUTER" SUPPORT_SPOT="$SUPPORTCHAT_SUPPORT_SPOT" \
+  SUPPORT_HTTP_URL="$SUPPORTCHAT_SUPPORT_HTTP_URL" \
+  SUPPORT_ACTOR_ROUTE="$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE" \
+  SESSION_STREAM="$SUPPORTCHAT_SESSION_STREAM" \
+  SESSION_SPOT_ROUTER="$SUPPORTCHAT_SESSION_SPOT_ROUTER" \
+  SESSION_SPOT="$SUPPORTCHAT_SESSION_SPOT" \
+  SESSION_ACTOR_ROUTE="$SUPPORTCHAT_SESSION_ACTOR_ROUTE" \
+  python3 - <<'CONFIG_PY'
+import json
+import os
+import stat
+
+document = {
+    "sample": {
+        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "topology": {
+            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
+            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+            "apiRouteEndpoint": os.environ["API_ROUTE"],
+            "supportRouteEndpoint": os.environ["SUPPORT_ROUTE"],
+            "supportSpotRouterEndpoint": os.environ["SUPPORT_SPOT_ROUTER"],
+            "supportSpotEndpoint": os.environ["SUPPORT_SPOT"],
+            "supportHttpUrl": os.environ["SUPPORT_HTTP_URL"],
+            "supportActorRouteEndpoint": os.environ["SUPPORT_ACTOR_ROUTE"],
+            "sessionStreamEndpoint": os.environ["SESSION_STREAM"],
+            "sessionSpotRouterEndpoint": os.environ["SESSION_SPOT_ROUTER"],
+            "sessionSpotEndpoint": os.environ["SESSION_SPOT"],
+            "sessionActorRouteEndpoint": os.environ["SESSION_ACTOR_ROUTE"],
+        },
+    }
+}
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+CONFIG_PY
+}
+
+write_role_config api
+write_role_config session
+write_role_config support
 
 port_of() {
   local endpoint="$1"
@@ -148,7 +184,7 @@ start_role() {
 }
 
 dump_logs() {
-  for log in "$LOG_DIR"/*.log "$SUPPORTCHAT_LOG_DIR"/flow-*.log; do
+  for log in "$LOG_DIR"/*.log "$FLOW_LOG_DIR"/flow-*.log; do
     if [[ -f "$log" ]]; then
       echo "===== ${log}" >&2
       cat "$log" >&2
@@ -163,22 +199,22 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_supportchat_probe \
   sample_cpp_framework_supportchat_client >/dev/null
 
-start_role api "$BIN_DIR/sample_cpp_framework_supportchat_api"
-start_role session "$BIN_DIR/sample_cpp_framework_supportchat_session"
-start_role support "$BIN_DIR/sample_cpp_framework_supportchat_support"
+start_role api "$BIN_DIR/sample_cpp_framework_supportchat_api" --config="$CONFIG_DIR/api.json"
+start_role session "$BIN_DIR/sample_cpp_framework_supportchat_session" --config="$CONFIG_DIR/session.json"
+start_role support "$BIN_DIR/sample_cpp_framework_supportchat_support" --config="$CONFIG_DIR/support.json"
 
 wait_port session-actor-route "$(port_of "$SUPPORTCHAT_SESSION_ACTOR_ROUTE")"
 wait_port support-actor-route "$(port_of "$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE")"
 wait_port support-http "$(port_of "$SUPPORTCHAT_SUPPORT_HTTP_URL")"
 
-"$BIN_DIR/sample_cpp_framework_supportchat_probe" >"$LOG_DIR/probe.log" 2>&1 || {
+"$BIN_DIR/sample_cpp_framework_supportchat_probe" --support-http-url "$SUPPORTCHAT_SUPPORT_HTTP_URL" >"$LOG_DIR/probe.log" 2>&1 || {
   dump_logs
   exit 1
 }
 grep -q "supportchat server-invariants=verified" "$LOG_DIR/probe.log"
 grep -q "topology=ready" "$LOG_DIR/probe.log"
 
-"$BIN_DIR/sample_cpp_framework_supportchat_client" >"$LOG_DIR/client.log" 2>&1 || {
+"$BIN_DIR/sample_cpp_framework_supportchat_client" --stream-endpoint "$SUPPORTCHAT_SESSION_STREAM" >"$LOG_DIR/client.log" 2>&1 || {
   dump_logs
   exit 1
 }
@@ -189,10 +225,10 @@ grep -q "supportchat bound-push=verified" "$LOG_DIR/client.log"
 grep -q "supportchat reconnect=verified" "$LOG_DIR/client.log"
 grep -q "supportchat idle-close=verified" "$LOG_DIR/client.log"
 grep -q "supportchat=completed" "$LOG_DIR/client.log"
-grep -Rq "message flow" "$SUPPORTCHAT_LOG_DIR"
-grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-api.log"
-grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-session.log"
-grep -q "message flow" "$SUPPORTCHAT_LOG_DIR/flow-support.log"
+grep -Rq "message flow" "$FLOW_LOG_DIR"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-api.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-session.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-support.log"
 
 echo "PASS SupportChat.Cpp"
 echo "supportchat sample result=passed"

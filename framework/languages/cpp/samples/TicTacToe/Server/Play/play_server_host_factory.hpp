@@ -42,7 +42,7 @@ class play_server_host_factory_t
         app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
             options.configure_dispatch ()
               .message_flow (message_flow_log_mode_t::key_transitions)
-              .trace_log_file (flow_log_path ("play-" + topology.selected_play_node_rid ()))
+              .trace_log_file (flow_log_path (topology.log_dir, "play-" + topology.selected_play_node_rid ()))
               .trace_label ("tictactoe-play-" + topology.selected_play_node_rid ());
             options.services ()
               .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))

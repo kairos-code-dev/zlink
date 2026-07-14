@@ -18,21 +18,22 @@ inline void ensure (bool condition, const std::string &message)
     if (!condition) throw std::runtime_error ("Ensure failed: " + message);
 }
 
-inline std::string env_or (const char *name, std::string fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
+/* Standalone client는 직접 붙는 endpoint만 CLI option으로 받는다(공통 정책 §4). */
 struct client_topology_t
 {
-    std::string api_a_http_url =
-      env_or ("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:7821");
-    std::string api_b_http_url =
-      env_or ("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:7822");
+    std::string api_a_http_url;
+    std::string api_b_http_url;
 };
+
+inline std::string read_option (int argc, char **argv, const std::string &name)
+{
+    for (int index = 1; index + 1 < argc; ++index) {
+        if (argv[index] == name) {
+            return argv[index + 1];
+        }
+    }
+    return {};
+}
 
 inline order_state_t get_order (zlink::http_client::client_t &api, const std::string &order_id)
 {
@@ -64,10 +65,17 @@ inline bool is_started_or_confirmed (const order_state_t &state)
 
 } // namespace zlink::samples::shoppingmall
 
-int main ()
+int main (int argc, char **argv)
 {
     using namespace zlink::samples::shoppingmall;
-    const client_topology_t topology;
+    client_topology_t topology;
+    topology.api_a_http_url = read_option (argc, argv, "--api-a-http-url");
+    topology.api_b_http_url = read_option (argc, argv, "--api-b-http-url");
+    if (topology.api_a_http_url.empty () || topology.api_b_http_url.empty ()) {
+        std::cerr << "usage: " << argv[0]
+                  << " --api-a-http-url <url> --api-b-http-url <url>\n";
+        return 2;
+    }
     auto api_a = zlink::http_client::client_t::create (topology.api_a_http_url)
                    .timeout (std::chrono::milliseconds (5000))
                    .build ();

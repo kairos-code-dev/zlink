@@ -60,7 +60,7 @@ CMake sample target과 runner를 둔다.
 | `Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierActorNode/main.cpp` | server-role | done | courier actor node별 channel과 courier actor spot mesh를 구성한다. |
 | `Server/CourierActorNode/ActorDirectory.cs` | `Server/CourierActorNode/main.cpp` | infrastructure | done | C++ role은 route handler의 actor manager와 decision directory로 courier actor 위치와 pending decision을 관리한다. |
 | `Server/CourierActorNode/CourierActor.cs` | `Server/CourierActorNode/main.cpp` | actor | done | Courier actor가 actor context를 보유하고, entry spot handler가 bound session으로 `OfferDeliveryNotify`를 push한다. |
-| `Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierActorNode/main.cpp` | handler | done | `EnsureCourierActorReq`와 `OfferDeliveryReq` route handler가 대응한다. |
+| `Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierActorNode/main.cpp` | handler | done | `EnsureCourierActorReq` route handler와 `OfferDeliveryMsg` one-way relay가 대응한다. |
 | `Server/CourierActorNode/Spots/EntrySpot/EntrySpot.cs` | `Server/CourierActorNode/main.cpp` | spot | done | courier entry spot이 actor join과 actor packet handler 등록을 담당한다. |
 | `Server/CourierActorNode/Spots/EntrySpot/Handlers/BindCourierSessionActorHandler.cs` | `Server/CourierActorNode/main.cpp` | handler | done | `BindCourierSessionReq` actor request가 actor/session binding 확인 reply를 반환한다. |
 | `Server/CourierActorNode/Spots/EntrySpot/Handlers/CourierDecisionActorHandler.cs` | `Server/CourierActorNode/main.cpp` | handler | done | `CourierDecisionMsg` actor send가 pending offer decision을 완료한다. |

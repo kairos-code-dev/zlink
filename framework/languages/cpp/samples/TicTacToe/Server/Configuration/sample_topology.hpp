@@ -70,6 +70,7 @@ struct sample_topology_t
         }
         topology.redis_key_prefix =
           section.get ("redisKeyPrefix").value_or (topology.redis_key_prefix);
+        topology.log_dir = section.require ("logDir");
         if (auto value = section.get ("sessionRid")) {
             topology.session_rid = zlink::routing_id_t::from (*value);
         }
@@ -99,6 +100,7 @@ struct sample_topology_t
     std::string stream_endpoint = "tcp://127.0.0.1:48112";
     std::string play_a_stream_endpoint = "tcp://127.0.0.1:48112";
     std::string play_b_stream_endpoint = "tcp://127.0.0.1:48122";
+    std::string log_dir = "logs";
     std::string api_node = "a";
     std::string play_node = "a";
     std::string play_a_node_rid = "play-node-1";

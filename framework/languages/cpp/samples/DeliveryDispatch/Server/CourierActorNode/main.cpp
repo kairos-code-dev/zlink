@@ -3,13 +3,14 @@
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_timings.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <chrono>
 #include <iostream>
+#include <stdexcept>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -208,14 +209,14 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::deliverydispatch;
 
-    if (argc < 2) {
-        std::cerr << "usage: " << argv[0] << " <node-rid>\n";
-        return 2;
+    auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
+    const std::string node_rid = configuration.role.node_rid;
+    if (node_rid.empty ()) {
+        throw std::runtime_error ("sample.role.nodeRid is required for the courier actor node");
     }
-
-    const std::string node_rid = argv[1];
     g_node_rid = node_rid;
-    const sample_topology_t topology;
     const auto spot_router_endpoint = node_rid == sample_names_t::courier_actor_node_1
                                         ? topology.courier_actor_node_1_router_endpoint
                                         : topology.courier_actor_node_2_router_endpoint;
@@ -223,11 +224,10 @@ int main (int argc, char **argv)
                                  ? topology.courier_actor_node_1_endpoint
                                  : topology.courier_actor_node_2_endpoint;
 
-    auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (deliverydispatch_log_dir () + "/flow-" + node_rid + ".log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("deliverydispatch-" + node_rid);
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);

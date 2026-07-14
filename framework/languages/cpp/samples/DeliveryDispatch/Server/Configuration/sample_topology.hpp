@@ -3,74 +3,70 @@
 
 #include <zlink/framework.hpp>
 
-#include <cstdlib>
 #include <string>
 
 namespace zlink::samples::deliverydispatch
 {
 
-inline std::string env_or (const char *name, std::string fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-inline std::string deliverydispatch_log_dir ()
-{
-    return env_or ("DELIVERYDISPATCH_LOG_DIR", "logs");
-}
-
+/* Topology는 설정 파일의 `sample.topology` 절이 정본이다. 값이 빠지면 framework runtime을
+ * 시작하기 전에 실패한다(공통 정책 sample-e2e-configuration-policy.ko.md §2). */
 struct sample_topology_t
 {
-    std::string redis_endpoint = env_or ("DELIVERYDISPATCH_REDIS_ENDPOINT", "");
-    std::string redis_key_prefix = env_or ("DELIVERYDISPATCH_REDIS_KEY_PREFIX", "");
-    std::string dispatch_api_http_url = env_or ("DELIVERYDISPATCH_API_HTTP", "http://127.0.0.1:7392");
-    std::string dispatch_route_endpoint =
-      env_or ("DELIVERYDISPATCH_DISPATCH_ROUTE",
-              env_or ("DELIVERYDISPATCH_CENTER_ROUTE", "tcp://127.0.0.1:7394"));
-    std::string dispatch_spot_router_endpoint =
-      env_or ("DELIVERYDISPATCH_DISPATCH_SPOT_ROUTER", "tcp://127.0.0.1:7395");
-    std::string dispatch_spot_endpoint =
-      env_or ("DELIVERYDISPATCH_DISPATCH_SPOT", "tcp://127.0.0.1:7396");
-    std::string tracking_route_endpoint =
-      env_or ("DELIVERYDISPATCH_TRACKING_ROUTE", "tcp://127.0.0.1:7397");
-    std::string tracking_spot_router_endpoint =
-      env_or ("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER", "tcp://127.0.0.1:7413");
-    std::string tracking_spot_endpoint =
-      env_or ("DELIVERYDISPATCH_TRACKING_SPOT", "tcp://127.0.0.1:7414");
-    std::string customer_stream_endpoint =
-      env_or ("DELIVERYDISPATCH_CUSTOMER_STREAM",
-              env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400"));
-    std::string customer_spot_router_endpoint =
-      env_or ("DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER",
-              env_or ("DELIVERYDISPATCH_SESSION_SPOT_ROUTER", "tcp://127.0.0.1:7399"));
-    std::string customer_spot_endpoint =
-      env_or ("DELIVERYDISPATCH_CUSTOMER_SPOT",
-              env_or ("DELIVERYDISPATCH_SESSION_SPOT", "tcp://127.0.0.1:7401"));
-    std::string courier_stream_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_STREAM", "tcp://127.0.0.1:7402");
-    std::string session_stream_endpoint =
-      env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400");
-    std::string courier_session_route_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_SESSION_ROUTE", "tcp://127.0.0.1:7403");
-    std::string courier_session_spot_router_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER", "tcp://127.0.0.1:7404");
-    std::string courier_session_spot_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_SESSION_SPOT", "tcp://127.0.0.1:7412");
-    std::string courier_actor_node_1_route_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE", "tcp://127.0.0.1:7405");
-    std::string courier_actor_node_1_router_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER", "tcp://127.0.0.1:7406");
-    std::string courier_actor_node_1_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE1", "tcp://127.0.0.1:7407");
-    std::string courier_actor_node_2_route_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE", "tcp://127.0.0.1:7408");
-    std::string courier_actor_node_2_router_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER", "tcp://127.0.0.1:7409");
-    std::string courier_actor_node_2_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE2", "tcp://127.0.0.1:7410");
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string dispatch_api_http_url;
+    std::string dispatch_route_endpoint;
+    std::string dispatch_spot_router_endpoint;
+    std::string dispatch_spot_endpoint;
+    std::string tracking_route_endpoint;
+    std::string tracking_spot_router_endpoint;
+    std::string tracking_spot_endpoint;
+    std::string customer_stream_endpoint;
+    std::string customer_spot_router_endpoint;
+    std::string customer_spot_endpoint;
+    std::string courier_stream_endpoint;
+    std::string courier_session_route_endpoint;
+    std::string courier_session_spot_router_endpoint;
+    std::string courier_session_spot_endpoint;
+    std::string courier_actor_node_1_route_endpoint;
+    std::string courier_actor_node_1_router_endpoint;
+    std::string courier_actor_node_1_endpoint;
+    std::string courier_actor_node_2_route_endpoint;
+    std::string courier_actor_node_2_router_endpoint;
+    std::string courier_actor_node_2_endpoint;
+
+    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        sample_topology_t topology;
+        topology.redis_endpoint = section.require ("redisEndpoint");
+        topology.redis_key_prefix = section.require ("redisKeyPrefix");
+        topology.dispatch_api_http_url = section.require ("dispatchApiHttpUrl");
+        topology.dispatch_route_endpoint = section.require ("dispatchRouteEndpoint");
+        topology.dispatch_spot_router_endpoint = section.require ("dispatchSpotRouterEndpoint");
+        topology.dispatch_spot_endpoint = section.require ("dispatchSpotEndpoint");
+        topology.tracking_route_endpoint = section.require ("trackingRouteEndpoint");
+        topology.tracking_spot_router_endpoint = section.require ("trackingSpotRouterEndpoint");
+        topology.tracking_spot_endpoint = section.require ("trackingSpotEndpoint");
+        topology.customer_stream_endpoint = section.require ("customerStreamEndpoint");
+        topology.customer_spot_router_endpoint = section.require ("customerSpotRouterEndpoint");
+        topology.customer_spot_endpoint = section.require ("customerSpotEndpoint");
+        topology.courier_stream_endpoint = section.require ("courierStreamEndpoint");
+        topology.courier_session_route_endpoint = section.require ("courierSessionRouteEndpoint");
+        topology.courier_session_spot_router_endpoint =
+          section.require ("courierSessionSpotRouterEndpoint");
+        topology.courier_session_spot_endpoint = section.require ("courierSessionSpotEndpoint");
+        topology.courier_actor_node_1_route_endpoint =
+          section.require ("courierActorNode1RouteEndpoint");
+        topology.courier_actor_node_1_router_endpoint =
+          section.require ("courierActorNode1RouterEndpoint");
+        topology.courier_actor_node_1_endpoint = section.require ("courierActorNode1Endpoint");
+        topology.courier_actor_node_2_route_endpoint =
+          section.require ("courierActorNode2RouteEndpoint");
+        topology.courier_actor_node_2_router_endpoint =
+          section.require ("courierActorNode2RouterEndpoint");
+        topology.courier_actor_node_2_endpoint = section.require ("courierActorNode2Endpoint");
+        return topology;
+    }
 };
 
 inline int port_from_http_url (const std::string &url)

@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../Shared/messages.hpp"
+#include "../../Shared/configuration.hpp"
 
 #include <zlink/framework.hpp>
 #include <zlink/locations/redis.hpp>
 
-#include <cstdlib>
 #include <chrono>
 #include <mutex>
 #include <stdexcept>
@@ -18,26 +18,13 @@ namespace e2e = zlink::e2e::to_actor_messaging;
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback = {})
+void add_redis_location_store (zlink::framework::zlink_framework_options_t &framework,
+                               const e2e::redis_configuration_t &redis)
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-void add_redis_location_store (zlink::framework::zlink_framework_options_t &framework)
-{
-    const auto endpoint = env_or ("ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT",
-                                  env_or ("ZLINK_REDIS_LOCATION_ENDPOINT", "127.0.0.1:16379"));
-    const auto key_prefix = env_or ("ZLINK_CPP_E2E_LOCATION_KEY_PREFIX");
-    if (key_prefix.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_LOCATION_KEY_PREFIX is required");
-    }
     framework.add_location_store (
       std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
         zlink::framework::locations::redis::redis_location_options_t{
-          .connection_string = endpoint, .key_prefix = key_prefix}));
+          .connection_string = redis.endpoint, .key_prefix = redis.key_prefix}));
     auto &locations = framework.configure_locations ();
     locations.heartbeat_interval = std::chrono::seconds (1);
     locations.owner_lease_ttl = std::chrono::seconds (3);
@@ -124,12 +111,14 @@ class ensure_actor_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t>;
+      zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
+                                         e2e::actor_configuration_t>;
     using request_type = e2e::actor_call_request_t;
     using reply_type = e2e::actor_call_response_t;
 
-    explicit ensure_actor_handler_t (zlink::framework::session_actor_manager_t actors) :
-        _actors (std::move (actors))
+    ensure_actor_handler_t (zlink::framework::session_actor_manager_t actors,
+                            e2e::actor_configuration_t &configuration) :
+        _actors (std::move (actors)), _configuration (configuration)
     {
     }
 
@@ -145,11 +134,11 @@ class ensure_actor_handler_t
             if (!bound) {
                 throw *bound.error ();
             }
-            const auto rid = env_or ("ZLINK_CPP_E2E_ACTOR_RID", "actor-a");
             auto joined = bound.value ()
                             .context ()
                             .join_entry_spot (
-                              zlink::framework::node_rid_t::from_string (rid),
+                              zlink::framework::node_rid_t::from_string (
+                                _configuration.node_rid),
                               zlink::framework::message_t {})
                             .async ()
                             .result ();
@@ -166,6 +155,7 @@ class ensure_actor_handler_t
 
   private:
     zlink::framework::session_actor_manager_t _actors;
+    e2e::actor_configuration_t &_configuration;
 };
 
 class evidence_handler_t
@@ -191,34 +181,35 @@ class evidence_handler_t
 int main (int argc, char **argv)
 {
     auto app = zlink::framework::app_t::create ();
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    app.logging ().use_file (log_dir + "/actor.log").set_min_level (
+    const auto configuration =
+      e2e::load_role_configuration<e2e::actor_configuration_t> (app, argc, argv);
+    app.logging ().use_file (configuration.log_dir + "/actor.log").set_min_level (
       zlink::framework::log_level_t::debug);
-    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
+    app.add_zlink_framework ([configuration] (
+                              zlink::framework::zlink_framework_options_t &framework) {
         auto evidence = std::make_unique<evidence_store_t> ();
         auto *evidence_ptr = evidence.get ();
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
-          .trace_log_file (log_dir + "/actor-flow.log")
+          .trace_log_file (configuration.log_dir + "/actor-flow.log")
           .trace_label ("cpp-to-actor-actor");
         framework.services ().add_singleton<evidence_store_t> (std::move (evidence));
-        add_redis_location_store (framework);
+        framework.services ().add_singleton<e2e::actor_configuration_t> (
+          std::make_unique<e2e::actor_configuration_t> (configuration));
+        add_redis_location_store (framework, configuration.redis);
         auto mesh = framework.add_spot_mesh (e2e::spot_mesh_name)
-          .enable_router (env_or ("ZLINK_CPP_E2E_ACTOR_SPOT"))
-          .enable_pub_sub (env_or ("ZLINK_CPP_E2E_ACTOR_PUBSUB"))
-          .set_routing_id (zlink::routing_id_t::from (
-            env_or ("ZLINK_CPP_E2E_ACTOR_RID", "actor-a")))
+          .enable_router (configuration.spot_endpoint)
+          .enable_pub_sub (configuration.pub_sub_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (configuration.node_rid))
           .add_entry_spot<to_actor_e2e_spot_t> (
             [evidence_ptr] { return std::make_shared<to_actor_e2e_spot_t> (*evidence_ptr); })
           .add_actor_factory<to_actor_e2e_actor_t> (e2e::actor_type_name);
-        const auto caller_spot = env_or ("ZLINK_CPP_E2E_CALLER_SPOT");
-        if (!caller_spot.empty ()) {
-            mesh.connect_router (zlink::routing_id_t::from (env_or ("ZLINK_CPP_E2E_CALLER_RID",
-                                                                     "caller")),
-                                 caller_spot);
+        if (!configuration.caller_spot_endpoint.empty ()) {
+            mesh.connect_router (zlink::routing_id_t::from (configuration.caller_rid),
+                                 configuration.caller_spot_endpoint);
         }
         framework.http ()
-          .listen (env_or ("ZLINK_CPP_E2E_ACTOR_HTTP"))
+          .listen (configuration.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<ensure_actor_handler_t> ("/ensure");

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 
 #include <zlink/framework.hpp>
@@ -217,14 +217,15 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::supportchat;
 
-    std::filesystem::create_directories (supportchat_log_dir ());
-    const sample_topology_t topology;
-
     auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
+    std::filesystem::create_directories (configuration.role.log_dir);
+
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (supportchat_log_dir () + "/flow-session.log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("supportchat-session");
         add_supportchat_location_store (options, topology);
         options.add_client_server_channel ("supportchat.support").enable_client ();

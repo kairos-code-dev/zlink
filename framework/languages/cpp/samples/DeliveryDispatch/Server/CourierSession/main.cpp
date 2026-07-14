@@ -2,7 +2,7 @@
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
 
 #include <zlink/framework.hpp>
@@ -141,12 +141,13 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::deliverydispatch;
 
-    const sample_topology_t topology;
     auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (deliverydispatch_log_dir () + "/flow-courier-session.log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("deliverydispatch-courier-session");
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);

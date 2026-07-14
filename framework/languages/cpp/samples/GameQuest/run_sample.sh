@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "$GAMEQUEST_LOG_DIR"
-rm -f "$GAMEQUEST_LOG_DIR"/*.log
+FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$FLOW_LOG_DIR"
+rm -f "$FLOW_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
@@ -114,25 +114,25 @@ fi
 
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-gamequest" "redis:7-alpine"
-export GAMEQUEST_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
+GAMEQUEST_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 GAMEQUEST_REDIS_KEY_PREFIX_BASE="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:cpp:}"
-export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX_BASE%:}:${RUN_ID}:"
-export GAMEQUEST_API_A_STREAM_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_A_STREAM_PORT}"
-export GAMEQUEST_API_B_STREAM_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_B_STREAM_PORT}"
-export GAMEQUEST_API_A_HTTP_URL="http://127.0.0.1:${GAMEQUEST_API_A_HTTP_PORT}"
-export GAMEQUEST_API_B_HTTP_URL="http://127.0.0.1:${GAMEQUEST_API_B_HTTP_PORT}"
-export GAMEQUEST_MISSION_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_ROUTE_PORT}"
-export GAMEQUEST_MISSION_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_ROUTE_PORT}"
-export GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_ROUTE_PORT}"
-export GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_ROUTE_PORT}"
-export GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_ROUTER_PORT}"
-export GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_ROUTER_PORT}"
-export GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_PORT}"
-export GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_PORT}"
-export GAMEQUEST_API_A_SPOT_ROUTE="tcp://127.0.0.1:${GAMEQUEST_API_A_SPOT_ROUTE_PORT}"
-export GAMEQUEST_API_B_SPOT_ROUTE="tcp://127.0.0.1:${GAMEQUEST_API_B_SPOT_ROUTE_PORT}"
-export GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_A_SPOT_ROUTER_PORT}"
-export GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_B_SPOT_ROUTER_PORT}"
+GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX_BASE%:}:${RUN_ID}:"
+GAMEQUEST_API_A_STREAM_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_A_STREAM_PORT}"
+GAMEQUEST_API_B_STREAM_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_B_STREAM_PORT}"
+GAMEQUEST_API_A_HTTP_URL="http://127.0.0.1:${GAMEQUEST_API_A_HTTP_PORT}"
+GAMEQUEST_API_B_HTTP_URL="http://127.0.0.1:${GAMEQUEST_API_B_HTTP_PORT}"
+GAMEQUEST_MISSION_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_ROUTE_PORT}"
+GAMEQUEST_MISSION_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_ROUTE_PORT}"
+GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_ROUTE_PORT}"
+GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_ROUTE_PORT}"
+GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_ROUTER_PORT}"
+GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_ROUTER_PORT}"
+GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_A_SPOT_PORT}"
+GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_MISSION_B_SPOT_PORT}"
+GAMEQUEST_API_A_SPOT_ROUTE="tcp://127.0.0.1:${GAMEQUEST_API_A_SPOT_ROUTE_PORT}"
+GAMEQUEST_API_B_SPOT_ROUTE="tcp://127.0.0.1:${GAMEQUEST_API_B_SPOT_ROUTE_PORT}"
+GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_A_SPOT_ROUTER_PORT}"
+GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_B_SPOT_ROUTER_PORT}"
 export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 port_of() {
@@ -159,7 +159,7 @@ wait_port() {
 }
 
 dump_logs() {
-  for log in "$LOG_DIR"/*.log "$GAMEQUEST_LOG_DIR"/flow-*.log; do
+  for log in "$LOG_DIR"/*.log "$FLOW_LOG_DIR"/flow-*.log; do
     if [[ -f "$log" ]]; then
       echo "===== ${log}" >&2
       cat "$log" >&2
@@ -181,10 +181,76 @@ cmake --build "$BUILD_DIR" --target \
 
 wait_port redis "$GAMEQUEST_REDIS_ENDPOINT"
 
-GAMEQUEST_MISSION_NAME="mission-a" start_role mission-a "$BIN_DIR/sample_cpp_framework_gamequest_quest_mission"
-GAMEQUEST_MISSION_NAME="mission-b" start_role mission-b "$BIN_DIR/sample_cpp_framework_gamequest_quest_mission"
-GAMEQUEST_API_NAME="api-a" start_role api-a "$BIN_DIR/sample_cpp_framework_gamequest_game_api"
-GAMEQUEST_API_NAME="api-b" start_role api-b "$BIN_DIR/sample_cpp_framework_gamequest_game_api"
+CONFIG_DIR="$RUN_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
+# 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
+write_role_config() {
+  ROLE="$1" API_NAME="$2" MISSION_NAME="$3" CONFIG_PATH="$CONFIG_DIR/$1.json" \
+  FLOW_LOG_DIR="$FLOW_LOG_DIR" REDIS_ENDPOINT="$GAMEQUEST_REDIS_ENDPOINT" \
+  REDIS_KEY_PREFIX="$GAMEQUEST_REDIS_KEY_PREFIX" \
+  API_A_STREAM="$GAMEQUEST_API_A_STREAM_ENDPOINT" API_B_STREAM="$GAMEQUEST_API_B_STREAM_ENDPOINT" \
+  API_A_HTTP="$GAMEQUEST_API_A_HTTP_URL" API_B_HTTP="$GAMEQUEST_API_B_HTTP_URL" \
+  MISSION_A_ROUTE="$GAMEQUEST_MISSION_A_ROUTE_ENDPOINT" \
+  MISSION_B_ROUTE="$GAMEQUEST_MISSION_B_ROUTE_ENDPOINT" \
+  MISSION_A_SPOT_ROUTE="$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT" \
+  MISSION_B_SPOT_ROUTE="$GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT" \
+  MISSION_A_SPOT_ROUTER="$GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT" \
+  MISSION_B_SPOT_ROUTER="$GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT" \
+  MISSION_A_SPOT="$GAMEQUEST_MISSION_A_SPOT_ENDPOINT" \
+  MISSION_B_SPOT="$GAMEQUEST_MISSION_B_SPOT_ENDPOINT" \
+  API_A_SPOT_ROUTER="$GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT" \
+  API_B_SPOT_ROUTER="$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT" \
+  API_A_SPOT_ROUTE="$GAMEQUEST_API_A_SPOT_ROUTE" API_B_SPOT_ROUTE="$GAMEQUEST_API_B_SPOT_ROUTE" \
+  python3 - <<'CONFIG_PY'
+import json
+import os
+import stat
+
+document = {
+    "sample": {
+        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "topology": {
+            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
+            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+            "apiAStreamEndpoint": os.environ["API_A_STREAM"],
+            "apiBStreamEndpoint": os.environ["API_B_STREAM"],
+            "apiAHttpUrl": os.environ["API_A_HTTP"],
+            "apiBHttpUrl": os.environ["API_B_HTTP"],
+            "missionARouteEndpoint": os.environ["MISSION_A_ROUTE"],
+            "missionBRouteEndpoint": os.environ["MISSION_B_ROUTE"],
+            "missionASpotRouteEndpoint": os.environ["MISSION_A_SPOT_ROUTE"],
+            "missionBSpotRouteEndpoint": os.environ["MISSION_B_SPOT_ROUTE"],
+            "missionASpotRouterEndpoint": os.environ["MISSION_A_SPOT_ROUTER"],
+            "missionBSpotRouterEndpoint": os.environ["MISSION_B_SPOT_ROUTER"],
+            "missionASpotEndpoint": os.environ["MISSION_A_SPOT"],
+            "missionBSpotEndpoint": os.environ["MISSION_B_SPOT"],
+            "apiASpotRouterEndpoint": os.environ["API_A_SPOT_ROUTER"],
+            "apiBSpotRouterEndpoint": os.environ["API_B_SPOT_ROUTER"],
+            "apiName": os.environ["API_NAME"],
+            "missionName": os.environ["MISSION_NAME"],
+            "apiASpotRouteEndpoint": os.environ["API_A_SPOT_ROUTE"],
+            "apiBSpotRouteEndpoint": os.environ["API_B_SPOT_ROUTE"],
+        },
+    }
+}
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+CONFIG_PY
+}
+
+write_role_config mission-a api-a mission-a
+write_role_config mission-b api-a mission-b
+write_role_config api-a api-a mission-a
+write_role_config api-b api-b mission-a
+
+start_role mission-a "$BIN_DIR/sample_cpp_framework_gamequest_quest_mission" --config="$CONFIG_DIR/mission-a.json"
+start_role mission-b "$BIN_DIR/sample_cpp_framework_gamequest_quest_mission" --config="$CONFIG_DIR/mission-b.json"
+start_role api-a "$BIN_DIR/sample_cpp_framework_gamequest_game_api" --config="$CONFIG_DIR/api-a.json"
+start_role api-b "$BIN_DIR/sample_cpp_framework_gamequest_game_api" --config="$CONFIG_DIR/api-b.json"
 
 wait_port mission-a-route "$GAMEQUEST_MISSION_A_ROUTE_ENDPOINT"
 wait_port mission-a-spot-route "$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT"
@@ -204,7 +270,11 @@ wait_port api-b-spot-router "$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT"
 sleep "${GAMEQUEST_CPP_STARTUP_SETTLE_SECONDS:-1}"
 echo "topology=ready"
 
-"$BIN_DIR/sample_cpp_framework_gamequest_client" >"$LOG_DIR/client.log" 2>&1 || {
+"$BIN_DIR/sample_cpp_framework_gamequest_client" \
+  --api-a-stream-endpoint "$GAMEQUEST_API_A_STREAM_ENDPOINT" \
+  --api-b-stream-endpoint "$GAMEQUEST_API_B_STREAM_ENDPOINT" \
+  --api-a-http-url "$GAMEQUEST_API_A_HTTP_URL" \
+  --api-b-http-url "$GAMEQUEST_API_B_HTTP_URL" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2
   dump_logs
   exit 1
@@ -216,11 +286,11 @@ grep -q "gamequest api event routed" "$LOG_DIR/api-a.log"
 grep -q "gamequest api event routed" "$LOG_DIR/api-b.log"
 grep -q "gamequest mission processed" "$LOG_DIR/mission-a.log"
 grep -q "gamequest mission processed" "$LOG_DIR/mission-b.log"
-grep -Rq "message flow" "$GAMEQUEST_LOG_DIR"
-grep -q "message flow" "$GAMEQUEST_LOG_DIR/flow-api-a.log"
-grep -q "message flow" "$GAMEQUEST_LOG_DIR/flow-api-b.log"
-grep -q "message flow" "$GAMEQUEST_LOG_DIR/flow-mission-a.log"
-grep -q "message flow" "$GAMEQUEST_LOG_DIR/flow-mission-b.log"
+grep -Rq "message flow" "$FLOW_LOG_DIR"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-api-a.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-api-b.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-mission-a.log"
+grep -q "message flow" "$FLOW_LOG_DIR/flow-mission-b.log"
 
 echo "PASS GameQuest.Cpp"
 echo "gamequest sample result=passed"

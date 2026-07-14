@@ -57,6 +57,7 @@ struct sample_topology_t
           section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
         topology.session_router_endpoint =
           section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
+        topology.log_dir = section.require ("logDir");
         topology.stream_endpoint =
           section.get ("streamEndpoint").value_or (topology.stream_endpoint);
         topology.session_a_stream_endpoint =
@@ -132,6 +133,7 @@ struct sample_topology_t
     std::string play_b_spot_router_endpoint = "tcp://127.0.0.1:47116";
     std::string session_spot_endpoint = "tcp://127.0.0.1:47112";
     std::string session_router_endpoint = "tcp://127.0.0.1:47113";
+    std::string log_dir = "logs";
     std::string stream_endpoint = "tcp://127.0.0.1:47114";
     std::string session_a_stream_endpoint = "tcp://127.0.0.1:47114";
     std::string session_b_stream_endpoint = "tcp://127.0.0.1:47117";

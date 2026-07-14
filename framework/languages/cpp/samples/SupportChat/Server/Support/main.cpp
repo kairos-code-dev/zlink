@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Configuration/location_store.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "Application/ConversationAssignment/agent_assignment_service.hpp"
 #include "Domain/SupportChat/conversation.hpp"
 
@@ -863,14 +863,15 @@ int main (int argc, char **argv)
 
     /* dispatch 로그는 framework message-flow가 남긴다(공통 sample spec §5). 샘플이 직접
      * "message flow" 줄을 쓰지 않는다. */
-    std::filesystem::create_directories (supportchat_log_dir ());
-    const sample_topology_t topology;
-
     auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
+    std::filesystem::create_directories (configuration.role.log_dir);
+
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (supportchat_log_dir () + "/flow-support.log")
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label ("supportchat-support");
         add_supportchat_location_store (options, topology);
         auto runtime = std::make_unique<supportchat_conversation_runtime_t> ();

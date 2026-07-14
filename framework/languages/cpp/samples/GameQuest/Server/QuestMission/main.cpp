@@ -2,9 +2,8 @@
 
 #include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
-#include "../Configuration/sample_topology.hpp"
+#include "../Configuration/sample_configuration.hpp"
 #include "../common_codecs.hpp"
-#include "../../sample_log_dir.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -291,14 +290,15 @@ int main (int argc, char **argv)
     using namespace zlink::framework;
     using namespace zlink::samples::gamequest;
 
-    const sample_topology_t topology;
+    auto app = app_t::create ();
+    const auto configuration = load_sample_configuration (app, argc, argv);
+    const auto &topology = configuration.topology;
     auto quest_store = std::make_unique<quest_event_store_t> ();
     auto *quest_store_ptr = quest_store.get ();
-    auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
-          .trace_log_file (gamequest_flow_log_path (topology.mission_name))
+          .trace_log_file (configuration.flow_log_path ())
           .trace_label (topology.mission_name);
         options.services ().add_singleton<quest_event_store_t> (std::move (quest_store));
         options.services ().add_singleton<sample_topology_t> (

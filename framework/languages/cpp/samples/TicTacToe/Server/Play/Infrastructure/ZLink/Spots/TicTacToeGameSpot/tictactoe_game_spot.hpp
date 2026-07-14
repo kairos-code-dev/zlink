@@ -22,27 +22,6 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
-inline bool tictactoe_game_spot_trace_enabled ()
-{
-    const char *value = std::getenv ("ZLINK_CPP_TICTACTOE_SESSION_TRACE");
-    return value != nullptr && value[0] != '\0' && std::string_view (value) != "0";
-}
-
-inline void trace_tictactoe_game_spot (std::string_view stage,
-                                       std::string_view actor_id,
-                                       int cell = -1)
-{
-    if (!tictactoe_game_spot_trace_enabled ()) {
-        return;
-    }
-    std::cerr << "zlink-cpp-tictactoe-session-trace side=spot stage=" << stage
-              << " actor=" << actor_id;
-    if (cell >= 0) {
-        std::cerr << " cell=" << cell;
-    }
-    std::cerr << std::endl;
-}
-
 class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 {
   public:
@@ -140,15 +119,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             if (actor_id == source_actor_id || actor == nullptr) {
                 continue;
             }
-            trace_tictactoe_game_spot ("notify-bound-session", actor_id);
-            if (tictactoe_game_spot_trace_enabled ()) {
-                std::cerr << "zlink-cpp-tictactoe-session-trace side=spot stage="
-                          << "notify-bound-session-target actor=" << actor_id
-                          << " node=" << actor->node_rid
-                          << " generation=" << actor->generation << std::endl;
-            }
             actor->context.bound_session ().send (notify).submit ();
-            trace_tictactoe_game_spot ("notify-bound-session-sent", actor_id);
         }
     }
 

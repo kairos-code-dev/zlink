@@ -4,12 +4,21 @@
 
 using namespace zlink;
 
-#include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 
 namespace
 {
+
+/* Standalone client는 직접 연결하는 endpoint만 명시적인 CLI option으로 받는다. 값은 시작할 때
+ * 한 번 검증한다(공통 정책 sample-e2e-configuration-policy.ko.md §4). */
+struct client_options_t
+{
+    std::string api_url;
+    std::string stream_endpoint;
+    std::string courier_stream_endpoint;
+};
 
 std::string read_option (int argc, char **argv, const std::string &name)
 {
@@ -21,36 +30,32 @@ std::string read_option (int argc, char **argv, const std::string &name)
     return {};
 }
 
-std::string env_or (const char *name, std::string fallback)
+std::optional<client_options_t> read_client_options (int argc, char **argv)
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    client_options_t options;
+    options.api_url = read_option (argc, argv, "--api-url");
+    options.stream_endpoint = read_option (argc, argv, "--stream-endpoint");
+    options.courier_stream_endpoint = read_option (argc, argv, "--courier-stream-endpoint");
+    if (options.api_url.empty () || options.stream_endpoint.empty ()
+        || options.courier_stream_endpoint.empty ()) {
+        return std::nullopt;
     }
-    return fallback;
+    return options;
 }
 
 } // namespace
 
 int main (int argc, char **argv)
 {
-    auto api_url = read_option (argc, argv, "--api-url");
-    if (api_url.empty ()) {
-        api_url = env_or ("DELIVERYDISPATCH_API_HTTP", "http://127.0.0.1:7392");
-    }
-    auto stream_endpoint = read_option (argc, argv, "--stream-endpoint");
-    if (stream_endpoint.empty ()) {
-        stream_endpoint = env_or (
-          "DELIVERYDISPATCH_CUSTOMER_STREAM",
-          env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400"));
-    }
-    auto courier_stream_endpoint = read_option (argc, argv, "--courier-stream-endpoint");
-    if (courier_stream_endpoint.empty ()) {
-        courier_stream_endpoint =
-          env_or ("DELIVERYDISPATCH_COURIER_STREAM", env_or ("DELIVERYDISPATCH_SESSION_STREAM",
-                                                             stream_endpoint));
+    const auto options = read_client_options (argc, argv);
+    if (!options) {
+        std::cerr << "usage: " << argv[0]
+                  << " --api-url <url> --stream-endpoint <endpoint>"
+                     " --courier-stream-endpoint <endpoint>\n";
+        return 2;
     }
     if (!zlink::samples::deliverydispatch::delivery_dispatch_client_scenario_t{}.run (
-          api_url, stream_endpoint, courier_stream_endpoint)) {
+          options->api_url, options->stream_endpoint, options->courier_stream_endpoint)) {
         std::cerr << "deliverydispatch=failed\n";
         return 1;
     }

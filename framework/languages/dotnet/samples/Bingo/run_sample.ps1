@@ -168,6 +168,10 @@ try {
     $playA = Join-Path $LogDir "play-a.out.log"
     $playB = Join-Path $LogDir "play-b.out.log"
     $playLogs = @($playA, $playB)
+    Wait-LogContains $playLogs "bingo room: player record loaded. room=.*actor=player-1, wins=0, losses=0" "player-1 record load evidence"
+    Wait-LogContains $playLogs "bingo room: player record loaded. room=.*actor=player-2, wins=0, losses=0" "player-2 record load evidence"
+    Wait-LogContains $playLogs "bingo room: result reported. room=.*actor=player-1, won=True, wins=1, losses=0" "player-1 result report evidence"
+    Wait-LogContains $playLogs "bingo room: result reported. room=.*actor=player-2, won=False, wins=0, losses=1" "player-2 result report evidence"
     Wait-LogContains $playLogs "bingo observer room: actor left. observedRoom=.*observer=observer" "Observer room leave evidence"
     Wait-LogContains $playLogs "bingo room: actor left. room=.*actor=player-1" "player-1 room leave evidence"
     Wait-LogContains $playLogs "bingo room: actor left. room=.*actor=player-2" "player-2 room leave evidence"
@@ -176,6 +180,8 @@ try {
     Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-1" -Expected 1
     Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-2" -Expected 1
     Require-LogCount -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=observer" -Expected 0
+    Require-LogCount -Path $playLogs -Pattern "bingo room: player record loaded\." -Expected 2
+    Require-LogCount -Path $playLogs -Pattern "bingo room: result reported\." -Expected 2
     Wait-SampleLogContains "message flow" "Bingo message-flow evidence"
     $RunSucceeded = $true
 }

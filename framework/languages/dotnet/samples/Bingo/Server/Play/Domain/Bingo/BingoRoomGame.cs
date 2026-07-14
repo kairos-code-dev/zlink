@@ -13,6 +13,12 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     public bool IsReadyToDraw => _game?.IsReadyToDraw == true
                                  && Status == BingoRoomStatus.Running;
 
+    public bool CanAcceptPlayer()
+    {
+        return Status == BingoRoomStatus.WaitingForPlayers
+               && _players.Count < _settings.RequiredPlayers;
+    }
+
     public void ApplySettings(BingoRoomSettings newSettings)
     {
         if (newSettings.RequiredPlayers <= 0)
@@ -25,7 +31,11 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         _game = null;
     }
 
-    public BingoGameChange JoinPlayer(string actorId, string displayName)
+    public BingoGameChange JoinPlayer(
+        string actorId,
+        string displayName,
+        int wins,
+        int losses)
     {
         var existing = _players.FirstOrDefault(player => player.ActorId == actorId);
         if (existing is not null) return new BingoGameChange(Snapshot(), []);
@@ -33,7 +43,7 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         if (Status != BingoRoomStatus.WaitingForPlayers || _players.Count >= _settings.RequiredPlayers)
             throw new InvalidOperationException($"Room {roomId} cannot accept more players.");
 
-        var player = new BingoRoomPlayer(actorId, displayName, _players.Count);
+        var player = new BingoRoomPlayer(actorId, displayName, _players.Count, wins, losses);
         _players.Add(player);
 
         var events = new List<BingoGameEvent>();
@@ -101,6 +111,32 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         return state;
     }
 
+    public BingoRoomState PreviewPlayerJoins(IEnumerable<BingoRoomJoinReq> pendingJoins)
+    {
+        var state = Snapshot();
+        foreach (var request in pendingJoins)
+        {
+            if (state.Players.Any(player => string.Equals(player.ActorId, request.ActorId, StringComparison.Ordinal)))
+                continue;
+            if (state.Players.Count == _settings.RequiredPlayers) break;
+
+            state.Players.Add(new BingoPlayerState
+            {
+                ActorId = request.ActorId,
+                DisplayName = request.DisplayName,
+                Seat = state.Players.Count,
+                IsHost = state.Players.Count == 0
+            });
+        }
+
+        if (state.Players.Count == _settings.RequiredPlayers)
+            state.Status = BingoRoomStatus.Running;
+        state.HostActorId = state.Players.OrderBy(static player => player.Seat).FirstOrDefault()?.ActorId
+                            ?? string.Empty;
+        state.CanStart = false;
+        return state;
+    }
+
     private IReadOnlyList<BingoGameEvent> PlayerJoinedEvents(
         BingoRoomPlayer joined,
         BingoRoomState state)
@@ -159,7 +195,9 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     private sealed record BingoRoomPlayer(
         string ActorId,
         string DisplayName,
-        int Seat)
+        int Seat,
+        int Wins,
+        int Losses)
     {
         public BingoPlayerState ToState(string hostActorId, BingoGame? game)
         {
@@ -172,7 +210,9 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
                 IsHost = string.Equals(ActorId, hostActorId, StringComparison.Ordinal),
                 Card = { card.Numbers },
                 Marks = { card.Marks },
-                CompletedLines = card.CompletedLines
+                CompletedLines = card.CompletedLines,
+                Wins = Wins,
+                Losses = Losses
             };
         }
     }

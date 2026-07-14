@@ -61,10 +61,29 @@ public interface IZLinkActorJoinCall
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkActorJoinResult> Yield(
+        CancellationToken cancellationToken = default);
+
     async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default)
     {
         var result = await Async(cancellationToken).ConfigureAwait(false);
+        return result switch
+        {
+            ZLinkActorJoinResult.Accepted accepted =>
+                new ZLinkActorJoinResult<TReply>.Accepted(
+                    accepted.Actor,
+                    accepted.Reply.Decode<TReply>()),
+            ZLinkActorJoinResult.Rejected rejected =>
+                new ZLinkActorJoinResult<TReply>.Rejected(rejected.Reply.Decode<TReply>()),
+            _ => throw new InvalidOperationException("Unknown actor join result.")
+        };
+    }
+
+    async ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Yield(cancellationToken).ConfigureAwait(false);
         return result switch
         {
             ZLinkActorJoinResult.Accepted accepted =>

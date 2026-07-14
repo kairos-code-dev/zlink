@@ -2,9 +2,9 @@ namespace Zlink.Framework.Runtime.Execution;
 
 /// <summary>
 ///     Fluent worker offload call. The work delegate runs on a pool thread. The
-///     single <c>Async()</c> terminator automatically releases and resumes the
-///     current framework turn when the call was created inside one. A late
-///     completion after a timeout is dropped.
+///     <c>Async()</c> keeps the current framework turn, while <c>Yield()</c>
+///     releases it and resumes through the serial queue. A late completion
+///     after a timeout is dropped.
 /// </summary>
 internal sealed class ZLinkWorkerCall<TResult>(
     ZLinkWorkerPool pool,
@@ -25,9 +25,15 @@ internal sealed class ZLinkWorkerCall<TResult>(
     public ValueTask<TResult> Async(CancellationToken cancellationToken = default)
     {
         EnsureSingleTerminator();
+        return ExecuteAsync(cancellationToken);
+    }
+
+    public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
+    {
+        EnsureSingleTerminator();
         return _turn is null
             ? ExecuteAsync(cancellationToken)
-            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
     }
 
     private ValueTask<TResult> ExecuteAsync(CancellationToken cancellationToken)
@@ -68,7 +74,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
     {
         if (Interlocked.Exchange(ref _terminated, 1) != 0)
             throw new InvalidOperationException(
-                "RunWorker call already has a terminator. Call Async once.");
+                "RunWorker call already has a terminator. Call Async or Yield once.");
     }
 
     private sealed class Execution(

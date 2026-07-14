@@ -27,12 +27,14 @@ public sealed class ContractSurfaceCoverage
         Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Handlers.ZLinkStreamRawAttribute"));
 
         Assert.DoesNotContain(typeof(IZLinkSendCall).GetMethods(), method => method.Name == "PacketName");
-        Assert.DoesNotContain(typeof(IZLinkRequestCall).GetMethods(), method => method.Name is "PacketName" or "Yield");
+        Assert.DoesNotContain(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "PacketName");
+        Assert.Contains(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "Yield");
         Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name is "PacketName" or "Async");
         Assert.DoesNotContain(typeof(IZLinkActorRequestCall).GetMethods(), method => method.Name == "PacketName");
-        Assert.DoesNotContain(typeof(IZLinkActorJoinCall).GetMethods(), method => method.Name == "Yield");
+        Assert.Contains(typeof(IZLinkActorJoinCall).GetMethods(), method => method.Name == "Yield");
         Assert.DoesNotContain(typeof(IZLinkActorContext).GetMembers(), member => member.Name is "IsJoined" or "GetSpot");
-        Assert.DoesNotContain(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name is "Yield" or "Submit");
+        Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Yield");
+        Assert.DoesNotContain(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Submit");
         Assert.DoesNotContain(typeof(IZLinkDispatchOptions).GetProperties(), property => property.Name.EndsWith("DispatchMode", StringComparison.Ordinal));
 
         Assert.True(typeof(ZLinkActorJoinResult).IsAbstract);

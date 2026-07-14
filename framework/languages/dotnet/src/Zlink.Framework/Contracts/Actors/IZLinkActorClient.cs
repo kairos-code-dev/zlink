@@ -21,4 +21,6 @@ public interface IZLinkActorRequestCall
     IZLinkActorRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);
 }

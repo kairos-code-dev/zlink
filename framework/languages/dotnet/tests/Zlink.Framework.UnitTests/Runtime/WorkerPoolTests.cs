@@ -5,6 +5,110 @@ namespace Zlink.Framework.UnitTests;
 public sealed class WorkerPoolTests
 {
     [Fact]
+    public async Task RunWorker_Async_Holds_Serial_Turn_Until_Work_Completes()
+    {
+        using var pool = CreatePool(1);
+        await using var queue = CreateQueue();
+        using var releaseWork = new ManualResetEventSlim(false);
+        var workerStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRan = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = queue.RunAsync(
+            async cancellationToken =>
+            {
+                _ = cancellationToken;
+                var call = CreateCall(
+                    pool,
+                    _ =>
+                    {
+                        workerStarted.TrySetResult();
+                        releaseWork.Wait();
+                        return 1;
+                    },
+                    queue);
+                _ = await call.Async();
+            },
+            CancellationToken.None).AsTask();
+
+        await workerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = queue.RunAsync(
+            _ =>
+            {
+                secondRan.TrySetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        try
+        {
+            await Task.Delay(100);
+            Assert.False(secondRan.Task.IsCompleted);
+        }
+        finally
+        {
+            releaseWork.Set();
+        }
+
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RunWorker_Yield_Releases_And_Resumes_Through_Serial_Turn()
+    {
+        using var pool = CreatePool(1);
+        await using var queue = CreateQueue();
+        using var releaseWork = new ManualResetEventSlim(false);
+        var workerStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRan = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstResumed = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = queue.RunAsync(
+            async cancellationToken =>
+            {
+                _ = cancellationToken;
+                var call = CreateCall(
+                    pool,
+                    _ =>
+                    {
+                        workerStarted.TrySetResult();
+                        releaseWork.Wait();
+                        return 1;
+                    },
+                    queue);
+                _ = await call.Yield();
+                firstResumed.TrySetResult();
+            },
+            CancellationToken.None).AsTask();
+
+        await workerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = queue.RunAsync(
+            _ =>
+            {
+                secondRan.TrySetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        try
+        {
+            await secondRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(firstResumed.Task.IsCompleted);
+        }
+        finally
+        {
+            releaseWork.Set();
+        }
+
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        await firstResumed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task RunWorker_Async_Returns_Result_From_Pool_Thread()
     {
         using var pool = CreatePool(2);

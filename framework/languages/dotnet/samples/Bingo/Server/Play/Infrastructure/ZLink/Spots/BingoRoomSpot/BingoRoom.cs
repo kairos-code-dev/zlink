@@ -18,8 +18,7 @@ internal sealed class BingoRoom(
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, BingoGameChange> _pendingJoinChanges = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, BingoRoomJoinReq> _pendingJoins = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PendingJoin> _pendingJoins = new(StringComparer.Ordinal);
     private bool _cleanupStarted;
     private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
     private PlayerActor? _observerActor;
@@ -38,16 +37,61 @@ internal sealed class BingoRoom(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        if (_pendingJoins.Remove(actor.ActorId, out var join))
+        if (!_pendingJoins.TryGetValue(actor.ActorId, out var pending)) return;
+
+        var join = pending.Request;
+        if (join.ObserveOnly)
         {
+            _pendingJoins.Remove(actor.ActorId);
             actor.SetDisplayName(join.DisplayName);
             actor.JoinRoom(join.RoomId);
-            if (join.ObserveOnly) _observerActor = actor;
-            else _actors[actor.ActorId] = actor;
+            _observerActor = actor;
         }
+        else
+        {
+            GetPlayerRecordRes record;
+            try
+            {
+                // Yield releases the Spot execution turn while the API owns the player record lookup.
+                record = await Context.Outbound
+                    .RequestToChannel(
+                        SampleNames.ApiChannel,
+                        new GetPlayerRecordReq { ActorId = actor.ActorId })
+                    .Yield<GetPlayerRecordRes>(cancellationToken);
+            }
+            catch
+            {
+                _pendingJoins.Remove(actor.ActorId);
+                throw;
+            }
 
-        if (_pendingJoinChanges.Remove(actor.ActorId, out var change))
+            if (!_pendingJoins.TryGetValue(actor.ActorId, out var resumed)
+                || !ReferenceEquals(resumed, pending)
+                || _game is null
+                || !_game.CanAcceptPlayer())
+            {
+                _pendingJoins.Remove(actor.ActorId);
+                await Context.LeaveActorAsync(actor, cancellationToken);
+                return;
+            }
+
+            _pendingJoins.Remove(actor.ActorId);
+            actor.SetDisplayName(join.DisplayName);
+            actor.JoinRoom(join.RoomId);
+            _actors[actor.ActorId] = actor;
+            var change = RequireGame().JoinPlayer(
+                actor.ActorId,
+                join.DisplayName,
+                record.Wins,
+                record.Losses);
             await PublishAsync(change, cancellationToken);
+            logger.LogInformation(
+                "bingo room: player record loaded. room={RoomId}, actor={ActorId}, wins={Wins}, losses={Losses}",
+                Context.SpotRid.ToString(),
+                actor.ActorId,
+                record.Wins,
+                record.Losses);
+        }
 
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
@@ -67,6 +111,29 @@ internal sealed class BingoRoom(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
+        if (_actors.ContainsKey(actor.ActorId) && _game is not null)
+        {
+            var finalState = _game.Snapshot();
+            // Capture the completed room result before Yield permits another Spot turn to run.
+            var report = new ReportBingoResultReq
+            {
+                RoomId = finalState.RoomId,
+                ActorId = actor.ActorId,
+                Won = finalState.Winners.Contains(actor.ActorId),
+                FinalDrawSeq = finalState.DrawSeq
+            };
+            var record = await Context.Outbound
+                .RequestToChannel(SampleNames.ApiChannel, report)
+                .Yield<ReportBingoResultRes>(cancellationToken);
+            logger.LogInformation(
+                "bingo room: result reported. room={RoomId}, actor={ActorId}, won={Won}, wins={Wins}, losses={Losses}",
+                report.RoomId,
+                report.ActorId,
+                report.Won,
+                record.Wins,
+                record.Losses);
+        }
+
         _actors.Remove(actor.ActorId);
         if (_observerActor is not null
             && string.Equals(_observerActor.ActorId, actor.ActorId, StringComparison.Ordinal))
@@ -278,7 +345,7 @@ internal sealed class BingoRoom(
 
         if (!string.Equals(request.RoomId, _settings.ObservedRoomId, StringComparison.Ordinal))
             throw new InvalidOperationException($"Observer room is not watching room '{request.RoomId}'.");
-        _pendingJoins[actorId] = request;
+        _pendingJoins[actorId] = new PendingJoin(request);
         logger.LogInformation(
             "bingo observer room: actor joined. observedRoom={ObservedRoomId}, observer={ActorId}, nodeRid={NodeRid}",
             _settings.ObservedRoomId,
@@ -299,21 +366,34 @@ internal sealed class BingoRoom(
         BingoRoomJoinReq request)
     {
         var game = RequireGame();
+        if (_pendingJoins.TryGetValue(actorId, out var existing))
+            return new BingoRoomJoinRes { State = PreviewPendingJoins(game) };
 
-        _pendingJoins[actorId] = request;
-        var change = game.JoinPlayer(actorId, request.DisplayName);
-        _pendingJoinChanges[actorId] = change;
+        if (!game.CanAcceptPlayer())
+            throw new InvalidOperationException($"Room {Context.SpotRid} cannot accept more players.");
+
+        _pendingJoins[actorId] = new PendingJoin(request);
+        var state = PreviewPendingJoins(game);
         logger.LogInformation(
-            "bingo room: actor accepted. room={RoomId}, actor={ActorId}, status={Status}, events={EventCount}",
+            "bingo room: actor accepted. room={RoomId}, actor={ActorId}, status={Status}",
             request.RoomId,
             actorId,
-            change.State.Status,
-            change.Events.Count);
+            state.Status);
         logger.LogInformation(
             "bingo room: actor join reply ready. room={RoomId}, actor={ActorId}, status={Status}",
             request.RoomId,
             actorId,
-            change.State.Status);
-        return new BingoRoomJoinRes { State = change.State };
+            state.Status);
+        return new BingoRoomJoinRes { State = state };
     }
+
+    private BingoRoomState PreviewPendingJoins(BingoRoomGame game)
+    {
+        return game.PreviewPlayerJoins(
+            _pendingJoins.Values
+                .Where(static pending => !pending.Request.ObserveOnly)
+                .Select(static pending => pending.Request));
+    }
+
+    private sealed record PendingJoin(BingoRoomJoinReq Request);
 }

@@ -405,20 +405,22 @@ typed packet identity 단일 소유도 contract/unit/E2E 및 실제 package cons
 runtime metrics, flow correlation, graceful drain과 session closing도 정식 계약, package와
 Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 
-> **실행 terminator는 예외다.** 위 목록이 만들어질 당시에는 "request·actor join·worker의 yield
+> **실행 terminator는 예외였다.** 위 목록이 만들어질 당시에는 "request·actor join·worker의 yield
 > 전용 타입을 제거하고 단일 완료 terminator가 자동으로 turn을 관리한다"가 계약이었고, 그 기준으로
 > 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
-> (`submit`/`async`/`yield`)이며([04 §1.1](../04-async-execution-policy.ko.md)), `.NET`은 이를
-> 충족하지 않는다. 따라서 **`.NET`에 남은 구현 차이는 [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
-> [§12.21](#1221-yield-terminator-부재-전-언어), [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
-> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)이다.** 그 밖에 이 문서가 추적하는 `.NET`
-> 차이는 없다.
+> (`submit`/`async`/`yield`)이며([04 §1.1](../04-async-execution-policy.ko.md)), `SMP-DN-01`을
+> 닫으면서 request·actor join·기존 worker에 이 구분과 실행 turn 동작을 구현했다. 따라서
+> [§12.21](#1221-yield-terminator-부재-전-언어)의 `.NET` 구현 차이는 해소됐다. 아직 남은 것은
+> [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
+> [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
+> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)의 CPU·I/O worker 축 분리다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E
 
 ### 체크리스트
 
-- [ ] **SMP-DN-01** (미구현) — Bingo의 **player-record / `yield` 축이 코드에 통째로 없다**
+- [x] **SMP-DN-01** (미구현) — Bingo의 **player-record / `yield` 축이 코드에 통째로 없다**
+  — request·actor join·worker의 `Async`는 turn을 유지하고 `Yield`는 반납·재진입하도록 구현했다. Bingo는 Api 소유 전적 store와 네 메시지, `Wins`/`Losses`, join/leave의 `Yield`, 재개 후 상태 재검증, `PlayerJoinedNotify` client 단언을 갖춘다. 실패 우선 worker gate, unit 640건, contract 42건, sample regression 50건, packaged contract와 실제 Bingo runner가 통과했다.
 - [x] **SMP-DN-02** (결함) — 정본 샘플 6개 중 **4개가 여전히 환경변수로 endpoint·Redis를 받는다**
   — Bingo, GameQuest, ShoppingMall, SupportChat의 역할별 endpoint·Redis·routing id·로그 경로를 임시 JSON 설정 파일로 옮겼다. TicTacToe의 로그 환경 변수와 서버 개별 CLI override도 제거했다. 다섯 실제 sample runner, 네 aggregate build, sample regression 49건이 통과했고 정본 애플리케이션 코드의 환경 변수 직접 접근은 0건이다.
 - [x] **SMP-DN-03** (결함) — TicTacToe가 **위치 인자로 역할을 전환하는 단일 실행 파일**이다
@@ -450,7 +452,7 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 
 ### 재검증 후 중단한 항목
 
-아래 8건은 `.NET` 코드만 고쳐서는 정식 계약을 충족할 수 없어서 §0.8에 따라 구현을 중단했다.
+아래 6건은 `.NET` 코드만 고쳐서는 정식 계약을 충족할 수 없어서 §0.8에 따라 구현을 중단했다.
 이 작업의 범위는 이 장부 외의 공통 spec과 갭 인덱스를 읽기 전용으로 제한하므로,
 결정 선택지는 여기에 기록하고 공통 문서는 수정하지 않았다.
 
@@ -464,9 +466,6 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - **IMP-DN-16** — 공개 `ISpotNode`에는 router/pub-sub HWM과 publisher no-drop·send timeout은 있지만,
   publisher linger와 subscriber receive timeout·linger가 없다. 선택지는 binding에 빠진 역할별 option
   API를 추가하거나 SpotNode config에서 지원하지 못하는 항목을 제거하도록 계약을 바꾸는 것이다.
-- **SMP-DN-01** — Bingo player-record는 전 언어 공통 `yield` terminator 갭과 한 묶음이다.
-  먼저 `async`의 turn 유지와 `yield`의 turn 반납을 구현하는 순서, join·leave에서 실패와 취소를
-  처리하는 계약을 확정한 뒤 `.NET` 샘플과 client 단언을 추가해야 한다.
 - **SMP-DN-04** — DeliveryDispatch wire를 `.NET`만 바꾸면 기존 언어와의 호환 파손 방향만 바뀐다.
   `Actor` 표현, status 문자열 인코딩, `CustomerId`와 서버 자기 단언 메시지의 포함 여부를 공통
   wire 계약에서 결정한 뒤 모든 언어가 같은 변경을 적용해야 한다.
@@ -476,9 +475,6 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - **E2E-DN-03** — 분리된 transfer controller가 actor-a·actor-b에서 actor를 생성·join할 공개
   framework 표면이 없다. 선택지는 원격 actor lifecycle 제어를 정식 공개 API로 설계하거나,
   controller와 actor node 사이의 역할별 공개 제어 계약을 Config 10 문서에 먼저 정의하는 것이다.
-- **E2E-DN-09** — 단순 파일명 drift와 달리 Config 8의 `ATD-*` 19건은 정본 `TD-*` 27건과
-  동작 의미가 다르다. 파일명만 바꾸면 거짓 장부가 된다. `yield` terminator와 turn 유지 동작을
-  먼저 구현한 뒤 27개 정본 시나리오를 채우고, 그 다음 나머지 config의 파일명을 기계적으로 맞춘다.
 
 ### 가장 무거운 것
 
@@ -493,7 +489,7 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-DN-01** (미구현) | [bingo §7.1](../../common/sample/bingo/README.ko.md):452-475 — **player 전적은 Api 서버가 소유한다.** room Spot은 그것을 계산하지도 들고 있지도 않고, `OnJoinedActor`에서 `GetPlayerRecordReq`를, `OnLeaveActor`에서 `ReportBingoResultReq`를 **`yield`로** 물어본다(:463-464). `PlayerJoinedNotify`의 `State.Players`에는 그렇게 가져온 `Wins`/`Losses`가 실리고(:846-847), client 검증 5단계가 그 값이 채워졌는지 본다(:567-571) | **축 전체가 코드에 없다.** `samples/Bingo/` 트리에서 `PlayerRecord`·`Wins`·`Losses`·`ReportBingoResult` 문자열이 **0건**이다. `Shared/Contracts/bingo_messages.proto`에 `GetPlayerRecordReq/Res`·`ReportBingoResultReq/Res`가 없고, `BingoPlayerState`(`:187-195`)에 `wins`/`losses` 필드가 없다. `Server/Api/Handlers/`에는 `AuthenticatePlayerHandler`·`MatchBingoHandler` **둘뿐**이라 전적 store 자체가 없다. `BingoRoom.cs:37-64`의 `OnJoinedActorAsync`는 **Api로 아무것도 묻지 않는다.** 애초에 `.NET` 샘플 트리 전체에 `.Yield()` 호출이 **0건**이다([§12.21](../90-implementation-gap.ko.md) — terminator 자체가 없다). ⇒ Bingo가 보여 주기로 한 **`yield`의 유일한 사용처**가 통째로 비어 있고, client 5단계 단언도 함께 사라졌다 |
+| **SMP-DN-01** (완료) | [bingo §7.1](../../common/sample/bingo/README.ko.md):452-475 — **player 전적은 Api 서버가 소유한다.** room Spot은 그것을 계산하지도 들고 있지도 않고, `OnJoinedActor`에서 `GetPlayerRecordReq`를, `OnLeaveActor`에서 `ReportBingoResultReq`를 **`yield`로** 물어본다(:463-464). `PlayerJoinedNotify`의 `State.Players`에는 그렇게 가져온 `Wins`/`Losses`가 실리고(:846-847), client 검증 5단계가 그 값이 채워졌는지 본다(:567-571) | Api의 프로세스 메모리 store와 조회·보고 handler, protobuf 네 메시지와 `Wins`/`Losses`를 추가했다. room은 player join/leave에서 channel request의 `Yield`를 사용하고, join continuation은 room 상태를 다시 확인한 뒤 domain join을 수행한다. observer는 전적 경로를 사용하지 않는다. client는 `PlayerJoinedNotify.State.Players`의 두 전적을 확인하며 runner는 조회 2건과 결과 보고 2건을 destroy 전에 검증한다. |
 
 ### 실패할 수 없는 단언
 

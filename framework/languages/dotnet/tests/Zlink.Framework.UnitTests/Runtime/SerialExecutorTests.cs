@@ -174,7 +174,7 @@ public sealed class SerialExecutorTests
                            ?? throw new InvalidOperationException("serial turn was not available");
                 try
                 {
-                    await turn.AwaitFrameworkCallAsync(
+                    await turn.YieldFrameworkCallAsync(
                             async _ =>
                             {
                                 operationStarted.TrySetResult();
@@ -409,7 +409,7 @@ public sealed class SerialExecutorTests
                 order.Enqueue("first-start");
                 var turn = ZLinkSerialTurn.Current
                            ?? throw new InvalidOperationException("serial turn was not available");
-                await turn.AwaitFrameworkCallAsync(
+                await turn.YieldFrameworkCallAsync(
                     async _ =>
                     {
                         ioStarted.SetResult();
@@ -473,7 +473,7 @@ public sealed class SerialExecutorTests
                 {
                     var turn = ZLinkSerialTurn.Current
                                ?? throw new InvalidOperationException("serial turn was not available");
-                    await turn.AwaitFrameworkCallAsync(
+                    await turn.YieldFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();
@@ -536,7 +536,7 @@ public sealed class SerialExecutorTests
                 {
                     var turn = ZLinkSerialTurn.Current
                                ?? throw new InvalidOperationException("serial turn was not available");
-                    await turn.AwaitFrameworkCallAsync(
+                    await turn.YieldFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();
@@ -596,7 +596,7 @@ public sealed class SerialExecutorTests
                            ?? throw new InvalidOperationException("serial turn was not available");
                 try
                 {
-                    await turn.AwaitFrameworkCallAsync(
+                    await turn.YieldFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();

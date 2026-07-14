@@ -68,6 +68,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
     TMessage request)
     : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
     public IZLinkRequestCall Timeout(TimeSpan timeout)
@@ -77,7 +78,19 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+    }
+
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation(countAsRequest: true);
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(

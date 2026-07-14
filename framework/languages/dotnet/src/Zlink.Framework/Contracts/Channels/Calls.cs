@@ -10,6 +10,8 @@ public interface IZLinkRequestCall
     IZLinkRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkPublishCall

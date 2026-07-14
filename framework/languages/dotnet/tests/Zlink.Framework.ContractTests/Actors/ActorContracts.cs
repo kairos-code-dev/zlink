@@ -42,6 +42,9 @@ public sealed class ActorContracts
         var typedJoinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async<JoinedRoom>();
+        var yieldedJoinReply = await actor.Context
+            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
+            .Yield<JoinedRoom>();
         var entryJoin = await actor.Context
             .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
@@ -51,6 +54,10 @@ public sealed class ActorContracts
             .RequestToActor(actorRef, new JoinRoom("room-1"))
             .Timeout(TimeSpan.FromSeconds(1))
             .Async<JoinedRoom>();
+        var yieldedActorReply = await actorClient
+            .RequestToActor(actorRef, new JoinRoom("room-1"))
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Yield<JoinedRoom>();
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal(actorRef, foundActorRef);
@@ -61,11 +68,14 @@ public sealed class ActorContracts
         Assert.Equal("room-1", acceptedJoin.Reply.Decode<JoinedRoom>().RoomId);
         var acceptedTypedJoin = Assert.IsType<ZLinkActorJoinResult<JoinedRoom>.Accepted>(typedJoinReply);
         Assert.Equal("room-1", acceptedTypedJoin.Reply.RoomId);
+        var acceptedYieldedJoin = Assert.IsType<ZLinkActorJoinResult<JoinedRoom>.Accepted>(yieldedJoinReply);
+        Assert.Equal("room-1", acceptedYieldedJoin.Reply.RoomId);
         var acceptedEntryJoin = Assert.IsType<ZLinkActorJoinResult.Accepted>(entryJoin);
         var entryActor = acceptedEntryJoin.Actor;
         Assert.Equal("player-1", entryActor.ActorId);
         Assert.Equal(RoutingId.From("play-node"), entryActor.NodeRid);
         Assert.Equal("room-1", actorReply.RoomId);
+        Assert.Equal("room-1", yieldedActorReply.RoomId);
     }
 
     private sealed class ActorClient : IZLinkActorClient
@@ -104,6 +114,11 @@ public sealed class ActorContracts
         {
             object reply = new JoinedRoom("room-1");
             return ValueTask.FromResult((TReply)reply);
+        }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
         }
     }
 
@@ -238,6 +253,11 @@ public sealed class ActorContracts
                 new ActorRef(RoutingId.From("room-node"), "player-1", 1),
                 reply));
         }
+
+        public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
+        {
+            return Async(cancellationToken);
+        }
     }
 
     private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
@@ -252,6 +272,11 @@ public sealed class ActorContracts
         {
             return ValueTask.FromResult<ZLinkActorJoinResult>(
                 new ZLinkActorJoinResult.Accepted(result, reply));
+        }
+
+        public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
+        {
+            return Async(cancellationToken);
         }
     }
 

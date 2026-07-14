@@ -16,7 +16,8 @@ Directory layout:
 - `Client/Configuration/` contains client-only endpoint and packet settings.
 - `Server/Configuration/` contains the server topology, packet names, and
   framework timing settings used by the server roles.
-- `Server/Api/` contains player authentication and matching API handlers.
+- `Server/Api/` contains player authentication, matching, and in-memory player
+  record handlers.
 - `Server/Play/` contains player actors, Entry Spot admission, room spots,
   Redis-backed room matching, submitted cards, server-driven draws, automatic
   marks, winner detection, rare reward fan-out over Spot pub/sub, and
@@ -55,9 +56,12 @@ connector client. The
 client flow is self-checking. It fails if the three connectors do not
 authenticate as distinct actors, match into one room across Play nodes, observe
 the rare reward event from the non-owner Play node, or deliver push
-notifications to the bound client sessions. After the game finishes, the server
-self-check also verifies that room actors leave the room Spot, return to Entry
-Spot, and are destroyed from the Entry Spot context.
+notifications to the bound client sessions. The room loads each player's win
+and loss record through an explicit yielding request before adding that player
+to the game domain. After the game finishes, it reports each result through the
+same execution policy. The server self-check verifies those two record loads
+and two result reports before confirming that room actors leave the room Spot,
+return to Entry Spot, and are destroyed from the Entry Spot context.
 
 Session and Play also attach the standard .NET `MeterListener` to
 `ZLinkMeters.Framework`. The runner verifies real STREAM and Spot samples, while

@@ -73,6 +73,9 @@ internal sealed class BingoClientScenario
             .Async(cancellationToken);
 
         Ensure(client1SawClient2Join.Payload.ActorId == client2Auth.ActorId);
+        Ensure(
+            client1SawClient2Join.Payload.State.Players.All(
+                static player => player.Wins == 0 && player.Losses == 0));
         Ensure(client2.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
         // The room starts automatically after both players have joined.

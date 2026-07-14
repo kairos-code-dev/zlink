@@ -1,4 +1,5 @@
 using Bingo.Server.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
@@ -18,6 +19,7 @@ public static class ApiServerHostFactory
             builder.Logging,
             logDirectory,
             traceLabel);
+        builder.Services.AddSingleton<BingoPlayerRecordStore>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis

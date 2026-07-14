@@ -64,6 +64,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     RoutingId targetNodeRid,
     TRequest request) : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
     public IZLinkRequestCall Timeout(TimeSpan timeout)
@@ -74,6 +75,18 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     }
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+    }
+
+    private ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         var timeout = _timeout ?? runtime.Registration.ResolveRouteRequestTimeout(routerChannelId);
         return runtime.SubmitRouteRequestAsync<TRequest, TReply>(
@@ -121,6 +134,7 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
     ZLinkResolvedSpotHandle target,
     TRequest request) : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
     public IZLinkRequestCall Timeout(TimeSpan timeout)
@@ -130,7 +144,19 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+    }
+
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         var packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
         var reply = await ZLinkSpotHandleRequestExecution.ExecuteAsync(

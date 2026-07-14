@@ -296,6 +296,7 @@ internal sealed class ZLinkActorClient(
         ActorRef actor,
         TRequest request) : IZLinkActorRequestCall
     {
+        private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
         private TimeSpan? _timeout;
 
         public IZLinkActorRequestCall Timeout(TimeSpan timeout)
@@ -306,6 +307,18 @@ internal sealed class ZLinkActorClient(
         }
 
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            return ExecuteAsync<TReply>(cancellationToken);
+        }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return _turn is null
+                ? ExecuteAsync<TReply>(cancellationToken)
+                : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+        }
+
+        private ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
         {
             return client.RequestAsync<TRequest, TReply>(
                 actor,

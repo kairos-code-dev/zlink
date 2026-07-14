@@ -355,6 +355,11 @@ public sealed class StreamContracts
         {
             return ValueTask.FromResult((TReply)reply);
         }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
+        }
     }
 
     private sealed class SessionSendCall : IZLinkSessionSendCall

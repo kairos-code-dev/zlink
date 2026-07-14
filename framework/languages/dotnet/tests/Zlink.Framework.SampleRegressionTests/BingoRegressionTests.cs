@@ -47,6 +47,26 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void Bingo_Player_Records_Are_Loaded_And_Reported_Through_Yielding_Room_Lifecycle()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var contracts = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "bingo_messages.proto"));
+        var room = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
+            "Spots", "BingoRoomSpot", "BingoRoom.cs"));
+        var apiHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Api", "ApiServerHostFactory.cs"));
+        var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "BingoClientScenario.cs"));
+
+        Assert.Contains("message GetPlayerRecordReq", contracts, StringComparison.Ordinal);
+        Assert.Contains("message ReportBingoResultReq", contracts, StringComparison.Ordinal);
+        Assert.Contains("int32 wins", contracts, StringComparison.Ordinal);
+        Assert.Contains("int32 losses", contracts, StringComparison.Ordinal);
+        Assert.Contains(".Yield<GetPlayerRecordRes>", room, StringComparison.Ordinal);
+        Assert.Contains(".Yield<ReportBingoResultRes>", room, StringComparison.Ordinal);
+        Assert.Contains("AddSingleton<BingoPlayerRecordStore>", apiHost, StringComparison.Ordinal);
+        Assert.Contains("player.Wins == 0 && player.Losses == 0", scenario, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Runner_Uses_Isolated_Docker_Redis()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");

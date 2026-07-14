@@ -86,9 +86,14 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
         return _turn is null
             ? ExecuteAsync<TReply>(cancellationToken)
-            : _turn.AwaitFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
@@ -163,9 +168,14 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
         return _turn is null
             ? ExecuteAsync<TReply>(cancellationToken)
-            : _turn.AwaitFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)

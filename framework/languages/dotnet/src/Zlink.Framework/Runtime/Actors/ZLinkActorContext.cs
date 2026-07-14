@@ -63,9 +63,14 @@ internal sealed class ZLinkActorJoinSpotCall(
 
     public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
     {
+        return ExecuteAsync(cancellationToken);
+    }
+
+    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
+    {
         return _turn is null
             ? ExecuteAsync(cancellationToken)
-            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
     }
 
     private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)
@@ -113,9 +118,14 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
 
     public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
     {
+        return ExecuteAsync(cancellationToken);
+    }
+
+    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
+    {
         return _turn is null
             ? ExecuteAsync(cancellationToken)
-            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
     }
 
     private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)

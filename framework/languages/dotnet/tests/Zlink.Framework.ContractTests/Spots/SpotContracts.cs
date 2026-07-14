@@ -65,9 +65,11 @@ public sealed class SpotContracts
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
         context.Outbound.SendToSpot(null!, new RoomEvent("opened")).Submit();
         await context.Outbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
+        await context.Outbound.RequestToSpot(null!, new JoinRoom("room-2")).Yield<JoinedRoom>();
         context.Outbound.Publish("room.events", new RoomEvent("opened")).Submit();
         context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
+        await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Yield<JoinedRoom>();
 
         await spot.OnCreateAsync(ZLinkMessage.Empty, CancellationToken.None);
         await spot.OnInitializeAsync(CancellationToken.None);
@@ -626,6 +628,11 @@ public sealed class SpotContracts
             return ValueTask.FromResult(work(cancellationToken));
         }
 
+        public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
+        {
+            return Async(cancellationToken);
+        }
+
     }
 
     private sealed class SpotManager : IZLinkSpotManager
@@ -754,6 +761,11 @@ public sealed class SpotContracts
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult((TReply)reply);
+        }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
         }
 
     }

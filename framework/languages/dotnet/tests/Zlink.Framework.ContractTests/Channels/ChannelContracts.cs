@@ -52,13 +52,13 @@ public sealed class ChannelContracts
     }
 
     [Fact]
-    public void Route_request_call_does_not_expose_yield_terminator()
+    public void Route_request_call_exposes_yield_terminator()
     {
         var methodNames = typeof(IZLinkRequestCall)
             .GetMethods()
             .Select(method => method.Name);
 
-        Assert.DoesNotContain("Yield", methodNames);
+        Assert.Contains("Yield", methodNames);
     }
 
     [Fact]
@@ -230,6 +230,11 @@ public sealed class ChannelContracts
             return ValueTask.FromResult((TReply)reply!);
         }
 
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
+        }
+
     }
 
     private sealed class ExamplePublishCall : IZLinkPublishCall
@@ -253,6 +258,11 @@ public sealed class ChannelContracts
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult((TReply)reply);
+        }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
         }
     }
 

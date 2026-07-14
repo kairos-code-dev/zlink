@@ -106,7 +106,7 @@ export enum ZLinkLocationRuntimeEventKind {
   StatusChanged = 0,
   TopologyChanged = 1,
   ServiceSummaryChanged = 2,
-  StoreUnavailable = 3,
+  StoreFailure = 3,
   StoreRecovered = 4
 }
 
@@ -114,7 +114,7 @@ export type ZLinkLocationRuntimeEvent =
   | (ZLinkRuntimeEvent & { readonly event: ZLinkLocationRuntimeEventKind.StatusChanged; readonly status: ZLinkLocationRuntimeStatus })
   | (ZLinkRuntimeEvent & { readonly event: ZLinkLocationRuntimeEventKind.TopologyChanged; readonly topology: readonly ZLinkLocationTopologyEntry[]; readonly topologyFilter?: ZLinkLocationTopologyFilter })
   | (ZLinkRuntimeEvent & { readonly event: ZLinkLocationRuntimeEventKind.ServiceSummaryChanged; readonly serviceSummary: readonly ZLinkLocationServiceSummary[]; readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter })
-  | (ZLinkRuntimeEvent & { readonly event: ZLinkLocationRuntimeEventKind.StoreUnavailable | ZLinkLocationRuntimeEventKind.StoreRecovered });
+  | (ZLinkRuntimeEvent & { readonly event: ZLinkLocationRuntimeEventKind.StoreFailure | ZLinkLocationRuntimeEventKind.StoreRecovered });
 
 export enum ZLinkLocationPeerEventKind {
   RowUpdated = 0,

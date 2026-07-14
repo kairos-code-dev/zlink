@@ -131,7 +131,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
         await this.publisher.publish({
           sourceName: this.registration.sourceName,
           timestamp: new Date(),
-          event: LocationRuntimeEventKind.StoreUnavailable
+          event: LocationRuntimeEventKind.StoreFailure
         } satisfies ZLinkLocationRuntimeEvent);
       }
       return;

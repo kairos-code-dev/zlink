@@ -126,6 +126,42 @@ test('location runtime monitoring source publishes snapshot changes and suppress
   assert.equal(events[5].serviceSummary[0].readyCount, 2);
 });
 
+test('location runtime monitoring source publishes StoreFailure and StoreRecovered', async () => {
+  const events = [];
+  let fail = true;
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle(event) { events.push(event); } });
+  const query = {
+    async getStatus() {
+      if (fail) throw new Error('store unavailable');
+      return {
+        storeHealthy: true,
+        watchEnabled: false,
+        pollingIntervalMs: 1000,
+        ownerLeaseHealthy: true
+      };
+    },
+    async listTopology() { return { items: [] }; },
+    async listServiceSummaries() { return []; }
+  };
+  const source = new framework.ZLinkLocationRuntimeMonitoringSource(
+    { sourceName: 'location-runtime', intervalMs: 1000 },
+    query,
+    publisher
+  );
+
+  await source.pollOnce();
+  await source.pollOnce();
+  fail = false;
+  await source.pollOnce();
+
+  assert.equal(framework.ZLinkLocationRuntimeEventKind.StoreUnavailable, undefined);
+  assert.deepEqual(events.slice(0, 2).map((event) => event.event), [
+    framework.ZLinkLocationRuntimeEventKind.StoreFailure,
+    framework.ZLinkLocationRuntimeEventKind.StoreRecovered
+  ]);
+});
+
 test('location monitoring event emitter publishes registered row and resolve-miss events', async () => {
   const events = [];
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();

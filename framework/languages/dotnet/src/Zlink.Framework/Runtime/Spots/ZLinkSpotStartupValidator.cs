@@ -22,11 +22,27 @@ internal static class ZLinkSpotStartupValidator
                     $"SPOT '{spotType}' must expose the context provided by the runtime.");
 
             foreach (var handler in registration.ScannedHandlerCatalog.SpotHandlers)
+            {
                 context.AddScannedPacket(spotType, handler);
+                ValidateScannedTimer(spotType, handler);
+            }
 
             spot.Configure();
             context.Validate(spot);
         }
+    }
+
+    private static void ValidateScannedTimer(
+        Type spotType,
+        ZLinkScannedSpotHandler handler)
+    {
+        if (handler.Kind != ZLinkScannedSpotHandlerKind.Timer
+            || handler.SpotType != spotType) return;
+
+        ZLinkSpotTimerRegistry.ValidateRegistration(
+            handler.TimerName ?? string.Empty,
+            handler.TimerPeriod,
+            null);
     }
 
     private sealed class PacketRegistrationContext :

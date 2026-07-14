@@ -286,7 +286,8 @@
 
 - [ ] **IMP-DN-08** (결함) — `zlink.fanout.received`가 **등록되지 않은 topic까지 라벨로 단다**
 - [ ] **IMP-DN-09** (결함) — STREAM ingress가 client가 안 보낸 `correlation_id`를 `request_seq`로 **날조한다**
-- [ ] **IMP-DN-10** (결함) — attribute로 선언한 SPOT timer 검증이 **startup이 아니라 spot 활성화 시점**
+- [x] **IMP-DN-10** (결함) — attribute로 선언한 SPOT timer 검증이 **startup이 아니라 spot 활성화 시점**
+  — 등록된 Spot 타입의 스캔 timer를 host 시작에서 검증하고 runtime 생성과 같은 이름·주기·overrun 규칙을 사용한다. 관련 테스트 47건, 전체 unit 629건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-11** (결함) — connector가 **짝 없는 `Response`/`Error`를 수신 큐에 적재**한다
 - [ ] **IMP-DN-12** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘리고**, CONNECT는 인증 없이 나간다
 - [ ] **IMP-DN-13** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다

@@ -45,19 +45,7 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
             ObjectDisposedException.ThrowIf(_closed, this);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrWhiteSpace(name))
-                throw new ZLinkConfigurationException("SPOT timer name must not be empty.");
-
-            if (period <= TimeSpan.Zero)
-                throw new ZLinkConfigurationException("SPOT timer period must be greater than zero.");
-
-            var timerOptions = options ?? new ZLinkTimerOptions();
-            if (!Enum.IsDefined(timerOptions.OverrunPolicy))
-                throw new ZLinkConfigurationException("SPOT timer overrun policy is not supported.");
-
-            if (timerOptions.OverrunPolicy == ZLinkTimerOverrunPolicy.CatchUpBounded
-                && timerOptions.MaxCatchUpTicks <= 0)
-                throw new ZLinkConfigurationException("SPOT timer MaxCatchUpTicks must be greater than zero.");
+            var timerOptions = ValidateRegistration(name, period, options);
 
             var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(name, period, handlerType, spotType);
             var timer = new ZLinkTimer(
@@ -76,6 +64,28 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
             _timers.Add(timer);
             return ValueTask.FromResult<IZLinkTimer>(timer);
         }
+    }
+
+    internal static ZLinkTimerOptions ValidateRegistration(
+        string name,
+        TimeSpan period,
+        ZLinkTimerOptions? options)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ZLinkConfigurationException("SPOT timer name must not be empty.");
+
+        if (period <= TimeSpan.Zero)
+            throw new ZLinkConfigurationException("SPOT timer period must be greater than zero.");
+
+        var timerOptions = options ?? new ZLinkTimerOptions();
+        if (!Enum.IsDefined(timerOptions.OverrunPolicy))
+            throw new ZLinkConfigurationException("SPOT timer overrun policy is not supported.");
+
+        if (timerOptions.OverrunPolicy == ZLinkTimerOverrunPolicy.CatchUpBounded
+            && timerOptions.MaxCatchUpTicks <= 0)
+            throw new ZLinkConfigurationException("SPOT timer MaxCatchUpTicks must be greater than zero.");
+
+        return timerOptions;
     }
 
     private static async Task DisposeTimersAsync(IReadOnlyList<IZLinkTimer> timers)

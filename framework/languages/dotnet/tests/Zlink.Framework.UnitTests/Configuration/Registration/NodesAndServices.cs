@@ -868,6 +868,23 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task HostStartup_Rejects_Invalid_ScannedSpotTimer()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("invalid-timer")
+                .EnableRouter($"inproc://invalid-timer-{Guid.NewGuid():N}")
+                .AddSpotFactory<InvalidTimerSpot>();
+        });
+        using var host = builder.Build();
+
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains("SPOT timer period must be greater than zero", exception.Message, StringComparison.Ordinal);
+    }
+
     private sealed record DuplicatePacketMessage(string Value);
 
     private sealed class DuplicatePacketSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -896,6 +913,20 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicatePacketSpot spot,
             DuplicatePacketMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class InvalidTimerSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+    }
+
+    [ZLinkSpotTimerHandler("invalid", 0)]
+    private sealed class InvalidTimerHandler : IZLinkSpotTimerHandler<InvalidTimerSpot>
+    {
+        public ValueTask HandleAsync(
+            InvalidTimerSpot spot,
+            ZLinkTimerTick tick,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 

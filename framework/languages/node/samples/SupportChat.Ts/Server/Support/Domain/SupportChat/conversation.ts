@@ -71,7 +71,10 @@ class Conversation {
       const state = this.snapshot();
       return { state, event: { kind: 'participantJoined', actorId, role, state } };
     }
-    if (actorId === this.state.agentActorId) {
+    if (
+      actorId === this.state.agentActorId
+      && this.state.status === ConversationStatuses.WaitingForAgent
+    ) {
       this.state = {
         ...this.state,
         status: ConversationStatuses.Active,

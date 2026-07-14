@@ -13,6 +13,8 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
+const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const connector = require('../../packages/stream-connector/dist');
 
 const {
@@ -188,6 +190,62 @@ test('MFLOW-EXT flow sampling keeps or drops every event in one flow together', 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.ok(events.length === 0 || events.length === 2, `sampled ${events.length} of 2 events`);
+});
+
+test('MFLOW-EXT create-if-absent keeps one flow across an async continuation', async () => {
+  await new Promise((resolve, reject) => {
+    setImmediate(async () => {
+      try {
+        const first = flowContext.currentOrCreateFlow();
+        await Promise.resolve();
+        const second = flowContext.currentOrCreateFlow();
+        assert.equal(second.flowId, first.flowId);
+        assert.equal(second.flowOrigin, first.flowOrigin);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+});
+
+test('MFLOW-EXT channel wire and outbound trace use the same created flow', async () => {
+  await new Promise((resolve, reject) => {
+    setImmediate(async () => {
+      const parts = channelEnvelope.encodeChannelEnvelopeParts(
+        1,
+        'api',
+        'EchoRequest',
+        { value: 'ping' }
+      );
+      try {
+        const header = JSON.parse(Buffer.from(parts[0]).toString());
+        const events = [];
+        class FlowObserver {
+          onMessageFlow(event) {
+            events.push(event);
+          }
+        }
+        const { tracer } = makeTracer(
+          diagnostics(ZLinkMessageFlowLogMode.KeyTransitions, {
+            logFile: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-flow-wire-')), 'flow.log')
+          }),
+          undefined,
+          FlowObserver
+        );
+        tracer.trace(receivedEvent());
+        await new Promise((settled) => setImmediate(settled));
+        assert.equal(events[0].flowId, header.flowId);
+        assert.equal(header.flowOrigin, 3);
+        assert.equal(events[0].flowOrigin, 'Application');
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        channelEnvelope.closeMessages(parts);
+      }
+    });
+  });
 });
 
 test('MFLOW-010 stream correlation_id round-trips byte-identically across framework and connector codecs', () => {

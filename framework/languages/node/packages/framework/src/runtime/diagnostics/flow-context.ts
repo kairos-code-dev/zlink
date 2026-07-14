@@ -10,7 +10,13 @@ export interface ZLinkFlowContextValue {
 const flowStorage = new AsyncLocalStorage<ZLinkFlowContextValue>();
 
 export function currentOrCreateFlow(origin: ZLinkFlowOrigin = 'Application'): ZLinkFlowContextValue {
-  return flowStorage.getStore() ?? { flowId: createFlowId(), flowOrigin: origin };
+  const current = flowStorage.getStore();
+  if (current !== undefined) {
+    return current;
+  }
+  const created = { flowId: createFlowId(), flowOrigin: origin };
+  flowStorage.enterWith(created);
+  return created;
 }
 
 export function runWithFlow<T>(flow: ZLinkFlowContextValue, callback: () => T): T {

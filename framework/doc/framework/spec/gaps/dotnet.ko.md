@@ -235,7 +235,8 @@
 - [x] **IMP-DN-04** (결함) — 51
   — `CreateAsync`가 activation을 catalog에 commit한 직후 user Spot 생성 계측을 기록해 close와 gauge가 균형을 이룬다. metric/lifecycle 테스트 16건, 전체 unit 630건, sample regression 39건이 통과했다.
 - [ ] **IMP-DN-05** (결함) — 05 §2.4.3
-- [ ] **IMP-DN-06** (결함) — 40 §3·§8.2
+- [x] **IMP-DN-06** (결함) — 40 §3·§8.2
+  — store resolver가 등록된 `ZLinkLocationOptions.ListPageSize`를 모든 Spot 목록 page request에 사용한다. location 관련 테스트 37건, 전체 unit 632건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-07** (결함) — 20 §8
   — registration validator가 노드 전체의 Entry Spot 타입을 추적해 같은 타입의 중복을 `AddZLinkFramework` 단계에서 거부한다. registration 테스트 40건과 전체 unit 628건이 통과했다.
 

@@ -1,3 +1,5 @@
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.AspNetCore;
 
@@ -36,6 +38,25 @@ public sealed class LocationResolverTests
         var second = await resolvers.ResolveActorRowAsync(ActorKey);
         Assert.Equal(OwnerB, second!.OwnerId);
         Assert.Equal(2, counting.ResolveCalls);
+    }
+
+    [Fact]
+    public async Task Spot_List_Uses_The_Configured_PageSize()
+    {
+        var store = DispatchProxy.Create<IZLinkLocationStore, PageRecordingLocationStore>();
+        var recording = (PageRecordingLocationStore)(object)store;
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddLocationStore(store);
+            options.ConfigureLocations().ListPageSize = 7;
+        });
+        await using var provider = services.BuildServiceProvider();
+        var resolvers = provider.GetRequiredService<ZLinkStoreLocationResolvers>();
+
+        _ = await resolvers.ListLiveSpotRowsAsync(new ZLinkSpotLocationFilter());
+
+        Assert.Equal(7, recording.LastSpotPage?.PageSize);
     }
 
     [Fact]
@@ -811,6 +832,23 @@ public sealed class LocationResolverTests
             ZLinkPageRequest page = default,
             CancellationToken cancellationToken = default) =>
             inner.ListActorsAsync(filter, page, cancellationToken);
+    }
+
+    private class PageRecordingLocationStore : DispatchProxy
+    {
+        private readonly ZLinkInMemoryLocationStore _inner = new();
+
+        public ZLinkPageRequest? LastSpotPage { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.NotNull(targetMethod);
+            Assert.NotNull(args);
+            if (targetMethod.Name == nameof(IZLinkSpotLocationStore.ListSpotsAsync))
+                LastSpotPage = Assert.IsType<ZLinkPageRequest>(args[1]);
+
+            return targetMethod.Invoke(_inner, args);
+        }
     }
 
     private static async Task<ResolverFixture> FixtureAsync()

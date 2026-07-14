@@ -19,6 +19,7 @@ internal sealed class ZLinkStoreLocationResolvers :
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
     private readonly ZLinkLocationStoreHealth? _health;
+    private readonly int _listPageSize;
 
     internal ZLinkStoreLocationResolvers(
         IZLinkPeerLocationStore peerStore,
@@ -28,7 +29,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed,
         ZLinkLocationEventEmitter? events = null,
-        ZLinkLocationStoreHealth? health = null)
+        ZLinkLocationStoreHealth? health = null,
+        ZLinkLocationOptions? options = null)
     {
         _peerStore = peerStore;
         _spotStore = spotStore;
@@ -37,6 +39,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _observed = observed;
         _health = health;
+        _listPageSize = (options ?? new ZLinkLocationOptions()).ListPageSize;
         _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
 
@@ -93,7 +96,7 @@ internal sealed class ZLinkStoreLocationResolvers :
                     cancellationToken,
                     storeToken => _spotStore.ListSpotsAsync(
                         filter,
-                        new ZLinkPageRequest(1000, continuation),
+                        new ZLinkPageRequest(_listPageSize, continuation),
                         storeToken))
                 .ConfigureAwait(false);
             var live = await _liveRows.FilterAsync(

@@ -9,10 +9,6 @@ namespace zlink::samples::bingo
 inline task_t<void>
 bingo_room_spot_t::on_reward_acquired (const bingo_reward_acquired_msg_t &event)
 {
-    if (!_is_observer && event.room_id == snapshot ().room_id) {
-        co_await leave_finished_actors ();
-        co_return;
-    }
     if (!_is_observer || event.room_id != _observed_room_id) {
         co_return;
     }

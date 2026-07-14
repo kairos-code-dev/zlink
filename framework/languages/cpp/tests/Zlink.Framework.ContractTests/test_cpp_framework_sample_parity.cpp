@@ -170,6 +170,17 @@ TEST (CppFrameworkSampleParity, BingoRoomGameCopyOwnsItsPlayerState)
     EXPECT_EQ (projected.snapshot ().players[0].card.size (), 9U);
 }
 
+TEST (CppFrameworkSampleParity, BingoRewardSubscriptionDoesNotDriveRoomCleanup)
+{
+    const auto handler = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/"
+        "bingo_reward_acquired_event_handler.hpp");
+
+    EXPECT_EQ (handler.find ("leave_finished_actors"), std::string::npos);
+    EXPECT_NE (handler.find ("bingo_reward_announced_notify_t"), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

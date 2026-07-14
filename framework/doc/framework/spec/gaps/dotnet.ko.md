@@ -336,7 +336,7 @@
 |----|------|----------------|
 | **IMP-DN-14** | `IZLinkSocketConfig`의 각 항목은 소켓에 적용된다 | 적용 경로(`ZLinkChannelBundleFactory.cs:167-176`)가 다루는 건 `MaxMessageSize`·`SendHighWaterMark`·`ReceiveHighWaterMark` **셋뿐**이다. `Linger`·`TcpNoDelay`·`IPv6`·`Immediate`·`ConnectTimeout`·`HandshakeInterval`·`SendBufferSize`·`ReceiveBufferSize`·`ReceiveTimeout`은 **읽는 곳이 없다.** 더 나쁜 건 `ZLinkDotNetBackendAdapters.cs:23,31,39,47,75`가 DEALER/ROUTER/PUB/SUB에 **`Linger = TimeSpan.Zero`를 하드코딩**한다는 것이다. ⇒ `Linger = 1s`를 설정하면 **수락되고 getter로 1초로 읽히는데** 소켓은 Linger 0으로 돈다. 종료 시 큐에 남은 메시지가 **전부 버려진다** — 그 설정이 막으려던 바로 그 일이 |
 | **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 재검증 결과 상수 정책이 있는 `ZLinkRouteChannelInitializer`·`ZLinkRouteConnectionSet`은 별도 route-mesh 경로였다. 실제 결함은 client-server bundle이 `ConfigureServerRouting()`과 `ConfigureClientRouting()` 결과를 읽지 않는 점이었다. bundle factory가 server ROUTER와 client DEALER 생성 시 각 routing option을 적용한다 |
-| **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | 살아 있는 config 객체를 돌려주는데 **읽는 곳이 0개**다. 애초에 불가능하다 — `IZLinkBackendSpotNode`에 **소켓 옵션 setter가 아예 없다.** ⇒ SPOT fan-out이 backpressure에서 조용히 드롭하는 걸 막으려고 `SendHighWaterMark = 100_000; NoDrop = true`를 걸면 **오류 없이 수락되고 버려진다** |
+| **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | framework config를 읽는 곳은 여전히 **0개**다. 현재 binding의 공개 `ISpotNode`는 router/pub-sub HWM과 publisher no-drop·send timeout은 제공하지만 publisher linger와 subscriber receive timeout·linger는 제공하지 않는다. framework의 `IZLinkBackendSpotNode`는 공개된 일부 option도 연결하지 않는다. ⇒ `SendHighWaterMark = 100_000; NoDrop = true`를 설정해도 오류 없이 수락된 뒤 적용되지 않으며, 나머지 option은 binding 공개 표면만으로 적용할 수도 없다 |
 | **IMP-DN-17** | [21 §close](../server/21-spot-node.ko.md): **actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다** | catalog의 actor 수 선확인을 제거했다. activation이 join commit과 같은 직렬 실행 줄에서 actor 수를 확인하고 종료를 예약하므로, 먼저 제출된 join이 commit된 뒤 close 판정이 실행되면 `false`를 반환하고 Spot과 location을 유지한다 |
 | **IMP-DN-18** | [21](../server/21-spot-node.ko.md): `GetOrCreate`는 하나의 activation을 모든 호출자가 공유한다. [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | 최초 호출자는 공유 생성 작업을 시작한 뒤 다른 호출자와 같은 completion을 기다린다. 공유 작업은 runtime 종료에만 취소되며, 각 호출자의 token은 자기 `WaitAsync`에만 적용되므로 짧은 deadline이 다른 대기자를 실패시키지 않는다 |
 
@@ -461,8 +461,9 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - **IMP-DN-14** — socket config 중 `HandshakeInterval`만 공개 binding에서 설정할 수 없다.
   선택지는 binding에 해당 option을 추가하거나 framework 공개 config에서 이 항목을 제거하도록
   계약을 바꾸는 것이다. 나머지 option만 적용하는 부분 완료는 getter와 실제 동작의 불일치를 남긴다.
-- **IMP-DN-16** — 공개 `ISpotNode`에는 publisher·subscriber·router socket option setter가 없다.
-  선택지는 binding에 역할별 option API를 추가하거나 SpotNode config 표면을 계약에서 제거하는 것이다.
+- **IMP-DN-16** — 공개 `ISpotNode`에는 router/pub-sub HWM과 publisher no-drop·send timeout은 있지만,
+  publisher linger와 subscriber receive timeout·linger가 없다. 선택지는 binding에 빠진 역할별 option
+  API를 추가하거나 SpotNode config에서 지원하지 못하는 항목을 제거하도록 계약을 바꾸는 것이다.
 - **SMP-DN-01** — Bingo player-record는 전 언어 공통 `yield` terminator 갭과 한 묶음이다.
   먼저 `async`의 turn 유지와 `yield`의 turn 반납을 구현하는 순서, join·leave에서 실패와 취소를
   처리하는 계약을 확정한 뒤 `.NET` 샘플과 client 단언을 추가해야 한다.

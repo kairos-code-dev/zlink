@@ -291,14 +291,27 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
         }
 
-        if (!owner)
-        {
-            var result = await pending.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return result.State == ZLinkSpotCreateState.Created
-                ? result with { State = ZLinkSpotCreateState.Existing }
-                : result;
-        }
+        if (owner)
+            _ = CompletePendingCreationAsync(
+                spotType,
+                requestedSpotRid,
+                request,
+                pending,
+                runtime.ShutdownToken);
 
+        var result = await pending.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return !owner && result.State == ZLinkSpotCreateState.Created
+            ? result with { State = ZLinkSpotCreateState.Existing }
+            : result;
+    }
+
+    private async ValueTask CompletePendingCreationAsync(
+        Type spotType,
+        RoutingId requestedSpotRid,
+        ZLinkMessage request,
+        PendingSpotCreation pending,
+        CancellationToken cancellationToken)
+    {
         IZLinkBackendSpot? nativeSpot = null;
         ZLinkSpotActivation? activation = null;
         var factoryOwnsNativeSpot = false;
@@ -335,7 +348,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                     _pending.Remove(requestedSpotRid);
                     pending.Complete(rejected);
                 }
-                return rejected;
+                return;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -353,8 +366,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 pending.Complete(result);
             }
             ZLinkRuntimeMetrics.RecordSpotCreated("user");
-
-            return result;
         }
         catch (Exception error)
         {
@@ -375,8 +386,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 _pending.Remove(requestedSpotRid);
                 pending.Fail(finalFailure);
             }
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(finalFailure).Throw();
-            throw new InvalidOperationException("Unreachable after creation failure propagation.");
         }
         finally
         {

@@ -327,7 +327,8 @@
 - [ ] **IMP-DN-16** (결함) — SpotNode의 role config 표면이 **완전한 no-op**이다
 - [x] **IMP-DN-17** (결함) — **actor가 든 spot을 닫을 수 있다** (check-then-act 경합)
   — actor 수 확인과 종료 예약을 Spot activation의 직렬 실행 줄에서 한 작업으로 처리한다. join이 먼저 시작되어 membership commit을 마친 뒤 close가 판정되는 결정적 경합 테스트, 전체 unit 637건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-18** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **같은 spot을 기다리는 다른 호출자 전부를 실패**시킨다
+- [x] **IMP-DN-18** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **같은 spot을 기다리는 다른 호출자 전부를 실패**시킨다
+  — 공유 생성은 runtime 종료 token으로 계속하고, 각 호출자는 공유 completion을 자기 token으로 기다린다. 첫 호출자만 취소되고 두 번째 호출자는 같은 생성 결과를 받는 실패 게이트, 관련 GetOrCreate/dispose 테스트 3건, 전체 unit 638건, sample regression 39건이 통과했다.
 
 ### 상세
 
@@ -337,7 +338,7 @@
 | **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 재검증 결과 상수 정책이 있는 `ZLinkRouteChannelInitializer`·`ZLinkRouteConnectionSet`은 별도 route-mesh 경로였다. 실제 결함은 client-server bundle이 `ConfigureServerRouting()`과 `ConfigureClientRouting()` 결과를 읽지 않는 점이었다. bundle factory가 server ROUTER와 client DEALER 생성 시 각 routing option을 적용한다 |
 | **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | 살아 있는 config 객체를 돌려주는데 **읽는 곳이 0개**다. 애초에 불가능하다 — `IZLinkBackendSpotNode`에 **소켓 옵션 setter가 아예 없다.** ⇒ SPOT fan-out이 backpressure에서 조용히 드롭하는 걸 막으려고 `SendHighWaterMark = 100_000; NoDrop = true`를 걸면 **오류 없이 수락되고 버려진다** |
 | **IMP-DN-17** | [21 §close](../server/21-spot-node.ko.md): **actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다** | catalog의 actor 수 선확인을 제거했다. activation이 join commit과 같은 직렬 실행 줄에서 actor 수를 확인하고 종료를 예약하므로, 먼저 제출된 join이 commit된 뒤 close 판정이 실행되면 `false`를 반환하고 Spot과 location을 유지한다 |
-| **IMP-DN-18** | [21](../server/21-spot-node.ko.md): `GetOrCreate`는 하나의 activation을 모든 호출자가 공유한다. [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | `ZLinkSpotNodeCatalog.cs:340-375` — 소유자가 **자기 token**으로 생성을 돌리고, 실패하면 `pending.Fail(...)`로 **공유 TCS를 그 실패로 완료**한다. ⇒ 1초 deadline인 A와 30초 deadline인 B가 같은 방을 요청하면, **A가 1초에 취소될 때 B도 함께 죽는다** — B에겐 29초가 남아 있었는데. 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** |
+| **IMP-DN-18** | [21](../server/21-spot-node.ko.md): `GetOrCreate`는 하나의 activation을 모든 호출자가 공유한다. [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | 최초 호출자는 공유 생성 작업을 시작한 뒤 다른 호출자와 같은 completion을 기다린다. 공유 작업은 runtime 종료에만 취소되며, 각 호출자의 token은 자기 `WaitAsync`에만 적용되므로 짧은 deadline이 다른 대기자를 실패시키지 않는다 |
 
 ## 교차 언어 결함 — 이 언어에서 무엇을 고치나
 

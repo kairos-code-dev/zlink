@@ -1265,6 +1265,46 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task GetOrCreateAsync_CallerCancellationOnlyStopsThatCallersWait()
+    {
+        var probe = new BlockingSpotCreateProbe();
+        var node = new CapturingSpotNode();
+        var spotRid = RoutingId.From("shared-create-cancellation");
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            userSpotType: typeof(BlockingCreateSpot),
+            blockingCreateProbe: probe);
+        using var ownerCancellation = new CancellationTokenSource();
+        try
+        {
+            var owner = runtime.GetOrCreateAsync<BlockingCreateSpot>(
+                    spotRid,
+                    ZLinkMessage.Empty,
+                    ownerCancellation.Token)
+                .AsTask();
+            await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var waiter = runtime.GetOrCreateAsync<BlockingCreateSpot>(spotRid).AsTask();
+            ownerCancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => owner.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.False(waiter.IsCompleted);
+
+            probe.Release.TrySetResult();
+            var result = await waiter.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(spotRid, result.SpotRid);
+            Assert.Equal(ZLinkSpotCreateState.Existing, result.State);
+            Assert.Single(node.CreatedSpots);
+        }
+        finally
+        {
+            probe.Release.TrySetResult();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Current_Spot_Publish_Emits_Sent_With_Spot_Rid_And_Current_Flow()
     {
         var root = Path.Combine(Path.GetTempPath(), $"zlink-current-publish-{Guid.NewGuid():N}");

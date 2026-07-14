@@ -121,12 +121,14 @@ class ShoppingMallClientScenario {
     ensure(() => delayedSecond.status === OrderStatuses.Failed);
     console.log('shoppingmall-consistency=completed');
 
-    const scaleA = await apiA.post('/orders/start')
-      .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-001'))
-      .fetch<StartOrderRes>();
-    const scaleB = await apiB.post('/orders/start')
-      .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-002'))
-      .fetch<StartOrderRes>();
+    const [scaleA, scaleB] = await Promise.all([
+      apiA.post('/orders/start')
+        .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-001'))
+        .fetch<StartOrderRes>(),
+      apiB.post('/orders/start')
+        .body(startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-scale-002'))
+        .fetch<StartOrderRes>()
+    ]);
     const [scaleAConfirmed, scaleBConfirmed] = await Promise.all([
       this.waitForStatus(apiB, scaleA.orderId, OrderStatuses.Confirmed, signal),
       this.waitForStatus(apiA, scaleB.orderId, OrderStatuses.Confirmed, signal)

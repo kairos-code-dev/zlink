@@ -124,10 +124,11 @@ class gamequest_client_scenario_t
                                 .packet_name (join_session_req_t::packet_name)
                                 .async<join_session_res_t> ()
                                 .result ();
-            ensure (bob_joined
-                      && has_progress (bob_joined.value ().active_quests,
-                                       quest_ids_t::herb_gathering, 1),
-                    "player-bob join did not sync offline herb progress");
+            ensure (static_cast<bool> (bob_joined), "player-bob join failed");
+            /* gameplay event는 one-way라 offline 동안 쌓인 진행이 join 시점에 이미 반영돼 있다는
+             * 보장은 없다. 조회로 반영을 기다린다. */
+            ensure (wait_for_progress (api_b, "player-bob", quest_ids_t::herb_gathering, 1),
+                    "player-bob did not see the offline herb progress");
 
             auto herb_completed = api_b.wait_for<quest_completed_notify_t> ()
                                     .where ([] (const quest_completed_notify_t &notify) {
@@ -147,6 +148,51 @@ class gamequest_client_scenario_t
                     "online herb event id mismatch");
             ensure (herb_completed.get ().progress.status == quest_status_t::reward_granted,
                     "herb completion push mismatch");
+
+            /* reward 멱등(§14): 완료된 quest에 같은 gameplay event를 다시 적용해도 진행이 더
+             * 오르지 않고 상태도 그대로다. */
+            auto replayed_kill =
+              api_a.request (kill_monster_req_t{"player-alice", "wolf", "forest", "kill-3"})
+                .packet_name (kill_monster_req_t::packet_name)
+                .async<kill_monster_res_t> ()
+                .result ();
+            ensure (replayed_kill && replayed_kill.value ().event_id == "player-alice-kill-3",
+                    "replayed kill event id mismatch");
+            auto after_replay = api_a.request (get_quest_progress_req_t{"player-alice"})
+                                  .packet_name (get_quest_progress_req_t::packet_name)
+                                  .async<get_quest_progress_res_t> ()
+                                  .result ();
+            ensure (after_replay
+                      && has_progress (after_replay.value ().active_quests,
+                                       quest_ids_t::first_hunt, 3),
+                    "replayed gameplay event changed the quest progress");
+
+            /* reconnect(§14): 다른 노드로 다시 접속하면 notify가 그 노드로 따라온다. session
+             * binding이 owner spot의 notify 경로를 정하기 때문이다. */
+            auto alice_b_core = connect (api_b_stream_endpoint);
+            auto alice_b = zlink::stream_e2e_client::use (alice_b_core);
+            auto alice_rejoined = alice_b.request (join_session_req_t{"player-alice"})
+                                    .packet_name (join_session_req_t::packet_name)
+                                    .async<join_session_res_t> ()
+                                    .result ();
+            ensure (static_cast<bool> (alice_rejoined),
+                    "player-alice rejoin on the second node failed");
+            auto ruins_completed = alice_b.wait_for<quest_completed_notify_t> ()
+                                     .where ([] (const quest_completed_notify_t &notify) {
+                                         return notify.player_id == "player-alice"
+                                                && notify.progress.quest_id
+                                                     == quest_ids_t::visit_ruins;
+                                     })
+                                     .timeout (std::chrono::seconds (12))
+                                     .to_future ("ruins completion wait after reconnect failed");
+            auto ruins = alice_b.request (enter_area_req_t{"player-alice", "ruins", "enter-ruins"})
+                           .packet_name (enter_area_req_t::packet_name)
+                           .async<enter_area_res_t> ()
+                           .result ();
+            ensure (ruins && ruins.value ().event_id == "player-alice-enter-ruins",
+                    "ruins event id mismatch");
+            ensure (ruins_completed.get ().progress.status == quest_status_t::reward_granted,
+                    "reconnected player did not receive the notify on the new node");
 
             assert_server (api_a_http_url);
             assert_server (api_b_http_url);
@@ -235,6 +281,26 @@ class gamequest_client_scenario_t
                            .body (server_assertion_req_t{})
                            .fetch<server_assertion_res_t> ();
         ensure (assertion.passed, "server assertion failed");
+    }
+
+    template <typename TClient>
+    static bool wait_for_progress (TClient &client,
+                                   const std::string &player_id,
+                                   const std::string &quest_id,
+                                   int expected_count)
+    {
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (12);
+        while (std::chrono::steady_clock::now () < deadline) {
+            auto current = client.request (get_quest_progress_req_t{player_id})
+                             .packet_name (get_quest_progress_req_t::packet_name)
+                             .template async<get_quest_progress_res_t> ()
+                             .result ();
+            if (current && has_progress (current.value ().active_quests, quest_id, expected_count)) {
+                return true;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+        return false;
     }
 
     static void ensure (bool condition, const char *message)

@@ -507,3 +507,27 @@ sourcing도, location-store binding도, 자동 연결도 **없다.** 있는 것�
 | **SMP-JV-22** (결함) | [샘플 규약](../../common/sample/README.ko.md): **다른 언어 구현을 복사 기준으로 삼지 않는다** | `sample-porting-inventory.ko.md:3` — **"기준: dotnet samples/GameQuest"**. 그리고 `:19` — **"남은 gap 또는 partial 항목이 없다"**. 위 11개 버그가 전부 그 "완료" 행 아래에 있다 |
 
 **ZoneWorld는 Java/Kotlin 구현이 아직 없다** — 계획된 순서(`dotnet → java → kotlin → node → cpp`)상 정상이며 갭이 아니다.
+
+## 라운드 5 — TicTacToe · SupportChat 심층
+
+**Java/Kotlin은 SupportChat에서 C++보다 훨씬 건강하다** — 날조된 게이트도, seq-vs-wallclock idle
+timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에서 새 버그가 쏟아졌다.**
+
+### 진짜 버그
+
+| ID | 계약 | 구현이 하는 일 |
+|----|------|----------------|
+| **SMP-JV-23** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): room owner는 **deterministic round-robin**으로 고른다 — 첫 room은 `play-a`, 다음은 `play-b` | `CreateGameHttpHandler.java:43-45` — `return Math.min(0, playNodeCount - 1);` **항상 `0`이다.** `floorMod(counter, n)`을 잘못 쓴 것이고 카운터 자체가 없다. Kotlin도 `0.coerceAtMost(n-1)`로 같다. ⇒ **`play-b`가 방 owner가 되는 일이 한 번도 없다.** 이 샘플의 존재 이유(API 2개 × Play 2개 행렬)의 **절반이 검증되지 않는다** |
+| **SMP-JV-24** (**버그**) | [tictactoe §16](../../common/sample/tictactoe/README.ko.md): 조건을 만족하지 못하면 **join을 거부하거나 오류 response를 반환해야 한다** | `PlayActorJoinGameHandler.java:26-30` — `joined.reply()`를 **분기 없이** 부르고, `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다. ⇒ 거절된 join이면 actor의 게임 소속은 **이미 커밋됐고**, `Rejected(null).reply()`가 **NPE**가 되거나 payload가 있으면 클라이언트가 **일어나지도 않은 join에 성공 응답**을 받는다. Entry Spot에 앉은 채로 `PlaceMarkReq`가 handler 없는 곳으로 dispatch된다. **[갭 인덱스 §15.5]가 예측한 바로 그 실수다.** SupportChat handler 2곳은 `instanceof Accepted`로 제대로 분기한다 |
+| **SMP-JV-25** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md) | SupportChat Java가 `connectRouter(...)`를 **두 곳에서** 쓴다(`support/Program.java:82-84`, `session/Program.java:64-66`). **Kotlin은 안 쓴다 — Kotlin이 맞다.** ⇒ 자동 연결이 회귀해도 Java SupportChat은 **초록으로 남는다.** 절대 규칙이 막으려던 바로 그 실패다 |
+| **SMP-JV-26** (**버그**) | [tictactoe §4](../../common/sample/tictactoe/README.ko.md): payload codec은 **JSON**이다. **MessagePack이나 Protobuf로 바꾸지 않는다** | Java·Kotlin 모두 `ZLinkMessagePackCodec`을 등록한다. ⇒ **JSON 경로의 정본 예제가 JSON을 안 쓴다** |
+| **SMP-JV-27** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): leave는 **게임 종료 후** 단계다 | `TicTacToe Game.java:258-264` — `LeaveGameReq`에 **상태·소속 가드가 `roomId` 일치 하나뿐**이다. 게다가 `onLeaveActor`는 **push 목록만** 지우고 **도메인의 `players` 슬롯은 안 지운다.** ⇒ 게임 중에 guest가 나가면 actor는 파괴되는데 match는 **여전히 두 명이라 믿는다.** 다음 수 뒤 `nextTurn`이 **존재하지 않는 actor**를 가리키고, 방은 15초 turn timeout까지 **멈춘다.** 나간 쪽은 오류도 못 받고, 남은 쪽은 **알림도 못 받는다** |
+| **SMP-KT-07** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): `OwnerPlayEndpoint`가 **실제 room을 만든 Play endpoint와 같아야** 한다 | **Kotlin만** — `TicTacToeGameCreator.kt:15-21`이 **모든 play endpoint에 대해 round-robin**을 도는데, 그게 **이미 `CreateGameReq`를 받은 Play 서버 위에서** 돈다. ⇒ play-a에서 만든 2번째 방이 **play-b를 owner라고 광고한다.** SMP-JV-23이 owner를 play-a에 고정해 놔서 **지금은 가려져 있다** |
+| **SMP-JV-28** (**버그**) | [tictactoe §6](../../common/sample/tictactoe/README.ko.md): client는 API 응답의 `PlayNodes`로 매핑을 확인하므로 **샘플 설정의 내부 naming convention을 알 필요가 없다** | `TicTacToeGameCreator.java:28-32` — rid를 **`"play-node-" + (index+1)`로 만들어 낸다.** 진짜 rid는 config에 있다. ⇒ config의 rid 이름만 바꿔도 **서버는 계속 `play-node-1`을 광고하고 milestone push는 진짜 rid를 실어** 클라이언트 단언이 **코드 수정 없이 깨진다.** 계약이 금지한 바로 그것이다 |
+| **SMP-JV-29** (**버그**) | [tictactoe §17](../../common/sample/tictactoe/README.ko.md): destroy 시퀀스는 **`LeaveGameReq`가 구동**한다 | **Java만** — `TicTacToe Game.java:183-221`의 **1초 tick**이 terminal 상태면 **`LeaveGameReq` 없이** 두 actor를 leave·destroy한다. ⇒ 릴리즈 게이트가 **타이머만으로 만족될 수 있어** 문서가 요구하는 client 구동 destroy가 **증명되지 않는다.** 게다가 tick이 `PlaceMarkRes(Won)`과 client의 `LeaveGameReq` 사이에 끼면 **간헐적 dispatch 오류**가 난다 |
+| **SMP-JV-30** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md): **TicTacToe만 수동 등록을 사용한다** | Java·Kotlin TicTacToe가 **`addHandlersFromPackageOf(...)`(패키지 스캔)**를 쓴다 — **SupportChat(자동 샘플)이 쓰는 것과 바이트 단위로 같은 호출**이다. ⇒ TicTacToe의 목적인 **수동 대 자동 대비가 JVM 샘플엔 존재하지 않는다** |
+| **SMP-JV-31** (미구현) | [tictactoe §10 step 12](../../common/sample/tictactoe/README.ko.md): inbound observer + `stream-inbound` marker | `grep -rn "stream-inbound"` — Java·Kotlin **둘 다 0건.** 릴리즈 게이트 12단계가 **미구현이다** |
+
+**Java의 TicTacToe runner가 특정 Play 이름에 게이트를 건다**(`play-b` 포트, `play-node-2`,
+`play-a.log`) — 계약이 *"검증 기준은 특정 Play 이름이 아니다"*라고 못 박은 것이다.
+**SMP-JV-23을 고치는 순간 그 게이트가 깨진다.**

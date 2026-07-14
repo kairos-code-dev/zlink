@@ -756,8 +756,14 @@ Java는 `sealed interface`에서 `reply()` 선언을 빼고, Node는 union 갈�
 거절 갈래가 reply 대신 **거절 사유**를 들게 한다. C++은 `rejected_t`의 멤버 이름을 바꾼다.
 
 **이 항목이 감사의 방법론을 하나 보여 준다** — 동작이 아니라 **타입의 모양을 언어 간에 대조**하면
-"아직 안 터졌지만 터질 수 있는 것"이 보인다. Java와 Node는 지금은 멀쩡하지만 **다음 handler를
-쓰는 사람이 C++과 같은 실수를 하는 것을 아무것도 막지 못한다.**
+"아직 안 터졌지만 터질 수 있는 것"이 보인다.
+
+> **예측이 적중했다.** 위 문단은 원래 "Java는 지금은 멀쩡하지만 다음 사람이 C++과 같은 실수를
+> 하는 것을 막지 못한다"였다. **이미 그 실수가 있었다.** Java TicTacToe의
+> `PlayActorJoinGameHandler`가 `joined.reply()`를 **분기 없이** 부르고, 심지어
+> `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다([gaps/java](gaps/java.ko.md) SMP-JV-24).
+> 거절된 join이면 actor의 게임 소속은 이미 커밋됐고, `Rejected(null).reply()`가 **NPE**가 된다.
+> **타입이 초대한 실수가 실제로 일어났다.**
 
 ### 15.6 판정이 필요한 항목 — 스펙끼리 충돌한다
 

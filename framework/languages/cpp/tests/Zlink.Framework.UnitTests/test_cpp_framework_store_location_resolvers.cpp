@@ -253,9 +253,11 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
 {
   public:
     bool fail_lists = false;
+    std::atomic_int status_calls{0};
 
     zlink::framework::task_t<location_runtime_status_t> get_status () override
     {
+        ++status_calls;
         return completed (location_runtime_status_t{.store_healthy = true,
                                                     .watch_enabled = false,
                                                     .polling_interval =
@@ -1777,6 +1779,30 @@ TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostFallsBackToSta
     service.stop ();
     EXPECT_EQ (0, topology_events.load ());
     EXPECT_EQ (0, summary_events.load ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHonorsIntervalsAboveOneSecond)
+{
+    zlink::framework::monitoring_builder_t monitoring;
+    monitoring.add_location_events ("location", std::chrono::milliseconds (1300));
+    auto runtime = zlink::framework::detail::monitoring_runtime_t::from (monitoring);
+    auto query = std::make_shared<fake_location_runtime_query_t> ();
+
+    zlink::framework::service_collection_t services;
+    services.add_factory<location_runtime_query_t> (
+      [query] (zlink::framework::service_provider_t &) {
+          return std::static_pointer_cast<location_runtime_query_t> (query);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    auto provider = services.build_provider ();
+
+    location_monitoring_host_service_t service (runtime.state ());
+    service.start (provider);
+    ASSERT_TRUE (wait_until ([&] { return query->status_calls.load () == 1; }));
+    std::this_thread::sleep_for (std::chrono::milliseconds (1100));
+    service.stop ();
+
+    EXPECT_EQ (1, query->status_calls.load ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostIgnoresMissingSources)

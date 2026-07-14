@@ -62,10 +62,9 @@ class location_monitoring_host_service_t final : public hosted_service_t
 
     std::chrono::milliseconds polling_interval () const
     {
-        auto interval = std::chrono::milliseconds (1000);
+        auto interval = _monitoring->location_sources.front ().interval;
         for (const auto &source : _monitoring->location_sources) {
-            if (source.interval > std::chrono::milliseconds::zero ()
-                && source.interval < interval) {
+            if (source.interval < interval) {
                 interval = source.interval;
             }
         }

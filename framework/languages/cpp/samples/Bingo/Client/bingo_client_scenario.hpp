@@ -139,6 +139,17 @@ class bingo_client_scenario_t
             ensure (client1_started.state.room_id == room_id);
             ensure (client2_match.state.room_id == room_id);
 
+            bool player_stop_observing_rejected = false;
+            try {
+                (void) co_await client1.request (stop_observing_bingo_events_req_t{room_id})
+                  .async<stop_observing_bingo_events_res_t> ();
+            }
+            catch (const std::exception &) {
+                player_stop_observing_rejected = true;
+            }
+            ensure (player_stop_observing_rejected,
+                    "a game-room player must not stop an observer subscription");
+
             trace ("client2 submit card");
             const auto client2_card_request =
               submit_bingo_card_req_t{room_id, client2_card_numbers};

@@ -33,8 +33,7 @@ public final class EvidenceStore {
             actorId == null ? "" : actorId,
             kind,
             value == null ? "" : value,
-            nodeRid,
-            System.nanoTime());
+            nodeRid);
         entries.add(evidence);
         try {
             Files.writeString(

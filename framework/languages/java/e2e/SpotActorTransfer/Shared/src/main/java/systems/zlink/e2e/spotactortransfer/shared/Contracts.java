@@ -110,11 +110,9 @@ public final class Contracts {
         String actorId,
         String kind,
         String value,
-        String nodeRid,
-        long observedAtNanos) {
+        String nodeRid) {
         public String text() {
-            return String.join("|", scenario, actorId, kind, value, nodeRid,
-                Long.toString(observedAtNanos));
+            return String.join("|", scenario, actorId, kind, value, nodeRid);
         }
     }
 

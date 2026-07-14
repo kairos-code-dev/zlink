@@ -90,7 +90,7 @@ public final class Program {
         Contracts.ProbeRes probe = probe(nodeA, actorId, "ST-A1", "after-joined");
         require("actor-a".equals(probe.nodeRid()), "ST-A1 packet did not stay on actor-a");
         require(spotRid.equals(probe.spotRid()), "ST-A1 packet did not reach target spot");
-        assertOrder(actorId, List.of("admission", "leave", "joined", "success_reply"));
+        assertNodeOrder(actorId, "actor-a", List.of("admission", "leave", "joined", "success_reply"));
     }
 
     private void localReject() throws Exception {
@@ -136,8 +136,10 @@ public final class Program {
         Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B1", "after-transfer");
         require("actor-b".equals(probe.nodeRid()), "ST-B1 target owner is not actor-b");
         require(probe.stateVersion() == 21, "ST-B1 state was not restored");
-        assertOrder(actorId, List.of(
-            "admission", "transfer_out", "leave", "transfer_in", "joined", "commit_ack", "success_reply"));
+        assertNodeOrder(actorId, "actor-a", List.of(
+            "transfer_out", "leave", "commit_ack", "success_reply"));
+        assertNodeOrder(actorId, "actor-b", List.of(
+            "admission", "transfer_in", "joined"));
     }
 
     private void inFlightHandoffOrder() throws Exception {
@@ -341,9 +343,10 @@ public final class Program {
             "ST-B4 custom empty transfer failed");
         Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B4", "after-empty-state");
         require(probe.stateVersion() == 41, "ST-B4 domain state was not loaded");
-        assertOrder(actorId, List.of(
-            "admission", "transfer_out_empty", "leave", "transfer_in_empty",
-            "joined", "domain_state_loaded", "commit_ack", "success_reply"));
+        assertNodeOrder(actorId, "actor-a", List.of(
+            "transfer_out_empty", "leave", "commit_ack", "success_reply"));
+        assertNodeOrder(actorId, "actor-b", List.of(
+            "admission", "transfer_in_empty", "joined", "domain_state_loaded"));
     }
 
     private void sourceDownBeforeCommit() throws Exception {
@@ -641,10 +644,9 @@ public final class Program {
         throw new AssertionError("timed out waiting for " + kind + " actor=" + actorId);
     }
 
-    private void assertOrder(String actorId, List<String> kinds) throws Exception {
+    private void assertNodeOrder(String actorId, String nodeRid, List<String> kinds) throws Exception {
         List<String> observed = evidence().stream()
-            .filter(entry -> actorId.equals(entry.actorId()))
-            .sorted(java.util.Comparator.comparingLong(Contracts.Evidence::observedAtNanos))
+            .filter(entry -> actorId.equals(entry.actorId()) && nodeRid.equals(entry.nodeRid()))
             .map(Contracts.Evidence::kind)
             .toList();
         int cursor = -1;
@@ -661,7 +663,6 @@ public final class Program {
         List<String> markers) throws Exception {
         List<String> observed = evidence().stream()
             .filter(entry -> actorId.equals(entry.actorId()) && kind.equals(entry.kind()))
-            .sorted(java.util.Comparator.comparingLong(Contracts.Evidence::observedAtNanos))
             .map(Contracts.Evidence::value)
             .toList();
         require(observed.equals(markers),

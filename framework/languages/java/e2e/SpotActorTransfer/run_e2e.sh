@@ -6,6 +6,10 @@ JAVA_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
 source "${JAVA_DIR}/e2e-redis-common.sh"
 
 SCENARIO="${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+if rg -q "observedAtNanos" "${ROOT_DIR}/Client" "${ROOT_DIR}/Server" "${ROOT_DIR}/Shared"; then
+  echo "SpotActorTransfer evidence must not compare process-local nanoTime values" >&2
+  exit 1
+fi
 if [[ "${SCENARIO}" == "all" ]]; then
   for scenario in ST-A1 ST-A2 ST-A3 ST-B1 ST-B2 ST-B3 ST-B4 ST-C1 ST-C2 ST-C3 ST-D1 ST-D2 ST-E1 ST-E2 ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6; do
     passed=0

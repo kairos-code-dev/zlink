@@ -24,4 +24,20 @@ public sealed partial class RegressionTests
             Assert.Contains("LOCAL_READINESS_POLL_SECONDS=0.1", text, StringComparison.Ordinal);
         }
     }
+
+    [Fact]
+    public void LocationMessaging_Role_Requests_Do_Not_Retry_Route_Convergence()
+    {
+        var endpoints = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(),
+            "LocationMessaging",
+            "Server",
+            "Provider",
+            "Endpoints",
+            "ProviderEndpoints.cs"));
+
+        Assert.DoesNotContain("WithRetryAsync", endpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsRetriableRequestStartupFailure", endpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay", endpoints, StringComparison.Ordinal);
+    }
 }

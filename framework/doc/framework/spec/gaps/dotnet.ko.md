@@ -421,7 +421,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — 11개 runner가 local readiness 기본값 3초와 0.1초 poll을 사용한다. regression 33건과 전 runner 기동을 확인했다.
 - [ ] **E2E-DN-05** (결함) — `RuntimeMonitoring`에 **시나리오 실행 전용 `Trigger` 역할**이 있고 **다른 서버의 로그 파일을 읽어** 검증한다
 - [ ] **E2E-DN-06** (결함) — `RM-C9`(backpressure)가 **이름뿐**이고 `RM-A4`(P0)가 주장하는 것을 검증하지 않는다
-- [ ] **E2E-DN-07** (결함) — 역할 서버가 **30초 재시도 루프로 route 수렴 실패를 가린다**
+- [x] **E2E-DN-07** (결함) — 역할 서버가 **30초 재시도 루프로 route 수렴 실패를 가린다**
+  — request/send/route endpoint가 첫 framework 호출 결과를 그대로 반환한다. RM-A1/A2/C1/C2와 regression 34건이 통과했다.
 - [ ] **E2E-DN-08** (결함) — 클라이언트가 bounded wait endpoint 대신 **GET 폴링 루프**를 돈다(24개 파일)
 - [ ] **E2E-DN-09** (결함) — 시나리오 파일 명명·커버리지 장부
 

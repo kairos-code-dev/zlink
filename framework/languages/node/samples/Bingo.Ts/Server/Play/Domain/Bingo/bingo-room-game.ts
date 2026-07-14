@@ -23,6 +23,8 @@ type BingoPlayerSeat = {
   seat: number;
   card: BingoCard | null;
   isHost: boolean;
+  wins: number;
+  losses: number;
 };
 
 type BingoRoomSnapshot = {
@@ -41,6 +43,8 @@ type BingoRoomSnapshot = {
     card: number[];
     marks: boolean[];
     completedLines: number;
+    wins: number;
+    losses: number;
   }[];
   winners: string[];
 };
@@ -75,7 +79,9 @@ class BingoRoomGame {
       actor,
       seat: this.players.length,
       card: null,
-      isHost: this.players.length === 0
+      isHost: this.players.length === 0,
+      wins: 0,
+      losses: 0
     };
     this.players.push(player);
     let started = false;
@@ -97,6 +103,12 @@ class BingoRoomGame {
   canDraw(): boolean {
     return this.status === BingoRoomStatus.Running
       && this.game.canDraw(this.players.map((player) => ({ actorId: player.actor.actorId, card: player.card })), this.settings.requiredPlayers);
+  }
+
+  setPlayerRecord(actorId: string, wins: number, losses: number): void {
+    const player = this.requirePlayer(actorId);
+    player.wins = wins;
+    player.losses = losses;
   }
 
   drawNext(): { number: number; drawSeq: number; finished: boolean } | null {
@@ -126,7 +138,9 @@ class BingoRoomGame {
         isHost: player.isHost,
         card: player.card === null ? [] : [...player.card.numbers],
         marks: player.card === null ? [] : [...player.card.marks],
-        completedLines: player.card === null ? 0 : player.card.completedLines()
+        completedLines: player.card === null ? 0 : player.card.completedLines(),
+        wins: player.wins,
+        losses: player.losses
       })),
       winners: [...this.game.winners]
     };

@@ -85,6 +85,29 @@ message AllocateBingoRoomRes {
   string room_owner_node_rid = 2;
 }
 
+message GetPlayerRecordReq {
+  string actor_id = 1;
+}
+
+message GetPlayerRecordRes {
+  string actor_id = 1;
+  int32 wins = 2;
+  int32 losses = 3;
+}
+
+message ReportBingoResultReq {
+  string room_id = 1;
+  string actor_id = 2;
+  bool won = 3;
+  int32 final_draw_seq = 4;
+}
+
+message ReportBingoResultRes {
+  string actor_id = 1;
+  int32 wins = 2;
+  int32 losses = 3;
+}
+
 message BingoRoomSettingsPayload {
   string room_name = 1;
   string mode = 2;
@@ -195,4 +218,6 @@ message BingoPlayerState {
   repeated int32 card = 5;
   repeated bool marks = 6;
   int32 completed_lines = 7;
+  int32 wins = 8;
+  int32 losses = 9;
 }

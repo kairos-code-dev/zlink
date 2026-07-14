@@ -6,6 +6,7 @@ import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configur
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
+import { BingoPlayerRecordStore } from './Handlers/player-record-handlers';
 function createBingoApiModule() {
   class BingoApiModule {}
   const configuration = createBingoConfigurationModule([
@@ -41,7 +42,8 @@ function createBingoApiModule() {
             .build();
         }
       })
-    ]
+    ],
+    providers: [BingoPlayerRecordStore]
   })(BingoApiModule);
 
   return BingoApiModule;

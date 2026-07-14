@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import {
   BingoRewardItems
 } from '../../../../../../Shared/Contracts/messages';
@@ -9,6 +10,8 @@ import {
   BingoRewardAcquiredEvent,
   BingoRewardAnnouncedNotify,
   BingoRoomJoinRes,
+  GetPlayerRecordReq,
+  ReportBingoResultReq,
   PlayerJoinedNotify,
   SubmitBingoCardRes
 } from '../../../../../../Shared/Contracts/bingo-messages.generated';
@@ -19,6 +22,7 @@ import { SampleNames } from '../../../../../Configuration/sample-names';
 import { BingoRoomTimerHandler } from './Handlers/bingo-room-timer-handler';
 import type {
   ZLinkMessage,
+  ZLinkChannelClient,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotContext,
@@ -33,6 +37,8 @@ import type {
 import type { BingoRoomSettings as BingoRoomRuntimeSettings } from '../../../../Domain/Bingo/bingo-room-models';
 import type {
   BingoRoomJoinReq,
+  GetPlayerRecordRes,
+  ReportBingoResultRes,
   SubmitBingoCardReq,
   StopObservingBingoEventsReq
 } from '../../../../../../Shared/Contracts/messages';
@@ -59,7 +65,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   private drawTimer?: ZLinkTimer;
   private cleanupStarted = false;
 
-  constructor() {
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient) {
     this.roomId = 'bingo-room';
     this.settings = createRoomSettings(0);
     this.game = new BingoRoomGame(this.roomId, this.settings);
@@ -148,6 +154,11 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
       throw new Error(`Accepted Bingo actor '${actor.actorId}' has no pending room membership.`);
     }
     player.actor = actor;
+    const record = await this.channels
+      .requestToChannel(SampleNames.apiChannel, new GetPlayerRecordReq({ actorId: actor.actorId }))
+      .submit<GetPlayerRecordRes>();
+    this.game.setPlayerRecord(actor.actorId, record.wins, record.losses);
+    console.error(`bingo-record fetched actor=${actor.actorId} wins=${record.wins} losses=${record.losses}`);
     const state = this.snapshot();
     if (joined.joined) {
       await this.notifyPlayerJoined(actor, joined.seat, joined.isHost, state);
@@ -158,7 +169,20 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   }
 
   async onLeaveActor(actor: PlayerActorType): Promise<void> {
-    this.observerActors.delete(actor.actorId);
+    if (this.observerActors.delete(actor.actorId)) {
+      console.error(`bingo-lifecycle room-leave actor=${actor.actorId} spot=${this.context.spotRid}`);
+      return;
+    }
+    const state = this.snapshot();
+    const record = await this.channels
+      .requestToChannel(SampleNames.apiChannel, new ReportBingoResultReq({
+        roomId: this.roomId,
+        actorId: actor.actorId,
+        won: state.winners.includes(actor.actorId),
+        finalDrawSeq: state.drawSeq
+      }))
+      .submit<ReportBingoResultRes>();
+    console.error(`bingo-record reported actor=${actor.actorId} wins=${record.wins} losses=${record.losses}`);
     console.error(`bingo-lifecycle room-leave actor=${actor.actorId} spot=${this.context.spotRid}`);
   }
 

@@ -114,6 +114,8 @@ export class BingoPlayerState {
   card!: number[];
   marks!: boolean[];
   completedLines!: number;
+  wins!: number;
+  losses!: number;
 
   constructor(values: MessageValues<BingoPlayerState>) {
     Object.assign(this, values);
@@ -215,6 +217,24 @@ export class EnsurePlayerActorRes {
   }
 }
 
+export class GetPlayerRecordReq {
+  actorId!: string;
+
+  constructor(values: MessageValues<GetPlayerRecordReq>) {
+    Object.assign(this, values);
+  }
+}
+
+export class GetPlayerRecordRes {
+  actorId!: string;
+  wins!: number;
+  losses!: number;
+
+  constructor(values: MessageValues<GetPlayerRecordRes>) {
+    Object.assign(this, values);
+  }
+}
+
 export class MatchBingoApiReq {
   actorId!: string;
   displayName!: string;
@@ -293,6 +313,27 @@ export class PlayerJoinedNotify {
   }
 }
 
+export class ReportBingoResultReq {
+  roomId!: string;
+  actorId!: string;
+  won!: boolean;
+  finalDrawSeq!: number;
+
+  constructor(values: MessageValues<ReportBingoResultReq>) {
+    Object.assign(this, values);
+  }
+}
+
+export class ReportBingoResultRes {
+  actorId!: string;
+  wins!: number;
+  losses!: number;
+
+  constructor(values: MessageValues<ReportBingoResultRes>) {
+    Object.assign(this, values);
+  }
+}
+
 export class StopObservingBingoEventsReq {
   roomId!: string;
 
@@ -348,6 +389,8 @@ export const BingoGeneratedMessageConstructors = {
   BingoRoomState,
   EnsurePlayerActorReq,
   EnsurePlayerActorRes,
+  GetPlayerRecordReq,
+  GetPlayerRecordRes,
   MatchBingoApiReq,
   MatchBingoApiRes,
   MatchBingoReq,
@@ -356,6 +399,8 @@ export const BingoGeneratedMessageConstructors = {
   ObserveBingoEventsRes,
   PlayerActorTransferState,
   PlayerJoinedNotify,
+  ReportBingoResultReq,
+  ReportBingoResultRes,
   StopObservingBingoEventsReq,
   StopObservingBingoEventsRes,
   SubmitBingoCardReq,
@@ -614,6 +659,20 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
     {
       "number": 7,
       "name": "completedLines",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 8,
+      "name": "wins",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 9,
+      "name": "losses",
       "kind": "int32",
       "repeated": false,
       "optional": false
@@ -908,6 +967,38 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "optional": false
     }
   ],
+  "GetPlayerRecordReq": [
+    {
+      "number": 1,
+      "name": "actorId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    }
+  ],
+  "GetPlayerRecordRes": [
+    {
+      "number": 1,
+      "name": "actorId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 2,
+      "name": "wins",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 3,
+      "name": "losses",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    }
+  ],
   "MatchBingoApiReq": [
     {
       "number": 1,
@@ -1074,6 +1165,59 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "number": 6,
       "name": "state",
       "kind": "message:BingoRoomState",
+      "repeated": false,
+      "optional": false
+    }
+  ],
+  "ReportBingoResultReq": [
+    {
+      "number": 1,
+      "name": "roomId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 2,
+      "name": "actorId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 3,
+      "name": "won",
+      "kind": "bool",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 4,
+      "name": "finalDrawSeq",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    }
+  ],
+  "ReportBingoResultRes": [
+    {
+      "number": 1,
+      "name": "actorId",
+      "kind": "string",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 2,
+      "name": "wins",
+      "kind": "int32",
+      "repeated": false,
+      "optional": false
+    },
+    {
+      "number": 3,
+      "name": "losses",
+      "kind": "int32",
       "repeated": false,
       "optional": false
     }

@@ -144,6 +144,10 @@ async function runBingo(ctx) {
     },
     proxies: []
   });
+  await ctx.waitLog('play-a', 'bingo-record fetched actor=player-1 wins=0 losses=0');
+  await ctx.waitLog('play-a', 'bingo-record fetched actor=player-2 wins=0 losses=0');
+  await ctx.waitLog('play-a', 'bingo-record reported actor=player-1 wins=1 losses=0');
+  await ctx.waitLog('play-a', 'bingo-record reported actor=player-2 wins=0 losses=1');
 }
 
 async function bingoPlayConfig(ctx, suffix, redisKeyPrefix) {

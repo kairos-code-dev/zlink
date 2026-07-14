@@ -36,6 +36,8 @@ type BingoRoomState = {
     actorId: string;
     card: number[];
     marks: boolean[];
+    wins: number;
+    losses: number;
   }>;
 };
 
@@ -133,6 +135,8 @@ class BingoClientScenario {
     ensure(() => stateOf(client1Started.payload).roomId === client1MatchRes.roomId);
     ensure(() => stateOf(client2Started.payload).status === BingoRoomStatus.Running);
     ensure(() => stateOf(client2Started.payload).roomId === client1MatchRes.roomId);
+    ensure(() => stateOf(client1Started.payload).players.every((player) => player.wins === 0));
+    ensure(() => stateOf(client1Started.payload).players.every((player) => player.losses === 0));
 
     // 7. Both clients submit deterministic cards and responses show both 3 x 3 cards.
     const client2Card = await client2

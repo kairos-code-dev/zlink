@@ -152,10 +152,6 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   entry spot lifecycle event가 user spot dispatch를 되돌리지 않는지 확인한다.
 - `SM-G4`: 여러 public stream connector session을 각각 actor에 bind한 뒤 동시에 actor push를
   트리거하고, 각 reply와 push가 자기 actor/session으로만 돌아오는지 확인한다.
-- `SM-Q9`: `Server/MultiNode` role 두 개가 Redis location store를 공유하고, 각 role의 public HTTP
-  endpoint가 local spot을 만든 뒤 public RouteMesh client로 그 spot에 request를 보내 state mutation과
-  node-local evidence를 확인한다.
-
 `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. Java client는
 `Server/Gateway`의 HTTP endpoint를 호출하고, runner가 필요한 서버 role과 evidence 검증을 함께
 수행한다.

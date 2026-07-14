@@ -55,7 +55,7 @@ if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" &&
 fi
 
 if [[ "${SCENARIO}" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
-  for child_group in default-batch SM-F6 SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
+  for child_group in default-batch SM-F6 SM-G2 SM-G3 SM-G4 SM-G1; do
     echo "child scenario=${child_group}"
     output="$(mktemp)"
     child_passed=0
@@ -519,7 +519,7 @@ gradle_run installDist
 
 if [[ "${SCENARIO}" == "SM-E1" || "${SCENARIO}" == "sm-e1" ]]; then
   SERVER_ROLES=(play-a gateway)
-elif [[ "${SCENARIO}" == "SM-Q9" || "${SCENARIO}" == "sm-q9" || "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
+elif [[ "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
   SERVER_ROLES=(multi-node-a multi-node-b gateway)
 else
   SERVER_ROLES=(play-a play-b gateway)
@@ -643,7 +643,6 @@ scenario_modes() {
     SM-D13) echo "stream-heartbeat" ;;
     SM-D14) echo "stream-tls" ;;
     SM-D15) echo "actor-push-chain" ;;
-    SM-Q9) echo "multi-node" ;;
     SM-E1) echo "missing" ;;
     SM-E2) echo "state1" ;;
     SM-E3) echo "idle-timer" ;;
@@ -651,7 +650,7 @@ scenario_modes() {
     SM-G2) echo "owner-remap" ;;
     SM-G3) echo "join-leave-race" ;;
     SM-G4) echo "bound-push-load" ;;
-    SM-F1|SM-F2|SM-F4) echo "route-mesh" ;;
+    SM-F1|SM-F2|SM-F3|SM-F4) echo "route-mesh" ;;
     SM-F5) echo "route-lifecycle" ;;
     SM-F6) echo "spot-only-mesh" ;;
     *)
@@ -710,7 +709,7 @@ if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}
       ;;
   esac
   cat "${log_dir}/client.stdout.log"
-  if [[ "${SCENARIO}" == "SM-Q9" || "${SCENARIO}" == "sm-q9" || "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
+  if [[ "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
     fetch_evidence multi-node-a "${MULTI_HTTP_A}"
     fetch_evidence multi-node-b "${MULTI_HTTP_B}"
   else

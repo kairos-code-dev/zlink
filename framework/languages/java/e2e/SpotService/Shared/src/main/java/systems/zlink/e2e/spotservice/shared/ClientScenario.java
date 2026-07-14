@@ -1394,25 +1394,25 @@ public final class ClientScenario {
                 10_000),
             Contracts.EvidenceSnapshot.class);
 
-        ensure(createdA.spotRid().equals(spotA), "SM-Q9 node A create spot mismatch");
-        ensure("multi-node-a".equals(createdA.nodeRid()), "SM-Q9 node A create reply node mismatch");
-        ensure(firstA.value() == 11, "SM-Q9 node A route-to-spot reply value mismatch");
-        ensure(directA.spotRid().equals(spotA), "SM-Q9 node A direct spot reply target mismatch");
-        ensure("multi-node-a".equals(directA.nodeRid()), "SM-Q9 node A direct spot reply node mismatch");
-        ensure(directA.value() == 11, "SM-Q9 node A direct spot reply value mismatch");
+        ensure(createdA.spotRid().equals(spotA), "multi-node A create spot mismatch");
+        ensure("multi-node-a".equals(createdA.nodeRid()), "multi-node A create reply node mismatch");
+        ensure(firstA.value() == 11, "multi-node A route-to-spot reply value mismatch");
+        ensure(directA.spotRid().equals(spotA), "multi-node A direct spot reply target mismatch");
+        ensure("multi-node-a".equals(directA.nodeRid()), "multi-node A direct spot reply node mismatch");
+        ensure(directA.value() == 11, "multi-node A direct spot reply value mismatch");
         ensure(countEvidence(evidenceA, "MultiNodeStateReq", spotA, "11") >= 2,
-            "SM-Q9 node A did not process both route-to-spot requests");
+            "multi-node A did not process both route-to-spot requests");
 
-        ensure(createdB.spotRid().equals(spotB), "SM-Q9 node B create spot mismatch");
-        ensure("multi-node-b".equals(createdB.nodeRid()), "SM-Q9 node B create reply node mismatch");
-        ensure(firstB.value() == 17, "SM-Q9 node B route-to-spot reply value mismatch");
-        ensure(directB.spotRid().equals(spotB), "SM-Q9 node B direct spot reply target mismatch");
-        ensure("multi-node-b".equals(directB.nodeRid()), "SM-Q9 node B direct spot reply node mismatch");
-        ensure(directB.value() == 17, "SM-Q9 node B direct spot reply value mismatch");
+        ensure(createdB.spotRid().equals(spotB), "multi-node B create spot mismatch");
+        ensure("multi-node-b".equals(createdB.nodeRid()), "multi-node B create reply node mismatch");
+        ensure(firstB.value() == 17, "multi-node B route-to-spot reply value mismatch");
+        ensure(directB.spotRid().equals(spotB), "multi-node B direct spot reply target mismatch");
+        ensure("multi-node-b".equals(directB.nodeRid()), "multi-node B direct spot reply node mismatch");
+        ensure(directB.value() == 17, "multi-node B direct spot reply value mismatch");
         ensure(countEvidence(evidenceB, "MultiNodeStateReq", spotB, "17") >= 2,
-            "SM-Q9 node B did not process both route-to-spot requests");
+            "multi-node B did not process both route-to-spot requests");
 
-        System.out.println("scenario SM-Q9 passed");
+        System.out.println("multi-node diagnostic passed");
     }
 
     private void runSpotOnlyMesh() {

@@ -332,7 +332,8 @@ TEST (CppFrameworkSampleParity, SampleRoomJoinHandlersRejectRejectedVariants)
            "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
            "match_bingo_actor_handler.hpp",
            "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
-           "play_actor_join_game_handler.hpp"}) {
+           "play_actor_join_game_handler.hpp",
+           "samples/SupportChat/Server/Support/main.cpp"}) {
         const auto path = cpp_language_root () / relative;
         const auto handler = read_file (path);
         EXPECT_EQ (handler.find ("std::visit"), std::string::npos)

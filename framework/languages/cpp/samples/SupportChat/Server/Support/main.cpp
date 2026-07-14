@@ -561,9 +561,13 @@ class support_entry_spot_t : public entry_spot_t
         auto joined =
           co_await actor.context.join_spot (spot_rid, join_conversation_req_t {})
             .async<join_conversation_res_t> ();
-        const auto join_state =
-          std::visit ([] (const auto &value) { return value.reply.state; }, joined);
-        co_return open_conversation_res_t{conversation_id, join_state};
+        const auto *accepted =
+          std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
+        if (accepted == nullptr) {
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "SupportChat conversation join was rejected");
+        }
+        co_return open_conversation_res_t{conversation_id, accepted->reply.state};
     }
 
   private:
@@ -706,7 +710,11 @@ class ensure_agent_conversation_handler_t
                                                               role_t::agent,
                                                               request.roster_actor_id})
             .async ();
-        (void) entry_joined;
+        if (!std::holds_alternative<framework::actor_join_accepted_t<framework::message_t>> (
+              entry_joined)) {
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "SupportChat entry join was rejected");
+        }
         auto joined =
           co_await actor.value ()
             .context ()
@@ -715,12 +723,12 @@ class ensure_agent_conversation_handler_t
             .async<join_conversation_res_t> ();
         const auto *joined_accepted =
           std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
-        const auto join_state =
-          std::visit ([] (const auto &value) { return value.reply.state; }, joined);
+        if (joined_accepted == nullptr) {
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "SupportChat agent conversation join was rejected");
+        }
         co_return ensure_agent_conversation_res_t{
-          snapshot_of (joined_accepted != nullptr ? joined_accepted->actor
-                                                  : actor.value ().ref ()),
-          join_state};
+          snapshot_of (joined_accepted->actor), joined_accepted->reply.state};
     }
 
   private:

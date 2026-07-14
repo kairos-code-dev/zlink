@@ -93,6 +93,29 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
   assert.equal(events[2][1].actorId, 'missing');
 });
 
+test('location runtime applies listPageSize when callers omit a page size', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const pages = [];
+  for (const methodName of ['listSpots', 'listActors', 'listRoutes']) {
+    const original = store[methodName].bind(store);
+    store[methodName] = (filter, page, signal) => {
+      pages.push({ methodName, page });
+      return original(filter, page, signal);
+    };
+  }
+  const runtime = runtimeFor(store, { locationOptions: { listPageSize: 37 } });
+
+  await runtime.listSpotLocations({});
+  await runtime.listActorLocations({}, { continuationToken: 'next' });
+  await runtime.listRouteLocations({}, { pageSize: 5 });
+
+  assert.deepEqual(pages, [
+    { methodName: 'listSpots', page: { pageSize: 37 } },
+    { methodName: 'listActors', page: { continuationToken: 'next', pageSize: 37 } },
+    { methodName: 'listRoutes', page: { pageSize: 5 } }
+  ]);
+});
+
 test('location resolver owns actor placement and rotates eligible peers without RID sorting', async () => {
   const resolver = resolversFor(new internal.ZLinkInMemoryLocationStore());
   resolver.listLivePeers = async () => [
@@ -457,6 +480,7 @@ function runtimeFor(store, options = {}) {
     },
     ownerId: options.ownerId,
     events: options.events,
+    options: options.locationOptions,
     now: () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)),
     setTimer(callback, delayMs) {
       timers.push({ callback, delayMs });

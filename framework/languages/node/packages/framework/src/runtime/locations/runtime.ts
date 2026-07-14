@@ -353,7 +353,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkSpotLocation>> {
-    const rows = await this.stores.spotStore.listSpots(filter, page, signal);
+    const rows = await this.stores.spotStore.listSpots(filter, this.pageRequest(page), signal);
     return {
       items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
       continuationToken: rows.continuationToken
@@ -365,7 +365,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkActorLocation>> {
-    const rows = await this.stores.actorStore.listActors(filter, page, signal);
+    const rows = await this.stores.actorStore.listActors(filter, this.pageRequest(page), signal);
     return {
       items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
       continuationToken: rows.continuationToken
@@ -377,7 +377,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkRouteLocation>> {
-    const rows = await this.stores.routeStore.listRoutes(filter, page, signal);
+    const rows = await this.stores.routeStore.listRoutes(filter, this.pageRequest(page), signal);
     return {
       items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
       continuationToken: rows.continuationToken
@@ -463,6 +463,12 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       ? entries
       : entries.filter((entry) => entry.state === filter.state);
     return { items: filtered, continuationToken: spots.continuationToken ?? actors.continuationToken ?? routes.continuationToken };
+  }
+
+  private pageRequest(page: ZLinkPageRequest | undefined): ZLinkPageRequest {
+    return page?.pageSize === undefined
+      ? { ...page, pageSize: this.options.listPageSize }
+      : page;
   }
 
   async listServiceSummaries(

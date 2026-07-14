@@ -16,6 +16,9 @@ Node framework 의 서버와 client network API 는 `Promise` 기반 비동기 �
 계약을 드러낸다. codec 변환, packet name 계산, 값 객체 생성처럼 network I/O 를 하지
 않는 순수 helper 는 동기 함수일 수 있다.
 
+Sample과 E2E의 설정 파일, 환경 변수 금지와 NestJS typed configuration provider 기준은
+[Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
+
 ## 1. 사용자 guide
 
 NestJS 애플리케이션 개발자가 읽고 바로 따라 쓸 수 있도록 기능과 사용법을 설명한다.

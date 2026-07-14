@@ -332,7 +332,23 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 - 여러 시나리오가 같은 server endpoint를 호출해도 된다. 단 각 scenario 파일은 자기 ID가 확인해야
   하는 reply, push, topology, evidence 조건만 직접 단언한다.
 
-### 2.5 `run_e2e.*` 실행 계약
+### 2.6 설정 전달 계약
+
+모든 언어의 E2E는
+[Sample/E2E 설정 정책](../sample-e2e-configuration-policy.ko.md)을 필수로 따른다. 개별 config
+runner는 실행별 role 설정 파일을 생성하고 실행 파일에는 설정 파일 경로만 전달한다. Endpoint,
+Redis, routing id, timeout, 로그와 evidence 경로를 환경 변수나 JVM system property로 전달하지
+않는다. Role server와 client도 전역 환경을 직접 읽지 않고 언어별 정식 설정 시스템으로 검증한
+typed 설정을 사용한다.
+
+Scenario selector, process restart와 장애 주입 명령은 E2E 실행 제어 입력이므로 설정값과 구분한다.
+이 입력은 CLI로 전달할 수 있지만 topology나 framework option을 개별 CLI option으로 우회해서
+전달하면 안 된다.
+
+현재 구현이 이 기준과 다르면 기존 환경 변수 interface를 예외로 유지하지 않는다. 해당 config의
+feature-map에 configuration migration gap을 기록하고 설정 파일과 typed binding으로 전환해야 한다.
+
+### 2.7 `run_e2e.*` 실행 계약
 
 모든 언어의 실행 스크립트는 같은 사용 의미와 같은 Redis 구동 방식을 가져야 한다.
 
@@ -412,7 +428,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   `already bound`, `errno=98`)만 제한적으로 retry할 수 있다. scenario assertion 실패, runtime semantic
   failure, native abort, store recovery 조건 미충족은 retry 대상이 아니며 원인 로그를 남기고 실패한다.
 
-### 2.6 feature-map 작성 규칙
+### 2.8 feature-map 작성 규칙
 
 언어별 e2e에는 config별 `feature-map.ko.md`를 둔다. 이 문서는 skip 목록이 아니라 구현 상태와 gap의
 근거를 남기는 표다.
@@ -425,7 +441,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   버그를 피해 시나리오를 약하게 만들지 않는다.
 - 미구현 항목이 있어도 P0이면 완료가 아니다. P1/P2는 해당 기능 지원 여부와 실행 비용을 함께 적는다.
 
-### 2.7 주석 작성 규칙
+### 2.9 주석 작성 규칙
 
 - 시나리오 파일 첫머리에는 이 파일이 어떤 사용자 흐름과 어떤 framework 동작을 검증하는지 적는다.
   독자가 파일을 열었을 때 "이 시나리오가 왜 필요한가"를 바로 알 수 있어야 한다.

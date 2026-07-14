@@ -13,6 +13,9 @@
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
 [비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
 
+Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationProperties` binding 기준은
+[Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
+
 ## 0. Kotlin 표면 한눈에
 
 `zlink-framework-kotlin`은 새 transport를 만들지 않는다. Java framework가 노출하는

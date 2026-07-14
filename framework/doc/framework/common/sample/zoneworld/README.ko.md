@@ -126,7 +126,7 @@ ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**
 1. player actor가 `MoveMsg`를 받아 §2.2로 검증한다.
 2. 거부면 `MoveRejectedNotify`를 push하고 끝낸다(좌표 불변).
 3. 승인이면 좌표를 갱신하고, zone 변경 여부에 따라 갈린다.
-   - **zone 불변**: 현재 zone spot에 `UpdatePositionMsg`를 보낸다.
+   - **zone 불변**: 현재 zone spot의 좌표 사본을 그 자리에서 갱신한다. actor의 이동 handler는 actor와 그 zone spot을 함께 받으므로 보낼 메시지가 없다.
    - **zone 변경**: 이전 zone spot에 `LeaveZoneMsg`, 새 zone spot에 `EnterZoneMsg`를 보낸다.
      노드가 바뀌면 actor transfer가 먼저 일어난다(§2.6).
 4. zone spot은 받은 값으로 map을 갱신한다. `ZoneStateNotify`는 tick에서 이 map으로 만든다.
@@ -530,7 +530,6 @@ Server/Ops/
 | `ReportNodeStatusMsg` | `ZoneNode` -> `Ops` (channel `zoneworld.report`) | `NodeId`, `Zones`, `PlayerCount`, `Maintenance` | 노드 상태를 **1초마다** 보고한다. `Ops`는 이 값으로 `PlayerCount`를 채운다(§8.1). `PlayerCount`는 그 노드의 모든 zone spot이 보관 중인 플레이어 수의 합이다. |
 | `ZoneBorderEvent` | zone spot -> 인접 zone spot (**spot pub/sub**, topic `zone.border.<from>.<to>`) | `FromZoneId`, `ToZoneId`, `Tick`, `Players` | 그 경계의 밴드 안 플레이어 목록을 publish한다. 유실을 허용하며 수신측은 §2.4의 교체·만료 규칙을 따른다. |
 | `EnterZoneMsg` | player actor -> zone spot | `PlayerId`, `ActorRef`, `X`, `Y` | zone spot에 입장한다. **`ActorRef`를 함께 전달**해 zone spot이 보관한다(§8.3). |
-| `UpdatePositionMsg` | player actor -> zone spot | `PlayerId`, `X`, `Y` | **zone이 바뀌지 않은 이동**에서 좌표 사본을 갱신한다(§2.1). |
 | `LeaveZoneMsg` | player actor -> zone spot | `PlayerId` | zone spot에서 퇴장한다. zone spot이 보관 중인 항목을 제거한다. |
 
 ### 7.4 `ActorRefWire`

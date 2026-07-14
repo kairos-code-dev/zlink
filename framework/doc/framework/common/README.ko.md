@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md)
 
-[스펙 목차](spec/README.ko.md) | [공개 계약 관리](spec/00-public-contract-governance.ko.md) | [개요](spec/01-overview.ko.md) | [상호작용 모델](spec/02-interaction-model.ko.md) | [메시지 모델](spec/03-message-model.ko.md) | [channel topology](spec/10-channel-topology.ko.md) | [framework API](spec/05-framework-api.ko.md) | [비동기 실행](spec/04-async-execution-policy.ko.md) | [Actor 모델](spec/22-actor-model.ko.md) | [Spot Actor Join / Transfer](spec/23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](spec/31-session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/52-message-flow-tracing.ko.md) | [location runtime](spec/40-location-runtime.ko.md) | [Redis store](spec/41-location-store-redis.ko.md) | [spot 주소 메시징](spec/24-spot-address-messaging.ko.md) | [언어별 공개 계약](spec/languages/README.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
+[스펙 목차](spec/README.ko.md) | [공개 계약 관리](spec/00-public-contract-governance.ko.md) | [개요](spec/01-overview.ko.md) | [상호작용 모델](spec/02-interaction-model.ko.md) | [메시지 모델](spec/03-message-model.ko.md) | [channel topology](spec/10-channel-topology.ko.md) | [framework API](spec/05-framework-api.ko.md) | [비동기 실행](spec/04-async-execution-policy.ko.md) | [Actor 모델](spec/22-actor-model.ko.md) | [Spot Actor Join / Transfer](spec/23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](spec/31-session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/52-message-flow-tracing.ko.md) | [location runtime](spec/40-location-runtime.ko.md) | [Redis store](spec/41-location-store-redis.ko.md) | [spot 주소 메시징](spec/24-spot-address-messaging.ko.md) | [언어별 공개 계약](spec/languages/README.ko.md) | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -52,18 +52,20 @@
 | 11 | [40-location-runtime.ko.md](spec/40-location-runtime.ko.md) | peer/spot/actor/route 위치, owner lease, store/resolver, 자동 연결과 운영 조회 계약을 정의한다. |
 | 12 | [41-location-store-redis.ko.md](spec/41-location-store-redis.ko.md) | 공식 Redis location store extension의 key, lease, 원자 write, 오류와 테스트 계약을 정의한다. |
 | 13 | [24-spot-address-messaging.ko.md](spec/24-spot-address-messaging.ko.md) | spot/actor 대상 주소, 조회와 재조회, 실패 분류와 이동 경계를 정의한다. |
-| 14 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종의 언어 중립 업무 흐름, 서버 역할, 메시지와 검증 기준을 정의한다. |
-| 15 | [Scenario E2E 테스트](e2e/README.ko.md) | scale-out, 실패, lifecycle, 관측성 조합을 실제 multi-process 구조로 검증한다. |
-| 16 | [Performance 테스트](perf/README.ko.md) | 모든 framework 언어가 같은 조건과 메트릭으로 성능을 측정하는 규격을 정의한다. |
-| 17 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서 진입점. |
-| 18 | [Java 문서](../java/README.ko.md) | `Java`, `Kotlin`, `Spring Boot` 전용 문서 진입점. |
-| 19 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
-| 20 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
+| 14 | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | 설정 파일, 환경 변수 금지, 언어별 typed binding과 runner 책임을 정의한다. |
+| 15 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종의 언어 중립 업무 흐름, 서버 역할, 메시지와 검증 기준을 정의한다. |
+| 16 | [Scenario E2E 테스트](e2e/README.ko.md) | scale-out, 실패, lifecycle, 관측성 조합을 실제 multi-process 구조로 검증한다. |
+| 17 | [Performance 테스트](perf/README.ko.md) | 모든 framework 언어가 같은 조건과 메트릭으로 성능을 측정하는 규격을 정의한다. |
+| 18 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서 진입점. |
+| 19 | [Java 문서](../java/README.ko.md) | `Java`, `Kotlin`, `Spring Boot` 전용 문서 진입점. |
+| 20 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
+| 21 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
 
 개요(1)로 전체 그림을 잡고, 상호작용과 메시지 모델(2-3), topology(4), API와
 비동기 실행(5-6), actor와 Spot 계약(7-9), 관측과 위치 관리(10-13)를 순서대로 본다.
-그다음 공통 sample(14)로 정본 업무 흐름을 확인하고, E2E(15)와 performance(16)로
-검증 기준을 확인한 뒤 언어별 상세(17-20)로 내려간다.
+그다음 설정 정책(14)으로 sample/E2E의 설정 전달 경계를 확인한다. 공통 sample(15)로 정본 업무
+흐름을 확인하고, E2E(16)와 performance(17)로 검증 기준을 확인한 뒤 언어별 상세(18-21)로
+내려간다.
 
 언어별 상세 문서를 새로 읽을 때는 아래 순서를 기본으로 본다.
 

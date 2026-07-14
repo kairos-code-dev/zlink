@@ -12,6 +12,9 @@
 **기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** C++ 문서는 그
 의미가 C++에서 갖는 **정확한 public 표면**을 고정한다.
 
+Sample과 E2E의 JSON 설정 파일, 환경 변수 금지와 typed binding 기준은
+[Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
+
 **C++가 다른 언어보다 문서가 많은 이유** — `.NET`은 ASP.NET Core를, Node는 NestJS를, Java는
 Spring Boot를 빌려 쓰지만 **C++에는 빌릴 host가 없어 framework가 host·DI·configuration·logging·
 HTTP를 직접 제공한다.**

@@ -35,6 +35,9 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 원칙으로 둔다. 자세한 기준은
 [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) 에서 다룬다.
 
+Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준은
+[Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
+
 ## 1.1 지원 버전 기준
 
 이 `.NET` 문서는 다음과 같이 버전 기준을 먼저 고정한다.

@@ -22,7 +22,7 @@
 
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
-| SMP-BINGO-001 | payload codec = Protobuf | `.proto` 없음. `protobuf_codec_extension_t`가 실제로는 JSON을 직렬화(extension이 `from_json`/`parse_json` 사용, media type만 protobuf) | 열림(extension 자체가 JSON 기반 — framework codec extension 트랙과 함께 판정 필요) |
+| SMP-BINGO-001 | payload codec = Protobuf | `.proto`를 두고 protoc 코드젠으로 실제 protobuf wire를 싣는다(서버 간·client stream 모두). codec extension도 진짜 protobuf 직렬화로 교체 | 닫힘 |
 | SMP-BINGO-002 | Play↔Play spot pub/sub, Session→Play router는 location store 자동 연결 | `connect_peer_pub`/`connect_router` 수동 endpoint 배선 제거. 두 연결 모두 location store 자동 연결에 맡긴다 | 닫힘 |
 | SMP-BINGO-003 | `BingoRoomState.Status` = `WaitingForPlayers`/`Running`/`Finished` | wire 값을 정본 대소문자로 교체 | 닫힘 |
 | SMP-BINGO-004 | 미사용 wire 계약 없음 | `BingoStateNotify` 계약·codec 등록·이름 상수 삭제(정본 메시지 목록에 없음) | 닫힘 |
@@ -84,12 +84,12 @@
 | ID | 항목 | 편차 | 상태 |
 |----|------|------|------|
 | SMP-GQ-001 | owner spot은 event-sourced aggregate(append/replay/snapshot) | `quest_event_store_t`(append-only)를 두고 projection은 player별 stream을 fold해서 만든다. sync/get/notify가 모두 replay 결과를 쓴다. snapshot은 아직 없다 | 닫힘(snapshot 제외) |
-| SMP-GQ-002 | `GameplayMsg`(one-way send) | `ApplyGameplayEventReq/Res`(request/reply)로 대체, 봉투 필드도 상이 | 열림 |
-| SMP-GQ-003 | notify는 location store session binding으로 현재 노드에 전달 | 여전히 raw HTTP POST. **막힌 지점이 프레임워크 층으로 좁혀졌다(2026-07-14).** API에 session-notify route mesh(server)와 entry spot을 두고, mission이 그 mesh를 client로 열고 `spot_router_channels[gamequest.quest.spot.api-*] = gamequest.session.notify`로 매핑한 뒤 `resolve_actor_spot_handle(playerId)` → `send_to_spot`/`request_to_spot`으로 보내면, 프레임이 API에 **도착은 하지만 spot으로 dispatch되지 않는다** — 수신 로그가 `surface=route_mesh_channel ... reason=handler_missing`이고 spot 주소가 붙지 않았다. 같은 형태(route mesh accept + spot 주소 요청)가 ShoppingMall에서는 동작하므로, 차이는 **actor row로 해석한 entry-spot 주소**다. 다음 단계는 샘플이 아니라 framework 조사: entry-spot actor row로 만든 spot handle이 accept된 route mesh 위에서 spot dispatch까지 이어지는지 확인할 것. 부수 발견: entry spot이 actor 핸들러를 하나도 등록하지 않으면 `register_actor_admission`이 불려지지 않아 `actor.join`이 handler_missing으로 거절된다 | 열림(framework 조사) |
+| SMP-GQ-002 | `GameplayMsg`(one-way send) | one-way send로 전환. client에는 event id만 즉시 돌려주고 진행은 notify로 돌아온다 | 닫힘 |
+| SMP-GQ-003 | notify는 location store session binding으로 현재 노드에 전달 | raw HTTP를 걷어내고 `resolve_actor_spot_handle`로 player의 현재 노드를 찾아 그 노드의 entry spot으로 route한다. **막혔던 이유**: spot 노드는 route 채널 **하나에만** bridge를 붙이므로(`attach_spot_route_bridge`), 별도 notify mesh를 두면 그 mesh로 온 프레임이 spot에 닿지 못하고 route-mesh 메시지로 떨어진다. 해법은 같은 spot route mesh를 양방향으로 쓰는 것 | 닫힘 |
 | SMP-GQ-004 | `QuestProgress`에 `Version`, `LastSourceEventId` | 두 필드를 스펙 이름·의미대로 채운다(fold 버전, 반영한 gameplay event id) | 닫힘 |
 | SMP-GQ-005 | status = `Active`/`Completed`/`RewardGranted` | 세 상태를 모두 두고, fold가 QuestCompleted→QuestRewardGranted 순서로 상태를 옮긴다 | 닫힘 |
-| SMP-GQ-006 | 서버 간 연결은 location store 자동 연결 | 일부 채널이 `enable_client(endpoint)`/`connect_router(endpoint)` 수동 | 열림 |
-| SMP-GQ-007 | self-check: projection 재생성·rehydrate·reconnect·reset 보정·reward 멱등 | 미커버 | 열림 |
+| SMP-GQ-006 | 서버 간 연결은 location store 자동 연결 | 수동 endpoint 배선 제거(route mesh·spot router 모두 자동 연결) | 닫힘 |
+| SMP-GQ-007 | self-check: projection 재생성·rehydrate·reconnect·reset 보정·reward 멱등 | reconnect(다른 노드 재접속 시 notify가 따라오는지)와 reward 멱등(완료 quest에 같은 event 재적용 시 진행 미변화)을 추가. projection은 매 조회가 stream replay라 재생성이 항상 성립한다. rehydrate(노드 재시작)와 reset 보정(GameplayStateStore drift)은 별도 store가 없어 미적용 | 닫힘(rehydrate·reset 제외) |
 
 ## 8. 진행 원칙
 

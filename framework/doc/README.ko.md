@@ -40,6 +40,9 @@
 **공통 샘플 시나리오** ([색인](framework/common/sample/README.ko.md)) — 정본 6종을 모든 언어가
 같은 역할 분리·메시지 이름·smoke 순서로 구현한다.
 
+Sample과 E2E의 설정 파일, 환경 변수 금지와 언어별 typed binding 기준은
+[Sample/E2E 설정 정책](framework/common/sample-e2e-configuration-policy.ko.md)을 따른다.
+
 | 샘플 | 핵심 |
 |------|------|
 | TicTacToe | route mesh, actor game join (API+Play 직접 연결) |

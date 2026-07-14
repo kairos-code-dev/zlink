@@ -160,6 +160,17 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
 보여 주는 데 집중해야 하며, 실패를 정상 업무 응답으로 바꾸는 코드는 해당 메시지
 계약이 명시적으로 그런 실패 상태를 정의할 때만 둔다.
 
+## 샘플 설정 전달 기준
+
+모든 언어의 sample은
+[Sample/E2E 설정 정책](../sample-e2e-configuration-policy.ko.md)을 필수로 따른다. Runner는 실행별
+role 설정 파일을 만들고 실행 파일에는 설정 파일 경로만 전달한다. Endpoint, Redis, routing id,
+timeout과 로그 경로를 환경 변수나 JVM system property로 전달하지 않는다. Server와 client도 전역
+환경을 직접 조회하지 않고 언어별 정식 설정 시스템으로 검증된 typed 설정을 사용한다.
+
+현재 구현이 이 기준과 다르면 기존 환경 변수 interface를 호환 경로로 유지하지 않는다. 해당
+sample은 configuration migration gap으로 기록하고 설정 파일과 typed binding으로 전환해야 한다.
+
 ## 샘플 실행 스크립트와 Redis 격리 기준
 
 모든 언어의 sample runner는 같은 사용 의미와 같은 Redis 구동 방식을 가져야 한다.

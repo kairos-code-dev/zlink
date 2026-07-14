@@ -235,7 +235,8 @@
 - [ ] **IMP-CP-05** (결함) — 40 §2.1·02 §4
 - [ ] **IMP-CP-06** (결함) — 40 §8.2·§6.1
 - [ ] **IMP-CP-07** (결함) — 40 §2.3·§5.1
-- [ ] **IMP-CP-08** (미구현) — 30 §6
+- [x] **IMP-CP-08** (미구현) — 30 §6
+  - 근거: 수정 전 target-contract gate가 STREAM host의 transport 오류 분류와 session callback dispatch 부재를 각각 검출했다. 연결이 설정된 뒤의 비정상 socket 오류만 `transport_error`로 분류해 기존 직렬 callback 경로로 전달하도록 연결한 뒤, 정상 TCP 종료는 오류 callback 0회이고 TCP reset은 native errno를 포함한 오류 callback 1회인 실제 host 회귀 테스트를 3회 반복했으며 target gate와 관련 ctest 2개가 통과했다.
 - [ ] **IMP-CP-09** (미구현) — 40 §9
 - [ ] **IMP-CP-10** (결함) — 40 §7
 - [ ] **IMP-CP-11** (미구현) — 31

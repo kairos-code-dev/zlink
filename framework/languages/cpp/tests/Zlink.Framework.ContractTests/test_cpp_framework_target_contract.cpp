@@ -74,6 +74,8 @@ int main ()
     const auto redis_hpp = read_file (
       root / "extensions/framework-locations-redis/include/zlink/locations/redis.hpp");
     const auto spot_runtime = read_file (root / "framework/src/runtime/spots/spot_runtime.cpp");
+    const auto stream_host =
+      read_file (root / "framework/src/runtime/streams/stream_host_service.cpp");
     gate_t gate;
 
     for (const auto &required :
@@ -111,6 +113,15 @@ int main ()
       e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
+
+    /* IMP-CP-08 — session-owned transport failures reach the session callback. */
+    gate.require (stream_host.find ("stream_session_error_t::transport_error")
+                    != std::string::npos,
+                  "IMP-CP-08",
+                  "STREAM host does not classify a session transport failure");
+    gate.require (stream_host.find ("_runtime.dispatch_error (") != std::string::npos,
+                  "IMP-CP-08",
+                  "STREAM host does not dispatch a session transport failure callback");
 
     /* CPP-G0-ASYNC-001 — one-way terminators return void. */
     gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",

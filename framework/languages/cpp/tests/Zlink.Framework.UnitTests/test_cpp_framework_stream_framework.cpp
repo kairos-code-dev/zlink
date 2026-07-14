@@ -2,16 +2,21 @@
 
 #include <zlink/framework.hpp>
 
+#include "runtime/streams/stream_host_service.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <arpa/inet.h>
 #include <condition_variable>
 #include <deque>
 #include <future>
+#include <netinet/in.h>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -200,6 +205,133 @@ class oversized_stream_compression_codec_t final
         return zlink::message_t::from (std::string (64 * 1024 + 1, 'x'));
     }
 };
+
+class transport_error_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    {
+        record (_connected);
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        record (_disconnected);
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_error_t &error) override
+    {
+        {
+            const std::lock_guard lock (_mutex);
+            ++_errors;
+            _last_error = error.error ();
+            _last_native_code = error.native_code ();
+        }
+        _changed.notify_all ();
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::message_t &) override
+    {
+        co_return;
+    }
+
+    bool wait_connected (int count) { return wait_for (_connected, count); }
+    bool wait_disconnected (int count) { return wait_for (_disconnected, count); }
+    bool wait_errors (int count) { return wait_for (_errors, count); }
+
+    int errors () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _errors;
+    }
+
+    zlink::framework::stream_session_error_t last_error () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _last_error;
+    }
+
+    int last_native_code () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _last_native_code;
+    }
+
+  private:
+    void record (int &counter)
+    {
+        {
+            const std::lock_guard lock (_mutex);
+            ++counter;
+        }
+        _changed.notify_all ();
+    }
+
+    bool wait_for (int &counter, int count)
+    {
+        std::unique_lock lock (_mutex);
+        return _changed.wait_for (lock, std::chrono::seconds (2),
+                                  [&] { return counter >= count; });
+    }
+
+    mutable std::mutex _mutex;
+    std::condition_variable _changed;
+    int _connected = 0;
+    int _disconnected = 0;
+    int _errors = 0;
+    zlink::framework::stream_session_error_t _last_error =
+      zlink::framework::stream_session_error_t::internal;
+    int _last_native_code = 0;
+};
+
+std::uint16_t reserve_loopback_port ()
+{
+    const int socket_fd = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (socket_fd < 0) {
+        throw std::runtime_error ("failed to reserve STREAM test port");
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    address.sin_port = 0;
+    if (::bind (socket_fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0) {
+        ::close (socket_fd);
+        throw std::runtime_error ("failed to bind STREAM test port");
+    }
+    socklen_t size = sizeof (address);
+    if (::getsockname (socket_fd, reinterpret_cast<sockaddr *> (&address), &size) != 0) {
+        ::close (socket_fd);
+        throw std::runtime_error ("failed to inspect STREAM test port");
+    }
+    const auto port = ntohs (address.sin_port);
+    ::close (socket_fd);
+    return port;
+}
+
+int connect_loopback (std::uint16_t port)
+{
+    const int socket_fd = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (socket_fd < 0) {
+        return -1;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    address.sin_port = htons (port);
+    if (::connect (socket_fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0) {
+        ::close (socket_fd);
+        return -1;
+    }
+    return socket_fd;
+}
 
 } // namespace
 
@@ -617,6 +749,62 @@ int main ()
         || oversized_receive.error_kind () != framework_error_kind_t::payload_decode_failed
         || !oversized_session.events.empty ()) {
         return 28;
+    }
+
+    const auto transport_port = reserve_loopback_port ();
+    const auto transport_endpoint =
+      "tcp://127.0.0.1:" + std::to_string (transport_port);
+    zlink::framework::service_collection_t transport_services;
+    zlink::framework::handler_registry_t transport_handlers;
+    zlink::framework::serializer_registry_t transport_serializers;
+    zlink::framework::zlink_builder_t transport_zlink;
+    zlink::framework::monitoring_builder_t transport_monitoring;
+    zlink::framework::zlink_framework_options_t transport_options (
+      transport_services, transport_handlers, transport_serializers, transport_zlink,
+      transport_monitoring);
+    transport_options.add_stream_node ("transport-stream")
+      .bind (transport_endpoint)
+      .register_session ("transport-session");
+    transport_options.apply ();
+    auto transport_provider = transport_services.build_provider ();
+    transport_error_session_t transport_session;
+    zlink::framework::runtime::stream_host_service_t transport_host (
+      zlink::framework::detail::stream_runtime_t::from (transport_zlink),
+      transport_zlink.streams (),
+      {{"transport-session",
+        [&transport_session] (zlink::framework::service_provider_t &)
+          -> zlink::framework::packet_stream_session_t & { return transport_session; }}});
+    transport_host.start (transport_provider);
+
+    const int graceful_client = connect_loopback (transport_port);
+    if (graceful_client < 0 || !transport_session.wait_connected (1)) {
+        transport_host.stop ();
+        return 29;
+    }
+    ::shutdown (graceful_client, SHUT_RDWR);
+    ::close (graceful_client);
+    if (!transport_session.wait_disconnected (1) || transport_session.errors () != 0) {
+        transport_host.stop ();
+        return 30;
+    }
+
+    const int failed_client = connect_loopback (transport_port);
+    if (failed_client < 0 || !transport_session.wait_connected (2)) {
+        transport_host.stop ();
+        return 31;
+    }
+    linger reset_on_close{1, 0};
+    (void) ::setsockopt (failed_client, SOL_SOCKET, SO_LINGER, &reset_on_close,
+                         sizeof (reset_on_close));
+    ::close (failed_client);
+    const bool transport_failure_reported = transport_session.wait_errors (1);
+    const bool transport_disconnect_reported = transport_session.wait_disconnected (2);
+    transport_host.stop ();
+    if (!transport_failure_reported || !transport_disconnect_reported
+        || transport_session.last_error ()
+             != zlink::framework::stream_session_error_t::transport_error
+        || transport_session.last_native_code () == 0) {
+        return 32;
     }
 
     return 0;

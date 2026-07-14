@@ -61,6 +61,26 @@ struct parsed_tcp_endpoint_t
     std::string port;
 };
 
+class session_transport_failure_t final : public std::runtime_error
+{
+  public:
+    session_transport_failure_t (int native_code, std::string message) :
+        std::runtime_error (std::move (message)), _native_code (native_code)
+    {
+    }
+
+    int native_code () const noexcept { return _native_code; }
+
+  private:
+    int _native_code;
+};
+
+bool is_expected_session_disconnect (const boost::system::error_code &error)
+{
+    return error == asio::error::eof || error == asio::error::operation_aborted
+           || error == websocket::error::closed;
+}
+
 parsed_tcp_endpoint_t parse_tcp_endpoint (const std::string &endpoint)
 {
     constexpr std::string_view prefix = "tcp://";
@@ -959,8 +979,8 @@ class stream_host_service_t::listener_t
                 if (received_errno == EINTR) {
                     continue;
                 }
-                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                             std::strerror (received_errno));
+                throw session_transport_failure_t (received_errno,
+                                                   std::strerror (received_errno));
             }
             if (received == 0) {
                 throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
@@ -1134,12 +1154,10 @@ class stream_host_service_t::listener_t
                 if (sent_errno == EINTR) {
                     continue;
                 }
-                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                             std::strerror (sent_errno));
+                throw session_transport_failure_t (sent_errno, std::strerror (sent_errno));
             }
             if (sent == 0) {
-                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                             "STREAM TCP write made no progress");
+                throw session_transport_failure_t (0, "STREAM TCP write made no progress");
             }
             offset += static_cast<std::size_t> (sent);
         }
@@ -1292,6 +1310,7 @@ class stream_host_service_t::listener_t
         }
         std::size_t flushed = 0;
         bool connected_session = false;
+        std::optional<stream_error_t> session_transport_error;
         auto liveness = std::make_shared<session_liveness_t> ();
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
@@ -1333,6 +1352,11 @@ class stream_host_service_t::listener_t
             }
         }
         catch (const boost::system::system_error &error) {
+            if (connected_session && !_stop->load (std::memory_order_acquire)
+                && !liveness->forced () && !is_expected_session_disconnect (error.code ())) {
+                session_transport_error.emplace (stream_session_error_t::transport_error,
+                                                 error.code ().value (), error.what ());
+            }
             if (stream_trace_enabled ()) {
                 std::cerr << "zlink-cpp-stream-trace side=server stage=connection-error stream="
                           << _stream.name << " endpoint=" << _stream.bind_endpoint
@@ -1367,8 +1391,12 @@ class stream_host_service_t::listener_t
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
                 const auto forced = liveness->forced ();
-                record_connection_closed (forced ? liveness_close_label (*forced)
-                                                 : "client_close");
+                record_connection_closed (
+                  forced ? liveness_close_label (*forced)
+                         : session_transport_error ? "transport_error" : "client_close");
+                if (session_transport_error && !forced) {
+                    (void) _runtime.dispatch_error (session, stream, *session_transport_error);
+                }
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }
@@ -1436,6 +1464,7 @@ class stream_host_service_t::listener_t
           });
         std::size_t flushed = 0;
         bool connected_session = false;
+        std::optional<stream_error_t> session_transport_error;
         auto liveness = std::make_shared<session_liveness_t> ();
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
@@ -1475,6 +1504,13 @@ class stream_host_service_t::listener_t
                 flush_writes_native (*connection, stream, flushed, *write_mutex);
             }
         }
+        catch (const session_transport_failure_t &error) {
+            if (connected_session && !_stop->load (std::memory_order_acquire)
+                && !liveness->forced ()) {
+                session_transport_error.emplace (stream_session_error_t::transport_error,
+                                                 error.native_code (), error.what ());
+            }
+        }
         catch (const framework_exception_t &) {
         }
         catch (...) {
@@ -1486,8 +1522,12 @@ class stream_host_service_t::listener_t
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
                 const auto forced = liveness->forced ();
-                record_connection_closed (forced ? liveness_close_label (*forced)
-                                                 : "client_close");
+                record_connection_closed (
+                  forced ? liveness_close_label (*forced)
+                         : session_transport_error ? "transport_error" : "client_close");
+                if (session_transport_error && !forced) {
+                    (void) _runtime.dispatch_error (session, stream, *session_transport_error);
+                }
                 (void) _runtime.dispatch_disconnected (session, stream);
                 trace_stream_host ("dispatch-disconnected-end", _stream);
             }

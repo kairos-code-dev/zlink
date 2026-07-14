@@ -177,7 +177,7 @@ PY
 import re, sys
 error_flow = None
 for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    if "outcome=error" in line or "zlink dispatch error" in line:
+    if "phase=error" in line or "zlink dispatch error" in line:
         m = re.search(r"flow=([0-9a-f-]{36})", line)
         if m:
             error_flow = m.group(1)
@@ -241,7 +241,7 @@ def lines(path):
     return open(path, encoding="utf-8", errors="replace").readlines()
 publish_flows = set()
 for line in lines(sys.argv[1]):
-    if "kind=publish" in line and "outcome=sent" in line:
+    if "kind=publish" in line and "phase=sent" in line:
         m = re.search(r"flow=([0-9a-f-]{36})", line)
         if m:
             publish_flows.add(m.group(1))

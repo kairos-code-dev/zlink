@@ -208,7 +208,7 @@ class message_flow_tracer_t
             auto add = [&fields] (const char *key, std::string value) {
                 diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
-            add ("outcome", std::string (enum_name (event.outcome)));
+            add ("phase", std::string (enum_name (event.outcome)));
             add ("surface", std::string (enum_name (event.surface)));
             add ("kind", std::string (enum_name (event.message_kind)));
             if (_options->diagnostics.label ()) {

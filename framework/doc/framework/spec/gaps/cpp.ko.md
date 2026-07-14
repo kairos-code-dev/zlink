@@ -302,7 +302,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-15** (결함) — 스펙이 정한 **spot source가 timer 실패 이벤트를 내지 못한다**
 - [ ] **IMP-CP-16** (미구현) — 계기 8개 결측
 - [ ] **IMP-CP-17** (결함) — `add_spot_events(name, interval)`의 **interval을 읽는 곳이 없다**
-- [ ] **IMP-CP-18** (결함) — 폴백 로그가 `phase=` 대신 **`outcome=`**을 쓴다
+- [x] **IMP-CP-18** (결함) — 폴백 로그가 `phase=` 대신 **`outcome=`**을 쓴다
+  - 근거: 수정 전 message-flow unit gate를 `phase=` 계약으로 바꾸자 종료 코드 3으로 실패했다. fallback structured field를 `phase` 하나로 교체하고 SpotService·ObservabilityOps의 실제 로그 판정을 갱신한 뒤 unit test, shell syntax/no-hit gate, `ObservabilityOps/run_e2e.sh flow`의 OBS-A1·A2가 통과했다.
 - [ ] **IMP-CP-19** (미구현) — **connector에 자동 재연결이 없다.** 수립된 연결이 끊기면 영원히 `Disconnected`
 - [ ] **IMP-CP-20** (결함) — connector `connect()`가 **현재 상태를 무시**한다(`Closed`도 되살아나고, `Connected`면 소켓이 하나 더 열린다)
 - [ ] **IMP-CP-21** (미구현) — connector `connect_timeout`(기본 5초)을 **적용하지 않는다**

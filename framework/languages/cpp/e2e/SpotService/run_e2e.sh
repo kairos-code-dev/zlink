@@ -1799,8 +1799,8 @@ state = [index for index, item in enumerate(play_b["entries"])
 assert len(state) == 1, state
 print("scenario SM-B4 evidence passed")
 PY
-  grep -q "outcome=sent surface=spot_actor kind=actor_request.*actor=sm-b4-remote" "$LOG_DIR/play-b-flow.log"
-  grep -q "outcome=reply_received surface=spot_actor kind=actor_request.*actor=sm-b4-remote" "$LOG_DIR/play-b-flow.log"
+  grep -q "phase=sent surface=spot_actor kind=actor_request.*actor=sm-b4-remote" "$LOG_DIR/play-b-flow.log"
+  grep -q "phase=reply_received surface=spot_actor kind=actor_request.*actor=sm-b4-remote" "$LOG_DIR/play-b-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
 fi

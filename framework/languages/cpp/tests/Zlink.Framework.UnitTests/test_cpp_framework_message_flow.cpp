@@ -117,10 +117,10 @@ int main ()
             tracer.trace (flow_event (message_flow_outcome_t::received));
             tracer.trace (flow_event (message_flow_outcome_t::dropped));
         });
-        if (contains (out, "outcome=received")) {
+        if (contains (out, "phase=received")) {
             return 2;
         }
-        if (!contains (out, "outcome=dropped")) {
+        if (!contains (out, "phase=dropped")) {
             return 3;
         }
     }
@@ -133,10 +133,10 @@ int main ()
             tracer.trace (flow_event (message_flow_outcome_t::received));
             tracer.trace (flow_event (message_flow_outcome_t::replied));
         });
-        if (!contains (out, "zlink flow: outcome=received")) {
+        if (!contains (out, "zlink flow: phase=received")) {
             return 4;
         }
-        if (!contains (out, "outcome=replied")) {
+        if (!contains (out, "phase=replied")) {
             return 5;
         }
         if (!contains (out, "corr=corr-123")) {
@@ -224,7 +224,7 @@ int main ()
         out = capture_clog ([&] {
             message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::received));
         });
-        if (!contains (out, "outcome=received")) {
+        if (!contains (out, "phase=received")) {
             return 16;
         }
 
@@ -247,10 +247,10 @@ int main ()
             tracer.trace (flow_event (message_flow_outcome_t::received));
             tracer.trace (flow_event (message_flow_outcome_t::error));
         });
-        if (contains (out, "outcome=received")) {
+        if (contains (out, "phase=received")) {
             return 18;
         }
-        if (!contains (out, "outcome=error")) {
+        if (!contains (out, "phase=error")) {
             return 19;
         }
     }

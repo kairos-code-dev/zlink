@@ -80,6 +80,7 @@ public final class QuestStore implements AutoCloseable {
                 playerId,
                 Messages.QuestIds.FirstHunt,
                 Messages.QuestProgressReconciledEvent.class.getSimpleName(),
+                0,
                 reconciled.currentCount(),
                 reconciled.requiredCount(),
                 reconciled.status(),
@@ -114,9 +115,17 @@ public final class QuestStore implements AutoCloseable {
         String lastEventId = null;
         long updatedAt = 0;
         for (Messages.StoredQuestEvent event : stream) {
-            current = event.currentCount();
             required = event.requiredCount();
-            status = event.status();
+            if (event.eventType().equals(Messages.QuestProgressedEvent.class.getSimpleName())) {
+                current = Math.min(required, current + event.delta());
+            } else if (event.eventType().equals(Messages.QuestProgressReconciledEvent.class.getSimpleName())) {
+                current = event.currentCount();
+                status = event.status();
+            } else if (event.eventType().equals(Messages.QuestCompletedEvent.class.getSimpleName())) {
+                current = Math.max(current, required);
+            } else if (event.eventType().equals(Messages.QuestRewardGrantedEvent.class.getSimpleName())) {
+                status = Messages.QuestStatuses.RewardGranted;
+            }
             lastEventId = event.sourceEventId();
             updatedAt = Math.max(updatedAt, event.createdAtUnixMs());
         }

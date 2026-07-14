@@ -113,6 +113,8 @@ public final class GameQuestStore implements AutoCloseable {
             check(evidence, "missing:event:player-alice:first-hunt:QuestProgressedEvent:3",
                 () -> count(events, "player-alice", Messages.QuestIds.FirstHunt,
                     Messages.QuestProgressedEvent.class.getSimpleName()) == 3),
+            check(evidence, "invalid:player-alice:first-hunt:progress-delta-fold",
+                () -> progressDelta(events, "player-alice", Messages.QuestIds.FirstHunt) == 3),
             check(evidence, "missing:event:player-alice:first-hunt:QuestCompletedEvent:1",
                 () -> count(events, "player-alice", Messages.QuestIds.FirstHunt,
                     Messages.QuestCompletedEvent.class.getSimpleName()) == 1),
@@ -181,5 +183,17 @@ public final class GameQuestStore implements AutoCloseable {
             .map(event -> event.playerId() + ":" + event.questId() + ":" + event.version())
             .distinct()
             .count() == events.size();
+    }
+
+    private static int progressDelta(
+        List<Messages.StoredQuestEvent> events,
+        String playerId,
+        String questId) {
+        return events.stream()
+            .filter(event -> event.playerId().equals(playerId)
+                && event.questId().equals(questId)
+                && event.eventType().equals(Messages.QuestProgressedEvent.class.getSimpleName()))
+            .mapToInt(Messages.StoredQuestEvent::delta)
+            .sum();
     }
 }

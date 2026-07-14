@@ -241,6 +241,7 @@ public final class Messages {
         String playerId,
         String questId,
         String eventType,
+        int delta,
         int currentCount,
         int requiredCount,
         String status,

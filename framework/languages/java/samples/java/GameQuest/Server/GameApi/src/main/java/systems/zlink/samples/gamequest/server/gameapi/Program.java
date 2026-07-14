@@ -24,6 +24,7 @@ import systems.zlink.samples.gamequest.server.configuration.SampleLocationStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSession;
+import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSessionRegistry;
 import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -64,6 +65,7 @@ public class Program {
     ZLinkFrameworkConfigurer gameApiFramework(SampleTopology topology) {
         SampleTopology.GameApi api = topology.gameApi();
         return options -> {
+            options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(api.logDirectory() + "/flow-" + api.instanceName() + ".log")
@@ -72,6 +74,9 @@ public class Program {
                 .enableClient(api.missionAChannelEndpoint());
             options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-b"))
                 .enableClient(api.missionBChannelEndpoint());
+            options.addClientServerChannel(SampleNames.questNotificationChannelFor(api.instanceName()))
+                .enableServer(api.notificationChannelEndpoint())
+                .addHandlerGroup("quest-notify");
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(api.streamEndpoint())
                 .registerSession(GameQuestSession.class);
@@ -88,6 +93,11 @@ public class Program {
         GameQuestStore store = new GameQuestStore(topology);
         ApplicationContextHolder.store = store;
         return store;
+    }
+
+    @Bean
+    GameQuestSessionRegistry gameQuestSessionRegistry() {
+        return new GameQuestSessionRegistry();
     }
 
     @Bean

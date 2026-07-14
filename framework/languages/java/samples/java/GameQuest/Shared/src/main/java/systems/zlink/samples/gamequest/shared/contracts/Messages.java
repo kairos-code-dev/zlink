@@ -249,8 +249,9 @@ public final class Messages {
         long createdAtUnixMs) {
     }
 
-    public record QuestProcessingRes(
+    public record QuestProcessingMsg(
         String eventId,
+        String playerId,
         List<QuestProgress> projection,
         List<QuestProgressNotify> progressNotifications,
         List<QuestCompletedNotify> completedNotifications,

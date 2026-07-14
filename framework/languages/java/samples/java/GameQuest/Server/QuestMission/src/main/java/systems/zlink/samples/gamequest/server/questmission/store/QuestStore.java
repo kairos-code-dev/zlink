@@ -28,12 +28,13 @@ public final class QuestStore implements AutoCloseable {
         state(playerId);
     }
 
-    public Messages.QuestProcessingRes apply(Messages.GameplayMsg event) {
+    public Messages.QuestProcessingMsg apply(Messages.GameplayMsg event) {
         PlayerState state = state(event.playerId());
         if (state.appliedEventIds.contains(event.eventId())) {
             shared.recordDeduplicatedEvent(event.eventId());
-            return new Messages.QuestProcessingRes(
+            return new Messages.QuestProcessingMsg(
                 event.eventId(),
+                event.playerId(),
                 copyProjection(state),
                 List.of(),
                 List.of(),
@@ -46,8 +47,9 @@ public final class QuestStore implements AutoCloseable {
         shared.writeProjection(event.playerId(), decision.projection());
         shared.appendQuestEvents(decision.storedEvents());
         state.appliedEventIds.add(event.eventId());
-        return new Messages.QuestProcessingRes(
+        return new Messages.QuestProcessingMsg(
             event.eventId(),
+            event.playerId(),
             copyProjection(state),
             decision.progressNotifications(),
             decision.completedNotifications(),

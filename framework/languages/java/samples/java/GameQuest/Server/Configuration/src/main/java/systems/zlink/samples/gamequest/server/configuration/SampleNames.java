@@ -14,4 +14,8 @@ public final class SampleNames {
     public static String questOwnerChannelFor(String instanceId) {
         return QuestOwnerChannelPrefix + instanceId;
     }
+
+    public static String questNotificationChannelFor(String instanceId) {
+        return "gamequest.quest-notify." + instanceId;
+    }
 }

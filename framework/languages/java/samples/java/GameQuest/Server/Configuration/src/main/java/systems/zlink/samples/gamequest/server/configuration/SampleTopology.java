@@ -12,6 +12,9 @@ public record SampleTopology(
     String channelEndpoint,
     String spotEndpoint,
     String spotRouterEndpoint,
+    String notificationChannelEndpoint,
+    String apiANotificationChannelEndpoint,
+    String apiBNotificationChannelEndpoint,
     String httpEndpoint,
     String missionAChannelEndpoint,
     String missionBChannelEndpoint,
@@ -25,7 +28,8 @@ public record SampleTopology(
             required(streamEndpoint, "streamEndpoint"),
             required(httpEndpoint, "httpEndpoint"),
             required(missionAChannelEndpoint, "missionAChannelEndpoint"),
-            required(missionBChannelEndpoint, "missionBChannelEndpoint"));
+            required(missionBChannelEndpoint, "missionBChannelEndpoint"),
+            required(notificationChannelEndpoint, "notificationChannelEndpoint"));
     }
 
     public QuestMission questMission() {
@@ -36,6 +40,8 @@ public record SampleTopology(
             required(httpEndpoint, "httpEndpoint"),
             required(spotEndpoint, "spotEndpoint"),
             required(spotRouterEndpoint, "spotRouterEndpoint"),
+            required(apiANotificationChannelEndpoint, "apiANotificationChannelEndpoint"),
+            required(apiBNotificationChannelEndpoint, "apiBNotificationChannelEndpoint"),
             RoutingId.from(instanceName));
     }
 
@@ -73,7 +79,8 @@ public record SampleTopology(
         String streamEndpoint,
         String httpEndpoint,
         String missionAChannelEndpoint,
-        String missionBChannelEndpoint) {
+        String missionBChannelEndpoint,
+        String notificationChannelEndpoint) {
     }
 
     public record QuestMission(
@@ -83,6 +90,8 @@ public record SampleTopology(
         String httpEndpoint,
         String spotEndpoint,
         String spotRouterEndpoint,
+        String apiANotificationChannelEndpoint,
+        String apiBNotificationChannelEndpoint,
         RoutingId routingId) {
     }
 

@@ -33,6 +33,21 @@ public final class PlayerQuestRouter {
             .thenCompose(handle -> request(handle, request, responseType));
     }
 
+    public CompletionStage<Void> send(String playerId, Object message) {
+        RoutingId spotRid = RoutingId.from(playerId);
+        return spots.getOrCreate(
+                PlayerQuestSpot.class,
+                spotRid,
+                ZLinkMessage.of(new PlayerQuestCreateReq(playerId)))
+            .thenCompose(ignored -> handles.resolveSpotHandle(spotRid))
+            .thenApply(found -> found.orElseThrow(() ->
+                new IllegalStateException("player quest Spot is not registered: " + spotRid)))
+            .thenApply(handle -> {
+                routes.sendToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, message).submit();
+                return null;
+            });
+    }
+
     private <T> CompletionStage<T> request(SpotHandle handle, Object request, Class<T> responseType) {
         return routes.requestToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, request)
             .timeout(SampleTimings.RequestTimeout)

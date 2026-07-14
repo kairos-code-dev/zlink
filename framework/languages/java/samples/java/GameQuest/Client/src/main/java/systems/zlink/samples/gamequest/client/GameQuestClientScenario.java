@@ -108,6 +108,10 @@ public final class GameQuestClientScenario {
             .request(new Messages.CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
             .submit(Messages.CollectItemRes.class).toCompletableFuture().join();
         ensure(offlineItem.eventId().equals("player-bob-herb-1"));
+        Messages.GetQuestProgressRes offlineProgress = apiAStream
+            .request(new Messages.GetQuestProgressReq("player-bob"))
+            .submit(Messages.GetQuestProgressRes.class).toCompletableFuture().join();
+        ensure(hasProgress(offlineProgress.activeQuests(), Messages.QuestIds.HerbGathering, 1));
 
         apiBStream.connect().submit().toCompletableFuture().join();
         Messages.JoinSessionRes bobJoined = apiBStream

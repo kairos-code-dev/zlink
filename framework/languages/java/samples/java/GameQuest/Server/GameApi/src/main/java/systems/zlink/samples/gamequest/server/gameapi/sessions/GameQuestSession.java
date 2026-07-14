@@ -1,6 +1,7 @@
 package systems.zlink.samples.gamequest.server.gameapi.sessions;
 
 import java.time.Instant;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -17,17 +18,20 @@ public final class GameQuestSession implements ZLinkSession {
     private final ZLinkClient channels;
     private final GameQuestStore store;
     private final SampleTopology topology;
+    private final GameQuestSessionRegistry sessions;
     private String playerId;
 
     public GameQuestSession(
         ZLinkSessionContext context,
         ZLinkClient channels,
         GameQuestStore store,
-        SampleTopology topology) {
+        SampleTopology topology,
+        GameQuestSessionRegistry sessions) {
         this.context = context;
         this.channels = channels;
         this.store = store;
         this.topology = topology;
+        this.sessions = sessions;
     }
 
     @Override
@@ -43,6 +47,7 @@ public final class GameQuestSession implements ZLinkSession {
     @Override
     public java.util.concurrent.CompletionStage<Void> onDisconnected() {
         if (playerId != null) {
+            sessions.unbind(playerId, this);
             store.unbind(playerId);
         }
         return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -72,6 +77,7 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> handleJoin(Messages.JoinSessionReq request) {
         playerId = request.playerId();
+        sessions.bind(request.playerId(), this);
         store.bind(request.playerId(), topology.gameApi().instanceName());
         return channels
             .requestToChannel(
@@ -117,8 +123,8 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        return process(event).thenAccept(processed ->
-            context.client().reply(new Messages.KillMonsterRes(processed.eventId())).submit());
+        return process(event).thenAccept(ignored ->
+            context.client().reply(new Messages.KillMonsterRes(event.eventId())).submit());
     }
 
     private java.util.concurrent.CompletionStage<Void> handleCollect(Messages.CollectItemReq request) {
@@ -130,8 +136,8 @@ public final class GameQuestSession implements ZLinkSession {
             request.count(),
             true);
         store.recordGameplay(event);
-        return process(event).thenAccept(processed ->
-            context.client().reply(new Messages.CollectItemRes(processed.eventId())).submit());
+        return process(event).thenAccept(ignored ->
+            context.client().reply(new Messages.CollectItemRes(event.eventId())).submit());
     }
 
     private java.util.concurrent.CompletionStage<Void> handleMission(Messages.CompleteMissionReq request) {
@@ -143,8 +149,8 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        return process(event).thenAccept(processed ->
-            context.client().reply(new Messages.CompleteMissionRes(processed.eventId())).submit());
+        return process(event).thenAccept(ignored ->
+            context.client().reply(new Messages.CompleteMissionRes(event.eventId())).submit());
     }
 
     private java.util.concurrent.CompletionStage<Void> handleArea(Messages.EnterAreaReq request) {
@@ -156,8 +162,8 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        return process(event).thenAccept(processed ->
-            context.client().reply(new Messages.EnterAreaRes(processed.eventId())).submit());
+        return process(event).thenAccept(ignored ->
+            context.client().reply(new Messages.EnterAreaRes(event.eventId())).submit());
     }
 
     private java.util.concurrent.CompletionStage<Void> handleFeature(Messages.UnlockFeatureReq request) {
@@ -169,27 +175,26 @@ public final class GameQuestSession implements ZLinkSession {
             1,
             true);
         store.recordGameplay(event);
-        return process(event).thenAccept(processed ->
-            context.client().reply(new Messages.UnlockFeatureRes(processed.eventId())).submit());
+        return process(event).thenAccept(ignored ->
+            context.client().reply(new Messages.UnlockFeatureRes(event.eventId())).submit());
     }
 
-    private java.util.concurrent.CompletionStage<Messages.QuestProcessingRes> process(
+    private java.util.concurrent.CompletionStage<Void> process(
         Messages.GameplayMsg event) {
-        return channels
-            .requestToChannel(
-                ownerChannel(event.playerId()),
-                event)
-            .submit(Messages.QuestProcessingRes.class)
-            .thenApply(processed -> {
-                store.mergeProjection(event.playerId(), processed.projection());
-                if (event.playerId().equals(playerId)) {
-                    processed.progressNotifications().forEach(
-                        notification -> context.client().send(notification).submit());
-                    processed.completedNotifications().forEach(
-                        notification -> context.client().send(notification).submit());
-                }
-                return processed;
-            });
+        channels.sendToChannel(ownerChannel(event.playerId()), event).submit();
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
+    CompletionStage<Void> deliver(Messages.QuestProcessingMsg message) {
+        if (!message.playerId().equals(playerId)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        store.mergeProjection(message.playerId(), message.projection());
+        message.progressNotifications().forEach(notification ->
+            context.client().send(notification).submit());
+        message.completedNotifications().forEach(notification ->
+            context.client().send(notification).submit());
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private String ownerChannel(String playerId) {

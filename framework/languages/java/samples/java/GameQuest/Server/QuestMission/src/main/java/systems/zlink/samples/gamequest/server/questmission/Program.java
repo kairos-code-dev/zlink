@@ -75,6 +75,10 @@ public class Program {
             options.addClientServerChannel(SampleNames.questOwnerChannelFor(mission.instanceName()))
                 .enableServer(mission.channelEndpoint())
                 .addHandlerGroup("quest-owner");
+            options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-a"))
+                .enableClient(mission.apiANotificationChannelEndpoint());
+            options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-b"))
+                .enableClient(mission.apiBNotificationChannelEndpoint());
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.PlayerQuestSpotDiscovery);
             node.enableRouter(mission.spotRouterEndpoint())
                 .enablePubSub(mission.spotEndpoint())

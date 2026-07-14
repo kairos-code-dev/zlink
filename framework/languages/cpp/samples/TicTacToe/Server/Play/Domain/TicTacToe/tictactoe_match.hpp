@@ -24,7 +24,7 @@ class tictactoe_match_t
     {
     }
 
-    join_game_res_t join (const std::string &actor_id, const std::string &room_id)
+    join_game_res_t evaluate_join (const std::string &actor_id, const std::string &room_id) const
     {
         if (room_id != _state.room_id) {
             throw std::runtime_error ("room id mismatch");
@@ -32,25 +32,37 @@ class tictactoe_match_t
         if (actor_id.empty ()) {
             throw std::runtime_error ("actor id must not be empty");
         }
-        if (_state.x_actor_id.empty ()) {
-            _state.x_actor_id = actor_id;
-            _state.next_turn = tictactoe_marks_t::x;
-            _state.status = tictactoe_status_t::waiting_for_players;
-            return {_state};
+        auto projected = _state;
+        if (projected.x_actor_id.empty ()) {
+            projected.x_actor_id = actor_id;
+            projected.next_turn = tictactoe_marks_t::x;
+            projected.status = tictactoe_status_t::waiting_for_players;
+            return {std::move (projected)};
         }
-        if (actor_id == _state.x_actor_id) {
-            return {_state};
+        if (actor_id == projected.x_actor_id) {
+            return {std::move (projected)};
         }
-        if (_state.o_actor_id.empty ()) {
-            _state.o_actor_id = actor_id;
-            _state.status = tictactoe_status_t::in_progress;
-            reset_turn_deadline ();
-            return {_state};
+        if (projected.o_actor_id.empty ()) {
+            projected.o_actor_id = actor_id;
+            projected.status = tictactoe_status_t::in_progress;
+            return {std::move (projected)};
         }
-        if (actor_id == _state.o_actor_id) {
-            return {_state};
+        if (actor_id == projected.o_actor_id) {
+            return {std::move (projected)};
         }
         throw std::runtime_error ("match already has two players");
+    }
+
+    join_game_res_t join (const std::string &actor_id, const std::string &room_id)
+    {
+        const auto previous_status = _state.status;
+        auto response = evaluate_join (actor_id, room_id);
+        _state = response.state;
+        if (previous_status != tictactoe_status_t::in_progress
+            && _state.status == tictactoe_status_t::in_progress) {
+            reset_turn_deadline ();
+        }
+        return response;
     }
 
     tictactoe_state_t place (const std::string &actor_id, const place_mark_req_t &request)

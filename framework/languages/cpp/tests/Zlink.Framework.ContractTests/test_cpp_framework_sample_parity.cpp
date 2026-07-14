@@ -253,22 +253,6 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     tictactoe_entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
-    static_cast<tictactoe_match_t &> (game_spot) = tictactoe_match_t (created.room_id);
-    const auto x_join =
-      game_spot.on_actor_join (sample_names_t::x_actor_id,
-                               zlink::framework::message_t::from (
-                                 tictactoe_game_join_req_t{created.room_id, authenticated.player}));
-    ASSERT_TRUE (x_join.accepted);
-    const auto game_join =
-      game_spot.on_actor_join (sample_names_t::o_actor_id,
-                               zlink::framework::message_t::from (tictactoe_game_join_req_t{
-                                 created.room_id,
-                                 {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
-                                  sample_names_t::required_level, 0}}));
-    ASSERT_TRUE (game_join.accepted);
-    ASSERT_TRUE (game_join.reply);
-    const auto projected_join = game_join.reply->decode<join_game_res_t> ();
-    EXPECT_EQ (projected_join.state.status, tictactoe_status_t::waiting_for_players);
 
     zlink::framework::spot_context_t game_context;
     game_spot.configure (game_context);
@@ -305,6 +289,20 @@ TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
     EXPECT_FALSE (match.tick ());
     EXPECT_NO_THROW (match.ensure_can_leave ("player-x"));
     EXPECT_NO_THROW (match.ensure_can_leave ("player-o"));
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeAdmissionEvaluationDoesNotMutateMatch)
+{
+    using namespace zlink::samples::tictactoe;
+
+    tictactoe_match_t match ("evaluation-room");
+    const auto evaluated = match.evaluate_join ("player-x", "evaluation-room");
+    EXPECT_EQ (evaluated.state.x_actor_id, "player-x");
+    EXPECT_TRUE (match.snapshot ().x_actor_id.empty ());
+
+    const auto joined = match.join ("player-x", "evaluation-room");
+    EXPECT_EQ (joined.state.x_actor_id, "player-x");
+    EXPECT_EQ (match.snapshot ().x_actor_id, "player-x");
 }
 
 TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
@@ -424,6 +422,23 @@ TEST (CppFrameworkSampleParity, TicTacToeOwnsTurnTimeoutLifecycle)
       << "match domain must own timeout state transitions";
     EXPECT_NE (messages.find ("TurnTimedOut"), std::string::npos)
       << "timeout must have the shared terminal status used by the reference sample";
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeSpotComposesItsDomainMatch)
+{
+    const auto spot = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/"
+        "tictactoe_game_spot.hpp");
+
+    EXPECT_EQ (spot.find ("public tictactoe_match_t"), std::string::npos)
+      << "framework Spot must not inherit the domain aggregate";
+    EXPECT_EQ (spot.find ("static_cast<tictactoe_match_t"), std::string::npos)
+      << "Spot creation must not replace the domain through a base-class assignment";
+    EXPECT_NE (spot.find ("std::optional<tictactoe_match_t> _match"), std::string::npos)
+      << "Spot must own the match through composition";
+    EXPECT_NE (spot.find ("match ().evaluate_join"), std::string::npos)
+      << "admission must evaluate without mutating the match";
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeNotificationPublisherDeliversToRoomActors)

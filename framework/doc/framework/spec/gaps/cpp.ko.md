@@ -438,7 +438,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-20** (결함) — **GameQuest가 event마다 문서에 없는 blocking ensure 왕복**을 하고, owner를 샘플이 직접 해시한다
 - [ ] **SMP-CP-21** (결함) — **ShoppingMall이 owner routing 대신 named mesh 2개 + 샘플 해시 + node 지정 request**를 쓴다
 - [ ] **SMP-CP-22** (결함) — **Domain이 framework 헤더를 include하고 wire DTO를 직접 만든다**(Bingo·TicTacToe)
-- [ ] **SMP-CP-23** (결함) — **TicTacToe Spot이 도메인 aggregate를 상속**한다. slicing 대입 + actor마다 `join()` 2회
+- [x] **SMP-CP-23** (결함) — **TicTacToe Spot이 도메인 aggregate를 상속**한다. slicing 대입 + actor마다 `join()` 2회
+  - 근거: 수정 전 새 contract test가 무변경 admission API 부재로 컴파일에 실패했고 구조 gate가 domain 상속·slicing 대입을 검출했다. Spot이 optional match를 합성하고 admission은 `evaluate_join()`, commit은 단일 `join()`을 사용하도록 바꾼 뒤 TicTacToe parity 10건과 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-24** (결함) — **SupportChat Application 레이어가 serving 경로에서 dead code**다(위조 self-check에서만 쓰인다)
 - [ ] **SMP-CP-25** (결함) — **Domain이 이미 내린 판정을 Infrastructure가 다시 내린다**(SupportChat idle/close, Bingo join notify)
 - [x] **SMP-CP-26** (결함) — **runner 3개가 framework 동작 knob(`ZLINK_CPP_AUTO_CONNECT_TRACE`)을 export**하고, Bingo는 그 덕에 생긴 로그로 self-check한다

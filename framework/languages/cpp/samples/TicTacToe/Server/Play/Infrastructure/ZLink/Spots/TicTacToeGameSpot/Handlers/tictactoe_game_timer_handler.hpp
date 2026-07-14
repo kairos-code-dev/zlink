@@ -8,10 +8,10 @@ namespace zlink::samples::tictactoe
 
 inline task_t<void> tictactoe_game_spot_t::handle_game_tick (const timer_tick_t &)
 {
-    if (!tick ()) {
+    if (!match ().tick ()) {
         co_return;
     }
-    const auto &state = snapshot ();
+    const auto &state = match ().snapshot ();
     const auto notify = game_state_notify_t{state.room_id, state.next_turn, state};
     publisher.publish (notify);
 }

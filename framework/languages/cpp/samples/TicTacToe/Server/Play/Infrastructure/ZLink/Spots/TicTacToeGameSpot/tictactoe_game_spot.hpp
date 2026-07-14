@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -30,15 +31,13 @@ class tictactoe_game_timer_handler_t
     task_t<void> handle (tictactoe_game_spot_t &spot, const timer_tick_t &tick) const;
 };
 
-class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
+class tictactoe_game_spot_t : public spot_t
 {
   private:
     std::map<std::string, player_actor_t *> actors;
     game_notification_publisher_t publisher{actors};
 
   public:
-    tictactoe_game_spot_t () : tictactoe_match_t ("") {}
-
     void configure (spot_context_t &context)
     {
         _context = context;
@@ -53,7 +52,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             separator != std::string::npos && separator + 1 < room_id.size ()) {
             room_id = room_id.substr (separator + 1);
         }
-        static_cast<tictactoe_match_t &> (*this) = tictactoe_match_t (room_id);
+        _match.emplace (room_id);
         return spot_create_response_t::accept ();
     }
 
@@ -74,8 +73,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             || request.player.level < sample_names_t::required_level) {
             return spot_actor_join_response_t::reject ();
         }
-        auto projected = static_cast<const tictactoe_match_t &> (*this);
-        auto response = projected.join (std::string (actor_id), request.room_id);
+        auto response = match ().evaluate_join (std::string (actor_id), request.room_id);
         _pending_joins[std::string (actor_id)] = request;
         return spot_actor_join_response_t::accept (
           std::move (response));
@@ -99,9 +97,9 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         _pending_joins.erase (pending);
         players[actor.actor_id] = request.player;
         actor.apply_player (request.player);
-        (void) join (actor.actor_id, request.room_id);
+        (void) match ().join (actor.actor_id, request.room_id);
         actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
-        const auto &state = snapshot ();
+        const auto &state = match ().snapshot ();
         player_joined_notify_t notify{
             state.room_id,
             actor.actor_id,
@@ -120,7 +118,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     {
         actors.erase (actor.actor_id);
         players.erase (actor.actor_id);
-        const auto &state = snapshot ();
+        const auto &state = match ().snapshot ();
         game_ended_notify_t notify{state.room_id, state.winner, state.draw, state};
         publisher.publish (notify, actor.actor_id);
     }
@@ -131,6 +129,22 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     friend class tictactoe_game_timer_handler_t;
 
     task_t<void> handle_game_tick (const timer_tick_t &);
+
+    tictactoe_match_t &match ()
+    {
+        if (!_match) {
+            throw std::runtime_error ("tic-tac-toe match is not initialized");
+        }
+        return *_match;
+    }
+
+    const tictactoe_match_t &match () const
+    {
+        if (!_match) {
+            throw std::runtime_error ("tic-tac-toe match is not initialized");
+        }
+        return *_match;
+    }
 
     void publish_win_milestone (const player_actor_t &actor, const tictactoe_state_t &state)
     {
@@ -157,6 +171,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     }
 
     spot_context_t _context;
+    std::optional<tictactoe_match_t> _match;
     std::map<std::string, player_info_t> players;
     std::map<std::string, tictactoe_game_join_req_t> _pending_joins;
     framework::timer_t _game_timer;

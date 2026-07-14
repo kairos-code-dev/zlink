@@ -14,7 +14,7 @@ tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
     if (context.packet_name.empty ()) {
         throw std::runtime_error ("packet name is required");
     }
-    auto state = place (actor.actor_id, request);
+    auto state = match ().place (actor.actor_id, request);
     game_state_notify_t state_notify{state.room_id, state.next_turn, state};
     publisher.publish (state_notify, actor.actor_id);
     if (state.status == tictactoe_status_t::won || state.status == tictactoe_status_t::draw) {

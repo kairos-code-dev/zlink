@@ -5,6 +5,18 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void SupportChat_Client_Gate_Exercises_All_Required_Rejections()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "SupportChatClientScenario.cs"));
+
+        Assert.Contains("Unauthenticated client must not open a conversation.", scenario, StringComparison.Ordinal);
+        Assert.Contains("Unauthenticated client must not send chat messages.", scenario, StringComparison.Ordinal);
+        Assert.Contains("Agent must not open a customer conversation.", scenario, StringComparison.Ordinal);
+        Assert.Contains("Non-participant must not send chat messages.", scenario, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SupportChat_Registers_Stateful_Actor_Transfer_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("SupportChat");

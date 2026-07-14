@@ -408,7 +408,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - [ ] **SMP-DN-03** (결함) — TicTacToe가 **위치 인자로 역할을 전환하는 단일 실행 파일**이다
 - [ ] **SMP-DN-04** (결함) — DeliveryDispatch 메시지 계약 drift
 - [ ] **SMP-DN-05** (결함) — GameQuest 메시지 계약 drift
-- [ ] **SMP-DN-06** (결함) — SupportChat의 **"반드시 오류로 검증한다" 5개 중 3개를 안 본다**
+- [x] **SMP-DN-06** (결함) — SupportChat의 **"반드시 오류로 검증한다" 5개 중 3개를 안 본다**
+  — 인증 전 요청, agent의 대화 생성, 비참여자 메시지를 추가하고 timeout이 아닌 `RemoteError`만 인정한다. sample runner와 regression 32건이 통과했다.
 - [x] ~~**SMP-DN-07** (결함) — ZoneWorld에 **`.NET` 전용 두 번째 클라이언트**가 있다(문서: TypeScript 하나만)~~
   — 갭 아님: 공통 문서는 TypeScript 브라우저 client와 언어별 headless 시나리오 client를 서로 다른 계약으로 명시한다.
 - [x] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)

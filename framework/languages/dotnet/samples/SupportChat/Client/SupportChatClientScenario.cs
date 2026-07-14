@@ -26,9 +26,23 @@ internal sealed class SupportChatClientScenario
         CancellationToken cancellationToken = default)
     {
         await agent.Connect.Async(cancellationToken);
+        await ExpectFailureAsync(
+            agent.Request(new OpenConversationReq("unauthenticated"))
+                .Async<OpenConversationRes>(cancellationToken).AsTask(),
+            "Unauthenticated client must not open a conversation.");
+        await ExpectFailureAsync(
+            agent.Request(new SendChatMessageReq("unauthenticated"))
+                .Metadata(Cid, "missing-conversation")
+                .Async<SendChatMessageRes>(cancellationToken).AsTask(),
+            "Unauthenticated client must not send chat messages.");
+
         var agentAuth = await agent.Request(new AuthenticateReq("agent-1")).Async<AuthenticateRes>(cancellationToken);
         Ensure(agentAuth.ActorId == "agent-1");
         Ensure(agentAuth.Role == SupportChatRoles.Agent);
+        await ExpectFailureAsync(
+            agent.Request(new OpenConversationReq("agent cannot open"))
+                .Async<OpenConversationRes>(cancellationToken).AsTask(),
+            "Agent must not open a customer conversation.");
         Ensure((await agent.Request(new SetAgentAvailableReq(true))
             .Async<SetAgentAvailableRes>(cancellationToken)).IsAvailable);
 
@@ -195,6 +209,13 @@ internal sealed class SupportChatClientScenario
             .Async<OpenConversationRes>(cancellationToken);
         Ensure(noAgentOpen.State.Status == ConversationStatuses.WaitingForAgent);
         Ensure(noAgentOpen.State.Subject == "agent unavailable");
+        // customer-3 now belongs to its own room. Supplying cid2 must not silently send this
+        // message to customer-3's current room.
+        await ExpectFailureAsync(
+            waitingCustomer.Request(new SendChatMessageReq("not a participant"))
+                .Metadata(Cid, cid2)
+                .Async<SendChatMessageRes>(cancellationToken).AsTask(),
+            "Non-participant must not send chat messages.");
         await ExpectNoPushAsync<ConversationClosedNotify>(
             waitingCustomer,
             TimeSpan.FromMilliseconds(500),
@@ -246,7 +267,7 @@ internal sealed class SupportChatClientScenario
         {
             await request;
         }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (ZlinkStreamException error) when (error.Error.Code == ZlinkStreamErrorCode.RemoteError)
         {
             return;
         }

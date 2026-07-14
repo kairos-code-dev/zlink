@@ -1147,6 +1147,19 @@ TEST (CppFrameworkSampleParity, SampleRunnersDoNotEnableInternalAutoConnectTraci
     }
 }
 
+TEST (CppFrameworkSampleParity, SampleRunnersBuildBeforeStartingRedis)
+{
+    const auto samples = cpp_language_root () / "samples";
+    for (const auto *name : {"SupportChat", "ShoppingMall", "GameQuest", "DeliveryDispatch"}) {
+        const auto runner = read_file (samples / name / "run_sample.sh");
+        const auto build = runner.find ("cmake --build");
+        const auto redis = runner.find ("zlink_redis_start_scoped_assign");
+        ASSERT_NE (build, std::string::npos) << name << " runner must build its sample targets";
+        ASSERT_NE (redis, std::string::npos) << name << " runner must start scoped Redis";
+        EXPECT_LT (build, redis) << name << " runner must not hold Redis during compilation";
+    }
+}
+
 /* 샘플은 codec을 직접 짜지 않는다. protobuf payload는 protoc이 만든 message로 옮겨 싣고,
  * 직렬화는 codec extension이 한다. 손으로 varint를 쓰거나 JSON을 protobuf인 척 포장하는 것은
  * 금지다. connector의 payload 훅(to_stream_payload)은 그 message로 위임할 때만 쓴다. */

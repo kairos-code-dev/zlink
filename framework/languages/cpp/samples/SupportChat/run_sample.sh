@@ -97,6 +97,13 @@ if [[ -z "$SUPPORTCHAT_RESERVED_PORT" || -z "$SUPPORTCHAT_SESSION_SPOT" ]]; then
   exit 1
 fi
 
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_supportchat_api \
+  sample_cpp_framework_supportchat_session \
+  sample_cpp_framework_supportchat_support \
+  sample_cpp_framework_supportchat_probe \
+  sample_cpp_framework_supportchat_client >/dev/null
+
 # 공통 sample spec: Redis가 필요한 실행은 전용 Docker container를 띄운다. 만들지 못하면
 # host Redis나 다른 실행 endpoint로 대체하지 않고 즉시 실패한다.
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
@@ -191,13 +198,6 @@ dump_logs() {
     fi
   done
 }
-
-cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_supportchat_api \
-  sample_cpp_framework_supportchat_session \
-  sample_cpp_framework_supportchat_support \
-  sample_cpp_framework_supportchat_probe \
-  sample_cpp_framework_supportchat_client >/dev/null
 
 start_role api "$BIN_DIR/sample_cpp_framework_supportchat_api" --config="$CONFIG_DIR/api.json"
 start_role session "$BIN_DIR/sample_cpp_framework_supportchat_session" --config="$CONFIG_DIR/session.json"

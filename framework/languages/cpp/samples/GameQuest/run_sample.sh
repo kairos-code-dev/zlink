@@ -112,6 +112,11 @@ if [[ -z "$GAMEQUEST_RESERVED_PORT" || -z "$GAMEQUEST_API_B_SPOT_ROUTER_PORT" ]]
   exit 1
 fi
 
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_gamequest_game_api \
+  sample_cpp_framework_gamequest_quest_mission \
+  sample_cpp_framework_gamequest_client >/dev/null
+
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-gamequest" "redis:7-alpine"
 GAMEQUEST_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
@@ -172,11 +177,6 @@ start_role() {
   stdbuf -oL -eL "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
-
-cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_gamequest_game_api \
-  sample_cpp_framework_gamequest_quest_mission \
-  sample_cpp_framework_gamequest_client >/dev/null
 
 wait_port redis "$GAMEQUEST_REDIS_ENDPOINT"
 

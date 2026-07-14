@@ -438,7 +438,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-25** (결함) — **Domain이 이미 내린 판정을 Infrastructure가 다시 내린다**(SupportChat idle/close, Bingo join notify)
 - [x] **SMP-CP-26** (결함) — **runner 3개가 framework 동작 knob(`ZLINK_CPP_AUTO_CONNECT_TRACE`)을 export**하고, Bingo는 그 덕에 생긴 로그로 self-check한다
   - 근거: 수정 전 contract gate가 세 runner의 내부 trace 환경 변수와 Bingo·DeliveryDispatch의 trace 문자열 오라클을 검출했다. 이를 제거하고 실제 client 흐름과 공개 flow·metric evidence만 남긴 뒤 gate와 세 `./run_sample.sh`가 모두 통과했다.
-- [ ] **SMP-CP-27** (결함) — **runner 4개가 빌드 전에 Redis container를 띄운다**
+- [x] **SMP-CP-27** (결함) — **runner 4개가 빌드 전에 Redis container를 띄운다**
+  - 근거: 수정 전 contract gate가 SupportChat·ShoppingMall·GameQuest·DeliveryDispatch 네 runner 모두에서 Redis 시작이 build보다 앞서는 것을 검출했다. build 성공 뒤에만 scoped Redis를 시작하도록 순서를 바꾼 뒤 gate와 네 `./run_sample.sh`가 모두 통과했다.
 - [x] **SMP-CP-28** (결함) — **통합 runner의 transient-bind 패턴이 `already bound` 토큰을 빠뜨린다**
   - 근거: 수정 전 target-contract gate가 공통 transient bind 토큰 누락을 검출했다. 재시도 정규식에 `already bound`를 추가한 뒤 shell 매칭 확인, runner 문법 검사, target-contract gate가 모두 통과했다.
 - [ ] **SMP-CP-29** (결함) — **계약에 없는 wire 메시지 5종**(TicTacToe·DeliveryDispatch·GameQuest·ShoppingMall)

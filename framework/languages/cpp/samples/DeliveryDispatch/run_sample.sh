@@ -97,6 +97,15 @@ if [[ -z "$RESERVED_PORT" || -z "$COURIER_NODE2" ]]; then
   echo "This environment may block local socket creation." >&2
   exit 1
 fi
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_deliverydispatch_dispatch \
+  sample_cpp_framework_deliverydispatch_courier_actor_node \
+  sample_cpp_framework_deliverydispatch_customer_gateway \
+  sample_cpp_framework_deliverydispatch_courier_session \
+  sample_cpp_framework_deliverydispatch_tracking \
+  sample_cpp_framework_deliverydispatch_probe \
+  sample_cpp_framework_deliverydispatch_client >/dev/null
+
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-deliverydispatch" "redis:7-alpine"
 REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
@@ -238,15 +247,6 @@ dump_logs() {
     fi
   done
 }
-
-cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_deliverydispatch_dispatch \
-  sample_cpp_framework_deliverydispatch_courier_actor_node \
-  sample_cpp_framework_deliverydispatch_customer_gateway \
-  sample_cpp_framework_deliverydispatch_courier_session \
-  sample_cpp_framework_deliverydispatch_tracking \
-  sample_cpp_framework_deliverydispatch_probe \
-  sample_cpp_framework_deliverydispatch_client >/dev/null
 
 start_role tracking "$BIN_DIR/sample_cpp_framework_deliverydispatch_tracking" \
   --config="$CONFIG_DIR/tracking.json"

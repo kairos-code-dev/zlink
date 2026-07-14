@@ -87,6 +87,11 @@ if [[ "$PORT_ALLOCATION_OUTPUT" == SOCKETLESS* ]]; then
 fi
 read -r SHOPPINGMALL_RESERVED_PORT SHOPPINGMALL_API_A_PORT SHOPPINGMALL_API_B_PORT SHOPPINGMALL_API_A_ROUTE SHOPPINGMALL_API_B_ROUTE SHOPPINGMALL_WORKFLOW_A_PORT SHOPPINGMALL_WORKFLOW_B_PORT SHOPPINGMALL_WORKFLOW_A_ROUTE SHOPPINGMALL_WORKFLOW_B_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER SHOPPINGMALL_WORKFLOW_B_SPOT SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER SHOPPINGMALL_API_A_SPOT_ROUTER SHOPPINGMALL_API_B_SPOT_ROUTER <<<"$PORT_ALLOCATION_OUTPUT"
 
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_shoppingmall_commerce_api \
+  sample_cpp_framework_shoppingmall_order_workflow \
+  sample_cpp_framework_shoppingmall_client >/dev/null
+
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-shoppingmall" "redis:7-alpine"
 SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
@@ -150,11 +155,6 @@ start_role() {
   stdbuf -oL -eL "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
-
-cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_shoppingmall_commerce_api \
-  sample_cpp_framework_shoppingmall_order_workflow \
-  sample_cpp_framework_shoppingmall_client >/dev/null
 
 wait_port redis "$SHOPPINGMALL_REDIS_ENDPOINT"
 

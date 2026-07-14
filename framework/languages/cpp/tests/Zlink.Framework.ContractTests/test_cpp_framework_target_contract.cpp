@@ -762,6 +762,17 @@ int main ()
                          == std::string::npos,
                   "E2E-CP-41", "consumer still masks routing failures with an internal retry loop");
 
+    /* E2E-CP-42 — A2 adds, routes to, and removes a polling-discovered provider. */
+    gate.require (store_failure_runner.find ("API_C") != std::string::npos
+                    && store_failure_runner.find ("start_provider api-c")
+                         != std::string::npos,
+                  "E2E-CP-42", "SF-A2 never starts an additional provider");
+    gate.require (store_failure_client.find ("SF-A2 added provider never served traffic")
+                    != std::string::npos
+                    && store_failure_client.find ("SF-A2 removed provider still served traffic")
+                         != std::string::npos,
+                  "E2E-CP-42", "SF-A2 does not prove polling add/remove routing");
+
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
                     != std::string::npos,

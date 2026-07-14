@@ -122,18 +122,18 @@ PY
   exit 0
 fi
 
-read -r API_A API_B API_B_REPLACEMENT HTTP_A HTTP_B HTTP_B_REPLACEMENT HTTP_CONSUMER <<<"$(python3 - <<'PY'
+read -r API_A API_B API_B_REPLACEMENT API_C HTTP_A HTTP_B HTTP_B_REPLACEMENT HTTP_C HTTP_CONSUMER <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(7):
+for _ in range(9):
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:3]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:7]))
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:4]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[4:9]))
 for sock in sockets:
     sock.close()
 PY
@@ -161,6 +161,8 @@ API_A_PID=""
 API_B_PID=""
 CONSUMER_PID=""
 SF_B2_REPLACEMENT_PID=""
+SF_A2_PROVIDER_PID=""
+SF_A2_PROVIDER_START_FILE="$LOG_DIR/sf-a2-start-provider-c"
 
 status_allowed() {
   local status="$1"
@@ -257,6 +259,7 @@ cleanup() {
     post_shutdown "$HTTP_B/shutdown"
   fi
   post_shutdown "$HTTP_B_REPLACEMENT/shutdown"
+  post_shutdown "$HTTP_C/shutdown"
   if [[ -n "$CONSUMER_PID" ]]; then
     post_shutdown "$HTTP_CONSUMER/shutdown"
   fi
@@ -407,6 +410,23 @@ start_sf_b2_replacement() {
   PIDS+=("$SF_B2_REPLACEMENT_PID")
 }
 
+start_sf_a2_provider() {
+  (
+    for _ in $(seq 1 "$PROCESS_STOP_ATTEMPTS"); do
+      if [[ -f "$SF_A2_PROVIDER_START_FILE" ]]; then
+        start_provider api-c "$API_C" "$HTTP_C"
+        wait "$LAST_PID"
+        exit $?
+      fi
+      sleep "$LOCAL_READINESS_POLL_SECONDS"
+    done
+    echo "Timed out waiting for SF-A2 provider start signal" >&2
+    exit 1
+  ) &
+  SF_A2_PROVIDER_PID="$!"
+  PIDS+=("$SF_A2_PROVIDER_PID")
+}
+
 start_provider api-a "$API_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$HTTP_B"
@@ -417,6 +437,9 @@ CONSUMER_PID="$LAST_PID"
 if [[ "$SCENARIO" == "SF-B2" ]]; then
   start_sf_b2_replacement
 fi
+if [[ "$SCENARIO" == "SF-A2" ]]; then
+  start_sf_a2_provider
+fi
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
@@ -424,10 +447,12 @@ ZLINK_CPP_SF_SCENARIO="$SCENARIO" \
 ZLINK_CPP_SF_CONSUMER_URL="$HTTP_CONSUMER" \
 ZLINK_CPP_SF_PROVIDER_A_URL="$HTTP_A" \
 ZLINK_CPP_SF_PROVIDER_B_URL="$HTTP_B" \
+ZLINK_CPP_SF_PROVIDER_C_URL="$HTTP_C" \
 ZLINK_CPP_SF_PROVIDER_A_ENDPOINT="$API_A" \
 ZLINK_CPP_SF_PROVIDER_B_ENDPOINT="$API_B" \
 ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL="$HTTP_B_REPLACEMENT" \
 ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_ENDPOINT="$API_B_REPLACEMENT" \
+ZLINK_CPP_SF_PROVIDER_C_START_FILE="$SF_A2_PROVIDER_START_FILE" \
 ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" \
 ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
 ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
@@ -435,6 +460,12 @@ ZLINK_CPP_SF_LOCATION_POLLING_MS="$POLLING_MS" \
 ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
   "$CLIENT" >"$LOG_DIR/client-$SCENARIO.stdout.log" 2>"$LOG_DIR/client-$SCENARIO.stderr.log"
 cat "$LOG_DIR/client-$SCENARIO.stdout.log"
+
+if [[ "$SCENARIO" == "SF-A2" ]]; then
+  wait_pid_status "$SF_A2_PROVIDER_PID" "added provider api-c" 0 130 143
+  forget_pid "$SF_A2_PROVIDER_PID"
+  SF_A2_PROVIDER_PID=""
+fi
 
 if [[ "$SCENARIO" == "SF-B2" ]]; then
   wait_pid_status "$API_B_PID" "expected replaced provider api-b" 137

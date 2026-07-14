@@ -9,7 +9,7 @@
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | SF-A1 | 구현 | Redis location store가 정상일 때 provider 2개가 live peer row로 보이고, consumer request가 provider에 도달하며 consumer/provider runtime status가 healthy로 보인다. |
-| SF-A2 | 구현 | C++ Redis store는 watch 없이 polling 경로로 동작한다. status의 `watch_enabled=false`와 provider shutdown 뒤 peer row 제거를 public `/query/*` endpoint로 검증한다. |
+| SF-A2 | 구현 | C++ Redis store는 watch 없이 polling 경로로 동작한다. 초기 부재 확인 뒤 별도 `api-c`를 추가하고 polling 제한 안의 peer 반영과 실제 routing 응답을 확인한다. 정상 종료 뒤에는 같은 제한 안의 peer 제거와 후속 routing 제외를 public `/query/*`와 `/profile/request`로 검증한다. |
 | SF-B1 | 구현 | Redis container process를 정지한 동안 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 빈 store 재기동 후 healthy로 회복된다. |
 | SF-B2 | 구현 | Redis 정지 중 `api-b`를 새 channel endpoint에서 재기동한다. store failure grace를 넘길 때까지 기존 `api-a` 연결의 request만 성공하고, 빈 store 복구 뒤 새 endpoint row가 등록되어 `api-b`가 다시 요청을 처리한다. |
 | SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 raw Redis row는 남지만 framework의 owner lease join이 lease 만료 뒤 live peer list에서 제외하고, 이후 request는 survivor `api-a`로만 간다. |
@@ -23,6 +23,10 @@
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-080623-2320391`(SF-A2)
+  - 의미: polling-only consumer가 scenario 중 추가된 `api-c`를 routing 대상으로 반영하고, 정상 종료 뒤 제거하는 전이가 통과했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-080111-2298217`(SF-D1), `logs/20260715-080125-2299402`(SF-D2)

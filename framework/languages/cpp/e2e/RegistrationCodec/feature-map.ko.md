@@ -18,7 +18,7 @@ location store를 등록하지 않고 수동 endpoint 연결만 사용한다.
 | `RC-B1` | 구현 | JSON request와 send를 실행하고 `application/json` content-type evidence를 확인한다. 로그: `logs/20260708-124643-1329498`, 출력: `scenario RC-B1 passed`, `registration-codec e2e result=passed`. |
 | `RC-B2` | 구현 | C++ Protobuf codec extension으로 request와 send를 실행하고 `application/x-protobuf` content-type evidence를 확인한다. 로그: `logs/20260708-124643-1329498`, 출력: `scenario RC-B2 passed`, `registration-codec e2e result=passed`. |
 | `RC-B3` | 구현 | C++ MessagePack codec extension으로 request와 send를 실행하고 `application/x-msgpack` content-type evidence를 확인한다. 로그: `logs/20260708-124643-1329498`, 출력: `scenario RC-B3 passed`, `registration-codec e2e result=passed`. |
-| `RC-B4` | 구현 | 한 host의 global registry에서 JSON, Protobuf, MessagePack, custom serializer가 공존하는지 reply 값과 실제 inbound content-type으로 확인한다. 로그: `logs/20260708-124643-1329498`, 출력: `scenario RC-B4 passed`, `registration-codec e2e result=passed`. |
+| `RC-B4` | 구현 | 별도 serializer를 등록하지 않은 `json_roundtrip_req_t`가 기본 JSON 경로와 `application/json`을 사용하는지 확인한다. 같은 host에서 Protobuf, MessagePack, custom serializer도 섞어 보내 각 reply 값과 실제 inbound content-type이 서로 간섭하지 않는지 검증한다. |
 | `RC-B5` | 구현 | codec requester가 Protobuf content-type request를 JSON-only peer에 보내고, 기본 JSON serializer가 payload를 해석하지 못하면 공개 `payload_decode_failed`로 끝나는지 이름으로 확인한다. 이후 같은 channel의 정상 JSON request가 계속 성공하는지도 확인한다. |
 
 ## C++ 언어 표면 차이

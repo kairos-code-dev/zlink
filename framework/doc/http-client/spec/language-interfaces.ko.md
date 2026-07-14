@@ -44,15 +44,26 @@
 | streaming 업로드 | `body_stream(provider, ct)` — `std::function<std::optional<std::string>()>` | `BodyStream(Func<byte[]?>, ct)` | `bodyStream(Supplier<byte[]>, ct)` / kotlin `() -> ByteArray?` | `bodyStream(provider, ct)` — `() => Uint8Array \| null` |
 | form / multipart | `form` / `multipart` / `multipart_file` | `Form` / `Multipart` / `MultipartFile` | `form` / `multipart` / `multipartFile` | `form` / `multipart` / `multipartFile` |
 
-### 1.4 제출(terminal)
+### 1.4 terminator (목표 계약)
+
+**framework의 세 terminator(`submit`/`async`/`yield`)를 그대로 갖고, awaitable을 쓰지 않는
+호출자를 위한 callback 완료 경로를 함께 제공한다**([12 HTTP client](../../framework/common/spec/12-http-client.ko.md)).
+아래는 **목표 계약**이며 현재 구현과의 차이는
+[구현 차이 §12.22](../../framework/common/spec/90-implementation-gap.ko.md)가 소유한다.
 
 | 개념 | cpp | dotnet | java | kotlin | node |
 | --- | --- | --- | --- | --- | --- |
-| raw | `submit_raw()` → `task_t<raw_http_response_t>` | `SubmitRawAsync(ct?)` → `ValueTask<RawHttpResponse>` | `submitRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `submitRaw()` → `Promise<RawHttpResponse>` |
-| typed | `submit<T>()` → `task_t<http_response_t<T>>` (+콜백 오버로드) | `SubmitAsync<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `submit<T>()` |
-| 다운로드 | `download(sink)` — `std::function<void(std::string_view)>` | `DownloadAsync(Action<ReadOnlyMemory<byte>>, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload((ByteArray) -> Unit)` | `download(sink)` — `(Uint8Array) => void` |
-| blocking 언래핑 | `fetch<T>()` | `Fetch<T>()` | `fetch(Class<T>)` (`.join()`) | `fetch<T>()` — **suspend, non-blocking** (동명이의, [R5](10-revision-candidates.ko.md)) | **없음** (의도) |
-| body만 (async) | — | — | — | `fetch<T>()` | `fetch<T>()` → `Promise<T>` |
+| **async** (raw) | `async_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `asyncRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `asyncRaw()` → `Promise<RawHttpResponse>` |
+| **async** (typed) | `async<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `async(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
+| **async** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
+| **yield** | `yield<T>()` | `Yield<T>(ct?)` | `yield(Class<T>)` | `yieldAwait<T>()` | `yield<T>()` |
+| **submit** (one-way) | `submit()` | `Submit(ct?)` | `submit()` | `submit()` | `submit()` |
+| **callback** | `async<T>(callback)` | `Async<T>(callback)` | `async(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
+| blocking 언래핑 | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** |
+
+- `yield`는 **execution scheduler가 주입된 client에서만** 노출된다(§5.3). 단독 사용에서는 없다.
+- `.NET`은 `SubmitAsync`처럼 submit 동사를 반복하지 않는다 — `Submit`은 one-way 전용이다.
+- kotlin의 `fetch<T>()`는 suspend 함수이며 blocking이 아니다. body만 돌려주는 편의 확장이다.
 
 ### 1.5 응답/보조 타입
 
@@ -67,7 +78,7 @@
 
 | | 예외/실패 타입 | kind 접근 |
 | --- | --- | --- |
-| cpp | `framework_exception_t` / `result_t` | `framework_error_kind_t` (snake_case, 5종) |
+| cpp | `framework_exception_t` / `result_t` | `framework_error_kind_t` (snake_case, framework 공용 22종) + boundary 상태(`timed_out` 등)는 `code()` |
 | dotnet | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (PascalCase) + `IsRetriable` |
 | java/kotlin | `ZLinkFrameworkException` | `kind()` (UPPER_SNAKE) + `retriable()` |
 | node | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (camelCase) + `isRetriable` |
@@ -78,9 +89,9 @@
 
 - **cpp** `zlink::http_client`: `client_t`, `client_builder_t`,
   `request_builder_t`, `http_method_t`, `http_response_t<T>`,
-  `raw_http_response_t`, `body_stream_provider_t`,
-  `coroutine_execute_scheduler_t`, `coroutine_resume_scheduler_t`,
-  `framework_resume_scheduler_t`.
+  `raw_http_response_t`, `coroutine_execute_scheduler_t`,
+  `coroutine_resume_scheduler_t`, `framework_resume_scheduler_t`.
+  (`body_stream_provider_t`는 `request_builder_t` 안의 중첩 typedef이며 최상위 심볼이 아니다)
 - **dotnet** `Zlink.HttpClient`: `ZLinkHttpClient`, `ZLinkHttpClientBuilder`,
   `ZLinkHttpRequestBuilder`, `ZLinkHttpMethod`, `RawHttpResponse`,
   `HttpResponse<T>`.

@@ -753,7 +753,7 @@ client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker
 | 비교 목적 | worker pool 완료 대기의 자동 turn 관리와 worker→Spot continuation 재개 비용 |
 | 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
 
-이 시나리오는 `config-8-automatic-turn-dispatch.ko.md`의 ATD-A4가 검증하는 worker offload 대기
+이 시나리오는 `config-8-execution-turn.ko.md`의 TD-C3/TD-C4가 검증하는 worker offload 대기
 경로를 같은 조건에서 측정한다. 여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용
 worker thread pool offload다. 여러 프로세스에 작업을 분산하는 별도 공개 계약을 뜻하지 않는다.
 

@@ -37,11 +37,11 @@ interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(spot: TSpot, message: TMessage)
 }
 
-interface ZLinkSuspendingSpotRequestHandler<TSpot : ZLinkSpot<*>, TRequest, TReply> {
+interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(spot: TSpot, request: TRequest): TReply
 }
 
-interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : ZLinkSpot<*>, TEvent> {
+interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(spot: TSpot, event: TEvent)
 }
 
@@ -205,7 +205,8 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
         frameworkVoidCoroutineBridge { onDisconnectActorSuspending(actor) }
 
-    protected abstract suspend fun onCreateSuspending(
+    // 기본 구현이 있다(accept). 필요할 때만 재정의한다.
+    protected open suspend fun onCreateSuspending(
         request: ZLinkMessage,
     ): ZLinkSpotCreateResponse
 
@@ -350,7 +351,7 @@ ZLinkSuspendingLocationStore
 타입의 목표 선언은 다음과 같다.
 
 ```kotlin
-class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
+class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendInvocationAdapter {
     constructor(dispatcher: CoroutineDispatcher = Dispatchers.Default)
     constructor(
         scope: CoroutineScope,
@@ -387,8 +388,6 @@ class ZLinkKotlinStreamConnector(
         handler: ZLinkStreamConnectionStateHandler,
     ): AutoCloseable
     fun connect(): ZLinkKotlinLifecycleCall
-    fun disconnect(): ZLinkKotlinLifecycleCall
-    fun reconnect(): ZLinkKotlinLifecycleCall
     fun close(): ZLinkKotlinLifecycleCall
     fun dispatch(): ZLinkKotlinLifecycleCall
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
@@ -858,7 +857,7 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 | `ZLinkKotlinSendCall.submit` | one-way, 완료 객체 없음 | `inner.submit()` 결과를 반환하지 않음 | 일치 |
 | actor one-way completion extension | 목표 public 계약에 없음 | `awaitSend`와 `sendToActorAwait`를 제거하고 Java one-way `submit()`을 직접 사용 | 일치 |
 | `ZLinkFanoutClient.publishToTopic` | 일반 `fun`, one-way 완료 객체 없음 | 일반 함수가 내부 `submit()`만 호출 | 일치 |
-| request/join/worker yield extension | 별도 extension 없음. 일반 `await`가 실행 문맥을 보존 | yield extension 없음 | 일치 |
+| request/join/worker yield extension | **`yield` 표면을 제공한다** — turn을 반납하고 완료 시 실행 줄 큐에 재삽입해 재개한다 | yield extension 없음. 일반 `await`가 자동으로 turn을 반납한다 | **미충족** — [구현 차이 §12.21](../../90-implementation-gap.ko.md) |
 | Spot messaging target | `SpotHandle` extension과 handle resolver | `resolveSpotHandle`과 `resolveActorSpotHandle`이 nullable handle을 반환 | 일치 |
 | 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | type·function 이름과 overload 수를 검사하고, 각 public method의 JVM descriptor snapshot을 검증함 | 일치 — Kotlin 이름과 JVM에서 충돌을 피하려고 바꾼 이름까지 contract test가 고정한다. |
 

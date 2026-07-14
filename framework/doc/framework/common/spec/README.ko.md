@@ -11,7 +11,7 @@
 | 번호대 | 주제 |
 |---|---|
 | `0x` | 기반 — 계약 관리, 개요, 메시지·상호작용 모델, 비동기 정책 |
-| `1x` | Channel |
+| `1x` | Channel · HTTP client |
 | `2x` | SPOT · Actor |
 | `3x` | STREAM |
 | `4x` | Location |
@@ -31,12 +31,13 @@
 | [04 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) | 비동기 완료, 취소, coroutine 투영 규칙 |
 | [05 framework API](05-framework-api.ko.md) | framework 역할과 등록 표면의 공통 기준 |
 
-### 1x Channel
+### 1x Channel · HTTP client
 
 | 문서 | 범위 |
 |------|------|
 | [10 channel topology](10-channel-topology.ko.md) | channel 종류, 역할, 자동·수동 연결 |
 | [11 channel 메시징](11-channel-messaging.ko.md) | channel runtime 수명, dispatch 실패 정책, startup validation, 종료 중 호출 |
+| [12 HTTP client](12-http-client.ko.md) | framework 동반 HTTP client — fluent builder, 실행 terminator, turn seam, 등록, codec, 오류 |
 
 ### 2x SPOT · Actor
 
@@ -89,22 +90,29 @@
 
 ## 언어별 공개 계약
 
-**언어별 스펙은 3문서로 고정한다.** 기능별 문서를 따로 두지 않는다 — 기능의 의미는 위 공통
-스펙이 소유한다.
+**언어별 스펙은 아래 네 문서로 고정한다.** 그 밖의 기능별 문서를 따로 두지 않는다 — 기능의
+의미는 위 공통 스펙이 소유한다. 언어에 따라 해당 없는 문서는 두지 않는다(표 참조).
 
 | 번호 | 문서 | 범위 |
 |---|------|------|
 | `01` | 시스템 구조 | 패키지 구조·배포, host 등록, DI, lifecycle, startup validation |
 | `02` | 인터페이스 | 전체 public interface·타입·시그니처 카탈로그 |
 | `03` | Stream Connector | client connector의 public 표면 |
+| `04` | HTTP client | framework 동반 HTTP client의 public 표면 **(작성 예정)** |
 
-| 언어 | 정식 스펙 |
-|------|-----------|
-| `.NET` | [languages/dotnet](languages/dotnet/README.ko.md) |
-| Java | [languages/java](languages/java/README.ko.md) |
-| Kotlin | [languages/kotlin](languages/kotlin/README.ko.md) — Java 런타임을 공유하므로 인터페이스 문서만 둔다 |
-| Node.js / TypeScript | [languages/node](languages/node/README.ko.md) |
-| **C++** | [languages/cpp](languages/cpp/README.ko.md) — **예외.** framework 자체를 구현하므로 기능별 스펙을 유지한다 |
+| 언어 | 정식 스펙 | 두는 문서 |
+|------|-----------|-----------|
+| `.NET` | [languages/dotnet](languages/dotnet/README.ko.md) | `01`, `02`, `03` (+ `04` 예정) |
+| Java | [languages/java](languages/java/README.ko.md) | `01`, `02`, `03` (+ `04` 예정) |
+| Kotlin | [languages/kotlin](languages/kotlin/README.ko.md) | `02`만 — Java 런타임을 공유하므로 Kotlin 고유 표면(`suspend`, `Flow`, DSL)만 고정한다 |
+| Node.js | [languages/node](languages/node/README.ko.md) | `01`, `02` (+ `04` 예정) — connector는 아래 TypeScript가 소유한다 |
+| TypeScript | [languages/typescript](languages/typescript/README.ko.md) | `03`만 — browser stream connector의 public 표면. Node.js framework 계약과 분리한다([00 §4](00-public-contract-governance.ko.md)) |
+| **C++** | [languages/cpp](languages/cpp/README.ko.md) | **예외.** framework 자체를 구현하므로 기능별 스펙을 유지한다 |
+
+**Node.js와 TypeScript를 나눈 이유:** stream connector는 브라우저에서 도는 client이고 Node.js
+framework host와 배포 단위·실행 환경이 다르다. 두 계약을 한 디렉토리에 두면 어느 쪽이 어느
+package의 표면인지 흐려진다. Node.js 문서가 connector를 참조할 때는 `languages/typescript/03`을
+링크한다.
 
 언어별 디렉토리의 정식 스펙은 각 언어가 제공해야 하는 **목표 public contract**를 고정한다.
 **현재 구현이 정식 스펙과 다르면 정식 스펙을 코드에 맞춰 축소하지 않는다.**

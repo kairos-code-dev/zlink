@@ -55,6 +55,11 @@
 | **location runtime** | 상태 변경 · topology 변경 · 서비스 요약 변경 · store 실패 · store 복구 |
 | **spot** | 상태 변경 · peer 집합 변경 · subject 집합 변경 · timer handler 실패 · 처리되지 않은 예외로 timer 중단 |
 
+**drain 이벤트는 이 등록 모델 밖이다.** graceful drain의 lifecycle 이벤트는 저빈도이고 노드당
+하나뿐이라 source 등록이나 polling 주기가 필요 없다. runtime event handler가 등록되어 있으면
+monitoring 구성과 무관하게 항상 수신한다. 그 계약은
+[54 §9](54-graceful-drain-handoff.ko.md)가 소유한다.
+
 **timer handler 실패는 두 갈래를 구분한다** — timer가 **계속 도는** 실패와, **timer가 중단된**
 실패다.
 

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: Store 장애·복구](config-6-store-failure-recovery.ko.md) | [다음: 자동 turn dispatch](config-8-automatic-turn-dispatch.ko.md)
+[E2E 목차](README.ko.md) | [이전: Store 장애·복구](config-6-store-failure-recovery.ko.md) | [다음: 실행 turn과 terminator](config-8-execution-turn.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 7 — Runtime Monitoring 배포

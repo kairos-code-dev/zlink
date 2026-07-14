@@ -55,6 +55,11 @@
 복원할 수 없으면 응답할 대상이 없다.** request sequence가 있고 reply 상관관계를 복원할 수 있을
 때만 error reply를 보낸다.
 
+**reply 상관관계의 키는 request sequence 단독이다.** 호출자는 그 sequence로 pending request를
+찾아 완료시킨다. **`Response`와 `Error`는 packet name을 담지 않는다** — 응답은 handler를 고르지
+않으므로 그 필드가 필요 없다. typed reply는 호출자가 지정한 reply 타입으로 바로 decode한다.
+전체 규칙은 [03 message model](03-message-model.ko.md)의 "reply 상관관계"가 소유한다.
+
 ### 3.1 로그 수준
 
 **drop 여부와 오류 분류는 별개다.** 같은 drop이라도 원인에 따라 로그 수준이 다르다.
@@ -134,6 +139,7 @@ request는 정상 처리한다** — 완전 차단은 분산 시스템에서 불
 | channel 이름 호출 | 호출자가 channel 이름만으로 요청하고 runtime이 channel view로 전달한다 |
 | runtime 수명 | startup에서 만들고 shutdown에서 정리한다. lazy 생성이 없다 |
 | dispatch 실패 | request·send·publish가 §3대로 갈린다 |
+| reply 상관관계 | reply를 request sequence 단독으로 매칭한다. `Response`·`Error` header에 packet name이 없다 |
 | observer 격리 | observer callback 실패가 reply·drop 결과를 바꾸지 않는다 |
 | startup validation | §4의 각 행이 그대로 동작한다 |
 | 종료 중 신규 호출 | stopping 이후의 `submit` 호출은 동기 예외로 즉시 거부된다 |

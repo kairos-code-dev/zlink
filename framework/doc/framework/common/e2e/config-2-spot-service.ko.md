@@ -133,14 +133,15 @@ handler 동작(공유):
 - 검증: 두 번째 요청은 `SpotTypeMismatch` public error로 실패한다(`ZLinkFrameworkException`). 처음 만든 spot과 그 상태는 영향받지 않는다.
 - 세부 동작: 같은 rid 재사용 시 타입 일치 강제.
 
-#### SM-A8 worker offload (`Context.RunWorker`)
+#### SM-A8 worker offload (`Context.RunCpuWorker`)
 
 우선순위: `P2`
 
-**한마디로:** 무거운 작업을 `RunWorker`로 spot 직렬 루프 밖에서 돌려도, 그 사이 spot이 막히지 않고 결과는 spot 컨텍스트로 안전히 돌아와 반영되는가.
+**한마디로:** 무거운 CPU 작업을 `RunCpuWorker`로 spot의 직렬 스레드 밖에서 돌려도, 결과는 spot 컨텍스트로 안전히 돌아와 반영되는가.
 
-- 절차: spot handler가 무거운 작업을 `Context.RunWorker(...)`로 offload하고, 결과를 받아 spot 상태에 반영한다. 같은 시간대에 그 spot/노드로 다른 request도 보낸다.
-- 검증: worker가 spot 직렬 루프 밖에서 실행되어, 그 동안 같은 spot의 다른 처리가 블록되지 않는다. worker 결과는 spot 직렬 컨텍스트로 돌아와 상태에 안전히 반영된다(경합 없음).
+- 절차: spot handler가 무거운 CPU 작업을 `Context.RunCpuWorker(...)`로 offload하고 `.Yield(...)`로 기다린 뒤, 결과를 받아 spot 상태에 반영한다. 같은 시간대에 그 spot/노드로 다른 request도 보낸다.
+- 검증: worker가 spot 직렬 스레드 밖(bounded worker pool)에서 실행된다. `.Yield(...)`가 turn을 반납하므로 그동안 같은 spot의 다른 처리가 진행되고, worker 결과는 spot 직렬 컨텍스트로 돌아와 상태에 안전히 반영된다(경합 없음).
+- 세부 동작: **worker 축(어느 스레드에서 도는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../spec/04-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
 - 세부 동작: spot 직렬성 유지 + 무거운 작업 offload.
 
 ### Track B — actor join과 lifecycle

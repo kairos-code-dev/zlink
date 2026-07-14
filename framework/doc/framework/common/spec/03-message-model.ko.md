@@ -116,9 +116,9 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 |------|------|
 | `message-kind` | `Request=1`, `Response=2`, `Command=3`, `Publish=4`, `Error=5`로 고정한다. dispatch key 문맥은 `{Request, Command, Publish}` 셋이다. `Response`와 `Error`는 client측 reply correlation 전용이라 dispatch key로 노출하지 않는다. |
 | `channel` | 논리 channel 이름 |
-| `packet-name` | handler 선택에 쓰는 이름 |
+| `packet-name` | handler 선택에 쓰는 이름. **`Request`·`Command`·`Publish`에만 둔다** — `Response`와 `Error`는 handler를 고르지 않으므로 이 필드를 두지 않는다 |
 | `content-type` | payload codec 식별 |
-| `correlation-id` | 요청과 응답 연결 |
+| `correlation-id` | **흐름 추적용 키**(로그·observer 상관). request/response 매칭 키가 **아니다** |
 | `deadline` 또는 `timeout` | 시간 제한 전달 |
 | `error-code` | 공통 에러 코드 |
 | `error-message` | 실패 원인을 설명하는 문자열 |
@@ -127,9 +127,11 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 | `flow-id` | 여러 단계 호출과 메시지 경계를 잇는 전역 추적 정보. 정확한 생성·전파 계약은 [메시지 흐름 상관관계](53-flow-correlation.ko.md)가 소유한다. |
 | `causation-id` | 어떤 이전 메시지에서 파생됐는지 식별 |
 
-모든 framework message는 `message-kind`, `packet-name`과 `content-type`을 포함한다.
-channel 경로는 `channel`을 포함하고, `Request`와 그 결과인 `Response` 또는 `Error`는
-같은 `correlation-id`를 포함한다. 성공 결과는 `Response`, 실패 결과는 `Error`로
+모든 framework message는 `message-kind`와 `content-type`을 포함한다. **`packet-name`은 dispatch
+key 문맥(`Request`·`Command`·`Publish`)에만 둔다** — `Response`와 `Error`는 packet name을 담지
+않는다. channel 경로는 `channel`을 포함한다. **request sequence는 이 envelope header의 필드가 아니라
+전송 계층이 소유한다**(아래 "reply 상관관계"). `correlation-id`는 흐름 추적을 켠 경우에만
+채운다. 성공 결과는 `Response`, 실패 결과는 `Error`로
 구분하며 별도의 `status` 필드는 두지 않는다. `error-code`와 `error-message`는
 `Error`에만 둔다. route가 대상을 명시해야 하는 경로만 `source`와 `target`을
 포함한다. deadline, flow-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
@@ -139,11 +141,37 @@ channel 경로는 `channel`을 포함하고, `Request`와 그 결과인 `Respons
 
 | `message-kind` | 숫자 | 용도 | 필드 제약 |
 |----------------|------|------|-----------|
-| `Request` | `1` | 응답을 요구하는 요청 | `correlation-id`가 필요하다. `error-code`와 `error-message`를 두지 않는다. |
-| `Response` | `2` | 성공한 요청의 결과 | 원래 요청과 같은 `correlation-id`가 필요하다. `error-code`와 `error-message`를 두지 않는다. |
+| `Request` | `1` | 응답을 요구하는 요청 | 전송 계층이 **request sequence**를 붙인다. `error-code`와 `error-message`를 두지 않는다. |
+| `Response` | `2` | 성공한 요청의 결과 | 전송 계층이 원래 요청과 **같은 request sequence**를 되돌린다. **`packet-name`을 두지 않는다.** `error-code`와 `error-message`도 두지 않는다. |
 | `Command` | `3` | 응답을 요구하지 않는 전송 | reply로 처리하지 않는다. `error-code`와 `error-message`를 두지 않는다. |
 | `Publish` | `4` | 구독자에게 발행하는 메시지 | reply로 처리하지 않는다. `error-code`와 `error-message`를 두지 않는다. |
-| `Error` | `5` | 실패한 요청의 결과 | 원래 요청과 같은 `correlation-id`와 비어 있지 않은 `error-code`가 필요하다. `error-message`에는 호출자에게 전달할 실패 설명을 둘 수 있다. |
+| `Error` | `5` | 실패한 요청의 결과 | 전송 계층이 원래 요청과 **같은 request sequence**를 되돌리고, 비어 있지 않은 `error-code`가 필요하다. **`packet-name`을 두지 않는다.** `error-message`에는 호출자에게 전달할 실패 설명을 둘 수 있다. |
+
+### reply 상관관계 — sequence 단독
+
+**응답이 어느 요청의 응답인지는 request sequence만으로 판정한다.** `Response`와 `Error`를 받은
+쪽은 그 sequence로 pending request를 찾아 완료시킨다.
+
+**sequence는 envelope header가 아니라 전송 계층이 소유한다.**
+
+| 경로 | sequence를 소유하는 곳 |
+|------|------------------------|
+| channel / route (CS) | **core socket의 request/reply 상관관계**. framework envelope header에는 sequence 필드가 없다 |
+| STREAM (SS) | **stream header의 `request_seq`**([32 §4](32-stream-connector.ko.md)) |
+
+- **`Response`와 `Error`는 packet name을 담지 않는다.** 어느 요청의 응답인지는 sequence가 이미
+  정하고, 응답은 handler를 고르지 않는다. 따라서 그 필드는 쓰이지 않는 잉여이며, 언어마다 다른
+  값을 채워 넣어 진단만 어긋나게 만든다. **wire에서 뺀다.**
+- **어떤 구현도 응답을 packet name으로 대조하지 않는다.** 필드 자체가 없으므로 대조할 수도 없다.
+- **typed reply는 호출자가 지정한 reply 타입으로 바로 decode한다.** 이름으로 decode 타입을
+  고르지 않는다.
+- `Error`도 같은 sequence로 매칭한다. sequence가 없는 `Error`는 특정 request의 실패가 아니라
+  연결·프로토콜 수준 오류다.
+- 응답의 진단·로깅에는 packet name 대신 **원본 request의 이름**을 쓴다. 그 이름은 pending request
+  항목이 이미 들고 있으므로 wire로 되돌릴 필요가 없다.
+
+이 규칙은 channel request/reply와 STREAM session request/response에 **똑같이** 적용한다
+([32 §5.2](32-stream-connector.ko.md)).
 
 값 `0`, `1..5` 밖의 값, `status` 필드, `Response`에 오류 필드를 넣은 형태,
 `Error`를 성공 payload처럼 사용하는 형태는 유효하지 않다. 이전의 `event` 이름이나

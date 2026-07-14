@@ -56,6 +56,8 @@ client builder(one-shot) 양쪽에서 동일 이름으로 제공한다.
 client.post("/games")
       .header("x-request-id", "req-8f2c41")
       .query("region", "kr")
-      .body(create_game_req)      // typed JSON
-      .submit<create_game_res>()  // 언어별 typed 제출명은 language-interfaces 참조
+      .body(create_game_req)     // typed JSON
+      .timeout(3s)
+      .async<create_game_res>()  // terminator. spot handler에서 외부 대기면 .yield<T>()
+                                 // 언어별 이름은 language-interfaces §1.4 참조
 ```

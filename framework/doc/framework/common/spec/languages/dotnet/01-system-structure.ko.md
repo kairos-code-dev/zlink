@@ -181,10 +181,12 @@ dispatch key = **inbound channel 이름 + message kind + packet name**.
 |---|---|
 | `EnableRouter(endpoint)` | local `SpotNode.router` 경로. 같은 channel의 다른 `SpotNode`와 routed packet을 주고받는 축 |
 | `EnablePubSub(endpoint)` | 현재 SPOT channel의 publish/subscribe 축. local spot에서 publish하려면 필요하다 |
-| `AddClientServerChannel(...).EnableClient(...)` | 다른 channel로 outbound send/request를 보내는 channel client |
 | `AddEntrySpot<TEntrySpot>()` | 자동 Entry Spot에 붙일 **application registry**. Entry Spot 자체의 native lifecycle은 framework가 관리한다 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 생성·소유할 spot factory. **generic spot 타입으로 등록한다**(이름 인자 없음) |
 
+- **channel client는 SpotNode builder가 아니라 `IZLinkFrameworkOptions`에 등록한다.**
+  `AddClientServerChannel(...).EnableClient(...)`는 framework 수준 표면이며, SpotNode는 별도
+  channel client를 부착하지 않는다.
 - **`AddEntrySpot`을 등록하지 않으면 빈 Entry Spot registry를 사용한다.** actor가 Entry Spot에
   머무는 동안 처리할 application handler와 lifecycle callback이 없다는 뜻이다.
 - **같은 `SpotNode`에 여러 spot factory를 둘 수 있다.** 생성 시점에 **spot 타입으로** 어떤 factory를

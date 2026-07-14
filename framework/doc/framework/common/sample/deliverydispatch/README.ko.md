@@ -253,6 +253,30 @@ request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있�
 실패 분류와 재시도 의미는
 [spot 주소 메시징 스펙](../../spec/24-spot-address-messaging.ko.md)을 따른다.
 
+### 6.1 Entry Spot에서의 대기 — `yield`를 쓴다
+
+`CustomerEntrySpot`과 `CourierEntrySpot`은 **모든 actor가 처음 거쳐 가는 공용 입구**다. 여기서
+handler가 `async`로 오래 기다리면 **뒤따르는 다른 actor의 생성·join·bind가 전부 막힌다.**
+
+**이 샘플은 그 대비를 보여 주는 자리다.** 세 terminator의 선택 기준은 하나다 —
+**그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
+
+| 대기 | terminator | 이유 |
+|------|-----------|------|
+| 자기 entry spot이 소유한 actor 표를 읽고 → actor를 만들고 → 등록한다 | **`async`** | turn을 유지해야 "없다"는 판정이 등록 시점까지 유효하다 |
+| **claim-then-activate의 probe** — 다른 노드 entry spot에 "이 배송원 actor가 있는가"를 묻는다(§6) | **`yield`** | 응답을 **다른 노드**가 만든다. 그 왕복 때문에 이 노드로 들어오려는 다른 배송원의 입장이 막히면 안 된다 |
+
+**`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.** yield 중에 다른 메시지가 먼저
+처리될 수 있다. 그래서 probe는 이렇게 쓴다 — **먼저 yield로 물어보고, 재개한 다음 그 turn 안에서
+조회·생성·등록을 한 번에 끝낸다.** yield 전에 상태를 바꿔 두고 yield 후에 그 가정을 이어서
+쓰지 않는다.
+
+같은 이유로, entry spot 안에서 **DB 드라이버·외부 SDK처럼 spot과 무관한 비동기 대기**가 생기면
+`RunIoWorker(...).Yield()`로 감싼다([04 §1.2](../../spec/04-async-execution-policy.ko.md)).
+외부 HTTP·레거시 API는 감싸지 않고 HTTP client의 `.Yield()`를 직접 쓴다
+([12 §3.1](../../spec/12-http-client.ko.md)). 반대로 배송 상태를 소유하는 `Tracking` actor handler는
+자기 상태를 두고 판단하므로 `async`로 기다린다.
+
 ## 7. Message 계약
 
 공통 message 계약은 언어 중립 schema로 읽는다. 언어별 구현은 record, class, struct,

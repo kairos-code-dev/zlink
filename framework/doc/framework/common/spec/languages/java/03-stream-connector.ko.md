@@ -53,9 +53,9 @@ public interface ZLinkStreamConnector {
     int pendingDispatchCount();
     int receivedCount(String name);
 
+    // lifecycle 표면은 셋뿐이다. 수동 재연결은 connect()의 상태 전이이고,
+    // 자동 재연결은 options가 담당한다(공통 스펙 32 §6).
     ZLinkStreamLifecycleCall connect();
-    ZLinkStreamLifecycleCall disconnect();
-    ZLinkStreamLifecycleCall reconnect();
     ZLinkStreamLifecycleCall close();
     ZLinkStreamLifecycleCall dispatch();
 
@@ -105,7 +105,9 @@ disconnect 이벤트의 `ZLinkStreamCloseReason closeReason()`으로 노출한�
 options의 `waitTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
 `dispatch().submit()`을 호출해야 wait handler가 실행된다.
 
-Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다.
+Java API에서 `submit(...)`은 비동기 작업을 시작한다. **one-way send의 `submit()`은 완료 객체를
+반환하지 않고**(`void`), request·wait·lifecycle의 `submit()`만 `CompletionStage`를 반환한다
+([04 §1](../../04-async-execution-policy.ko.md)).
 Java connector는 같은 작업을 현재 thread에서 기다리는 별도 blocking terminator를 제공하지 않는다.
 lifecycle도 `connect().submit()`, `dispatch().submit()`처럼 같은 call builder 규칙을 따른다.
 Kotlin wrapper는 `submit()`으로 얻은
@@ -130,15 +132,19 @@ public record ZLinkStreamConnectorOptions(
     Duration connectTimeout,                   // default 5s
     int maxSendPayloadSize,                    // default 64 * 1024
     int maxReceivePayloadSize,                 // default 64 * 1024
+    int maxReceivedMessages,                   // default 1024 (수신 메시지 큐 상한)
+    int maxInboundObserverNotifications,       // default 1024
+    int maxInboundObserverPayloadPreviewBytes, // default 0
     boolean heartbeatEnabled,                  // default true
     Duration heartbeatInterval,                // default 1s
     Duration heartbeatTimeout,                 // default 5s
     boolean reconnectEnabled,                  // default true
-    Duration reconnectInitialDelay,
+    Duration reconnectInitialDelay,            // default 250ms
     Duration reconnectMaxDelay,                // default 5s
     double reconnectBackoffFactor,             // default 2.0
     boolean skipServerCertificateValidation,
     ZLinkStreamCompression compression,
+    ZLinkStreamCompressionCodec compressionCodec,
     ZLinkStreamPacketNameResolver nameResolver,
     ZLinkStreamTypedCodec typedCodec) {
 }
@@ -179,8 +185,9 @@ public record ZLinkStreamMessage<TPayload>(
 ```
 
 typed object의 packet identity는 payload type의 `@ZLinkStreamPacketName`을 우선하고,
-없으면 type의 `SimpleName`을 사용한다. 호출별 override는 허용하지 않는다. 이미 encode한
-raw payload의 identity는 `ZLinkStreamEncodedPayload.packetName()`에 명시한다.
+없으면 type의 `SimpleName`을 사용한다. **호출자가 `packetName(...)`으로 명시하면 그 이름이
+우선한다**(공통 스펙 32 §5). 이미 encode한 raw payload의 identity는
+`ZLinkStreamEncodedPayload.packetName()`에 명시한다.
 
 metadata는 작은 key-value만 담는다. 큰 업무 데이터는 payload로 보낸다.
 STREAM wire header는 runtime 내부 타입이다. connector 사용자와 server session은 header
@@ -190,6 +197,7 @@ STREAM wire header는 runtime 내부 타입이다. connector 사용자와 server
 
 ```java
 public interface ZLinkStreamSendCall {
+    ZLinkStreamSendCall packetName(String name);   // 호출별 override. 명시하면 이 이름이 우선한다
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
@@ -197,6 +205,7 @@ public interface ZLinkStreamSendCall {
 }
 
 public interface ZLinkStreamRequestCall {
+    ZLinkStreamRequestCall packetName(String name);   // 호출별 override
     ZLinkStreamRequestCall metadata(String key, String value);
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
@@ -206,6 +215,7 @@ public interface ZLinkStreamRequestCall {
 }
 
 public interface ZLinkTypedStreamSendCall {
+    ZLinkTypedStreamSendCall packetName(String name);   // 호출별 override
     ZLinkTypedStreamSendCall metadata(String key, String value);
     ZLinkTypedStreamSendCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamSendCall compress();
@@ -213,6 +223,7 @@ public interface ZLinkTypedStreamSendCall {
 }
 
 public interface ZLinkTypedStreamRequestCall {
+    ZLinkTypedStreamRequestCall packetName(String name);   // 호출별 override
     ZLinkTypedStreamRequestCall metadata(String key, String value);
     ZLinkTypedStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamRequestCall timeout(Duration timeout);
@@ -233,27 +244,20 @@ public interface ZLinkStreamWaitCall {
 }
 ```
 
-request timeout이 끝나면 pending request를 제거한다. response가 늦게 도착하면
-request stage를 완료하지 않는다.
-현재 in-memory smoke connector는 등록된 reply handler가 없는 request를 즉시 timeout
-실패로 드러낸다. 이 동작은 sample이 timeout을 sleep으로 숨기지 않고 pending request
-정리 의미를 검증하기 위한 첫 구현 기준이다.
+request timeout이 끝나면 pending request를 제거하고 반환한 `CompletionStage`를 timeout
+실패로 완료한다. 제거된 request의 response가 늦게 도착해도 그 stage를 다시 완료하지 않는다.
 
 ## 8. Typed payload codec
 
-기본 connector는 wire payload를 `ZLinkStreamEncodedPayload`로 보관한다. JSON,
-MessagePack, Protobuf, auto codec 모듈은 `.NET` connector extension과 같은 방식으로
-codec registry에 등록되고, typed send/request/on/wait 표면이 그 registry를 사용해
-업무 DTO를 encode/decode한다. application code는 일반적으로 raw `Message`나 codec
-helper를 직접 다루지 않는다.
+기본 connector는 wire payload를 `ZLinkStreamEncodedPayload`로 보관한다. typed 표면은
+options의 **`typedCodec` 하나**를 사용해 업무 DTO를 encode/decode한다(기본은 JSON).
+application code는 일반적으로 raw `Message`나 codec helper를 직접 다루지 않는다.
 
 위의 `ZLinkStreamConnector.send(Object)`, `request(Object)`,
-`on(Class<TPayload>, ...)`, `waitFor(...)`가 typed payload 표면이다. codec 선택과
-payload encode/decode는 connector가 가진 codec registry 안에서 처리한다.
+`on(Class<TPayload>, ...)`, `waitFor(...)`가 typed payload 표면이다.
 
-auto codec extension은 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
-수 없으면 configuration error로 실패한다. typed 표면이 만드는 packet name도 core
-connector의 name resolver를 그대로 사용한다.
+typed 표면이 만드는 packet name은 core connector의 name resolver를 그대로 사용한다.
+codec으로 표현할 수 없는 payload는 configuration error로 실패한다.
 server push를 기다릴 때는 기본 connector의 wait builder를
 사용한다. payload 조건이 필요하면
 `connector.waitFor(name).where(payloadType, predicate).submit(payloadType)`처럼
@@ -267,8 +271,9 @@ typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를
 Kotlin extension은 Java typed payload 표면 위에 얇게 얹는다.
 
 ```kotlin
-// request 응답은 ZLinkStreamRequestCall 의 reified typed await 로 받는다(codec 가 JSON 등 처리).
-suspend inline fun <reified TReply> ZLinkStreamRequestCall.await(): TReply
+// request 응답은 ZLinkStreamRequestCall 의 reified typed awaitReply 로 받는다(codec 가 JSON 등 처리).
+// 이름은 §13의 목표 선언과 같다 -- 비-reified `await()`와 overload로 겹치지 않게 분리한다.
+inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
 
 // 구독은 connector 의 waitFor<T>() 또는 messages(packetName) Flow 로 한다.
 inline fun <reified TPayload> ZLinkStreamConnector.waitFor(): ZLinkStreamTypedWaitCall<TPayload>
@@ -282,8 +287,8 @@ fun ZLinkStreamConnector.messages(
 
 ```java
 public enum ZLinkStreamDispatchMode {
-    AUTO,
-    MANUAL
+    MANUAL,     // 기본값
+    IMMEDIATE   // receive 경로에서 인라인 실행한다(공통 스펙 32 §7)
 }
 ```
 
@@ -291,8 +296,9 @@ public enum ZLinkStreamDispatchMode {
 handler를 직접 호출하지 않고 dispatch queue에 넣는다. application은 자신이 원하는
 thread에서 `dispatch().submit()`을 호출한다.
 
-`AUTO`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
-있는 client sample은 `MANUAL`을 유지한다.
+`IMMEDIATE`는 receive 경로에서 callback을 인라인 실행하므로, 느린 handler가 receive loop를
+막고 그만큼 backpressure가 걸린다. UI thread나 game loop가 있는 client sample은 `MANUAL`을
+유지한다.
 
 ## 10. 연결 상태
 
@@ -336,6 +342,7 @@ public enum ZLinkStreamErrorCode {
     USER_CALLBACK_FAILED,
     OBSERVER_FAILED,
     OBSERVER_DROPPED,
+    RECEIVED_MESSAGE_DROPPED,   // 수신 메시지 큐 overflow(공통 스펙 32 §10)
     REMOTE_ERROR
 }
 ```
@@ -370,8 +377,6 @@ fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
 
 class ZLinkKotlinStreamConnector {
     fun connect(): ZLinkKotlinLifecycleCall
-    fun disconnect(): ZLinkKotlinLifecycleCall
-    fun reconnect(): ZLinkKotlinLifecycleCall
     fun close(): ZLinkKotlinLifecycleCall
     fun dispatch(): ZLinkKotlinLifecycleCall
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
@@ -403,7 +408,8 @@ class ZLinkStreamTypedWaitCall<TPayload> {
 }
 ```
 
-Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들지 않는다.
+Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들면 안 된다. options를
+복사하는 extension은 **수신 메시지 한도를 포함해 모든 option 값을 보존해야 한다.**
 `messages(...)`와 `errors()`는 Java connector의 `on(...)`, `onErrorReceived(...)`
 handler를 `callbackFlow`로 감싼다. 따라서 manual dispatch mode에서는 Java와 마찬가지로
 Kotlin wrapper의 `dispatch().await()`가 호출되어야 collector가 메시지나 error event를 받는다.

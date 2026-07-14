@@ -36,54 +36,121 @@ request는 두 단계로 본다.
 - request packet submit은 send와 같은 내부 submit 경로를 사용한다.
 - reply 대기는 request timeout 정책을 따른다.
 
-Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 시작한다. handler가
-`Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 반환하면 framework는 그
-완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. **유일한 예외는 아래에서
-정의하는 framework terminator await다.** `Task.Delay`나 외부 HTTP client처럼 framework
-terminator가 아닌 await는 양보 지점이 아니며 실행 줄 전체를 그대로 막는다. callback 안에서
-blocking wait로 완료 값을 기다리는 것은 금지한다.
+### 1.1 Spot 실행 turn과 세 terminator
 
-request, join과 worker에는 완료를 기다리는 terminator를 하나만 제공한다. `.NET`의
-`Async(...)`, Java의 `submit(...)`, Kotlin의 `await()`, Node.js의 `submit(...)`, C++의
-`async()`가 그 terminator다. `Yield(...)`처럼 실행 줄 관리 방식을 호출자가 고르는
-별도 public terminator는 두지 않는다.
+**Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 하나의 turn으로 실행된다.**
+이것이 SPOT의 핵심 가치다 — room·stage 로직을 lock 없이 쓸 수 있는 근거다.
 
-framework는 현재 실행 문맥과 대상 실행 줄을 알고 있으므로, self-deadlock 없이 완료를
-기다리는 방법을 내부에서 선택한다. 보호 장치는 두 겹이다.
+**Spot 실행 문맥에서 완료를 기다리는 모든 framework 호출**에는 **세 가지 terminator**를 둔다.
+셋의 차이는 **실행 줄을 어떻게 다루는가** 하나뿐이다.
 
-- **Spot 직렬 실행 줄**은 실행 구간 자체를 직렬화한다. 같은 Spot의 두 callback 본문이 동시에
-  실행되지 않는다.
-- **actor와 timer의 mailbox**는 **terminator 양보를 가로질러서도** 재진입을 막는다. 같은 actor나
-  같은 timer의 다음 callback은 현재 callback이 완전히 끝난 뒤에만 시작한다.
+대상은 다음이다.
 
-Spot의 직렬 실행 줄은 handler가 **framework terminator로** 완료 값을 기다리는 지점에서
-양보하므로, 같은 Spot의 독립 callback은 그 대기 중에 시작할 수 있다(자동 turn dispatch E2E
-ATD-A2가 이 의미를 고정한다). 세 가지를 함께 기억한다.
+- channel·route·spot **request**
+- **actor join**
+- **worker** offload
+- **HTTP client** 호출 — spot handler가 외부 API를 부르는 대표 경로다. 이 호출이 terminator를
+  갖지 않으면 spot 공유 흐름과 무관한 외부 대기 때문에 room 전체와 timer가 멈춘다. `yield`가
+  필요한 가장 전형적인 자리다.
 
-- **대기가 없으면 양보도 없다.** terminator가 기다릴 작업이 이미 동기 완료된 상태면 줄을
-  양보하지 않고 그대로 진행한다.
-- **continuation은 즉시 재개하지 않는다.** 양보한 줄에 다시 올라가 재개하므로, 그 사이 큐에
-  들어온 다른 작업이 먼저 실행될 수 있다. 재개 시점에는 줄을 다시 배타적으로 점유한다.
-- **재개 thread는 계약이 아니다.** 보장하는 것은 같은 논리적 실행 줄에서 순서대로 재개된다는
-  것뿐이며, 특정 thread로 돌아온다는 뜻이 아니다.
+| terminator | 완료를 기다리나 | 실행 줄 |
+|---|---|---|
+| **submit** | 아니오(one-way) | 그대로 진행 |
+| **async** | 예 | **turn을 유지한다.** 대기 중 같은 Spot의 다른 callback은 시작하지 않는다 |
+| **yield** | 예 | **turn을 반납한다.** 대기 중 같은 Spot의 다른 callback이 실행되고, 완료되면 continuation이 **큐에 다시 들어가 순서대로 재개**된다 |
 
-현재 callback이 시작하고 직접 기다리는 동일 실행 줄의 후속 작업은 같은 논리적 turn의 일부로
-순서대로 실행할 수 있다. 이 인과 관계가 없는 callback은 그 사이에 끼워 넣지 않는다. 이렇게 하면
-보호 상태의 직렬성을 유지하면서, 현재 callback의 결과를 만들기 위해 같은 실행 줄이 필요한
-경우에도 교착하지 않는다. 독립된 channel, 다른 actor, 다른 Spot과 worker 실행도 진행할 수
-있어야 한다. 따라서 호출자는 await 전에 turn을 반납할지 판단하지 않는다.
+### async가 기본이다 — handler는 하나의 turn이다
 
-**Entry Spot actor packet은 이 규칙의 예외다.** Entry Spot의 actor packet은 Entry Spot 직렬 줄에
-올리지 않고 **대상 actor의 mailbox로 직렬화**하며, 실행 중에는 Spot turn을 잡지 않는다. 따라서 그
-handler 안의 terminator await는 Entry Spot 직렬 줄의 양보 지점이 아니고, Entry Spot의 다른
-callback과 **실제로 병행 실행될 수 있다.** Entry Spot에서는 spot 상태를 직렬성에 기대어 다루지
-않는다.
+**`async`로 기다리는 동안 같은 Spot의 다음 dispatch·join·timer·subscription은 시작하지 않는다.**
+따라서 handler는 await를 가로질러도 **하나의 turn**이며, application은 spot 상태를 lock 없이
+읽고 쓸 수 있다. 대부분의 handler가 이 형태여야 한다.
 
-짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
-`runWorker(...)`, `run_worker(...)` 표면을 사용한다. worker 함수는 Spot 상태를 직접
-만지지 않는다. 완료 callback이나 awaitable continuation은 원래 Spot의 직렬 실행 줄로
-돌아온 뒤 실행된다. 큰 CPU 작업, 긴 I/O, 재시도와 scale-out이 필요한 작업은 worker
-pool이 아니라 ZLink request로 별도 service나 server에 위임한다.
+```
+if (room.Seats < room.Max) {          // ① 검사
+    var ok = await api.Reserve().Async();   // ② turn 유지 — room은 아무도 못 바꾼다
+    room.Seats++;                     // ③ ①의 검사 결과가 여전히 유효하다
+}
+```
+
+**응답 대기가 completion을 막지 않는다.** request의 submit·reply completion은 **Spot 직렬 실행
+줄과 별개의 진행 축**에서 돌아간다(core의 spot dispatch worker, request progress pump). 따라서
+turn을 유지한 채 기다려도 응답은 정상적으로 도착하고 continuation이 재개된다.
+
+**단 조건이 있다: 기다리는 대상이 지금 잡고 있는 실행 줄이나 mailbox를 필요로 하면 안 된다.**
+
+- **wait-for 사이클**은 길이와 무관하게 막힌다 — `A → A`, `A → B → A`, `A → B → C → A` 모두. 같은
+  actor mailbox로 되돌아오는 사이클, worker 함수가 원래 Spot 처리에 다시 의존하는 사이클도 같다.
+- 이런 사이클은 **application 설계 오류**이며 request timeout으로 끝난다. timeout이 올바른 결과다.
+- **framework runtime은 자기 내부 경로에서 이 사이클을 만들면 안 된다.** 특히 actor join의 commit이
+  caller가 잡고 있는 source Spot 줄을 다시 요구하면, 평범한 `A → B` join조차 막힌다. join
+  orchestration은 **caller의 실행 줄에서 진행**하고 source leave callback을 그 turn 안에서 실행해야
+  한다([23 §3.3](23-spot-actor.ko.md)의 순서를 지키면서).
+
+### yield는 제한적으로 쓰는 escape hatch다
+
+`yield`는 **spot의 공유 흐름과 무관한 대기**를 위한 것이다. actor 입·퇴장 시 DB나 외부 API에서
+데이터를 가져오는 경우가 대표적이다 — 그 대기 때문에 room 전체와 timer가 멈추는 것을 피한다.
+
+- **호출 지점의 `yield`가 곧 표시다**: "이 줄을 넘으면 spot 상태가 바뀔 수 있다."
+- 따라서 **`yield` 앞뒤로 spot 상태의 불변식을 가정하지 않는다.** await 이후에 다시 검사한다.
+- 완료된 continuation은 즉시 재개하지 않고 **실행 줄의 큐에 다시 올라가** 순서대로 재개한다.
+  재개 시점에는 줄을 다시 배타적으로 점유한다.
+- 재개 thread는 계약이 아니다. 같은 논리적 실행 줄에서 순서대로 재개된다는 것만 보장한다.
+
+**`yield`를 기본으로 삼지 않는다.** 모든 await가 양보 지점이 되면 handler가 매 request마다 여러
+turn으로 쪼개지고, 코드는 순차로 보이는데 실제로는 인터리브된다. 그런 결함은 부하가 걸릴 때만
+드물게 드러나 찾기 어렵다. 직렬 처리의 이점을 스스로 상쇄하는 선택이므로 하지 않는다.
+
+### 재진입 보호
+
+- **Spot 직렬 실행 줄**은 실행 구간을 직렬화한다. 같은 Spot의 두 callback 본문이 동시에 실행되지
+  않는다.
+- **actor와 timer의 mailbox**는 **`yield` 양보를 가로질러서도** 재진입을 막는다. 같은 actor나 같은
+  timer의 다음 callback은 현재 callback이 완전히 끝난 뒤에만 시작한다.
+
+### framework terminator가 아닌 await
+
+`Task.Delay`나 framework 밖의 raw HTTP client처럼 **framework terminator가 아닌 await는 양보
+지점이 아니며** 실행 줄 전체를 그대로 막는다. 그런 대기를 줄 밖으로 빼야 하면 framework HTTP
+client의 `yield`, `RunIoWorker(...)` / `RunCpuWorker(...)`(§1.2), 또는 다른 서비스로 위임하는
+request를 쓴다. callback
+안에서 blocking wait로 완료 값을 기다리는 것은 금지한다.
+
+### Entry Spot actor packet
+
+Entry Spot의 actor packet은 Entry Spot 직렬 줄에 올리지 않고 **대상 actor의 mailbox로
+직렬화**한다. 서로 다른 actor의 packet은 Entry Spot 하나의 줄 때문에 서로 기다리지 않는다.
+Entry Spot에서는 spot 상태를 줄의 직렬성에 기대어 다루지 않는다.
+
+### 1.2 Worker — CPU와 I/O를 이름으로 나눈다
+
+작업을 callback 밖으로 넘겨야 할 때 쓰는 표면은 **둘로 나눈다.** 이름이 곧 실행 의미다.
+
+| 표면 | 받는 함수 | 실행 | 용도 |
+|------|-----------|------|------|
+| **CPU worker** | **동기** 함수 | **bounded worker pool의 스레드** 하나를 점유한다 | 짧고 빠른 CPU 작업 |
+| **I/O worker** | **비동기** 함수(완료 값을 반환) | **스레드를 점유하지 않는다.** 실행 줄을 다루는 경계일 뿐이다 | DB, gRPC, 외부 SDK, 레거시 API 같은 **외부 비동기 대기** |
+
+**이 분리가 없으면 CPU pool이 고갈된다.** 외부 I/O를 동기 worker 안에서 blocking으로 기다리면
+in-flight 호출 하나마다 pool 스레드 하나가 잠긴다. 외부 서비스가 느려지는 순간 pool이 말라
+`WorkerQueueFull`이 터진다. **CPU worker 안에서 blocking I/O를 기다리지 않는다.**
+
+두 worker 모두 §1.1의 terminator를 갖는다 — `async`(turn 유지)와 `yield`(turn 반납). 외부 대기가
+spot 공유 흐름과 무관하면 `yield`를 쓴다.
+
+```
+var profile = await Context
+    .RunIoWorker(ct => db.LoadProfileAsync(id, ct))  // 외부 SDK의 비동기 함수를 그대로 넘긴다
+    .Timeout(TimeSpan.FromSeconds(3))
+    .Yield(ct);                                      // turn 반납
+```
+
+- **worker 함수는 Spot 상태를 직접 만지지 않는다.** 완료 continuation이 원래 Spot의 직렬 실행
+  줄로 돌아온 뒤에 상태를 다룬다.
+- 재시도와 scale-out이 필요한 작업은 worker가 아니라 ZLink request로 별도 service에 위임한다.
+- **I/O worker는 spot 공유 흐름과 무관한 외부 대기의 정식 경계다.** framework HTTP client처럼
+  자체 terminator를 가진 표면은 worker로 감싸지 않고 그 terminator를 직접 쓴다
+  ([12 HTTP client](12-http-client.ko.md)).
 
 ## 2. Public API 원칙
 

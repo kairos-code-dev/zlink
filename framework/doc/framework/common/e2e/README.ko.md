@@ -472,7 +472,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 | [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
 | [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale row 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, runtime status 관측 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
-| [Config 8 — 자동 turn dispatch](config-8-automatic-turn-dispatch.ko.md) | location store + play 노드 2 + delay service 2 + session gateway 2 | 비동기 handler의 미완료 작업을 framework가 감지해 현재 Spot turn을 양보하고 완료 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
+| [Config 8 — 실행 turn과 terminator](config-8-execution-turn.ko.md) | location store + play 노드 2 + delay service 2 + **external API 1** + session gateway 2 | `submit`/`async`/`yield` 세 terminator의 실행 줄 의미, async의 turn 유지와 상태 불변식, yield의 turn 반납과 순차 재개, CPU/IO worker 분리, HTTP client yield, actor·timer mailbox 격리, join orchestration, timeout·cancellation·shutdown, 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
 | [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | local join, remote transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source cleanup, failure/recovery, bound session 이전 |
 | [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), graceful drain(typed Draining field·연결 유지, actor 핸드오프, SPOT 정책 drain-natural/release-and-recreate, 강제 종료 통지, 동시 drain 폴백) |
@@ -634,7 +634,7 @@ Config 1의 접두사 `RM`은 시나리오 ID 연속성을 위해 유지한다(�
 | `RL` | Resilience/lifecycle |
 | `SF` | Store 장애·복구 |
 | `MON` | Monitoring |
-| `ATD` | 자동 turn dispatch |
+| `TD` | 실행 turn과 terminator |
 | `TA` | To-actor messaging |
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.

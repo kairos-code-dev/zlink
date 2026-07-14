@@ -42,7 +42,9 @@ HTTP JSON response
 C++ framework는 이 흐름을 아래 의미로 맞춘다.
 
 - HTTP server는 app lifecycle에 묶인 hosted service다.
-- HTTP route는 `MapGet`, `MapPost`, `MapPut`, `MapDelete`처럼 method와 path로 등록한다.
+- HTTP route는 `map_get`, `map_post`, `map_put`, `map_delete`로 method와 path를 등록한다
+  (ASP.NET Core Minimal API의 `MapGet` 계열과 같은 개념이며, C++ public 표면은 §7의 규약대로
+  `snake_case`를 쓴다).
 - HTTP endpoint는 `http://`와 `https://`를 모두 지원한다.
 - request body는 JSON DTO로 변환한다.
 - route handler는 DI에서 resolve한다.

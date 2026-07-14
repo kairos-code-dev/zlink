@@ -38,5 +38,5 @@
 ## 관련 문서
 
 - 사용자 가이드: `../<lang>/README.ko.md` (언어별 13장)
-- codec extension 공유 규약: `../../framework/common/spec/framework-api.ko.md`
+- codec extension 공유 규약: `../../framework/common/spec/05-framework-api.ko.md`
 - e2e에서 raw HTTP client 직접 사용 금지 규약: `../../framework/common/e2e/README.ko.md`

@@ -65,12 +65,14 @@ framework는 다음을 보장한다.
 - join이 끝난 actor의 packet handler
 - actor session disconnect의 후속 처리
 
-**단 이 보장은 await를 가로지르지 않는다.** handler가 request·join·worker의 framework
-terminator를 await하면 그 지점에서 실행 줄을 양보하므로, 대기 중에 같은 spot의 다른 callback이
-실행되어 상태를 바꿀 수 있다([04 비동기 실행 정책](04-async-execution-policy.ko.md) section 1).
-lock이 필요 없는 구간은 **await와 await 사이의 각 동기 구간**이다. stage wrapper가 await를
-가로질러 유지해야 하는 불변식이 있으면 그 상태 전이를 await 이후로 모으거나, 같은 actor mailbox
-안에서 처리해 재진입 자체를 막아야 한다.
+**이 보장은 `async` 대기를 가로질러서도 유지된다.** `async`는 실행 줄의 turn을 잡은 채 완료를
+기다리므로, handler는 await를 가로질러도 하나의 turn이다. stage wrapper가 상태를 읽고, 외부에
+요청하고, 결과로 상태를 바꾸는 흐름을 lock 없이 쓸 수 있다.
+
+**`yield`로 기다리는 구간만 예외다.** `yield`는 turn을 반납하므로 그 대기 중에 같은 spot의 다른
+callback이 실행되어 상태를 바꿀 수 있다([04 §1.1](04-async-execution-policy.ko.md)). stage
+wrapper가 `yield`를 가로질러 유지해야 하는 불변식이 있으면 상태 전이를 await 이후로 모으거나
+`async`를 쓴다. **`yield`는 spot 공유 상태와 무관한 대기에만 쓴다.**
 
 **예외 두 가지:**
 

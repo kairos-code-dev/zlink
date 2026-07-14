@@ -4520,7 +4520,7 @@ interface가 그 동작을 보장하도록 한다.
 | 확인 항목 | 목표 계약 | 현재 구현 | 후속 작업 |
 |-----------|-----------|-----------|-----------|
 | 공개 interface inventory | 이 문서의 시그니처 | `Contracts/*`와 Stream Connector contracts에 선언됨 | 일치. exported type coverage와 실제 package consumer로 검증한다. |
-| request/join/worker 완료 | 완료 terminator 하나, 실행 줄 관리는 framework 내부 | yield 전용 타입 없이 `Async(...)` 하나를 제공 | 일치. 자동 turn dispatch E2E로 검증한다. |
+| request/join/worker/HTTP client 완료 | terminator 세 축 — `submit`(one-way) / `Async(...)`(turn 유지) / `Yield(...)`(turn 반납) | `Async(...)` 하나뿐이고 그것이 **자동으로 turn을 반납**한다. `Yield` 표면이 없다 | **미충족** — [구현 차이 §12.21](../../90-implementation-gap.ko.md) |
 | Spot 메시징 대상 | 불투명한 `SpotHandle`; 내부 주소 갱신 1회 | handle resolver와 handle 기반 outbound를 제공 | 일치. stale route에서 안전한 1회 refresh를 unit test로 검증한다. |
 | custom Spot route resolver | 정식 location store와 handle resolver만 public | transport route lookup은 runtime 내부에만 존재 | 일치. package reflection에서 public type 부재를 검증한다. |
 | dispatch 최적화 | registration 시 최적화하며 public mode 없음 | public mode type과 property 없음 | 일치. contract test로 검증한다. |

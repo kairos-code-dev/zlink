@@ -151,22 +151,21 @@ SPOT handler는 **두 경로로 등록한다.** spot 객체가 **구성 단계�
 | **Entry Spot의 initialize · closing · actor lifecycle callback** | **Entry Spot 실행 문맥** |
 | **Entry Spot actor의 packet** | **actor별 mailbox** |
 
-- **user Spot은 room·game·stage 같은 하나의 상태 객체다.** user Spot 실행 queue는 drain loop가
-  하나이므로 **두 handler 본문이 물리적으로 동시에 실행되지는 않는다.** 다만 handler가 request,
-  join, worker의 **framework terminator를 await하면 그 지점에서 실행 줄을 양보**하므로, 같은 user
-  Spot의 다른 callback이 그 대기 중에 끼어들 수 있다. 따라서 **await를 가로지르는 spot 상태 불변식은
-  보장되지 않는다** — 자세한 규칙은 [04 비동기 실행 정책](04-async-execution-policy.ko.md) section 1이
-  소유한다([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
+- **user Spot은 room·game·stage 같은 하나의 상태 객체다.** 그래서 같은 user Spot 안의 서로 다른
+  actor가 같은 상태를 바꾸더라도 **`async` 대기를 가로질러 두 handler가 겹치지 않는다.** handler는
+  하나의 turn이며, application이 spot 상태를 lock으로 보호하지 않아도 되는 근거다.
+- **`yield`로 기다리는 구간만 예외다.** 그 지점에서는 실행 줄을 반납하므로 같은 user Spot의 다른
+  callback이 끼어들 수 있다. 따라서 **`yield`를 가로지르는 spot 상태 불변식은 보장되지 않는다** —
+  세 terminator의 계약은 [04 비동기 실행 정책](04-async-execution-policy.ko.md) §1.1이 소유한다
+  ([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
 - **Entry Spot은 특정 room 상태를 소유하는 곳이 아니라 모든 actor가 처음 거쳐 가는 공용 입구다.**
   그래서 **Entry Spot actor packet은 actor별 mailbox에서 순서를 보존한다.** 같은 actor의 packet은
   순서대로 실행되지만, **서로 다른 actor의 packet은 Entry Spot 실행 queue 하나 때문에 서로 기다리지
   않는다.**
 - **user Spot queue는 native bound actor 경로에서 반드시 필요한 직렬화 경계다.** managed runtime
   경로는 actor별 순서 규칙을 거친 뒤 user Spot queue로 들어갈 수 있지만, **native bound actor
-  경로에는 그 앞단이 없다.** 보호는 두 겹이다 — user Spot queue가 **실행 구간**을 직렬화하고,
-  actor·timer mailbox가 **terminator 양보를 가로질러서도** 재진입을 막는다. 따라서 같은 actor의
-  callback은 await를 가로질러도 재진입되지 않지만, 같은 user Spot의 서로 다른 actor callback은
-  terminator await 경계에서 인터리브될 수 있다.
+  경로에는 그 앞단이 없다.** 보호는 두 겹이다 — user Spot queue가 **turn**을 직렬화하고,
+  actor·timer mailbox가 **`yield` 양보를 가로질러서도** 재진입을 막는다.
 - **Entry Spot actor handler와 user Spot actor handler는 표면이 다르다.** Entry Spot에는 user Spot
   객체가 없기 때문이다. Entry Spot handler는 entry spot·actor·payload를, user Spot handler는
   spot·actor·payload를 받는다.
@@ -238,8 +237,9 @@ spot으로 보낼 때는 spot outbound를 쓰며, 두 표면의 대상 인자는
   안에서 붙인다.
 - **actor join/leave lifecycle을 spot 메서드 override만으로 설명하지 않는다.** actor packet
   handler, join handler, leave handler는 각 context의 registry에 등록한다.
-- **request·join·worker는 완료 terminator를 하나만 제공한다.** framework는 보호 중인 spot/actor
-  상태의 직렬성을 유지하면서 **continuation을 원래 실행 문맥에서 재개한다.**
+- **request·join·worker는 세 terminator를 제공한다** — `submit`(one-way), `async`(**turn 유지**),
+  `yield`(**turn 반납**) ([04 §1.1](04-async-execution-policy.ko.md)). 어느 쪽이든 framework는
+  보호 중인 spot/actor 상태의 직렬성을 유지하면서 **continuation을 원래 실행 문맥에서 재개한다.**
 - **spot manager는 생성과 조회를 함께 가진다.** 조회를 별도 query 서비스로 분리하지 않는다
   ([spot-node §3](21-spot-node.ko.md)).
 - **subscriber concurrency와 backpressure는 per-handler·per-topic API가 아니라 subscriber 역할

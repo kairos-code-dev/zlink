@@ -113,6 +113,7 @@ channel, stream, Spot node endpoint를 location store에 등록하고, 다른 �
 |------|-----------|------|
 | Session -> API channel | location store 기반 자동 연결 | Session 서버가 API 서버 주소를 직접 들고 있지 않게 한다. |
 | API -> Play channel | location store 기반 자동 연결 | matching API가 현재 Play 서버 endpoint를 location store에서 찾는다. |
+| Play -> API channel | location store 기반 자동 연결 | room Spot이 actor join/leave에서 player 전적을 조회·기록한다(§7.1). |
 | Session -> Play session relay | location store 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Play actor -> remote room Spot | location store 기반 Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
 | Play Spot pub/sub -> Play Spot pub/sub | location store 기반 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
@@ -188,6 +189,7 @@ fallback으로 성공시키면 안 된다.
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
 | `Bingo.Api` | `Api` channel server | access token 인증과 matching API 요청을 처리한다. |
+| `Bingo.Api` | player record store(프로세스 메모리) | player 전적 조회(`GetPlayerRecordReq`)와 경기 결과 기록(`ReportBingoResultReq`)을 소유한다. room Spot은 이 값을 계산하지 않고 join/leave에서 `yield`로 물어본다(§7.1). |
 | `Bingo.Api` | `Play` channel client | Play 서버에 room 배정을 요청한다. |
 | `Bingo.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
 | `Bingo.Session` | session Spot node | session relay와 bound session push 수신을 담당한다. |
@@ -195,6 +197,7 @@ fallback으로 성공시키면 안 된다.
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
 | `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
+| `Bingo.Play` | `Api` channel client | room Spot의 join/leave callback이 전적을 조회·기록한다. 이 왕복은 `yield`로 기다린다(§7.1). |
 | `Bingo.Play` | Redis match queue adapter | 여러 Play 서버가 같은 waiting room state를 공유하게 한다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Play peer discovery(자동 연결)와 actor/session/Spot 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
@@ -446,6 +449,50 @@ callback을 받아 domain method를 호출하고, domain이 반환한 change와 
 message로 바꾼다. card validation, draw order, winner 판정이 handler나 Spot handler에
 흩어지면 안 된다.
 
+### 7.1 실행 turn과 `yield` — actor join/leave의 외부 조회
+
+**room Spot은 하나의 실행 줄이다.** draw timer, card 제출, join/leave callback, reward
+publish가 모두 그 줄에서 순서대로 실행된다. 그래서 handler 안의 대기 하나가 **room 전체를
+멈춘다.**
+
+`BingoRoom`의 actor join/leave callback에는 **room의 공유 상태와 아무 관련 없는 대기**가 있다 —
+player의 **전적(record)은 Api 서버가 소유한다.** room은 그것을 계산하지도, 들고 있지도 않는다.
+
+| 지점 | 호출 | terminator | 왜 |
+|------|------|-----------|-----|
+| `BingoRoom.OnJoinedActor` | Api 서버에 `GetPlayerRecordReq` | **`yield`** | 전적 조회는 board·draw와 무관하다. 이 왕복 동안 **draw timer가 멈추면 안 된다** |
+| `BingoRoom.OnLeaveActor` | Api 서버에 `ReportBingoResultReq` | **`yield`** | 결과 기록 왕복이 **다른 player의 leave 뒤에 직렬로 쌓이면 안 된다** |
+| card 제출, draw 진행, winner 판정 | room이 소유한 domain 상태 | **`async`** | 판정이 하나의 turn 안에서 끝나야 옳다 |
+
+`.Async()`로 기다리면 그 왕복 동안 room 실행 줄이 통째로 멈춘다 — **draw timer의 다음 draw,
+다른 player의 card 제출, 상대 player의 leave가 전부 그 뒤로 밀린다.** `.Yield()`는 turn을
+반납하므로 그것들이 그대로 진행되고, 조회가 끝난 continuation이 room 실행 줄의 큐에 재삽입되어
+순서대로 재개된다([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
+
+게임 종료 시 두 player가 연달아 leave하는 구간이 이 샘플에서 **가장 눈에 띄는 자리**다.
+`.Async()`면 Api 왕복 두 번이 **직렬로 쌓여** room teardown과 actor destroy가 그만큼 늦어진다.
+`.Yield()`면 두 보고가 겹쳐서 진행된다.
+
+**`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.**
+
+- `OnJoinedActor`는 **먼저 `yield`로 전적을 가져오고, 재개한 뒤 그 turn 안에서** domain join,
+  시작 조건 판정, `PlayerJoinedNotify` 생성을 한 번에 끝낸다. yield 전에 room 상태를 바꿔 두고
+  yield 후에 그 가정을 이어서 쓰지 않는다.
+- 재개 시점에 room이 이미 `Finished`이거나 actor가 사라졌을 수 있다. 그 경우를 **재개 후에 다시
+  확인**한다.
+
+Api 서버는 이 샘플 안의 channel 서버이므로 framework request의 `.Yield()`를 그대로 쓴다. 같은
+대기가 다른 표면이었어도 **turn을 반납한다는 계약은 같다.**
+
+| 대기의 정체 | 쓰는 표면 |
+|---|---|
+| 이 샘플처럼 ZLink channel request | request의 `.Yield()` |
+| 외부 HTTP·레거시 API | HTTP client의 `.Yield()`([12 §3.1](../../spec/12-http-client.ko.md)) — **worker로 감싸지 않는다** |
+| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | `RunIoWorker(...).Yield()`([04 §1.2](../../spec/04-async-execution-policy.ko.md)) |
+
+turn 유지/반납의 엄밀한 검증은 [config-8 execution turn](../../e2e/config-8-execution-turn.ko.md)이
+소유한다. 이 샘플은 그 계약을 **실제 흐름에서 어떻게 쓰는지**를 보여 준다.
+
 ## 8. Handler 등록 방식
 
 **Bingo는 자동 등록 샘플이다.** handler는 framework가 정의한 typed handler 계약을 구현하고,
@@ -506,7 +553,9 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
    `player-2` actor가 다른 Play 서버의 room Spot에 remote join했음을 검증한다.
 5. `player-1`은 connector wait API로 `PlayerJoinedNotify`를 기다리고,
    payload의 `ActorId`가 `player-2`인지 확인한다. `player-2`는 자기 join notify를
-   받지 않아야 한다.
+   받지 않아야 한다. 같은 push의 `State.Players`에서 두 player의 `Wins`/`Losses`가 채워져
+   있는지도 확인한다 — 이 값은 room이 계산하지 않고 `OnJoinedActor`가 `yield`로 Api 서버에서
+   가져온 것이다(§7.1).
 6. 두 player client는 connector wait API로 `BingoGameStartedNotify`를 기다리고,
    push state가 `Running`인지 확인한다.
 7. 두 player client가 deterministic card를 제출한 뒤 response state에 두 player card가 모두
@@ -670,6 +719,38 @@ StopObservingBingoEventsRes {
 
 ```
 
+room Spot이 actor join/leave에서 Api 서버로 보내는 전적 메시지(§7.1). 이 두 왕복은 room의
+공유 상태와 무관하므로 **`yield`로 기다린다**:
+
+```text
+GetPlayerRecordReq {
+  ActorId: string
+}
+
+GetPlayerRecordRes {
+  ActorId: string
+  Wins: int
+  Losses: int
+}
+
+ReportBingoResultReq {
+  RoomId: string
+  ActorId: string
+  Won: bool
+  FinalDrawSeq: int
+}
+
+ReportBingoResultRes {
+  ActorId: string
+  Wins: int
+  Losses: int
+}
+```
+
+Api 서버는 전적을 프로세스 메모리에 보관한다. 이 샘플의 목적은 영속 저장이 아니라
+**room 실행 줄 밖의 대기**를 만드는 것이다. player가 처음 조회되면 `Wins = 0`, `Losses = 0`으로
+시작한다.
+
 server push 메시지:
 
 ```text
@@ -744,8 +825,13 @@ BingoPlayerState {
   Card: int[]
   Marks: bool[]
   CompletedLines: int
+  Wins: int
+  Losses: int
 }
 ```
+
+`Wins`와 `Losses`는 `OnJoinedActor`가 `yield`로 가져온 `GetPlayerRecordRes` 값을 그대로 담는다
+(§7.1). room이 계산하는 값이 아니므로 draw 진행 중에 바뀌지 않는다.
 
 `HostActorId`, `CanStart`, `IsHost` 필드는 기존 언어별 구현과 호환을 위해 유지할 수
 있다. 2인 자동 시작 공통 시나리오에서는 별도 시작 요청을 보내지 않으므로 client
@@ -980,7 +1066,8 @@ actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같
 3. room Spot은 각 player actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
 5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
-   Spot `onJoinedActor`를 호출한다.
+   Spot `onJoinedActor`를 호출한다. room `onLeaveActor`는 Api 서버에 `ReportBingoResultReq`를
+   보내고 **`yield`로 기다린다** — 이 왕복이 다른 player의 leave 뒤에 직렬로 쌓이면 안 된다(§7.1).
 6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
    Entry Spot context의 `destroyActor`를 호출한다.
 7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,

@@ -27,7 +27,7 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
 | [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
-| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **명시 등록**(구성 코드에서 직접) | JSON |
+| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **수동 등록** — annotation/attribute로 선언한 handler를 구성 코드에서 직접 등록한다(자동 스캔 없음) | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
@@ -84,18 +84,37 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 내부 메시지는 예외가 아니다. 이런 메시지는 호출 방식에 맞춰 `Msg`(one-way send) 또는
 `Req`/`Res`(request/reply)로 이름 붙인다.
 
-## Spot 자동 turn dispatch 샘플 기준
+## Spot 실행 turn과 terminator 샘플 기준
 
-Bingo의 Entry Spot match handler는 player actor 한 명의 입장 준비를 보여 주는 기준
-샘플이다. 이 흐름은 player actor의 방 배정과 room Spot join처럼 입장 준비에 필요한
-I/O를 기다린다. 언어별 sample의 방 배정 경로는 channel request일 수도 있고 Entry
-Spot 내부 allocator일 수도 있지만, await 전후에 Entry Spot의 room list나 match queue
-같은 공용 mutable state를 이어서 판단하지 않는 admission I/O라는 조건은 같다. 이 조건을
-만족하는 Bingo match 흐름에서는 request의 단일 완료 terminator를 기다린다. framework는 대기 동안
-현재 실행 줄을 자동으로 반납하고 완료 뒤 원래 dispatcher 문맥에서 continuation을 재개한다.
-언어별 sample은 별도의 yield 계열 public API를 선택하지 않는다. TicTacToe의 game join처럼 handler가
-게임 상태 흐름의 일부로 바로 이어지는 코드도 같은 단일 terminator를 사용하며, 상태 직렬성은
-framework의 자동 turn 규칙을 따른다.
+**모든 샘플은 세 terminator를 같은 기준으로 고른다**([04 §1.1](../spec/04-async-execution-policy.ko.md)).
+
+| terminator | 실행 줄 | 언제 |
+|---|---|---|
+| `submit` | 그대로 진행(one-way) | 응답을 쓰지 않는다 |
+| **`async`**(기본) | **turn을 유지한다** | 대기 결과로 **이 spot의 상태를 판단·변경**한다. handler = 하나의 turn |
+| **`yield`**(opt-in) | **turn을 반납한다** | 대기가 **이 spot의 공유 상태와 무관**하다. 그 대기로 spot 전체가 멈추면 안 된다 |
+
+기준은 하나다 — **그 대기가 이 spot의 공유 상태와 관련이 있는가.** `yield`는 편의가 아니라
+**직렬 실행의 이점을 지키면서 무관한 대기만 빼내는** 도구다. 그래서 기본은 `async`이고 `yield`는
+근거가 있을 때만 쓴다.
+
+`yield`를 쓰는 자리는 **`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.** 양보 중에
+다른 메시지가 먼저 처리될 수 있으므로, 재개 후에는 필요한 상태를 다시 확인한다.
+
+샘플의 기준 사용처는 아래와 같다.
+
+| 샘플 | 지점 | terminator |
+|------|------|-----------|
+| [Bingo](bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | **`yield`** |
+| [Bingo](bingo/README.ko.md) §7.1 | card 제출, draw 진행, winner 판정 | `async` |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | courier entry spot의 claim-then-activate probe가 **다른 노드** entry spot에 묻는다 | **`yield`** |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | 자기 entry spot이 소유한 actor 표를 읽고 만들고 등록한다 | `async` |
+| TicTacToe | game join이 게임 상태 흐름으로 바로 이어진다 | `async` |
+
+**worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/04-async-execution-policy.ko.md),
+[12 §3](../spec/12-http-client.ko.md)). 외부 HTTP·레거시 API는 HTTP client의 terminator를 직접 쓰고,
+DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기는 `RunIoWorker(...)`로 감싼다. CPU
+작업은 `RunCpuWorker(...)`로 넘긴다.
 
 ## 샘플 포팅 기준
 
@@ -126,9 +145,10 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   호출 없이 handler를 자동 등록한다([05 §3.3](../spec/05-framework-api.ko.md)). 샘플마다 handler
   목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가 누락을 client 시나리오가
   늦게 발견하게 된다.
-- **절대 규칙: TicTacToe만 명시 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께
-  보여 주는 대조 샘플이므로, 구성 코드에서 handler를 직접 등록하고 자동 등록에 기대지 않는다.
-  나머지 정본 샘플은 어떤 이유로도 명시 등록으로 대체하지 않는다.
+- **절대 규칙: TicTacToe만 수동 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께
+  보여 주는 대조 샘플이다. handler 자체는 다른 샘플과 같이 **annotation·attribute·decorator로
+  선언**하되, **assembly·module 스캔에 의한 자동 등록을 쓰지 않고** 구성 코드에서 그 handler를
+  직접 등록한다. 나머지 정본 샘플은 어떤 이유로도 수동 등록으로 대체하지 않는다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
   등록한다. 정확한 표면은 [C++ handler 공개 계약](../spec/languages/cpp/02-framework-interfaces.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.

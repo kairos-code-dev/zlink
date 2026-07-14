@@ -106,7 +106,10 @@ STREAM frame의 앞쪽 2바이트는 `header_size`다.
 
 - **header의 첫 바이트는 `format_marker = 0xF2`다.** 값이 다르면 decode error다.
 - `kind`·`codec`은 문자열이 아니라 **1바이트 enum**으로 인코딩한다.
-- packet name은 `u8 name_len + UTF-8 bytes`이며 **최대 255바이트**다.
+- packet name은 `u8 name_len + UTF-8 bytes`이며 **최대 255바이트**다. **`Response`와 `Error`는
+  packet name을 담지 않는다** — `name_len = 0`으로 인코딩한다. 응답은 handler를 고르지 않고
+  상관관계는 `request_seq`가 이미 정하므로 이 필드가 쓰이지 않는다
+  ([03 message model](03-message-model.ko.md)의 "reply 상관관계").
 - metadata는 `u16 meta_len + metadata bytes`, correlation id는 `u8 len + bytes`로 이어진다.
 - flow 필드는 **36바이트 `flow_id`와 1바이트 `flow_origin`이 항상 함께** 존재하거나 함께 없다.
   의미는 [메시지 흐름 상관관계 §3.2](53-flow-correlation.ko.md)가 소유한다.
@@ -164,7 +167,12 @@ metadata는 trace id·locale·tenant id처럼 **작은 값만** 싣는다.
 ### 4.6 control frame
 
 `Control` kind는 connector 내부 control frame이다. **application packet name은 `$zlink.`
-prefix를 사용할 수 없다.** `$zlink.` 이외의 이름은 application이 자유롭게 쓴다.
+prefix를 사용할 수 없다.**
+
+**control frame의 이름 공간은 packet kind로 분리된다.** control frame은 `Control` kind로만
+전달되므로, 아래 control 이름과 같은 문자열을 application이 `Send`/`Request` kind로 쓰더라도
+dispatch가 섞이지 않는다. 다만 혼동을 피하기 위해 application packet에 `session-closing`을
+쓰지 않는다. 신규 control packet은 `$zlink.` prefix를 사용한다.
 
 control frame은 `Raw` codec, request sequence 없음, metadata 없음, flow flag 없음이다.
 **payload는 control packet마다 다르다.**
@@ -248,9 +256,11 @@ response에만** 들어간다.
 | `Error` 수신 — `request_seq` 있음 | 같은 `request_seq`의 pending request를 **실패로 완료**한다 |
 | `Error` 수신 — `request_seq` 없음 | pending request와 무관한 **stream 수준 오류**로 error 표면에 전달한다(§9) |
 
-- **pending request 매칭은 `request_seq`가 정본이다.** `Response`와 `Error`의 packet name은 참고
-  값일 뿐 대조 조건이 아니다. 이름이 request와 달라도 응답을 버리지 않는다 — 어떤 응답인지는
-  sequence가 이미 정한다(§31 "request sequence 보존"과 같은 규칙).
+- **pending request 매칭은 `request_seq`가 정본이다.** `Response`와 `Error`에는 **packet name
+  필드가 아예 없으므로**(`name_len = 0`) 이름으로 대조할 수도 없다. 어떤 응답인지는 sequence가
+  이미 정한다(§31 "request sequence 보존"과 같은 규칙).
+- **`Response`·`Error`에 이름이 실려 오더라도 그것을 대조 조건으로 쓰지 않는다.** 구형 peer와의
+  호환을 위해 decoder는 이름이 있는 응답도 받아들이되 **무시한다.**
 - **request timeout·close·disconnect가 발생하면 pending request는 모두 실패로 완료하고 map에서
   제거한다.** 재연결 후 자동 재전송하지 않는다(§6).
 

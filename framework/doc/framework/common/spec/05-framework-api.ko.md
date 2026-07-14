@@ -87,6 +87,11 @@
   | TypeScript stream connector | codec package root가 제공하는 browser-safe payload codec을 connector 생성 시 `codec` option으로 주입한다. |
   | HTTP client | typed request/response body를 같은 codec extension으로 encode/decode한다. raw body API는 extension을 거치지 않는다. |
 
+- **HTTP client 호출도 Spot 실행 문맥에서는 framework terminator를 갖는다.** spot handler가 외부
+  API를 부르는 대표 경로이므로 `submit` / `async` / `yield` 세 terminator를 제공한다. 외부 대기가
+  spot 공유 흐름과 무관하면 `yield`로 실행 줄을 반납한다
+  ([04 §1.1](04-async-execution-policy.ko.md)).
+
 - Protobuf와 MessagePack extension package는 framework가 작성된 언어에만 만든다. Node package
   root는 browser-safe payload codec을, `./framework` subpath는 server serializer 등록 adapter를
   제공한다. package root의 module graph는 Node framework runtime을 참조하지 않는다.

@@ -54,6 +54,18 @@ application에 넘기지 않는다.
 - transport callback에서 받은 **peer 식별 값(routing id)은 session dispatch까지 정보 손실 없이**
   전달된다.
 
+### 3.1 reply 상관관계
+
+**session이 만드는 `Response`·`Error`는 원본 request의 request sequence를 그대로 되돌린다.**
+client는 그 sequence만으로 pending request를 찾는다.
+
+- **`Response`·`Error` header에 packet name을 담지 않는다.** 응답은 handler를 고르지 않으므로 그
+  필드가 필요 없고, 언어마다 다른 값을 채워 넣으면 진단만 어긋난다.
+- typed reply의 decode 타입은 client가 호출 시 지정한 타입이다. 이름으로 고르지 않는다.
+- `Error`도 같은 sequence로 되돌린다.
+
+전체 규칙은 [03 message model](03-message-model.ko.md)의 "reply 상관관계"가 소유한다.
+
 ## 4. recv loop를 기본 표면에서 빼는 이유
 
 recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 표면으로 그대로 끌어올리면
@@ -144,3 +156,4 @@ session이 받은 packet을 actor로 넘기는 계약은
 | 오류 경계 | handshake·socket 오류가 session 오류 callback으로 올라오지 않는다 |
 | 인증과 dispatch | connector와 session node 사이에서 인증과 packet dispatch가 완료된다 |
 | 종료와 재개 | stream 종료로 pending request가 실패하고, 새 session의 인증·bind 뒤 messaging이 재개된다 |
+| reply 상관관계 | `Response`·`Error` header에 packet name이 없고, client가 sequence 단독으로 매칭해 정상 완료한다 |

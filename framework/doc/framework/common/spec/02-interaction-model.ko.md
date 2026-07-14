@@ -143,12 +143,15 @@ request는 일반 framework channel client 경로로 나간다. actor가 `Spot`�
 사용자가 join 전후에 일반 channel client 역할과 Spot outbound 역할 중 무엇을
 골라야 하는지 판단하지 않게 하려는 것이다.
 
-actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현재 callback은
-응답 또는 timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻도 아니고, 같은 `Spot`의
-다음 callback을 막는다는 뜻도 아니다. request, join, worker의 framework terminator await는
-Spot 직렬 실행 줄을 양보하는 지점이므로, 그 대기 중에 같은 `Spot`의 독립 callback이
-시작할 수 있다. 재진입을 막는 보호 단위는 actor와 timer의 mailbox이며, 자세한 규칙은
-[04 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) section 1이 소유한다.
+actor 또는 `Spot` callback 안에서 request를 **`async`로** 기다리면 현재 callback은 응답 또는
+timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻은 아니지만, **같은 `Spot`의 다음 dispatch,
+join, timer, subscription 처리는 현재 callback이 끝난 뒤에 실행된다.** 즉 handler는 하나의 turn이며
+spot 상태를 lock 없이 다룰 수 있다.
+
+**`yield`로 기다리면 실행 줄을 반납한다.** 그 대기 중에 같은 `Spot`의 다른 callback이 실행되고,
+완료된 continuation은 큐에 다시 들어가 순서대로 재개된다. spot 공유 흐름과 무관한 대기(외부 API,
+DB 조회 등)에만 제한적으로 쓴다. 세 terminator의 정확한 계약은
+[04 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) §1.1이 소유한다.
 명시 timeout이 없으면 framework default timeout을 사용한다.
 
 이 직렬화 규칙은 user Spot 과 Entry Spot 의 lifecycle, route, subscription callback 에

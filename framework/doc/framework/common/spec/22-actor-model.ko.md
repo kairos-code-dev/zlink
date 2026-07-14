@@ -270,17 +270,18 @@ packet은 해당 actor mailbox에서만 직렬화하므로 `actor A` handler가 
 
 user Spot 실행 queue는 Spot 인스턴스 하나의 상태를 보호한다. 같은 게임방 안에서
 `actor A`와 `actor B`가 모두 board 상태를 바꿀 수 있다면, 두 actor의 handler는 같은
-Spot queue에서 순서대로 dispatch된다. 다만 handler가 framework terminator를 await하면 그
-지점에서 실행 줄을 양보하므로, 두 handler는 **await 경계에서 인터리브될 수 있다.** await를
-가로질러 유지해야 하는 불변식이 있으면 그 구간을 terminator 없이 구성하거나 상태 전이를
-await 이후로 모아야 한다.
+Spot queue에서 **순서대로, 하나씩 끝까지** 실행된다. `async` 대기를 가로질러도 겹치지 않는다.
+
+**`yield`로 기다리는 구간만 예외다.** 그 지점에서 실행 줄을 반납하므로 두 handler가 인터리브될 수
+있다. `yield`를 가로질러 유지해야 하는 불변식이 있으면 상태 전이를 await 이후로 모으거나 `async`를
+쓴다([04 §1.1](04-async-execution-policy.ko.md)).
 
 Entry Spot은 user Spot처럼 room 상태를 소유하는 곳이 아니라 actor가 처음 거치는 공용
 입구다. Entry Spot의 packet, lifecycle, route, subscription, timer callback은 같은 Entry
 실행 줄에서 직렬화한다. callback이 비동기 완료 값을 반환하면 그 작업이 끝나기 전까지
-같은 실행 줄의 다음 callback은 시작하지 않는다. 단 request·join·worker의 **framework
-terminator await 지점에서는 실행 줄을 양보**하므로 그 대기 중에 같은 줄의 독립 callback이
-시작할 수 있다([04 비동기 실행 정책](04-async-execution-policy.ko.md) section 1). Entry actor
+같은 실행 줄의 다음 callback은 시작하지 않는다. **`yield`로 기다리는 지점에서만 실행 줄을
+양보**하며, 그 대기 중에는 같은 줄의 독립 callback이 시작할 수 있다
+([04 비동기 실행 정책](04-async-execution-policy.ko.md) §1.1). Entry actor
 packet은 이 실행 줄에 넣지 않고 actor별 mailbox로 보낸다. timer에서 room, stage, match 상태를
 직접 바꿔야 한다면 그 상태를 소유하는 user Spot으로 작업을 전달한다.
 

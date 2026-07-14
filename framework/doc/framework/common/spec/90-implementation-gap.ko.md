@@ -48,8 +48,8 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 00 | [공개 계약 관리](00-public-contract-governance.ko.md) | — | — | — | — | — |
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | O | O | O |
-| 03 | [메시지 모델](03-message-model.ko.md) | O | O | O | O | O |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | O | O | O | O |
+| 03 | [메시지 모델](03-message-model.ko.md) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) |
 | 05 | [framework API](05-framework-api.ko.md) | O | O | O | O | O |
 
 ### 2.2 Channel (1x)
@@ -57,6 +57,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 10 | [channel topology](10-channel-topology.ko.md) | O | O | O | O | O |
+| 12 | [HTTP client](12-http-client.ko.md) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) |
 | 11 | [channel 메시징](11-channel-messaging.ko.md) | **△** [§10.8](#108-dispatch-실패의-로그-수준) | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
 
 ### 2.3 SPOT · Actor (2x)
@@ -74,9 +75,9 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 30 | [STREAM 서버 세션](30-stream-session.ko.md) | O | O | O | O | O |
+| 30 | [STREAM 서버 세션](30-stream-session.ko.md) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
 | 31 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) | O | O | O | **X** [§12.6](#126-session-handler-registry-키-node) | O |
-| 32 | [Stream Connector](32-stream-connector.ko.md) | O | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) [§12.3](#123-근거-없는-공개-표면-java) [§12.4](#124-connector-호출별-packet-name-override-java) | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) | O | O |
+| 32 | [Stream Connector](32-stream-connector.ko.md) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) [§12.3](#123-근거-없는-공개-표면과-connect-상태-처리-java-kotlin) [§12.4](#124-connector-호출별-packet-name-override-java) [§12.10](#1210-connector-transport-enum-부재-java) [§12.12](#1212-connector-dispatch-mode-이름-java) [§12.13](#1213-connector-inbound-observer-option-부재-java) [§12.15](#1215-예외-정규화-부재-java) [§12.16](#1216-metadata-총-크기-한도-미검사-java) [§12.17](#1217-correlated-error-처리-java) [§12.19](#1219-typed-표면-경계-java-kotlin) [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** Java 표면 상속 + [§12.14](#1214-kotlin-option-helper가-수신-한도를-되돌린다-kotlin) [§12.19](#1219-typed-표면-경계-java-kotlin) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
 
 ### 2.5 Location (4x)
 
@@ -92,7 +93,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 50 | [런타임 모니터링](50-runtime-monitoring.ko.md) | O | **△** [§12.8](#128-monitoring-표면-java) | **△** [§12.8](#128-monitoring-표면-java) | **X** [§12.11](#1211-location-event-kind-이름-node) | O |
 | 51 | [런타임 메트릭](51-runtime-metrics.ko.md) | **△** [§12.7](#127-metric-drop-reason-라벨-도달-불가-net) | O | O | O | O |
 | 52 | [메시지 흐름 추적](52-message-flow-tracing.ko.md) | O | O | O | O | O |
-| 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | O | O | O | O |
+| 53 | [흐름 상관관계](53-flow-correlation.ko.md) | O | **X** [§12.18](#1218-flow_id-미전파-java) | **X** [§12.18](#1218-flow_id-미전파-java) | O | O |
 | 54 | [Graceful Drain](54-graceful-drain-handoff.ko.md) | O | O | O | O | O |
 
 ### 2.7 열려 있는 gap 요약
@@ -105,9 +106,9 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§4.13](#413-startup-validation-누락-해소) | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
 | [§10.8](#108-dispatch-실패의-로그-수준) | **`.NET`** | dispatch 파이프라인이 `LogLevel.Error`를 넘기고도 기록을 억제해, **application 예외가 `Information`으로 평준화된다** |
 | [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
-| [§12.1](#121-stream-connector-수신-큐-overflow-java) | **Java** | 수신 큐 overflow가 **가장 오래된 메시지를 버리고**(기준선은 새 메시지), 기본 상한이 사실상 무제한이며, drop 시 오류를 발생시키지 않는다 |
+| [§12.1](#121-stream-connector-수신-큐-overflow-java) | **Java** | **독립 unread-history가 없다.** overflow가 가장 오래된 메시지를 버리고(기준선은 새 메시지), 기본 상한이 무제한이며, drop 오류가 없고, handler 없는 메시지가 폐기되며, `waitFor`가 기존 메시지를 못 받고, `receivedCount` 의미가 다르며, `AUTO`에서 한도가 적용되지 않는다 |
 | [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
-| [§12.3](#123-근거-없는-공개-표면-java) | **Java** | connector `disconnect()`/`reconnect()`와 `ZLinkActorPlacement`(remote node 지정)는 **공통 스펙에 근거가 없는 표면**이다 |
+| [§12.3](#123-근거-없는-공개-표면과-connect-상태-처리-java-kotlin) | **Java, Kotlin** | connector `disconnect()`/`reconnect()`(Kotlin wrapper도 동일)와 `ZLinkActorPlacement`는 **근거 없는 표면**이다. 또 `connect()`가 진행 중인 연결 시도를 기다리지 않는다 |
 | [§12.4](#124-connector-호출별-packet-name-override-java) | **Java** | 호출별 `packetName(...)` override가 없다([32 §5](32-stream-connector.ko.md)) |
 | [§12.5](#125-spot-메시징-표면-누락-node) | **Node** | route client에 `sendToSpot`/`requestToSpot`가 없고, spot 전송의 **stale 갱신·1회 재전송이 미구현**이다 |
 | [§12.6](#126-session-handler-registry-키-node) | **Node** | session handler registry가 **handler 클래스 이름**을 packet 키로 써서 wire packet name과 맞지 않는다 |
@@ -116,7 +117,19 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
 | [§12.10](#1210-connector-transport-enum-부재-java) | **Java** | connector가 지원 transport를 나타내는 공개 enum을 노출하지 않는다 |
 | [§12.11](#1211-location-event-kind-이름-node) | **Node** | location runtime event kind가 `StoreUnavailable`이다. 닫힌 집합의 이름은 `StoreFailure`다 |
-| [§13](#13-샘플-연결등록-축-준수-현황) | **`.NET`, Java, Kotlin, Node** | TicTacToe가 **명시 등록** 대신 스캔·선언형 자동 등록을 쓴다. 샘플 규약상 TicTacToe만 수동 연결 + 수동 등록이다 |
+| [§12.12](#1212-connector-dispatch-mode-이름-java) | **Java** | dispatch mode enum이 `AUTO`/`MANUAL`이다(계약은 `Manual`/`Immediate`). 또 `MANUAL`에서도 state·disconnected callback이 queue를 우회하고, message callback의 완료를 기다리지 않는다 |
+| [§12.13](#1213-connector-inbound-observer-option-부재-java) | **Java** | connector options에 inbound observer 큐·preview 한도 2개가 없다 |
+| [§12.14](#1214-kotlin-option-helper가-수신-한도를-되돌린다-kotlin) | **Kotlin** | compression option helper가 options를 복사하며 `maxReceivedMessages`를 무제한으로 되돌린다 |
+| [§12.15](#1215-예외-정규화-부재-java) | **Java** | 비동기 실패를 오류 코드를 담은 공통 예외로 정규화하지 않는다 |
+| [§12.16](#1216-metadata-총-크기-한도-미검사-java) | **Java** | metadata 블록의 총합 1024바이트 한도를 검사하지 않는다 |
+| [§12.17](#1217-correlated-error-처리-java) | **Java** | request sequence가 붙은 `Error`를 그 request로 매핑하면서도 **stream-level error callback으로 먼저 이중 발행**하고, error payload JSON을 파싱하지 않는다 |
+| [§12.18](#1218-flow_id-미전파-java) | **Java** | inbound callback에서 시작한 send/request가 inbound의 `flow_id`를 잇지 않는다 |
+| [§12.19](#1219-typed-표면-경계-java-kotlin) | **Java, Kotlin** | `send(Object)`가 raw payload를 받고, Kotlin에 목표 계약에 없는 `await<T>()` overload가 있다 |
+| [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **전 언어** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
+| [§12.21](#1221-yield-terminator-부재-전-언어) | **전 언어** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
+| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **전 언어** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. `SubmitAsync` 이름과 blocking `Fetch` 표면은 framework 계약 위반이다 |
+| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **전 언어** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다 |
+| [§13](#13-샘플-연결등록-축-준수-현황) | **`.NET`, Java, Kotlin** | TicTacToe가 **수동 등록** 대신 assembly·package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
 
 **connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
 
@@ -125,13 +138,19 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 ### 3.1 handler 비동기 완료
 
 Java request, send, publish, Spot, actor와 session handler는 `CompletionStage<T>` 또는
-`CompletionStage<Void>`를 반환한다. automatic turn은 handler가 stage를 반환할 때까지 다음
-handler의 시작 순서를 보장하며, 반환된 incomplete stage의 완료는 기다리지 않는다.
+`CompletionStage<Void>`를 반환한다.
 
-확인 근거:
+> **turn 의미는 갭이다.** 현재 구현의 automatic turn은 handler가 stage를 **반환할 때까지**만 다음
+> handler의 시작을 막고, 반환된 incomplete stage의 **완료는 기다리지 않는다.** 정본 계약은
+> `async`가 **완료까지 turn을 유지**하는 것이다([04 §1.1](04-async-execution-policy.ko.md)).
+> 아래 근거는 **폐기된 계약 기준의 기록**이며, 현재 갭은
+> [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다.
+
+확인 근거(구 계약 기준):
 
 - `JavaTargetContractGapTest.handlersFactoriesAndLifecycleExposeCompletionStages`
-- Config 8 `AutomaticTurnDispatch` 전체 selector
+- Config 8 `AutomaticTurnDispatch` 전체 selector — 이 config는 [config-8 실행 turn과
+  terminator](../../e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다
 
 Kotlin adapter는 lifecycle과 actor callback의 coroutine을 `CoroutineScope.future`로
 `CompletionStage`에 연결한다. `CompletionStage.await()`는
@@ -249,8 +268,10 @@ Java dispatch reporter를 사용한다.
 Kotlin은 `KotlinPublicSurfaceContractTest`, 전체 unit/integration test와 언어별 E2E로 확인했다.
 `KotlinFlowContextBridgeTest`는 suspending lifecycle의 flow가 suspension 전후에 유지되고 다음
 호출에 남지 않는지 검증한다. `KotlinCompletionStageAwaitIntegrationTest`는 drain waiter를 취소해도
-공유 drain stage가 취소되지 않는지 검증한다. Config 8 전체 실행은 `ATD-E3`의 pending await 중
-Play 재시작과 같은 routing id recovery를 포함해 통과했다. Config 11 전체 실행도 각 selector를
+공유 drain stage가 취소되지 않는지 검증한다. Config 8 전체 실행은 **구 계약(`ATD-*`) 기준** 기록이며
+pending await 중 Play 재시작 같은 routing id recovery를 포함해 통과했다. 그 config는
+[config-8 실행 turn과 terminator](../../e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
+Config 11 전체 실행도 각 selector를
 새 Redis와 새 토폴로지에서 실행하여 OBS-A1~C5가 모두 통과했다.
 
 ## 4. Node.js
@@ -277,7 +298,8 @@ socketRole
 
 현재 계약과 구현 위치는
 `packages/framework/src/contracts/Dispatch/ZLinkDispatchOptions.ts`다. Config 8
-`AutomaticTurnDispatch`의 전체 Node.js runner도 통과했다.
+`AutomaticTurnDispatch`의 전체 Node.js runner도 통과했다 — **구 계약 기준 기록**이며, 그 config는
+[config-8 실행 turn과 terminator](../../e2e/config-8-execution-turn.ko.md)(`TD-*`)로 대체됐다.
 
 ### 4.2 public export 경계
 
@@ -463,8 +485,13 @@ request는 error reply로 끝나므로 Error를 유지한다(`.NET`의 `SendLogL
 
 ### 5.1 C++ 비동기 실행 정책 — 해소
 
-**해소(2026-07-14).** [비동기 실행 정책](04-async-execution-policy.ko.md)의 turn 계약을 검증하는
-Config 8 `AutomaticTurnDispatch`가 전 시나리오 통과한다(ATD-C3B·ATD-D2 포함).
+**해소(2026-07-14).** 당시의 turn 계약(자동 turn dispatch)을 검증하는 Config 8
+`AutomaticTurnDispatch`가 전 시나리오 통과했다(ATD-C3B·ATD-D2 포함).
+
+> **이후 계약이 바뀌었다.** 자동 turn dispatch는 폐기됐고 세 terminator(`submit`/`async`/`yield`)가
+> 정본이다([04 §1.1](04-async-execution-policy.ko.md)). 아래 서술은 당시 계약 기준의 기록이며,
+> 현재 갭은 [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다. Config 8도
+> [실행 turn과 terminator](../../e2e/config-8-execution-turn.ko.md)로 재작성했다.
 
 간헐 실패의 원인은 turn 배선이 아니라 **stream connector의 heartbeat 응답 경로**였다. connector는
 server liveness ping의 pong을 `dispatch()` 경로에서만 썼는데, ATD client는 응답을 기다리는 동안
@@ -513,15 +540,21 @@ IZLinkWorkerCall
 IZLinkWorkerOptions
 ```
 
-request, actor join과 worker의 yield 전용 타입은 source와 package에서 제거했으며 단일
-완료 terminator가 자동으로 turn을 관리한다. `IZLinkActorSendCall`도 다른 one-way call과
-같은 `void Submit(CancellationToken)` 계약을 제공한다. `SpotHandle`, capability별
-`IZLinkEndpointConnections`, sealed monitoring event와 typed packet identity 단일 소유도
-contract/unit/E2E 및 실제 package consumer로 검증한다.
+`IZLinkActorSendCall`은 다른 one-way call과 같은 `void Submit(CancellationToken)` 계약을
+제공한다. `SpotHandle`, capability별 `IZLinkEndpointConnections`, sealed monitoring event와
+typed packet identity 단일 소유도 contract/unit/E2E 및 실제 package consumer로 검증한다.
 
 runtime metrics, flow correlation, graceful drain과 session closing도 정식 계약, package와
-Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다. 따라서 이 문서에서 추적하는
-`.NET` 구현 차이는 남아 있지 않다.
+Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
+
+> **실행 terminator는 예외다.** 위 목록이 만들어질 당시에는 "request·actor join·worker의 yield
+> 전용 타입을 제거하고 단일 완료 terminator가 자동으로 turn을 관리한다"가 계약이었고, 그 기준으로
+> 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
+> (`submit`/`async`/`yield`)이며([04 §1.1](04-async-execution-policy.ko.md)), `.NET`은 이를
+> 충족하지 않는다. 따라서 **`.NET`에 남은 구현 차이는 [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
+> [§12.21](#1221-yield-terminator-부재-전-언어), [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
+> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)이다.** 그 밖에 이 문서가 추적하는 `.NET`
+> 차이는 없다.
 
 ## 7. 문서 및 계약 검증 차이
 
@@ -641,14 +674,23 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 **미충족(Java).** [32 §10](32-stream-connector.ko.md)은 수신 메시지 큐가 가득 차면 **새로 도착한
 메시지를 버리고** `ReceivedMessageDropped`를 보고하도록 규정한다. 기본 상한은 1024다.
 
-Java connector는 세 가지가 다르다.
+**근본 원인은 수신 저장소의 구조가 다르다는 것이다.** 기준선은 handler 조회와 무관한 **독립
+unread-history**에 수신 메시지를 먼저 기록한다. handler 호출은 그와 별개로 진행되고, `waitFor`가
+history에서 메시지를 꺼내며, `receivedCount`는 history에 남은 수를 읽는다. Java는 그런 history가
+없고 **manual dispatch callback 큐**를 그 자리에 쓴다. 그래서 다음이 전부 어긋난다.
 
-- overflow 시 **가장 오래된 메시지를 버린다.** 같은 부하에서 살아남는 메시지 집합이 뒤집힌다.
-- 수신 큐 기본 상한이 사실상 무제한이라 이 경로가 평소 발화하지 않는다.
+- overflow 시 **가장 오래된 항목을 버린다.** 기준선은 새로 도착한 메시지를 버린다.
+- 수신 큐 기본 상한이 `Integer.MAX_VALUE`라 이 경로가 평소 발화하지 않는다.
 - drop 시 오류를 발생시키지 않아 **메시지가 조용히 유실된다.** `ZLinkStreamErrorCode`에
   `RECEIVED_MESSAGE_DROPPED`가 없다.
+- **등록된 handler가 없는 메시지는 보관되지 않고 즉시 버려진다.** 기준선은 history에 남긴다.
+- **`waitFor`가 이미 도착한 메시지를 소비하지 못한다.** `submit()` 시점에 일회성 handler를 걸기
+  때문에 그 이전에 온 메시지는 영영 못 받는다.
+- **`receivedCount`의 의미가 다르다.** unread-history의 메시지 수가 아니라 manual 큐에 남은
+  callback 수다.
+- **`AUTO`(= `Immediate`) 모드에서는 큐 자체를 쓰지 않아** 수신 한도가 적용되지 않는다.
 
-세 항목을 함께 고쳐야 계약을 충족한다.
+독립 unread-history를 도입해야 위 항목이 함께 해소된다.
 
 ### 12.2 actor join admission이 선택 사항 (Java, C++)
 
@@ -660,12 +702,17 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 때만 호출하며, 일반 spot에서 없으면 **거절**로 대체한다. 두 경우 모두 admission을 빠뜨리면
 컴파일과 시작은 통과하고 **모든 actor join이 조용히 거절**되는 실패 모드가 생긴다.
 
-### 12.3 근거 없는 공개 표면 (Java)
+### 12.3 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
 
 **계약 위반(Java).** 다음 두 표면은 공통 스펙에 근거가 없고 다른 언어에도 없다.
 
 - connector `disconnect()` / `reconnect()` — [32 §6](32-stream-connector.ko.md)의 연결 lifecycle
   표면은 connect / close / dispatch 셋뿐이며, 재연결은 자동 reconnect 옵션이 담당한다.
+  **Kotlin wrapper(`ZLinkKotlinStreamConnector`)도 같은 두 메서드를 그대로 위임 노출한다.**
+- **`connect()`가 진행 중인 연결 시도를 기다리지 않는다.** `Connecting`이나 `Reconnecting`
+  상태에서 다시 호출하면 기존 시도를 기다리지 않고 새 연결 시도를 시작하며, 예약된 reconnect
+  작업은 scheduler에 그대로 남는다. 계약은 진행 중인 시도의 결과를 기다리는 것이다
+  ([32 §6](32-stream-connector.ko.md)).
 - `ZLinkActorPlacement(preferredNodeRid, routeMesh)` — [22 §4](22-actor-model.ko.md)와
   [31 §10.2](31-session-actor-dispatch.ko.md)는 remote node를 직접 지정하는 actor 생성 표면을 두지
   않는다고 규정한다.
@@ -731,15 +778,268 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 쓰는데 Node 구현만 `StoreUnavailable`을 쓴다. 닫힌 enum의 멤버 이름은 관측 데이터의 안정 키이므로
 언어마다 다를 수 없다.
 
+### 12.12 connector dispatch mode 이름 (Java)
+
+**미충족(Java).** [32 §7](32-stream-connector.ko.md)이 고정한 dispatch mode의 닫힌 집합은
+`Manual`(기본)과 `Immediate`다. Java는 `AUTO`/`MANUAL`을 쓴다. 닫힌 enum의 멤버 이름은 관측·설정
+데이터의 안정 키이므로 언어마다 다를 수 없다 — close reason과 error code는 이미 공통 이름을
+SNAKE_CASE로 1:1 사상하고 있어 dispatch mode만 예외인 상태다.
+
+**이름만의 문제가 아니다.** 두 가지 동작이 더 어긋난다.
+
+- **`MANUAL`에서도 connection-state와 disconnected callback이 dispatch queue를 우회해** lifecycle
+  스레드에서 직접 실행된다. 계약은 manual mode에서 모든 사용자 callback이 `dispatch()` 호출
+  문맥에서 실행되는 것이다.
+- **message callback이 반환한 `CompletionStage`를 기다리지 않는다.** 그래서
+  `dispatch().submit()`이 callback 완료 전에 끝난다. 기준선은 callback 완료까지 기다린다.
+
+### 12.13 connector inbound observer option 부재 (Java)
+
+**미충족(Java).** [32 §10](32-stream-connector.ko.md)은 inbound observer 통지 큐(기본 1024개)와
+payload preview 한도(기본 0바이트)를 option으로 조절한다고 규정한다. Java
+`ZLinkStreamConnectorOptions`에는 `maxInboundObserverNotifications`와
+`maxInboundObserverPayloadPreviewBytes`가 없어 그 한도를 관찰하거나 조절할 수 없다.
+
+### 12.14 Kotlin option helper가 수신 한도를 되돌린다 (Kotlin)
+
+**미충족(Kotlin).** Kotlin의 compression option helper가 options를 복사할 때
+`maxReceivedMessages`를 전달하지 않는 constructor overload를 골라, 사용자가 지정한 값을
+`Integer.MAX_VALUE`로 되돌린다. wrapper는 buffering 정책을 바꾸면 안 되며 모든 option 값을
+보존해야 한다([languages/java/03 §13](languages/java/03-stream-connector.ko.md)).
+
+### 12.15 예외 정규화 부재 (Java)
+
+**미충족(Java).** 기준선은 connector의 비동기 실패를 `ZLinkStreamErrorCode`를 담은 공통 예외
+타입으로 정규화해, 호출자가 실패 원인을 닫힌 집합으로 판별할 수 있게 한다. Java는 raw
+`TimeoutException`, `IllegalStateException`, `IllegalArgumentException`을 그대로 던져 오류 코드를
+잃는다([32 §9](32-stream-connector.ko.md)).
+
+### 12.16 metadata 총 크기 한도 미검사 (Java)
+
+**미충족(Java).** [32 §4](32-stream-connector.ko.md)는 metadata 블록의 **총합 1024바이트** 한도를
+규정한다. Java wire codec은 항목 수와 개별 key/value 길이만 검사하고 총합을 검사하지 않아, 한도를
+넘는 프레임을 만들 수 있다.
+
+### 12.17 correlated Error 처리 (Java)
+
+**미충족(Java).** request sequence가 붙은 `Error` 프레임은 그 request의 완료로만 매핑해야 한다.
+Java는 매핑 자체는 하지만(`pendingRequests.fail(...)`), **그 전에 stream-level error callback으로도
+발행해 같은 오류가 두 번 전달된다.** 또 error payload의 JSON 객체를 파싱하지 않아 서버가 보낸 오류
+상세를 잃는다.
+
+### 12.18 flow_id 미전파 (Java)
+
+**미충족(Java).** [53 §6](53-flow-correlation.ko.md)은 inbound callback 안에서 시작한 send/request가
+그 inbound의 `flow_id`를 이어받도록 규정한다. Java connector는 매 호출마다 새 UUIDv7을 만들어
+flow가 경계에서 끊긴다.
+
+### 12.19 typed 표면 경계 (Java, Kotlin)
+
+**미충족.** 두 항목이다.
+
+- Java `send(Object)`가 raw `ZLinkStreamEncodedPayload`도 그대로 받아 typed 경로에서 처리한다.
+  raw payload는 raw 표면이 소유해야 한다.
+- Kotlin wrapper에 목표 계약에 없는 request `await<T>()` overload 2개(typed·raw)가 있다. 목표
+  선언에 없는 공개 표면은 두지 않는다.
+
+### 12.20 응답에 packet name을 싣는다 (전 언어)
+
+**미충족(`.NET`, Java, Node, C++).** [03 message model](03-message-model.ko.md)의 "reply
+상관관계"와 [11 §3](11-channel-messaging.ko.md)·[30 §3.1](30-stream-session.ko.md)·
+[32 §4](32-stream-connector.ko.md)는 **`Response`와 `Error` header에 packet name을 두지 않는다**고
+규정한다.
+
+**왜 두지 않는가.** 응답은 handler를 고르지 않고(dispatch key 문맥은 `Request`·`Command`·`Publish`
+셋뿐이다), 어느 요청의 응답인지는 request sequence가 이미 정한다. 따라서 그 필드는 **아무도 읽지
+않는 잉여**다. 실제로 지금 4개 구현이 서로 다른 값을 채워 넣고 있어 진단만 어긋난다.
+
+| 구현 | 현재 응답에 넣는 이름 |
+|------|----------------------|
+| `.NET` | 요청의 packet name을 echo |
+| Node | 요청의 packet name을 echo |
+| C++ | 요청의 이름이 기본값이고, application이 **override할 수 있는 public 표면**까지 노출 |
+| Java | **reply payload 타입의 이름**(`FooReq` 요청에 `FooRes`가 나간다) |
+
+**고쳐야 할 것:**
+
+- 응답 인코딩에서 packet name을 뺀다. STREAM wire는 `name_len = 0`으로 보낸다.
+- C++의 reply 이름 override 표면(`stream_write_call_t::packet_name(...)`)을 제거한다.
+- decoder는 구형 peer가 보낸 이름 있는 응답도 받아들이되 **무시한다**(대조 조건으로 쓰지 않는다).
+- 응답의 진단·로깅에는 pending request 항목이 들고 있는 **원본 request의 이름**을 쓴다.
+
+**대조 금지는 이미 지켜지고 있다.** 2026-07-14 전수 조사에서 5개 구현(.NET·Java·Node·C++·core)
+모두 pending request를 **sequence 단독**으로 매칭하며 packet name을 대조하는 코드가 없음을
+확인했다. 필드를 빼면 그 성질이 구조적으로 보장된다. 회귀 테스트로 고정한다.
+
+### 12.21 yield terminator 부재 (전 언어)
+
+**미충족(`.NET`, Java, Kotlin, Node, C++).** [04 §1.1](04-async-execution-policy.ko.md)은 request·
+actor join·worker에 **세 terminator**를 요구한다.
+
+| terminator | 실행 줄 |
+|---|---|
+| `submit` | 그대로 진행(one-way) |
+| **`async`**(기본) | **turn을 유지한다.** 대기 중 같은 Spot의 다른 callback은 시작하지 않는다 |
+| **`yield`**(opt-in) | turn을 반납한다. 완료된 continuation은 큐에 다시 들어가 순서대로 재개된다 |
+
+**현재 구현은 terminator가 둘뿐이고, `async`가 자동으로 turn을 반납한다**(자동 turn dispatch).
+`yield` 전용 타입은 5개 구현 모두에서 제거됐다.
+
+**HTTP client에는 terminator 계약 자체가 없다.** `SubmitAsync<T>(ct)` 같은 평범한 awaitable
+하나뿐이라 framework terminator가 아니며, spot handler에서 외부 API를 부르면 **그 시간만큼 room
+전체와 timer가 멈춘다.** `yield`가 가장 필요한 자리인데 표면이 없다.
+
+**왜 되돌려야 하는가.**
+
+- SPOT 직렬 dispatch의 가치는 처리량이 아니라 **추론 보장**이다. "handler = 하나의 turn"이 room
+  로직을 lock 없이 쓸 수 있게 하는 근거다. 자동 turn dispatch는 **코드 모양은 순차로 유지한 채
+  그 보장만 없앤다** — 순차처럼 보이고, 대부분 순차로 동작하고, 부하가 걸릴 때만 드물게 깨진다.
+  가장 찾기 어려운 부류의 결함이다.
+- 실제로 이 스펙 문서군의 02·20·22·25가 자동 turn dispatch 도입 이후에도 **"같은 spot의 두
+  handler는 동시에 실행되지 않으니 lock이 필요 없다"**를 계속 적고 있었다. 스펙을 쓴 쪽조차
+  불변식이 깨진 것을 알아채지 못했다.
+- **deadlock 회피는 근거가 아니다.** channel reply와 routed 메시지는 spot dispatch 루프가 꺼내며,
+  그 루프는 실행 줄과 별개 축이다. turn을 유지한 채 기다려도 응답은 정상 도착한다. 요청이 자기
+  Spot으로 되돌아오는 사이클만 request timeout으로 끝나는데, 그것은 application 설계 오류이며
+  timeout이 올바른 결과다.
+- head-of-line 지연은 실재하지만 **`yield`가 이미 그 해법**이다. opt-in으로 충분한 것을 default로
+  만들면서 직렬 처리의 이점을 상쇄할 이유가 없다.
+
+**고쳐야 할 것:**
+
+- `async` terminator가 **turn을 유지**하도록 되돌린다. 대기 중 같은 Spot의 다음 callback을 시작하지
+  않는다.
+- request·actor join·worker·**HTTP client 호출**에 **`yield` terminator를 다시 제공**한다. turn을
+  반납하고, 완료된 continuation을 실행 줄의 큐에 재삽입해 순서대로 재개한다.
+- **HTTP client를 framework terminator 축에 올린다.** spot 실행 문맥에서 부르는 HTTP 호출은
+  `submit` / `async` / `yield`를 갖는다.
+- actor·timer mailbox의 재진입 차단은 그대로 둔다(`yield` 양보를 가로질러서도 유효해야 한다).
+- C++ `yield` 구현의 과거 결함(blocking submit이 직렬 스레드에서 동기 실행돼 형제 timer를 굶김)은
+  detached offload로 이미 해결했다. 그 방식을 유지한다.
+
+#### actor join의 orchestration을 뒤집어야 한다 (ATD 제거의 선행 조건)
+
+**현재 local join은 방향이 거꾸로다.** admission과 commit이 **target Spot의 줄**에서 돌고, source
+cleanup(`OnLeaveActor`)을 **source Spot의 큐에 post**한다. 즉 join이 **target 줄을 잡은 채 source
+줄을 기다린다.**
+
+그 결과 두 가지 우회가 코드에 박혀 있다.
+
+1. **ATD가 이 구현을 떠받치고 있다.** `JoinSpot(...).Async()`가 **source turn을 자동 반납**하므로
+   source 큐가 비고 commit의 post가 실행된다. **ATD를 그냥 걷어내면 user Spot → user Spot join이
+   즉시 막힌다.** ATD는 지연 최적화만이 아니라 join 구현의 필수 부품이었다.
+2. **노드 전역 세마포어.** 같은 spot 쌍에서 서로 반대 방향 join 두 개가 동시에 일어나면 서로의 큐를
+   기다려 영원히 멈춘다(그 spot들의 timer와 이후 모든 join까지 함께). 그래서 구현은 **local join을
+   노드 전체에서 한 번에 하나만** 처리하도록 직렬화했다. 방 입장이 프로세스 전역에서 직렬화된다는
+   뜻이며 그 자체로 확장성 결함이다.
+
+**범위:** Entry Spot actor packet은 turn을 잡지 않고 실행되므로(actor mailbox 직렬화 + turn suppress)
+**입장(Entry → user Spot) 경로는 영향이 없다.** 막히는 것은 **user Spot → user Spot join**과 user
+Spot handler의 `leaveActor`다.
+
+**고쳐야 할 것 — orchestration을 caller 줄에서 돌린다:**
+
+1. caller(source Spot 줄, turn 유지)에서 target에 **admission**을 요청하고 기다린다. target은 다른
+   줄이므로 안전하다.
+2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
+   필요 없다.
+3. target **commit**과 `OnJoinedActor`를 target 줄에서 실행한다.
+4. 결과를 caller에게 반환한다.
+
+[23 §3.3~§4.1](23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership commit →
+target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되돌아가는 경로가 사라지므로 사이클이 소멸하고, **노드 전역 join 세마포어도
+제거할 수 있다.**
+
+**따라서 ATD 제거와 join orchestration 수정은 한 묶음이다.** 순서를 반대로 하면 안 된다.
+
+**E2E:** `config-8`을 세 terminator 계약으로 다시 썼다([config-8 실행 turn과 terminator](../../e2e/config-8-execution-turn.ko.md)). TD-A3(async 불변식)·TD-B1(yield 인터리브)·TD-E2(user→user join)·TD-C3(I/O worker)가 이 갭의 검증 축이다.
+
+**샘플:** 두 공통 샘플이 `yield`를 쓰도록 규정돼 있으므로 이 갭이 풀리기 전에는 그 흐름을 구현할 수
+없다.
+
+| 샘플 | 지점 | terminator |
+|------|------|-----------|
+| [Bingo](../sample/bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | `yield` |
+| [DeliveryDispatch](../sample/deliverydispatch/README.ko.md) §6.1 | courier entry spot의 claim-then-activate probe가 다른 노드 entry spot에 묻는다 | `yield` |
+
+### 12.22 HTTP client가 framework 계약 밖에 있다 (전 언어)
+
+**미충족(`.NET`, Java, Kotlin, Node, C++).** [12 HTTP client](12-http-client.ko.md)는 HTTP client를
+STREAM connector와 같은 **framework 동반 client**로 규정하고 terminator·turn seam·서버 등록
+표면을 고정한다. 현재는 그 축이 전부 없다.
+
+| 항목 | 계약 | 현재 |
+|------|------|------|
+| terminator | `submit` / `async` / `yield` / callback | `async` 계열만(+cpp에 callback 하나). **`yield`가 5개 언어 전부 없다** |
+| Spot turn 인지 | `yield`가 turn을 반납한다 | **개념 자체가 없다.** HTTP client 스펙 트리에 "spot"·"turn" 언급 0건 |
+| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | **없다.** 정적 팩토리뿐이고 framework DI 등록도 없다. 실제로 **서버 코드에서 쓰는 곳이 하나도 없다** |
+| terminator 이름(`.NET`) | `Async(...)` | `SubmitAsync<T>` — [04 §2](04-async-execution-policy.ko.md)가 **이름을 찍어 금지**한 형태이며, `Submit`은 one-way 전용 동사다 |
+| blocking 표면 | 두지 않는다 | cpp `fetch<T>()`, `.NET` `Fetch<T>()`, Java `fetch(...)`가 public이고 **문서가 사용을 권장**한다 |
+
+그 결과 **spot handler에서 외부 API를 호출하면 실행 줄이 그대로 막힌다.** actor 입·퇴장 시 외부
+데이터를 가져오는 흐름이 room 전체와 timer를 멈춘다 — 이 client가 존재해야 하는 이유가 바로
+그 경로인데 표면이 없다.
+
+**고쳐야 할 것:**
+
+- 세 terminator(`submit`/`async`/`yield`)와 callback 완료 경로를 제공한다. `.NET`은 `SubmitAsync` →
+  `Async`로 정정한다.
+- **turn seam**(execution scheduler 주입점)을 공개 계약으로 둔다. framework가 DI 등록 시 spot
+  turn을 아는 scheduler를 꽂는다. C++ HTTP client에 **같은 형태의 API 표면이 이미 있다**
+  (`framework_resume_scheduler_t`) — 다만 framework 런타임이 아직 그것을 주입하지 않으므로 표면만
+  있고 통합은 검증되지 않았다.
+- **서버용 DI 표면**을 신설한다. application이 명명 등록하고 handler가 주입받는다. 정적 팩토리는
+  client-side 전용으로 남긴다.
+- blocking 언래핑 terminator를 public 표면에서 제거한다.
+- **바이너리 의존은 framework → HTTP client 한 방향을 유지한다.**
+
+### 12.23 worker 축 분리와 yield 부재 (전 언어)
+
+**미충족(`.NET`, Java, Kotlin, Node, C++).** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
+**CPU worker**와 **I/O worker**로 나누고, 둘 다 `async`·`yield` terminator를 갖도록 규정한다.
+
+현재는 worker가 하나뿐이고 **동기 델리게이트만 받는다.** terminator도 `async` 하나뿐이다.
+
+그래서 외부 I/O를 worker로 감싸면 **worker 스레드 안에서 blocking으로 기다려야 한다.** in-flight
+호출 하나마다 bounded pool의 스레드 하나가 잠기고, 외부 서비스가 느려지면 pool이 고갈되어
+`WorkerQueueFull`이 터진다.
+
+**고쳐야 할 것:**
+
+- worker를 **CPU worker**(동기 델리게이트)와 **I/O worker**(비동기 델리게이트)로 나눈다. 이름이
+  실행 의미를 드러내야 한다.
+- I/O worker는 **스레드를 점유하지 않는다.** 실행 줄을 다루는 경계일 뿐이며 I/O는 그대로 비동기로
+  흐른다.
+- 두 worker 모두 `async`(turn 유지)와 `yield`(turn 반납) terminator를 갖는다.
+
+**함께 움직여야 하는 문서 표면.** 아래 문서들은 **현재 출하된 public 표면**(`RunWorker` 하나)을
+미러하며, 일부는 회귀 테스트가 코드와 대조한다. 그래서 구현 전에 먼저 고치면 안 된다 — **구현과
+같은 커밋에서 함께 바꾼다.**
+
+| 문서 | 현재 표기 |
+|------|-----------|
+| `languages/<lang>/02` 인터페이스 카탈로그 | `RunWorker<TResult>(Func<CancellationToken, TResult>)` |
+| 언어별 guide(예: `dotnet/guide/06-spot`, `13-interface-catalog`) | `RunWorker(...)` |
+| `perf/README.ko.md` | `RunWorker`/`runWorker`/`run_worker` |
+| `internals/regression-test-matrix.ko.md` | `WorkerPoolTests.RunWorker_Async_*` |
+
+E2E는 이미 정본을 따른다 — [config-2 SM-A8](../../e2e/config-2-spot-service.ko.md)과
+[config-8 TD-C3~C5](../../e2e/config-8-execution-turn.ko.md)가 `RunCpuWorker`/`RunIoWorker`를 쓴다.
+
 ## 13. 샘플 연결·등록 축 준수 현황
 
 [샘플 규약](../sample/README.ko.md)은 두 축을 고정한다.
 
-- **TicTacToe만** 수동 endpoint 연결 + **명시 handler 등록**을 사용한다. 이 대조를 보여 주는 것이
+- **TicTacToe만** 수동 endpoint 연결 + **수동 handler 등록**을 사용한다. handler 자체는 다른
+  샘플과 같이 attribute·annotation·decorator로 **선언**하되, **assembly·module 스캔에 의한 자동
+  등록을 쓰지 않고** 구성 코드에서 그 handler를 직접 등록한다. 이 대조를 보여 주는 것이
   TicTacToe의 목적이다.
-- **나머지 정본 샘플**은 전부 location store 자동 연결 + **자동 등록**(스캔·선언형)을 사용한다.
+- **나머지 정본 샘플**은 전부 location store 자동 연결 + **자동 등록**(스캔)을 사용한다.
 - **C++ 샘플은 예외**다. runtime reflection scanner가 없으므로 모든 샘플이 compile-time 명시
   등록을 쓴다([05 §3.3](05-framework-api.ko.md)). C++은 이 표의 위반 대상이 아니다.
+
+**판정 기준은 "스캔을 쓰는가"다.** handler에 annotation을 붙였는지가 아니라, 등록이 스캔으로
+일어나는지 명시 호출로 일어나는지가 기준이다.
 
 이 축은 framework 구현이 아니라 **샘플이 지켜야 하는 규약**이다. `.NET` 구현이 기준선인 다른
 항목과 달리, 여기서는 규약이 정본이고 샘플 코드가 따라와야 한다.
@@ -748,22 +1048,24 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 
 | 샘플 | 규약 | `.NET` | Java/Kotlin | Node | C++ |
 |------|------|:---:|:---:|:---:|:---:|
-| **TicTacToe** | **명시 등록** | **X** 스캔 | **X** annotation | **△** 일부만 명시 | O (언어 예외) |
+| **TicTacToe** | **수동 등록** | **X** 스캔 | **X** 스캔 | **O** (참조 구현) | O (언어 예외) |
 | Bingo | 자동 등록 | O | O | O | O (언어 예외) |
 | SupportChat | 자동 등록 | O | O | O | O (언어 예외) |
 | DeliveryDispatch | 자동 등록 | O | O | O | O (언어 예외) |
 | ShoppingMall | 자동 등록 | O | O | O | O (언어 예외) |
 | GameQuest | 자동 등록 | O | O | O | O (언어 예외) |
 
+**Node TicTacToe가 이 축의 참조 구현이다.** handler를 decorator로 선언하고, spot의 `configure()`에서
+`context.handlers.addActorPacket(...)` / `addSubscribe(..., topic)`으로 직접 등록한다. 스캔 호출이
+하나도 없다. 다른 언어는 이 형태로 맞춘다.
+
 **미충족 내용:**
 
-- **`.NET` TicTacToe** — `AddHandlersFromAssemblyOf(...)` 스캔과
-  `[ZLinkSpotActorRequestHandler]`·`[ZLinkSpotSubscriptionHandler]`·`[ZLinkHandlerGroup]` attribute로
-  자동 등록한다. 규약대로면 spot `Configure()`와 channel builder에서 handler를 직접 등록하고 자동
-  등록을 꺼야 한다.
-- **Java/Kotlin TicTacToe** — `@ZLinkSpotActorRequest`, `@ZLinkSpotSubscription` annotation 기반
-  자동 등록을 쓴다. 같은 이유로 명시 등록으로 바꿔야 한다.
-- **Node TicTacToe** — 명시 등록과 선언형 등록이 섞여 있다. 전부 명시 등록으로 통일해야 한다.
+- **`.NET` TicTacToe** — `AddHandlersFromAssemblyOf(...)`로 assembly를 스캔한다. attribute 선언은
+  그대로 두되 스캔 호출을 빼고 spot `Configure()`와 channel builder에서 handler를 직접 등록해야
+  한다.
+- **Java/Kotlin TicTacToe** — `addHandlersFromPackageOf(...)`로 package를 스캔한다. annotation
+  선언은 그대로 두되 스캔 호출을 빼고 handler를 직접 등록해야 한다.
 
 ### 13.2 연결 축 현황
 

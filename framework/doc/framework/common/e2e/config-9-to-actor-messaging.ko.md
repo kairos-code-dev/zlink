@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: 자동 turn dispatch](config-8-automatic-turn-dispatch.ko.md) | [다음: Spot actor join/transfer](config-10-spot-actor-transfer.ko.md)
+[E2E 목차](README.ko.md) | [이전: 실행 turn과 terminator](config-8-execution-turn.ko.md) | [다음: Spot actor join/transfer](config-10-spot-actor-transfer.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 9 — To-actor 메시징 배포

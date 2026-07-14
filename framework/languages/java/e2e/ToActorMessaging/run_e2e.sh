@@ -28,6 +28,16 @@ fi
 
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:${run_id}}"
 export ZLINK_JAVA_E2E_LOG_DIR="${log_dir}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
+if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
+   || "${LOCAL_READINESS_ATTEMPTS:-}" != 30 \
+   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
+  echo "ToActorMessaging must use 3s readiness and 5s route settle limits" >&2
+  exit 1
+fi
 
 reserve_ports() {
   python3 - <<'PY'
@@ -51,20 +61,20 @@ wait_tcp() {
   local host="$1"
   local port="$2"
   local name="$3"
-  if python3 - "$host" "$port" <<'PY'
+  if python3 - "$host" "$port" "${LOCAL_READINESS_TIMEOUT_SECONDS}" "${LOCAL_READINESS_POLL_SECONDS}" <<'PY'
 import socket
 import sys
 import time
 
 host = sys.argv[1]
 port = int(sys.argv[2])
-deadline = time.monotonic() + 30
+deadline = time.monotonic() + float(sys.argv[3])
 while time.monotonic() < deadline:
     try:
         with socket.create_connection((host, port), timeout=1):
             sys.exit(0)
     except OSError:
-        time.sleep(0.2)
+        time.sleep(float(sys.argv[4]))
 sys.exit(1)
 PY
   then
@@ -141,7 +151,7 @@ trap cleanup EXIT
 
 wait_http() {
   local endpoint="$1"
-  for _ in $(seq 1 300); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if python3 - "${endpoint}/health" >/dev/null 2>&1 <<'PY'
 import sys
 import urllib.request
@@ -151,7 +161,7 @@ PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${endpoint}" >&2
   return 1
@@ -226,11 +236,11 @@ wait_log() {
   local log="$1"
   local pattern="$2"
   local description="$3"
-  for _ in $(seq 1 300); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if [[ -f "${log}" ]] && grep -q "${pattern}" "${log}"; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${description}" >&2
   return 1
@@ -259,6 +269,7 @@ done
 for role in "${SERVER_ROLES[@]}"; do
   wait_role_ready "$role"
 done
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 ./Client/build/install/to-actor-client/bin/to-actor-client "${SCENARIO}" \
   > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"

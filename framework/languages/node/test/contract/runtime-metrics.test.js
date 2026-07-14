@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 const connector = require('../../packages/stream-connector/dist');
+const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 
 function collector() {
   const records = [];
@@ -105,6 +106,39 @@ test('RMETRIC Entry Spot activation records entry count and lifecycle counters',
     { name: 'zlink.spot.count', kind: 'updown', value: -1, attributes: { kind: 'entry' } },
     { name: 'zlink.spot.closed', kind: 'counter', value: 1, attributes: { kind: 'entry' } }
   ]);
+});
+
+test('RMETRIC channel fanout receive omits unregistered dynamic topic labels', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  const dispatcher = new framework.ZLinkChannelPublishDispatcher({
+    channelName: 'events',
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      undefined,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    ),
+    handlers: new Map([
+      ['DynamicEvent', { async handle() {} }]
+    ]),
+    metrics
+  });
+  const parts = channelEnvelope.encodeChannelEnvelopeParts(
+    4,
+    'events',
+    'DynamicEvent',
+    { value: 'payload' },
+    undefined,
+    'room.user-supplied-123'
+  ).map((part) => ({
+    data: () => Buffer.from(part)
+  }));
+
+  await dispatcher.dispatch({ topic: 'room.user-supplied-123', parts });
+
+  const received = records.find((record) => record.name === 'zlink.fanout.received');
+  assert.equal(received.value, 1);
+  assert.equal(received.attributes, undefined);
 });
 
 test('OBS-B2/B3 runtime metric catalog keeps stable instrument kinds and low-cardinality labels', () => {

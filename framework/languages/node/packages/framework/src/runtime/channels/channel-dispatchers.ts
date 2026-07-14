@@ -236,7 +236,7 @@ export class ZLinkChannelPublishDispatcher {
     const publishTopic = envelope.header.topic ?? topicMessage.topic;
     const publishSource = envelope.header.source ?? undefined;
     const publishCorr = envelope.header.correlationId ?? undefined;
-    this.options.metrics?.count('zlink.fanout.received', 1, { topic: publishTopic });
+    this.options.metrics?.count('zlink.fanout.received');
     const fields: ZLinkChannelDispatchFields = {
       messageKind: ZLinkDispatchMessageKind.Publish,
       packetName,

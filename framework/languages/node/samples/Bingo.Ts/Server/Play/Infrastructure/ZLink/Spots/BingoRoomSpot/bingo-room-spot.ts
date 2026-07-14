@@ -249,7 +249,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     ) {
       return false;
     }
-    this.observerActors.delete(actor.actorId);
     await this.context.leaveActor(actor);
     return true;
   }

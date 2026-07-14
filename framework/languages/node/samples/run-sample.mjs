@@ -77,6 +77,7 @@ function createContext(redisEndpoint) {
     waitTcp,
     waitHttp,
     waitLog,
+    assertLogCount,
     runNode(entry, args = [], extraEnv = {}) {
       run(process.execPath, [entry, ...args], { cwd: sampleRoot, env: { ...env, ...extraEnv } });
     },
@@ -148,6 +149,20 @@ async function runBingo(ctx) {
   await ctx.waitLog('play-a', 'bingo-record fetched actor=player-2 wins=0 losses=0');
   await ctx.waitLog('play-a', 'bingo-record reported actor=player-1 wins=1 losses=0');
   await ctx.waitLog('play-a', 'bingo-record reported actor=player-2 wins=0 losses=1');
+  await ctx.waitLog('play-a', 'bingo-lifecycle room-leave actor=player-1');
+  await ctx.waitLog('play-a', 'bingo-lifecycle room-leave actor=player-2');
+  await ctx.waitLog('play-a', 'bingo-lifecycle entry-destroy-complete actor=player-1');
+  await ctx.waitLog('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-2');
+  await ctx.waitLog('session-a', 'bingo-lifecycle session-disconnect actor=player-1 destroy=false');
+  await ctx.waitLog('session-b', 'bingo-lifecycle session-disconnect actor=player-2 destroy=false');
+  ctx.assertLogCount('play-a', 'bingo-lifecycle room-leave actor=player-1', 1);
+  ctx.assertLogCount('play-a', 'bingo-lifecycle room-leave actor=player-2', 1);
+  ctx.assertLogCount('play-a', 'bingo-lifecycle entry-destroy-complete actor=player-1', 1);
+  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-2', 1);
+  ctx.assertLogCount('play-a', 'bingo-lifecycle entry-leave actor=player-1', 1);
+  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-leave actor=player-2', 1);
+  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-leave actor=observer', 1);
+  ctx.assertLogCount('play-b', 'bingo-record reported actor=observer', 0);
 }
 
 async function bingoPlayConfig(ctx, suffix, redisKeyPrefix) {
@@ -509,6 +524,15 @@ async function waitLog(name, marker) {
     const target = path.join(logDir, `${name}.log`);
     return fs.existsSync(target) && fs.readFileSync(target, 'utf8').includes(marker);
   });
+}
+
+function assertLogCount(name, marker, expected) {
+  const target = path.join(logDir, `${name}.log`);
+  const content = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
+  const actual = content.split(marker).length - 1;
+  if (actual !== expected) {
+    throw new Error(`${name} log marker '${marker}' count was ${actual}; expected ${expected}.`);
+  }
 }
 
 async function waitUntil(description, probe) {

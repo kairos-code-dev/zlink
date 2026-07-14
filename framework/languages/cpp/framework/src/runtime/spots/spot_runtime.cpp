@@ -4798,6 +4798,7 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
     zlink::message_t body = parts.front ();
     std::optional<std::string> flow_id;
     std::optional<flow_origin_t> flow_origin;
+    std::optional<std::string> packet_name;
     bool report_decode_failure = false;
     if (parts.size () >= 2) {
         const runtime::messaging::message_parts_t envelope_parts{std::vector (parts)};
@@ -4807,6 +4808,9 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
             body = decoded_body.value ();
             flow_id = header.value ().flow_id;
             flow_origin = header.value ().flow_origin;
+            if (!header.value ().message_name.empty ()) {
+                packet_name = header.value ().message_name;
+            }
         } else {
             report_decode_failure = true;
         }
@@ -4842,6 +4846,9 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
                       bytes.end ()));
                     flow_id = header.value ().flow_id;
                     flow_origin = header.value ().flow_origin;
+                    if (!header.value ().message_name.empty ()) {
+                        packet_name = header.value ().message_name;
+                    }
                     report_decode_failure = false;
                 }
             }
@@ -4862,17 +4869,18 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
     report_spot_dispatch_trace (
       _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, {}, topic, context._state->spot_rid.value ());
-    std::optional<std::string> packet_name;
+    bool handler_found = false;
     for (const auto &descriptor : context._state->handlers) {
-        if (descriptor.kind == spot_handler_kind_t::subscription && descriptor.topic == topic) {
-            packet_name = descriptor.packet_name;
+        if (packet_name && descriptor.kind == spot_handler_kind_t::subscription
+            && descriptor.topic == topic && descriptor.packet_name == *packet_name) {
+            handler_found = true;
             break;
         }
     }
-    if (!packet_name) {
+    if (!handler_found) {
         report_spot_dispatch_error (
           _state, dispatch_error_surface_t::spot_subscription, dispatch_message_kind_t::publish,
-          dispatch_error_reason_t::handler_missing, dispatch_error_action_t::drop, std::nullopt,
+          dispatch_error_reason_t::handler_missing, dispatch_error_action_t::drop, packet_name,
           topic, std::string (context._state->spot_rid.value ()));
         return result_t<void>::success ();
     }

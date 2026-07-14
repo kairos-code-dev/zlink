@@ -218,6 +218,11 @@ struct state_update_t
     int value{};
 };
 
+struct stage_closed_t
+{
+    int value{};
+};
+
 struct move_request_t
 {
     int value{};
@@ -806,11 +811,15 @@ struct subscription_spot_t : public zlink::framework::spot_t
     {
         context.handlers ().add_subscribe<&subscription_spot_t::on_state_update> (
           "stage.state.updated");
+        context.handlers ().add_subscribe<&subscription_spot_t::on_stage_closed> (
+          "stage.state.updated");
     }
 
     void on_state_update (const state_update_t &message) { last_value = message.value; }
+    void on_stage_closed (const stage_closed_t &message) { closed_value = message.value; }
 
     int last_value{};
+    int closed_value{};
 };
 
 struct alternate_stage_spot_t : public zlink::framework::spot_t
@@ -3709,6 +3718,13 @@ int main ()
       [] (const zlink::framework::encoded_payload_t &payload) {
           return state_update_t{std::stoi (payload.to_string ())};
       });
+    spot_serializers.add<stage_closed_t> (
+      [] (const stage_closed_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return stage_closed_t{std::stoi (payload.to_string ())};
+      });
     spot_serializers.add<move_request_t> (
       [] (const move_request_t &value) {
           return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
@@ -4120,9 +4136,10 @@ int main ()
     native_node->set_pub_bind ("inproc://cpp-framework-spot-pubsub");
     pubsub_runtime.attach_native_node (native_node);
     pubsub_created.context.publish ("stage.state.updated", state_update_t{9}).submit ();
+    pubsub_created.context.publish ("stage.state.updated", stage_closed_t{17}).submit ();
     const auto subscription_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
-    while (subscription_spot->last_value != 9
+    while ((subscription_spot->last_value != 9 || subscription_spot->closed_value != 17)
            && std::chrono::steady_clock::now () < subscription_deadline) {
         (void) pubsub_runtime.drain_subscriptions (spot_provider, spot_serializers);
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -4131,7 +4148,7 @@ int main ()
     native_node->close ();
     native_context.shutdown ();
     native_context.term ();
-    if (subscription_spot->last_value != 9) {
+    if (subscription_spot->last_value != 9 || subscription_spot->closed_value != 17) {
         return 92;
     }
 

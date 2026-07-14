@@ -73,6 +73,7 @@ int main ()
     const auto cmake = read_file (root / "CMakeLists.txt");
     const auto redis_hpp = read_file (
       root / "extensions/framework-locations-redis/include/zlink/locations/redis.hpp");
+    const auto spot_runtime = read_file (root / "framework/src/runtime/spots/spot_runtime.cpp");
     gate_t gate;
 
     for (const auto &required :
@@ -410,6 +411,11 @@ int main ()
                   "E2E-CP-64", "stray DeliveryDispatch e2e fork remains tracked");
     gate.require (cmake.find ("zlink_cpp_e2e_delivery_dispatch") == std::string::npos,
                   "E2E-CP-64", "stray DeliveryDispatch e2e targets remain buildable");
+
+    /* IMP-CP-01 — subscription dispatch key is topic plus decoded packet name. */
+    gate.require (spot_runtime.find ("descriptor.packet_name == *packet_name")
+                    != std::string::npos,
+                  "IMP-CP-01", "spot subscription lookup ignores the wire packet name");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

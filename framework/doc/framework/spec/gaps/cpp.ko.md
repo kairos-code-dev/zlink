@@ -227,7 +227,8 @@
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
-- [ ] **IMP-CP-01** (결함) — 20 §3.3
+- [x] **IMP-CP-01** (결함) — 20 §3.3
+  - 근거: 수정 전 target-contract gate가 subscription lookup에서 wire packet name 비교 부재를 검출했다. fanout envelope에서 decoded `message_name`을 보존하고 topic과 packet name이 모두 일치하는 descriptor만 선택하도록 바꿨다. 같은 topic에 `state_update_t`와 `stage_closed_t` handler를 등록해 두 event를 연속 발행하는 회귀에서 각각 9와 17을 올바른 handler가 받았고 target gate와 spot runtime test가 통과했다.
 - [ ] **IMP-CP-02** (결함) — 31
 - [ ] **IMP-CP-03** (결함) — 24 §3
 - [ ] **IMP-CP-04** (미구현) — 20 §8·30 §7.2

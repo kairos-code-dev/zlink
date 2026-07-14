@@ -14,10 +14,12 @@ public final class RmC2TargetedRouteScenario {
             .fetch(Contracts.RouteRes.class);
         ScenarioAssert.that("api-b".equals(toB.targetRid()), "RM-C2 target rid mismatch");
 
-        Contracts.RouteMissingRes missing = providerA.post("/profile/route/missing")
+        Contracts.RequestFailureRes missing = providerA.post("/profile/route/missing")
             .body(new Contracts.RouteReq("missing"))
-            .fetch(Contracts.RouteMissingRes.class);
+            .fetch(Contracts.RequestFailureRes.class);
         ScenarioAssert.that(missing.failed(), "RM-C2 missing rid request should fail");
+        ScenarioAssert.that("TimeoutException".equals(missing.errorKind()),
+            "RM-C2 expected public TimeoutException, got " + missing.errorKind());
         System.out.println("scenario RM-C2 passed");
     }
 }

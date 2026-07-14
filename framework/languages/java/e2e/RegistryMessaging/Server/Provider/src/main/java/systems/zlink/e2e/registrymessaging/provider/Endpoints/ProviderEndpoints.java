@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.registrymessaging.provider.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
+import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 
@@ -75,11 +76,11 @@ public final class ProviderEndpoints {
     }
 
     @PostMapping("/profile/route/missing")
-    public CompletionStage<Contracts.RouteMissingRes> routeMissing(@RequestBody Contracts.RouteReq request) {
+    public CompletionStage<Contracts.RequestFailureRes> routeMissing(@RequestBody Contracts.RouteReq request) {
         return routes.requestToNode(Contracts.ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
                 .timeout(Duration.ofMillis(300))
                 .submit(Contracts.RouteRes.class)
-            .handle((ignored, error) -> new Contracts.RouteMissingRes(error != null));
+            .handle((ignored, error) -> FailureEvidence.from(error));
     }
 
     private CompletionStage<Contracts.ProfileRes> requestProfile(

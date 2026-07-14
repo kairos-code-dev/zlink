@@ -77,12 +77,9 @@ public final class Contracts {
         }
     }
 
-    public record RouteMissingRes(boolean failed) {
-    }
-
     public record RequestFailureRes(
         boolean failed,
-        String failureType) {
+        String errorKind) {
     }
 
     public record BackpressureRes(String outcome) {

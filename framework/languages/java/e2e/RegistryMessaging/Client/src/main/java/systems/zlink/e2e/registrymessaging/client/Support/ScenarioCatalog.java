@@ -44,7 +44,10 @@ public final class ScenarioCatalog {
             case "RM-C1" -> RmC1RequestSendScenario.run(http.providerA(), http.providerB());
             case "RM-C2" -> RmC2TargetedRouteScenario.run(http.providerA());
             case "RM-C3" -> RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);
-            case "RM-C4" -> RmC4TimeoutIsolationScenario.run(http.discoveryConsumer());
+            case "RM-C4" -> RmC4TimeoutIsolationScenario.run(
+                http.discoveryConsumer(),
+                http.providerA(),
+                http.providerB());
             case "RM-C5" -> RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
             case "weighted" -> RmC7WeightedProviderScenario.run(http.directConsumer());
             case "RM-C7" -> RmC7WeightedProviderScenario.run(http.directConsumer());
@@ -64,7 +67,10 @@ public final class ScenarioCatalog {
     private void runCommon() {
         RmA1DiscoveryRequestScenario.run(http.providerA(), http.providerB(), http.discoveryConsumer());
         RmC1RequestSendScenario.run(http.providerA(), http.providerB());
-        RmC4TimeoutIsolationScenario.run(http.discoveryConsumer());
+        RmC4TimeoutIsolationScenario.run(
+            http.discoveryConsumer(),
+            http.providerA(),
+            http.providerB());
         RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
         RmA2ManualEndpointScenario.run(http.providerA());
         RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);

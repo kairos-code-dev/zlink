@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
+import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -88,8 +89,7 @@ public final class ConsumerEndpoints {
                 new Contracts.MissingProfileReq(request.value()))
                 .timeout(Duration.ofSeconds(5))
                 .submit(Contracts.ProfileRes.class)
-            .handle((ignored, error) -> new Contracts.RequestFailureRes(
-                error != null, error == null ? "" : error.getClass().getSimpleName()));
+            .handle((ignored, error) -> FailureEvidence.from(error));
     }
 
     @PostMapping("/profile/missing-command")
@@ -130,8 +130,7 @@ public final class ConsumerEndpoints {
     private CompletionStage<Contracts.RequestFailureRes> requestFailure(
         Contracts.ProfileReq request,
         Duration timeout) {
-        return requestProfile(request, timeout).handle((ignored, error) ->
-            new Contracts.RequestFailureRes(
-                error != null, error == null ? "" : error.getClass().getSimpleName()));
+        return requestProfile(request, timeout)
+            .handle((ignored, error) -> FailureEvidence.from(error));
     }
 }

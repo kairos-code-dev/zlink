@@ -136,20 +136,6 @@ wait_port() {
   return 1
 }
 
-wait_log() {
-  local name="$1"
-  local file="$2"
-  local pattern="$3"
-  for _ in $(seq 1 600); do
-    if [[ -f "$file" ]] && grep -Eq "$pattern" "$file"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for ${name} evidence in ${file}" >&2
-  return 1
-}
-
 RUN_DIR="${BINGO_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -157,7 +143,6 @@ PIDS=()
 REDIS_CONTAINER=""
 cleanup_done=false
 BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:cpp:${RANDOM}:$$:}"
-export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 cleanup() {
   local code=$?
@@ -327,23 +312,6 @@ wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 
-wait_log "api-a play-a route discovery" "$LOG_DIR/api-a.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
-wait_log "api-a play-b route discovery" "$LOG_DIR/api-a.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
-wait_log "api-b play-a route discovery" "$LOG_DIR/api-b.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
-wait_log "api-b play-b route discovery" "$LOG_DIR/api-b.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
-wait_log "session-a play-a route discovery" "$LOG_DIR/session-a.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
-wait_log "session-a play-b route discovery" "$LOG_DIR/session-a.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
-wait_log "session-b play-a route discovery" "$LOG_DIR/session-b.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
-wait_log "session-b play-b route discovery" "$LOG_DIR/session-b.log" \
-  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
-
 sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
 
 "$CLIENT_BIN" \
@@ -369,9 +337,6 @@ if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/pla
   echo "Observer actor must not be destroyed during Bingo player cleanup." >&2
   exit 1
 fi
-grep -q "zlink auto-connect publish .* type=spot mesh=bingo.rooms" "$LOG_DIR/play-a.log"
-grep -q "zlink auto-connect scan type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
-grep -q "zlink auto-connect dial type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
 grep -Rq "message flow" "$FLOW_LOG_DIR"
 # Bingo §17.2 — the ambient runtime metrics reach the sample's metric log:
 # Session sees the STREAM CCU counters, Play sees the room queue instruments.

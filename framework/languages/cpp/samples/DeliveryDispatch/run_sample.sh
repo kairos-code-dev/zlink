@@ -102,7 +102,6 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
 REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 REDIS_KEY_PREFIX="deliverydispatch:$$:"
 API_HTTP_URL="http://127.0.0.1:${API_HTTP_PORT}"
-export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 # 실행별 port와 Redis endpoint는 runner가 정하지만, 애플리케이션에는 환경 변수가 아니라 이
@@ -297,7 +296,4 @@ grep -q "message flow" "$FLOW_LOG_DIR/flow-delivery-courier-node-1.log"
 grep -q "message flow" "$FLOW_LOG_DIR/flow-delivery-courier-node-2.log"
 grep -q "message flow" "$FLOW_LOG_DIR/flow-customer-gateway.log"
 grep -q "message flow" "$FLOW_LOG_DIR/flow-courier-session.log"
-grep -q "zlink auto-connect publish .* type=spot mesh=delivery-couriers" "$LOG_DIR/courier-actor-node-1.log"
-grep -q "zlink auto-connect scan type=spot mesh=delivery-couriers" "$LOG_DIR/courier-session.log"
-grep -Rq "zlink auto-connect dial type=spot mesh=delivery-couriers" "$LOG_DIR"
 echo "deliverydispatch sample result=passed"

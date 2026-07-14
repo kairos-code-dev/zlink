@@ -77,6 +77,12 @@ class supportchat_client_scenario_t
         expect (customer_auth.role == role_t::customer, "customer role mismatch");
         expect (agent_auth.role == role_t::agent, "agent role mismatch");
 
+        auto customer_availability =
+          customer.request (set_agent_available_req_t{true})
+            .async<set_agent_available_res_t> ()
+            .result ();
+        expect (!customer_availability, "customer must not set agent availability");
+
         auto available = request<set_agent_available_res_t> (
           agent, set_agent_available_req_t{true}, "agent availability failed");
         expect (available.is_available, "agent was not made available");

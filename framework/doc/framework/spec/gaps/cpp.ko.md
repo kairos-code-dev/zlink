@@ -425,7 +425,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-15** (**버그**) — **ShoppingMall owner spot이 자기 재개를 예약하지 않는다.** HTTP edge가 대신 한다
   - 근거: 수정 전 sample parity gate가 owner의 예약 부재와 CommerceApi의 잘못된 예약을 각각 검출했다. owner가 첫 tick에서 취소하는 timer로 같은 continuation 경로를 예약하고 edge의 예약을 제거한 뒤 gate와 `./run_sample.sh`가 `PASS ShoppingMall.Cpp`로 통과했다.
 - [ ] **SMP-CP-16** (결함) — **ShoppingMall이 전역 Redis 키 하나 + 전역 락 하나**로 모든 주문을 직렬화한다. owner-spot 모델이 무효화된다
-- [ ] **SMP-CP-17** (결함) — **SupportChat customer가 자기를 상담원으로 등록할 수 있다**(role 검사 없음)
+- [x] **SMP-CP-17** (결함) — **SupportChat customer가 자기를 상담원으로 등록할 수 있다**(role 검사 없음)
+  - 근거: 수정 전 공개 client에 customer의 `SetAgentAvailableReq` 실패 단언을 추가하자 전체 runner가 `customer must not set agent availability`로 실패했다. Entry Spot handler가 인증된 actor role을 검사해 customer 요청을 `request_rejected`로 반환하도록 수정한 뒤 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
 - [ ] **SMP-CP-18** (결함) — **TicTacToe notification publisher가 아무것도 발행하지 않는다.** vector에 쌓기만 하고 읽는 곳이 0
 - [ ] **SMP-CP-19** (결함) — **SupportChat이 Api hop을 Support actor에서 Session으로 옮기고 payload를 고쳐 쓴다**
 - [ ] **SMP-CP-20** (결함) — **GameQuest가 event마다 문서에 없는 blocking ensure 왕복**을 하고, owner를 샘플이 직접 해시한다

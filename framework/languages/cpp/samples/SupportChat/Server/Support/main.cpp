@@ -547,6 +547,10 @@ class support_entry_spot_t : public entry_spot_t
                                              spot_actor_request_context_t &,
                                              const set_agent_available_req_t &request)
     {
+        if (actor.role != role_t::agent) {
+            throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                         "only agent actors can set availability");
+        }
         return _runtime.set_agent_available (actor.actor_id, request.is_available);
     }
 

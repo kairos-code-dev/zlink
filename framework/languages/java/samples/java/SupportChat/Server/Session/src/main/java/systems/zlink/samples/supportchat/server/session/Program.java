@@ -61,9 +61,6 @@ public final class Program {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportActorMesh);
             node.enableRouter(session.routerEndpoint())
                 .setRoutingId(session.routingId());
-            node.connectRouter(
-                session.peerRoutingId(),
-                session.peerRouterEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint())
                 .registerSession(SupportChatSession.class);

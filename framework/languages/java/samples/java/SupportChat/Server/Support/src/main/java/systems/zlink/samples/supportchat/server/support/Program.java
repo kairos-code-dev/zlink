@@ -79,9 +79,6 @@ public final class Program {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportActorMesh);
             node.enableRouter(support.routerEndpoint())
                 .setRoutingId(support.routingId());
-            node.connectRouter(
-                support.peerRoutingId(),
-                support.peerRouterEndpoint());
             node.configureEntrySpot().setRoutingId(support.routingId());
             node.addEntrySpot(SupportEntrySpot.class);
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);

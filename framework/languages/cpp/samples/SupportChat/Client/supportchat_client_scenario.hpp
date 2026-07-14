@@ -41,6 +41,13 @@ class supportchat_client_scenario_t
   private:
     using connector_t = zlink::stream_e2e_client::coroutine_connector_t;
 
+    static std::int64_t now_unix_ms ()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds> (
+                 std::chrono::system_clock::now ().time_since_epoch ())
+          .count ();
+    }
+
     static zlink::stream_connector::connector_t make_connector (const std::string &endpoint)
     {
         zlink::stream_connector::connector_options_t options;
@@ -94,10 +101,15 @@ class supportchat_client_scenario_t
                 "agent join did not activate conversation");
         expect (joined.get ().actor_id == "agent-1", "participant join notification mismatch");
 
+        const auto send_started_at = now_unix_ms ();
         auto sent = request_in_conversation<send_chat_message_res_t> (
           customer, opened.conversation_id, send_chat_message_req_t{"Payment keeps failing."},
           "customer message failed");
+        const auto send_completed_at = now_unix_ms ();
         expect (sent.message.message_seq == 1, "first message sequence mismatch");
+        expect (sent.message.sent_at_unix_ms >= send_started_at
+                  && sent.message.sent_at_unix_ms <= send_completed_at,
+                "message timestamp is not the request wall-clock time");
         expect (agent_message.get ().message.text == "Payment keeps failing.",
                 "agent did not receive customer message");
 

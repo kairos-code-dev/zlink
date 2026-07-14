@@ -346,10 +346,8 @@ class conversation_spot_t : public spot_t
                                           spot_actor_request_context_t &,
                                           const send_chat_message_req_t &request)
     {
-        auto sent = require_conversation ().send_message (
-          actor.participant_id, request.text,
-          1000 + static_cast<std::int64_t> (require_conversation ().snapshot ().last_message_seq)
-                   + 1);
+        auto sent = require_conversation ().send_message (actor.participant_id, request.text,
+                                                          now_unix_ms ());
         if (auto peer = peer_for (actor.participant_id)) {
             send_to_actor (*peer,
                            chat_message_notify_t{sent.state.conversation_id, sent.message,

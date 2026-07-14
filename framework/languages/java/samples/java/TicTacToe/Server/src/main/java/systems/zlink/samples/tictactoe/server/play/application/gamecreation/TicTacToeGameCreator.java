@@ -28,11 +28,15 @@ public final class TicTacToeGameCreator {
             settings.playEndpoint(),
             settings.playEndpoints(),
             settings.playEndpoints().stream()
-                .map(endpoint -> new PlayNodeInfo(
-                    endpoint,
-                    "play-node-" + (settings.playEndpoints().indexOf(endpoint) + 1)))
+                .map(endpoint -> new PlayNodeInfo(endpoint, nodeRid(endpoint)))
                 .toList(),
             SampleNames.RequiredLevel);
+    }
+
+    private String nodeRid(String endpoint) {
+        return endpoint.equals(settings.playEndpoint())
+            ? settings.playSpotNodeRid()
+            : settings.peerPlaySpotNodeRid();
     }
 
     public record GameRoom(String roomId, String gameName) {

@@ -76,6 +76,8 @@ common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${p
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
 common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
 common_pubs="tcp://127.0.0.1:${play_a_pub_port},tcp://127.0.0.1:${play_b_pub_port}"
+play_a_node_rid="tic-play-alpha"
+play_b_node_rid="tic-play-beta"
 
 api_a_config="${run_dir}/api-a.properties"
 api_b_config="${run_dir}/api-b.properties"
@@ -96,8 +98,8 @@ sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
-sample.playSpotNodeRid=play-node-1
-sample.peerPlaySpotNodeRid=play-node-2
+sample.playSpotNodeRid=${play_a_node_rid}
+sample.peerPlaySpotNodeRid=${play_b_node_rid}
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
 sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
@@ -117,8 +119,8 @@ sed -i \
   -e "s#sample.playEndpoint=.*#sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}#" \
   -e "s#sample.spotEndpoint=.*#sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \
   -e "s#sample.spotPubSubEndpoint=.*#sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}#" \
-  -e "s#sample.playSpotNodeRid=.*#sample.playSpotNodeRid=play-node-2#" \
-  -e "s#sample.peerPlaySpotNodeRid=.*#sample.peerPlaySpotNodeRid=play-node-1#" \
+  -e "s#sample.playSpotNodeRid=.*#sample.playSpotNodeRid=${play_b_node_rid}#" \
+  -e "s#sample.peerPlaySpotNodeRid=.*#sample.peerPlaySpotNodeRid=${play_a_node_rid}#" \
   -e "s#sample.peerSpotEndpoint=.*#sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}#" \
   -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
   "${play_b_config}"
@@ -153,7 +155,7 @@ wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
 grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
-grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
+grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=${play_b_node_rid}" "${log_dir}/client.log"
 grep -Eq "tictactoe(=| )completed" "${log_dir}/client.log"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
 wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"

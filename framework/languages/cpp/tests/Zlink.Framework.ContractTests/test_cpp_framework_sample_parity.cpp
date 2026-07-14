@@ -485,6 +485,22 @@ TEST (CppFrameworkSampleParity, ShoppingMallOwnerSchedulesItsContinuation)
       << "CommerceApi must not own the OrderWorkflow continuation lifecycle";
 }
 
+TEST (CppFrameworkSampleParity, ShoppingMallClientFlowLivesInScenario)
+{
+    const auto root = cpp_language_root () / "samples/ShoppingMall/Client";
+    const auto scenario = read_file (root / "shoppingmall_client_scenario.hpp");
+    const auto main = read_file (root / "main.cpp");
+
+    EXPECT_NE (scenario.find ("class shoppingmall_client_scenario_t"), std::string::npos)
+      << "ShoppingMall must expose a named client scenario";
+    EXPECT_NE (scenario.find ("/orders/start"), std::string::npos)
+      << "the scenario must own the actual workflow calls";
+    EXPECT_NE (main.find ("shoppingmall_client_scenario_t"), std::string::npos)
+      << "the client entrypoint must invoke the scenario";
+    EXPECT_EQ (main.find ("/orders/start"), std::string::npos)
+      << "the client entrypoint must not retain scenario orchestration";
+}
+
 TEST (CppFrameworkSampleParity, SampleRoomJoinHandlersRejectRejectedVariants)
 {
     for (const auto &relative : {

@@ -415,7 +415,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-07** (결함) — TicTacToe `NextTurn`이 mark가 아니라 **actor id**를 싣는다
   - 근거: 수정 전 도메인 회귀 테스트가 `NextTurn`의 실제값을 `player-x`·`player-o`로 검출했다. 공개 state에는 X/O mark를 저장하고 turn actor는 mark와 참가자 정보에서 도출하도록 수정한 뒤 sample parity와 `./run_sample.sh`가 통과했다.
 - [ ] **SMP-CP-08** (미구현) — SupportChat·DeliveryDispatch에 **문서에 없는 `Probe` 프로세스**
-- [ ] **SMP-CP-09** (미구현) — ShoppingMall에 **`ClientScenario`가 없다**
+- [x] **SMP-CP-09** (미구현) — ShoppingMall에 **`ClientScenario`가 없다**
+  - 근거: 수정 전 sample parity gate가 named scenario 부재와 `main.cpp`의 workflow orchestration 소유를 검출했다. HTTP 호출·polling·단언을 `shoppingmall_client_scenario_t`로 옮기고 entrypoint를 CLI 검증과 scenario 호출만 남긴 뒤 parity와 `./run_sample.sh`가 `PASS ShoppingMall.Cpp`로 통과했다.
 - [ ] **SMP-CP-10** (결함) — SupportChat이 typed connector wait 대신 **raw packet + 수동 JSON 파싱**
 - [ ] **SMP-CP-11** (미구현) — ShoppingMall·GameQuest의 **"동시" 시나리오가 실제로는 순차**다
 - [ ] **SMP-CP-12** (결함) — Bingo·GameQuest runner가 **고정 sleep을 readiness로 쓴다**(문서가 명시적으로 금지)

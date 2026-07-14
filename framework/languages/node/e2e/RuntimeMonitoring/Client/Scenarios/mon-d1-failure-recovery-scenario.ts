@@ -53,16 +53,7 @@ function startServiceB(options: ClientOptions): ManagedProcess {
   const stderr = fs.openSync(`${options.logDir}/svc-b-restart.stderr.log`, 'w');
   const child = spawn(process.execPath, [
     options.serviceMain,
-    '--rid', 'svc-b',
-    '--http-url', options.serviceBUrl,
-    '--redis-endpoint', options.redisEndpoint,
-    '--redis-key-prefix', options.redisKeyPrefix,
-    '--channel-endpoint', options.serviceBChannelEndpoint,
-    '--spot-router-endpoint', options.serviceBSpotRouterEndpoint,
-    '--spot-pub-endpoint', options.serviceBSpotPubEndpoint,
-    '--socket-filter', 'connection-ready',
-    '--evidence-file', `${options.logDir}/svc-b-restart.evidence.log`,
-    '--log-dir', options.logDir
+    '--config', options.serviceBConfig
   ], {
     env: { ...process.env, ZLINK_E2E_RID: 'svc-b' },
     stdio: ['ignore', stdout, stderr]
@@ -107,7 +98,7 @@ async function waitForTopologyContinuity(options: ClientOptions, baseline: numbe
   while (Date.now() <= deadline) {
     const lines = [
       ...await getJson<string[]>(options.serviceUrl, '/evidence'),
-      ...readEvidenceFile(`${options.logDir}/svc-b-restart.evidence.log`)
+      ...readEvidenceFile(`${options.logDir}/svc-b.evidence.log`)
     ];
     const topology = lines.filter((line) =>
       line.includes('monitor-location|source=monitor.location-runtime|kind=TopologyChanged'));
@@ -115,7 +106,7 @@ async function waitForTopologyContinuity(options: ClientOptions, baseline: numbe
       return topology.slice(baseline);
     }
     const restartTopology = topology.filter((line) => line.includes('topology=') && !line.includes('topology=0'));
-    if (restartTopology.length > 0 && readEvidenceFile(`${options.logDir}/svc-b-restart.evidence.log`).some((line) =>
+    if (restartTopology.length > 0 && readEvidenceFile(`${options.logDir}/svc-b.evidence.log`).some((line) =>
       line.includes('profile-request|rid=svc-b|marker=mon-d1-request'))) {
       return restartTopology;
     }

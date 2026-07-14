@@ -159,7 +159,16 @@ THROWING_SERVICE_MAIN="$ROOT_DIR/Server/ThrowingService/dist/Server/ThrowingServ
 TRIGGER_MAIN="$ROOT_DIR/Server/Trigger/dist/Server/Trigger/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server svc-a "$SERVICE_MAIN" \
+start_configured_server() {
+  local name="$1"
+  local main="$2"
+  shift 2
+  local config="$LOG_DIR/$name.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$config" "$@"
+  start_server "$name" "$main" --config "$config"
+}
+
+start_configured_server svc-a "$SERVICE_MAIN" \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -171,7 +180,7 @@ start_server svc-a "$SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_URL" svc-a
 
-start_server svc-b "$FILTERED_SERVICE_MAIN" \
+start_configured_server svc-b "$FILTERED_SERVICE_MAIN" \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -183,7 +192,7 @@ start_server svc-b "$FILTERED_SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_B_URL" svc-b
 
-start_server svc-throw "$THROWING_SERVICE_MAIN" \
+start_configured_server svc-throw "$THROWING_SERVICE_MAIN" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -195,7 +204,7 @@ start_server svc-throw "$THROWING_SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$THROW_URL" svc-throw
 
-start_server trigger "$TRIGGER_MAIN" \
+start_configured_server trigger "$TRIGGER_MAIN" \
   --http-url "$TRIGGER_URL" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
@@ -214,6 +223,7 @@ node "$CLIENT_MAIN" \
   --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --service-main "$SERVICE_MAIN" \
+  --service-b-config "$LOG_DIR/svc-b.config.json" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

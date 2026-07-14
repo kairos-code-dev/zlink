@@ -111,7 +111,7 @@ class order_workflow_spot_t : public spot_t
         auto order_id = std::move (_scheduled_order_id);
         _scheduled_order_id.clear ();
         if (!order_id.empty ()) {
-            (void) run_to_completion (order_id);
+            continue_scheduled (continue_order_workflow_msg_t{std::move (order_id)});
         }
     }
 

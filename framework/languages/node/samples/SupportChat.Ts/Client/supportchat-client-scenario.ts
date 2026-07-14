@@ -59,17 +59,36 @@ class SupportChatClientScenario {
     ensure(() => agentJoin1.state.status === ConversationStatuses.Active);
     const customer1Joined = await joinedCustomer1;
     ensure(() => customer1Joined.payload.actorId === 'agent-1');
+    ensure(() => customer1Joined.payload.conversationId === cid1);
+    ensure(() => customer1Joined.payload.role === SupportChatRoles.Agent);
+    ensure(() => customer1Joined.payload.state.status === ConversationStatuses.Active);
 
     const greeting1Task = wait<ChatMessageNotify>(customer1, PacketNames.chatMessageNotify, signal);
     const greeting1 = await request<SendChatMessageRes>(agent, PacketNames.sendChatMessageReq, sendChatMessage('How can I help?'), cid1, signal);
     ensure(() => greeting1.message.messageSeq === 1);
+    ensure(() => greeting1.message.conversationId === cid1);
+    ensure(() => greeting1.message.senderActorId === 'agent-1');
+    ensure(() => greeting1.message.text === 'How can I help?');
+    ensure(() => greeting1.state.status === ConversationStatuses.Active);
     const greeting1Push = await greeting1Task;
     ensure(() => greeting1Push.payload.message.messageSeq === 1);
+    ensure(() => greeting1Push.payload.conversationId === cid1);
+    ensure(() => greeting1Push.payload.message.conversationId === cid1);
+    ensure(() => greeting1Push.payload.message.senderActorId === 'agent-1');
+    ensure(() => greeting1Push.payload.message.text === 'How can I help?');
+    ensure(() => greeting1Push.payload.state.status === ConversationStatuses.Active);
     const reply1Task = wait<ChatMessageNotify>(agent, PacketNames.chatMessageNotify, signal);
     const reply1 = await request<SendChatMessageRes>(customer1, PacketNames.sendChatMessageReq, sendChatMessage('Payment keeps failing.'), cid1, signal);
     ensure(() => reply1.message.messageSeq === 2);
+    ensure(() => reply1.message.conversationId === cid1);
+    ensure(() => reply1.message.senderActorId === 'customer-1');
+    ensure(() => reply1.message.text === 'Payment keeps failing.');
     const reply1Push = await reply1Task;
     ensure(() => reply1Push.payload.message.messageSeq === 2);
+    ensure(() => reply1Push.payload.conversationId === cid1);
+    ensure(() => reply1Push.payload.message.conversationId === cid1);
+    ensure(() => reply1Push.payload.message.senderActorId === 'customer-1');
+    ensure(() => reply1Push.payload.message.text === 'Payment keeps failing.');
 
     await customer2.connect(signal);
     await request<AuthenticateRes>(customer2, PacketNames.authenticateReq, authenticate('customer-2'), undefined, signal);
@@ -84,11 +103,21 @@ class SupportChatClientScenario {
     ensure(() => agentJoin2.state.status === ConversationStatuses.Active);
     const customer2Joined = await joinedCustomer2;
     ensure(() => customer2Joined.payload.conversationId === cid2);
+    ensure(() => customer2Joined.payload.actorId === 'agent-1');
+    ensure(() => customer2Joined.payload.role === SupportChatRoles.Agent);
+    ensure(() => customer2Joined.payload.state.status === ConversationStatuses.Active);
     const greeting2Task = wait<ChatMessageNotify>(customer2, PacketNames.chatMessageNotify, signal);
     const greeting2 = await request<SendChatMessageRes>(agent, PacketNames.sendChatMessageReq, sendChatMessage('Let me check your account.'), cid2, signal);
     ensure(() => greeting2.message.messageSeq === 1);
+    ensure(() => greeting2.message.conversationId === cid2);
+    ensure(() => greeting2.message.senderActorId === 'agent-1');
+    ensure(() => greeting2.message.text === 'Let me check your account.');
     const greeting2Push = await greeting2Task;
     ensure(() => greeting2Push.payload.message.messageSeq === 1);
+    ensure(() => greeting2Push.payload.conversationId === cid2);
+    ensure(() => greeting2Push.payload.message.conversationId === cid2);
+    ensure(() => greeting2Push.payload.message.senderActorId === 'agent-1');
+    ensure(() => greeting2Push.payload.message.text === 'Let me check your account.');
 
     await customer3.connect(signal);
     await request<AuthenticateRes>(customer3, PacketNames.authenticateReq, authenticate('customer-3'), undefined, signal);

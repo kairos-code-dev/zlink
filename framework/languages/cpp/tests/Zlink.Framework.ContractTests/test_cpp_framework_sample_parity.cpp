@@ -170,6 +170,32 @@ TEST (CppFrameworkSampleParity, BingoRoomGameCopyOwnsItsPlayerState)
     EXPECT_EQ (projected.snapshot ().players[0].card.size (), 9U);
 }
 
+TEST (CppFrameworkSampleParity, BingoRoomIdsAreUniqueAcrossAllocatorInstances)
+{
+    using namespace zlink::samples::bingo;
+
+    class accepting_match_queue_t final : public bingo_match_queue_t
+    {
+      public:
+        bingo_match_reservation_t reserve (const std::string &,
+                                           const std::string &,
+                                           const std::string &preferred_owner_node_rid,
+                                           const std::string &new_room_id,
+                                           int) override
+        {
+            return {new_room_id, preferred_owner_node_rid, true};
+        }
+    } first_queue, second_queue;
+
+    bingo_room_allocator_t first (first_queue);
+    bingo_room_allocator_t second (second_queue);
+    const auto first_room = first.allocate ("two-player", "player-1", "play-a");
+    const auto second_room = second.allocate ("two-player", "player-2", "play-b");
+
+    EXPECT_NE (first_room.room_id, second_room.room_id)
+      << "independent Play processes must not allocate the same spot routing id";
+}
+
 TEST (CppFrameworkSampleParity, BingoRewardSubscriptionDoesNotDriveRoomCleanup)
 {
     const auto handler = read_file (

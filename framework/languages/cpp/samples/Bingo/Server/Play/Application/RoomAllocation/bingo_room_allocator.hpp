@@ -3,7 +3,9 @@
 
 #include "bingo_match_queue.hpp"
 
-#include <atomic>
+#include <iomanip>
+#include <random>
+#include <sstream>
 #include <string>
 
 namespace zlink::samples::bingo
@@ -20,7 +22,7 @@ class bingo_room_allocator_t
                                         const std::string &actor_id,
                                         const std::string &preferred_owner_node_rid)
     {
-        const auto room_id = mode + "-room-" + std::to_string (++_next);
+        const auto room_id = new_room_id ();
         auto reservation =
           _match_queue.reserve (mode, actor_id, preferred_owner_node_rid, room_id, 2);
         reservation.created_local_room =
@@ -30,8 +32,16 @@ class bingo_room_allocator_t
     }
 
   private:
+    static std::string new_room_id ()
+    {
+        static thread_local std::mt19937_64 random{std::random_device{} ()};
+        std::ostringstream room_id;
+        room_id << "bingo-room-" << std::hex << std::setfill ('0') << std::setw (16) << random ()
+                << std::setw (16) << random ();
+        return room_id.str ();
+    }
+
     bingo_match_queue_t &_match_queue;
-    std::atomic<unsigned long long> _next{0};
 };
 
 } // namespace zlink::samples::bingo

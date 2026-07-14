@@ -484,7 +484,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-56** (결함) — **Bingo room Spot이 절대 닫히지 않는다.** `close()` 호출이 0건이고 observer 방 timer가 **프로세스 수명 내내** 돈다
   - 근거: 수정 전 sample parity gate가 마지막 actor 이탈 뒤 빈 player·observer 방의 종료 요청이 없음을 검출했다. `on_leave_actor`가 두 점유 집합이 모두 비면 `close()`를 요청하도록 수정한 뒤 Bingo parity 테스트 6개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [ ] **SMP-CP-57** (결함) — **TicTacToe game Spot에 timer가 없다.** 문서가 요구한 turn timeout이 통째로 미구현
-- [ ] **SMP-CP-58** (결함) — **Bingo room id가 프로세스별 카운터**라 두 Play 노드가 **같은 spot rid**를 만든다
+- [x] **SMP-CP-58** (결함) — **Bingo room id가 프로세스별 카운터**라 두 Play 노드가 **같은 spot rid**를 만든다
+  - 근거: 수정 전 두 독립 allocator의 첫 room id가 모두 `two-player-room-1`이어서 회귀 테스트가 실패했다. allocator가 128비트 난수 기반 routing id를 내부에서 만들도록 수정한 뒤 독립 allocator 테스트, Bingo parity 테스트 7개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [ ] **SMP-CP-59** (결함) — **TicTacToe entry spot이 disconnect 시 milestone observer를 정리하지 않는다.** 죽은 세션에 계속 push한다
 - [ ] **SMP-CP-60** (결함) — **DeliveryDispatch Tracking이 framework `actor_directory_t` 대신 blocking 왕복을 손으로 짠다.** 샘플 트리 전체에서 `actor_directory_t` 사용 0건
 - [ ] **SMP-CP-61** (결함) — **DeliveryDispatch `Tracking/Spots/`·`Tracking/Actors/`가 전부 dead code**다. ZLink spot도 actor도 없다

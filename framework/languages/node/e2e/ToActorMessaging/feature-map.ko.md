@@ -14,5 +14,5 @@
 
 `run_e2e.sh`는 Redis, actor owner 서버, session stream 서버, caller 서버, client runner를 모두 띄운다.
 인자를 주지 않으면 전체 scenario를 실행하고, `TA-B2`처럼 공통 ID를 첫 인자로 주면 해당 scenario만
-실행한다. 실행 환경에서 Docker를 쓸 수 없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를
-지정한다.
+실행한다. location store는 실행마다 Docker로 전용 Redis container를 만들며 다른 실행이나 host의
+Redis 인스턴스를 공유하지 않는다.

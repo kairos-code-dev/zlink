@@ -189,15 +189,12 @@ if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; th
   exit 0
 fi
 
-REDIS_ENDPOINT="${ZLINK_REDIS_E2E_ENDPOINT:-}"
-if [[ -z "$REDIS_ENDPOINT" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required for SpotService location-store scenarios unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
-    exit 1
-  fi
-  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required for SpotService location-store scenarios." >&2
+  exit 1
 fi
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="spot-service:node:${RUN_ID}:location"
 wait_port redis "tcp://$REDIS_ENDPOINT"
 

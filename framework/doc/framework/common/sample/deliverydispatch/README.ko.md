@@ -253,29 +253,37 @@ request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있�
 실패 분류와 재시도 의미는
 [spot 주소 메시징 스펙](../../../spec/server/24-spot-address-messaging.ko.md)을 따른다.
 
-### 6.1 Entry Spot에서의 대기 — `yield`를 쓴다
+### 6.1 Entry Spot 대기 규칙
 
-`CustomerEntrySpot`과 `CourierEntrySpot`은 **모든 actor가 처음 거쳐 가는 공용 입구**다. 여기서
-handler가 `async`로 오래 기다리면 **뒤따르는 다른 actor의 생성·join·bind가 전부 막힌다.**
+`CustomerEntrySpot`과 `CourierEntrySpot`은 **모든 actor가 처음 거쳐 가는 공용 입구**다. entry
+spot도 하나의 실행 줄이므로, 여기서 handler가 `async`로 오래 기다리면 **그동안 뒤따르는 다른
+actor의 생성·join·bind가 전부 막힌다.**
 
-**이 샘플은 그 대비를 보여 주는 자리다.** 세 terminator의 선택 기준은 하나다 —
+그래서 entry spot handler에는 규칙이 하나 있다 —
 **그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
 
-| 대기 | terminator | 이유 |
-|------|-----------|------|
-| 자기 entry spot이 소유한 actor 표를 읽고 → actor를 만들고 → 등록한다 | **`async`** | turn을 유지해야 "없다"는 판정이 등록 시점까지 유효하다 |
-| **claim-then-activate의 probe** — 다른 노드 entry spot에 "이 배송원 actor가 있는가"를 묻는다(§6) | **`yield`** | 응답을 **다른 노드**가 만든다. 그 왕복 때문에 이 노드로 들어오려는 다른 배송원의 입장이 막히면 안 된다 |
+| entry spot handler의 대기 | terminator |
+|---|---|
+| 이 entry spot이 소유한 actor 표를 읽고 → 만들고 → 등록한다 | **`async`** — turn을 유지해야 "없다"는 판정이 등록 시점까지 유효하다 |
+| **다른 channel·spot·actor·session의 I/O**를 기다린다(그 결과가 이 spot의 상태 판단과 무관하다) | **`yield`** — 그 왕복 때문에 이 노드로 들어오려는 다른 actor의 입장이 막히면 안 된다 |
+| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | **`RunIoWorker(...).Yield()`** ([04 §1.2](../../../spec/04-async-execution-policy.ko.md)) |
+| 외부 HTTP·레거시 API | **HTTP client의 `.Yield()`** — worker로 감싸지 않는다([12 §3.1](../../../spec/http-client/12-http-client.ko.md)) |
 
 **`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.** yield 중에 다른 메시지가 먼저
-처리될 수 있다. 그래서 probe는 이렇게 쓴다 — **먼저 yield로 물어보고, 재개한 다음 그 turn 안에서
-조회·생성·등록을 한 번에 끝낸다.** yield 전에 상태를 바꿔 두고 yield 후에 그 가정을 이어서
-쓰지 않는다.
+처리될 수 있다. **먼저 yield로 기다리고, 재개한 다음 그 turn 안에서 조회·생성·등록을 한 번에
+끝낸다.** yield 전에 상태를 바꿔 두고 yield 후에 그 가정을 이어서 쓰지 않는다.
 
-같은 이유로, entry spot 안에서 **DB 드라이버·외부 SDK처럼 spot과 무관한 비동기 대기**가 생기면
-`RunIoWorker(...).Yield()`로 감싼다([04 §1.2](../../../spec/04-async-execution-policy.ko.md)).
-외부 HTTP·레거시 API는 감싸지 않고 HTTP client의 `.Yield()`를 직접 쓴다
-([12 §3.1](../../../spec/http-client/12-http-client.ko.md)). 반대로 배송 상태를 소유하는 `Tracking` actor handler는
-자기 상태를 두고 판단하므로 `async`로 기다린다.
+**이 샘플의 entry spot handler는 전부 첫 줄에 해당한다.** actor 표 조회·생성·등록이 전부 자기
+상태에 대한 판단이므로 `async`로 기다린다. 배송 상태를 소유하는 `Tracking` actor handler도 같다.
+
+**§6의 claim-then-activate probe는 entry spot의 대기가 아니다.** 그 probe를 보내는 쪽은
+`CourierSession module`이고(§8.1), entry spot은 **받는 쪽**이다. 보내는 handler는 spot 실행 줄
+위에 있지 않으므로 반납할 turn이 없다 — terminator 선택 문제가 아예 생기지 않는다. 이 구분을
+흐리면 "왕복이 기니까 yield"라는 잘못된 규칙이 만들어진다. **기준은 왕복의 길이가 아니라 실행
+줄의 소유다.**
+
+`yield`를 실제로 쓰는 흐름은 [Bingo §7.1](../bingo/README.ko.md)이 보여 준다 — room Spot의 actor
+join/leave가 Api 서버에서 player 전적을 조회·기록하는 자리다.
 
 ## 7. Message 계약
 

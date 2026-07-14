@@ -5,8 +5,10 @@
 > 이 문서는 **client stream connector의 언어 중립 정본**이다. 대상 실행 환경, transport,
 > wire 계약, packet 모델, 연결 생명주기, 오류 의미, 배포 산출물을 소유한다.
 >
-> 언어별 public 타입과 시그니처는
-> [`languages/<lang>/stream-connector.ko.md`](../server/languages/README.ko.md)가 고정한다. 이 문서는
+> 언어별 public 타입과 시그니처는 [`languages/<lang>/`](README.ko.md)가 고정한다 —
+> [dotnet](languages/dotnet/03-stream-connector.ko.md) ·
+> [java](languages/java/03-stream-connector.ko.md) ·
+> [typescript](languages/typescript/README.ko.md). 이 문서는
 > **무엇을 보장하는가**를 정의하고, 언어별 스펙은 **그 의미가 그 언어에서 어떤 모양인가**를
 > 정의한다([공개 계약 관리](../00-public-contract-governance.ko.md)).
 

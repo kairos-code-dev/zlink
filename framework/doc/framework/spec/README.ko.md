@@ -27,8 +27,15 @@ HTTP client 안내는 `framework/doc/http-client/<lang>/`에 있다.
 
 ## 기반 계약 — 세 패키지 공통
 
-이 여섯 문서는 **어느 한 패키지의 것이 아니다.** `03`의 wire는 connector가 쓰고, `04`의
-terminator는 HTTP client가 쓰며, `05`의 오류 kind는 셋 다 쓴다. 그래서 패키지 폴더 밖 루트에 둔다.
+이 문서들은 **어느 한 패키지의 것이 아니다.** `00`의 계약 관리 절차는 셋 다 따르고, `03`의 reply
+상관관계(sequence 단독)는 channel과 STREAM에 똑같이 적용되며, `04`의 terminator는 server handler와
+HTTP client가 함께 쓴다. `05`의 오류 kind는 framework와 **HTTP client**가 공유한다
+([12 §6](http-client/12-http-client.ko.md)) — **connector는 자기 오류 집합을 따로 갖는다**
+([32 §7](stream-connector/32-stream-connector.ko.md)).
+
+**"공통"이 "모든 문장이 세 패키지에 해당한다"는 뜻은 아니다.** 각 문서 안에는 server 전용 서술이
+섞여 있다. 기준은 **계약의 소유권**이다 — 그 축을 어느 한 패키지 폴더에 가두면 다른 패키지가
+그 계약을 참조할 근거를 잃는다.
 
 | 문서 | 범위 |
 |------|------|
@@ -70,7 +77,13 @@ terminator는 HTTP client가 쓰며, `05`의 오류 kind는 셋 다 쓴다. 그�
 | [12 HTTP client](http-client/12-http-client.ko.md) | **framework-facing 계약** — 정체성, fluent builder, terminator, turn seam, 등록, codec, 오류 |
 | [01](http-client/01-scope-and-architecture.ko.md)~[11](http-client/11-regression-tests.ko.md) | 상세 계약 — builder, 응답, 실행 모델, redirect·retry·cookie, 인증·TLS·proxy, 압축, 오류, 회귀 |
 
-**언어별 public API:** [http-client/languages/](http-client/language-interfaces.ko.md)
+**언어별 public API:**
+[cpp](http-client/languages/cpp/cpp-http-client.ko.md) ·
+[dotnet](http-client/languages/dotnet/dotnet-http-client.ko.md) ·
+[java](http-client/languages/java/java-http-client.ko.md) ·
+[kotlin](http-client/languages/kotlin/kotlin-http-client.ko.md) ·
+[node](http-client/languages/node/node-http-client.ko.md)
+([대조표](http-client/language-interfaces.ko.md)는 비규범이다)
 
 ## [stream-connector/](stream-connector/README.ko.md) — Stream connector 패키지
 

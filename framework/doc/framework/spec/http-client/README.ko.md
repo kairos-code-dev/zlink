@@ -9,8 +9,13 @@
 
 ## 목차
 
+**[12 HTTP client](12-http-client.ko.md)가 이 패키지의 framework-facing 정본이다.** 정체성,
+terminator, turn seam, 서버 등록, codec, 오류 모델을 소유하며, **아래 01~11이 그것과 어긋나면 12가
+이긴다.** 01~11은 상세 계약이다.
+
 | 장 | 문서 | 내용 |
 | --- | --- | --- |
+| **12** | [**HTTP client (framework 계약)**](12-http-client.ko.md) | **정본** — 정체성, fluent builder, terminator(`submit`/`async`/`yield` + callback), turn seam, DI 서버 표면 |
 | 1 | [범위와 아키텍처](01-scope-and-architecture.ko.md) | 정체성, 산출물 경계, framework와의 관계 |
 | 2 | [Client builder 계약](02-client-builder.ko.md) | builder 옵션 전체와 **기본값 표** |
 | 3 | [Request 계약](03-request-builder.ko.md) | HTTP 메서드, 헤더/query, body 소스 5종과 배타 규칙 |
@@ -22,8 +27,20 @@
 | 9 | [에러 모델](09-error-model.ko.md) | error kind 공통 집합, retriable, 언어별 매핑과 구현 갭 |
 | 10 | [개정 후보](10-revision-candidates.ko.md) | **비계약** — 승격 전 검토 항목(R1~R14) |
 | 11 | [회귀 테스트 계약](11-regression-tests.ko.md) | 공통 계약 케이스 매트릭스, 게이트, 커버리지 갭 |
-| — | [언어별 인터페이스 정의](language-interfaces.ko.md) | 5개 언어 공개 API 표면의 정확한 이름 대응표 |
+| — | [언어별 인터페이스 대조표](language-interfaces.ko.md) | **비규범** — 5개 언어 표면을 나란히 보는 대조표. 계약을 고정하지 않는다 |
 | — | [성능 측정과 비교](../../../http-client/perf/README.ko.md) | perf 시나리오 매트릭스·지표·회귀 판정 정본 |
+
+## 언어별 public API (정본)
+
+**각 언어의 정확한 타입과 시그니처는 이 문서들이 소유한다.**
+
+| 언어 | 문서 |
+|------|------|
+| C++ | [languages/cpp](languages/cpp/cpp-http-client.ko.md) |
+| `.NET` | [languages/dotnet](languages/dotnet/dotnet-http-client.ko.md) |
+| Java | [languages/java](languages/java/java-http-client.ko.md) |
+| Kotlin | [languages/kotlin](languages/kotlin/kotlin-http-client.ko.md) |
+| Node.js | [languages/node](languages/node/node-http-client.ko.md) |
 
 ## 계약 변경 절차
 

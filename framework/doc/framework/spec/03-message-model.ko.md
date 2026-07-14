@@ -215,17 +215,22 @@ core protocol API만 제공한다.
 
 ## 5. 요청과 응답의 기본 의미
 
+**응답 매칭은 §4의 "reply 상관관계 — sequence 단독"이 소유한다.** 아래는 그 계약 위에서
+각 kind가 어떤 필드를 갖는지만 정리한다.
+
 ### 5.1 request
 
 - `message-kind = Request(1)`
-- `correlation-id` 필수
-- `packet-name` 필요
+- `packet-name` 필요 — handler를 고르는 키다
 - local `ROUTER(server)`가 받은 request는 `packet-name` 기준으로 handler에 dispatch한다
+- `correlation-id`는 **선택**이다. 흐름 추적을 켠 경우에만 채우며, 응답 매칭에 쓰지 않는다
 
 ### 5.2 response
 
 - 성공이면 `message-kind = Response(2)`
-- 같은 `correlation-id`를 되돌려 준다
+- **어느 요청의 응답인지는 전송 계층의 request sequence가 정한다**(§4). envelope가 되돌리는
+  매칭 키는 없다
+- **`packet-name`을 두지 않는다.** 응답은 handler를 고르지 않는다
 - `status`, `error-code`, `error-message`를 넣지 않는다
 - outbound client가 받은 response는 일반 handler dispatch 대상이 아니라,
   먼저 보낸 request의 pending reply를 완료하는 데 쓴다
@@ -233,9 +238,11 @@ core protocol API만 제공한다.
 ### 5.3 error
 
 - 실패하면 `message-kind = Error(5)`
-- 같은 `correlation-id`와 비어 있지 않은 `error-code`를 되돌려 준다
+- **같은 request sequence로 되돌아오며**(§4), 비어 있지 않은 `error-code`가 필요하다
+- **`packet-name`을 두지 않는다.**
 - 호출자에게 전달할 설명이 있으면 `error-message`에 넣는다
 - `Error`는 실패 reply이며 일반 handler dispatch 대상이 아니다
+- sequence 없이 도착한 `Error`는 특정 request의 실패가 아니라 연결·프로토콜 수준 오류다
 
 ### 5.4 command
 

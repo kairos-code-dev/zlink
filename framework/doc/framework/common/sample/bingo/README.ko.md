@@ -455,25 +455,38 @@ message로 바꾼다. card validation, draw order, winner 판정이 handler나 S
 publish가 모두 그 줄에서 순서대로 실행된다. 그래서 handler 안의 대기 하나가 **room 전체를
 멈춘다.**
 
-`BingoRoom`의 actor join/leave callback에는 **room의 공유 상태와 아무 관련 없는 대기**가 있다 —
+`BingoRoom`의 player join/leave callback에는 **room의 공유 상태와 아무 관련 없는 대기**가 있다 —
 player의 **전적(record)은 Api 서버가 소유한다.** room은 그것을 계산하지도, 들고 있지도 않는다.
 
 | 지점 | 호출 | terminator | 왜 |
 |------|------|-----------|-----|
-| `BingoRoom.OnJoinedActor` | Api 서버에 `GetPlayerRecordReq` | **`yield`** | 전적 조회는 board·draw와 무관하다. 이 왕복 동안 **draw timer가 멈추면 안 된다** |
-| `BingoRoom.OnLeaveActor` | Api 서버에 `ReportBingoResultReq` | **`yield`** | 결과 기록 왕복이 **다른 player의 leave 뒤에 직렬로 쌓이면 안 된다** |
-| card 제출, draw 진행, winner 판정 | room이 소유한 domain 상태 | **`async`** | 판정이 하나의 turn 안에서 끝나야 옳다 |
+| `BingoRoom.OnJoinedActor` (player) | Api 서버에 `GetPlayerRecordReq` | **`yield`** | 전적 조회는 board·draw와 무관하다. room 실행 줄을 붙잡을 이유가 없다 |
+| `BingoRoom.OnLeaveActor` (player) | Api 서버에 `ReportBingoResultReq` | **`yield`** | 결과 기록도 마찬가지다. 이 왕복이 room teardown을 붙잡으면 안 된다 |
+| Entry Spot의 room 배정 (`MatchBingoApiReq`) | Api 서버 channel request | **`async`** | 이 응답으로 **Entry Spot이 어느 room에 넣을지 판단한다.** 판단과 대기가 한 turn 안에 있어야 옳다 |
 
-`.Async()`로 기다리면 그 왕복 동안 room 실행 줄이 통째로 멈춘다 — **draw timer의 다음 draw,
-다른 player의 card 제출, 상대 player의 leave가 전부 그 뒤로 밀린다.** `.Yield()`는 turn을
-반납하므로 그것들이 그대로 진행되고, 조회가 끝난 continuation이 room 실행 줄의 큐에 재삽입되어
-순서대로 재개된다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
+**card 제출·draw 진행·winner 판정은 terminator 대상이 아니다.** 그건 room이 소유한 domain
+객체의 동기 호출이라 기다릴 것이 없다. terminator는 **완료를 기다리는 framework 호출**(request,
+actor join, worker, HTTP client)에만 붙는다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
 
-게임 종료 시 두 player가 연달아 leave하는 구간이 이 샘플에서 **가장 눈에 띄는 자리**다.
-`.Async()`면 Api 왕복 두 번이 **직렬로 쌓여** room teardown과 actor destroy가 그만큼 늦어진다.
-`.Yield()`면 두 보고가 겹쳐서 진행된다.
+**`observer`는 전적을 조회하지 않는다.** observer actor는 `BingoRoomJoinReq.ObserveOnly = true`로
+관전 전용 local room에 join하며, player membership·card·draw·winner 판정에 참여하지 않는다(§14).
+`BingoRoom`의 join/leave callback은 **같은 callback**이므로, 전적 조회·기록은 `ObserveOnly`가
+`false`일 때만 수행한다. observer의 `BingoPlayerState`는 만들지 않으므로 `Wins`/`Losses`도 없다.
 
-**`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.**
+### 왜 `yield`인가
+
+`.Async()`로 기다리면 그 왕복 동안 **room 실행 줄이 통째로 멈춘다.** draw timer의 다음 draw,
+같은 room의 card 제출, 다른 player의 leave가 전부 그 뒤로 밀린다. `.Yield()`는 turn을 반납하므로
+그것들이 그대로 진행되고, 조회가 끝난 continuation이 room 실행 줄의 큐에 재삽입되어 순서대로
+재개된다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
+
+**이 샘플의 스크립트 흐름만으로는 그 차이가 눈에 띄지 않는다.** client 시나리오는 join → 시작 →
+카드 제출 → draw를 순서대로 밟기 때문에, join 왕복과 겹칠 작업이 마침 없다(§10). 실부하에서는
+겹친다 — 그리고 **turn 유지/반납의 결정적 검증은 이 샘플이 아니라
+[config-8 execution turn](../../e2e/config-8-execution-turn.ko.md)의 TD-A3·TD-B1이 소유한다.**
+샘플의 몫은 **어느 대기에 어느 terminator를 고르는지**를 보여 주는 것이다.
+
+### `yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다
 
 - `OnJoinedActor`는 **먼저 `yield`로 전적을 가져오고, 재개한 뒤 그 turn 안에서** domain join,
   시작 조건 판정, `PlayerJoinedNotify` 생성을 한 번에 끝낸다. yield 전에 room 상태를 바꿔 두고
@@ -899,6 +912,8 @@ sequenceDiagram
     PA-->>API: AllocateBingoRoomRes(roomId, ownerNodeRid)
     A1->>E1: Join room request
     E1->>R: Join local room actor
+    R->>API: GetPlayerRecordReq (OnJoinedActor, yield — room turn 반납)
+    API-->>R: GetPlayerRecordRes(wins, losses)
     R-->>A1: BingoRoomJoinRes(waiting)
     A1-->>S1: MatchBingoRes
     S1-->>C1: MatchBingoRes
@@ -906,6 +921,7 @@ sequenceDiagram
     S2->>A3: Relay to bound observer actor
     A3->>BR2: Create or find local observer BingoRoom
     A3->>BR2: JoinSpot with BingoRoomJoinReq(observeOnly)
+    Note over BR2: ObserveOnly=true — 전적을 조회하지 않는다
     BR2-->>A3: BingoRoomJoinRes(observing)
     A3-->>S2: ObserveBingoEventsRes
     S2-->>O: ObserveBingoEventsRes
@@ -917,7 +933,9 @@ sequenceDiagram
     PB-->>API: AllocateBingoRoomRes(same roomId, ownerNodeRid)
     A2->>E2: Join room request
     E2->>R: Remote JoinSpot to owner room
-    R-->>A1: PlayerJoinedNotify(client2 joined)
+    R->>API: GetPlayerRecordReq (OnJoinedActor, yield — room turn 반납)
+    API-->>R: GetPlayerRecordRes(wins, losses)
+    R-->>A1: PlayerJoinedNotify(client2 joined, wins/losses)
     A1->>S1: Bound session PlayerJoinedNotify
     S1-->>C1: PlayerJoinedNotify
     R->>R: Start automatically
@@ -1067,7 +1085,8 @@ actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
 5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
    Spot `onJoinedActor`를 호출한다. room `onLeaveActor`는 Api 서버에 `ReportBingoResultReq`를
-   보내고 **`yield`로 기다린다** — 이 왕복이 다른 player의 leave 뒤에 직렬로 쌓이면 안 된다(§7.1).
+   보내고 **`yield`로 기다린다** — 결과 기록은 room의 공유 상태와 무관하므로 그 왕복이 room
+   실행 줄을 붙잡으면 안 된다(§7.1).
 6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
    Entry Spot context의 `destroyActor`를 호출한다.
 7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
@@ -1079,12 +1098,15 @@ actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같
 sequenceDiagram
     participant R as Room Spot
     participant A as Player Actor
+    participant API as Api Server
     participant E as Entry Spot
     participant N as Native Actor
 
     R->>A: Mark destroy after Entry Spot join
     R->>R: leaveActor(A)
     R->>R: onLeaveActor(A)
+    R->>API: ReportBingoResultReq (yield — room turn 반납)
+    API-->>R: ReportBingoResultRes(wins, losses)
     R->>E: framework moves actor, onJoinedActor(A)
     E->>E: destroyActor(A)
     E->>N: Destroy native actor ref
@@ -1096,7 +1118,8 @@ evidence로 확인한다. client self-check는 game 종료 notify와 observer �
 검증하고, 언어별 `run_sample` 또는 sample regression은 Play 서버 로그, fake backend call,
 runtime event, 또는 framework 테스트 중 하나로 아래 사실을 확인해야 한다.
 
-- room Spot `onLeaveActor`가 각 player actor마다 실행된다.
+- room Spot `onLeaveActor`가 각 player actor마다 실행되고, 그 안에서 `ReportBingoResultReq`가
+  Api 서버로 나간다(§7.1). 이 왕복은 `yield`로 기다리므로 room 실행 줄을 붙잡지 않는다.
 - Entry Spot destroy가 각 player actor마다 완료된다.
 - Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
   추가로 실행되지 않는다.

@@ -2,10 +2,11 @@
 
 > [공통 계약 목차](README.ko.md)
 >
-> **framework 계약이 상위다.** terminator 축과 Spot 실행 문맥 결합은
-> [12 HTTP client](12-http-client.ko.md)와
-> [04 비동기 실행 정책 §1.1](../04-async-execution-policy.ko.md)이 소유한다.
-> 이 문서는 그 계약을 HTTP client 관점에서 구체화한다.
+> **terminator 계약은 이 문서가 소유하지 않는다.** terminator 축과 Spot 실행 문맥 결합(turn seam)은
+> [12 HTTP client §3](12-http-client.ko.md)과
+> [04 비동기 실행 정책 §1.1](../04-async-execution-policy.ko.md)이 소유한다. **어긋나면 그쪽이
+> 이긴다.** 아래 §5.1은 그 계약을 **다시 적은 요약**이며, 이 문서의 몫은 §5.2 이하의 **HTTP 전송
+> 실행 세부**(non-blocking 근거, 취소, timeout 경계)다.
 
 ## 5.1 terminator 세 축 (+ callback)
 

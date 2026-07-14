@@ -669,6 +669,26 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 
 `.NET` framework 구현을 기준선으로 각 언어의 public 표면과 동작을 대조해 확인한 차이다.
 
+**두 종류를 구분한다.** 고치는 방법이 다르기 때문이다.
+
+| 종류 | 뜻 | 고치는 법 |
+|------|-----|-----------|
+| **미구현** | 계약이 요구하는 표면·동작이 **없다** | 만든다 |
+| **결함** | 표면은 **있는데 계약과 다르게 동작한다** | 동작을 바꾼다. 표면 이름·시그니처가 함께 틀린 경우 그것도 바꾼다 |
+
+**결함이 더 위험하다.** 없는 것은 컴파일이 막아 주지만, 있는데 다르게 도는 것은 **그대로 통과한
+채 부하가 걸릴 때만 드물게 깨진다.** 아래 표가 결함으로 분류된 항목이다.
+
+| 갭 | 종류 | 무엇이 다른가 |
+|---|---|---|
+| [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **결함** | reply를 sequence 단독으로 맞춰야 하는데 packet name을 함께 싣고 비교한다 |
+| [§12.21](#1221-yield-terminator-부재-전-언어) | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
+| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
+| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
+| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **결함** | join이 **target 줄을 잡은 채 source 줄을 기다린다.** 그 사이클을 노드 전역 세마포어로 덮어 두었다 |
+
+나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
+
 ### 12.1 STREAM connector 수신 큐 overflow (Java)
 
 **미충족(Java).** [32 §10](stream-connector/32-stream-connector.ko.md)은 수신 메시지 큐가 가득 차면 **새로 도착한
@@ -917,41 +937,6 @@ actor join·worker에 **세 terminator**를 요구한다.
 - C++ `yield` 구현의 과거 결함(blocking submit이 직렬 스레드에서 동기 실행돼 형제 timer를 굶김)은
   detached offload로 이미 해결했다. 그 방식을 유지한다.
 
-#### actor join의 orchestration을 뒤집어야 한다 (ATD 제거의 선행 조건)
-
-**현재 local join은 방향이 거꾸로다.** admission과 commit이 **target Spot의 줄**에서 돌고, source
-cleanup(`OnLeaveActor`)을 **source Spot의 큐에 post**한다. 즉 join이 **target 줄을 잡은 채 source
-줄을 기다린다.**
-
-그 결과 두 가지 우회가 코드에 박혀 있다.
-
-1. **ATD가 이 구현을 떠받치고 있다.** `JoinSpot(...).Async()`가 **source turn을 자동 반납**하므로
-   source 큐가 비고 commit의 post가 실행된다. **ATD를 그냥 걷어내면 user Spot → user Spot join이
-   즉시 막힌다.** ATD는 지연 최적화만이 아니라 join 구현의 필수 부품이었다.
-2. **노드 전역 세마포어.** 같은 spot 쌍에서 서로 반대 방향 join 두 개가 동시에 일어나면 서로의 큐를
-   기다려 영원히 멈춘다(그 spot들의 timer와 이후 모든 join까지 함께). 그래서 구현은 **local join을
-   노드 전체에서 한 번에 하나만** 처리하도록 직렬화했다. 방 입장이 프로세스 전역에서 직렬화된다는
-   뜻이며 그 자체로 확장성 결함이다.
-
-**범위:** Entry Spot actor packet은 turn을 잡지 않고 실행되므로(actor mailbox 직렬화 + turn suppress)
-**입장(Entry → user Spot) 경로는 영향이 없다.** 막히는 것은 **user Spot → user Spot join**과 user
-Spot handler의 `leaveActor`다.
-
-**고쳐야 할 것 — orchestration을 caller 줄에서 돌린다:**
-
-1. caller(source Spot 줄, turn 유지)에서 target에 **admission**을 요청하고 기다린다. target은 다른
-   줄이므로 안전하다.
-2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
-   필요 없다.
-3. target **commit**과 `OnJoinedActor`를 target 줄에서 실행한다.
-4. 결과를 caller에게 반환한다.
-
-[23 §3.3~§4.1](server/23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership commit →
-target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되돌아가는 경로가 사라지므로 사이클이 소멸하고, **노드 전역 join 세마포어도
-제거할 수 있다.**
-
-**따라서 ATD 제거와 join orchestration 수정은 한 묶음이다.** 순서를 반대로 하면 안 된다.
-
 **E2E:** `config-8`을 세 terminator 계약으로 다시 썼다([config-8 실행 turn과 terminator](../common/e2e/config-8-execution-turn.ko.md)). TD-A3(async 불변식)·TD-B1(yield 인터리브)·TD-E2(user→user join)·TD-C3(I/O worker)가 이 갭의 검증 축이다.
 
 **샘플:** 두 공통 샘플이 `yield`를 쓰도록 규정돼 있으므로 이 갭이 풀리기 전에는 그 흐름을 구현할 수
@@ -960,7 +945,9 @@ target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되돌아가�
 | 샘플 | 지점 | terminator |
 |------|------|-----------|
 | [Bingo](../common/sample/bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | `yield` |
-| [DeliveryDispatch](../common/sample/deliverydispatch/README.ko.md) §6.1 | courier entry spot의 claim-then-activate probe가 다른 노드 entry spot에 묻는다 | `yield` |
+
+[DeliveryDispatch §6.1](../common/sample/deliverydispatch/README.ko.md)은 entry spot의 terminator
+선택 **규칙**을 소유한다(이 샘플의 entry spot 대기는 전부 자기 상태 판단이라 `async`다).
 
 ### 12.22 HTTP client가 framework 계약 밖에 있다 (전 언어)
 
@@ -1026,6 +1013,56 @@ STREAM connector와 같은 **framework 동반 client**로 규정하고 terminato
 E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-spot-service.ko.md)과
 [config-8 TD-C3~C5](../common/e2e/config-8-execution-turn.ko.md)가 `RunCpuWorker`/`RunIoWorker`를 쓴다.
 
+### 12.24 actor join의 orchestration이 뒤집혀 있다 (전 언어)
+
+**결함(`.NET`, Java, Kotlin, Node, C++).** 표면은 있고 동작한다. 그런데 **join이 target 줄을 잡은
+채 source 줄을 기다린다** — 방향이 거꾸로다.
+
+admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLeaveActor`)을 **source Spot의
+큐에 post**한다. 즉 **한 join이 두 실행 줄을 걸치면서, 잡은 줄과 기다리는 줄이 반대**다.
+
+**`.NET` 기준선 근거:**
+
+| 사실 | 위치 |
+|------|------|
+| local `JoinSpot` → target activation의 `JoinActorAsync` | `Runtime/Host/ZLinkFrameworkActorFacade.cs:46-76` |
+| target의 `ExecuteSerializedAsync` 안에서 admission → commit | `Runtime/Spots/ZLinkSpotActivationActors.cs:47-93` |
+| commit이 source의 `NotifyActorLeftAfterManagedJoinSpotAsync`를 **기다린다** | `Runtime/Actors/ZLinkActorSessionSpotMembership.cs:13-27` |
+| 그 대기가 **source 큐에 작업을 post**한다 | `Runtime/Spots/ZLinkSpotActivationActors.cs:298-311`, `379-397` |
+| **노드 전역** local join 세마포어 | `Runtime/Host/ZLinkFrameworkActorFacade.cs:27-38`, `63-81` |
+
+**그 결과 두 가지 우회가 코드에 박혀 있다.**
+
+1. **ATD가 이 구현을 떠받치고 있다.** `JoinSpot(...).Async()`가 **source turn을 자동 반납**하므로
+   source 큐가 비고 commit의 post가 실행된다([§12.21](#1221-yield-terminator-부재-전-언어)).
+   **ATD를 그냥 걷어내면 user Spot → user Spot join이 즉시 막힌다.** ATD는 지연 최적화가 아니라
+   **join 구현의 필수 부품**이었다.
+2. **노드 전역 세마포어.** 같은 spot 쌍에서 반대 방향 join 두 개가 동시에 일어나면 서로의 큐를
+   기다려 영원히 멈춘다(그 spot들의 timer와 이후 모든 join까지 함께). 그래서 구현은 **local join을
+   노드 전체에서 한 번에 하나만** 처리하도록 직렬화했다. **방 입장이 프로세스 전역에서
+   직렬화된다** — 사이클을 없앤 게 아니라 사이클이 생길 기회를 없앤 것이며, 그 자체로 확장성
+   결함이다.
+
+**범위:** Entry Spot actor packet은 actor mailbox로 직렬화되고 turn을 잡지 않으므로
+([04 §1.1](04-async-execution-policy.ko.md)의 Entry Spot actor packet 절) **입장(Entry → user Spot)
+경로는 영향이 없다.** 막히는 것은 **user Spot → user Spot join**과 user Spot handler의 `leaveActor`다.
+
+**고쳐야 할 것 — orchestration을 caller 줄에서 돌린다:**
+
+1. caller(source Spot 줄, turn 유지)에서 target에 **admission**을 요청하고 기다린다. target은 다른
+   줄이므로 안전하다.
+2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
+   필요 없다.
+3. target **commit**과 `OnJoinedActor`를 target 줄에서 실행한다.
+4. 결과를 caller에게 반환한다.
+
+[23 §3.3~§4.1](server/23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership
+commit → target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되돌아가는 경로가 사라지므로
+사이클이 소멸하고, **노드 전역 join 세마포어도 제거할 수 있다.**
+
+**E2E:** [config-8 TD-E2](../common/e2e/config-8-execution-turn.ko.md)(user→user join)와
+TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
+
 ## 13. 샘플 연결·등록 축 준수 현황
 
 [샘플 규약](../common/sample/README.ko.md)은 두 축을 고정한다.
@@ -1077,3 +1114,24 @@ E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-sp
 endpoint가 하나라도 있으면 그 역할은 수동으로 확정되어 자동 연결 reconcile이 돌지 않으므로, 그
 수동 배선이 오히려 자동 연결을 무력화한다. 수동 dial을 걷어내야 한다
 ([ZoneWorld README](../common/sample/zoneworld/README.ko.md) §4).
+
+## 14. 문서 소유권 중복 (스펙 트리 정리 후 잔여)
+
+spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 문서가 소유하는** 자리다. 계약이
+어긋나서 생긴 문제가 아니라, **어긋날 수 있는 구조**가 남아 있다는 문제다.
+
+**지금 바로 뜯어내지 않는다.** 아래 카탈로그들은 언어별 회귀 테스트가 내용을 고정하고 있어
+문서만 먼저 고치면 게이트가 깨진다. **구현 갭을 닫는 커밋에서 문서와 테스트를 함께 옮긴다.**
+
+| 중복 | 어디 | 누가 이겨야 하나 |
+|------|------|------------------|
+| client connector 표면이 **서버 언어 카탈로그**에도 들어 있다 | `server/languages/dotnet/02-handler-interfaces.ko.md`, `server/languages/java/02-handler-interfaces.ko.md` | **connector 언어 문서**([stream-connector/languages/](stream-connector/README.ko.md)). 서버 카탈로그에서 뺀다 |
+| Kotlin **connector coroutine·`Flow` 표면**이 서버 폴더에 있다 | `server/languages/kotlin/02-handler-interfaces.ko.md` | `stream-connector/languages/kotlin/`을 새로 만들어 옮긴다 |
+| **C++ connector 계약 문서가 없다** | [32 §2](stream-connector/32-stream-connector.ko.md)는 C++ 타깃을 규정하는데 `stream-connector/languages/cpp/`가 없다 | connector 언어 문서를 만든다 |
+| connector **wire header 필드**를 서버 관측 문서가 함께 정의한다 | `server/52-message-flow-tracing.ko.md`, `server/53-flow-correlation.ko.md` | **[32](stream-connector/32-stream-connector.ko.md)가 wire를 소유**한다. 52/53은 추적 **의미**만 갖고 wire는 32를 참조한다 |
+| `session-closing` **인코딩과 client 디코딩**을 서버 drain 문서가 함께 정의한다 | `server/54-graceful-drain-handoff.ko.md` | **32가 wire와 connector 동작을 소유**한다. 54는 **언제·왜 보내는가**만 갖는다 |
+| connector **메트릭**(`zlink.stream.reconnects`)을 서버 메트릭 문서가 정의한다 | `server/51-runtime-metrics.ko.md` | connector가 emit하는 신호는 **32**로 옮긴다. 51은 서버가 emit하는 것만 갖는다 |
+
+**판정 기준은 "누가 그 바이트를 만드는가"다.** connector가 생성·인코딩하는 것은 32가 소유하고,
+서버가 관측·해석하는 의미만 5x가 갖는다. 지금은 두 문서가 같은 header layout을 각각 적고 있어,
+한쪽만 고치면 조용히 갈라진다.

@@ -23,7 +23,7 @@ snapshot을 함께 갱신해야 한다.
 | . | `00-public-contract-governance.ko.md` | `883e767f3c2b673c9dabc4083fa42a7fc29799d25ef9ad04761d9cbdbc5cb245` |
 | . | `01-overview.ko.md` | `136b4b2378c404b4728a4e526f985da6303456c294c06e9e425a39abb99d816b` |
 | . | `02-interaction-model.ko.md` | `df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0` |
-| . | `03-message-model.ko.md` | `c9255a65b0790366b72cacfc938cd87d83b51ae0e21d43888f93de2469739c55` |
+| . | `03-message-model.ko.md` | `a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914` |
 | . | `04-async-execution-policy.ko.md` | `6614f5efd549442f95ac4f67f8ff1e10bba9c7061ee63a7608ffd91f43fea4bd` |
 | . | `05-framework-api.ko.md` | `06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6` |
 | server | `10-channel-topology.ko.md` | `5f190e3b4f1b93d4a0e03c9ba23b625a1b8a56c5d79dc361917215be73fa0839` |
@@ -36,7 +36,7 @@ snapshot을 함께 갱신해야 한다.
 | server | `25-stage-wrapper-on-spot.ko.md` | `54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c` |
 | server | `30-stream-session.ko.md` | `623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0` |
 | server | `31-session-actor-dispatch.ko.md` | `49f5154412ed827496ba50f2e49a0f6bc84f3e1bcfdb4022b561dbded9b64147` |
-| stream-connector | `32-stream-connector.ko.md` | `732cb2eba9be4644259f9f9017dd42e5851fcd7c8ecbcf745aa1f4dddaf85aa9` |
+| stream-connector | `32-stream-connector.ko.md` | `fe9072b34809ccc20b489f6a3ebdd093fdd35470d3f1ee291e065f5644cc5f99` |
 | server | `40-location-runtime.ko.md` | `dfa08a0db46f59bcd107347c9f02256ff023d7c64c3f8caac42772c37d7b058b` |
 | server | `41-location-store-redis.ko.md` | `f84d4a035cd773d6fe8aa0096151909e92be0743b57445dd51e5b38eeab9376c` |
 | server | `50-runtime-monitoring.ko.md` | `d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99` |
@@ -44,8 +44,8 @@ snapshot을 함께 갱신해야 한다.
 | server | `52-message-flow-tracing.ko.md` | `0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108` |
 | server | `53-flow-correlation.ko.md` | `077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c` |
 | server | `54-graceful-drain-handoff.ko.md` | `822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f` |
-| . | `90-implementation-gap.ko.md` | `bde3bca4e4c4dac9ec89a04a041ce772669ecb1be3e4e1ef503573a66da73ee9` |
-| . | `README.ko.md` | `3bc06346b1b1ac43533363cbfee4fd70905ed2de72e57fd28c281fa8033045cc` |
+| . | `90-implementation-gap.ko.md` | `257c63fe8b9159a7b37cf335836e8b076c94db3ea22bae0abff69d1d8f65d698` |
+| . | `README.ko.md` | `8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595` |
 | server/languages/node | `01-system-structure.ko.md` | `5a9134273d25fb8f8ca7ef503e7a4dc06139852cd0e559564c06f93cda55231a` |
 | server/languages/node | `02-handler-interfaces.ko.md` | `705be40bf9f33e803aa775e42dd7a5e9ab7fc8b7df079ef807d04bd3b6179447` |
 | stream-connector/languages/typescript | `README.ko.md` | `aa714dbe2a429a5244722a1ad1ba6e409715677f8cd9960f0f1c2b7a7900bfde` |

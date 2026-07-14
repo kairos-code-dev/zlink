@@ -2,16 +2,16 @@
 
 [스펙 목차](../README.ko.md) | [이전: Channel 메시징](../server/11-channel-messaging.ko.md) | [다음: SPOT 메시징](../server/20-spot-messaging.ko.md)
 
-> 이 문서는 **framework 동반 HTTP client의 언어 중립 정본**이다. 정체성, fluent builder 형식,
+> **이 문서가 HTTP client 패키지의 framework-facing 정본이다.** 정체성, fluent builder 형식,
 > **실행 terminator**, Spot 실행 문맥과의 결합(turn seam), codec, 오류 모델을 소유한다.
 >
-> 상세 계약(redirect·retry·cookie, 인증·TLS·proxy, 압축, 회귀 테스트)은
-> [`doc/http-client/spec/`](../README.ko.md)이 이어서 소유한다. 이 문서는
-> 그중 **framework와 맞물리는 축**을 고정한다.
+> 상세 계약(builder, 응답, redirect·retry·cookie, 인증·TLS·proxy, 압축, 오류 매핑, 회귀)은
+> 같은 폴더의 [01~11](README.ko.md)이 이어서 소유한다. **그 문서들이 이 문서와 어긋나면 이 문서가
+> 이긴다.**
 >
-> 언어별 정확한 타입과 시그니처는 `languages/<lang>/04-http-client.ko.md`가 고정한다(**작성 예정**).
-> 그때까지는 [`doc/http-client/spec/language-interfaces.ko.md`](language-interfaces.ko.md)가
-> 그 자리를 대신한다.
+> **언어별 정확한 타입과 시그니처는 [`languages/<lang>/`](README.ko.md)이 소유한다.**
+> [language-interfaces](language-interfaces.ko.md)는 다섯 언어를 나란히 놓고 보는
+> **비규범 대조표**다 — 계약을 고정하지 않는다.
 
 ## 1. 정체성 — framework 동반 client
 
@@ -22,14 +22,21 @@
 |---|---|---|
 | 패키지 | 별도 | 별도 |
 | 계약 소유 | framework 공통 스펙([32](../stream-connector/32-stream-connector.ko.md)) | framework 공통 스펙(이 문서) |
-| 언어별 인터페이스 | `languages/*/03-stream-connector.ko.md` | `languages/*/04-http-client.ko.md` |
+| 언어별 인터페이스 | `stream-connector/languages/<lang>/` | `http-client/languages/<lang>/` |
 
 **존재 이유는 하나다** — framework application이 **외부 API와 레거시 API를 zlink 스타일로**
 호출할 수 있어야 한다. 범용 HTTP 라이브러리를 대체하려는 것이 아니다.
 
-**바이너리 의존은 한 방향이다: framework → HTTP client.** HTTP client 패키지는 framework를
-참조하지 않는다. 그래야 CLI와 client 시나리오가 framework 런타임을 끌고 오지 않는다. Spot 실행
-문맥과의 결합은 §3의 **주입점 하나**로만 이뤄진다.
+**의존은 한 방향이다: HTTP client → framework 계약.** HTTP client는 framework의 **오류 kind**와
+**codec extension**을 소비하고(§5, §6), 자체 예외 계층을 만들지 않는다.
+**framework는 HTTP client에 의존하지 않는다** — HTTP client 없이도 동작한다.
+
+**소비하는 것은 framework의 계약이지 런타임이 아니다.** 그래야 CLI와 client 시나리오가 framework
+host·runtime을 끌고 오지 않는다. Spot 실행 문맥과의 결합은 §3.2의 **주입점 하나**로만 이뤄진다 —
+scheduler가 주입되지 않으면 HTTP client는 turn을 모르는 평범한 client다.
+
+산출물 경계와 언어별 패키지 분할은
+[01 범위와 아키텍처 §1.3](01-scope-and-architecture.ko.md)이 소유한다.
 
 ## 2. Fluent builder
 
@@ -49,8 +56,7 @@ client.post("/games")               // operation
 - **body 소스는 상호 배타다.** 섞으면 `RequestProtocolError`.
 
 builder의 세부 계약(path 형식, percent-encoding, body 소스별 retry 가능 여부 등)은
-[`doc/http-client/spec/03-request-builder.ko.md`](03-request-builder.ko.md)가
-소유한다.
+[03 Request builder](03-request-builder.ko.md)가 소유한다.
 
 ## 3. 실행 terminator — framework와 같은 세 축 (+ callback)
 
@@ -94,7 +100,8 @@ var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
 
 ### 3.2 turn seam — 주입점 하나
 
-HTTP client는 framework를 모른다. Spot의 turn을 아는 것은 **주입된 execution scheduler** 하나다.
+**HTTP client는 framework의 오류 kind와 codec은 알지만, Spot의 turn은 모른다.** turn을 아는 것은
+**주입된 execution scheduler** 하나뿐이다.
 
 - HTTP client는 **execution scheduler 주입점**을 공개 계약으로 둔다. scheduler는 completion을
   어디서 재개할지 정한다.
@@ -150,9 +157,7 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 | typed body decode 실패, 압축 해제 실패 | `PayloadDecodeFailed` |
 | 시도당 timeout 초과 | 언어별 timeout 경계 표현(§05의 오류 kind가 아니라 boundary 상태다) |
 
-세부 매핑은
-[`doc/http-client/spec/09-error-model.ko.md`](09-error-model.ko.md)가
-소유한다.
+세부 매핑은 [09 오류 모델](09-error-model.ko.md)이 소유한다.
 
 ## 7. 회귀 테스트
 

@@ -344,7 +344,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-28** (결함) — `extension_boundaries.hpp` — **설치되는 공개 헤더인데 스펙 근거도 구현도 0**
 - [ ] **IMP-CP-29** (결함) — `unhandled_dispatch_options_t` 5개 필드가 **검증만 되고 읽히지 않는다**
 - [ ] **IMP-CP-30** (결함) — `on_retry`/`on_dead_letter` — **C++에만 있는 메시지 신뢰성 계약**, 스펙 근거 0
-- [ ] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
+- [x] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
+  - 근거: 수정 전 contract gate가 one-way send의 request timeout 재사용과 독립된 1000ms 기본 부재를 모두 검출했다. send backpressure 기본을 1000ms로 분리하고 명시적 timeout만 우선하도록 수정한 뒤 gate와 channel messaging unit binary가 통과했다.
 - [ ] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
 - [ ] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
 - [x] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**

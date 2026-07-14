@@ -1175,6 +1175,23 @@ TEST (CppFrameworkSampleParity, SupportChatReleaseGateUsesThePublicClient)
       << "SupportChat release gate must not accept the forged probe marker";
 }
 
+TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)
+{
+    const auto source = read_file (
+      cpp_language_root () / "framework/src/runtime/channels/channel_outbound_exchange.cpp");
+    const auto submit_send = source.find ("channel_outbound_exchange_t::submit_send");
+    ASSERT_NE (submit_send, std::string::npos);
+    const auto submit_send_body = source.substr (submit_send);
+
+    EXPECT_NE (source.find ("default_send_wait_timeout = std::chrono::milliseconds (1000)"),
+               std::string::npos)
+      << "one-way send backpressure must use the contract's 1000ms default";
+    EXPECT_NE (submit_send_body.find ("resolve_send_wait_timeout"), std::string::npos)
+      << "one-way send must use its own backpressure policy";
+    EXPECT_EQ (submit_send_body.find ("resolve_channel_wait_timeout"), std::string::npos)
+      << "one-way send must not reuse request/reply timeout policy";
+}
+
 /* 샘플은 codec을 직접 짜지 않는다. protobuf payload는 protoc이 만든 message로 옮겨 싣고,
  * 직렬화는 codec extension이 한다. 손으로 varint를 쓰거나 JSON을 protobuf인 척 포장하는 것은
  * 금지다. connector의 payload 훅(to_stream_payload)은 그 message로 위임할 때만 쓴다. */

@@ -34,6 +34,7 @@ namespace
 {
 
 constexpr auto channel_wait_poll_interval = std::chrono::milliseconds (50);
+constexpr auto default_send_wait_timeout = std::chrono::milliseconds (1000);
 
 bool channel_trace_enabled ()
 {
@@ -269,6 +270,11 @@ resolve_channel_wait_timeout (const std::shared_ptr<channel_runtime_state_t> &st
         return *found->second.default_request_timeout;
     }
     return state->default_request_timeout;
+}
+
+std::chrono::milliseconds resolve_send_wait_timeout (std::chrono::milliseconds timeout)
+{
+    return timeout > std::chrono::milliseconds::zero () ? timeout : default_send_wait_timeout;
 }
 
 std::function<channel_endpoint_snapshot_t ()>
@@ -1011,8 +1017,7 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
                 native_client = slot;
             }
             auto endpoints = make_client_endpoint_provider (_state, channel_name);
-            const auto effective_timeout =
-              resolve_channel_wait_timeout (_state, channel_name, timeout);
+            const auto effective_timeout = resolve_send_wait_timeout (timeout);
             return native_client->send (parts, endpoints, effective_timeout);
         }
         catch (const framework_exception_t &error) {

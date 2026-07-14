@@ -278,12 +278,21 @@ int main ()
     /* E2E-CP-16 — the default SpotService gate includes the implemented SM-D2 P0 scenario. */
     const auto all_scenarios = spot_service_runner.find ("for scenario in");
     const auto all_scenarios_end = spot_service_runner.find ("; do", all_scenarios);
+    const auto all_scenario_list =
+      all_scenarios != std::string::npos && all_scenarios_end != std::string::npos
+        ? spot_service_runner.substr (all_scenarios, all_scenarios_end - all_scenarios)
+        : std::string{};
     gate.require (all_scenarios != std::string::npos && all_scenarios_end != std::string::npos
-                    && spot_service_runner.substr (all_scenarios,
-                                                   all_scenarios_end - all_scenarios)
-                         .find ("SM-D2")
-                         != std::string::npos,
+                    && all_scenario_list.find ("SM-D2") != std::string::npos,
                   "E2E-CP-16", "SpotService all mode omits the implemented SM-D2 P0 scenario");
+
+    /* E2E-CP-05 — all mode follows the common Track F inventory only. */
+    for (const auto *scenario : {"SM-F3", "SM-F4", "SM-F5"}) {
+        gate.require (all_scenario_list.find (scenario) != std::string::npos, "E2E-CP-05",
+                      std::string ("SpotService all mode omits ") + scenario);
+    }
+    gate.require (all_scenario_list.find ("SM-Q9") == std::string::npos, "E2E-CP-05",
+                  "SpotService all mode includes non-contract SM-Q9");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';

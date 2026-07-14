@@ -519,7 +519,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-02** (결함) — **Config 9 Track A(P0 전부)가 이름만 그렇다.** session gateway 역할도 stream connector도 없다
 - [ ] **E2E-CP-03** (결함) — **Config 11이 구조 자체가 규약 밖**이다(Client 없음·env role 스위치·`OrderWorkflow` 역할 0건)
 - [ ] **E2E-CP-04** (결함) — **PubSub client 시나리오가 아무것도 단언하지 않는다**
-- [ ] **E2E-CP-05** (결함) — **SpotService `all`이 문서 시나리오를 빼먹고**(SM-F3·F4·F5) **문서에 없는 걸 돌린다**(SM-Q9)
+- [x] **E2E-CP-05** (결함) — **SpotService `all`이 문서 시나리오를 빼먹고**(SM-F3·F4·F5) **문서에 없는 걸 돌린다**(SM-Q9)
+  - 근거: 수정 전 target-contract gate가 `all` 목록의 SM-F3·F4·F5 누락과 비계약 SM-Q9 포함을 네 건 모두 검출했다. 목록을 공통 scenario inventory에 맞춘 뒤 gate와 `./run_e2e.sh SM-F3`, `SM-F4`, `SM-F5`의 client·server evidence 검증이 모두 통과했다.
 - [ ] **E2E-CP-06** (미구현) — actor ref **`generation`이 리터럴 0**이고 검증하는 곳이 없다
 - [x] **E2E-CP-07** (결함) — **Config 10의 순서 계약이 검증되지 않는다**(포함 여부만 본다)
   - 근거: 수정 전 target-contract gate가 cross-kind 순서 helper와 `location_committed` marker 부재를 검출했다. join 완료 지점에 marker를 기록하고 ST-A1이 다섯 lifecycle evidence의 상대 순서를 검사하도록 수정한 뒤 gate와 `./run_e2e.sh ST-A1`이 통과했다.

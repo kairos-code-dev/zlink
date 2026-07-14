@@ -3742,8 +3742,8 @@ for scenario in \
   SM-E4 SM-E1 SM-E2 SM-E3 \
   SM-A7 SM-A8 SM-C4 \
   SM-A3 SM-A6 SM-B4 SM-B7 \
-  SM-A5 SM-A1-A2-A4-F1-F2 SM-F6 \
-  SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
+  SM-A5 SM-A1-A2-A4-F1-F2 SM-F3 SM-F4 SM-F5 SM-F6 \
+  SM-G2 SM-G3 SM-G4 SM-G1; do
   run_focused_from_all "$scenario" "$scenario_index"
   scenario_index=$((scenario_index + 1))
   sleep "$CHILD_SWEEP_SETTLE_SECONDS"

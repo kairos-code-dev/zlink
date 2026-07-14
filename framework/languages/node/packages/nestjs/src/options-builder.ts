@@ -171,17 +171,20 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
-    this.state.clientServerChannels[name] ??= {};
+    this.ensureChannelAvailable(name);
+    this.state.clientServerChannels[name] = {};
     return new DefaultZLinkNestClientServerChannelBuilder(this.state, this.state.clientServerChannels[name]);
   }
 
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
-    this.state.fanoutChannels[name] ??= {};
+    this.ensureChannelAvailable(name);
+    this.state.fanoutChannels[name] = {};
     return new DefaultZLinkNestFanoutChannelBuilder(this.state, this.state.fanoutChannels[name]);
   }
 
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
-    this.state.routerMeshes[name] ??= {};
+    this.ensureChannelAvailable(name);
+    this.state.routerMeshes[name] = {};
     markRouteTransportDeclared(this.state.routerMeshes[name]);
     return new DefaultZLinkNestRouterMeshBuilder(this.state, this.state.routerMeshes[name]);
   }
@@ -194,6 +197,19 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
     this.state.streams[name] ??= {};
     return new DefaultZLinkNestStreamNodeBuilder(this.state, this.state.streams[name]);
+  }
+
+  private ensureChannelAvailable(name: string): void {
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(this.state.clientServerChannels, name)
+      || Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)
+      || Object.prototype.hasOwnProperty.call(this.state.routerMeshes, name)
+    ) {
+      throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
+    }
   }
 
   build(): ZLinkModuleOptions {

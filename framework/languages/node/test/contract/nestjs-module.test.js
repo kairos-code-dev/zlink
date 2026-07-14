@@ -1345,12 +1345,15 @@ test('framework options builder maps dotnet-shaped registration flow into option
     builder.useInMemoryLocationStores();
     builder.addActorTransferAdapter(StageActor, StageActorTransferAdapter);
     builder.configureStreamCompression().use(streamCompressionCodec);
-    builder.addClientServerChannel('api').enableServer('tcp://0.0.0.0:9401');
-    builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
-    builder.addFanoutChannel('events').enablePublisher('tcp://0.0.0.0:9402');
-    builder.addFanoutChannel('events').enableSubscriber('tcp://127.0.0.1:9402');
-    builder.addRouteMeshChannel('route').enableServer('tcp://0.0.0.0:9403');
-    builder.addRouteMeshChannel('route').enableClient('tcp://127.0.0.1:9403');
+    const api = builder.addClientServerChannel('api');
+    api.enableServer('tcp://0.0.0.0:9401');
+    api.enableClient('tcp://127.0.0.1:9401');
+    const events = builder.addFanoutChannel('events');
+    events.enablePublisher('tcp://0.0.0.0:9402');
+    events.enableSubscriber('tcp://127.0.0.1:9402');
+    const route = builder.addRouteMeshChannel('route');
+    route.enableServer('tcp://0.0.0.0:9403');
+    route.enableClient('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
       .bind('tcp://0.0.0.0:9404')
       .registerSession(GatewaySession);
@@ -1401,6 +1404,28 @@ test('framework options builder maps dotnet-shaped registration flow into option
       builder.addSpotMesh('game.stage');
     }),
     /Duplicate SPOT mesh channel 'game.stage'/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('api');
+      builder.addClientServerChannel('api');
+    }),
+    /Duplicate channel 'api'/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('mixed');
+      builder.addFanoutChannel('mixed');
+    }),
+    /Duplicate channel 'mixed'/
+  );
+  assert.throws(
+    () => {
+      const builder = nestjs.zlinkFramework();
+      builder.addFanoutChannel('events');
+      builder.addRouteMeshChannel('events');
+    },
+    /Duplicate channel 'events'/
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {

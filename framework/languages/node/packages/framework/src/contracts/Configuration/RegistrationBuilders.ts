@@ -198,8 +198,15 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   private channel(name: string): MutableChannelOptions {
-    this.options.channels[name] ??= {};
-    return this.options.channels[name];
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new ZLinkConfigurationException('Channel name must not be empty or padded.');
+    }
+    if (Object.prototype.hasOwnProperty.call(this.options.channels, name)) {
+      throw new ZLinkConfigurationException(`Duplicate channel '${name}'.`);
+    }
+    const channel: MutableChannelOptions = {};
+    this.options.channels[name] = channel;
+    return channel;
   }
 
   private spotNodeOptions(name: string): MutableSpotNodeOptions {

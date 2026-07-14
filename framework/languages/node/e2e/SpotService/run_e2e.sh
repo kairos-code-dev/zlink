@@ -156,7 +156,7 @@ if [[ "$SCENARIO" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "
 fi
 
 if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
-  for child_group in default-batch sm-d8 SM-F6 SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
+  for child_group in default-batch sm-d8 SM-F6 SM-G2 SM-G3 SM-G4 SM-G1; do
     echo "child scenario=$child_group"
     output="$(mktemp)"
     child_passed=0

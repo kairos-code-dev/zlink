@@ -7,7 +7,8 @@
 SM-B6, SM-B7, SM-B8, SM-B9, SM-C1, SM-C2, SM-C3, SM-C4, SM-C5, SM-D1, SM-D2, SM-D3, SM-D4, SM-D5, SM-D6,
 SM-D7, SM-D8, SM-D9, SM-D10, SM-D11, SM-D12, SM-D13, SM-D14, SM-D15, SM-E1, SM-E2, SM-E3, SM-E4, SM-F1,
 SM-F2, SM-F3, SM-F4, SM-F5를 operation group 단위로 실행하고,
-outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1, SM-Q9를 별도 child scenario로 실행한다.
+outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1을 별도 child scenario로 실행한다.
+공통 Config 2에 없는 SM-Q9는 보조 operation으로만 선택 실행한다.
 SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/SpotService/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
@@ -80,7 +81,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 검증:
 
 - `timeout 1200s framework/languages/node/e2e/SpotService/run_e2e.sh`
-  - PASS: `logs/20260708-062031-351962` (`default-batch`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9`)
+  - PASS: `logs/20260708-062031-351962` (`default-batch`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9`; 당시 SM-Q9 포함)
   - `default-batch` child PASS: `logs/20260708-062031-351969` (`SM-A1`, `SM-A2`, `SM-A3`, `SM-A4`, `SM-A5`, `SM-A6`, `SM-A7`, `SM-A8`, `SM-B1`, `SM-B2`, `SM-B3`, `SM-B4`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-B9`, `SM-C1`, `SM-C2`, `SM-C3`, `SM-C4`, `SM-C5`, `SM-D1`, `SM-D2`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D12`, `SM-D13`, `SM-D14`, `SM-D15`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-E4`, `SM-F1`, `SM-F2`, `SM-F4`)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-B1`
   - PASS: `logs/20260630-070738-3054201` (`entry-created`, `entry-joined`, actor pingMsg evidence 확인)

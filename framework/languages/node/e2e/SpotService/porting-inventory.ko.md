@@ -9,7 +9,8 @@
 SM-B6, SM-B7, SM-B8, SM-B9, SM-C1, SM-C2, SM-C3, SM-C4, SM-C5, SM-D1, SM-D2, SM-D3, SM-D4, SM-D5, SM-D6,
 SM-D7, SM-D8, SM-D9, SM-D10, SM-D11, SM-D12, SM-D13, SM-D14, SM-D15, SM-E1, SM-E2, SM-E3, SM-E4, SM-F1,
 SM-F2, SM-F3, SM-F4, SM-F5를 operation group 단위로 실행하고,
-outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1, SM-Q9를 별도 child scenario로 실행한다.
+outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1을 별도 child scenario로 실행한다.
+공통 Config 2에 없는 SM-Q9는 보조 operation으로만 선택 실행한다.
 SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 inventory는 `.NET` 기준 파일과 공통 scenario ID를 빠뜨리지 않고,
 구현된 범위는 `done`으로 기록한다.
 
@@ -81,7 +82,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 |----------------|-------------------|------|------|------|
 | `.gitignore` | `.gitignore`, `logs/.gitignore` | ignore | done | dist, node_modules, 실행 로그 제외 |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | scenario 범위, 구현 상태, runner proof 기록 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | Play-A/Play-B/Session-A/Session-B/Gateway/MultiNode build/start/readiness/cleanup/client 실행 구현. `all`은 `.NET`처럼 `default-batch`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9` child scenario를 실행한다. `default-batch`는 `.NET` operation group 순서대로 client process를 나누어 실행하고 SM-F4를 포함한다. PASS: `logs/20260708-062031-351962`; `default-batch` PASS: `logs/20260708-062031-351969`. Node fetch가 차단하는 unsafe port와 같은 run 안의 중복 port를 피하도록 port picker를 필터링함 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | Play-A/Play-B/Session-A/Session-B/Gateway/MultiNode build/start/readiness/cleanup/client 실행 구현. `all`은 공통 Config 2에 정의된 `default-batch`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1` child scenario를 실행한다. SM-Q9는 보조 operation으로만 선택 실행한다. `default-batch`는 `.NET` operation group 순서대로 client process를 나누어 실행하고 SM-F4를 포함한다. PASS: `logs/20260708-062031-351962`; `default-batch` PASS: `logs/20260708-062031-351969`. Node fetch가 차단하는 unsafe port와 같은 run 안의 중복 port를 피하도록 port picker를 필터링함 |
 | `Shared/Messages.cs`, `Shared/SpotService.Shared.csproj` | `Shared/messages.ts` | shared | done | 구현 scenario가 쓰는 create, state, stage, actor, stream, timer, route, MultiNode message 계약을 포함한다. |
 | `Client/Program.cs`, `Client/SpotService.Client.csproj` | `Client/main.ts`, `Client/package.json`, `Client/tsconfig.json` | client-entry/project | done | 구현 scenario 선택과 실행 앱을 제공한다. |
 | `Client/Support/*` | `Client/Support/` | support | done | option parsing, assertion, HTTP helper, stream connector helper, process helper를 구현했다. |

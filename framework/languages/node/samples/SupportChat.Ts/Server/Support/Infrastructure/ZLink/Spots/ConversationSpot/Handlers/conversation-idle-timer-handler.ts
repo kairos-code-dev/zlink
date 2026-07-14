@@ -6,7 +6,7 @@ class ConversationIdleTimerHandler implements ZLinkSpotTimerHandler<Conversation
   constructor(private readonly availability: AgentAvailabilityDirectory) {}
 
   async handle(spot: ConversationSpot, tick: ZLinkTimerTick): Promise<void> {
-    const releasedAgent = spot.onTimer(tick.scheduledAt.getTime());
+    const releasedAgent = await spot.onTimer(tick.scheduledAt.getTime());
     if (releasedAgent !== undefined) this.availability.released(releasedAgent);
   }
 }

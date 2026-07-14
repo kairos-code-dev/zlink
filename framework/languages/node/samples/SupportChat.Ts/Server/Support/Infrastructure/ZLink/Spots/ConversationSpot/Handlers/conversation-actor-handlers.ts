@@ -82,7 +82,7 @@ class CloseConversationHandler implements ZLinkSpotActorRequestHandler<Conversat
 
   async handle(spot: ConversationSpot, actor: SupportUserActor, context: ZLinkSpotActorRequestContext): Promise<CloseConversationRes> {
     if (!hasConversation(context, spot)) throw new Error('Conversation metadata does not match the bound actor.');
-    const state = spot.close(actor);
+    const state = await spot.close(actor);
     if (state.agentActorId !== undefined) this.availability.released(state.agentActorId);
     return { state };
   }

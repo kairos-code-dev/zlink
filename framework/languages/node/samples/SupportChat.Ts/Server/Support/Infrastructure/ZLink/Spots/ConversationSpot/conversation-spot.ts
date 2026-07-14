@@ -88,17 +88,18 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     if (event !== undefined) this.notifications.publish(event, this.otherActors(actor));
   }
 
-  close(actor: SupportUserActor): ConversationState {
+  async close(actor: SupportUserActor): Promise<ConversationState> {
     this.requireConversationId(actor);
     if (!this.requireConversation().canParticipate(actor.participantId)) {
       throw new Error('Only a conversation participant can close the conversation.');
     }
     const closed = this.requireConversation().close();
     this.notifications.publish(closed.event, this.otherActors(actor));
+    await this.closeSpot();
     return closed.state;
   }
 
-  onTimer(now = Date.now()): string | undefined {
+  async onTimer(now = Date.now()): Promise<string | undefined> {
     const conversation = this.requireConversation();
     if (conversation.shouldBecomeIdle(now, SampleTimings.idleTimeout)) {
       const idle = conversation.markIdle(now + SampleTimings.closeGraceTimeout);
@@ -108,6 +109,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     if (conversation.shouldCloseAfterIdle(now)) {
       const closed = conversation.close();
       this.notifications.publish(closed.event, this.actors.values());
+      await this.closeSpot();
       return closed.state.agentActorId;
     }
     return undefined;
@@ -129,6 +131,13 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
 
   private findParticipant(participantId: string): SupportUserActor | undefined {
     return [...this.actors.values()].find((actor) => actor.participantId === participantId);
+  }
+
+  private async closeSpot(): Promise<void> {
+    for (const actor of [...this.actors.values()]) {
+      await this.context.leaveActor(actor);
+    }
+    await this.context.close();
   }
 
   private requireConversation(): Conversation {

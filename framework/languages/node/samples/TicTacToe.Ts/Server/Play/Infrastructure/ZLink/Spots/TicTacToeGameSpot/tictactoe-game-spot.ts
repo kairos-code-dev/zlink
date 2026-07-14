@@ -113,6 +113,12 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
 
   async onLeaveActor(actor: PlaySpotActor): Promise<void> {
     this.requireMatch().players.delete(actor.actorId);
+    if (
+      this.requireMatch().players.size === 0
+      && isTerminal(this.requireMatch().snapshot().status)
+    ) {
+      await this.context.close();
+    }
   }
 
   async onDisconnectActor(actor: PlaySpotActor): Promise<void> {

@@ -118,17 +118,23 @@ export class DynamicClusterLauncher {
   }
 
   async waitForSingleProvider(rid: string, endpoint: string): Promise<void> {
+    await this.waitForProviders([endpoint], `Provider '${rid}'`);
+  }
+
+  async waitForProviders(endpoints: readonly string[], description = 'Providers'): Promise<void> {
     const topology = this.locationProbe;
     if (topology === undefined) throw new Error('Location probe is not running.');
+    const expected = [...endpoints].sort();
     for (let i = 0; i < 120; i += 1) {
       const response = await fetch(`${topology.httpUrl}/location/topology`);
       if (response.ok) {
         const rows = await response.json() as Array<{ readonly endpoint?: string }>;
-        if (rows.length === 1 && rows[0].endpoint === endpoint) return;
+        const actual = rows.flatMap((row) => row.endpoint === undefined ? [] : [row.endpoint]).sort();
+        if (actual.length === expected.length && actual.every((value, index) => value === expected[index])) return;
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    throw new Error(`Provider '${rid}' did not converge to '${endpoint}'.`);
+    throw new Error(`${description} did not converge to '${expected.join(',')}'.`);
   }
 
   async stop(provider: DynamicProvider): Promise<void> {

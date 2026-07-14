@@ -1,0 +1,85 @@
+using System.Diagnostics.Metrics;
+using ObservabilityOps.Client.Support;
+using ObservabilityOps.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Eventing;
+
+namespace ObservabilityOps.Client.Scenarios;
+
+internal static class ObsB1ConnectionMetricsScenario
+{
+    public static async Task RunAsync(ScenarioContext context)
+    {
+        var connectors = new List<IZlinkStreamConnector>();
+        try
+        {
+            for (var index = 0; index < 3; index++)
+            {
+                var connector = await context.ConnectAsync();
+                await connector.Request(new AuthenticateReq($"obs-b1-{index}-{Guid.NewGuid():N}"))
+                    .Async<AuthenticateRes>();
+                connectors.Add(connector);
+            }
+            var active = (await context.Session.Post("/metrics/wait")
+                .Body(new MetricWaitReq("zlink.stream.connections.active", 3))
+                .SubmitAsync<MetricSample[]>()).Body;
+            ScenarioContext.Require(active.Any(sample => sample.Name == "zlink.stream.connections.active"
+                                                         && sample.Value == 3),
+                "OBS-B1 active connection gauge did not reach three.");
+            foreach (var connector in connectors) await connector.Close.Async();
+            foreach (var connector in connectors) await connector.DisposeAsync();
+            connectors.Clear();
+            var closed = (await context.Session.Post("/metrics/wait")
+                .Body(new MetricWaitReq("zlink.stream.connections.closed", 3))
+                .SubmitAsync<MetricSample[]>()).Body;
+            ScenarioContext.Require(closed.Any(sample => sample.Name == "zlink.stream.connections.closed"
+                                                         && sample.Value >= 3),
+                "OBS-B1 closed connection counter did not increase by three.");
+            var inactive = (await context.Session.Post("/metrics/wait")
+                .Body(new MetricWaitReq("zlink.stream.connections.active", 0, 0))
+                .SubmitAsync<MetricSample[]>()).Body;
+            ScenarioContext.Require(inactive.Any(sample => sample.Name == "zlink.stream.connections.active"
+                                                           && sample.Value == 0),
+                "OBS-B1 active connection gauge did not return to zero.");
+        }
+        finally
+        {
+            foreach (var connector in connectors) await connector.DisposeAsync();
+        }
+
+        long reconnectAttempts = 0;
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.stream.reconnects")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, _, _) =>
+            Interlocked.Add(ref reconnectAttempts, value));
+        listener.Start();
+        await using var proxy = new ReconnectProxy(new Uri(context.Options.SessionEndpoint));
+        await using var reconnecting = await context.ConnectAsync(proxy.Endpoint.ToString(), persistentReconnect: true);
+        await proxy.WaitForConnectionAsync();
+        var sawReconnect = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnectingStateSeen = 0;
+        reconnecting.ConnectionStateChanged += (change, _) =>
+        {
+            if (change.Current == ZlinkStreamConnectionState.Reconnecting)
+                Volatile.Write(ref reconnectingStateSeen, 1);
+            else if (change.Current == ZlinkStreamConnectionState.Connected
+                     && Volatile.Read(ref reconnectingStateSeen) != 0)
+                sawReconnect.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        proxy.DropConnection();
+        await proxy.WaitForConnectionAsync();
+        await sawReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        ScenarioContext.Require(Interlocked.Read(ref reconnectAttempts) > 0,
+            "OBS-B1 connector reconnect counter did not increase.");
+        await reconnecting.Close.Async();
+        Console.WriteLine("scenario OBS-B1 passed");
+    }
+}

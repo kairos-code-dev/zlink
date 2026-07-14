@@ -137,7 +137,7 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordSpotQueueStarted(string kind, long startedTimestamp)
     {
         SafeAdd(SpotQueueDepth, -1, "kind", kind);
-        RecordElapsed(SpotQueueWaitDuration, startedTimestamp);
+        RecordElapsed(SpotQueueWaitDuration, startedTimestamp, "kind", kind);
     }
 
     public static void RecordSpotQueueRemoved(string kind) =>
@@ -326,6 +326,20 @@ internal static class ZLinkRuntimeMetrics
     {
         if (startedTimestamp == 0 || !histogram.Enabled) return;
         SafeRecord(histogram, Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds);
+    }
+
+    private static void RecordElapsed(
+        Histogram<double> histogram,
+        long startedTimestamp,
+        string tagName,
+        object? tagValue)
+    {
+        if (startedTimestamp == 0 || !histogram.Enabled) return;
+        SafeRecord(
+            histogram,
+            Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds,
+            tagName,
+            tagValue);
     }
 
     private static void SafeAdd(Counter<long> counter, long value)

@@ -113,6 +113,26 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("unhandled callback failed", scenario, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ObservabilityOps_Is_A_Self_Contained_E2E_App()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "ObservabilityOps");
+        var clientScenarios = Path.Combine(root, "Client", "Scenarios");
+        Assert.True(Directory.Exists(clientScenarios));
+        Assert.Equal(13, Directory.GetFiles(clientScenarios, "Obs*Scenario.cs").Length);
+
+        foreach (var project in Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(project);
+            Assert.DoesNotContain("samples/Bingo", source, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("samples/ShoppingMall", source, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var runner = File.ReadAllText(Path.Combine(root, "run_e2e.sh"));
+        Assert.DoesNotContain("samples/Bingo/Client", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("python3 - \"$LOG_DIR", runner, StringComparison.Ordinal);
+    }
+
     private static void AssertScenarioFiles(string root, string config, string idPrefix, int expectedCount)
     {
         var client = Path.Combine(root, config, "Client");

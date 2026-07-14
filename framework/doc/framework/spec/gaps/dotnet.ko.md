@@ -414,7 +414,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — 갭 아님: 공통 문서는 TypeScript 브라우저 client와 언어별 headless 시나리오 client를 서로 다른 계약으로 명시한다.
 - [x] **SMP-DN-08** (결함) — 클라이언트 단언이 문서보다 약하다(Bingo 7·8단계, DD 순서)
   — Bingo가 제출 카드와 양쪽 draw state를 대조하고, DeliveryDispatch가 단일 수신 루프로 상태 도착 순서를 검증한다. 두 sample runner와 regression 31건이 통과했다.
-- [ ] **E2E-DN-01** (결함) — `ObservabilityOps`가 **e2e 앱이 아니다** — 샘플 바이너리를 셸로 구동한다
+- [x] **E2E-DN-01** (결함) — `ObservabilityOps`가 **e2e 앱이 아니다** — 샘플 바이너리를 셸로 구동한다
+  — sample 참조와 Python 증거 해석을 제거하고 session·play·workflow 역할 서버와 검증 client를 독립 프로젝트로 구성했다. `Client/Scenarios/`의 13개 파일이 OBS-A1부터 OBS-C5까지 공개 API로 실행·단언한다. 전체 runner, 관측성 테스트 2건, 관련 runtime 테스트 39건, regression 39건이 통과했다.
 - [x] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
   — Config 9의 20개 `ST-*`와 Config 10의 7개 `TA-*` 요청·검증 본문을 ID별 scenario 파일로 옮기고, 공통 client 동작은 각 config의 context가 맡도록 정리했다. 두 client `Program.cs`에는 옵션·scenario 선택·호출 순서만 남겼다. Config 10 전체 runner와 Config 9의 20개 scenario runner, regression 37건이 통과했다.
 - [ ] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**

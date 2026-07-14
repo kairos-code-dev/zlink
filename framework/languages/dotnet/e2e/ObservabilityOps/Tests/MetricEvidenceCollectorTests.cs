@@ -1,4 +1,6 @@
 using System.Diagnostics.Metrics;
+using ObservabilityOps.Server.Support;
+using ObservabilityOps.Shared;
 using Xunit;
 using Zlink.Framework.Contracts.Eventing;
 
@@ -25,8 +27,6 @@ public sealed class MetricEvidenceCollectorTests
         active.Add(-1);
         duration.Record(2);
         duration.Record(4);
-        collector.RecordObservableInstruments();
-
         var first = collector.Snapshot();
         Assert.Equal(5m, Single(first, "test.counter").Value);
         Assert.Equal(1m, Single(first, "test.active").Value);
@@ -38,7 +38,6 @@ public sealed class MetricEvidenceCollectorTests
         Assert.Equal("serving", Single(first, "test.state").Tags["state"]);
 
         observableState = "draining";
-        collector.RecordObservableInstruments();
         var second = collector.Snapshot();
         var stateSeries = second.Where(sample => sample.Name == "test.state").ToArray();
         Assert.Single(stateSeries);
@@ -56,7 +55,6 @@ public sealed class MetricEvidenceCollectorTests
         var exact = firstMeter.CreateCounter<long>("test.exact-long");
         exact.Add(9_007_199_254_740_993L);
 
-        collector.RecordObservableInstruments();
         var snapshot = collector.Snapshot();
 
         Assert.Equal(5m, Single(snapshot, "test.aggregate").Value);

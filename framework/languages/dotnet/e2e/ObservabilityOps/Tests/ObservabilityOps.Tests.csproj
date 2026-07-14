@@ -16,6 +16,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../Server/ObservabilityOps.Server.csproj" />
+    <ProjectReference Include="../Server/Support/ObservabilityOps.Server.Support.csproj" />
   </ItemGroup>
 </Project>

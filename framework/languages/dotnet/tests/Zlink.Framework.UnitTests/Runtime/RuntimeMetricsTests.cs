@@ -170,7 +170,7 @@ public sealed class RuntimeMetricsTests
         Assert.All(waits, sample =>
         {
             Assert.True(sample.Value >= 0);
-            Assert.Null(sample.Kind);
+            Assert.Equal("user", sample.Kind);
         });
     }
 

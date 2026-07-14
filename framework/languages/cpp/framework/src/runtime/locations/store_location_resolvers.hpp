@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/locations/location_key_codec.hpp"
+#include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/location_value_codec.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
@@ -49,6 +50,17 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
   public:
     explicit store_location_resolvers_t (
       location_store_t &store,
+      location_options_t options = {},
+      std::shared_ptr<actor_location_observer_t> actor_locations =
+        std::make_shared<actor_location_observer_t> ()) :
+        _owned_reader (std::make_unique<live_location_reader_t> (store, options)),
+        _store (_owned_reader.get ()), _options (std::move (options)),
+        _actor_locations (std::move (actor_locations))
+    {
+    }
+
+    explicit store_location_resolvers_t (
+      live_location_reader_t &store,
       location_options_t options = {},
       std::shared_ptr<actor_location_observer_t> actor_locations =
         std::make_shared<actor_location_observer_t> ()) :
@@ -168,7 +180,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
     }
 
     static std::optional<spot_address_t>
-    resolve_actor_row (location_store_t &store,
+    resolve_actor_row (live_location_reader_t &store,
                        const std::string &actor_id,
                        const std::shared_ptr<actor_location_observer_t> &actor_locations)
     {
@@ -183,7 +195,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return spot_address_t{row->spot_mesh_name, row->node_rid, target_spot};
     }
 
-    static std::optional<spot_address_t> resolve_spot_row (location_store_t &store,
+    static std::optional<spot_address_t> resolve_spot_row (live_location_reader_t &store,
                                                            const std::string &mesh_name,
                                                            const zlink::routing_id_t &spot_rid)
     {
@@ -224,7 +236,8 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return router_channel_for (_options, mesh_name);
     }
 
-    location_store_t *_store;
+    std::unique_ptr<live_location_reader_t> _owned_reader;
+    live_location_reader_t *_store;
     location_options_t _options;
     std::shared_ptr<actor_location_observer_t> _actor_locations;
 };
@@ -232,7 +245,19 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
 class store_location_runtime_query_t final : public location_runtime_query_t
 {
   public:
-    store_location_runtime_query_t (location_store_t &store,
+    store_location_runtime_query_t (
+      location_store_t &store,
+      location_runtime_t &runtime,
+      const location_options_t &options,
+      std::shared_ptr<actor_location_observer_t> actor_locations =
+        std::make_shared<actor_location_observer_t> ()) :
+        _owned_reader (std::make_unique<live_location_reader_t> (store, options)),
+        _store (_owned_reader.get ()), _runtime (&runtime), _options (options),
+        _actor_locations (std::move (actor_locations))
+    {
+    }
+
+    store_location_runtime_query_t (live_location_reader_t &store,
                                     location_runtime_t &runtime,
                                     const location_options_t &options,
                                     std::shared_ptr<actor_location_observer_t> actor_locations =
@@ -375,7 +400,8 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         return task_t<T> (result_t<T>::success (std::move (value)));
     }
 
-    location_store_t *_store;
+    std::unique_ptr<live_location_reader_t> _owned_reader;
+    live_location_reader_t *_store;
     location_runtime_t *_runtime;
     location_options_t _options;
     std::shared_ptr<actor_location_observer_t> _actor_locations;

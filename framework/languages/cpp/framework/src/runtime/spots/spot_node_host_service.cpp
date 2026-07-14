@@ -2,6 +2,8 @@
 
 #include "runtime/spots/spot_node_host_service.hpp"
 
+#include "runtime/locations/live_location_reader.hpp"
+
 #include "runtime/configuration/endpoint_connections.hpp"
 
 #include <zlink.hpp>
@@ -309,7 +311,7 @@ void publish_local_spot_peer (spot_node_host_service_t::native_node_t &native,
 
 void reconcile_spot_mesh (spot_node_host_service_t::native_node_t &native,
                           const spot_node_snapshot_t &snapshot,
-                          location_store_t &store)
+                          live_location_reader_t &store)
 {
     if (!native.local_peer || !snapshot.discovery_channel_name || !native.node) {
         return;
@@ -372,7 +374,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
 {
     auto &serializers = services.get_required<serializer_registry_t> ();
     _location_runtime = &services.get_required<location_runtime_t> ();
-    _location_store = &services.get_required<location_store_t> ();
+    _location_store = &services.get_required<live_location_reader_t> ();
     for (const auto &configured : _spot_nodes) {
         const auto &snapshot = configured.snapshot;
         if (!snapshot.router_bind_endpoint && !snapshot.pub_bind_endpoint) {

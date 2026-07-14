@@ -75,7 +75,7 @@ namespace zlink::framework::runtime
 class actor_client_impl_t final : public actor_client_t
 {
   public:
-    actor_client_impl_t (actor_location_store_t &store,
+    actor_client_impl_t (live_location_reader_t &store,
                          serializer_registry_t &serializers,
                          std::vector<detail::spot_node_runtime_t> spot_nodes,
                          std::shared_ptr<actor_location_observer_t> actor_locations) :
@@ -502,7 +502,7 @@ class actor_client_impl_t final : public actor_client_t
         return result_t<TResult>::failure (framework_error_kind_t::request_failed, message);
     }
 
-    actor_location_store_t *_store;
+    live_location_reader_t *_store;
     serializer_registry_t *_serializers;
     std::vector<detail::spot_node_runtime_t> _spot_nodes;
     std::shared_ptr<actor_location_observer_t> _actor_locations;
@@ -513,7 +513,7 @@ class actor_client_impl_t final : public actor_client_t
 };
 
 std::shared_ptr<actor_client_t>
-make_actor_client (actor_location_store_t &store,
+make_actor_client (live_location_reader_t &store,
                    serializer_registry_t &serializers,
                    std::vector<detail::spot_node_runtime_t> spot_nodes,
                    std::shared_ptr<actor_location_observer_t> actor_locations)

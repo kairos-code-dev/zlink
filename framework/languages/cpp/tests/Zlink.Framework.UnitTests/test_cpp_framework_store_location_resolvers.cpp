@@ -1118,6 +1118,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsPendingAndRegressedActorGener
     location_options_t options;
     location_runtime_t runtime (store, options, "owner-query");
     store_location_runtime_query_t query (store, runtime, options, observer);
+    ASSERT_TRUE (store
+                   .renew_owner_lease ("owner", zlink::routing_id_t::from ("node-new"),
+                                       std::chrono::seconds (30))
+                   .result ()
+                   .has_value ());
     auto row = [] (std::int64_t generation,
                    std::optional<zlink::framework::actor_ref_t> actor_ref,
                    std::string node) {
@@ -1187,7 +1192,16 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)
                  .status);
     std::this_thread::sleep_for (std::chrono::milliseconds (5));
 
-    store_location_resolvers_t resolvers (store);
+    const auto raw_rows =
+      store.list_peers (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
+        .result ()
+        .value ();
+    ASSERT_EQ (2u, raw_rows.size ());
+
+    location_options_t options;
+    options.polling_interval = std::chrono::milliseconds::zero ();
+    zlink::framework::runtime::live_location_reader_t live_reader (store, options);
+    store_location_resolvers_t resolvers (live_reader);
     const auto resolver_rows =
       resolvers
         .list_live_peers (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
@@ -1197,9 +1211,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)
     ASSERT_EQ (1u, resolver_rows.size ());
     EXPECT_EQ ("node-live", resolver_rows.front ().node_rid->to_string ());
 
-    location_options_t options;
     location_runtime_t runtime (store, options, "owner-query");
-    store_location_runtime_query_t query (store, runtime, options);
+    store_location_runtime_query_t query (live_reader, runtime, options);
     const auto query_rows =
       query
         .list_peer_locations (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
@@ -1413,6 +1426,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
           return std::static_pointer_cast<zlink::framework::location_store_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
+    services.add_factory<zlink::framework::runtime::live_location_reader_t> (
+      [store, options] (zlink::framework::service_provider_t &) {
+          return std::make_shared<zlink::framework::runtime::live_location_reader_t> (*store,
+                                                                                     options);
+      },
+      zlink::framework::service_lifetime_t::singleton);
     services.add_factory<location_runtime_t> (
       [runtime] (zlink::framework::service_provider_t &) { return runtime; },
       zlink::framework::service_lifetime_t::singleton);
@@ -1547,6 +1566,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
           return std::static_pointer_cast<zlink::framework::location_store_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
+    services.add_factory<zlink::framework::runtime::live_location_reader_t> (
+      [store, options] (zlink::framework::service_provider_t &) {
+          return std::make_shared<zlink::framework::runtime::live_location_reader_t> (*store,
+                                                                                     options);
+      },
+      zlink::framework::service_lifetime_t::singleton);
     services.add_factory<location_runtime_t> (
       [runtime] (zlink::framework::service_provider_t &) { return runtime; },
       zlink::framework::service_lifetime_t::singleton);
@@ -1624,6 +1649,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
           return std::static_pointer_cast<zlink::framework::location_store_t> (store);
       },
       zlink::framework::service_lifetime_t::singleton);
+    lower_services.add_factory<zlink::framework::runtime::live_location_reader_t> (
+      [store, options] (zlink::framework::service_provider_t &) {
+          return std::make_shared<zlink::framework::runtime::live_location_reader_t> (*store,
+                                                                                     options);
+      },
+      zlink::framework::service_lifetime_t::singleton);
     lower_services.add_factory<location_runtime_t> (
       [lower_runtime] (zlink::framework::service_provider_t &) { return lower_runtime; },
       zlink::framework::service_lifetime_t::singleton);
@@ -1681,6 +1712,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     higher_services.add_factory<zlink::framework::location_store_t> (
       [store] (zlink::framework::service_provider_t &) {
           return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    higher_services.add_factory<zlink::framework::runtime::live_location_reader_t> (
+      [store, options] (zlink::framework::service_provider_t &) {
+          return std::make_shared<zlink::framework::runtime::live_location_reader_t> (*store,
+                                                                                     options);
       },
       zlink::framework::service_lifetime_t::singleton);
     higher_services.add_factory<location_runtime_t> (

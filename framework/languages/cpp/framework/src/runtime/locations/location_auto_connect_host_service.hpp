@@ -4,6 +4,7 @@
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_value_codec.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
@@ -45,7 +46,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     void start (service_provider_t &services) override
     {
         _runtime = &services.get_required<location_runtime_t> ();
-        _store = &services.get_required<location_store_t> ();
+        _store = &services.get_required<live_location_reader_t> ();
         detail::channel_runtime_manager_t manager = detail::channel_runtime_manager_t::from (_bus);
         manager.initialize_publisher_channels ();
         manager.initialize_client_channels ();
@@ -634,7 +635,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::vector<channel_snapshot_t> _channels;
     std::set<std::string> _route_mesh_client_channels;
     location_runtime_t *_runtime = nullptr;
-    location_store_t *_store = nullptr;
+    live_location_reader_t *_store = nullptr;
     std::mutex _peers_gate;
     std::size_t _peers_total = 0;
     std::optional<std::size_t> _peers_observed;

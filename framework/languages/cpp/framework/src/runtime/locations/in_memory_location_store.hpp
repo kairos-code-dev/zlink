@@ -38,7 +38,7 @@ class in_memory_location_store_t final : public location_store_t,
         std::lock_guard lock (_gate);
         std::vector<peer_location_t> rows;
         for (const auto &[_, row] : _peers.rows) {
-            if (owner_is_live (row.owner_id, clock_t::now ()) && matches (row, filter)) {
+            if (matches (row, filter)) {
                 rows.push_back (row);
             }
         }
@@ -66,10 +66,8 @@ class in_memory_location_store_t final : public location_store_t,
     {
         std::lock_guard lock (_gate);
         const auto found = _spots.rows.find (location_key_codec_t::encode_spot_key (key));
-        return completed (found == _spots.rows.end ()
-                              || !owner_is_live (found->second.owner_id, clock_t::now ())
-                            ? std::optional<spot_location_t>{}
-                            : std::optional<spot_location_t>{found->second});
+        return completed (found == _spots.rows.end () ? std::optional<spot_location_t>{}
+                                                       : std::optional<spot_location_t>{found->second});
     }
 
     task_t<location_page_t<spot_location_t>> list_spots (spot_location_filter_t filter,
@@ -77,9 +75,7 @@ class in_memory_location_store_t final : public location_store_t,
     {
         return completed (page_rows (
           _spots,
-          [&] (const spot_location_t &row) {
-              return owner_is_live (row.owner_id, clock_t::now ()) && matches (row, filter);
-          },
+          [&] (const spot_location_t &row) { return matches (row, filter); },
           page));
     }
 
@@ -103,10 +99,8 @@ class in_memory_location_store_t final : public location_store_t,
     {
         std::lock_guard lock (_gate);
         const auto found = _actors.rows.find (location_key_codec_t::encode_actor_key (key));
-        return completed (found == _actors.rows.end ()
-                              || !owner_is_live (found->second.owner_id, clock_t::now ())
-                            ? std::optional<actor_location_t>{}
-                            : std::optional<actor_location_t>{found->second});
+        return completed (found == _actors.rows.end () ? std::optional<actor_location_t>{}
+                                                        : std::optional<actor_location_t>{found->second});
     }
 
     task_t<location_page_t<actor_location_t>>
@@ -114,9 +108,7 @@ class in_memory_location_store_t final : public location_store_t,
     {
         return completed (page_rows (
           _actors,
-          [&] (const actor_location_t &row) {
-              return owner_is_live (row.owner_id, clock_t::now ()) && matches (row, filter);
-          },
+          [&] (const actor_location_t &row) { return matches (row, filter); },
           page));
     }
 
@@ -140,10 +132,8 @@ class in_memory_location_store_t final : public location_store_t,
     {
         std::lock_guard lock (_gate);
         const auto found = _routes.rows.find (location_key_codec_t::encode_route_key (key));
-        return completed (found == _routes.rows.end ()
-                              || !owner_is_live (found->second.owner_id, clock_t::now ())
-                            ? std::optional<route_location_t>{}
-                            : std::optional<route_location_t>{found->second});
+        return completed (found == _routes.rows.end () ? std::optional<route_location_t>{}
+                                                        : std::optional<route_location_t>{found->second});
     }
 
     task_t<location_page_t<route_location_t>>
@@ -151,9 +141,7 @@ class in_memory_location_store_t final : public location_store_t,
     {
         return completed (page_rows (
           _routes,
-          [&] (const route_location_t &row) {
-              return owner_is_live (row.owner_id, clock_t::now ()) && matches (row, filter);
-          },
+          [&] (const route_location_t &row) { return matches (row, filter); },
           page));
     }
 

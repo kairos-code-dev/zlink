@@ -18,6 +18,8 @@
 namespace zlink::framework::runtime
 {
 
+class live_location_reader_t;
+
 class spot_node_host_service_t final : public hosted_service_t
 {
   public:
@@ -44,7 +46,7 @@ class spot_node_host_service_t final : public hosted_service_t
   private:
     std::vector<node_runtime_t> _spot_nodes;
     location_runtime_t *_location_runtime = nullptr;
-    location_store_t *_location_store = nullptr;
+    live_location_reader_t *_location_store = nullptr;
     std::vector<std::unique_ptr<native_node_t>> _nodes;
     std::atomic_bool _running{false};
     std::thread _receive_thread;

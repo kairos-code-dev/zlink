@@ -12,15 +12,21 @@
 | SF-A2 | 구현 | C++ Redis store는 watch 없이 polling 경로로 동작한다. status의 `watch_enabled=false`와 provider shutdown 뒤 peer row 제거를 public `/query/*` endpoint로 검증한다. |
 | SF-B1 | 구현 | Redis container process를 정지한 동안 기존 연결 request가 계속 성공하고, runtime status가 store unhealthy로 바뀐 뒤 빈 store 재기동 후 healthy로 회복된다. |
 | SF-B2 | 구현 | Redis 정지 중 `api-b`를 새 channel endpoint에서 재기동한다. store failure grace를 넘길 때까지 기존 `api-a` 연결의 request만 성공하고, 빈 store 복구 뒤 새 endpoint row가 등록되어 `api-b`가 다시 요청을 처리한다. |
-| SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 stale row가 owner lease 만료 뒤 live peer list에서 제외되고 이후 request는 survivor `api-a`로만 간다. |
-| SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 lease TTL을 기다리지 않고 live peer list에서 제거되고 이후 request는 `api-a`로만 간다. |
+| SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 raw Redis row는 남지만 framework의 owner lease join이 lease 만료 뒤 live peer list에서 제외하고, 이후 request는 survivor `api-a`로만 간다. |
+| SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 framework live-row reader가 lease와 row 정리를 반영해 lease TTL을 기다리지 않고 live peer list에서 제외하며, 이후 request는 `api-a`로만 간다. |
 | SF-D1 | 구현 | lease TTL보다 짧게 Redis를 정지하고 빈 store로 재기동한 뒤 local row 재등록과 heartbeat 유예를 거쳐 status가 healthy로 회복되고 request가 계속 성공한다. |
-| SF-D2 | 구현 | Redis 정지 중 provider `api-b`가 crash된 뒤 빈 store 재기동 시 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
+| SF-D2 | 구현 | Redis 정지 중 provider `api-b`가 crash된 뒤 빈 store 재기동 시 framework owner lease join에서 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
 | SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
 | SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-074233-2224721`(SF-C1), `logs/20260715-074258-2226349`(SF-C2),
+    `logs/20260715-074320-2228448`(SF-D2)
+  - 의미: Redis store의 lease 필터를 제거한 뒤에도 framework의 공통 live-row reader가
+    owner lease를 join해 stale peer 제외와 auto-connect 정리를 수행했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-072318-2155219`(SF-B2), 단독 검증은 `logs/20260715-072705-2167572`

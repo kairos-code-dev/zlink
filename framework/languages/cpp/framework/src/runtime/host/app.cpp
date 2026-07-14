@@ -14,6 +14,7 @@
 #include "runtime/host/framework_runtime.hpp"
 #include "runtime/http/http_host_service.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_auto_connect_host_service.hpp"
 #include "runtime/locations/location_host_service.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
@@ -55,7 +56,7 @@ class store_actor_directory_t final : public actor_directory_t
 {
   public:
     store_actor_directory_t (
-      location_store_t &store,
+      runtime::live_location_reader_t &store,
       std::shared_ptr<runtime::actor_location_observer_t> actor_locations) :
         _store (store), _actor_locations (std::move (actor_locations))
     {
@@ -87,7 +88,7 @@ class store_actor_directory_t final : public actor_directory_t
     }
 
   private:
-    location_store_t &_store;
+    runtime::live_location_reader_t &_store;
     std::shared_ptr<runtime::actor_location_observer_t> _actor_locations;
 };
 
@@ -545,6 +546,15 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
+    if (!_state->services.contains (std::type_index (typeid (runtime::live_location_reader_t)))) {
+        const auto location_options = options.location_options ();
+        _state->services.add_factory<runtime::live_location_reader_t> (
+          [location_options] (service_provider_t &provider) {
+              return std::make_unique<runtime::live_location_reader_t> (
+                provider.get_required<location_store_t> (), location_options);
+          },
+          service_lifetime_t::singleton);
+    }
     if (!_state->services.contains (std::type_index (typeid (runtime::location_lifecycle_t)))) {
         _state->services.add_factory<runtime::location_lifecycle_t> (
           [] (service_provider_t &provider) {
@@ -561,7 +571,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_factory<runtime::store_location_resolvers_t> (
           [resolver_location_options, actor_location_observer] (service_provider_t &provider) {
               return std::make_unique<runtime::store_location_resolvers_t> (
-                provider.get_required<location_store_t> (), resolver_location_options,
+                provider.get_required<runtime::live_location_reader_t> (), resolver_location_options,
                 actor_location_observer);
           },
           service_lifetime_t::singleton);
@@ -616,7 +626,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           [actor_location_observer] (service_provider_t &provider) {
               return std::shared_ptr<actor_directory_t> (
                 std::make_shared<detail::store_actor_directory_t> (
-                  provider.get_required<location_store_t> (), actor_location_observer));
+                  provider.get_required<runtime::live_location_reader_t> (),
+                  actor_location_observer));
           },
           service_lifetime_t::singleton);
     }
@@ -635,7 +646,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           [location_options, actor_location_observer] (service_provider_t &provider) {
               return std::shared_ptr<location_runtime_query_t> (
                 std::make_shared<runtime::store_location_runtime_query_t> (
-                  provider.get_required<location_store_t> (),
+                  provider.get_required<runtime::live_location_reader_t> (),
                   provider.get_required<runtime::location_runtime_t> (), location_options,
                   actor_location_observer));
           },
@@ -755,9 +766,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_factory<actor_client_t> (
           [spot_nodes = std::move (actor_client_spot_nodes),
            actor_location_observer] (service_provider_t &provider) {
-              return runtime::make_actor_client (provider.get_required<location_store_t> (),
-                                                 provider.get_required<serializer_registry_t> (),
-                                                 spot_nodes, actor_location_observer);
+              return runtime::make_actor_client (
+                provider.get_required<runtime::live_location_reader_t> (),
+                provider.get_required<serializer_registry_t> (), spot_nodes,
+                actor_location_observer);
           },
           service_lifetime_t::singleton);
     }

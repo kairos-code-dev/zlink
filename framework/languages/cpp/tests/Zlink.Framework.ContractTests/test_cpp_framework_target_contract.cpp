@@ -80,6 +80,8 @@ int main ()
       read_file (root / "framework/src/runtime/locations/location_auto_connect_host_service.hpp");
     const auto store_location_resolvers =
       read_file (root / "framework/src/runtime/locations/store_location_resolvers.hpp");
+    const auto live_location_reader =
+      read_file (root / "framework/src/runtime/locations/live_location_reader.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
     const auto pubsub_client_root = e2e_root / "PubSub/Client";
     const auto pubsub_client_support =
@@ -714,6 +716,18 @@ int main ()
                     && store_failure_client.find ("SF-B2 replacement provider was not used after recovery")
                          != std::string::npos,
                   "E2E-CP-38", "SF-B2 does not prove new outbound suppression and recovery");
+
+    /* E2E-CP-39 — stores return raw rows; one runtime view owns the lease join. */
+    gate.require (redis_hpp.find ("owner_is_live") == std::string::npos,
+                  "E2E-CP-39", "Redis store still filters rows by owner lease");
+    gate.require (live_location_reader.find ("list_owner_leases") != std::string::npos
+                    && live_location_reader.find ("lease_expires_at") != std::string::npos
+                    && live_location_reader.find ("store_now") != std::string::npos,
+                  "E2E-CP-39", "framework has no centralized live-row lease join");
+    gate.require (app_runtime.find ("live_location_reader_t") != std::string::npos
+                    && location_auto_connect.find ("get_required<live_location_reader_t>")
+                         != std::string::npos,
+                  "E2E-CP-39", "runtime consumers still bypass the live-row view");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

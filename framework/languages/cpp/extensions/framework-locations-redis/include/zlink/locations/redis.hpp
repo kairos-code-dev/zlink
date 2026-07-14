@@ -1419,21 +1419,7 @@ class redis_location_store_t final : public location_store_t,
             row.updated_at =
               detail::redis_location_script_result_t::from_unix_ms (std::stoll (*fields[2]));
         }
-        if (!owner_is_live (row.owner_id)) {
-            return std::nullopt;
-        }
         return row;
-    }
-
-    bool owner_is_live (const std::string &owner_id)
-    {
-        if (owner_id.empty ()) {
-            return false;
-        }
-        const auto remaining_ms = redis_get (
-          client ().pttl (
-            detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id)));
-        return remaining_ms > 0;
     }
 
     static owner_lease_t parse_lease_value (std::string owner_id, const std::string &value)

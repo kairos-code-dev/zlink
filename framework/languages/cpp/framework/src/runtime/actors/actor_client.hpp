@@ -14,9 +14,10 @@ namespace zlink::framework::runtime
 {
 
 class actor_location_observer_t;
+class live_location_reader_t;
 
 std::shared_ptr<actor_client_t>
-make_actor_client (actor_location_store_t &store,
+make_actor_client (live_location_reader_t &store,
                    serializer_registry_t &serializers,
                    std::vector<detail::spot_node_runtime_t> spot_nodes,
                    std::shared_ptr<actor_location_observer_t> actor_locations);

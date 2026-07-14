@@ -147,7 +147,7 @@ Marten `FetchForWriting`식 stateless repository(§11 P1 후보).
 
 ### 4.1 계약은 framework가, 구현은 extension이 소유한다
 
-[location store](../spec/40-location-runtime.ko.md)와 같은 구조를 따른다. framework 본체는
+[location store](../../spec/server/40-location-runtime.ko.md)와 같은 구조를 따른다. framework 본체는
 store interface와 값 타입만 정의하고, 실제 저장소 구현은 별도 extension package
 (`Zlink.Framework.EventSourcing.Redis` 상당)나 사용자 코드가 제공한다. framework 본체는
 Redis·MongoDB client에 의존하지 않는다.
@@ -301,7 +301,7 @@ append(streamId, expectedVersion, events[]) -> AppendResult
 | `versionConflict` | `actualVersion` (실제 현재 version) | expected version 불일치로 거부됨 |
 
 **version 충돌은 오류(예외)가 아니라 결과 값이다.** 동시성 경합은 정상 운영에서 일어나는
-흐름이라, [location store의 write result 분리](../spec/40-location-runtime.ko.md)와 같은
+흐름이라, [location store의 write result 분리](../../spec/server/40-location-runtime.ko.md)와 같은
 원칙을 따른다 — 저장소 연결 실패 같은 infrastructure 오류만 언어별 오류 모델(§6.6)로
 던지고, 경합은 호출자가 분기하는 결과로 돌려준다. 호출자의 표준 대응은 "다시 읽고, 다시
 결정하고, 다시 append"다(§7의 journal은 이 대응을 내장한다).
@@ -652,13 +652,13 @@ fold된 상태를 보고 도메인이 판정하므로, §6.5의 "중복 제거�
 ## 9. 언어별 인터페이스 투영
 
 공통 계약(§6·§7)의 언어별 목표 시그니처다. 비동기·취소 표현은 각 언어의 기존 공개 계약
-관례([handler-interfaces](../spec/languages/README.ko.md))를 그대로 따른다 — 비동기 타입은
+관례([handler-interfaces](../../spec/server/languages/README.ko.md))를 그대로 따른다 — 비동기 타입은
 `.NET` `ValueTask` / Java `CompletionStage` / Kotlin `suspend` / Node `Promise` /
 C++ `task_t`, 취소는 `.NET`만 `CancellationToken`을 받고 Java·Kotlin·C++는 취소 인자를
 두지 않으며 Node는 장기 작업에만 선택적 `AbortSignal`을 둔다.
 
 **C++ 투영은 payload 표현이 미확정(§14 #3)이라 부분 목표 계약이다.** 확정 전까지
-[구현 차이](../spec/90-implementation-gap.ko.md) 관리 대상으로 두고, 다른 4개 언어의
+[구현 차이](../../spec/90-implementation-gap.ko.md) 관리 대상으로 두고, 다른 4개 언어의
 투영만 완전한 목표 계약으로 본다.
 
 각 언어 절은 계약의 핵심 표면(store·snapshot·journal의 진입점과 값 타입)에 대한 목표
@@ -1098,13 +1098,13 @@ in-memory와 Redis 구현이 같은 스위트를 통과해야 한다. `.NET` 기
 ### 12.4 문서 회귀
 
 - 이 초안이 정식 spec으로 승격되면, 언어별 스펙의 시그니처와 구현 public surface의
-  차이를 [implementation-gap](../spec/90-implementation-gap.ko.md)에 기록한다.
+  차이를 [implementation-gap](../../spec/90-implementation-gap.ko.md)에 기록한다.
 - guide 문서의 사용 예제는 예제=샘플 규약에 따라 실행되는 샘플(마이그레이션된
   ShoppingMall)과 1:1로 대응시킨다.
 
 ## 13. 도입 단계
 
-[공개 계약 관리 절차](../spec/00-public-contract-governance.ko.md) §3의 순서(공통 스펙 →
+[공개 계약 관리 절차](../../spec/00-public-contract-governance.ko.md) §3의 순서(공통 스펙 →
 언어별 스펙 → 구현·contract test)를 따른다. 전면 동시 구현을 피하고 언어는 `.NET`부터
 확산한다.
 
@@ -1137,7 +1137,7 @@ in-memory와 Redis 구현이 같은 스위트를 통과해야 한다. `.NET` 기
 - Marten: Appending Events / FetchForWriting — https://martendb.io/events/appending
 - KurrentDB(EventStoreDB) Appending events / StreamState — https://docs.kurrent.io/clients/dotnet/legacy/v23.3/getting-started
 - Redis Streams — https://redis.io/docs/latest/develop/data-types/streams/
-- 내부 선례: [location runtime 계약](../spec/40-location-runtime.ko.md),
-  [location store Redis extension](../spec/41-location-store-redis.ko.md),
-  [공개 계약 관리](../spec/00-public-contract-governance.ko.md),
+- 내부 선례: [location runtime 계약](../../spec/server/40-location-runtime.ko.md),
+  [location store Redis extension](../../spec/server/41-location-store-redis.ko.md),
+  [공개 계약 관리](../../spec/00-public-contract-governance.ko.md),
   [ShoppingMall sample](../sample/event/shoppingmall.ko.md)

@@ -2,7 +2,7 @@
 
 ## 1. 목적
 
-이 계획은 `framework/doc/framework/common/spec/`에 고정된 목표 계약과 각 언어의 실제
+이 계획은 `framework/doc/framework/spec/`에 고정된 목표 계약과 각 언어의 실제
 framework 구현 사이의 차이를 모두 없애기 위한 실행 문서다. 첫 작업 언어는 `.NET`이다.
 각 언어의 구현과 완료 판정은 서로 독립적으로 진행한다.
 
@@ -38,7 +38,7 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 ### 2.1 Public interface freeze
 
 각 언어의 public contract interface는 이미
-`framework/doc/framework/common/spec/languages/<lang>/`의 정식 계약 문서 집합에 확정되어
+`framework/doc/framework/spec/server/languages/<lang>/`의 정식 계약 문서 집합에 확정되어
 있다. 이 구현 계획은 interface를 새로 설계하거나 선택하는 작업이 아니다.
 
 - 구현 agent는 언어별 interface 문서의 type, member, overload, generic, nullable,
@@ -53,21 +53,21 @@ runtime과 build를 공유하지만 public 사용성과 테스트 표면이 다�
 
 기준 문서:
 
-- [공개 계약 관리](../framework/common/spec/00-public-contract-governance.ko.md)
-- [언어별 구현 차이](../framework/common/spec/90-implementation-gap.ko.md)
-- [비동기 실행 정책](../framework/common/spec/04-async-execution-policy.ko.md)
-- [Spot 주소 메시징](../framework/common/spec/24-spot-address-messaging.ko.md)
+- [공개 계약 관리](../framework/spec/00-public-contract-governance.ko.md)
+- [언어별 구현 차이](../framework/spec/90-implementation-gap.ko.md)
+- [비동기 실행 정책](../framework/spec/04-async-execution-policy.ko.md)
+- [Spot 주소 메시징](../framework/spec/server/24-spot-address-messaging.ko.md)
 - [소프트웨어 설계 원칙](../../../doc/principal/software-design-principles.md)
 
 언어별 계약 소유권은 다음과 같다. 한 문서만 읽고 전체 public surface를 판정하지 않는다.
 
 | 언어 | 전체 interface 기준 | 함께 읽어야 하는 기능별 정식 계약 | 비고 |
 |------|---------------------|----------------------------------|------|
-| `.NET` | [handler-interfaces](../framework/common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 같은 디렉터리의 ASP.NET Core, actor, channel, location, monitoring, Spot, stream, session dispatch, Spot node 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
-| Java | [handler-interfaces](../framework/common/spec/languages/java/02-handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
-| Kotlin | [handler-interfaces](../framework/common/spec/languages/kotlin/02-handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
-| Node.js | [handler-interfaces](../framework/common/spec/languages/node/02-handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
-| C++ | [cpp-framework-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/common/spec/languages/cpp/02-framework-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
+| `.NET` | [handler-interfaces](../framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 같은 디렉터리의 ASP.NET Core, actor, channel, location, monitoring, Spot, stream, session dispatch, Spot node 문서 | `README.ko.md`의 범위와 취소 규칙도 적용 |
+| Java | [handler-interfaces](../framework/spec/server/languages/java/02-handler-interfaces.ko.md) | Spring Boot channel/Spot/actor-session/stream/registry/monitoring과 Stream Connector 문서 | handler 문서는 interface, annotation, context, option만 소유 |
+| Kotlin | [handler-interfaces](../framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md)와 Java 계약 전체 | Kotlin 전용 coroutine, extension, `Flow` 계약 | Java 표면을 복사하지 않고 함께 적용 |
+| Node.js | [handler-interfaces](../framework/spec/server/languages/node/02-handler-interfaces.ko.md) | 같은 디렉터리의 Stream Connector 계약과 공통 framework spec | `README.ko.md`의 범위와 취소 규칙도 적용 |
+| C++ | [cpp-framework-interfaces](../framework/spec/server/languages/cpp/02-framework-interfaces.ko.md) | channel, Spot, stream, registry, monitoring, application framework, HTTP hosting/server, actor gateway relay 문서 | [handler-interfaces](../framework/spec/server/languages/cpp/02-framework-interfaces.ko.md)는 handler 정렬 규칙이며 전체 surface 목록이 아님 |
 
 `02-framework-interfaces.ko.md`는 상위 모델을 위한 guide이므로 public interface 권위 문서로
 간주하지 않는다. 다만 guide의 표준 사용 패턴이 확정 계약과 충돌하지 않는지는 G7에서 확인한다.
@@ -224,8 +224,8 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 공통 정식 spec이 있으면 해당 행을 먼저 추가한다.
 
 ```bash
-rg --files framework/doc/framework/common/spec -g '*.ko.md' \
-  | sed 's#framework/doc/framework/common/spec/##' | rg -v '/' | sort
+rg --files framework/doc/framework/spec -g '*.ko.md' \
+  | sed 's#framework/doc/framework/spec/##' | rg -v '/' | sort
 ```
 
 ### 5.1 언어별 정식 계약 coverage ledger
@@ -471,7 +471,7 @@ G4 read-only reviewer는 framework source만 검색하지 않고 core header와 
 다음 명령으로 만든다.
 
 ```bash
-rg --files framework/doc/framework/common/spec/languages/<lang> -g '*.ko.md' | sort
+rg --files framework/doc/framework/spec/server/languages/<lang> -g '*.ko.md' | sort
 ```
 
 출력된 모든 파일에 `검토 완료`, `비적용 근거` 또는 ledger ID 중 하나가 있어야 한다.

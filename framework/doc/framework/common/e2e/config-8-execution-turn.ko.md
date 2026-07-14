@@ -7,7 +7,7 @@
 Spot과 Entry Spot handler가 request, actor join, worker, HTTP client 호출을 기다릴 때
 **실행 줄의 turn을 어떻게 다루는지**를 실제 배포 구성에서 검증한다.
 
-**핵심 계약은 하나다** — [04 §1.1](../spec/04-async-execution-policy.ko.md).
+**핵심 계약은 하나다** — [04 §1.1](../../spec/04-async-execution-policy.ko.md).
 
 | terminator | 실행 줄 |
 |---|---|
@@ -284,7 +284,7 @@ terminator가 정하는가.
 - 절차: user Spot A에 있는 actor의 handler(= A의 실행 줄, turn 유지)가 `JoinSpot(B).Async(...)`를
   호출한다.
 - 검증: **join이 timeout 없이 완료된다.** callback 순서는 `target OnActorJoin → source OnLeaveActor →
-  target OnJoinedActor`다([23 §3.3](../spec/23-spot-actor.ko.md)). source `OnLeaveActor`는 **caller의
+  target OnJoinedActor`다([23 §3.3](../../spec/server/23-spot-actor.ko.md)). source `OnLeaveActor`는 **caller의
   turn 안에서** 실행된다(evidence의 turn id가 caller와 같다).
 - 세부 동작: **이 시나리오가 join orchestration 방향을 고정한다.** commit이 target 줄에서 source 큐로
   post하는 구조라면 caller가 그 줄을 잡고 있으므로 여기서 timeout으로 실패한다.
@@ -349,7 +349,7 @@ terminator가 정하는가.
 
 - 절차: spot A의 handler가 **A 자신에게** request를 보내고 `.Async(...)`로 기다린다.
 - 검증: request timeout으로 실패한다. 실패 뒤 A의 다음 작업이 정상 진행된다. **이것은 application
-  설계 오류이며 timeout이 올바른 결과다**([04 §1.1](../spec/04-async-execution-policy.ko.md)).
+  설계 오류이며 timeout이 올바른 결과다**([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
 - 세부 동작: 사이클의 관측 가능한 결과를 고정한다.
 
 ### Track G — 언어 동등성

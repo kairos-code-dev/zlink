@@ -30,4 +30,4 @@ suspend fun loadProfile(client: ZLinkHttpClient): PlayerProfile =
 | 13 | [에러 처리](13-error-handling.ko.md) | 예외 모델, retriable, 예외 경로 |
 
 정식 계약과 회귀 테스트 축은 spec 문서
-[kotlin-http-client.ko.md](spec/kotlin-http-client.ko.md)가 정본이다.
+[kotlin-http-client.ko.md](../../framework/spec/http-client/languages/kotlin/kotlin-http-client.ko.md)가 정본이다.

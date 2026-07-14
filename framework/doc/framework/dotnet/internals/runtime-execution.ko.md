@@ -2,7 +2,7 @@
 [문서 목록](../../../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[.NET 묶음](../README.ko.md) | [Session Actor Dispatch 계약](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)
+[.NET 묶음](../README.ko.md) | [Session Actor Dispatch 계약](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 
 # ZLink Framework .NET Runtime Execution
 

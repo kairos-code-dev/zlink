@@ -233,7 +233,7 @@ courier별 session route는 별도 gateway나 registry가 아니라 해당 couri
 그 다음 **spot handle resolver**로 그 노드의 `CourierEntrySpot` handle을 얻어 offer를 그 handle로
 보낸다. 즉 전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 route mesh channel에
 node rid를 찍어 보내는 표면은 이 샘플에서 쓰지 않는다
-([10 §3.1](../../spec/10-channel-topology.ko.md), [24 §3](../../spec/24-spot-address-messaging.ko.md)).
+([10 §3.1](../../../spec/server/10-channel-topology.ko.md), [24 §3](../../../spec/server/24-spot-address-messaging.ko.md)).
 `CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이며, entry spot의 route handler가 그 노드
 안에서 대상 actor를 찾는다.
 
@@ -251,7 +251,7 @@ stream client가 다시 연결될 때 두 역할의 경로가 다르다.
 handle이 주소 snapshot과 갱신 시점을 소유하고, stale 실패 시 **framework가** handle을 갱신해
 request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있어 재전송하지 않는다).
 실패 분류와 재시도 의미는
-[spot 주소 메시징 스펙](../../spec/24-spot-address-messaging.ko.md)을 따른다.
+[spot 주소 메시징 스펙](../../../spec/server/24-spot-address-messaging.ko.md)을 따른다.
 
 ### 6.1 Entry Spot에서의 대기 — `yield`를 쓴다
 
@@ -259,7 +259,7 @@ request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있�
 handler가 `async`로 오래 기다리면 **뒤따르는 다른 actor의 생성·join·bind가 전부 막힌다.**
 
 **이 샘플은 그 대비를 보여 주는 자리다.** 세 terminator의 선택 기준은 하나다 —
-**그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
+**그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
 
 | 대기 | terminator | 이유 |
 |------|-----------|------|
@@ -272,9 +272,9 @@ handler가 `async`로 오래 기다리면 **뒤따르는 다른 actor의 생성�
 쓰지 않는다.
 
 같은 이유로, entry spot 안에서 **DB 드라이버·외부 SDK처럼 spot과 무관한 비동기 대기**가 생기면
-`RunIoWorker(...).Yield()`로 감싼다([04 §1.2](../../spec/04-async-execution-policy.ko.md)).
+`RunIoWorker(...).Yield()`로 감싼다([04 §1.2](../../../spec/04-async-execution-policy.ko.md)).
 외부 HTTP·레거시 API는 감싸지 않고 HTTP client의 `.Yield()`를 직접 쓴다
-([12 §3.1](../../spec/12-http-client.ko.md)). 반대로 배송 상태를 소유하는 `Tracking` actor handler는
+([12 §3.1](../../../spec/http-client/12-http-client.ko.md)). 반대로 배송 상태를 소유하는 `Tracking` actor handler는
 자기 상태를 두고 판단하므로 `async`로 기다린다.
 
 ## 7. Message 계약

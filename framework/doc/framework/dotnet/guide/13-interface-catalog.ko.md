@@ -7,7 +7,7 @@
 > 이 챕터는 framework adapter가 노출하는 **모든 public 계약 인터페이스**를 한곳에
 > 모아, 각 인터페이스가 실제로 어떻게 쓰이는지 코드와 함께 보여 준다. 개념·사용
 > 흐름은 앞 챕터(05~12)가, 언어 중립 정식 정의는
-> [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다. 이 문서는
+> [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다. 이 문서는
 > 그 둘을 잇는 **실행 검증된 예문 색인**이다.
 
 ## 0. 이 카탈로그를 읽는 법
@@ -28,7 +28,7 @@
   인자는 `IZLinkSpotPacketHandler<TSpot, TMessage>`처럼 풀어 적되, 본문 코드는
   실제 구현 형태를 보인다.
 - **비동기 이름 규칙.** 공통 의미는
-  [비동기 실행과 coroutine 정책](../../common/spec/04-async-execution-policy.ko.md)을
+  [비동기 실행과 coroutine 정책](../../spec/04-async-execution-policy.ko.md)을
   따른다. `.NET`에서는 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하는
   공개 호출 종결자가 `Async(...)`로 끝난다. awaitable을 반환하지 않는
   callback request 표면만 `Submit(callback)` 이름을 유지한다.
@@ -467,7 +467,7 @@ publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Sub
 framework는 위치 event와 주기적 조회로 `SpotHandle`의 내부 주소를 갱신한다. request 도중
 주소가 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송한다. send는 중복 전달 가능성 때문에
 자동 재전송하지 않으며, local 제출 실패는 monitoring 오류 경로에서 관측한다
-([공통 스펙: spot 주소 메시징](../../common/spec/24-spot-address-messaging.ko.md)).
+([공통 스펙: spot 주소 메시징](../../spec/server/24-spot-address-messaging.ko.md)).
 
 | 인터페이스 | 역할 |
 |------------|------|
@@ -687,7 +687,7 @@ await publisher.PublishAsync(socketEvent, ct);   // IZLinkRuntimeEventPublisher
 ### 6.1 운영 — 메트릭 · flow 상관관계 · drain
 
 > 사용법은 [12-operations](12-operations.ko.md). 자세한 계약은
-> [spec/aspnet-core-monitoring §10~§12](../../common/spec/languages/dotnet/01-system-structure.ko.md).
+> [spec/aspnet-core-monitoring §10~§12](../../spec/server/languages/dotnet/01-system-structure.ko.md).
 
 ```csharp
 builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter(ZLinkMeters.Framework));
@@ -726,7 +726,7 @@ await timer.CancelAsync();   // IZLinkTimer
 ## 8. Location — store 등록 · 위치 조회 · 운영 조회
 
 > 사용법은 [10-location](10-location.ko.md), 계약은
-> [공통 스펙](../../common/spec/40-location-runtime.ko.md). 검증 클래스는 `LocationContractTests`.
+> [공통 스펙](../../spec/server/40-location-runtime.ko.md). 검증 클래스는 `LocationContractTests`.
 
 ```csharp
 // 등록 — 통합 store 인스턴스 하나 (Redis extension 또는 사용자 구현)
@@ -788,11 +788,11 @@ var summaries = await query.ListServiceSummariesAsync(new ZLinkLocationServiceSu
 > client 측 Stream Connector(`Systems.Zlink.Stream.Connector`)의 `Zlink*` 타입은
 > 별도 client 라이브러리라 이 카탈로그(서버 framework 계약)에 포함되지 않는다.
 > connector 표면은 [09-stream](09-stream.ko.md) §2와
-> [Stream Connector 공개 계약](../../common/spec/languages/dotnet/03-stream-connector.ko.md)이 다룬다.
+> [Stream Connector 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이 다룬다.
 
 ## 10. 더 보기
 
-- 언어 중립 정식 정의: [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)
+- 언어 중립 정식 정의: [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 기능 선택 지도: [04-feature-map](04-feature-map.ko.md)
 - 계약 테스트 소스: `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`
 

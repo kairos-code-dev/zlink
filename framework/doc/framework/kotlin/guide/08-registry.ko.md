@@ -109,7 +109,7 @@ SPOT owner route를 외부 저장소로 풀어야 할 때만 custom Spot remote 
 
 - 위치 해결 흐름 첫 예제: [02-getting-started §6](02-getting-started.ko.md)
 - topology 변화를 runtime event로 관찰: [09-monitoring](09-monitoring.ko.md)
-- 정식 계약: [spring-boot-registry](../../common/spec/languages/java/01-system-structure.ko.md)
+- 정식 계약: [spring-boot-registry](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

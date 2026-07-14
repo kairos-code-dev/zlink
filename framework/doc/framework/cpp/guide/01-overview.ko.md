@@ -5,7 +5,7 @@
 > 이 문서는 C++ framework 가이드의 진입점이다. C++ 애플리케이션 개발자가
 > `zlink::framework`를 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을 설명한다.
 > 언어 중립 정식 정의는 [공통 스펙 목차](../../common/README.ko.md)가,
-> C++ 표면의 자세한 계약은 [spec/](../../common/spec/languages/cpp/02-framework-interfaces.ko.md) 문서가
+> C++ 표면의 자세한 계약은 [spec/](../../spec/server/languages/cpp/02-framework-interfaces.ko.md) 문서가
 > 다룬다. 두 표기가 어긋나면 spec이 우선이다.
 
 ## 1. 이 프레임워크가 하는 일
@@ -390,7 +390,7 @@ HTTP **요청을 보내는** 쪽은 별도 산출물 `zlink::http_client`다 —
 
 ## 6. 현재 상태
 
-이 가이드가 설명하는 표면은 [spec/](../../common/spec/languages/cpp/02-framework-interfaces.ko.md) 의 계약을
+이 가이드가 설명하는 표면은 [spec/](../../spec/server/languages/cpp/02-framework-interfaces.ko.md) 의 계약을
 따른다. 구현 세부나 public header와 문서 표현이 어긋나면 spec과 header를 우선한다.
 새 API 설계가 아직 구현 전 단계라면 정식 guide가 아니라 draft spec에서 먼저 다룬다.
 

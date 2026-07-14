@@ -7,8 +7,8 @@
 > 이 문서는 `.NET` 가이드의 진입점이다. 가이드는 `ASP.NET Core` 개발자가
 > ZLink Framework의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
 > 직접 설명한다. 개념의 **언어 중립 정식 정의**는 [공통 스펙
-> 개요](../../common/spec/01-overview.ko.md)가, `.NET` public API의 **정식 계약**은
-> [spec/](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
+> 개요](../../spec/01-overview.ko.md)가, `.NET` public API의 **정식 계약**은
+> [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
 > spec이 우선이다.
 
 ## 1. 무엇인가 — 한 줄 정의
@@ -789,7 +789,7 @@ ZLink의 용도를 구체적인 업무 흐름으로 확인할 때는 [공통 샘
 **이 계층이 하지 않는 것도 분명하다.** ZLink Framework는 새 transport나 새 socket 의미를 만드는 계층이
 아니다. 기존 `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되, application
 개발자가 DI, hosted service, handler, location store 모델로 다룰 수 있게 감싼다. 정식
-public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)을, runtime
+public API 계약을 검토하는 사람은 [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)을, runtime
 내부 구조를 고치는 사람은 [internals/](../internals/backend-dependency-policy.ko.md)를
 같이 봐야 한다.
 
@@ -814,7 +814,7 @@ public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/
 
 ## 9. 현재 상태
 
-이 가이드가 설명하는 public API는 [spec/](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)의 계약
+이 가이드가 설명하는 public API는 [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)의 계약
 카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`Request`,
 `Submit`, `Bind`, `AddHandlerGroup` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
@@ -834,7 +834,7 @@ public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/
 11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 12. [14-grpc-alternative](14-grpc-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 13. [공통 샘플](../../common/sample/README.ko.md) — 정본 업무 시나리오와 검증 기준
-14. [spec/](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
+14. [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

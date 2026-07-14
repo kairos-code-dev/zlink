@@ -55,7 +55,7 @@ C++ extension scenario로 둔다. Extension scenario는 공통 비교표에 섞�
 C++ framework는 내장 HTTP server를 제공하므로 `http_handler_roundtrip` 외에 HTTP server
 자체 성능 gate를 둔다. 이 gate는 아래 spec의 성능 기준을 따른다.
 
-- [C++ embedded HTTP server spec](../../common/spec/languages/cpp/61-embedded-http-server.ko.md)
+- [C++ embedded HTTP server spec](../../spec/server/languages/cpp/61-embedded-http-server.ko.md)
 
 HTTP handler e2e와 HTTP server perf는 목적이 다르다.
 

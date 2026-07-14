@@ -9,7 +9,7 @@ public sealed class RegressionTests
     [
         "README.ko.md",
         // 언어별 공개 계약은 3문서로 압축한다: 시스템 구조 · 인터페이스 · connector.
-        // 기능별 의미는 공통 스펙(framework/doc/framework/common/spec)이 소유한다.
+        // 기능별 의미는 공통 스펙(framework/doc/framework/spec)이 소유한다.
         "01-system-structure.ko.md",
         "02-handler-interfaces.ko.md",
         "03-stream-connector.ko.md",
@@ -49,8 +49,7 @@ public sealed class RegressionTests
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
             .Where(path => !IsUnderDirectory(path, guideRoot, true))
-            .Concat(Directory
-                .EnumerateFiles(contractDirectory, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Concat(GetDotNetContractDocs()
                 .Where(path => !string.Equals(
                     Path.GetFileName(path),
                     "README.ko.md",
@@ -325,6 +324,11 @@ public sealed class RegressionTests
         var activeScenarios = GetActiveE2EScenarios();
         var allRunner = File.ReadAllText(Path.Combine(dotNetE2ERoot, "run_e2e_all.sh"));
 
+        // Config 8은 세 terminator(submit/async/yield) 계약으로 다시 쓴 목표 문서다. 현재 `.NET`
+        // 구현은 자동 turn dispatch에 머물러 있어 TD-* fixture가 아직 없다. 이 차이는 공통 spec의
+        // 구현 차이 문서가 소유한다 — 여기서 조용히 통과시키지 않고, 갭이 기록돼 있는지를 검증한다.
+        const int ExecutionTurnConfig = 8;
+
         foreach (var pair in fixtureByConfig)
         {
             var document = Directory.GetFiles(
@@ -339,12 +343,25 @@ public sealed class RegressionTests
                 .ToArray();
 
             Assert.NotEmpty(scenarioIds);
+
+            if (pair.Key == ExecutionTurnConfig)
+            {
+                Assert.All(scenarioIds, id => Assert.StartsWith("TD-", id, StringComparison.Ordinal));
+                Assert.All(scenarioIds, id => Assert.DoesNotContain(id, activeScenarios));
+                continue;
+            }
+
             Assert.All(scenarioIds, id => Assert.Contains(id, activeScenarios));
             Assert.Single(Regex.Matches(
                     allRunner,
                     $@"(?m)^\s{{2}}{Regex.Escape(pair.Value)}$")
                 .Cast<Match>());
         }
+
+        // 갭이 실제로 기록돼 있어야 위 예외가 정당하다.
+        var gap = File.ReadAllText(Path.Combine(GetCommonSpecRoot(), "90-implementation-gap.ko.md"));
+        Assert.Contains("config-8-execution-turn.ko.md", gap, StringComparison.Ordinal);
+        Assert.Contains("yield terminator 부재", gap, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -400,15 +417,25 @@ public sealed class RegressionTests
             "framework-public-contract-gap-implementation",
             "dotnet-g0-contract-ledger.ko.md"));
         var ledger = File.ReadAllText(ledgerPath);
-        var commonSpecRoot = Path.GetFullPath(Path.Combine(GetDotNetContractDocRoot(), "..", ".."));
-        var commonSpecs = Directory
-            .EnumerateFiles(commonSpecRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .OfType<string>()
+        // spec 트리는 패키지 폴더로 나뉜다. framework가 소유하는 공통 계약은
+        // 기반(spec 루트) + server + stream-connector의 framework-facing 계약이다.
+        var specRoot = GetCommonSpecRoot();
+        var commonSpecFiles = Directory
+            .EnumerateFiles(specRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.EnumerateFiles(
+                Path.Combine(specRoot, "server"),
+                "*.ko.md",
+                SearchOption.TopDirectoryOnly))
+            .Append(Path.Combine(specRoot, "stream-connector", "32-stream-connector.ko.md"))
+            .ToArray();
+        var commonSpecPathByName = commonSpecFiles.ToDictionary(
+            static path => Path.GetFileName(path),
+            static path => path,
+            StringComparer.Ordinal);
+        var commonSpecs = commonSpecPathByName.Keys
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var contractSpecs = Directory
-            .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
+        var contractSpecs = GetDotNetContractDocs()
             .Select(Path.GetFileName)
             .OfType<string>()
             .Where(static file => file != "25-stage-wrapper-on-spot.ko.md")
@@ -429,7 +456,7 @@ public sealed class RegressionTests
         Assert.Contains("25-stage-wrapper-on-spot.ko.md", ledger, StringComparison.Ordinal);
 
         var formalMatrixIds = commonSpecs
-            .Select(spec => File.ReadAllText(Path.Combine(commonSpecRoot, spec)))
+            .Select(spec => File.ReadAllText(commonSpecPathByName[spec]))
             .SelectMany(static text => Regex
                 .Matches(text, @"(?m)^\| (?<id>(?:MFLOW(?:-EXT)?|RMETRIC|DRAIN)-[0-9]{3}) \|")
                 .Select(static match => match.Groups["id"].Value))
@@ -440,29 +467,26 @@ public sealed class RegressionTests
         foreach (var id in formalMatrixIds)
             Assert.Single(Regex.Matches(ledger, $@"(?m)^\| {Regex.Escape(id)} \|").Cast<Match>());
 
+        // snapshot 경로는 spec 루트 기준 상대 경로다(패키지 폴더 포함).
         var snapshotEntries = Regex
             .Matches(
                 ledger,
-                @"(?m)^(?<hash>[0-9a-f]{64}) (?<scope>common|dotnet)/(?<file>[^\r\n]+\.ko\.md)$")
+                @"(?m)^(?<hash>[0-9a-f]{64})\s+(?<path>\S+\.ko\.md)$")
             .Cast<Match>()
             .ToArray();
-        var snapshotFiles = commonSpecs
-            .Select(file => (Scope: "common", File: file, Root: commonSpecRoot))
-            .Concat(Directory
-                .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
-                .OfType<string>()
-                .Select(file => (Scope: "dotnet", File: file, Root: GetDotNetContractDocRoot())))
+        var snapshotFiles = commonSpecFiles
+            .Concat(GetDotNetContractDocs())
+            .Select(path => (
+                Key: Path.GetRelativePath(specRoot, path).Replace('\\', '/'),
+                Path: path))
             .ToArray();
         Assert.Equal(snapshotFiles.Length, snapshotEntries.Length);
-        foreach (var (scope, file, root) in snapshotFiles)
+        foreach (var (key, path) in snapshotFiles)
         {
             var entry = Assert.Single(snapshotEntries.Where(match =>
-                match.Groups["scope"].Value == scope
-                && match.Groups["file"].Value == file));
+                match.Groups["path"].Value == key));
             var actualHash = Convert
-                .ToHexString(System.Security.Cryptography.SHA256.HashData(
-                    File.ReadAllBytes(Path.Combine(root, file))))
+                .ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)))
                 .ToLowerInvariant();
             Assert.Equal(entry.Groups["hash"].Value, actualHash);
         }
@@ -502,21 +526,44 @@ public sealed class RegressionTests
             "Could not find framework/doc/framework/dotnet from test runtime.");
     }
 
+    /// <summary>
+    /// `.NET`의 공개 계약 문서는 두 패키지에 걸쳐 있다 — framework(server)와 stream connector.
+    /// </summary>
+    private static string[] GetDotNetContractDocs()
+    {
+        var connectorRoot = Path.Combine(
+            GetCommonSpecRoot(),
+            "stream-connector",
+            "languages",
+            "dotnet");
+
+        return Directory
+            .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.EnumerateFiles(connectorRoot, "*.ko.md", SearchOption.TopDirectoryOnly))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string GetCommonSpecRoot()
+    {
+        return Path.GetFullPath(Path.Combine(GetDotNetDocRoot(), "..", "spec"));
+    }
+
     private static string GetDotNetContractDocRoot()
     {
         var dotnetDocRoot = GetDotNetDocRoot();
         var contractRoot = Path.GetFullPath(Path.Combine(
             dotnetDocRoot,
             "..",
-            "common",
             "spec",
+            "server",
             "languages",
             "dotnet"));
 
         return Directory.Exists(contractRoot)
             ? contractRoot
             : throw new DirectoryNotFoundException(
-                "Could not find framework/doc/framework/common/spec/languages/dotnet from test runtime.");
+                "Could not find framework/doc/framework/spec/server/languages/dotnet from test runtime.");
     }
 
     private static string ResolveDoc(string fileName)

@@ -55,9 +55,9 @@ subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. clie
 
 **한마디로:** 여러 topic으로 뿌려도, 각 subscriber가 자기 관심 topic만 골라서 처리하고 나머지는 흘려보내는가.
 
-- 절차: 여러 topic으로 발행한다. channel fanout은 subscriber transport 단계의 topic 필터를 노출하지 않으므로([20 §3.3](../spec/20-spot-messaging.ko.md)) subscriber는 전량 수신하되 handler가 publish context의 topic을 보고 관심 topic만 처리한다.
+- 절차: 여러 topic으로 발행한다. channel fanout은 subscriber transport 단계의 topic 필터를 노출하지 않으므로([20 §3.3](../../spec/server/20-spot-messaging.ko.md)) subscriber는 전량 수신하되 handler가 publish context의 topic을 보고 관심 topic만 처리한다.
 - 검증: 각 subscriber handler가 publish context.Topic으로 자신의 관심 topic만 evidence에 기록한다. 비관심 topic은 기록되지 않는다.
-- 세부 동작: publish context.Topic 기반 application-level 필터링. **이것이 channel fanout의 계약이다** — topic이 subscriber set을 고르는 것은 SPOT subscribe 표면이며, 두 표면의 구분은 [20 §3.3](../spec/20-spot-messaging.ko.md)이 소유한다. fanout에 transport topic 필터를 추가하려면 공개 계약 확장 절차를 먼저 거친다.
+- 세부 동작: publish context.Topic 기반 application-level 필터링. **이것이 channel fanout의 계약이다** — topic이 subscriber set을 고르는 것은 SPOT subscribe 표면이며, 두 표면의 구분은 [20 §3.3](../../spec/server/20-spot-messaging.ko.md)이 소유한다. fanout에 transport topic 필터를 추가하려면 공개 계약 확장 절차를 먼저 거친다.
 
 #### PS-A3 late subscriber
 
@@ -109,7 +109,7 @@ subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. clie
 
 **한마디로:** handler 없는 message name으로 발행하면 subscriber 쪽에서 drop되고 그 흔적이 observer에 남되, 다른 정상 전달은 멀쩡한가.
 
-- 절차: subscriber에 handler가 없는 **packet name**으로 발행한다(channel fanout의 publish dispatch는 topic이 아니라 packet name으로 handler를 찾는다 — [20 §3.3](../spec/20-spot-messaging.ko.md)).
+- 절차: subscriber에 handler가 없는 **packet name**으로 발행한다(channel fanout의 publish dispatch는 topic이 아니라 packet name으로 handler를 찾는다 — [20 §3.3](../../spec/server/20-spot-messaging.ko.md)).
 - 검증: 해당 publish는 subscriber dispatch에서 drop되고, **subscriber** observer evidence에 reason `handlerMissing`/action `drop` marker가 남는다. publisher의 `Publish(...).Async()`는 transport submit만 하므로 publisher 측엔 dispatch marker가 없다. 다른 정상 message 전달은 영향 없음.
 - 세부 동작: publish negative path(message name 기준) + subscriber 관측.
 

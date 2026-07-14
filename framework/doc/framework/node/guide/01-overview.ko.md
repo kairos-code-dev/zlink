@@ -27,7 +27,7 @@ request/reply와 단방향 메시지는 channel, 다수 구독자 이벤트는 f
 
 ## 3. 기준
 
-의미와 동작의 기준은 [framework 공통 spec](../../common/spec/README.ko.md)이다.
+의미와 동작의 기준은 [framework 공통 spec](../../spec/README.ko.md)이다.
 Node 버전은 공통 계약을 NestJS 등록 표면과 TypeScript 타입으로 표현한다.
 
 ## 4. 다음에 읽을 장

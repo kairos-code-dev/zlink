@@ -25,18 +25,18 @@
 
 [공통 문서 색인](framework/common/README.ko.md) · 공통 의미를 바꿀 때는 여기를 먼저 고친다.
 
-**스펙** (`framework/common/spec/`)
+**스펙** (`framework/spec/` — 패키지별로 나뉜다: `server/` · `http-client/` · `stream-connector/`)
 
 | 문서 | 다루는 범위 |
 |------|-------------|
-| [개요](framework/common/spec/01-overview.ko.md) | Framework의 목적과 우선 범위 |
-| [상호작용 모델](framework/common/spec/02-interaction-model.ko.md) | request-response, command, publish-subscribe 사용자 모델 |
-| [메시지 모델](framework/common/spec/03-message-model.ko.md) | header/payload 구조와 metadata 정책 |
-| [Channel topology](framework/common/spec/10-channel-topology.ko.md) | channel grouping, discovery, 수동 연결, 내부 transport 매핑 |
-| [Framework API](framework/common/spec/05-framework-api.ko.md) | 언어별 framework API의 공통 방향 |
-| [비동기 실행 정책](framework/common/spec/04-async-execution-policy.ko.md) | async submit, blocking 금지, coroutine/adapter 공통 의미 |
-| [Actor 모델](framework/common/spec/22-actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
-| [Session Actor Dispatch](framework/common/spec/31-session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
+| [개요](framework/spec/01-overview.ko.md) | Framework의 목적과 우선 범위 |
+| [상호작용 모델](framework/spec/02-interaction-model.ko.md) | request-response, command, publish-subscribe 사용자 모델 |
+| [메시지 모델](framework/spec/03-message-model.ko.md) | header/payload 구조와 metadata 정책 |
+| [Channel topology](framework/spec/server/10-channel-topology.ko.md) | channel grouping, discovery, 수동 연결, 내부 transport 매핑 |
+| [Framework API](framework/spec/05-framework-api.ko.md) | 언어별 framework API의 공통 방향 |
+| [비동기 실행 정책](framework/spec/04-async-execution-policy.ko.md) | async submit, blocking 금지, coroutine/adapter 공통 의미 |
+| [Actor 모델](framework/spec/server/22-actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
+| [Session Actor Dispatch](framework/spec/server/31-session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
 **공통 샘플 시나리오** ([색인](framework/common/sample/README.ko.md)) — 정본 6종을 모든 언어가
 같은 역할 분리·메시지 이름·smoke 순서로 구현한다.
 
@@ -113,8 +113,8 @@ connector를 사용한다.
 | `.NET` 가이드 | [01 개요](stream-connector/dotnet/guide/01-overview.ko.md) · [02 Unity](stream-connector/dotnet/guide/02-unity.ko.md) · [03 Godot C#](stream-connector/dotnet/guide/03-godot-csharp.ko.md) |
 | TypeScript 가이드 | [01 개요](stream-connector/typescript/guide/01-overview.ko.md) · [02 브라우저](stream-connector/typescript/guide/02-browser.ko.md) |
 
-계약의 정본은 [Stream Connector 공통 스펙](framework/common/spec/32-stream-connector.ko.md)이며,
-언어별 public 표면은 `framework/common/spec/languages/<lang>/stream-connector.ko.md`가 소유한다.
+계약의 정본은 [Stream Connector 공통 스펙](framework/spec/stream-connector/32-stream-connector.ko.md)이며,
+언어별 public 표면은 `framework/spec/stream-connector/languages/<lang>/`가 소유한다.
 
 **Java/Kotlin은 별도 가이드 트리를 두지 않는다.** 대상이 JVM 애플리케이션 하나뿐이라 엔진별로
 갈라질 것이 없어, connector 사용법이
@@ -122,19 +122,19 @@ connector를 사용한다.
 
 > TypeScript package root는 browser-only WebSocket transport와 명시적 flow 전달을 제공한다.
 > 실제 browser와 package 검증 상태는
-> [implementation gap §4.10](framework/common/spec/90-implementation-gap.ko.md)에서 확인한다.
+> [implementation gap §4.10](framework/spec/90-implementation-gap.ko.md)에서 확인한다.
 
 ---
 
 ## 읽는 순서
 
-1. [공통 개요](framework/common/spec/01-overview.ko.md) → [상호작용 모델](framework/common/spec/02-interaction-model.ko.md) → [actor 모델](framework/common/spec/22-actor-model.ko.md)
+1. [공통 개요](framework/spec/01-overview.ko.md) → [상호작용 모델](framework/spec/02-interaction-model.ko.md) → [actor 모델](framework/spec/server/22-actor-model.ko.md)
 2. 사용할 언어의 [framework/&lt;lang&gt;](framework/dotnet/README.ko.md) guide
 3. HTTP가 필요하면 [http-client/&lt;lang&gt;](http-client/dotnet/README.ko.md), 외부 client 접속이면 [stream-connector](stream-connector/cpp/guide/INDEX.ko.md)
 
 ## 유지 규칙
 
-- 공통 의미는 `framework/common/spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
+- 공통 의미는 `framework/spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
 - 언어별 문서는 모두 `framework/doc/` 아래에서 작성하고 수정한다. 새 언어별 문서를
   `framework/languages/<lang>/doc/` 아래에 추가하지 않는다.

@@ -156,10 +156,10 @@ public class RegistryConfig {
 
 ## 8. 다음 단계
 
-- pub/sub는 [channel messaging](../../common/spec/languages/java/01-system-structure.ko.md)을 본다.
-- room/stage/zone은 [Spot](../../common/spec/languages/java/01-system-structure.ko.md)을 본다.
-- 외부 client는 [STREAM](../../common/spec/languages/java/01-system-structure.ko.md)과
-  [Stream Connector](../../common/spec/languages/java/03-stream-connector.ko.md)를 본다.
+- pub/sub는 [channel messaging](../../spec/server/languages/java/01-system-structure.ko.md)을 본다.
+- room/stage/zone은 [Spot](../../spec/server/languages/java/01-system-structure.ko.md)을 본다.
+- 외부 client는 [STREAM](../../spec/server/languages/java/01-system-structure.ko.md)과
+  [Stream Connector](../../spec/stream-connector/languages/java/03-stream-connector.ko.md)를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

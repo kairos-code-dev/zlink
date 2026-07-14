@@ -4,7 +4,7 @@
 
 # 7. Actor & Spot 호스팅
 
-> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
 > 이 챕터는 actor 모델과 **Spot이 actor를 호스팅하는 면(location 축)** — 즉 spot 쪽에
 > 호출되는 actor lifecycle 콜백과 그 콜백을 부르는 트리거 함수 — 를 다룬다.
 > session ↔ actor relay(binding 축)는 [08-actor-session](08-actor-session.ko.md)이 다룬다.
@@ -229,7 +229,7 @@ fencing token이다.
    재호출한다.
 4. 그 사이 **옛 노드에서 handler가 잘못 실행되는 일은 없다.**
 
-fencing 규칙 전체는 [spec/aspnet-core-location](../../common/spec/languages/dotnet/01-system-structure.ko.md)이 다룬다.
+fencing 규칙 전체는 [spec/aspnet-core-location](../../spec/server/languages/dotnet/01-system-structure.ko.md)이 다룬다.
 
 > 5초는 `ActorTransferForwardWindow`의 기본값이다. 값을 늘리면 stale ref를 더 오래
 > 흡수하는 대신, source node가 forwarding mapping을 더 오래 보관한다. 이 값은 bound
@@ -612,7 +612,7 @@ match handler → `JoinSpot`→ room `OnActorJoin`(admission)/`OnJoined` → 게
 
 - session ↔ actor relay(인증·binding·bound session push·등록 코드): [08-actor-session](08-actor-session.ko.md)
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [13-interface-catalog](13-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
-- 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 전체 예제: [bingo 샘플](../../common/sample/bingo/README.ko.md), [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md)
 - Spot 자체(생성·메시징·timer): [06-spot](06-spot.ko.md)
 

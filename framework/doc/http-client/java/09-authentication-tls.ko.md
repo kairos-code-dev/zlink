@@ -19,7 +19,7 @@ ZLinkHttpClient.create("https://api.internal").bearerToken("eyJhbGci...").build(
 trust와 지정 인증서를 함께 보는 composite `TrustManager`를 `SSLContext`에 구성한다 —
 즉 기본 신뢰에 **추가**되며(대체 아님) 공인 CA HTTPS는 계속 동작한다.
 hostname 검증은 항상 수행되며 끄는 옵션은 없다
-([공통 spec 7.2](../spec/07-auth-tls-proxy.ko.md)).
+([공통 spec 7.2](../../framework/spec/http-client/07-auth-tls-proxy.ko.md)).
 
 ```java
 ZLinkHttpClient.create("https://localhost:8443")

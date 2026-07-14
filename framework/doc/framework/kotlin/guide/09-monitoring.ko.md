@@ -129,14 +129,14 @@ fun dispatchTracing(): ZLinkFrameworkConfigurer =
 - 운영 중 켜고 끄기: `ZLinkMessageFlowControl`(Spring `ZLinkFrameworkLifecycle`)을 주입받아
   `setMessageFlowMode(...)`. `configureDispatch`/`onMessageFlow` 확장은
   `systems.zlink.framework.kotlin` 패키지에서 import 한다.
-- 정식 계약: [spring-boot-monitoring §7](../../common/spec/languages/java/01-system-structure.ko.md), 공통 의미:
-  [공통 스펙 메시지 흐름 추적](../../common/spec/52-message-flow-tracing.ko.md).
+- 정식 계약: [spring-boot-monitoring §7](../../spec/server/languages/java/01-system-structure.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../spec/server/52-message-flow-tracing.ko.md).
 
 ## 6. 더 보기
 
 - topology 스냅샷 조회: [08-registry](08-registry.ko.md)
 - timer 정책: [05-spot](05-spot.ko.md)
-- 정식 계약: [spring-boot-monitoring](../../common/spec/languages/java/01-system-structure.ko.md)
+- 정식 계약: [spring-boot-monitoring](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -138,14 +138,14 @@ ZLinkFrameworkConfigurer dispatchTracing() {
   `setMessageFlowMode(...)`(재시작 불필요).
 - 콜렉터/OTel 연동: `setMessageFlowObserver(...)`로 구조화 이벤트를 받는다(앱 레이어). framework 는
   `correlationId` + 구조화 필드 + observer 훅까지만 제공하고 OTel 에 의존하지 않는다.
-- 정식 계약: [spring-boot-monitoring §7](../../common/spec/languages/java/01-system-structure.ko.md), 공통 의미:
-  [공통 스펙 메시지 흐름 추적](../../common/spec/52-message-flow-tracing.ko.md).
+- 정식 계약: [spring-boot-monitoring §7](../../spec/server/languages/java/01-system-structure.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../spec/server/52-message-flow-tracing.ko.md).
 
 ## 6. 더 보기
 
 - topology 스냅샷 조회: [09-registry](08-registry.ko.md)
 - timer 정책: [06-spot](05-spot.ko.md)
-- 정식 계약: [spring-boot-monitoring](../../common/spec/languages/java/01-system-structure.ko.md)
+- 정식 계약: [spring-boot-monitoring](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -7,8 +7,8 @@ Node.js는 connector 실행 환경이 아니며 test runner와 서버 process �
 | 문서 | 내용 |
 |------|------|
 | [가이드 INDEX](guide/INDEX.ko.md) | 브라우저 연결, codec, dispatch와 flow 전달 |
-| [TypeScript 공개 계약](../../framework/common/spec/languages/typescript/03-stream-connector.ko.md) | 정확한 public 타입과 package root |
-| [Stream Connector 공통 스펙](../../framework/common/spec/32-stream-connector.ko.md) | 대상 환경, transport와 wire 계약 |
+| [TypeScript 공개 계약](../../framework/spec/stream-connector/languages/typescript/03-stream-connector.ko.md) | 정확한 public 타입과 package root |
+| [Stream Connector 공통 스펙](../../framework/spec/stream-connector/32-stream-connector.ko.md) | 대상 환경, transport와 wire 계약 |
 
 package root는 플랫폼 `WebSocket`으로 `ws`와 `wss` 연결을 제공한다. `/browser` subpath나 Node
 socket 구현은 제공하지 않는다.

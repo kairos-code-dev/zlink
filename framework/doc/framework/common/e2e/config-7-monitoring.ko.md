@@ -35,7 +35,7 @@ event handler에서 관찰 이벤트를 evidence에 기록한다.
 이벤트 kind는 고정 enum이다(이 config가 기대해도 되는 것만):
 
 - socket: `Connected`, `ConnectionReady`, `Disconnected`, `HandshakeFailed`, `PeerAdmissionChanged`, `Closed`
-- location-runtime: `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` (source와 payload의 기준은 registry process가 아니라 각 노드의 location runtime projection이다. 닫힌 kind 집합은 [40 §9](../spec/40-location-runtime.ko.md)가 소유한다. `StoreFailure`/`StoreRecovered`의 장애 사이클 검증은 config 6이 담당하고, 이 config는 kind가 위 닫힌 집합에 속하는지를 본다.)
+- location-runtime: `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` (source와 payload의 기준은 registry process가 아니라 각 노드의 location runtime projection이다. 닫힌 kind 집합은 [40 §9](../../spec/server/40-location-runtime.ko.md)가 소유한다. `StoreFailure`/`StoreRecovered`의 장애 사이클 검증은 config 6이 담당하고, 이 config는 kind가 위 닫힌 집합에 속하는지를 본다.)
 - spot: `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException`
 
 actor join/leave, spot 생성·소멸 같은 lifecycle 이벤트는 monitoring kind로는 존재하지 않는다.

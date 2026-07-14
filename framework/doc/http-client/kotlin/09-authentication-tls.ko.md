@@ -17,7 +17,7 @@ zlinkHttpClient("https://api.internal") { bearerToken("eyJhbGci...") }
 기본적으로 시스템 신뢰 저장소로 서버 인증서를 검증한다. 테스트 인증서(self-signed)를
 신뢰하려면 `trustCertificateFile(path)`로 PEM 인증서를 지정한다. 지정한 인증서는 JVM
 기본 신뢰에 **추가**되며(대체 아님), hostname 검증은 항상 수행된다
-([공통 spec 7.2](../spec/07-auth-tls-proxy.ko.md)).
+([공통 spec 7.2](../../framework/spec/http-client/07-auth-tls-proxy.ko.md)).
 
 ```kotlin
 zlinkHttpClient("https://localhost:8443") {

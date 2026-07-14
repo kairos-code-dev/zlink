@@ -53,14 +53,14 @@ framework는 native I/O 스레드에서 콜백을 호출하고, coroutine 레이
 동안 native 스레드는 park되지 않는다. **handler 안에서 blocking 호출
 (`Thread.sleep`, blocking JDBC, `CompletableFuture.join` 등)을 직접 쓰지 않는다.**
 blocking이 불가피하면 `withContext(Dispatchers.IO)`로 옮긴다. 공통 의미는
-[비동기 실행과 coroutine 정책](../../common/spec/04-async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
 
 ## 7. Spring DI
 
 Spring bean 주입은 역할 가능성을 암시해야 한다. SpotNode가 없으면
 `ZLinkSpotManager`를 등록하지 않고, actor factory가 없으면 `ZLinkActorManager`를
 등록하지 않는다. 자세한 기준은
-[handler interface spec](../../common/spec/languages/java/02-handler-interfaces.ko.md)이 소유한다.
+[handler interface spec](../../spec/server/languages/java/02-handler-interfaces.ko.md)이 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

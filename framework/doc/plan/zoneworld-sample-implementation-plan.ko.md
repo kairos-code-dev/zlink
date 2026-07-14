@@ -19,7 +19,7 @@
 | 대상 | 정본 |
 |---|---|
 | 시나리오 — 월드 규격, 메시지 계약, 검증 기준 | [`sample/zoneworld/README.ko.md`](../framework/common/sample/zoneworld/README.ko.md) |
-| 공개 계약 | [`spec/`](../framework/common/spec/README.ko.md)의 공통 spec과 언어별 spec |
+| 공개 계약 | [`spec/`](../framework/spec/README.ko.md)의 공통 spec과 언어별 spec |
 | 저장소 규약 | `AGENTS.md` — 특히 "Framework public contract parity" |
 
 샘플은 공개 계약의 근거가 아니다. **새 public API를 만들지 않는다.** 구현 중 표면이 부족해
@@ -49,7 +49,7 @@ client를 언어별 디렉터리에 복제하지 않는다. server 디렉터리 
 - **browser connector 준비 완료.** `@zlink-systems/stream-connector`는 browser-only ESM package
   root이며 public transport는 `WebSocket`·`WebSocketSecure`만 남았다. 실제 Chromium에서 `ws`/`wss`
   request/reply, push, reconnect, drain, close를 검증했다. 근거는
-  [`spec/90-implementation-gap.ko.md`](../framework/common/spec/90-implementation-gap.ko.md) §4.10
+  [`spec/90-implementation-gap.ko.md`](../framework/spec/90-implementation-gap.ko.md) §4.10
   (gap 없음으로 종결).
 - **필요한 framework 표면이 5개 언어에 전부 있다.** channel fanout(`AddFanoutChannel` 계열),
   runtime event(location·socket·spot), actor cross-node transfer와 transfer adapter, spot pub/sub,
@@ -234,7 +234,7 @@ client는 하나이고 server가 5개이므로, **client는 특정 언어 server
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | Phase 0 | 계약 고정(§8.1) | **완료** — dotnet 계약 빌드 성공, client 계약 `tsc --noEmit` 통과 |
-| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **관문 1 완료** — 정본 §11의 25개 + 러너 판정 5개 = **30개 검사 2회 연속 그린**. **관문 2·3 회차 1·2 완료** — codex 4건 반영(§8.5.1), 실제 결함 3건 발견·수정. **회차 3(codex 재리뷰·수렴 판정) 대기** — 수렴 전까지 `java`에 착수하지 않는다(§6.4) |
+| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **관문 2·3 회차 4까지 진행.** 현재 `run_sample.sh all` **30/30 2회 연속 + §12 마커 7종 전량**(3회차에 `ZW-A4` timeout 1회 — 잔여 flake). 회차 3에서 §12 마커를 **처음으로** 발행하고 `Ops` 노드 목록(ZW-D2를 위양성으로 만들던 것)을 제거했으며 **정본을 구현에 맞춰 동기화**했다(§8.5.2). 회차 4는 codex `NOT CONVERGED` 1건을 반영했다(§8.5.3). **회차 1·2가 기록한 "2회 연속 그린"은 사실이 아니었다** — 재실행에서 `ZW-B4`가 깨졌고, 공지가 노드 하나에 통째로 유실되는 결함(§8.5.2·10)과 **peer 자동 연결이 이 토폴로지를 세우지 못한다는 것**(§8.5.4, 미해결)이 반복 실행으로만 드러났다. **잔여 flake 해소 + codex 수렴 전까지 `java`에 착수하지 않는다**(§6.4) |
 | Phase 1 — `java` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `kotlin` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `node` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
@@ -436,12 +436,18 @@ client는 `Gateway`와 `Ops`만 알기 때문에 노드를 없애는 일은 러�
 | 마커 | `dotnet` | `java` | `kotlin` | `node` | `cpp` |
 |---|:--:|:--:|:--:|:--:|:--:|
 | `topology=ready` | [x] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld-transfer=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld-border-sync=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld-ops-observe=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld-ops-announce=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld-ops-maintenance=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `zoneworld=completed` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld-transfer=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld-border-sync=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld-ops-observe=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld-ops-announce=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld-ops-maintenance=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+| `zoneworld=completed` | [x] | [ ] | [ ] | [ ] | [ ] |
+
+**마커는 러너가 소유한다.** client 한 번의 실행은 스위트 전체를 보지 못한다 — 노드를 없애야 하는
+시나리오는 러너가 몰고, 여섯 개는 서버 로그로 판정한다. 그래서 client가 자기 배치를 통과한 것을
+`zoneworld=completed`로 찍으면 **완주하지 않은 성공 마커**가 된다(회차 3에서 그렇게 되어 있었다).
+러너가 각 phase를 구성하는 시나리오가 **전부** 통과했을 때만 그 마커를 찍고, 하나라도 빠지면
+`!! <marker> withheld: <ID> did not pass`로 보류 사유를 남긴다.
 
 ### 8.5 관문 2·3 — 리팩토링 반복과 codex 수렴
 
@@ -454,7 +460,12 @@ client는 `Gateway`와 `Ops`만 알기 때문에 노드를 없애는 일은 러�
 |---|---|:--:|---|---|:--:|
 | 1 | ① 진단용 `JOIN-DIAG` try/catch 제거(`PlayerMoveHandlers`) ② 죽은 계약 `UpdatePositionMsg` 삭제(계약·정본 §7.3 동시) ③ 공지 시나리오가 정본을 과하게 단언하던 것 교정 ④ 런너 위생: `dotnet run` 래퍼 제거 + 유령 프로세스 사전 점검 | [x] `run_sample.sh all` **2회 연속 전량 통과** | (미실시) | | 아니오 |
 | 2 | codex 4건 병렬 리뷰(ZoneSpot·Ops·시나리오 client·Gateway·maintenance store 중복) 결과 반영 — 아래 §8.5.1 | [x] `run_sample.sh all` **2회 연속 30/30** | 아래 §8.5.1 | 아래 §8.5.1 | 아니오 |
-| 3 | | [ ] | | | |
+| 3 | codex 3건 병렬 리뷰(actor 계층 · domain wire-DTO · bootstrap/config) 결과 반영 — 아래 §8.5.2. **정본 위반 2건**(Ops 노드 목록, peer 수동 배선)과 **거짓 그린 2건**(ZW-B4 틀린 단언, §12 마커 미발행)을 함께 해소 | 아래 §8.5.3의 재실행으로 대체 | 아래 §8.5.2 | 아래 §8.5.2 | 아니오 |
+| 4 | codex 수렴 게이트 리뷰 → **NOT CONVERGED 1건**(봇 스폰의 오류 삼킴). 반영 — 아래 §8.5.3. peer 배선 복원(§8.5.4), `ZW-B4` 재교정 | [x] `run_sample.sh all` **30/30 2회 연속 + §12 마커 7종 전량**. 3회차에서 `ZW-A4`가 `Request timed out`으로 1회 실패 — **잔여 flake, 미해소**(아래) | 아래 §8.5.3 | 반영 | 회차 5에서 재판정 |
+
+**잔여 flake — `ZW-A4` `Request timed out`(1/3회).** 대각선 경계 거부 시나리오의 요청이 한 번
+timeout 났다. `ZW-B4`는 3회 모두 통과했으므로 §8.5.2·11의 수정은 유효하다. 이 timeout이 기동 경합인지
+부하인지 아직 가리지 못했다. **연속 실행에서 재현될 때까지 관문 1을 "통과"로 적지 않는다.**
 
 #### 8.5.1 `dotnet` 회차 2 — codex 지적과 처리
 
@@ -507,6 +518,149 @@ client는 "서버가 동작한다"의 정의이자 나머지 4개 언어가 베�
 | `Ops`/`ZoneNode`의 동명 `MaintenanceStoreRepository`를 통합하라 | codex 자신의 최종 판정도 **KEEP SEPARATE**다. 정본 §6이 역할별 port/adapter를 규정하고, 통합하면 좁은 역할별 port를 read/write 공용 표면으로 넓혀야 한다. 실제 중복은 Redis 쓰기 두 줄뿐 |
 | Gateway: 같은 `PlayerId`로 재접속 시 이전 session binding이 해제되지 않는다 / 노드 유실 시 stale binding | 정본 §11에 없는 **framework 수준 과제**다(샘플이 우회할 문제가 아니다). §8.9.2에 후속 트랙으로 분리 |
 | `ZoneState`/`ZoneTickUseCase`가 wire DTO(`PlayerView`·`ZoneStateNotify`)를 만든다 | 타당한 지적이나, 샘플의 교육적 가치와 4개 언어 포팅 비용을 감안해 **회차 3에서 판단**한다. 지금 바꾸면 5개 언어의 Domain 타입이 하나씩 더 늘어난다 |
+
+#### 8.5.2 `dotnet` 회차 3 — codex 지적과 처리
+
+codex 규약대로 **한 요청에 한 항목**씩 3건을 병렬로 냈다(actor 계층 / domain wire-DTO / bootstrap·config).
+
+**이 회차의 핵심은 회차 1·2가 "그린"이라고 적어 둔 것이 사실이 아니었다는 것이다.** 회귀를 다시 돌려
+베이스라인부터 확인하지 않았다면 아래 넷 중 어느 것도 드러나지 않았다.
+
+| 드러난 것 | 실체 |
+|---|---|
+| **`ZW-B4`는 통과한 적이 없다** | "2회 연속 30/30 그린"이라고 적혀 있었으나 베이스라인 재실행에서 실패했다. 원인은 시나리오의 **틀린 단언**이다 — 노드 종료 뒤 "남은 플레이어가 **전부** zone-nw 소속"이라고 요구했는데, zone-nw의 인접 zone은 죽은 `zone-ne`뿐 아니라 **살아 있는 `zone-sw`**(zone-node-1)도 있다. Y축 순찰 봇이 `zone-sw` 밴드에 있는 tick에 걸리면 정당하게 목록에 남는다. 회차 2가 이 실패를 "순서 문제"로 진단하고 시나리오를 맨 앞으로 옮긴 것은 **원인 오귀속**이었다(타이밍이 바뀌어 두 번 통과했을 뿐이다) |
+| **§12 마커는 하나도 발행되지 않았다** | 정본 §12가 요구하는 성공 로그 7종 중 `topology=ready` 외에는 아무도 찍지 않았다. 게다가 client가 **자기 배치만 통과해도** `zoneworld=completed`를 찍고 있었다 — 러너 주도 5개와 로그 판정 6개를 돌기도 전에 나오는 완주 마커다 |
+| **`Ops`가 노드 목록을 들고 있었다** | `ZoneTopology.AllNodes`에 `zone-node-3`까지 하드코딩되어 있었고 `Ops/Program.cs`가 그것을 순회했다. 정본 §13·`ZW-D1`이 금지하는 바로 그것이고, **`ZW-D2`를 위양성으로 만든다** — "코드 변경 없이 노드를 추가한다"는데 그 노드가 이미 코드에 있었다 |
+| **peer를 손으로 dial하고 있었다** | `ConnectRouter`/`ConnectPeerPub`/peer bridge endpoint. [spec 10 §5.2](../framework/spec/server/10-channel-topology.ko.md)는 **한 역할 안에서 자동 연결과 수동 연결을 섞지 말라**고 정한다(연결 집합의 소유자가 둘이 된다). peer rid를 endpoint와 함께 등록하는 형태는 **location store가 없는 구성**용인데 이 샘플은 store를 쓴다. 정본 §3의 "peer 자동 연결"과도, `ZoneWorldSettings`의 자기 주석과도 어긋났다. 정본 6종 중 교차 노드 transfer를 하는 Bingo는 peer를 dial하지 않는다 |
+
+**반영한 것.**
+
+1. **`ZW-B4` 단언 교정** — 죽은 zone(`zone-ne`)의 snapshot이 통째로 사라지는 것을 기다린 뒤 그 안에
+   감시 대상이 없음을 단언한다. 만료를 먼저 기다리므로 "죽어 가는 노드의 마지막 snapshot"과 경합하지
+   않는다. 살아 있는 `zone-sw` 밴드 플레이어는 남는 것이 정상이다(§4.1).
+2. **§12 마커를 러너가 소유** — phase를 구성하는 시나리오가 전부 통과했을 때만 그 마커를 찍는다.
+   client는 `zoneworld-batch=passed`만 찍는다(§8.4).
+3. **`ZoneTopology`를 노드 서술자 하나로** — node id ↔ rid ↔ zones를 한 자리에 묶고, `zone-node-3`을
+   **뺐다**. 이제 `Ops`가 아는 노드 집합은 정본 §2가 고정한 **zone 배치**뿐이고 그것은 노드 **지정**
+   호출(§8.4)에만 쓴다. 발행 경로는 그것을 보지 않는다. zone 배치 밖의 `zone-node-3`은 `Ops`의
+   코드·설정 어디에도 없는데 공지를 받는다 — `ZW-D2`가 이제 진짜를 증명한다.
+4. **peer 수동 배선 삭제 — 시도했고, 되돌렸다.** ~~location store auto-connect만 쓴다~~
+   **1회 그린을 보고 성공으로 적었다가 연속 실행에서 무너졌다.** 아래 §8.5.4가 정본이다.
+5. **`zone-node-3`을 subscriber-only로**(정본 §11.1) — mesh·bridge·자기 channel·report·monitoring을
+   전부 등록하지 않고 `zoneworld.broadcast` subscriber 하나만 둔다. 전용 `BroadcastProbeSubscriber`를
+   둔 이유는 zone이 없는 노드에는 공지를 넘길 zone spot이 없기 때문이다.
+6. **`BotSpawner`의 catch를 `ActorCreateFailed`로 좁혔다** — 모든 `ZLinkFrameworkException`을 삼키면
+   봇이 하나도 안 만들어져도 `topology=ready`가 찍힌다. **함정:** conflict 뒤 `FindAsync`로 존재를
+   재확인하는 방식은 **틀렸다.** conflict를 허용한 바로 그 stale한 location 뷰에 다시 묻는 것이라
+   여전히 null이 오고, 재시작한 노드가 기동에 실패한다(실측으로 C2·C3·E5가 연쇄로 깨졌다).
+   claim conflict 메시지 자체가 권위 있는 답이다.
+7. **`PlayerActor.ZoneId`를 파생으로** — 좌표에서 유도한다. 권위가 자기 자신과 불일치할 수 없게 된다.
+   `Restore`는 transfer로 온 zone과 좌표가 어긋나면 던진다.
+8. **`TransferInAsync`가 빈 state에 던진다** — 조용히 기본 actor를 만들면 사람은 (0,0)으로 순간이동하고
+   봇은 방향을 잃는데 샘플은 아무 일 없다는 듯 계속 돈다(§2.6).
+9. **`ZoneWorld.Shared`에서 `Systems.Zlink` 패키지 참조 제거** — 쓰지 않았다. 없애면 "wire 계약에는
+   framework 의존이 없다"가 **컴파일러가 강제하는 사실**이 되고, Domain이 그 레코드를 참조해도
+   정본 §6의 "Domain은 ZLink 타입을 참조하지 않는다"를 깨지 않음이 보장된다.
+
+**반복 실행이 드러낸 결함 둘.** 위를 반영하고 한 번 30/30 그린이 났지만, **한 번의 그린은 근거가
+아니다.** 연속 실행에서 다시 깨졌고 아래 둘이 나왔다.
+
+10. **공지가 노드 하나에 통째로 유실될 수 있었다(silent).** `WorldAnnounceSubscriber`가
+    `SendToSpot(...).Submit(cancellationToken)`에 **publish handler의 취소 토큰**을 넘기고 있었다.
+    이 send는 one-way라 handler보다 오래 사는데, handler가 반환하는 순간 그 토큰은 끝난다. 아직
+    나가지 못한 send가 취소되면 **송신 dispatch 로그조차 남지 않고** 사라진다 — subscriber는
+    "받았다"고 기록하고, 에러도 drop 로그도 없고, 그 노드의 **모든** zone spot이 공지를 못 받는다.
+    한 실행에서 `zone-node-1`이 정확히 그렇게 됐다(`ZW-D1-spots` 실패). framework 자체 테스트도
+    one-way는 `.Submit()`을 토큰 없이 부른다. → 토큰을 넘기지 않는다.
+11. **`ZW-B4`가 transfer 직후의 과도기 상태에 걸렸다.** zone spot이 들고 있는 것은 좌표의 **사본**이고
+    사본은 actor보다 한 턴 늦다(§2.1). transfer 직후 잠깐 east는 여전히 **출발 zone의 주민 사본**으로
+    보인다 — 그 창에서는 east가 `zone-nw` 소속으로 화면에 있고 `zone-ne`는 아직 east를 보고하지 않았다.
+
+    이 창 때문에 **만료를 한 가지 사실로 판정할 수 없다.**
+    - "east가 사라졌다"만 보면: 위 창에서 잠깐 참이 된다(엉뚱한 east를 본 것이다).
+    - "`zone-ne` 플레이어가 없다"만 보면: `zone-ne`의 첫 snapshot이 오기 전에 참이다.
+
+    둘 중 어느 쪽으로 고쳐도 **노드를 죽이기도 전에**(러너는 20초 뒤에 죽인다) 즉시 매칭되어 실패했다.
+    실제로 두 번 다 그렇게 실패했다. → **두 사실을 동시에** 요구한다 — east가 없고 `zone-ne`가 통째로
+    없다. 그것만이 이 시나리오가 말하는 상태다.
+
+> **교훈.** 이 둘은 어느 쪽도 한 번의 실행으로는 보이지 않는다. 회차 1·2가 "2회 연속 그린"을
+> 근거로 적어 둔 것이 재실행에서 사실이 아니었던 이유이기도 하다. **관문 1의 재검증은 연속 실행으로
+> 한다.**
+
+**정본 반영.** 위 3·4와, 회차 1·2에서 구현이 정본을 앞질러 간 부분(§8.10)을 정본에 반영했다 —
+§3.1(entry spot은 `ZoneNode` 소유), §4(peer 자동 연결), §5·§6(구조), §7.3(`EnterZoneMsg`/`EnterZoneRes`/
+`EnterWorldReq`/`EnterWorldRes`, 삭제한 `UpdatePositionMsg`·`LeaveZoneMsg`), §8.2(발행 경로가 노드를
+열거하지 않는다), §8.3(zone spot이 actor 인스턴스를 보관한다), §13. **정본과 구현이 이제 일치한다.**
+
+**반려한 것.**
+
+| codex 지적 | 반려 사유 |
+|---|---|
+| Domain(`ZoneState`·`ZoneTickUseCase`)이 wire DTO(`PlayerView` 등)를 만든다 — 회차 2에서 회차 3으로 미룬 항목 | **codex 자신의 최종 판정이 KEEP이다.** 정본 §6이 정한 규칙은 "Domain은 **ZLink 타입**을 참조하지 않는다"이고 `Shared.Contracts`는 framework 의존이 없는 순수 레코드다(위 9번으로 이제 구조적으로 보장된다). 현재 실패도, 표현하지 못하는 불변식도 없다. 5개 언어에 병렬 domain 타입과 매퍼를 하나씩 늘리는 대가가 미래의 컴파일 파급 하나를 막는 이득보다 크다 |
+| 봇 방향 반전(`PlayerMovement.Reject`)이 Infrastructure에서 domain 정책을 결정한다 | codex도 "현재 런타임 실패가 아닌 구조 문제"로 분류했다. `PlayerActor`는 `IZLinkActor`를 구현하므로 Domain에 둘 수 없고, 좌표의 **권위**는 actor다(§2.1) — 자기 상태 전이를 자기가 소유하는 것이 맞다. 규칙은 한 곳에만 있고(`ReverseDirection`), 층을 나누면 5개 언어에 hop만 하나씩 는다 |
+
+#### 8.5.4 **미해결 — peer 자동 연결이 이 토폴로지를 세우지 못한다**
+
+회차 3에서 spec을 근거로 peer 수동 배선(`ConnectRouter`·`ConnectPeerPub`·peer bridge endpoint)을
+삭제했다. 근거는 옳았다 — [spec 10 §5.2](../framework/spec/server/10-channel-topology.ko.md)는 한 역할
+안에서 자동 연결과 수동 연결을 섞지 말라고 하고, peer rid를 endpoint와 함께 등록하는 형태는 location
+store가 **없는** 구성용이며, 정본 §3도 "peer 자동 연결"이라고 적는다. 교차 노드 transfer를 하는 정본
+샘플 Bingo도 peer를 dial하지 않는다.
+
+**그런데 동작하지 않는다.** 삭제하고 한 번 30/30 그린이 나서 성공으로 적었으나, 연속 실행에서
+**재현성 있게** 무너졌다.
+
+| 증상 | 실측 |
+|---|---|
+| `zone-node-1`이 **자기 spot으로 들어오는 것을 받지 못한다** | 공지를 fanout으로 받고(2회) 자기 zone spot으로 보내는데 **전달 0회, 에러 0회, drop 로그 0회** — 송신 dispatch 라인조차 남지 않는다. `zone-node-2`는 같은 코드로 2/2 성공 (`ZW-D1-spots` 실패) |
+| 같은 노드가 인접 zone의 **경계 snapshot도 받지 못한다** | `zone-nw`(node-1)가 `zone-ne`(node-2)의 `ZoneBorderEvent`를 받지 못해 `ZW-B4`가 timeout |
+| **보내는 것은 된다** | 같은 실행에서 node-1 → node-2 actor transfer는 정상(`ZW-B2`·`ZW-F2` 통과), east도 `zone-ne`에 정상 도착 |
+
+즉 **inbound만, 그리고 한쪽 노드에서만** 죽는다. 이 비대칭이 framework 결함인지 이 샘플의 설정
+오류인지 아직 가리지 못했다.
+
+**조치.** peer 수동 배선을 **복원**했다(그 상태가 통과하던 유일한 형태다). 정본 §4에 미해결 항목으로
+적었다. **정본은 "자동 연결"을 목표로 유지한다** — 저장소 규약상 spec이 계약이고 불일치는 구현 갭이다.
+수동 dial은 그때까지의 우회다.
+
+**다음 단계.** 최소 재현(노드 2개 + spot mesh + location store, 수동 dial 없음)을 만들어 inbound가
+죽는 것이 framework인지 설정인지 가른다. framework면 별도 트랙, 설정이면 샘플을 고치고 배선을 다시
+지운다. **이것이 해소되기 전에는 4개 언어 포팅에 이 배선이 그대로 복제된다는 점을 알고 진행한다.**
+
+#### 8.5.3 `dotnet` 회차 4 — 봇 스폰의 오류 삼킴 (codex 수렴 게이트)
+
+codex가 회차 3의 변경만 다시 보고 **NOT CONVERGED — 1건**을 냈다. 타당하고, 근거가 코드였다.
+
+**지적.** `BotSpawner`의 catch를 `ZLinkFrameworkErrorKind.ActorCreateFailed`로 좁힌 것으로는 부족하다.
+framework는 **location store 장애**에도 같은 kind를 던진다
+(`ZLinkActorOwnershipCoordinator`의 `StoreFailure` → `ActorCreateFailed`, "location store is
+unavailable"). 그러면 store가 죽어도 "이미 다른 노드가 소유 중"으로 읽고 넘어가, **봇이 하나도 없는
+월드 위에서 `topology=ready`가 찍힌다**(정본 §2.7의 봇 8마리 위반).
+
+**여기서 두 번 헛짚었다.** 회차 3에서 "conflict 뒤 존재를 재확인한다"고 넣은
+`IZLinkActorManager.FindAsync`는 **로컬 전용**이다(`TryGetCreatedActorState` — 이 노드가 만든 actor만
+안다). 재시작한 노드에는 그 봇이 없으므로 언제나 null이고, 그래서 rethrow가 되어 노드가 기동에
+실패했다. 원격에 살아 있는 봇을 볼 수 있는 표면이 아니었던 것이다.
+
+**해결 — framework에 이미 정확한 표면이 있었다.** `IZLinkActorDirectory`다.
+
+| 표면 | 의미 |
+|---|---|
+| `IZLinkActorDirectory.FindAsync` | **로컬 → location store** 순으로 조회한다. 다른 노드에 살아 있는 봇을 **본다** |
+| `IZLinkActorDirectory.EnsureAsync` | 없으면 만들고, claim 경쟁에 지면 directory를 **다시** 조회해 승자를 돌려주고, 그래도 놓을 수 없으면 `ActorCreateRejected`로 **던진다** |
+| `IZLinkActorManager.FindAsync` | **로컬 전용.** 이 노드가 만든 actor만 안다 |
+| `IZLinkActorManager.GetOrCreateAsync` | claim conflict를 **예외로** 던진다 |
+
+`ZoneNodeBootstrap`을 directory 기반으로 바꿔 **try/catch를 통째로 없앴다.** 이제 이렇게 갈린다.
+
+- 봇이 다른 노드에 살아 있다 → directory가 찾는다 → 스폰하지 않는다. (예외 없음)
+- location store가 죽었다 → 만들 수 없다 → **던진다** → 노드가 기동에 실패한다. 봇 없는 월드에
+  `topology=ready`가 찍히지 않는다.
+
+**부수로 드러난 잠재 결함(미착수 트랙).** `EnsurePlayerActorHandler`도 `GetOrCreateAsync`를 쓴다.
+transfer로 actor가 다른 노드에 가 있는 상태에서 **같은 `PlayerId`가 재입장**하면(정본 §2.4) 같은 claim
+conflict를 맞는다. 정본 §11에 이 시나리오가 없어 드러나지 않았을 뿐이다. → §8.9.2에 합류시킨다.
 
 - [ ] 마지막 회차에서 codex가 **의미 있는 항목을 제시하지 않음**을 확인했다
 - [ ] 수렴 시점의 관문 1 전 항목(§8.4)이 여전히 통과한다
@@ -644,6 +798,7 @@ codex Gateway 리뷰가 정본 §11 밖의 framework 과제 둘을 지적했다.
 |---|---|
 | 같은 actor에 대한 **두 번째 session bind가 첫 번째를 해제하지 않는다** | 같은 `PlayerId`로 재접속하면 이전 session의 binding이 남아, 두 session에서 온 packet이 actor의 push 목적지를 번갈아 덮어쓴다. 샘플이 `PlayerId → session` map을 따로 들면 framework의 binding 상태를 **중복**하게 되므로, framework가 actor당 현재 session 하나를 강제해야 한다 |
 | actor의 **노드가 사라지면 session이 stale binding에 묶인 채 남는다** | 이후 packet이 죽은 `ActorRef`를 계속 쓴다. relay가 결국 예외를 던지지만 `MoveMsg`는 one-way라 브라우저는 응답도 끊김도 받지 못한 채 얼어붙는다. 샘플 수준의 완화는 relay 실패 시 session을 닫는 것이고, 근본 수정은 framework가 소유권 상실 시 session handle을 무효화하는 것이다 |
+| **transfer 이후 같은 `PlayerId` 재입장이 claim conflict를 맞는다** (회차 4에서 발견, 미수정) | `EnsurePlayerActorHandler`가 `IZLinkActorManager.GetOrCreateAsync`를 쓴다. actor가 transfer로 다른 노드에 가 있으면 spawn 노드에서의 get-or-create는 **예외**가 된다. 정본 §2.4는 "같은 `PlayerId`로 다시 `JoinWorldReq`를 보내면 **같은 actor에 새 session이 bind**된다"고 약속하므로 실제 계약 위반이다. **정본 §11에 이 시나리오가 없어 드러나지 않았다.** 수정 방향은 봇과 같다(§8.5.3) — `IZLinkActorDirectory.EnsureAsync`. **시나리오도 함께 추가한다**(`ZW-A6` 후보: 노드 간 transfer 뒤 같은 `PlayerId`로 재접속) |
 
 ### 8.10 구현하며 드러난 정본 설계 결함 (수정해 반영함)
 

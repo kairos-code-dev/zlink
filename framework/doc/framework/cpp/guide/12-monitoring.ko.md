@@ -173,8 +173,8 @@ app.set_message_flow_mode (zlink::framework::message_flow_log_mode_t::key_transi
   옵션 복사·문자열 할당이 0이다(게이트 = 공유 atomic load 1회).
 - 콜렉터/OTel 연동: `options.configure_dispatch().set_message_flow_observer(...)`(observer 또는
   `std::function`)로 구조화 이벤트를 받는다(앱 레이어). framework 는 OTel 에 의존하지 않는다.
-- 정식 계약: [spec/cpp-monitoring §7](../../common/spec/languages/cpp/02-framework-interfaces.ko.md), 공통 의미:
-  [공통 스펙 메시지 흐름 추적](../../common/spec/52-message-flow-tracing.ko.md).
+- 정식 계약: [spec/cpp-monitoring §7](../../spec/server/languages/cpp/02-framework-interfaces.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../spec/server/52-message-flow-tracing.ko.md).
 
 ## 6. 자주 막히는 곳
 

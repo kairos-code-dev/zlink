@@ -3,7 +3,7 @@ if(NOT DEFINED ZLINK_FRAMEWORK_CPP_SOURCE_DIR)
 endif()
 
 set(embedded_http_server_spec
-  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/../../doc/framework/common/spec/languages/cpp/61-embedded-http-server.ko.md")
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/../../doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md")
 
 if(NOT EXISTS "${embedded_http_server_spec}")
   message(FATAL_ERROR "HTTP perf policy document is missing: ${embedded_http_server_spec}")

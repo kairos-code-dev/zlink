@@ -144,7 +144,7 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 > **`Weight`와 `Draining` 마커는 다른 축이다.** `Weight = 0`은 **transport 수준 부하 게이트**로,
 > client가 그 노드로 새 request를 보내지 않게 한다. framework의 **배치 결정**(actor join target,
 > spot `GetOrCreate` 노드 선택, Entry Spot 배정)은 weight를 보지 않고 `Draining` 마커만 본다
-> ([54 §3.1](../spec/54-graceful-drain-handoff.ko.md)). 이 시나리오는 channel request 부하 축만
+> ([54 §3.1](../../spec/server/54-graceful-drain-handoff.ko.md)). 이 시나리오는 channel request 부하 축만
 >검증한다 — actor/spot 배치 제외는 config 11의 drain 시나리오가 담당한다.
 
 #### RL-B5 drain 중 in-flight 완료

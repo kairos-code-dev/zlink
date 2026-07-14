@@ -1,0 +1,127 @@
+<!-- framework-adapter-nav:start -->
+[스펙 목차](../README.ko.md) | [이전: Location Runtime](40-location-runtime.ko.md) | [다음: 런타임 모니터링](50-runtime-monitoring.ko.md)
+<!-- framework-adapter-nav:end -->
+
+
+# Location Store — 공식 Redis Extension
+
+이 문서는 framework가 공식 제공하는 **Redis location store extension**의 언어 중립 공통
+스펙이다. store/lease/generation의 계약 의미는 [location runtime](40-location-runtime.ko.md)이
+소유하고, 이 문서는 그 계약을 Redis 위에서 어떻게 만족시키는지(key 구조, 원자성, 변경 감지,
+오류 변환, Redis 연결 수명)를 정의한다.
+
+> Redis extension은 **공식 제공이지만 framework 본체 dependency가 아니다.** 별도 package
+> (`Zlink.Framework.Locations.Redis` 상당)로 배포되고, 사용자는 인스턴스를 만들어
+> `AddLocationStore(instance)`로 등록한다. 전용 등록 함수는 없다.
+
+## 1. 등록과 설정
+
+아래 코드는 등록 의미를 보여 주는 비규범 `.NET` 투영 예시다. 정확한 이름과 타입은
+언어별 스펙에서 고정한다.
+
+```csharp
+options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+    .SetConnectionString("redis-host:6379")
+    .SetKeyPrefix("zlink:app")));
+```
+
+| 설정 | 의미 |
+|------|------|
+| connection string / configuration | Redis 연결 정보. 언어별 Redis client의 관용 표현을 그대로 받는다 |
+| key prefix | 이 배포의 모든 key 앞에 붙는 격리 접두사. 배포(또는 테스트 실행)별로 달라야 한다 |
+
+Redis extension 인스턴스는 store 5종 통합 계약과 optional **change stamp** 계약을 구현한다.
+watch(변경 이벤트 stream)는 구현하지 않는다. 이 extension은 polling과 change stamp로 변경을 감지한다.
+polling은 주기적으로 store를 다시 읽는 방식이고, change stamp는 row가 바뀔 때 증가하는 번호다. 계약상
+polling만으로도 올바른 연결 상태에 도달해야 하므로 Redis extension이 watch를 제공하지 않아도 충분하다.
+
+## 2. Key schema
+
+prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key 필드들을
+`길이:값` 형태로 이어 붙인 문자열이다. 이렇게 길이를 함께 저장하면 값 안에 구분자가 들어 있어도
+어디까지가 한 필드인지 알 수 있다. `RoutingId`는 hex로 인코딩한다. 임의 바이트 rid와 구분자 충돌을
+피해야 하므로 row key에 raw rid 문자열을 쓰지 않는다.
+
+| key | 타입 | 내용 |
+|-----|------|------|
+| `P:row:{kind}:{rowKey}` | HASH | `owner`, `gen`, `json`(row 직렬화), `updatedAtMs`[, `mesh`] |
+| `P:gen:{kind}:{rowKey}` | STRING | generation counter. **row가 지워져도 삭제하지 않는다**(재claim 시 단조 증가 유지) |
+| `P:keys:{kind}` | SET | 해당 kind의 모든 row key (목록 조회 index) |
+| `P:own:{kind}:{ownerId}` | SET | 한 owner가 소유한 row key (owner 단위 bulk remove index) |
+| `P:lease:{ownerId}` | STRING | `nodeRidHex\|updatedAtMs`, Redis `PX` TTL로 만료 |
+| `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
+| `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
+
+row key 예 (peer): `AutoConnectType 공통 문자열 + MeshName + Role 공통 문자열 +
+identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
+
+Redis row 형식의 byte-for-byte fixture 정본은
+`framework/testdata/location/redis/actor-location-v2.json`이다. 네 언어 Redis extension은 이
+fixture와 같은 key 문자열, hash field, row JSON을 만들어야 한다. fixture의 hash field는
+`owner`, `gen`, `json`, `updatedAtMs`이고, row JSON은 PascalCase public field 이름을 유지한다.
+`RoutingId` 값은 소문자 hex 문자열로 저장하고, route `Value`는 base64 문자열로 저장한다.
+
+actor row와 key 형식은 다음 규칙으로 고정한다.
+
+- actor row key는 **actor id 단독**이다. actor id 전역 unique 계약에 따라 `ActorType`은 key
+  구성에 포함하지 않으며, row의 nullable 진단 필드로만 둔다.
+- row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
+  로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
+  actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
+- actor row에는 중복 `SpotKind` 필드를 두지 않는다. actor가 존재하는 spot 종류는
+  `LocationKind` 단독으로 표현한다.
+- 네 언어 extension은 이 row와 key 형식을 동일하게 사용한다.
+
+## 3. 원자성 — write는 전부 Lua script
+
+모든 write 결정(NewClaim/Renew/Takeover 판정, generation 발급, owner-guard remove, lease
+renew/remove)은 **Lua script 한 번**으로 원자 실행한다. script는:
+
+- 판정과 갱신을 한 atomic step에서 수행한다 — NewClaim의 "현재 row 없음 또는 row owner의
+  lease 만료" 확인과 새 generation 발급이 분리되지 않는다.
+- **Redis `TIME`을 script 안에서 읽어** `updatedAtMs`와 lease 만료를 기록한다. 호출자의 wall
+  clock은 계약에 들어오지 않는다(스크립트가 기록한 timestamp를 반환값으로 돌려준다).
+- 결과를 `stored | stale | conflict`로 반환하고 extension이
+  `ZLinkLocationWriteResult`로 변환한다.
+- old-owner index 같은 파생 key는 row의 현재 owner를 알아야 계산되므로 ARGV로 prefix를 받아
+  script 내부에서 조립한다.
+
+**지원 topology는 standalone Redis다.** cluster에 배포하려면 모든 key가 한 slot에 모이도록
+key prefix를 hash-tag(`{...}`)로 구성해야 한다(공식 지원 범위 밖의 운영 선택).
+
+## 4. Lease와 stale 판정
+
+- lease는 `PX` TTL이 걸린 STRING이다. 만료는 Redis가 수행하므로 lease read가 없어도 만료가
+  성립한다.
+- `ListOwnerLeases`는 lease 목록과 Redis `TIME` 기준 `StoreNow`를 한 script로 함께 반환한다.
+  런타임의 만료 판정(`LeaseExpiresAt - StoreNow` + local monotonic 경과)이 이 snapshot을
+  사용한다.
+- NewClaim의 "row owner lease 만료" 판정은 script 안에서 `P:lease:{owner}` 존재 여부로
+  원자적으로 확인한다.
+- row 물리 삭제는 계약 대상이 아니다. lease가 만료된 owner의 row는 조회 경로(runtime의 lease
+  join)에서 제외되며, `P:row`/`P:keys`/`P:own`의 잔존 항목 정리는 background cleanup 재량이다.
+
+## 5. Change stamp
+
+`P:stamp:{kind}[:{mesh}]`는 해당 scope의 write마다 `INCR`되는 단조 counter다. runtime의
+polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목록을 읽는다. stamp는 변경이 없을 때
+전체 목록 조회를 건너뛰기 위한 최적화일 뿐이다. stamp가 유실되거나 실제 row 상태와 잠시 어긋나도,
+다음 polling의 전체 목록 조회로 최종 연결 상태가 맞춰져야 한다.
+
+## 6. 오류 변환과 connection lifecycle
+
+- read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다(계약 §3.1).
+- Redis client connection은 extension 인스턴스가 소유한다. 인스턴스는 `IAsyncDisposable`이며
+  framework host가 dispose lifecycle을 관리한다. 재연결 정책은 언어별 Redis client의 표준
+  동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다. fail-static은 마지막으로
+  성공한 연결 판단을 유지하고 새 connect/disconnect 계산을 멈추는 정책이다.
+- Redis 응답 지연/실패가 framework runtime을 블록하면 안 된다 — 조회 실패는 상태
+  (`StoreFailure`)와 이벤트로 강등된다.
+
+## 7. 격리와 테스트
+
+- 배포별 key prefix 격리가 필수다. E2E와 테스트는 실행마다 전용 prefix(또는 disposable Redis
+  instance)를 사용하고, 실행 후 prefix 하위 key를 정리하거나 인스턴스를 버린다.
+- store 계약 회귀는 언어 공통 store contract 테스트(같은 시나리오를 in-memory 구현과 Redis
+  구현에 함께 실행)로 검증한다. Redis 자체의 HA/복제(sentinel, cluster)는 이 extension의 검증
+  범위가 아니다.

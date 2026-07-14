@@ -20,8 +20,8 @@
   자체의 HA/복제는 store 구현체(예: Redis) 책임이며 framework가 검증하지 않는다.
 
 fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 상세는
-[location runtime spec](../spec/40-location-runtime.ko.md)과
-[Redis store spec](../spec/41-location-store-redis.ko.md)을 기준으로 하고 이 문서에서
+[location runtime spec](../../spec/server/40-location-runtime.ko.md)과
+[Redis store spec](../../spec/server/41-location-store-redis.ko.md)을 기준으로 하고 이 문서에서
 반복하지 않는다.
 
 판정은 public 표면으로만 한다: `IZLinkLocationRuntimeQuery.GetStatusAsync`(store health,
@@ -51,7 +51,7 @@ messaging 성공, 각 역할 server의 evidence.
 
 시간 관련 option(heartbeat interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: heartbeat 1초, lease TTL 3초,
-polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는 [40 §8.2](../spec/40-location-runtime.ko.md)의
+polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는 [40 §8.2](../../spec/server/40-location-runtime.ko.md)의
 option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 
@@ -90,7 +90,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 
 **한마디로:** watch를 제공하지 않는 store 구성에서도, polling만으로 peer 변경이 polling interval 안에 같은 결과로 반영되는가.
 
-- 절차: watch를 구현하지 않은 store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서, provider 하나를 추가로 띄웠다가 정상 종료한다. 등록 표면은 통합 계약 인스턴스 하나뿐이며 책임별 개별 등록 함수는 없다([40 §3](../spec/40-location-runtime.ko.md)).
+- 절차: watch를 구현하지 않은 store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서, provider 하나를 추가로 띄웠다가 정상 종료한다. 등록 표면은 통합 계약 인스턴스 하나뿐이며 책임별 개별 등록 함수는 없다([40 §3](../../spec/server/40-location-runtime.ko.md)).
 - 검증: watch event 없이 polling만으로 추가/제거가 desired target set에 반영된다 — 추가 후 polling interval 몇 tick 안에 새 provider가 routing 대상이 되고, 제거 후 그 provider로 더 가지 않는다. `GetStatusAsync`가 watch가 꺼져 있고 polling이 동작 중임을 보여준다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다(watch는 latency 최적화일 뿐 correctness는 polling이 보장).
 - 세부 동작: polling이 correctness 경로임을 고정(watch는 선택 최적화).
 
@@ -174,7 +174,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 **한마디로:** 장애→복구 한 사이클 동안 runtime status가 실제 상태 전이(healthy → unhealthy/last error → healthy/last refresh)를 정확히 보여주는가.
 
 - 절차: SF-D1 또는 SF-D2 실행 중 probe가 각 노드의 `GetStatusAsync`를 단계별로 조회한다.
-- 검증: 정상 구간은 store healthy + owner lease 갱신 정상, 장애 구간은 store unhealthy + last error 기록 + lease 갱신 실패 표시, 복구 후 healthy 복귀 + last refresh 갱신이 순서대로 관측된다. watch/polling 상태와 owner lease 갱신 상태 같은 필드가 조회 가능하다. **주소 cache가 없으므로 cache 관련 필드는 status에 없다**([40 §7](../spec/40-location-runtime.ko.md)).
+- 검증: 정상 구간은 store healthy + owner lease 갱신 정상, 장애 구간은 store unhealthy + last error 기록 + lease 갱신 실패 표시, 복구 후 healthy 복귀 + last refresh 갱신이 순서대로 관측된다. watch/polling 상태와 owner lease 갱신 상태 같은 필드가 조회 가능하다. **주소 cache가 없으므로 cache 관련 필드는 status에 없다**([40 §7](../../spec/server/40-location-runtime.ko.md)).
 - 세부 동작: `ZLinkLocationRuntimeStatus` 필드의 장애 사이클 반영.
 
 ### Track E — store 응답 지연(장애 아님) 중 비블로킹
@@ -194,7 +194,7 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
   (예: baseline의 N배 이내로 사전 정의). `GetStatusAsync` 조회 자체도 무관 요청 경로를 막지
   않는다. 이 결과로 store client가 스레드나 이벤트 루프를 점유하지 않고 진짜 비동기·논블로킹으로
   I/O를 수행함을 실측으로 증명한다. 비동기 실행 계약은
-  [공통 비동기 실행 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
+  [공통 비동기 실행 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
 - 세부 동작: Redis 응답 지연이 코루틴 dispatcher(Kotlin)나 core I/O 스레드(C++, `PERF_IO_THREADS`)를
   점유하지 않음을 검증. 이 트랙은 store 자체의 정상/비정상보다 client 구현의 비블로킹 여부를 보는
   점에서 Track A~D와 다르다.

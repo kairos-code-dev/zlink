@@ -29,19 +29,21 @@
 각 언어 디렉토리의 `framework/languages/<lang>/doc/`가 아니라 `framework/doc/` 아래의
 컴포넌트별 위치에서 진행한다.
 
-- framework 공통 스펙: `framework/doc/framework/common/spec/`
-- framework 언어별 공개 계약: `framework/doc/framework/common/spec/languages/<lang>/`
+- framework 기반 계약(세 패키지 공통): `framework/doc/framework/spec/`
+- framework(서버) 패키지 계약: `framework/doc/framework/spec/server/` (+ `server/languages/<lang>/`)
+- HTTP client 패키지 계약: `framework/doc/framework/spec/http-client/` (+ `http-client/languages/<lang>/`)
+- stream connector 패키지 계약: `framework/doc/framework/spec/stream-connector/` (+ `stream-connector/languages/<lang>/`)
 - framework 언어별 guide/internals: `framework/doc/framework/<lang>/`
-- HTTP client 문서: `framework/doc/http-client/<lang>/`
-- stream connector 문서: `framework/doc/stream-connector/<lang>/`
+- HTTP client 사용 가이드: `framework/doc/http-client/<lang>/`
+- stream connector 사용 가이드: `framework/doc/stream-connector/<lang>/`
 
 새 언어별 문서를 `framework/languages/<lang>/doc/` 아래에 추가하지 않는다. 기존 문서를 수정해야
 하면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.
 
 언어별 public interface의 정식 시그니처는
-`framework/doc/framework/common/spec/languages/<lang>/`에서 고정한다. 공통 동작과 언어별 표현,
+`framework/doc/framework/spec/<package>/languages/<lang>/`에서 고정한다. 공통 동작과 언어별 표현,
 정식 계약 변경 절차는
-[`framework/doc/framework/common/spec/public-contract-governance.ko.md`](./framework/doc/framework/common/spec/public-contract-governance.ko.md)를
+[`framework/doc/framework/spec/00-public-contract-governance.ko.md`](./framework/doc/framework/spec/00-public-contract-governance.ko.md)를
 따른다.
 
 ### Framework public contract parity
@@ -133,9 +135,9 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
 
 ### 5. 구현 전 spec 작성 규칙
 
-`framework/doc/framework/common/spec/`의 framework public contract는 모든 언어가
+`framework/doc/framework/spec/`의 framework public contract는 모든 언어가
 도달해야 하는 목표 계약을 먼저 정식 spec에 고정한다. 각 언어의 정확한 public
-interface도 `framework/doc/framework/common/spec/languages/<lang>/`에 먼저 기록한다.
+interface도 `framework/doc/framework/spec/<package>/languages/<lang>/`에 먼저 기록한다.
 현재 구현과 다른 부분은 `90-implementation-gap.ko.md`와 언어별 interface의 구현 차이
 표에 기록하고, 이후 구현과 contract test를 spec에 맞춘다. 구현이 없다는 이유로
 공통 기능을 현재 언어들의 최소 공통분모로 축소하지 않는다.

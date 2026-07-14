@@ -182,7 +182,7 @@ class RegistryConfig {
 - pub/sub는 [04-channel-messaging](04-channel-messaging.ko.md)을 본다.
 - room/stage/zone은 [05-spot](05-spot.ko.md)을 본다.
 - 외부 client는 [07-stream](07-stream.ko.md)과
-  [Stream Connector](../../common/spec/languages/java/03-stream-connector.ko.md)를 본다.
+  [Stream Connector](../../spec/stream-connector/languages/java/03-stream-connector.ko.md)를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

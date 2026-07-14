@@ -5,8 +5,8 @@
 # Config 11 — 관측·운영 배포 (metrics · flow correlation · drain)
 
 운영 중인 배포에서 새 관측·운영 표면 세 가지를 실제 배포 조건(공유 store·다중 노드·프로세스
-경계)에서 검증한다. 세 표면의 계약은 각각 [메시지 흐름 상관관계](../spec/53-flow-correlation.ko.md),
-[런타임 메트릭](../spec/51-runtime-metrics.ko.md), [Graceful Drain & Handoff](../spec/54-graceful-drain-handoff.ko.md)이
+경계)에서 검증한다. 세 표면의 계약은 각각 [메시지 흐름 상관관계](../../spec/server/53-flow-correlation.ko.md),
+[런타임 메트릭](../../spec/server/51-runtime-metrics.ko.md), [Graceful Drain & Handoff](../../spec/server/54-graceful-drain-handoff.ko.md)이
 소유하고, 이 config는 그 계약이 배포 현장에서 의도대로 도는지를 본다.
 
 기존 [Config 7 — Runtime Monitoring](config-7-monitoring.ko.md)이 socket/location/spot **이벤트
@@ -186,7 +186,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 **한마디로:** drain이 유지 중인 actor를 `play-b`로 이동시키고, 이동 중에도 bound session이 이어지는가.
 
 - 절차: `play-a` drain 중 bound actor가 `play-b`로 transfer된다.
-- 검증: transfer가 [spot-actor §5.1](../spec/23-spot-actor.ko.md) 완료 조건까지 완주하고 location row가
+- 검증: transfer가 [spot-actor §5.1](../../spec/server/23-spot-actor.ko.md) 완료 조건까지 완주하고 location row가
   `Takeover`로 `play-b`를 가리킨다. bound session push가 이동 후 `play-b` actor로 이어진다.
   `zlink.drain.actors.handed_off`가 계수된다. moving 직전 실제 pending request 수와
   `zlink.actor.transfer.pending_requests.count` sample이 일치하고, 이동 중 각 request는 원래 reply

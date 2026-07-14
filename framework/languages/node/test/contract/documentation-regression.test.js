@@ -13,14 +13,22 @@ const specRoot = path.join(
   '..',
   'doc',
   'framework',
-  'common',
   'spec',
+  'server',
   'languages',
   'node'
 );
 const samplesRoot = path.join(workspaceRoot, 'samples');
-const commonSpecRoot = path.resolve(specRoot, '..', '..');
-const typescriptSpecRoot = path.join(path.dirname(specRoot), 'typescript');
+const commonSpecRoot = path.resolve(specRoot, '..', '..', '..');
+const typescriptSpecRoot = path.resolve(
+  specRoot,
+  '..',
+  '..',
+  '..',
+  'stream-connector',
+  'languages',
+  'typescript'
+);
 const nodeG0Ledger = path.join(
   workspaceRoot,
   '..',
@@ -153,7 +161,7 @@ test('node README links the two official framework specifications', () => {
   for (const file of required) {
     if (!fs.existsSync(path.join(specRoot, file))) missing.push(`${file}: missing`);
     if (!languageReadme.includes(`](${file})`)) missing.push(`${file}: language README link`);
-    if (!nodeReadme.includes(`../common/spec/languages/node/${file}`)) {
+    if (!nodeReadme.includes(`../spec/server/languages/node/${file}`)) {
       missing.push(`${file}: Node README link`);
     }
   }
@@ -279,18 +287,29 @@ test('typescript stream connector specification matches the browser package decl
 test('node G0 ledger pins every common and Node specification hash', () => {
   const ledger = fs.readFileSync(nodeG0Ledger, 'utf8');
   const snapshots = new Map(
-    [...ledger.matchAll(/^\| (common|node|typescript) \| `([^`]+)` \| `([a-f0-9]{64})` \|$/gm)]
+    [...ledger.matchAll(/^\| ([\w./-]+) \| `([^`]+)` \| `([a-f0-9]{64})` \|$/gm)]
       .map((match) => [`${match[1]}:${match[2]}`, match[3]])
   );
+  // spec 트리는 패키지 폴더로 나뉜다. ledger의 '범위' 열은 spec root 기준 상대 디렉토리다.
+  const koFiles = (dir) =>
+    fs.readdirSync(dir).filter((file) => file.endsWith('.ko.md')).sort();
+  const serverSpecRoot = path.join(commonSpecRoot, 'server');
+  const connectorSpecRoot = path.join(commonSpecRoot, 'stream-connector');
   const expectedFiles = [
-    ...fs.readdirSync(commonSpecRoot)
-      .filter((file) => file.endsWith('.ko.md'))
-      .sort()
-      .map((file) => [`common:${file}`, path.join(commonSpecRoot, file)]),
+    ...koFiles(commonSpecRoot).map((file) => [`.:${file}`, path.join(commonSpecRoot, file)]),
+    ...koFiles(serverSpecRoot).map((file) => [
+      `server:${file}`,
+      path.join(serverSpecRoot, file)
+    ]),
+    ['stream-connector:32-stream-connector.ko.md',
+      path.join(connectorSpecRoot, '32-stream-connector.ko.md')],
     ...['01-system-structure.ko.md', '02-handler-interfaces.ko.md']
-      .map((file) => [`node:${file}`, path.join(specRoot, file)]),
+      .map((file) => [`server/languages/node:${file}`, path.join(specRoot, file)]),
     ...['README.ko.md', '03-stream-connector.ko.md']
-      .map((file) => [`typescript:${file}`, path.join(typescriptSpecRoot, file)])
+      .map((file) => [
+        `stream-connector/languages/typescript:${file}`,
+        path.join(typescriptSpecRoot, file)
+      ])
   ];
 
   assert.deepEqual([...snapshots.keys()].sort(), expectedFiles.map(([key]) => key).sort());

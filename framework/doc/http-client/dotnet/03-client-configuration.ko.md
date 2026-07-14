@@ -7,7 +7,7 @@ builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHtt
 
 ## builder 옵션
 
-기본값은 [공통 spec 2장](../spec/02-client-builder.ko.md)이 정본이다.
+기본값은 [공통 spec 2장](../../framework/spec/http-client/02-client-builder.ko.md)이 정본이다.
 
 | 옵션 | 효과 | 기본값 | 구현 |
 | --- | --- | --- | --- |

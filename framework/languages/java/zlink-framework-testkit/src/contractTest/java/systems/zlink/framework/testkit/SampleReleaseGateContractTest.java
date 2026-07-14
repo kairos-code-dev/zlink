@@ -463,7 +463,7 @@ final class SampleReleaseGateContractTest {
         }
 
         String handlerSpec = Files.readString(frameworkJavaRoot()
-            .resolve("../../doc/framework/common/spec/languages/java/02-handler-interfaces.ko.md"));
+            .resolve("../../doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md"));
         String actorGuide = Files.readString(frameworkJavaRoot()
             .resolve("../../doc/framework/java/guide/06-actor-session.ko.md"));
         assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),

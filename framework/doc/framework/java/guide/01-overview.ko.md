@@ -71,7 +71,7 @@ core(C API)가 소켓 패턴을 제공하고, Java 바인딩이 이를 typed 클
 
 이 guide는 현재 Java/Kotlin framework 구현과 sample release gate를 기준으로
 작성한다. 공개 계약의 정확한 시그니처는
-[인터페이스 카탈로그](../../common/spec/languages/java/02-handler-interfaces.ko.md)를 기준으로 보고, `.NET`과
+[인터페이스 카탈로그](../../spec/server/languages/java/02-handler-interfaces.ko.md)를 기준으로 보고, `.NET`과
 Java/Kotlin 표면을 대조해야 할 때는
 내부 시작·종료 배선이 필요하면 [runtime lifecycle](../internals/runtime-lifecycle.ko.md)을
 함께 읽는다.

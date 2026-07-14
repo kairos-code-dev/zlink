@@ -13,7 +13,7 @@ public sealed class RedisLocationFixtureTests
         var root = document.RootElement;
 
         Assert.Equal(
-            "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/common/spec/location-store-redis.ko.md.",
+            "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/location-store-redis.ko.md.",
             root.GetProperty("notice").GetString());
         Assert.Equal("actor-location-v2", root.GetProperty("format").GetString());
         Assert.Equal(

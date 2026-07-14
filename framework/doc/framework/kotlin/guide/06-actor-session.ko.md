@@ -292,7 +292,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 
 전체 등록 시그니처는
-[spring-boot-actor-session](../../common/spec/languages/java/01-system-structure.ko.md)이
+[spring-boot-actor-session](../../spec/server/languages/java/01-system-structure.ko.md)이
 소유한다.
 
 ## 6. Reconnect와 gotcha
@@ -309,7 +309,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 - SPOT 기반: [05-spot](05-spot.ko.md)
 - STREAM session 작성: [07-stream](07-stream.ko.md)
 - actor 런타임 오류 관찰: [09-monitoring](09-monitoring.ko.md)
-- 전체 계약: [spring-boot-actor-session](../../common/spec/languages/java/01-system-structure.ko.md)
+- 전체 계약: [spring-boot-actor-session](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

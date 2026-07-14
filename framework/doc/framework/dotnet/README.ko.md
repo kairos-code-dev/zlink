@@ -4,14 +4,14 @@
 
 [Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/04-async-execution-policy.ko.md) | [시스템 구조](../common/spec/languages/dotnet/01-system-structure.ko.md) | [인터페이스](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | [Stream Connector](../common/spec/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](../../stream-connector/dotnet/guide/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../spec/04-async-execution-policy.ko.md) | [시스템 구조](../spec/server/languages/dotnet/01-system-structure.ko.md) | [인터페이스](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | [Stream Connector](../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](../../stream-connector/dotnet/guide/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
 > 이 묶음은 `.NET`/`ASP.NET Core`의 정식 `ZLink Framework` 문서다. 이
 > 디렉토리에는 `guide/`(샘플·튜토리얼), `internals/`(구현·검증 기준)와
 > `draft/`(미확정 항목)를 두고, 공개 계약은
-> [중앙 .NET spec](../common/spec/languages/dotnet/README.ko.md)에 둔다. 공통 의미는
+> [중앙 .NET spec](../spec/server/languages/dotnet/README.ko.md)에 둔다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따르며, 여기서는 그 의미를 `.NET`
 > 표면으로만 구체화한다.
 
@@ -157,7 +157,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 
 | 문서 | 역할 |
 |------|------|
-| [handler-interfaces.ko.md](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 모든 공용 인터페이스와 attribute 정의를 한 곳에 모은 기준 문서. 다른 문서에서 인터페이스를 인용할 때 항상 이 문서를 기준으로 한다. |
+| [handler-interfaces.ko.md](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 모든 공용 인터페이스와 attribute 정의를 한 곳에 모은 기준 문서. 다른 문서에서 인터페이스를 인용할 때 항상 이 문서를 기준으로 한다. |
 
 ### 2.2 주제 문서 (programming model)
 
@@ -167,12 +167,12 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [system-structure.ko.md](../common/spec/languages/dotnet/01-system-structure.ko.md) | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation |
-| [handler-interfaces.ko.md](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그 |
-| [32-stream-connector.ko.md](../common/spec/languages/dotnet/03-stream-connector.ko.md) | 별도 client connector의 lifecycle, dispatch, codec, transport, 종료 사유 |
-| [public-contract.ko.md](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 문서 계약과 실제 assembly·NuGet 산출물의 exact 검증 절차 |
+| [system-structure.ko.md](../spec/server/languages/dotnet/01-system-structure.ko.md) | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation |
+| [handler-interfaces.ko.md](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그 |
+| [32-stream-connector.ko.md](../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | 별도 client connector의 lifecycle, dispatch, codec, transport, 종료 사유 |
+| [public-contract.ko.md](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 문서 계약과 실제 assembly·NuGet 산출물의 exact 검증 절차 |
 
-**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
+**기능의 의미와 동작 규칙은 [공통 스펙](../spec/README.ko.md)이 소유한다.** 언어별 문서는
 그 의미가 `.NET`에서 어떤 모양인지만 고정한다.
 
 ### 2.3 유지보수 문서
@@ -200,12 +200,12 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 | 개념 | 다루는 곳 | 다른 문서에서는 |
 |------|----------|---------------|
-| 인터페이스, attribute, context 전체 정의 | [handler-interfaces](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 교차 참조 |
-| channel 등록(AddZLinkFramework), lifecycle | [aspnet-core-channel-messaging](../common/spec/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
+| 인터페이스, attribute, context 전체 정의 | [handler-interfaces](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 교차 참조 |
+| channel 등록(AddZLinkFramework), lifecycle | [aspnet-core-channel-messaging](../spec/server/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
 | handler / client 사용 예시, dispatch 흐름 | aspnet-core-channel-messaging, 샘플 | |
-| SPOT 개념, 등록, lifecycle | [aspnet-core-spot](../common/spec/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
-| Actor 라이프사이클, session bind, user Spot join, session actor dispatch | [aspnet-core-actor](../common/spec/languages/dotnet/02-handler-interfaces.ko.md) | 필요할 때 링크만 |
-| location store 등록, 자동 연결, 운영 조회 | [aspnet-core-location](../common/spec/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
+| SPOT 개념, 등록, lifecycle | [aspnet-core-spot](../spec/server/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
+| Actor 라이프사이클, session bind, user Spot join, session actor dispatch | [aspnet-core-actor](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | 필요할 때 링크만 |
+| location store 등록, 자동 연결, 운영 조회 | [aspnet-core-location](../spec/server/languages/dotnet/01-system-structure.ko.md) | 필요할 때 링크만 |
 
 ## 3. 핵심 방향
 

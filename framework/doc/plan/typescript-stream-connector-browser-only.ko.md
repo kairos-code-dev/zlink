@@ -121,12 +121,12 @@ Framework public contract는 구현보다 먼저 정식 spec에 반영한다. �
 
 | 문서 | 변경 내용 |
 |------|-----------|
-| `framework/doc/framework/common/spec/32-stream-connector.ko.md` | Node(E2E·도구·봇)를 TypeScript connector 대상에서 제거하고 브라우저 계열만 남긴다. Node의 4개 transport 지원, 이중 진입점과 Node 배포 행을 제거한다. TypeScript connector의 지원 scheme을 `ws/wss`로 고정한다. |
-| `framework/doc/framework/common/spec/90-implementation-gap.ko.md` | Node/browser 진입점 분리 완료 설명과 Node connector test 증거를 제거한다. browser transport, 실제 Chromium E2E와 비동기 flow 차이를 현재 상태에 맞게 다시 기록한다. |
-| `framework/doc/framework/common/spec/53-flow-correlation.ko.md` | 브라우저에 `AsyncLocalStorage`가 없다는 사실을 반영해 ambient flow 계약이 브라우저에서 실제로 구현 가능한지 재검토한다. 현재 계약을 구현하거나, 명시적 context 전달처럼 브라우저에서 구현 가능한 계약으로 정식 spec을 먼저 바꾼다. 미해결 gap은 완료로 판정하지 않는다. |
-| `framework/doc/framework/common/spec/05-framework-api.ko.md` | Node codec extension package에서 browser-safe payload codec과 framework 등록 adapter의 공개 진입점을 구분한다. |
-| `framework/doc/framework/common/spec/00-public-contract-governance.ko.md` | TypeScript browser projection의 소유 문서 위치와 환경 차이에 따른 transport 제한을 언어별 계약 목록에 반영한다. |
-| `framework/doc/framework/common/spec/languages/node/01-system-structure.ko.md` | codec package root와 `./framework` 진입점의 dependency 경계를 기록하고 browser bundle이 Node framework package에 의존하지 않음을 명시한다. |
+| `framework/doc/framework/spec/32-stream-connector.ko.md` | Node(E2E·도구·봇)를 TypeScript connector 대상에서 제거하고 브라우저 계열만 남긴다. Node의 4개 transport 지원, 이중 진입점과 Node 배포 행을 제거한다. TypeScript connector의 지원 scheme을 `ws/wss`로 고정한다. |
+| `framework/doc/framework/spec/90-implementation-gap.ko.md` | Node/browser 진입점 분리 완료 설명과 Node connector test 증거를 제거한다. browser transport, 실제 Chromium E2E와 비동기 flow 차이를 현재 상태에 맞게 다시 기록한다. |
+| `framework/doc/framework/spec/53-flow-correlation.ko.md` | 브라우저에 `AsyncLocalStorage`가 없다는 사실을 반영해 ambient flow 계약이 브라우저에서 실제로 구현 가능한지 재검토한다. 현재 계약을 구현하거나, 명시적 context 전달처럼 브라우저에서 구현 가능한 계약으로 정식 spec을 먼저 바꾼다. 미해결 gap은 완료로 판정하지 않는다. |
+| `framework/doc/framework/spec/05-framework-api.ko.md` | Node codec extension package에서 browser-safe payload codec과 framework 등록 adapter의 공개 진입점을 구분한다. |
+| `framework/doc/framework/spec/00-public-contract-governance.ko.md` | TypeScript browser projection의 소유 문서 위치와 환경 차이에 따른 transport 제한을 언어별 계약 목록에 반영한다. |
+| `framework/doc/framework/spec/server/languages/node/01-system-structure.ko.md` | codec package root와 `./framework` 진입점의 dependency 경계를 기록하고 browser bundle이 Node framework package에 의존하지 않음을 명시한다. |
 
 `framework/doc/framework/common/draft/browser-stream-connector.ko.md`는 현재 정식 spec 및 구현 상태와
 중복되거나 과거 Node connector 전제를 포함한다. 필요한 계약을 정식 spec으로 옮긴 뒤 별도 계약
@@ -135,9 +135,9 @@ Framework public contract는 구현보다 먼저 정식 spec에 반영한다. �
 ### 5.2 언어별 public interface 문서
 
 현재 문서인
-`framework/doc/framework/common/spec/languages/node/03-stream-connector.ko.md`는 Node framework와
+`framework/doc/framework/spec/server/languages/node/03-stream-connector.ko.md`는 Node framework와
 browser TypeScript connector를 한 문서에 함께 두고 있다. 이 파일을
-`framework/doc/framework/common/spec/languages/typescript/03-stream-connector.ko.md`로 옮겨
+`framework/doc/framework/spec/server/languages/typescript/03-stream-connector.ko.md`로 옮겨
 브라우저 전용 TypeScript 계약으로 고정한다.
 
 작업 순서는 다음과 같다.

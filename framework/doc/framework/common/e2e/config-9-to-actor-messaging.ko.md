@@ -10,7 +10,7 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 조건과 evidence marker는 네 언어에서 같은 의미로 유지한다.
 
 이 문서는 e2e 시나리오 정의만 둔다. actor client의 공개 계약은
-[actor model 6.1절](../spec/22-actor-model.ko.md)을 기준으로 하며 여기서 다시 정의하지 않는다.
+[actor model 6.1절](../../spec/server/22-actor-model.ko.md)을 기준으로 하며 여기서 다시 정의하지 않는다.
 언어별 구현은 public API만 사용하고, 내부 helper나 raw frame 조작으로 이 config를 통과시키면 안 된다.
 
 ## 1. 목적과 범위

@@ -141,7 +141,7 @@ handler 동작(공유):
 
 - 절차: spot handler가 무거운 CPU 작업을 `Context.RunCpuWorker(...)`로 offload하고 `.Yield(...)`로 기다린 뒤, 결과를 받아 spot 상태에 반영한다. 같은 시간대에 그 spot/노드로 다른 request도 보낸다.
 - 검증: worker가 spot 직렬 스레드 밖(bounded worker pool)에서 실행된다. `.Yield(...)`가 turn을 반납하므로 그동안 같은 spot의 다른 처리가 진행되고, worker 결과는 spot 직렬 컨텍스트로 돌아와 상태에 안전히 반영된다(경합 없음).
-- 세부 동작: **worker 축(어느 스레드에서 도는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../spec/04-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
+- 세부 동작: **worker 축(어느 스레드에서 도는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../../spec/04-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
 - 세부 동작: spot 직렬성 유지 + 무거운 작업 offload.
 
 ### Track B — actor join과 lifecycle
@@ -348,7 +348,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 **한마디로:** 한 stream에 actor를 여럿 bind했을 때, `actor-id`로 지정한 actor에게만 정확히 가고(오배달 없이), id 없이 보내면 실패하는가.
 
 - 절차: 한 stream session에 여러 actor(예: `actor-x`, `actor-y`)를 bind한다. stream header metadata `actor-id`(`header.Metadata.Get("actor-id")`)에 대상 actor id를 실어 보내고, session handler가 `Context.Actors.Find(actorId)?.RelayAsync(...)`로 해당 actor에 relay한다. 각 actor가 push를 낸다.
-- 검증: 각 packet이 `actor-id`로 지정한 actor로만 relay되고(교차 오배달 없음), 각 actor push가 같은 session으로 relay되어 client가 actor별로 구분해 받는다. **relay 대상 선택은 application 책임이다** — framework에는 `actor-id` metadata 기반 자동 라우팅이나 단일 bound 기본 relay가 없으므로, session이 대상 actor를 찾지 못하면 그 실패 처리도 application이 정의한다([31 §10](../spec/31-session-actor-dispatch.ko.md)).
+- 검증: 각 packet이 `actor-id`로 지정한 actor로만 relay되고(교차 오배달 없음), 각 actor push가 같은 session으로 relay되어 client가 actor별로 구분해 받는다. **relay 대상 선택은 application 책임이다** — framework에는 `actor-id` metadata 기반 자동 라우팅이나 단일 bound 기본 relay가 없으므로, session이 대상 actor를 찾지 못하면 그 실패 처리도 application이 정의한다([31 §10](../../spec/server/31-session-actor-dispatch.ko.md)).
 - 세부 동작: 다중 actor bind + `actor-id` metadata 선택 relay (단일 bound만 기본 relay).
 
 #### SM-D5 session disconnect → 명시적 actor 통지
@@ -524,7 +524,7 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 - 외부(spot 아닌) 코드는 `IZLinkRouteClient.RequestToSpot(handle, req)` / `SendToSpot(handle, msg)`로
   spot을 타깃한다(spot↔spot은 `Context.Outbound.RequestToSpot/SendToSpot`, **같은 대상 인자**).
 - **대상 인자는 불투명한 `SpotHandle` 하나다.** channel 이름 + spot rid나 target node rid + spot rid를
-  낱개로 받는 overload는 공개 표면에 없다([24 §3](../spec/24-spot-address-messaging.ko.md)). handle은
+  낱개로 받는 overload는 공개 표면에 없다([24 §3](../../spec/server/24-spot-address-messaging.ko.md)). handle은
   spot handle resolver로 얻고, 그 안의 owner node·전송 mesh는 framework가 소유한다.
 - 수신 프로세스에 같은 RouteMesh와 SpotMesh가 있으면 framework가 route packet과 spot route packet을
   자동으로 분기한다.

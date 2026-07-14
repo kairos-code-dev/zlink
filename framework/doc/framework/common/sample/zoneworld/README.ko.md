@@ -76,7 +76,7 @@ ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**
 ### 1.1 표면 선택 기준
 
 이 샘플의 교육 목표다. "여러 노드에 무언가를 한다"가 상황마다 다른 표면을 요구한다.
-선택 기준은 [channel topology spec §3.1](../../spec/10-channel-topology.ko.md)을 따른다.
+선택 기준은 [channel topology spec §3.1](../../../spec/server/10-channel-topology.ko.md)을 따른다.
 
 | 하려는 일 | 쓰는 것 | 다른 것으로 안 되는 이유 |
 |---|---|---|
@@ -88,7 +88,7 @@ ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**
 
 > **RouteMesh channel은 애플리케이션 요청에 쓰지 않는다.** node rid 직접 지정은
 > framework 내부(spot bridge)와 특수 인프라 계층의 표면이다([channel topology
-> spec §3.1 항목 3](../../spec/10-channel-topology.ko.md)). 이 샘플도 route mesh를
+> spec §3.1 항목 3](../../../spec/server/10-channel-topology.ko.md)). 이 샘플도 route mesh를
 > **spot bridge 용도로만** 등록한다(§4) — 노드 지정 관제 호출에는 쓰지 않는다.
 
 ## 2. 월드 규격
@@ -215,7 +215,7 @@ zone spot 생성 시 `Tick = 0`이다. timer callback은 다음 순서로 동작
 
 이 대비가 actor transfer의 값어치를 보인다. 둘 다 client 연결은 유지된다.
 
-**transfer adapter를 반드시 등록한다.** [spot-actor spec](../../spec/23-spot-actor.ko.md) §6에
+**transfer adapter를 반드시 등록한다.** [spot-actor spec](../../../spec/server/23-spot-actor.ko.md) §6에
 따르면 **adapter를 등록하지 않으면 target actor가 factory로 처음부터 재생성되고 이전 state가
 유실된다.** player actor는 좌표·zone의 권위이므로(§2.1) adapter 없이는 transfer 직후 좌표가
 초기화되어 이 샘플이 성립하지 않는다.
@@ -340,7 +340,7 @@ client에는 `Gateway`와 `Ops` 주소만 설정한다. zone 노드 주소는 cl
 | client | 브라우저 stream connector(WS) |
 
 > **peer 연결 — 수동 dial을 넣으면 자동 연결이 꺼진다.** §3은 location store가 peer를 **자동
-> 연결**한다고 적는다. 그런데 [channel topology spec §5](../../spec/10-channel-topology.ko.md)의
+> 연결**한다고 적는다. 그런데 [channel topology spec §5](../../../spec/server/10-channel-topology.ko.md)의
 > 규칙은 **peer 획득 방식이 역할 단위로 하나만 확정된다**는 것이다 — 같은 역할에 수동 endpoint가
 > 하나라도 있으면 그 역할은 **수동 연결로 확정되고, location store를 함께 등록했더라도 그 역할의
 > 자동 연결 reconcile은 돌지 않는다.** startup 오류가 아니라 조용히 수동이 우선한다.
@@ -572,7 +572,7 @@ Server/Ops/
 
 **`FromNodeId`를 왜 싣는가.** §2.3의 "노드 내부 이동은 허용, 진입만 차단"을 판정하는 것은 목표
 spot의 admission 콜백인데, framework는 **source node를 admission 콜백에 넘기지 않는다**
-([spot-actor spec §3.1](../../spec/23-spot-actor.ko.md)). 그래서 payload가 그것을 나른다. 새 입장이면
+([spot-actor spec §3.1](../../../spec/server/23-spot-actor.ko.md)). 그래서 payload가 그것을 나른다. 새 입장이면
 `null`이다.
 
 **없는 메시지 둘.** 구현하며 죽은 계약으로 드러나 삭제했다.
@@ -991,7 +991,7 @@ endpoint는 `ws://` 또는 `wss://`여야 하며 HTTP 호출은 runner의 same-o
 inbound handler가 시작한 관련 outbound는 `flowFrom(message)`로 표시한다. 표시하지 않은 UI나
 timer callback은 새 application flow를 시작하므로 동시에 실행되어도 inbound flow가 누출되지
 않는다. 실제 Chromium의 WS/WSS, reconnect와 종료 검증 결과는
-[implementation gap §4.10](../../spec/90-implementation-gap.ko.md)과 browser-only 구현 계획에서
+[implementation gap §4.10](../../../spec/90-implementation-gap.ko.md)과 browser-only 구현 계획에서
 추적한다.
 
 ```ts
@@ -1020,7 +1020,7 @@ ws.onmessage = e => ...;   // 디프레이밍을 브라우저가 수행한다
    어댑터를 만든다.
 3. **package root 단일화** — 별도 browser subpath 없이 ESM browser runtime 하나를 내보낸다.
 
-현재 public 계약은 [TypeScript Stream Connector](../../spec/languages/typescript/03-stream-connector.ko.md)가
+현재 public 계약은 [TypeScript Stream Connector](../../../spec/stream-connector/languages/typescript/03-stream-connector.ko.md)가
 소유한다. 실제 Chromium에서 request/reply, push, reconnect와 명시적 flow 전달을 검증했다.
 
 ## 15. 이 샘플이 채우는 커버리지 공백
@@ -1035,6 +1035,6 @@ ws.onmessage = e => ...;   // 디프레이밍을 브라우저가 수행한다
 | spot pub/sub | 있음(ShoppingMall·Bingo) | 경계 동기화(인접 zone별 topic) |
 | 브라우저 client | 없음 | **게임·관제 UI**(§14 선행 과제) |
 
-**RouteMesh channel은 이 표에 없다.** [channel topology spec §3.1](../../spec/10-channel-topology.ko.md)이
+**RouteMesh channel은 이 표에 없다.** [channel topology spec §3.1](../../../spec/server/10-channel-topology.ko.md)이
 애플리케이션 요청에 쓰지 않는다고 정했으므로, 샘플이 시연할 표면이 아니다. 이 샘플은 route
 mesh를 spot bridge 용도로만 등록한다.

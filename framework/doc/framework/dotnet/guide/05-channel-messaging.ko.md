@@ -4,8 +4,8 @@
 
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/01-system-structure.ko.md)와
-> [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다. 이
+> 정식 계약은 [spec/aspnet-core-channel-messaging](../../spec/server/languages/dotnet/01-system-structure.ko.md)와
+> [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
@@ -683,7 +683,7 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 ```
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다.
-다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/05-framework-api.ko.md) 표를 본다.
+다른 언어의 등록 표면은 [framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
 
 ## 8. client-server 수평 확장
 
@@ -900,8 +900,8 @@ public sealed class UserCacheRefreshedEventHandler
 ## 12. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [13-interface-catalog](13-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)
-- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/01-system-structure.ko.md)
+- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
+- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../spec/server/languages/dotnet/01-system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - 다음 축: [06-spot](06-spot.ko.md)
 

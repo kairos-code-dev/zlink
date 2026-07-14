@@ -5,7 +5,7 @@
 # Config 10 — Spot actor join/transfer 배포
 
 actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 SpotNode의 user Spot으로 transfer될 때
-[Spot Actor Join / Transfer 공통 스펙](../spec/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
+[Spot Actor Join / Transfer 공통 스펙](../../spec/server/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
 검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, leave, transfer, joined,
 location commit, bound session route, failure cleanup이 같은 순서와 의미로 관찰되는지 본다.
 
@@ -287,7 +287,7 @@ target pending admission만 정리되는가.
 
 ### Track F — in-flight packet handoff (source queue handoff)
 
-[23-spot-actor.ko.md §10](../spec/23-spot-actor.ko.md)의 source queue handoff 계약을 배포 형태로 검증한다.
+[23-spot-actor.ko.md §10](../../spec/server/23-spot-actor.ko.md)의 source queue handoff 계약을 배포 형태로 검증한다.
 모든 시나리오는 arrival sequence index로 "보낸 순서 vs target 처리 순서"를 대조한다.
 
 #### ST-F1 in-flight handoff order

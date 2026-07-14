@@ -1,6 +1,7 @@
 package systems.zlink.framework;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -20,21 +21,25 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 final class JavaDocumentationRegressionTest {
-    private static final Pattern SNAPSHOT = Pattern.compile("^([0-9a-f]{64}) (common|java)/(.+\\.ko\\.md)$");
+    private static final Pattern SNAPSHOT = Pattern.compile("^([0-9a-f]{64}) (\\S+\\.ko\\.md)$");
     private static final Pattern SCENARIO = Pattern.compile("\\b[A-Z]{2,3}-[A-Z][0-9]+\\b");
 
     @Test
     void javaG0LedgerHashesEveryFormalSpecFromTheCanonicalDirectory() throws Exception {
         Path root = repositoryRoot();
-        Path common = root.resolve("framework/doc/framework/common/spec");
-        Path javaSpec = common.resolve("languages/java");
+        // spec 트리는 패키지 폴더로 나뉜다. ledger key는 spec 루트 기준 상대 경로다.
+        Path specRoot = root.resolve("framework/doc/framework/spec");
         Path ledger = root.resolve(
             "framework/doc/plan/log/framework-public-contract-gap-implementation/java-g0-contract-ledger.ko.md");
 
         Map<String, String> snapshot = parseSnapshot(Files.readString(ledger));
         Map<String, Path> formal = new HashMap<>();
-        collectFormal(common, "common", formal);
-        collectFormal(javaSpec, "java", formal);
+        collectFormal(specRoot, specRoot, formal);
+        collectFormal(specRoot.resolve("server"), specRoot, formal);
+        collectFormal(specRoot.resolve("server/languages/java"), specRoot, formal);
+        collectFormal(specRoot.resolve("stream-connector/languages/java"), specRoot, formal);
+        Path connector = specRoot.resolve("stream-connector/32-stream-connector.ko.md");
+        formal.put(specRoot.relativize(connector).toString(), connector);
 
         assertEquals(formal.keySet(), snapshot.keySet(), "Java G0 snapshot must cover every formal spec exactly");
         for (Map.Entry<String, Path> entry : formal.entrySet()) {
@@ -48,6 +53,9 @@ final class JavaDocumentationRegressionTest {
         Path commonE2e = root.resolve("framework/doc/framework/common/e2e");
         Path javaE2e = root.resolve("framework/languages/java/e2e");
 
+        // Config 8은 세 terminator(submit/async/yield) 계약으로 다시 쓴 목표 문서다. 현재 Java
+        // 구현은 자동 turn dispatch에 머물러 있어 TD-* fixture가 없다. 그 차이는 공통 spec의 구현
+        // 차이 문서가 소유한다 — 여기서는 갭이 기록돼 있는지를 검증하고 TD-*는 분모에서 뺀다.
         Set<String> expected = new HashSet<>();
         try (Stream<Path> files = Files.list(commonE2e)) {
             for (Path file : files.filter(path -> path.getFileName().toString().matches("config-[0-9]+-.+\\.ko\\.md"))
@@ -56,7 +64,18 @@ final class JavaDocumentationRegressionTest {
                 while (matcher.find()) expected.add(matcher.group());
             }
         }
-        assertEquals(181, expected.size(), "common E2E scenario inventory changed");
+        Set<String> executionTurn = expected.stream()
+            .filter(id -> id.startsWith("TD-"))
+            .collect(Collectors.toCollection(java.util.TreeSet::new));
+        assertFalse(executionTurn.isEmpty(), "config-8 execution turn scenarios missing");
+        expected.removeAll(executionTurn);
+
+        String gap = Files.readString(
+            root.resolve("framework/doc/framework/spec/90-implementation-gap.ko.md"));
+        assertTrue(gap.contains("config-8-execution-turn.ko.md"));
+        assertTrue(gap.contains("yield terminator 부재"));
+
+        assertEquals(162, expected.size(), "common E2E scenario inventory changed");
 
         String active;
         try (Stream<Path> files = Files.walk(javaE2e)) {
@@ -79,12 +98,12 @@ final class JavaDocumentationRegressionTest {
         assertTrue(allRunner.contains("ObservabilityOps"));
     }
 
-    private static void collectFormal(Path directory, String prefix, Map<String, Path> result) throws IOException {
+    private static void collectFormal(Path directory, Path specRoot, Map<String, Path> result) throws IOException {
         try (Stream<Path> files = Files.list(directory)) {
             for (Path file : files.filter(Files::isRegularFile)
                 .filter(path -> path.getFileName().toString().endsWith(".ko.md"))
                 .toList()) {
-                result.put(prefix + "/" + file.getFileName(), file);
+                result.put(specRoot.relativize(file).toString(), file);
             }
         }
     }
@@ -93,7 +112,7 @@ final class JavaDocumentationRegressionTest {
         Map<String, String> result = new HashMap<>();
         for (String line : ledger.lines().toList()) {
             Matcher matcher = SNAPSHOT.matcher(line);
-            if (matcher.matches()) result.put(matcher.group(2) + "/" + matcher.group(3), matcher.group(1));
+            if (matcher.matches()) result.put(matcher.group(2), matcher.group(1));
         }
         return Map.copyOf(result);
     }

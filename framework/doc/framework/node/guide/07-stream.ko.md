@@ -98,7 +98,7 @@ codec 적용은 추후 범위다.
 connector도 framework처럼 **custom codec**을 끼울 수 있다. 사용자 codec은 framework
 extension과 `ZlinkStreamPayloadCodec`(`encode`/`decode` 구현)을 함께 제공한다. server
 framework 쪽 등록(`codecs.use(...)`)과 대칭이며, 두 표면의 전체 목록은
-[framework-api §2.2](../../common/spec/05-framework-api.ko.md) 표를 본다.
+[framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
 
 ```ts
 const avroStreamCodec = {

@@ -5,7 +5,7 @@
 # 3. 핵심 개념
 
 > 개념의 정식 의미는 [공통 스펙 목차](../../common/README.ko.md)가,
-> 인터페이스의 정식 정의는 [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가
+> 인터페이스의 정식 정의는 [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
 ZLink framework는 **다섯 가지 핵심 개념**으로 선다:
@@ -171,7 +171,7 @@ graph LR
 배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(peer row)를
 store에 자동 등록하고, client는 channel 이름만으로 store에서 상대를 찾아 연결한다.
 서버가 늘고 줄면 연결도 따라간다 — 사용법은 [10-location](10-location.ko.md), 계약은
-[공통 스펙](../../common/spec/40-location-runtime.ko.md)이 다룬다.
+[공통 스펙](../../spec/server/40-location-runtime.ko.md)이 다룬다.
 
 store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
 소규모 고정 배포, [05-channel-messaging §6](05-channel-messaging.ko.md)). 같은 역할에서
@@ -419,7 +419,7 @@ stateDiagram-v2
 ## 7. 더 깊이
 
 - request/send/pub-sub 전체 사용법: [05-channel-messaging](05-channel-messaging.ko.md)
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)
+- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 기능 선택 기준: [04-feature-map](04-feature-map.ko.md)
 
 ---

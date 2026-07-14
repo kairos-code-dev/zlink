@@ -33,4 +33,4 @@ Kotlin coroutine(`suspend`) 확장과 DSL은 [Kotlin coroutine 확장](../kotlin
 (java 런타임을 공유하는 얇은 idiom 레이어).
 
 정식 계약과 회귀 테스트 축은 spec 문서
-[java-http-client.ko.md](spec/java-http-client.ko.md)가 정본이다.
+[java-http-client.ko.md](../../framework/spec/http-client/languages/java/java-http-client.ko.md)가 정본이다.

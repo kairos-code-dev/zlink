@@ -4,8 +4,8 @@
 
 # 6. SPOT — room · stage · zone
 
-> 정식 계약은 [spec/aspnet-core-spot](../../common/spec/languages/dotnet/01-system-structure.ko.md),
-> [spec/spot-node](../../common/spec/languages/dotnet/01-system-structure.ko.md), [spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가
+> 정식 계약은 [spec/aspnet-core-spot](../../spec/server/languages/dotnet/01-system-structure.ko.md),
+> [spec/spot-node](../../spec/server/languages/dotnet/01-system-structure.ko.md), [spec/stage-wrapper-on-spot](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가
 > 다룬다. 이 챕터는 SPOT을 등록하고 다루는 사용법 중심이다.
 >
 > 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)의
@@ -125,7 +125,7 @@ node 역할은 서로 독립이다.
 | `EnableRouter(endpoint)` | 이 노드의 router 소켓을 열어 **같은 channel의 다른 SpotNode와 spot↔spot routed send/request**(mesh) |
 | `EnablePubSub(endpoint)` | 이 노드의 pub/sub 소켓을 열어 **같은 channel topic publish/subscribe**(mesh). local spot의 `Publish`/구독에 필요(없으면 불가) |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
-| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)) |
+| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)) |
 | `UseDrainPolicy(정책)` | 노드가 graceful drain으로 내려갈 때 이 mesh의 spot을 정리하는 방식 선언. 기본 `DrainNatural`(자연 종료 대기), 외부 영속 상태에서 재구성 가능한 spot은 `ReleaseAndRecreate`([12-operations §3](12-operations.ko.md)) |
 
 위 표는 **SpotNode 자체 설정**이다 — 자기 소켓(`EnableRouter`·`EnablePubSub`)과 만들 spot 타입
@@ -974,7 +974,7 @@ spot **안**(spot↔spot)에서는 `RequestToSpot(spotHandle, …)`. 같은 mesh
 대상 spot의 **`SpotHandle`는 한 번 조회해서 보관한다.** `IZLinkSpotHandleResolver`로
 spot rid를 논리적 handle로 바꾸면 framework가 내부 주소를 갱신한다. request 중 주소가
 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송하며, send는 중복 전달을 피하려고 재전송하지 않는다
-([공통 스펙: spot 주소 메시징](../../common/spec/24-spot-address-messaging.ko.md)).
+([공통 스펙: spot 주소 메시징](../../spec/server/24-spot-address-messaging.ko.md)).
 
 ```csharp
 // ① 상호작용을 시작할 때 한 번 — spot rid로 SpotHandle 조회
@@ -1144,7 +1144,7 @@ send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper는 그 
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 
 자세한 추가 요건(실행 컨텍스트 계약, 생성 시 초기 메타데이터, directory)은
-[spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
+[spec/stage-wrapper-on-spot](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
 
 ## 7. 자주 막히는 곳
 
@@ -1163,13 +1163,13 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
   mesh가 모르는 node면 `RequestTargetNotFound`, node는 알지만 연결 수렴이 한계를
   넘으면 `RouteNotConnected`, node에 닿았는데 spot이 없으면 `SpotRouteNotFound`.
   **timeout은 재전송하지 않는다.** send는 best-effort라 재전송 없이 다음 전송부터 새
-  주소를 쓴다. 전체 계약은 [공통 스펙 spot 주소 메시징 §4](../../common/spec/24-spot-address-messaging.ko.md).
+  주소를 쓴다. 전체 계약은 [공통 스펙 spot 주소 메시징 §4](../../spec/server/24-spot-address-messaging.ko.md).
 
 ## 8. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [13-interface-catalog](13-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
 - 노드/채널 builder 계약: [13-interface-catalog](13-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
-- 정식 계약: [spec/aspnet-core-spot](../../common/spec/languages/dotnet/01-system-structure.ko.md), [spec/spot-node](../../common/spec/languages/dotnet/01-system-structure.ko.md)
+- 정식 계약: [spec/aspnet-core-spot](../../spec/server/languages/dotnet/01-system-structure.ko.md), [spec/spot-node](../../spec/server/languages/dotnet/01-system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - spot 안의 참가자별 상태/세션이 필요하면: [07-actor-spot](07-actor-spot.ko.md)
 

@@ -1,5 +1,5 @@
 {
-  "notice": "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/common/spec/location-store-redis.ko.md.",
+  "notice": "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
   "format": "actor-location-v2",
   "hashFields": [
     "owner",

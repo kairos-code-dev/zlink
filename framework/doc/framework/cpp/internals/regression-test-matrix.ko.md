@@ -1,7 +1,7 @@
 # C++ Framework Regression Test Matrix
 
 > 이 문서는 C++ framework 유지보수자를 위한 internals 문서다. 공개 API 계약은
-> `framework/doc/framework/common/spec/languages/cpp/` 문서와 public header를 기준으로 확인한다.
+> `framework/doc/framework/spec/server/languages/cpp/` 문서와 public header를 기준으로 확인한다.
 
 ## 1. 테스트 계층
 
@@ -103,5 +103,5 @@ CTest label은 최소 아래처럼 나눈다.
 STREAM connector request, notification callback, server-side log를 모두 확인해야 한다.
 
 > 이 매트릭스는 공개 계약 스펙을 3문서로 압축하면서 `01-application-framework.ko.md`에서
-> 옮겨 왔다. 계약의 의미는 [C++ 시스템 구조](../../common/spec/languages/cpp/01-system-structure.ko.md)와
+> 옮겨 왔다. 계약의 의미는 [C++ 시스템 구조](../../spec/server/languages/cpp/01-system-structure.ko.md)와
 > 공통 스펙이 소유한다.

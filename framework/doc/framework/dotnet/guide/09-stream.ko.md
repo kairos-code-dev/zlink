@@ -4,8 +4,8 @@
 
 # 9. STREAM — 외부 client 받기
 
-> 서버 측 정식 계약은 [spec/aspnet-core-stream](../../common/spec/languages/dotnet/01-system-structure.ko.md),
-> client connector는 [Stream Connector 공개 계약](../../common/spec/languages/dotnet/03-stream-connector.ko.md)과
+> 서버 측 정식 계약은 [spec/aspnet-core-stream](../../spec/server/languages/dotnet/01-system-structure.ko.md),
+> client connector는 [Stream Connector 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)과
 > [Unity 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md)가 다룬다.
 >
 > 🔰 STREAM·session·connector 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)
@@ -153,7 +153,7 @@ connector의 JSON codec은 기본값이다. MessagePack이나 Protobuf가 필요
 extension을 등록하고, 같은 extension 인스턴스를 connector typed payload codec으로도 사용한다.
 custom codec도 같은 방식으로 `IZLinkCodecExtension`과 stream payload codec 구현을 함께 제공한다.
 server framework 쪽 등록(`Codecs.Use(...)`)과 대칭이며, 두 표면의 전체 목록은
-[framework-api §2.2](../../common/spec/05-framework-api.ko.md) 표를 본다.
+[framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
 
 ### 연결과 dispatch
 
@@ -304,7 +304,7 @@ backoff 2.0, 최대 3회)가 켜져 있다.
 > 클라이언트가 Stream Connector로 접속해 인증 packet을 보내고, session이 인증된
 > actor를 bind해 대국에 참여하는 전 과정을 보여준다. connector 표면 자체를
 > transport별(TCP/TLS/WS/WSS)로 다루는 문서는
-> [Stream Connector 공개 계약](../../common/spec/languages/dotnet/03-stream-connector.ko.md)이다.
+> [Stream Connector 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이다.
 
 ### TLS
 
@@ -320,7 +320,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 수신 handler와 lifecycle 이벤트가 Unity 메인 스레드에서 실행된다.
 
 비동기 실행과 coroutine adapter의 의미는
-[framework 공통 정책](../../common/spec/04-async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
 코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
 [Unity Stream Connector 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md).
@@ -356,9 +356,9 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 ## 5. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [13-interface-catalog](13-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
-- 서버 정식 계약: [spec/aspnet-core-stream](../../common/spec/languages/dotnet/01-system-structure.ko.md)
+- 서버 정식 계약: [spec/aspnet-core-stream](../../spec/server/languages/dotnet/01-system-structure.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
-- client 계약: [Stream Connector](../../common/spec/languages/dotnet/03-stream-connector.ko.md)
+- client 계약: [Stream Connector](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

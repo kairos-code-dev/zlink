@@ -69,7 +69,7 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
   options.codecs ().use (avro_codec_extension_t{schema});
   ```
 
-  다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/05-framework-api.ko.md) 표를
+  다른 언어의 등록 표면은 [framework-api §2.2](../../spec/05-framework-api.ko.md) 표를
   본다. client connector 쪽은 `codec_traits<T>` 특수화로 같은 커스텀 codec을 끼운다.
 - 같은 그룹을 여러 채널이 공유할 수 있고, 한 채널에 그룹 하나를 연결한다.
 

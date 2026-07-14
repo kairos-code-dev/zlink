@@ -24,12 +24,12 @@ contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름�
 - peer location list: 운영 조회는 `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`로 raw peer
   row를 확인하고, 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListLivePeersAsync(filter)`로
   live peer를 확인한다. **두 표면 모두 cache를 두지 않으며 매 호출이 store에 도달한다** —
-  `Refresh` 같은 freshness 인자는 없다([40 §1](../spec/40-location-runtime.ko.md)).
+  `Refresh` 같은 freshness 인자는 없다([40 §1](../../spec/server/40-location-runtime.ko.md)).
 - framework connection state: 실제 messaging 성공과 각 역할 server의 evidence로 연결이
   실제로 성립했는지를 본다.
 
 location row 모델, owner lease, freshness 같은 계약 상세는 이 문서에서 반복하지 않는다.
-[location runtime spec](../spec/40-location-runtime.ko.md)을 기준으로 한다.
+[location runtime spec](../../spec/server/40-location-runtime.ko.md)을 기준으로 한다.
 
 여기서 다루지 않는 것(다른 config로): codec, stream, spot/actor, resilience 세부, store
 장애/복구(Config 6). 이 config는 messaging + 연결/resolve에만 집중한다.
@@ -110,7 +110,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
-> custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 **spot handle resolver**가 담당하며, 반환 값은 불투명한 `SpotHandle`이다. `SpotRef`는 framework 내부 주소 snapshot이라 public 표면에 노출하지 않는다([24 §2](../spec/24-spot-address-messaging.ko.md)).
+> custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 **spot handle resolver**가 담당하며, 반환 값은 불투명한 `SpotHandle`이다. `SpotRef`는 framework 내부 주소 snapshot이라 public 표면에 노출하지 않는다([24 §2](../../spec/server/24-spot-address-messaging.ko.md)).
 
 #### RM-A4 같은 rid, 다른 endpoint failover
 

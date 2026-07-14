@@ -37,4 +37,4 @@ const game = await ZLinkHttpClient.create('https://game-api.example.internal')
 - 실패가 어떻게 보고되는지 → [13. 에러 처리](13-error-handling.ko.md)
 
 정식 계약과 회귀 테스트 축은 spec 문서
-[node-http-client.ko.md](spec/node-http-client.ko.md)가 정본이다.
+[node-http-client.ko.md](../../framework/spec/http-client/languages/node/node-http-client.ko.md)가 정본이다.

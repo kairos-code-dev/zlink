@@ -3,15 +3,15 @@
 > 이 묶음은 `Kotlin`(Spring Boot) 사용자를 위한 ZLink Framework 문서다.
 > `zlink-framework-kotlin`은 Java `zlink-framework` 런타임을 그대로 재사용하는
 > 얇은 coroutine idiom 레이어다. Java 표면은
-> [Java spec](../common/spec/languages/java/README.ko.md)을 따르고, Kotlin 전용
-> 공개 계약은 [Kotlin spec](../common/spec/languages/kotlin/README.ko.md)에 고정한다.
+> [Java spec](../spec/server/languages/java/README.ko.md)을 따르고, Kotlin 전용
+> 공개 계약은 [Kotlin spec](../spec/server/languages/kotlin/README.ko.md)에 고정한다.
 > 내부 기준은 [Java/Kotlin 문서](../java/README.ko.md)를 공유한다. `guide/`는
 > Kotlin 사용자가 `suspend` 함수, coroutine handler, `Flow`만으로 따라 쓸 수 있도록
 > **Kotlin 전용으로** 작성한다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따른다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
 
 Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationProperties` binding 기준은
 [Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
@@ -63,17 +63,17 @@ Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend
 
 | 문서 | 범위 |
 |------|------|
-| [Kotlin spec 목차](../common/spec/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
-| [Kotlin handler interfaces](../common/spec/languages/kotlin/02-handler-interfaces.ko.md) | suspending handler와 lifecycle adapter |
-| [Java spec 목차](../common/spec/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
-| [Java handler interfaces](../common/spec/languages/java/02-handler-interfaces.ko.md) | Java interface, annotation, context, options |
-| [spring-boot-channel-messaging](../common/spec/languages/java/01-system-structure.ko.md) | channel 등록, outbound client, dispatch |
-| [spring-boot-spot](../common/spec/languages/java/01-system-structure.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](../common/spec/languages/java/01-system-structure.ko.md) | actor factory, SessionRelay, bound session |
-| [spring-boot-stream](../common/spec/languages/java/01-system-structure.ko.md) | stream node, header session |
-| [stream-connector](../common/spec/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [spring-boot-registry](../common/spec/languages/java/01-system-structure.ko.md) | embedded registry, remote query |
-| [spring-boot-monitoring](../common/spec/languages/java/01-system-structure.ko.md) | runtime event, typed handler |
+| [Kotlin spec 목차](../spec/server/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
+| [Kotlin handler interfaces](../spec/server/languages/kotlin/02-handler-interfaces.ko.md) | suspending handler와 lifecycle adapter |
+| [Java spec 목차](../spec/server/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
+| [Java handler interfaces](../spec/server/languages/java/02-handler-interfaces.ko.md) | Java interface, annotation, context, options |
+| [spring-boot-channel-messaging](../spec/server/languages/java/01-system-structure.ko.md) | channel 등록, outbound client, dispatch |
+| [spring-boot-spot](../spec/server/languages/java/01-system-structure.ko.md) | Spot lifecycle, Entry Spot, timer |
+| [spring-boot-actor-session](../spec/server/languages/java/01-system-structure.ko.md) | actor factory, SessionRelay, bound session |
+| [spring-boot-stream](../spec/server/languages/java/01-system-structure.ko.md) | stream node, header session |
+| [stream-connector](../spec/stream-connector/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
+| [spring-boot-registry](../spec/server/languages/java/01-system-structure.ko.md) | embedded registry, remote query |
+| [spring-boot-monitoring](../spec/server/languages/java/01-system-structure.ko.md) | runtime event, typed handler |
 
 ## 3. 내부 기준 — Java/Kotlin 공유
 

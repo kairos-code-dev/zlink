@@ -45,10 +45,16 @@ public sealed class RegressionTests
         // Narrative guide docs are onboarding prose, not contract docs, so they
         // are exempt from the regression-section requirement.
         // API examples remain tied to regression evidence and stay in the strict set.
-        var guideRoot = Path.Combine(directory, "guide");
+        // 사용 가이드는 온보딩 산문이라 계약 문서가 아니다 — 세 패키지 가이드를 모두 제외한다.
+        var narrativeRoots = new[]
+        {
+            Path.Combine(directory, "guide"),
+            Path.Combine(directory, "http-client"),
+            Path.Combine(directory, "stream-connector")
+        };
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
-            .Where(path => !IsUnderDirectory(path, guideRoot, true))
+            .Where(path => !narrativeRoots.Any(root => IsUnderDirectory(path, root, true)))
             .Concat(GetDotNetContractDocs()
                 .Where(path => !string.Equals(
                     Path.GetFileName(path),

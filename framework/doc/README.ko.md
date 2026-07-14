@@ -12,7 +12,7 @@
 | 컴포넌트 | 디렉토리 | 진입점 | 내용 |
 |---------|----------|--------|------|
 | **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
-| **HTTP Client** | `http-client/` | [언어별 문서](http-client/dotnet/README.ko.md) | fluent HTTP/JSON client |
+| **HTTP Client** | `http-client/` | [언어별 문서](framework/dotnet/http-client/README.ko.md) | fluent HTTP/JSON client |
 | **Stream Connector** | `stream-connector/` | [README](stream-connector/README.ko.md) | client 측 STREAM 접속 라이브러리(C++ · `.NET` · TypeScript) |
 
 정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
@@ -79,7 +79,7 @@ coroutine `suspend` 표면으로 같은 기능을 제공한다.
 
 | 언어 | 진입점 |
 |------|--------|
-| `.NET` | [http-client/dotnet](http-client/dotnet/README.ko.md) |
+| `.NET` | [http-client/dotnet](framework/dotnet/http-client/README.ko.md) |
 | `Java` | [http-client/java](http-client/java/README.ko.md) |
 | `Kotlin` | [http-client/kotlin](http-client/kotlin/README.ko.md) |
 | `Node.js` | [http-client/node](http-client/node/README.ko.md) |
@@ -102,7 +102,7 @@ connector를 사용한다.
 | 언어 | 대상 | 가이드 |
 |------|------|--------|
 | C++ | Unreal, Godot(GDExtension), Axmol, 일반 C++, 서버 e2e/perf | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) |
-| `.NET` | Unity(네이티브), Godot C#, 데스크톱·서버 | [INDEX](stream-connector/dotnet/guide/INDEX.ko.md) |
+| `.NET` | Unity(네이티브), Godot C#, 데스크톱·서버 | [INDEX](framework/dotnet/stream-connector/INDEX.ko.md) |
 | TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web·Godot Web) | [INDEX](stream-connector/typescript/guide/INDEX.ko.md) |
 
 | 영역 | 문서 |
@@ -110,7 +110,7 @@ connector를 사용한다.
 | C++ 가이드 | [01 개요](stream-connector/cpp/guide/01-overview.ko.md) · [02 시작하기](stream-connector/cpp/guide/02-getting-started.ko.md) · [03 옵션](stream-connector/cpp/guide/03-connector-options.ko.md) · [04 송신](stream-connector/cpp/guide/04-sending.ko.md) · [05 수신](stream-connector/cpp/guide/05-receiving.ko.md) · [06 lifecycle](stream-connector/cpp/guide/06-lifecycle.ko.md) · [07 에러 처리](stream-connector/cpp/guide/07-error-handling.ko.md) · [08 e2e client](stream-connector/cpp/guide/08-e2e-client.ko.md) · [09 engine adapter](stream-connector/cpp/guide/09-engine-adapters.ko.md) · [10 packaging](stream-connector/cpp/guide/10-packaging.ko.md) · [11 성능](stream-connector/cpp/guide/11-performance.ko.md) |
 | C++ core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
 | C++ e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
-| `.NET` 가이드 | [01 개요](stream-connector/dotnet/guide/01-overview.ko.md) · [02 Unity](stream-connector/dotnet/guide/02-unity.ko.md) · [03 Godot C#](stream-connector/dotnet/guide/03-godot-csharp.ko.md) |
+| `.NET` 가이드 | [01 개요](framework/dotnet/stream-connector/01-overview.ko.md) · [02 Unity](framework/dotnet/stream-connector/02-unity.ko.md) · [03 Godot C#](framework/dotnet/stream-connector/03-godot-csharp.ko.md) |
 | TypeScript 가이드 | [01 개요](stream-connector/typescript/guide/01-overview.ko.md) · [02 브라우저](stream-connector/typescript/guide/02-browser.ko.md) |
 
 계약의 정본은 [Stream Connector 공통 스펙](framework/spec/stream-connector/32-stream-connector.ko.md)이며,
@@ -130,7 +130,7 @@ connector를 사용한다.
 
 1. [공통 개요](framework/spec/01-overview.ko.md) → [상호작용 모델](framework/spec/02-interaction-model.ko.md) → [actor 모델](framework/spec/server/22-actor-model.ko.md)
 2. 사용할 언어의 [framework/&lt;lang&gt;](framework/dotnet/README.ko.md) guide
-3. HTTP가 필요하면 [http-client/&lt;lang&gt;](http-client/dotnet/README.ko.md), 외부 client 접속이면 [stream-connector](stream-connector/cpp/guide/INDEX.ko.md)
+3. HTTP가 필요하면 [http-client/&lt;lang&gt;](framework/dotnet/http-client/README.ko.md), 외부 client 접속이면 [stream-connector](stream-connector/cpp/guide/INDEX.ko.md)
 
 ## 유지 규칙
 

@@ -6,7 +6,7 @@
 
 > 서버 측 정식 계약은 [spec/aspnet-core-stream](../../spec/server/languages/dotnet/01-system-structure.ko.md),
 > client connector는 [Stream Connector 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)과
-> [Unity 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md)가 다룬다.
+> [Unity 가이드](../stream-connector/02-unity.ko.md)가 다룬다.
 >
 > 🔰 STREAM·session·connector 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)
 > 한 줄 풀이를 먼저 본다.
@@ -323,7 +323,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 [framework 공통 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
 코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
-[Unity Stream Connector 가이드](../../../stream-connector/dotnet/guide/02-unity.ko.md).
+[Unity Stream Connector 가이드](../stream-connector/02-unity.ko.md).
 
 ## 3. 오류 코드와 결과
 

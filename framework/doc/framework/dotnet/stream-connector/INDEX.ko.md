@@ -12,16 +12,16 @@
 | [03 — Godot C#](03-godot-csharp.ko.md) | `Node._Process`에서 펌프, signal 연동, 종료 처리 |
 
 connector의 API 표면(옵션, send/request, codec, 오류)은
-[.NET 공개 계약](../../../framework/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)과
-[.NET framework 가이드 09 — STREAM](../../../framework/dotnet/guide/09-stream.ko.md)이 다룬다.
+[.NET 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)과
+[.NET framework 가이드 09 — STREAM](../guide/09-stream.ko.md)이 다룬다.
 이 가이드는 **엔진 통합**에 집중한다.
 
 ## 다른 언어의 connector
 
 | 문서 | 대상 |
 |------|------|
-| [C++ Stream Connector 가이드](../../cpp/guide/INDEX.ko.md) | Unreal, Godot(GDExtension), Axmol, 일반 C++ |
-| [Node/TypeScript Stream Connector 가이드](../../node/guide/INDEX.ko.md) | **브라우저, Unity WebGL, Cocos web**, Node |
+| [C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md) | Unreal, Godot(GDExtension), Axmol, 일반 C++ |
+| [Node/TypeScript Stream Connector 가이드](../../../stream-connector/typescript/guide/INDEX.ko.md) | **브라우저, Unity WebGL, Cocos web**, Node |
 
 **웹(브라우저·WASM)으로 빌드하면 언어와 무관하게 TypeScript connector를 사용한다.** 판단
-기준은 [Stream Connector 공통 스펙 §2](../../../framework/spec/stream-connector/32-stream-connector.ko.md)가 소유한다.
+기준은 [Stream Connector 공통 스펙 §2](../../spec/stream-connector/32-stream-connector.ko.md)가 소유한다.

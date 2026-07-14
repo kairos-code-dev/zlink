@@ -4,16 +4,25 @@
 
 [Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../spec/04-async-execution-policy.ko.md) | [시스템 구조](../spec/server/languages/dotnet/01-system-structure.ko.md) | [인터페이스](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | [Stream Connector](../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](../../stream-connector/dotnet/guide/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../spec/04-async-execution-policy.ko.md) | [시스템 구조](../spec/server/languages/dotnet/01-system-structure.ko.md) | [인터페이스](../spec/server/languages/dotnet/02-handler-interfaces.ko.md) | [Stream Connector](../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity 가이드](stream-connector/02-unity.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
-> 이 묶음은 `.NET`/`ASP.NET Core`의 정식 `ZLink Framework` 문서다. 이
-> 디렉토리에는 `guide/`(샘플·튜토리얼), `internals/`(구현·검증 기준)와
-> `draft/`(미확정 항목)를 두고, 공개 계약은
-> [중앙 .NET spec](../spec/server/languages/dotnet/README.ko.md)에 둔다. 공통 의미는
-> [공통 스펙](../common/README.ko.md)을 따르며, 여기서는 그 의미를 `.NET`
-> 표면으로만 구체화한다.
+> **이 디렉토리가 `.NET` 문서의 진입점이다.** 세 패키지의 사용 안내를 한자리에 둔다 —
+> **계약은 패키지로 나누고, 사용 안내는 언어로 나눈다.**
+>
+> | 디렉토리 | 무엇 |
+> |---|---|
+> | [`guide/`](guide/01-overview.ko.md) | **framework(서버)** 사용 가이드 |
+> | [`http-client/`](http-client/README.ko.md) | **HTTP client** 사용 가이드 |
+> | [`stream-connector/`](stream-connector/README.ko.md) | **Stream connector** 사용 가이드(Unity·Godot 포함) |
+> | [`internals/`](internals/regression-test-matrix.ko.md) | 구현·검증 기준 |
+>
+> **공개 계약은 여기 없다.** [spec 트리](../spec/README.ko.md)가 소유한다 —
+> [server/languages/dotnet](../spec/server/languages/dotnet/README.ko.md) ·
+> [http-client/languages/dotnet](../spec/http-client/languages/dotnet/dotnet-http-client.ko.md) ·
+> [stream-connector/languages/dotnet](../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md).
+> 가이드와 계약이 어긋나면 **계약이 이긴다.**
 
 ## 1. 목적
 

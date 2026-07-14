@@ -18,7 +18,7 @@ ZLinkHttpClient.Create("https://api.internal").BearerToken("eyJhbGci...").Build(
 신뢰하려면 `TrustCertificateFile(path)`로 PEM 인증서를 지정한다. 지정한 인증서는
 시스템 신뢰에 **추가**된다(대체 아님) — 공인 CA HTTPS는 계속 동작한다.
 hostname 검증은 항상 수행되며 끄는 옵션은 없다
-([공통 spec 7.2](../../framework/spec/http-client/07-auth-tls-proxy.ko.md)).
+([공통 spec 7.2](../../spec/http-client/07-auth-tls-proxy.ko.md)).
 
 ```csharp
 ZLinkHttpClient.Create("https://localhost:8443")

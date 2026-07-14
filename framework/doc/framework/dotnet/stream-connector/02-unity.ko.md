@@ -11,7 +11,7 @@ Unity 전용 connector package는 따로 두지 않는다. Unity도 일반 `.NET
 > **WebGL 빌드는 이 문서의 대상이 아니다.** Unity WebGL은 브라우저 샌드박스에서 실행되므로
 > OS 소켓을 열 수 없고, `.NET` connector를 사용할 수 없다. WebGL은 TypeScript connector를
 > jslib interop으로 호출한다.
-> [Node/TypeScript connector 가이드](../../node/guide/01-overview.ko.md)를 본다.
+> [Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/01-overview.ko.md)를 본다.
 
 ## 기본 원칙
 
@@ -23,7 +23,7 @@ Unity에서는 `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출한다
 쌓인 callback이 Unity main thread에서 실행된다.
 
 비동기 실행과 coroutine adapter의 공통 의미는
-[framework 공통 정책](../../../framework/spec/04-async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector의 public API는 일반 `.NET`과 같은 `Task` / `ValueTask` 기반
 비동기 API다. `Connect.Async()`, `Close.Async()`, `Dispatch.Async()`,
 `Request(...).Async<TReply>(...)`, `WaitFor(...).Async(...)` 같은 호출을 그대로 사용한다.

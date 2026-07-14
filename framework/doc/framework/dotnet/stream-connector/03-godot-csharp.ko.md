@@ -10,8 +10,8 @@ connector를 그대로 쓰고, Godot main thread에서 `Dispatch.Async()`를 호
 실행한다.
 
 > **C++ GDExtension을 쓰는 Godot 프로젝트는 이 문서가 아니라
-> [C++ 가이드 09 — 엔진 어댑터](../../cpp/guide/09-engine-adapters.ko.md)를 본다.**
-> **Web 빌드는 [Node/TypeScript connector 가이드](../../node/guide/01-overview.ko.md)를 본다.**
+> [C++ 가이드 09 — 엔진 어댑터](../../../stream-connector/cpp/guide/09-engine-adapters.ko.md)를 본다.**
+> **Web 빌드는 [Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/01-overview.ko.md)를 본다.**
 
 ## 기본 원칙
 
@@ -110,4 +110,4 @@ loop가 남는다.
 
 이 문서의 코드는 Godot 사용법이며 connector 계약이 아니다. connector 자체는 Godot 타입에
 의존하지 않는다. 비동기 실행의 공통 의미는
-[framework 공통 정책](../../../framework/spec/04-async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.

@@ -21,7 +21,7 @@
 
 **웹(브라우저·WASM)으로 빌드하는 순간 언어와 무관하게 TypeScript connector를 사용한다.**
 브라우저 샌드박스에서 OS 소켓을 열 수 있는 언어가 없기 때문이다. 웹 빌드는
-[Node/TypeScript connector 가이드](../../node/guide/INDEX.ko.md)를 본다.
+[Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/INDEX.ko.md)를 본다.
 
 ## 배포 단위
 
@@ -67,6 +67,6 @@ connector는 STREAM 서버에 연결하는 client library다. 서버 framework p
 않는다. 양쪽은 STREAM header/payload wire 계약만 공유한다.
 
 wire 계약과 연결 생명주기의 정본은
-[Stream Connector 공통 스펙](../../../framework/spec/stream-connector/32-stream-connector.ko.md),
+[Stream Connector 공통 스펙](../../spec/stream-connector/32-stream-connector.ko.md),
 `.NET` public 표면의 정본은
-[.NET 공개 계약](../../../framework/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이다.
+[.NET 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이다.

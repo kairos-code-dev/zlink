@@ -41,6 +41,15 @@ public final class GameQuestClientScenario {
         ensure(firstPush.progress().questId().equals(Messages.QuestIds.FirstHunt));
         ensure(firstPush.progress().currentCount() == 1);
 
+        Messages.KillMonsterRes firstDuplicate = apiAStream
+            .request(new Messages.KillMonsterReq("player-alice", "wolf", "forest", "kill-1"))
+            .submit(Messages.KillMonsterRes.class).toCompletableFuture().join();
+        ensure(firstDuplicate.eventId().equals(firstKill.eventId()));
+        Messages.GetQuestProgressRes progressAfterFirstDuplicate = apiAStream
+            .request(new Messages.GetQuestProgressReq("player-alice"))
+            .submit(Messages.GetQuestProgressRes.class).toCompletableFuture().join();
+        ensure(hasProgress(progressAfterFirstDuplicate.activeQuests(), Messages.QuestIds.FirstHunt, 1));
+
         CompletionStage<ZLinkStreamMessage<Messages.QuestCompletedNotify>> firstHuntCompleted =
             apiAStream.waitFor(Messages.QuestCompletedNotify.class)
                 .where(Messages.QuestCompletedNotify.class, message ->

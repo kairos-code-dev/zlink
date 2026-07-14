@@ -11,7 +11,7 @@
 | GameApi 역할 | 완료 | stream session이 gameplay request를 받고 QuestMission route channel로 owner routing |
 | QuestMission 역할 | 완료 | player별 quest projection, dedupe, progress/completion/reward event 기록 |
 | GameplayStateStore | 완료 | API 노드가 Redis에 누적 gameplay fact를 기록하고 QuestMission의 sync가 같은 fact를 읽어 보정한다. 동일 event id는 한 번만 반영한다. |
-| Client scenario | 완료 | dotnet 순서의 join, progress push, duplicate, reconnect, delete/rebuild, sync, server assertion 검증 |
+| Client scenario | 완료 | join과 progress push를 검증하고, quest 완료 전에 같은 idempotency key를 재전송해 진행도가 증가하지 않는지 확인한다. reconnect, delete/rebuild, sync, server assertion도 실행한다. |
 | Runner | 완료 | 기존 Java runner 방식의 log 보존, topology 대기, marker 검증 |
 
 ## 남은 확인 사항

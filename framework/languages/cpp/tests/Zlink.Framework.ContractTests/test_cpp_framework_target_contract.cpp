@@ -117,6 +117,8 @@ int main ()
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
+    const auto transfer_runner = read_file (e2e_root / "SpotActorTransfer/run_e2e.sh");
+    const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
     const auto resilience_client =
       read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
     const auto resilience_b2 = read_file (
@@ -129,6 +131,37 @@ int main ()
       std::filesystem::exists (e2e_root / "SpotActorTransfer/feature-map.ko.md"),
       "E2E-CP-13",
       "Config 10 SpotActorTransfer is missing feature-map.ko.md");
+
+    /* E2E-CP-09 — local E2E waits use the common named defaults. */
+    for (const auto *candidate : {&transfer_runner, &observability_runner}) {
+        gate.require (candidate->find ("LOCAL_READINESS_TIMEOUT_SECONDS=3")
+                        != std::string::npos,
+                      "E2E-CP-09",
+                      "runner does not declare the 3s local readiness timeout");
+        gate.require (candidate->find ("LOCAL_READINESS_POLL_SECONDS=0.1")
+                        != std::string::npos,
+                      "E2E-CP-09",
+                      "runner does not declare the 0.1s readiness poll interval");
+        gate.require (candidate->find ("ROUTE_SETTLE_SECONDS=5") != std::string::npos,
+                      "E2E-CP-09",
+                      "runner does not declare the 5s route settle interval");
+        gate.require (candidate->find ("SCENARIO_SETTLE_SECONDS=3") != std::string::npos,
+                      "E2E-CP-09",
+                      "runner does not declare the 3s scenario settle interval");
+        gate.require (candidate->find ("HTTP_PROBE_TIMEOUT_SECONDS=3")
+                        != std::string::npos,
+                      "E2E-CP-09",
+                      "runner does not declare the 3s HTTP probe timeout");
+        gate.require (candidate->find ("sleep 5") == std::string::npos
+                        && candidate->find ("sleep 2") == std::string::npos
+                        && candidate->find ("sleep 1") == std::string::npos,
+                      "E2E-CP-09",
+                      "runner still hides settle semantics behind a numeric sleep");
+        gate.require (candidate->find ("--max-time \"$HTTP_PROBE_TIMEOUT_SECONDS\"")
+                        != std::string::npos,
+                      "E2E-CP-09",
+                      "runner HTTP probes do not use the named 3s timeout");
+    }
 
     /* IMP-CP-08 — session-owned transport failures reach the session callback. */
     gate.require (stream_host.find ("stream_session_error_t::transport_error")

@@ -19,10 +19,13 @@ mkdir -p "$LOG_DIR"
 
 NODE_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_node"
 CLIENT_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_client"
-LOCAL_READINESS_TIMEOUT_SECONDS=30
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 HTTP_PROBE_TIMEOUT_SECONDS=3
+SHUTDOWN_GRACE_SECONDS=0.5
 
 pick_port() {
   python3 - <<'PY'
@@ -42,7 +45,7 @@ cleanup() {
   for pid in "${pids[@]:-}"; do
     kill -- "-$pid" >/dev/null 2>&1 || kill "$pid" >/dev/null 2>&1 || true
   done
-  sleep 0.5
+  sleep "$SHUTDOWN_GRACE_SECONDS"
   for pid in "${pids[@]:-}"; do
     kill -KILL -- "-$pid" >/dev/null 2>&1 || kill -KILL "$pid" >/dev/null 2>&1 || true
   done
@@ -152,7 +155,7 @@ start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_STREAM" "$NODE_C_PUB"
 wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
 wait_health "$NODE_C_URL" actor-c
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
@@ -168,7 +171,7 @@ restart_node_a() {
   NODE_A_PUB="tcp://127.0.0.1:$NODE_A_PUB_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
   wait_health "$NODE_A_URL" actor-a
-  sleep 5
+  sleep "$ROUTE_SETTLE_SECONDS"
 }
 
 if [[ "$SCENARIO" == "all" ]]; then
@@ -177,10 +180,10 @@ if [[ "$SCENARIO" == "all" ]]; then
   # run it in a fresh client process, like the shutdown scenarios below.
   run_client "ST-F6"
   run_client "ST-C2"
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   restart_node_a
   run_client "ST-B2"
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   restart_node_a
   run_client "ST-C1"
 else

@@ -539,7 +539,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **E2E-CP-07** (결함) — **Config 10의 순서 계약이 검증되지 않는다**(포함 여부만 본다)
   - 근거: 수정 전 target-contract gate가 cross-kind 순서 helper와 `location_committed` marker 부재를 검출했다. join 완료 지점에 marker를 기록하고 ST-A1이 다섯 lifecycle evidence의 상대 순서를 검사하도록 수정한 뒤 gate와 `./run_e2e.sh ST-A1`이 통과했다.
 - [ ] **E2E-CP-08** (결함) — **§2.6 설정 정책을 `ToActorMessaging` 빼고 전 config가 위반**하고, feature-map에 기록한 곳이 0개다
-- [ ] **E2E-CP-09** (결함) — **§2.1 대기 기준 위반**(SpotActorTransfer readiness 30초, ObservabilityOps 상수 0개)
+- [x] **E2E-CP-09** (결함) — **§2.1 대기 기준 위반**(SpotActorTransfer readiness 30초, ObservabilityOps 상수 0개)
+  - 근거: 수정 전 target-contract gate가 Config 10의 route/scenario 상수 누락과 Config 11의 공통 대기 상수 5개 누락을 검출했다. 두 runner가 readiness 3초·poll 0.1초·route settle 5초·scenario settle 3초·HTTP probe 3초를 이름으로 구분해 실제 wait와 HTTP 호출에 사용하도록 바꿨다. gate와 shell 문법 검사 뒤 기본값 그대로 `SpotActorTransfer/run_e2e.sh ST-A1`과 `ObservabilityOps/run_e2e.sh all`이 통과했다.
 - [ ] **E2E-CP-10** (결함) — **§2.5 시나리오 파일 분리 위반** — 4개 config가 단일 `main.cpp`
 - [ ] **E2E-CP-11** (결함) — **Config 11 feature-map이 자기 모순**이다(pending을 `구현`으로 적는다)
 - [ ] **E2E-CP-12** (결함) — **Config 6 기본 실행이 단일 시나리오**(`SF-A1`)이고 프레임워크 knob이 env로 뚫려 있다

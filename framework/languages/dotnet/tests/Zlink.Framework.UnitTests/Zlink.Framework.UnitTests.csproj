@@ -82,6 +82,7 @@
         <Compile Include="Runtime/StreamFlowEndToEndTests.cs"/>
         <Compile Include="Runtime/TimerLifecycleTests.cs"/>
         <Compile Include="Runtime/SpotHandlerInvokerTests.cs"/>
+        <Compile Include="Runtime/SpotRouteDispatcherTests.cs"/>
         <Compile Include="Runtime/SpotAutoRegistrationScannerTests.cs"/>
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
         <Compile Include="Runtime/ReconciliationRunnerTests.cs"/>

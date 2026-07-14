@@ -104,7 +104,16 @@ internal sealed class ZLinkSpotRouteDispatcher(
             }
             else
             {
-                message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType, codecs);
+                if (!scope.TryDecode(
+                        received.Parts,
+                        descriptor.MessageType,
+                        header.ContentType,
+                        codecs,
+                        _logger,
+                        dispatchErrors,
+                        ZLinkDispatchErrorAction.Drop,
+                        out message))
+                    return;
             }
 
             if (!descriptor.IsRequest)

@@ -23,9 +23,10 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
 export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:automaticturn:${run_id}}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=150
-HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -327,6 +328,12 @@ terminate_gracefully() {
 
 static_checks() {
   local tmp
+  if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
+     || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
+     || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
+    echo "AutomaticTurnDispatch must use 3s readiness and 5s route settle limits" >&2
+    return 1
+  fi
   tmp="$(mktemp)"
   if grep -RInE 'POST|\.POST\(' Client Server Shared --include='*.java' >"${tmp}"; then
     cat "${tmp}" >&2
@@ -351,24 +358,16 @@ static_checks() {
   fi
 }
 
-wait_readiness() {
+assert_readiness() {
   : >"${log_dir}/readiness.stdout.log"
   : >"${log_dir}/readiness.stderr.log"
-  for attempt in $(seq 1 60); do
-    if ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-      ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
-      ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
-      ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s 20s "$(client_bin)" --readiness \
-        >>"${log_dir}/readiness.stdout.log" 2>>"${log_dir}/readiness.stderr.log"; then
-      return 0
-    fi
-    printf 'readiness attempt %s failed\n' "${attempt}" >>"${log_dir}/readiness.stderr.log"
-    sleep 0.5
-  done
-  echo "Timed out waiting for route and spot readiness" >&2
-  return 1
+  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
+  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
+  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    timeout -k 5s 20s "$(client_bin)" --readiness \
+    >>"${log_dir}/readiness.stdout.log" 2>>"${log_dir}/readiness.stderr.log"
 }
 
 gradle_run() {
@@ -461,7 +460,8 @@ wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
 wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
 wait_port session-stream "${STREAM_ENDPOINT}"
 wait_http session-http "${SESSION_HTTP}"
-wait_readiness
+sleep "${ROUTE_SETTLE_SECONDS}"
+assert_readiness
 
 ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
 ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
@@ -537,7 +537,8 @@ if [[ "${SCENARIO}" == "all" ]]; then
   wait_port play-a-route "${ROUTE_A_ENDPOINT}"
   wait_port play-a-spot "${SPOT_A_ENDPOINT}"
   wait_http play-a-http "${PLAY_A_HTTP}"
-  wait_readiness
+  sleep "${ROUTE_SETTLE_SECONDS}"
+  assert_readiness
 
   ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
   ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \

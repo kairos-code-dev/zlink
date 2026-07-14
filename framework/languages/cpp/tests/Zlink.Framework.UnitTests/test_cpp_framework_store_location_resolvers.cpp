@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -203,6 +204,36 @@ class test_location_store_t : public zlink::framework::location_store_t
 
 class other_test_location_store_t : public test_location_store_t
 {
+};
+
+class scripted_actor_location_store_t final : public test_location_store_t
+{
+  public:
+    std::optional<actor_location_t> actor;
+
+    zlink::framework::task_t<std::optional<actor_location_t>>
+    resolve_actor (zlink::framework::actor_location_key_t) override
+    {
+        return completed (actor);
+    }
+
+    zlink::framework::task_t<location_page_t<actor_location_t>>
+    list_actors (zlink::framework::actor_location_filter_t,
+                 location_page_request_t = {}) override
+    {
+        location_page_t<actor_location_t> page;
+        if (actor) {
+            page.items.push_back (*actor);
+        }
+        return completed (std::move (page));
+    }
+
+  private:
+    template <typename T> static zlink::framework::task_t<T> completed (T value)
+    {
+        return zlink::framework::task_t<T> (
+          zlink::framework::result_t<T>::success (std::move (value)));
+    }
 };
 
 class failing_owner_lease_store_t final : public test_location_store_t
@@ -971,7 +1002,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithE
     EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeRef)
+TEST (ZLinkFrameworkStoreLocationResolvers, PendingActorEntrySpotResolvesAsMiss)
 {
     in_memory_location_store_t store;
     ASSERT_TRUE (store
@@ -998,9 +1029,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeRef)
     const auto address =
       resolvers.resolve_actor_address ("actor-a").result ().value ();
 
-    ASSERT_TRUE (address.has_value ());
-    EXPECT_EQ ("node-a", address->node_rid.to_string ());
-    EXPECT_EQ ("node-a", address->spot_rid.to_string ());
+    EXPECT_FALSE (address.has_value ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes)
@@ -1052,7 +1081,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
     ASSERT_EQ (location_write_status_t::stored,
                store.update_actor (actor_location_t{.actor_id = "actor-b",
                                                     .actor_type = "player",
-                                                    .actor_ref = std::nullopt,
+                                                    .actor_ref = zlink::framework::actor_ref_t (
+                                                      zlink::framework::node_rid_t::from_string (
+                                                        "node-a"),
+                                                      "player", "actor-b", 1),
                                                     .node_rid =
                                                       zlink::routing_id_t::from ("node-a"),
                                                     .location_kind = zlink::spot_kind::user,
@@ -1072,6 +1104,53 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
 
     const auto missing = resolvers.resolve_actor_spot_handle ("nobody").result ().value ();
     EXPECT_FALSE (missing.has_value ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, RejectsPendingAndRegressedActorGenerations)
+{
+    scripted_actor_location_store_t store;
+    auto observer =
+      std::make_shared<zlink::framework::runtime::actor_location_observer_t> ();
+    store_location_resolvers_t resolvers (store, {}, observer);
+    location_options_t options;
+    location_runtime_t runtime (store, options, "owner-query");
+    store_location_runtime_query_t query (store, runtime, options, observer);
+    auto row = [] (std::int64_t generation,
+                   std::optional<zlink::framework::actor_ref_t> actor_ref,
+                   std::string node) {
+        return actor_location_t{.actor_id = "actor-observed",
+                                .actor_type = "player",
+                                .actor_ref = std::move (actor_ref),
+                                .node_rid = zlink::routing_id_t::from (node),
+                                .location_kind = zlink::spot_kind::user,
+                                .spot_mesh_name = "mesh",
+                                .spot_rid = zlink::routing_id_t::from ("spot-observed"),
+                                .owner_id = "owner",
+                                .generation = generation};
+    };
+    auto actor_ref = [] (std::uint64_t generation, const std::string &node) {
+        return zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string (node), "player", "actor-observed",
+          generation);
+    };
+
+    store.actor = row (2, actor_ref (2, "node-new"), "node-new");
+    ASSERT_TRUE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
+
+    store.actor = row (1, actor_ref (1, "node-stale"), "node-stale");
+    EXPECT_FALSE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
+    EXPECT_TRUE (query.list_actor_locations ({}).result ().value ().items.empty ());
+
+    store.actor = row (3, std::nullopt, "node-pending");
+    EXPECT_FALSE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
+    EXPECT_TRUE (query.list_actor_locations ({}).result ().value ().items.empty ());
+
+    store.actor = row (3, actor_ref (3, "node-committed"), "node-committed");
+    const auto committed =
+      resolvers.resolve_actor_address ("actor-observed").result ().value ();
+    ASSERT_TRUE (committed);
+    EXPECT_EQ ("node-committed", committed->node_rid.to_string ());
+    EXPECT_EQ (1u, query.list_actor_locations ({}).result ().value ().items.size ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)

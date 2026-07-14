@@ -78,6 +78,9 @@ int main ()
       read_file (root / "framework/src/runtime/streams/stream_host_service.cpp");
     const auto location_auto_connect =
       read_file (root / "framework/src/runtime/locations/location_auto_connect_host_service.hpp");
+    const auto store_location_resolvers =
+      read_file (root / "framework/src/runtime/locations/store_location_resolvers.hpp");
+    const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
     gate_t gate;
 
     for (const auto &required :
@@ -158,6 +161,17 @@ int main ()
                   "IMP-CP-04", "duplicate STREAM node names are not rejected");
     gate.require (framework_options_hpp.find ("STREAM packet session '") != std::string::npos,
                   "IMP-CP-04", "duplicate STREAM packet session names are not rejected");
+
+    /* IMP-CP-07 — pending and regressed actor rows never resolve successfully. */
+    gate.require (store_location_resolvers.find ("row.generation < observed")
+                    != std::string::npos,
+                  "IMP-CP-07", "actor resolver does not reject regressed generations");
+    gate.require (store_location_resolvers.find (
+                    "row.actor_ref && !row.actor_ref->empty ()")
+                    != std::string::npos,
+                  "IMP-CP-07", "actor resolver does not reject pending actor rows");
+    gate.require (app_runtime.find ("actor_location_observer") != std::string::npos,
+                  "IMP-CP-07", "actor resolver and runtime query do not share generation state");
 
     /* CPP-G0-ASYNC-001 — one-way terminators return void. */
     gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",

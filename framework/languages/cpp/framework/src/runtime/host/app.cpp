@@ -54,7 +54,12 @@ namespace zlink::framework::detail
 class store_actor_directory_t final : public actor_directory_t
 {
   public:
-    explicit store_actor_directory_t (location_store_t &store) : _store (store) {}
+    store_actor_directory_t (
+      location_store_t &store,
+      std::shared_ptr<runtime::actor_location_observer_t> actor_locations) :
+        _store (store), _actor_locations (std::move (actor_locations))
+    {
+    }
 
     task_t<std::optional<actor_ref_t>> find (std::string actor_id) override
     {
@@ -66,7 +71,7 @@ class store_actor_directory_t final : public actor_directory_t
                 row.error () ? row.error ()->what () : "actor location lookup failed",
                 row.error () && row.error ()->is_retriable ()));
         }
-        if (!row.value () || !row.value ()->actor_ref) {
+        if (!row.value () || !_actor_locations->accepts (*row.value ())) {
             return task_t<std::optional<actor_ref_t>> (
               result_t<std::optional<actor_ref_t>>::success (std::nullopt));
         }
@@ -83,6 +88,7 @@ class store_actor_directory_t final : public actor_directory_t
 
   private:
     location_store_t &_store;
+    std::shared_ptr<runtime::actor_location_observer_t> _actor_locations;
 };
 
 bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
@@ -547,13 +553,16 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
+    const auto actor_location_observer =
+      std::make_shared<runtime::actor_location_observer_t> ();
     if (!_state->services.contains (
           std::type_index (typeid (runtime::store_location_resolvers_t)))) {
         const auto resolver_location_options = options.location_options ();
         _state->services.add_factory<runtime::store_location_resolvers_t> (
-          [resolver_location_options] (service_provider_t &provider) {
+          [resolver_location_options, actor_location_observer] (service_provider_t &provider) {
               return std::make_unique<runtime::store_location_resolvers_t> (
-                provider.get_required<location_store_t> (), resolver_location_options);
+                provider.get_required<location_store_t> (), resolver_location_options,
+                actor_location_observer);
           },
           service_lifetime_t::singleton);
     }
@@ -604,10 +613,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!_state->services.contains (std::type_index (typeid (actor_directory_t)))) {
         _state->services.add_factory<actor_directory_t> (
-          [] (service_provider_t &provider) {
+          [actor_location_observer] (service_provider_t &provider) {
               return std::shared_ptr<actor_directory_t> (
                 std::make_shared<detail::store_actor_directory_t> (
-                  provider.get_required<location_store_t> ()));
+                  provider.get_required<location_store_t> (), actor_location_observer));
           },
           service_lifetime_t::singleton);
     }
@@ -623,11 +632,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     if (!_state->services.contains (std::type_index (typeid (location_runtime_query_t)))) {
         const auto location_options = options.location_options ();
         _state->services.add_factory<location_runtime_query_t> (
-          [location_options] (service_provider_t &provider) {
+          [location_options, actor_location_observer] (service_provider_t &provider) {
               return std::shared_ptr<location_runtime_query_t> (
                 std::make_shared<runtime::store_location_runtime_query_t> (
                   provider.get_required<location_store_t> (),
-                  provider.get_required<runtime::location_runtime_t> (), location_options));
+                  provider.get_required<runtime::location_runtime_t> (), location_options,
+                  actor_location_observer));
           },
           service_lifetime_t::singleton);
     }
@@ -743,10 +753,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             actor_client_spot_nodes.push_back (spot_node.runtime);
         }
         _state->services.add_factory<actor_client_t> (
-          [spot_nodes = std::move (actor_client_spot_nodes)] (service_provider_t &provider) {
+          [spot_nodes = std::move (actor_client_spot_nodes),
+           actor_location_observer] (service_provider_t &provider) {
               return runtime::make_actor_client (provider.get_required<location_store_t> (),
                                                  provider.get_required<serializer_registry_t> (),
-                                                 spot_nodes);
+                                                 spot_nodes, actor_location_observer);
           },
           service_lifetime_t::singleton);
     }

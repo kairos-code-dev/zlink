@@ -13,11 +13,31 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
-#include <utility>
 #include <memory>
+#include <mutex>
+#include <utility>
 
 namespace zlink::framework::runtime
 {
+
+class actor_location_observer_t
+{
+  public:
+    bool accepts (const actor_location_t &row)
+    {
+        std::lock_guard lock (_gate);
+        auto &observed = _generations[row.actor_id];
+        if (row.generation < observed) {
+            return false;
+        }
+        observed = row.generation;
+        return row.actor_ref && !row.actor_ref->empty ();
+    }
+
+  private:
+    std::mutex _gate;
+    std::map<std::string, std::int64_t> _generations;
+};
 
 class store_location_resolvers_t final : public peer_location_resolver_t,
                                          public spot_handle_resolver_t,
@@ -27,9 +47,13 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
                                          public location_readiness_t
 {
   public:
-    explicit store_location_resolvers_t (location_store_t &store,
-                                          location_options_t options = {}) :
-        _store (&store), _options (std::move (options))
+    explicit store_location_resolvers_t (
+      location_store_t &store,
+      location_options_t options = {},
+      std::shared_ptr<actor_location_observer_t> actor_locations =
+        std::make_shared<actor_location_observer_t> ()) :
+        _store (&store), _options (std::move (options)),
+        _actor_locations (std::move (actor_locations))
     {
     }
 
@@ -55,19 +79,11 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
     task_t<std::optional<spot_address_t>>
     resolve_actor_address (std::string actor_id) override
     {
-        auto row = _store
-                     ->resolve_actor (actor_location_key_t{std::move (actor_id)})
-                     .result ()
-                     .value ();
-        if (!row) {
+        auto address = resolve_actor_row (*_store, actor_id, _actor_locations);
+        if (!address) {
             return completed (std::optional<spot_address_t>{});
         }
-        const auto target_spot =
-          row->location_kind == zlink::spot_kind::entry || !row->spot_rid
-            ? row->node_rid
-            : *row->spot_rid;
-        return completed (std::optional<spot_address_t>{spot_address_t{
-          row->spot_mesh_name, row->node_rid, target_spot}});
+        return completed (std::optional<spot_address_t>{std::move (*address)});
     }
 
     /* The spot rid is searched across every mesh registered in the store, so
@@ -105,10 +121,12 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         auto *store = _store;
         const auto router_channel = router_channel_for (address->mesh_name);
         const auto options = _options;
+        const auto actor_locations = _actor_locations;
         auto handle = detail::spot_handle_access_t::make (
           spot_address_t{router_channel, address->node_rid, address->spot_rid},
-          [store, actor_id = std::move (actor_id), options] () -> std::optional<spot_address_t> {
-              auto row = resolve_actor_row (*store, actor_id);
+          [store, actor_id = std::move (actor_id), options,
+           actor_locations] () -> std::optional<spot_address_t> {
+              auto row = resolve_actor_row (*store, actor_id, actor_locations);
               if (!row) {
                   return std::nullopt;
               }
@@ -149,11 +167,13 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return task_t<T> (result_t<T>::success (std::move (value)));
     }
 
-    static std::optional<spot_address_t> resolve_actor_row (location_store_t &store,
-                                                             const std::string &actor_id)
+    static std::optional<spot_address_t>
+    resolve_actor_row (location_store_t &store,
+                       const std::string &actor_id,
+                       const std::shared_ptr<actor_location_observer_t> &actor_locations)
     {
         auto row = store.resolve_actor (actor_location_key_t{actor_id}).result ().value ();
-        if (!row) {
+        if (!row || !actor_locations->accepts (*row)) {
             return std::nullopt;
         }
         const auto target_spot =
@@ -206,6 +226,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
 
     location_store_t *_store;
     location_options_t _options;
+    std::shared_ptr<actor_location_observer_t> _actor_locations;
 };
 
 class store_location_runtime_query_t final : public location_runtime_query_t
@@ -213,8 +234,11 @@ class store_location_runtime_query_t final : public location_runtime_query_t
   public:
     store_location_runtime_query_t (location_store_t &store,
                                     location_runtime_t &runtime,
-                                    const location_options_t &options) :
-        _store (&store), _runtime (&runtime), _options (options)
+                                    const location_options_t &options,
+                                    std::shared_ptr<actor_location_observer_t> actor_locations =
+                                      std::make_shared<actor_location_observer_t> ()) :
+        _store (&store), _runtime (&runtime), _options (options),
+        _actor_locations (std::move (actor_locations))
     {
     }
 
@@ -256,7 +280,12 @@ class store_location_runtime_query_t final : public location_runtime_query_t
     list_actor_locations (actor_location_filter_t filter,
                           location_page_request_t page = {}) override
     {
-        return completed (_store->list_actors (std::move (filter), page).result ().value ());
+        auto result = _store->list_actors (std::move (filter), page).result ().value ();
+        std::erase_if (result.items,
+                       [actor_locations = _actor_locations] (const actor_location_t &row) {
+                           return !actor_locations->accepts (row);
+                       });
+        return completed (std::move (result));
     }
 
     task_t<location_page_t<route_location_t>>
@@ -349,6 +378,7 @@ class store_location_runtime_query_t final : public location_runtime_query_t
     location_store_t *_store;
     location_runtime_t *_runtime;
     location_options_t _options;
+    std::shared_ptr<actor_location_observer_t> _actor_locations;
 
     static bool matches (const location_topology_entry_t &entry,
                          const location_topology_filter_t &filter)

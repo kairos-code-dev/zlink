@@ -3,6 +3,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 
 #include "runtime/messaging/client_call_codec.hpp"
+#include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
@@ -76,10 +77,12 @@ class actor_client_impl_t final : public actor_client_t
   public:
     actor_client_impl_t (actor_location_store_t &store,
                          serializer_registry_t &serializers,
-                         std::vector<detail::spot_node_runtime_t> spot_nodes) :
+                         std::vector<detail::spot_node_runtime_t> spot_nodes,
+                         std::shared_ptr<actor_location_observer_t> actor_locations) :
         _store (&store),
         _serializers (&serializers),
-        _spot_nodes (std::move (spot_nodes))
+        _spot_nodes (std::move (spot_nodes)),
+        _actor_locations (std::move (actor_locations))
     {
     }
 
@@ -247,7 +250,7 @@ class actor_client_impl_t final : public actor_client_t
               row.error () ? row.error ()->what () : "actor location lookup failed",
               row.error () && row.error ()->is_retriable ());
         }
-        if (!row.value () || !row.value ()->actor_ref) {
+        if (!row.value () || !_actor_locations->accepts (*row.value ())) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::actor_route_not_found
@@ -502,6 +505,7 @@ class actor_client_impl_t final : public actor_client_t
     actor_location_store_t *_store;
     serializer_registry_t *_serializers;
     std::vector<detail::spot_node_runtime_t> _spot_nodes;
+    std::shared_ptr<actor_location_observer_t> _actor_locations;
     std::chrono::milliseconds _default_timeout{std::chrono::seconds (30)};
     const std::string _request_id_prefix =
       std::to_string (reinterpret_cast<std::uintptr_t> (this)) + "-";
@@ -511,9 +515,11 @@ class actor_client_impl_t final : public actor_client_t
 std::shared_ptr<actor_client_t>
 make_actor_client (actor_location_store_t &store,
                    serializer_registry_t &serializers,
-                   std::vector<detail::spot_node_runtime_t> spot_nodes)
+                   std::vector<detail::spot_node_runtime_t> spot_nodes,
+                   std::shared_ptr<actor_location_observer_t> actor_locations)
 {
-    return std::make_shared<actor_client_impl_t> (store, serializers, std::move (spot_nodes));
+    return std::make_shared<actor_client_impl_t> (
+      store, serializers, std::move (spot_nodes), std::move (actor_locations));
 }
 
 } // namespace zlink::framework::runtime

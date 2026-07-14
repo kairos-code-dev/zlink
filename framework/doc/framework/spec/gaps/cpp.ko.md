@@ -236,7 +236,8 @@
 - [x] **IMP-CP-05** (결함) — 40 §2.1·02 §4
   - 근거: 수정 전 실제 auto-connect 회귀 테스트에서 endpoint 없는 RouteMesh local row를 `Router`로 찾지 못해 실패했다. endpoint 유무와 관계없이 local role을 `Router`로 게시하고 RouteMesh discovery에서 `Dealer` peer를 거부하도록 모델을 바로잡은 뒤, endpoint 없는 local row와 잘못된 dealer peer 거부를 확인하는 회귀, route initiator ordering 시나리오, location resolver 전체 ctest와 target-contract gate가 통과했다.
 - [ ] **IMP-CP-06** (결함) — 40 §8.2·§6.1
-- [ ] **IMP-CP-07** (결함) — 40 §2.3·§5.1
+- [x] **IMP-CP-07** (결함) — 40 §2.3·§5.1
+  - 근거: 수정 전 pending actor claim을 entry address로 성공 반환하는 resolver 회귀가 실패했다. actor row 관찰기가 key별 최신 generation과 commit된 `ActorRef`를 함께 판정하고 resolver, handle refresh, 운영 목록, actor directory, actor client가 같은 관찰 상태를 공유하도록 연결했다. pending miss, generation 2 관찰 뒤 generation 1 거부, pending generation 3 뒤 같은 generation commit 허용 회귀와 관련 ctest 3개, target-contract gate가 통과했다.
 - [x] **IMP-CP-08** (미구현) — 30 §6
   - 근거: 수정 전 target-contract gate가 STREAM host의 transport 오류 분류와 session callback dispatch 부재를 각각 검출했다. 연결이 설정된 뒤의 비정상 socket 오류만 `transport_error`로 분류해 기존 직렬 callback 경로로 전달하도록 연결한 뒤, 정상 TCP 종료는 오류 callback 0회이고 TCP reset은 native errno를 포함한 오류 callback 1회인 실제 host 회귀 테스트를 3회 반복했으며 target gate와 관련 ctest 2개가 통과했다.
 - [ ] **IMP-CP-09** (미구현) — 40 §9
@@ -245,7 +246,8 @@
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
-- [ ] **IMP-X1** — pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다
+- [x] **IMP-X1** — pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다
+  - 근거: C++ 언어 작업인 IMP-CP-07에서 pending row를 resolve와 목록의 miss로 처리하고 동일 runtime의 observed generation guard를 함께 구현해 닫았다.
 - [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
 - [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
 

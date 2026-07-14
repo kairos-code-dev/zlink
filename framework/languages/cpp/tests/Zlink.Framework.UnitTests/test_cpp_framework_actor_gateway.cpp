@@ -12,6 +12,7 @@
 #include "runtime/channels/route_packet_dispatcher.hpp"
 #include "runtime/host/actor_gateway_spot_bridge.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/streams/stream_runtime.hpp"
@@ -434,7 +435,8 @@ int main ()
         return 80;
     }
     auto no_bind_actor_client = zlink::framework::runtime::make_actor_client (
-      no_bind_location_store, serializers, {no_bind_runtime});
+      no_bind_location_store, serializers, {no_bind_runtime},
+      std::make_shared<zlink::framework::runtime::actor_location_observer_t> ());
     auto no_bind_client_reply =
       no_bind_actor_client->request_to_actor (no_bind_join.value ().actor, bridge_request_t{8})
         .timeout (std::chrono::milliseconds (1000))

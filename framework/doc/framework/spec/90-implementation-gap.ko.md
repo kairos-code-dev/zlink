@@ -592,6 +592,9 @@ C++ 샘플 감사에서 나왔지만 **C++만의 문제가 아니다.** `.NET` �
 | **SMP-X2** (결함) | [공통 샘플 §Client self-check:353](../common/sample/README.ko.md): **"인증 요청에 사용한 token 또는 actor id가 인증 응답의 actor id와 일치한다"**는 모든 샘플 client의 **첫 번째 필수 검증**이다. [gamequest:596](../common/sample/event/gamequest.ko.md)도 join의 "bind 검증"을 요구한다 | GameQuest의 `JoinSessionRes`가 **`ActiveQuests` 하나만** 싣는다 — player id도 actor id도 binding 증거도 없다(C++ `GameQuest/Shared/Contracts/messages.hpp:141-145`, `.NET` `GameQuest/Shared/Messages.cs:25` — **양쪽 동일**). ⇒ **응답을 요청한 `player-alice`와 대조할 방법이 계약에 없다.** 필수 검증 1번을 **어느 언어도 수행할 수 없다.** C++ client는 `active_quests.empty()`만 본다(`gamequest_client_scenario.hpp:41`). **계약(`JoinSessionRes`)에 player/actor 신원을 추가해야 닫힌다** |
 | **SMP-X3** (결함) | [deliverydispatch:681-685](../common/sample/deliverydispatch/README.ko.md): 배송 상태가 `Assigned → Accepted → PickedUp → Delivered` **순서대로 도착**한다 | C++·`.NET` **둘 다** 독립 wait future를 걸고 선언 순서로 회수할 뿐이라 **도착 순서를 단언하지 않는다**(C++ `delivery_dispatch_client_scenario.hpp:107-110,123-126`; `.NET` `DeliveryDispatchClientScenario.cs:66-69,89-97`). 순서 판정이 **서버가 계산한 bool**에 위임돼 있다. ⇒ 기준선도 같으므로 **공통 게이트를 고쳐야** 닫힌다 |
 
+| **SMP-X4** (결함) | [deliverydispatch §메시지 계약:306-320](../common/sample/deliverydispatch/README.ko.md)이 wire 메시지를 고정한다. 문서의 결정 채널은 `OfferDeliveryResultMsg`(`:320`)다 | **`CourierDecisionMsg`와 `ServerAssertionReq/Res`가 C++·`.NET` 양쪽 다 있는데 문서엔 0건이다.** 유령이 아니라 **실제로 wire를 탄다** — C++ `Shared/Contracts/messages.hpp:213-220,259-271`(`Client/delivery_dispatch_client_scenario.hpp:207`, `Server/CourierSession/main.cpp:95-97`, `Server/CourierActorNode/main.cpp:93,181`), `.NET` `Shared/Contracts/Messages.cs:118-122,148-154`(`Client/DeliveryDispatchClientScenario.cs:82,142`, `CourierDecisionActorHandler.cs:17`). ⇒ **courier client leg에 문서화되지 않은 두 번째 결정 채널이 있다.** 계약에 정식 추가하거나 `OfferDeliveryResultMsg`로 합쳐야 한다 |
+| **SMP-X5** (결함) | [gamequest §11.2:503-509](../common/sample/event/gamequest.ko.md): entry→owner hop은 **flat one-way `GameplayMsg`** = `{EventId, PlayerId, Type, Payload: bytes, OccurredAtUnixMs}` | **문서가 적은 그 모양이 어느 언어에도 없다.** C++는 8필드 envelope를 감싼 wrapper를 **one-way**로 보내고(`messages.hpp:222-226`), `.NET`은 `GameplayMsg`가 **아예 없이** `ApplyGameplayEventReq`를 **request**로 보낸다(`Server/Configuration/SampleConfiguration.cs:25`). ⇒ **같은 hop에 packet 이름도 호출 방식도 다른 두 구현이 있고, 문서는 제3의 모양을 적고 있다.** 셋 중 무엇이 정본인지부터 정해야 한다(C++ 쪽 세부는 SMP-CP-45) |
+
 **작업 순서:** [§12.21](#1221-yield-terminator-부재-전-언어)(`yield` terminator)을 먼저 닫고,
 그 다음 각 언어 샘플에서 SMP-X1을 채운다. 순서를 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어
 **샘플이 보여 주려던 대비 자체가 사라진다.** SMP-X2·SMP-X3는 `yield`와 무관하므로 독립적으로 닫는다.
@@ -722,7 +725,34 @@ C++ 감사가 더 깊이 팠더니 이게 나왔다. **버그와 그것을 놓�
 **그래서 규칙 하나를 더 세운다 — 구현을 고친 뒤 해당 e2e가 여전히 통과한다면 그 e2e가 틀린 것이다.**
 고쳤는지 확인하려면 **먼저 그 e2e가 실패하는지부터 봐야 한다.**
 
-### 15.5 판정이 필요한 항목 — 스펙끼리 충돌한다
+### 15.5 계약 설계 결함 — 타입이 실수를 막아 주지 못한다
+
+**샘플 감사에서 나왔지만 샘플의 문제가 아니다. C++ framework 계약 자체의 문제다.**
+
+```cpp
+template <typename TReply> struct actor_join_accepted_t { actor_ref_t actor; TReply reply; };
+template <typename TReply> struct actor_join_rejected_t {                    TReply reply; };
+```
+
+**두 대안이 모두 `.reply`를 갖는다.** 그래서
+
+```cpp
+std::visit ([] (const auto &value) { return value.reply; }, joined);   // 양쪽에 컴파일된다
+```
+
+가 **거절이든 수락이든 reply를 그대로 돌려준다.** C++ Bingo와 TicTacToe의 join handler가 실제로
+이 형태이고, **거절된 join을 정상 성공 응답으로 클라이언트에 보낸다**([gaps/cpp](gaps/cpp.ko.md)
+SMP-CP-51). 같은 샘플의 다른 handler 3곳은 `get_if`/`holds_alternative`로 제대로 분기한다 —
+**일관성이 없다는 것은 타입이 실수를 막아 주지 못한다는 뜻이다.**
+
+**고쳐야 할 것:** join 결과 variant는 **분기 없이는 reply를 읽을 수 없게** 생겨야 한다. 거절
+대안에서 reply를 꺼내는 코드가 **컴파일되지 않아야** 한다(이름을 다르게 하거나, 거절 대안이
+reply 대신 거절 사유를 들거나). [23 §3.3](server/23-spot-actor.ko.md)의 admission 계약을
+**타입으로 강제**하는 것이 목적이다.
+
+**다른 언어도 같은 형태인지 확인해야 한다** — 아직 대조하지 않았다.
+
+### 15.6 판정이 필요한 항목 — 스펙끼리 충돌한다
 
 **이건 구현 결함이 아니라 스펙 결함이다.** 어느 쪽이 맞는지 정해야 한다.
 

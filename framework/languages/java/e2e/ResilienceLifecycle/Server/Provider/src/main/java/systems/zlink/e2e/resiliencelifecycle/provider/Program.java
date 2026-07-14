@@ -10,6 +10,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.provider.endpoints.EvidenceHttpServer;
+import systems.zlink.e2e.resiliencelifecycle.provider.handlers.RuntimeErrorEvidenceHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkMsgHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkReqHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
@@ -80,7 +81,6 @@ public final class Program {
                         "DispatchError",
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     if (state.observerThrows()) {
-                        state.record("ObserverFaultThrown", error.packetName());
                         throw new IllegalStateException("dispatch observer failure");
                     }
                     return CompletableFuture.completedFuture(null);
@@ -108,5 +108,10 @@ public final class Program {
     @Bean
     WorkMsgHandler workCommandHandler(ScenarioState state) {
         return new WorkMsgHandler(state);
+    }
+
+    @Bean
+    RuntimeErrorEvidenceHandler runtimeErrorEvidenceHandler(ScenarioState state) {
+        return new RuntimeErrorEvidenceHandler(state);
     }
 }

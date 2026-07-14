@@ -451,7 +451,11 @@ public final class ConsumerScenario {
                 .submit(Contracts.WorkRes.class).toCompletableFuture().join();
             throw new IllegalStateException("RL-D2 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
-            waitForEvidenceAny("ObserverFaultThrown", adminA(), adminB());
+            waitForEvidenceValueAny(
+                "RuntimeError",
+                "MESSAGE_FLOW_OBSERVER_FAILED/message-flow-observer",
+                adminA(),
+                adminB());
         } finally {
             post(adminA() + "/admin/fault/none");
             post(adminB() + "/admin/fault/none");
@@ -841,6 +845,20 @@ public final class ConsumerScenario {
             sleep(100);
         }
         throw new IllegalStateException("marker " + marker + " was not observed at any provider");
+    }
+
+    private void waitForEvidenceValueAny(String marker, String value, String... baseUrls) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            for (String baseUrl : baseUrls) {
+                if (hasEvidence(baseUrl, marker, value)) {
+                    return;
+                }
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(
+            "evidence " + marker + "/" + value + " was not observed at any provider");
     }
 
     private void driveUntilEvidence(String baseUrl, String prefix, String failureMessage) {

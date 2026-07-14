@@ -666,7 +666,8 @@ Config 11 전체 실행도 각 selector를
 ### 체크리스트
 
 - [ ] **SMP-JV-01** (**절대 규칙 위반**) — TicTacToe 밖 샘플이 **수동 연결을 쓴다**(29곳). `.NET`·Node는 0
-- [ ] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
+- [x] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
+  - 증거: `addSpotMesh`·`PlayerQuestSpot`과 전역 monitor 부재를 요구한 gate가 기존 코드에서 실패했다. 두 QuestMission이 같은 spot mesh에 참여하고 channel은 ingress로만 남으며, 모든 quest 요청은 `PlayerId` routing id의 owner Spot으로 전달된다. 전체 runner가 `surface=SPOT ... packet=GameplayMsg` flow와 재기동 복원까지 통과했다.
 - [ ] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
 - [ ] **SMP-JV-04** (미구현) — Bingo의 정본 `yield` 사용처가 코드에 없다
 - [ ] **SMP-JV-05** (결함) — TicTacToe가 **MessagePack**을 쓴다 — 문서는 JSON으로 고정
@@ -694,6 +695,8 @@ Config 11 전체 실행도 각 selector를
   - 증거: client 시나리오 뒤 Alice owner인 mission-a를 종료하고 같은 설정으로 재기동한 뒤 in-memory event stream의 FirstHunt reconcile count `5`를 요구한 gate가 기존 구현에서 빈 배열을 반환해 실패했다. `QuestStore`가 생성 시 Redis event stream을 읽어 공통 fold 함수로 player/quest projection과 SourceEventId dedupe 상태를 복원하도록 수정한 뒤 같은 gate와 전체 runner가 exit 0으로 통과했다.
 - [x] **SMP-JV-12** (버그) — GameQuest rehydrate gate가 실제 재시작 없이 카운터로 통과한다
   - 증거: `markRehydrated`·`recordRehydrated`·`owner-rehydrates`가 남아 있으면 실패하는 source gate가 기존 server 코드 7곳을 검출했다. 가짜 close endpoint, gameplay 호출별 카운터와 server assertion을 제거했다. runner는 mission-a를 실제 종료·재기동하고 두 번째 client가 정상 stream/channel 경로로 Alice를 bind한 뒤 FirstHunt 상태가 `RewardGranted`, count `5`인지 단언하며 `gamequest-rehydrate=completed`까지 통과했다.
+- [x] **SMP-JV-11** (버그) — GameQuest player가 owner Spot 없이 전역 QuestStore monitor를 공유한다
+  - 증거: `addSpotMesh`·`PlayerQuestSpot` 존재와 `QuestStore`의 `public synchronized` 부재를 요구한 gate가 기존 구현에서 실패했다. `PlayerId` routing id로 spot을 get-or-create하고 spot route request로 gameplay/query/sync/rebuild/delete를 직렬 처리한다. store는 player별 state로 분리해 서로 다른 owner turn이 전역 monitor를 공유하지 않으며, 전체 runner가 실제 SPOT GameplayMsg flow와 restart/replay를 통과했다.
 - [ ] **E2E-JV-01** (결함) — `ObservabilityOps`가 **역할 서버도 클라이언트도 없이** 폐기된 config-8 바이너리를 빌려 쓴다
 - [x] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
   - 근거: 수정 전 `run_e2e.sh SM-F3`가 `not mapped to an implemented client mode`로 실패했다. `SM-F3`를 기존 route-mesh 검증에 연결한 뒤 단독 실행이 통과했다. 공통 문서에 없는 `SM-Q9`는 전체 실행 목록, selector, feature-map과 시나리오 출력에서 제거했다.
@@ -711,7 +714,7 @@ Config 11 전체 실행도 각 selector를
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | Bingo·SupportChat·DeliveryDispatch·ShoppingMall·GameQuest에 `connectRouter`/`connectPeerPub`가 **29곳**(`.NET`·Node는 **0**). 인자 없는 `.enableClient()` overload가 **같은 파일에서 이미 쓰이고 있다** — 피할 수 있는 호출들이다. **[갭 인덱스 §13.2]가 "연결 축은 규약과 일치한다"고 적고 있었는데 거짓이었고, 정정했다** |
-| **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | `addSpotMesh` **0건**(Java·Kotlin 모두). 소유권을 **클라이언트 측 해시**로 흉내낸다(`SampleTopology.java:42-47`). `.NET`엔 `QuestMission`·`GameApi` 양쪽에 있다 |
+| **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | **해결:** 두 QuestMission이 `gamequest.player-quests` spot mesh에 참여하고 `PlayerQuestSpot`을 등록한다. 기존 player hash channel은 ingress 선택에만 쓰이며, 실제 소유권과 직렬 처리는 `PlayerId` routing id의 spot owner가 담당한다. |
 | **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | **재검증 중단:** 기존 SF-B2 뒤에 survivor-only gate를 붙이면 계속 실행 중인 `api-b` 응답을 잡아 예상대로 실패한다. 이어 grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작했지만, consumer가 새 outbound 연결을 만들고 `sf-b2-restarted` 요청을 `api-b`에 전달했다. 이는 gate 누락뿐 아니라 Java runtime 계약 위반이다. **선택지:** (1) 허용 범위를 `zlink-framework-core`까지 넓혀 store failure grace 초과 시 reconnect/new connect를 억제한 뒤 provider 재시작 gate를 정식으로 넣는다. (2) 현재 범위를 유지하고 이 항목을 open으로 남긴다. |
 
 ### 샘플 상세
@@ -753,7 +756,7 @@ sourcing도, location-store binding도, 자동 연결도 **없다.** 있는 것�
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-JV-11** (**버그**) | [gamequest §1·§8](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 spot-mesh에 분산**하는 것이다 | GameQuest 트리 전체에 `Spot`·`Actor` grep **0건**(Bingo·TicTacToe·SupportChat엔 다 있다). `QuestMission/Program.java:69-72`는 **channel 서버 하나**만 등록하고, 상태는 Spring 싱글턴 `QuestStore`의 `HashMap`에 `synchronized` 하나로 지킨다. ⇒ **서로 다른 player의 이벤트가 전역 모니터 하나에 직렬화된다.** owner도, lease도, re-home도 없다 |
+| **SMP-JV-11** (**버그**) | [gamequest §1·§8](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 spot-mesh에 분산**하는 것이다 | **해결:** channel handler는 `PlayerQuestRouter`에 위임하는 ingress adapter이며, router는 `PlayerId`로 `PlayerQuestSpot`을 get-or-create하고 framework spot route로 요청한다. spot은 create request의 player와 routing id 일치를 확인하고 모든 요청의 player도 owner와 같은지 검사한다. `QuestStore`는 player별 projection/event/dedupe state를 보관하며 전역 `synchronized`를 사용하지 않는다. runner는 SPOT surface의 실제 `GameplayMsg` flow를 요구한다. |
 | **SMP-JV-12** (**버그**) | [gamequest §14](../../common/sample/event/gamequest.ko.md): rehydrate는 **노드 재시작 → event replay로 aggregate 복원**이다 | **해결:** `/self-check/owner`와 gameplay handler의 `markRehydrated`, Redis 카운터와 이를 읽는 assertion을 모두 제거했다. runner는 source gate로 이 표식의 재도입을 막고, Alice owner인 mission-a를 실제 종료·재기동한다. 두 번째 client는 api-a stream으로 다시 연결해 정상 channel 요청으로 projection을 조회하고 FirstHunt가 `RewardGranted`, count `5`인지 확인한다. |
 | **SMP-JV-13** (**버그**) | [gamequest §9](../../common/sample/event/gamequest.ko.md): owner는 **최초 활성 시 event stream을 replay**한다 | **해결:** `QuestStore` 생성 시 Redis의 append-only event stream을 읽고 player/quest별로 정렬해 SMP-JV-19의 공통 fold 함수로 projection을 복원한다. persisted `SourceEventId`도 dedupe 상태로 복원한다. runner는 전체 시나리오 뒤 Alice owner인 mission-a 프로세스를 종료하고 같은 설정으로 재기동한 다음, 기존 `/self-check/events`에서 FirstHunt reconcile count `5`가 프로세스 메모리에 복원됐는지 검사한다. |
 | **SMP-JV-14** (**버그**) | [gamequest §7](../../common/sample/event/gamequest.ko.md): notify는 **session binding을 가진 노드로 route**하고, **binding이 없으면 생략**한다 | **해결:** `GameQuestSession`은 owner 응답의 대상 player와 현재 session에 bind된 player가 같은 경우에만 progress/completed notification을 client로 보낸다. client gate는 Alice connector에 typed callback을 등록한 뒤 offline Bob event를 Alice 요청 경로로 주입하고 Bob 알림 계수가 0인지 확인한다. 이후 Bob이 api-b에 bind한 상태의 정상 completion push와 Alice의 api-b reconnect 후 정상 progress push도 계속 검증한다. |

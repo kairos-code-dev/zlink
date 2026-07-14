@@ -13,7 +13,8 @@ mkdir -p "$LOG_DIR"
 
 read -r api_a_stream_port api_b_stream_port api_a_http_port api_b_http_port \
   mission_a_channel_port mission_b_channel_port mission_a_http_port mission_b_http_port \
-  <<<"$(zlink_sample_reserve_ports 8)"
+  mission_a_spot_port mission_b_spot_port mission_a_router_port mission_b_router_port \
+  <<<"$(zlink_sample_reserve_ports 12)"
 api_a_stream="tcp://127.0.0.1:${api_a_stream_port}"
 api_b_stream="tcp://127.0.0.1:${api_b_stream_port}"
 api_a_http="http://127.0.0.1:${api_a_http_port}"
@@ -22,6 +23,10 @@ mission_a_channel="tcp://127.0.0.1:${mission_a_channel_port}"
 mission_b_channel="tcp://127.0.0.1:${mission_b_channel_port}"
 mission_a_http="http://127.0.0.1:${mission_a_http_port}"
 mission_b_http="http://127.0.0.1:${mission_b_http_port}"
+mission_a_spot="tcp://127.0.0.1:${mission_a_spot_port}"
+mission_b_spot="tcp://127.0.0.1:${mission_b_spot_port}"
+mission_a_router="tcp://127.0.0.1:${mission_a_router_port}"
+mission_b_router="tcp://127.0.0.1:${mission_b_router_port}"
 
 REDIS_CONTAINER=""
 zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
@@ -70,6 +75,14 @@ client_config="$RUN_DIR/client.properties"
 rehydrate_client_config="$RUN_DIR/rehydrate-client.properties"
 write_role_config "$mission_a_config" mission-a channelEndpoint "$mission_a_channel" "$mission_a_http"
 write_role_config "$mission_b_config" mission-b channelEndpoint "$mission_b_channel" "$mission_b_http"
+cat >>"$mission_a_config" <<EOF
+sample.spotEndpoint=${mission_a_spot}
+sample.spotRouterEndpoint=${mission_a_router}
+EOF
+cat >>"$mission_b_config" <<EOF
+sample.spotEndpoint=${mission_b_spot}
+sample.spotRouterEndpoint=${mission_b_router}
+EOF
 write_role_config "$api_a_config" api-a streamEndpoint "$api_a_stream" "$api_a_http"
 write_role_config "$api_b_config" api-b streamEndpoint "$api_b_stream" "$api_b_http"
 for config in "$api_a_config" "$api_b_config"; do
@@ -99,6 +112,13 @@ if rg -n 'markRehydrated|recordRehydrated|owner-rehydrates' Server; then
   echo "fake rehydrate evidence must not remain in GameQuest server code" >&2
   exit 1
 fi
+grep -q 'addSpotMesh' Server/QuestMission/src/main/java/systems/zlink/samples/gamequest/server/questmission/Program.java
+rg -q 'class PlayerQuestSpot' Server/QuestMission/src/main/java
+if rg -n 'public synchronized' \
+  Server/QuestMission/src/main/java/systems/zlink/samples/gamequest/server/questmission/store/QuestStore.java; then
+  echo "player owners must not share one QuestStore monitor" >&2
+  exit 1
+fi
 (
   cd ../../..
   ./gradlew --no-daemon \
@@ -122,6 +142,10 @@ mission_a_pid="${pids[${#pids[@]}-1]}"
 start_role mission-b "$(app_bin Server/QuestMission QuestMission)" "$mission_b_config"
 wait_port "$mission_a_channel"
 wait_port "$mission_b_channel"
+wait_port "$mission_a_spot"
+wait_port "$mission_b_spot"
+wait_port "$mission_a_router"
+wait_port "$mission_b_router"
 wait_http "$mission_a_http"
 wait_http "$mission_b_http"
 
@@ -138,18 +162,22 @@ cat "$LOG_DIR/client.log"
 
 grep -q "gamequest-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "gamequest=completed" "$LOG_DIR/client.log"
+grep -h -q 'surface=SPOT.*packet=GameplayMsg' "$LOG_DIR"/flow-mission-*.log
+echo "gamequest player owner Spot routing completed"
 
 kill "$mission_a_pid"
 wait "$mission_a_pid" || true
 start_role mission-a-restarted "$(app_bin Server/QuestMission QuestMission)" "$mission_a_config"
 wait_port "$mission_a_channel"
+wait_port "$mission_a_spot"
+wait_port "$mission_a_router"
 wait_http "$mission_a_http"
+"$(app_bin Client Client)" --config "$rehydrate_client_config" >"$LOG_DIR/rehydrate-client.log" 2>&1
+cat "$LOG_DIR/rehydrate-client.log"
+grep -q "gamequest-rehydrate=completed" "$LOG_DIR/rehydrate-client.log"
 alice_events="$(curl --fail --silent "$mission_a_http/self-check/events")"
 grep -q '"questId":"first-hunt"' <<<"$alice_events"
 grep -q '"eventType":"QuestProgressReconciledEvent"' <<<"$alice_events"
 grep -q '"currentCount":5' <<<"$alice_events"
 echo "gamequest startup replay restored player-alice"
-"$(app_bin Client Client)" --config "$rehydrate_client_config" >"$LOG_DIR/rehydrate-client.log" 2>&1
-cat "$LOG_DIR/rehydrate-client.log"
-grep -q "gamequest-rehydrate=completed" "$LOG_DIR/rehydrate-client.log"
 echo "gamequest full client/server self-check completed"

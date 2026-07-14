@@ -16,6 +16,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.spots.SpotHandleResolver;
+import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -23,6 +27,8 @@ import systems.zlink.samples.gamequest.server.configuration.SampleLocationStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
+import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestSpot;
+import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestRouter;
 
 @EnableZLinkFramework
 @EnableConfigurationProperties(SampleTopology.class)
@@ -69,6 +75,11 @@ public class Program {
             options.addClientServerChannel(SampleNames.questOwnerChannelFor(mission.instanceName()))
                 .enableServer(mission.channelEndpoint())
                 .addHandlerGroup("quest-owner");
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.PlayerQuestSpotDiscovery);
+            node.enableRouter(mission.spotRouterEndpoint())
+                .enablePubSub(mission.spotEndpoint())
+                .setRoutingId(mission.routingId());
+            node.addSpotFactory(PlayerQuestSpot.class);
         };
     }
 
@@ -82,6 +93,14 @@ public class Program {
         QuestStore store = new QuestStore(topology);
         ApplicationContextHolder.store = store;
         return store;
+    }
+
+    @Bean
+    PlayerQuestRouter playerQuestRouter(
+        ZLinkSpotManager spots,
+        ZLinkRouteClient routes,
+        SpotHandleResolver handles) {
+        return new PlayerQuestRouter(spots, routes, handles);
     }
 
     private static HttpServer startHttp(QuestStore store, SampleTopology topology) throws IOException {

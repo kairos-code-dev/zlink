@@ -2,6 +2,7 @@ package systems.zlink.samples.gamequest.server.configuration;
 
 import java.nio.charset.StandardCharsets;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import systems.zlink.contracts.core.RoutingId;
 
 @ConfigurationProperties("sample")
 public record SampleTopology(
@@ -9,6 +10,8 @@ public record SampleTopology(
     String logDirectory,
     String streamEndpoint,
     String channelEndpoint,
+    String spotEndpoint,
+    String spotRouterEndpoint,
     String httpEndpoint,
     String missionAChannelEndpoint,
     String missionBChannelEndpoint,
@@ -30,7 +33,10 @@ public record SampleTopology(
             required(instanceName, "instanceName"),
             required(logDirectory, "logDirectory"),
             required(channelEndpoint, "channelEndpoint"),
-            required(httpEndpoint, "httpEndpoint"));
+            required(httpEndpoint, "httpEndpoint"),
+            required(spotEndpoint, "spotEndpoint"),
+            required(spotRouterEndpoint, "spotRouterEndpoint"),
+            RoutingId.from(instanceName));
     }
 
     public Location location() {
@@ -74,7 +80,10 @@ public record SampleTopology(
         String instanceName,
         String logDirectory,
         String channelEndpoint,
-        String httpEndpoint) {
+        String httpEndpoint,
+        String spotEndpoint,
+        String spotRouterEndpoint,
+        RoutingId routingId) {
     }
 
     public record Location(String redisEndpoint, String redisKeyPrefix) {

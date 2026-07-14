@@ -3,23 +3,22 @@ package systems.zlink.samples.gamequest.server.questmission.handlers;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
+import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestRouter;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("quest-owner")
 public final class RebuildQuestProjectionHandler
     implements ZLinkRequestHandler<Messages.RebuildQuestProjectionReq, Messages.QuestProgress> {
-    private final QuestStore store;
+    private final PlayerQuestRouter owner;
 
-    public RebuildQuestProjectionHandler(QuestStore store) {
-        this.store = store;
+    public RebuildQuestProjectionHandler(PlayerQuestRouter owner) {
+        this.owner = owner;
     }
 
     @Override
     public java.util.concurrent.CompletionStage<Messages.QuestProgress> handle(
         Messages.RebuildQuestProjectionReq request,
         ZLinkRequestContext context) {
-        return java.util.concurrent.CompletableFuture.completedFuture(
-            store.rebuildProjection(request.playerId(), request.questId(), request.count()));
+        return owner.request(request.playerId(), request, Messages.QuestProgress.class);
     }
 }

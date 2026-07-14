@@ -70,6 +70,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly entryActorRuntime?: ZLinkEntryActorRuntime;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
@@ -280,7 +281,8 @@ export class ZLinkSpotNodeRuntimeManager {
       actorHandoffRuntime: this.options.actorHandoffRuntime,
       detachedTaskRunner: this.options.detachedTaskRunner,
       dispatchErrors: this.options.dispatchErrors,
-      runtimeEventPublisher: this.options.runtimeEventPublisher
+      runtimeEventPublisher: this.options.runtimeEventPublisher,
+      metrics: this.options.metrics
     });
     try {
       await activation.create();

@@ -704,7 +704,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       actorTransferRuntime: this.actorTransferRuntime,
       boundSessionRelay: this.boundSessionRelay,
       actorHandoff: this.actorHandoff,
-      detachedTaskRunner: this.detachedTaskRunner()
+      detachedTaskRunner: this.detachedTaskRunner(),
+      metrics: this.metrics
     }).create();
   }
 

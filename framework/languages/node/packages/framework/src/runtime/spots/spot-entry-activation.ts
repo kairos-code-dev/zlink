@@ -88,6 +88,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
+  readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly entryActorRuntime?: ZLinkEntryActorRuntime;
@@ -198,6 +199,8 @@ export class ZLinkEntrySpotActivation {
     await this.serial.execute(() => this.entrySpot.onInitialize?.());
     this.attachActorJoinDispatch();
     this.initialized = true;
+    this.options.metrics?.change('zlink.spot.count', 1, { kind: 'entry' });
+    this.options.metrics?.count('zlink.spot.created', 1, { kind: 'entry' });
   }
 
   async dispose(): Promise<void> {
@@ -217,6 +220,10 @@ export class ZLinkEntrySpotActivation {
     await cleanup(() => this.actorDispatch?.dispose());
     await cleanup(() => this.timers.dispose());
     await cleanup(() => this.options.nativeSpot.dispose());
+    if (this.initialized) {
+      this.options.metrics?.change('zlink.spot.count', -1, { kind: 'entry' });
+      this.options.metrics?.count('zlink.spot.closed', 1, { kind: 'entry' });
+    }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, 'Entry Spot cleanup failed.');
   }

@@ -70,6 +70,43 @@ test('RMETRIC-016 connector owns reconnect attempt counting', async () => {
   assert.equal(records.filter((record) => record.name === 'zlink.stream.reconnects').length, 2);
 });
 
+test('RMETRIC Entry Spot activation records entry count and lifecycle counters', async () => {
+  const { provider, records } = collector();
+  const metrics = new framework.ZLinkRuntimeMetrics(provider);
+  class EntrySpot {
+    async onJoinedActor() {}
+    async onLeaveActor() {}
+  }
+  const activation = new framework.ZLinkEntrySpotActivation({
+    entrySpotType: EntrySpot,
+    nativeSpot: {
+      routingId: 'entry-spot',
+      async dispose() {}
+    },
+    nativeNode: { routingId: 'node-1' },
+    nodeRid: 'node-1',
+    spotNodeName: 'play',
+    metrics
+  });
+
+  await activation.create();
+  await activation.configure();
+  await activation.initialize();
+  await activation.dispose();
+
+  assert.deepEqual(records.map(({ name, kind, value, attributes }) => ({
+    name,
+    kind,
+    value,
+    attributes
+  })), [
+    { name: 'zlink.spot.count', kind: 'updown', value: 1, attributes: { kind: 'entry' } },
+    { name: 'zlink.spot.created', kind: 'counter', value: 1, attributes: { kind: 'entry' } },
+    { name: 'zlink.spot.count', kind: 'updown', value: -1, attributes: { kind: 'entry' } },
+    { name: 'zlink.spot.closed', kind: 'counter', value: 1, attributes: { kind: 'entry' } }
+  ]);
+});
+
 test('OBS-B2/B3 runtime metric catalog keeps stable instrument kinds and low-cardinality labels', () => {
   const { provider, records } = collector();
   const metrics = new framework.ZLinkRuntimeMetrics(provider);

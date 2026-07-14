@@ -21,6 +21,7 @@ import type { ZLinkEntryActorRuntime, ZLinkSpotActorTransferRuntime } from '../s
 import type { MeshRouterResolver } from './mesh-router-resolver';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 import type { ZLinkActorHandoffCoordinator } from '../actors';
+import type { ZLinkRuntimeMetrics } from '../diagnostics';
 
 export interface ZLinkSpotNodeRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -38,6 +39,7 @@ export interface ZLinkSpotNodeRuntimeOptionsFactoryOptions {
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
+  readonly metrics: ZLinkRuntimeMetrics;
 }
 
 export class ZLinkSpotNodeRuntimeOptionsFactory {
@@ -59,6 +61,7 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
+      metrics: this.options.metrics,
       detachedTaskRunner: this.options.detachedTaskRunner,
       messageSerializers: this.options.registration.messageSerializers,
       entryActorRuntime: this.options.entryActorRuntime,

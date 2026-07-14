@@ -617,6 +617,7 @@ public final class ClientScenario {
                 .request(new Contracts.ActorAuthReq(actorId, profile))
                 .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-D15 auth actor mismatch");
+            ensure(auth.generation() > 0, "SM-D15 auth actor generation was not concrete");
 
             Contracts.ActorPingRes probe = connector
                 .request(new Contracts.ActorPingReq("sm-d15-bind-probe"))
@@ -666,6 +667,7 @@ public final class ClientScenario {
                 .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(actorId.equals(auth.actorId()), "SM-B2 remote auth actor mismatch");
             ensure("play-b".equals(auth.nodeRid()), "SM-B2 remote actor was not created on play-b");
+            ensure(auth.generation() > 0, "SM-B2 remote auth actor generation was not concrete");
 
             Contracts.ActorJoinRes joined = connector
                 .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))

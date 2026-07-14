@@ -35,7 +35,8 @@ public final class ActorAuthHandler
             .thenAccept(bound -> {
                 evidence.record("ActorSessionBound", "session", request.actorId());
                 context.client().reply(new Contracts.ActorAuthRes(
-                    bound.actorId(), bound.ref().nodeRid().toString(), context.actors().bound().size(),
+                    bound.actorId(), bound.ref().nodeRid().toString(), bound.ref().generation(),
+                    context.actors().bound().size(),
                     request.profile().displayName(), request.profile().level(), request.profile().tags())).submit();
             });
     }

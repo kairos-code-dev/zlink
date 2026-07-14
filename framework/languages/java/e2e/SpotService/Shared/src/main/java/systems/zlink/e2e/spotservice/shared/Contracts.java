@@ -199,6 +199,7 @@ public final class Contracts {
     public record ActorAuthRes(
         String actorId,
         String nodeRid,
+        long generation,
         int boundCount,
         String displayName,
         int level,

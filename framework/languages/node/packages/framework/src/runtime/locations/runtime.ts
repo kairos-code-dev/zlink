@@ -89,6 +89,12 @@ export interface ZLinkLocationEventSink {
   routeResolveMiss(key: ZLinkRouteLocationKey): void;
 }
 
+export class ZLinkOwnerCleanupError extends Error {
+  constructor(cause: unknown) {
+    super(`Owner cleanup failed: ${errorMessage(cause)}`, { cause });
+  }
+}
+
 export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   readonly ownerId: string;
   private readonly options: Required<ZLinkLocationOptions>;
@@ -102,6 +108,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   private heartbeatTimer: unknown;
   private nodeRidValue?: RoutingId;
   private started = false;
+  private ownerCleanupComplete = true;
   private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   private peerMetricCount = 0;
   private nextLeaseRenewAtMs?: number;
@@ -148,13 +155,14 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     }
 
     this.started = true;
+    this.ownerCleanupComplete = false;
     this.nodeRidValue = nodeRid;
     await this.renewOwnerLeaseOnce(signal);
     this.scheduleHeartbeat();
   }
 
   async stop(signal?: AbortSignal): Promise<void> {
-    if (!this.started) {
+    if (!this.started && this.ownerCleanupComplete) {
       return;
     }
 
@@ -164,11 +172,20 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.heartbeatTimer = undefined;
     }
 
+    await this.cleanupOwner(signal);
+  }
+
+  async cleanupOwner(signal?: AbortSignal): Promise<void> {
+    if (this.ownerCleanupComplete) {
+      return;
+    }
     try {
       await this.stores.ownerLeaseStore.removeOwnerLease(this.ownerId, signal);
       await this.stores.locationStore.removeAllByOwner(this.ownerId, signal);
+      this.ownerCleanupComplete = true;
     } catch (error) {
       this.recordFailure(errorMessage(error));
+      throw new ZLinkOwnerCleanupError(error);
     }
   }
 

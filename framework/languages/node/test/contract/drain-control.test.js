@@ -92,12 +92,49 @@ test('drain retries transient marker publication failures within the shared dead
     async publishDraining() {
       attempts += 1;
       return attempts >= 2;
-    }
+    },
+    async cleanupOwner() {}
   };
   host.stop = async () => {};
 
   assert.deepEqual(await host.drain(100), { kind: 'drained' });
   assert.equal(attempts, 2);
+});
+
+test('drain retries owner cleanup and does not report Drained before it succeeds', async () => {
+  const registration = framework.createFrameworkRegistration({
+    locations: { options: { pollingIntervalMs: 1 } }
+  });
+  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  let cleanupAttempts = 0;
+  host.locationOwner.runtime = {
+    async publishDraining() { return true; },
+    async cleanupOwner() {
+      cleanupAttempts += 1;
+      if (cleanupAttempts === 1) throw new Error('owner store unavailable');
+    }
+  };
+  host.stop = async () => {};
+
+  assert.deepEqual(await host.drain(100), { kind: 'drained' });
+  assert.equal(cleanupAttempts, 2);
+});
+
+test('drain reports OwnerCleanupFailed when owner cleanup cannot finish by the deadline', async () => {
+  const registration = framework.createFrameworkRegistration({
+    locations: { options: { pollingIntervalMs: 1 } }
+  });
+  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  host.locationOwner.runtime = {
+    async publishDraining() { return true; },
+    async cleanupOwner() { throw new Error('owner store unavailable'); }
+  };
+  host.stop = async () => {};
+
+  assert.deepEqual(await host.drain(20), {
+    kind: 'force-stopped',
+    reason: 'OwnerCleanupFailed'
+  });
 });
 
 test('DRAIN-018 managed stream writes session-closing before disconnecting peer', async () => {

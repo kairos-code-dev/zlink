@@ -59,6 +59,18 @@ test('location runtime stamps owner id, reports stale ownership, and removes row
   assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
 });
 
+test('location runtime exposes owner cleanup failure instead of completing stop successfully', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const failingLocationStore = {
+    async removeAllByOwner() { throw new Error('owner rows unavailable'); }
+  };
+  const runtime = runtimeFor(store, { locationStore: failingLocationStore });
+  await runtime.start(rid('node-a'));
+
+  await assert.rejects(() => runtime.stop(), /owner rows unavailable/);
+  assert.match(runtime.lastError, /owner rows unavailable/);
+});
+
 test('location runtime emits row events and resolvers emit resolve misses', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const events = [];
@@ -471,7 +483,7 @@ function runtimeFor(store, options = {}) {
   const timers = [];
   return new internal.ZLinkLocationRuntime({
     stores: {
-      locationStore: store,
+      locationStore: options.locationStore ?? store,
       peerStore: store,
       spotStore: store,
       actorStore: store,

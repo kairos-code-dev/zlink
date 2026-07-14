@@ -64,9 +64,10 @@ import {
   ZLinkStreamBindingRuntime,
   ZLinkStreamRuntimeManager
 } from '../streams';
-import type {
-  ZLinkLocationRuntime,
-  ZLinkStoreLocationResolvers
+import {
+  ZLinkOwnerCleanupError,
+  type ZLinkLocationRuntime,
+  type ZLinkStoreLocationResolvers
 } from '../locations';
 import {
   zlinkDefaultLocationOptions,
@@ -122,6 +123,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private ready = true;
   private drainOperation?: Promise<ZLinkDrainResult>;
   private drainingMarkerPublished = false;
+  private ownerCleanupPending = false;
   private readonly drainedWaiters: Array<(result: ZLinkDrainResult) => void> = [];
   private drainMetricState = 'serving';
   private drainStartedAt?: bigint;
@@ -458,12 +460,17 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       const outcome = await Promise.race([graceful, timeout]);
       if (outcome.kind === 'timeout') {
         return await this.forceStopDrain(
-          this.drainingMarkerPublished ? 'DeadlineExceeded' : 'DrainingStatePublishFailed'
+          !this.drainingMarkerPublished
+            ? 'DrainingStatePublishFailed'
+            : this.ownerCleanupPending ? 'OwnerCleanupFailed' : 'DeadlineExceeded'
         );
       }
       if (outcome.kind === 'failed') {
         if (outcome.error instanceof ZLinkDrainingStatePublishError) {
           return await this.forceStopDrain('DrainingStatePublishFailed');
+        }
+        if (containsOwnerCleanupError(outcome.error)) {
+          return await this.forceStopDrain('OwnerCleanupFailed');
         }
         if (deadline.signal.aborted) {
           return await this.forceStopDrain('DeadlineExceeded');
@@ -503,15 +510,35 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     }
     await this.drainSpots(signal);
     await this.streamRuntime?.notifyServerDrain();
+    await this.cleanupOwnerForDrain(signal);
     await this.stop();
+  }
+
+  private async cleanupOwnerForDrain(signal: AbortSignal): Promise<void> {
+    const runtime = this.locationOwner.currentRuntime;
+    if (runtime === undefined) return;
+    this.ownerCleanupPending = true;
+    for (;;) {
+      try {
+        await runtime.cleanupOwner(signal);
+        this.ownerCleanupPending = false;
+        return;
+      } catch {
+        await waitForDrainRetry(
+          this.options.registration.locations.options.pollingIntervalMs
+            ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+          signal
+        );
+      }
+    }
   }
 
   private async forceStopDrain(reason: import('../../contracts').ZLinkDrainForceReason): Promise<ZLinkDrainResult> {
     let terminalReason = reason;
     try {
       await this.stop();
-    } catch {
-      terminalReason = 'TeardownFailed';
+    } catch (error) {
+      terminalReason = containsOwnerCleanupError(error) ? 'OwnerCleanupFailed' : 'TeardownFailed';
     }
     const result = { kind: 'force-stopped', reason: terminalReason } as const;
     await this.publishDrainState('ForceStopping', result).catch(() => undefined);
@@ -803,6 +830,12 @@ class ZLinkDrainingStatePublishError extends Error {
   constructor(cause: unknown) {
     super('Failed to publish draining peer rows.', { cause });
   }
+}
+
+function containsOwnerCleanupError(error: unknown): boolean {
+  if (error instanceof ZLinkOwnerCleanupError) return true;
+  return error instanceof AggregateError
+    && error.errors.some((nested) => containsOwnerCleanupError(nested));
 }
 
 function waitForDrainRetry(delayMs: number, signal: AbortSignal): Promise<void> {

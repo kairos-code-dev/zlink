@@ -103,6 +103,10 @@ int main ()
       read_file (e2e_root / "DiscoveryRegistryHa/Client/Support/client_support.hpp");
     const auto store_failure_runner =
       read_file (e2e_root / "DiscoveryRegistryHa/run_e2e.sh");
+    const auto store_failure_consumer =
+      read_file (e2e_root / "DiscoveryRegistryHa/Server/Consumer/main.cpp");
+    const auto store_failure_consumer_endpoints = read_file (
+      e2e_root / "DiscoveryRegistryHa/Server/Consumer/Endpoints/consumer_endpoints.hpp");
     const std::vector<std::string> pubsub_client_scenarios{
       pubsub_fanout_scenario,
       read_file (pubsub_client_root / "Scenarios/topic_filter_scenario.hpp"),
@@ -728,6 +732,25 @@ int main ()
                     && location_auto_connect.find ("get_required<live_location_reader_t>")
                          != std::string::npos,
                   "E2E-CP-39", "runtime consumers still bypass the live-row view");
+
+    /* E2E-CP-40 — D1/D2 drive outage traffic and inspect socket transitions. */
+    gate.require (store_failure_client.find ("drive_tolerant_requests")
+                    != std::string::npos
+                    && store_failure_client.find ("max_success_gap") != std::string::npos
+                    && store_failure_client.find ("std::async") != std::string::npos,
+                  "E2E-CP-40", "D1/D2 do not drive and bound traffic across recovery");
+    gate.require (store_failure_consumer.find ("add_socket_events") != std::string::npos
+                    && store_failure_consumer.find ("socket_event_payload_t")
+                         != std::string::npos
+                    && store_failure_consumer.find ("/query/connections") != std::string::npos
+                    && store_failure_consumer_endpoints.find ("query_connections_handler_t")
+                         != std::string::npos,
+                  "E2E-CP-40", "consumer exposes no socket transition evidence");
+    gate.require (store_failure_client.find ("SF-D1 survivor connection changed")
+                    != std::string::npos
+                    && store_failure_client.find ("SF-D2 survivor connection changed")
+                         != std::string::npos,
+                  "E2E-CP-40", "D1/D2 do not reject survivor disconnect/reconnect");
 
     /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
     gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")

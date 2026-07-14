@@ -14,13 +14,18 @@
 | SF-B2 | 구현 | Redis 정지 중 `api-b`를 새 channel endpoint에서 재기동한다. store failure grace를 넘길 때까지 기존 `api-a` 연결의 request만 성공하고, 빈 store 복구 뒤 새 endpoint row가 등록되어 `api-b`가 다시 요청을 처리한다. |
 | SF-C1 | 구현 | provider `api-b`를 SIGABRT로 crash시키면 raw Redis row는 남지만 framework의 owner lease join이 lease 만료 뒤 live peer list에서 제외하고, 이후 request는 survivor `api-a`로만 간다. |
 | SF-C2 | 구현 | provider `api-b`를 graceful shutdown하면 framework live-row reader가 lease와 row 정리를 반영해 lease TTL을 기다리지 않고 live peer list에서 제외하며, 이후 request는 `api-a`로만 간다. |
-| SF-D1 | 구현 | lease TTL보다 짧게 Redis를 정지하고 빈 store로 재기동한 뒤 local row 재등록과 heartbeat 유예를 거쳐 status가 healthy로 회복되고 request가 계속 성공한다. |
-| SF-D2 | 구현 | Redis 정지 중 provider `api-b`가 crash된 뒤 빈 store 재기동 시 framework owner lease join에서 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
+| SF-D1 | 구현 | 두 provider 연결을 실제 request로 준비하고 장애 전부터 복구 뒤까지 traffic을 유지한다. local row 재등록과 heartbeat 유예 뒤 status가 회복되며, 두 endpoint의 Connected/Disconnected count가 늘지 않는다. |
+| SF-D2 | 구현 | 장애 전부터 지속 traffic을 흘리고 최대 성공 간격을 제한한다. Redis 정지 중 `api-b`가 crash된 뒤 `api-a` socket count는 유지되고 `api-b` Disconnected만 증가하며, owner lease join에서 dead row가 제외된다. |
 | SF-D3 | 구현 | Redis process 정지·재기동 동안 runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
 | SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-075540-2274183`(SF-D1), `logs/20260715-075554-2275628`(SF-D2)
+  - 의미: 장애 전부터 복구 뒤까지 실제 request traffic을 유지하고, socket monitoring evidence로
+    survivor 연결 불변과 죽은 provider의 disconnect를 분리해 확인했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-074233-2224721`(SF-C1), `logs/20260715-074258-2226349`(SF-C2),

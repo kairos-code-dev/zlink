@@ -5,6 +5,7 @@
 
 #include <zlink/http_client.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <set>
@@ -201,6 +202,34 @@ inline bool has_rid (const std::vector<peer_row_res_t> &peers, const std::string
         }
     }
     return false;
+}
+
+inline std::vector<socket_evidence_entry_t> connection_evidence (const std::string &consumer_url)
+{
+    return get_json<std::vector<socket_evidence_entry_t>> (consumer_url, "/query/connections");
+}
+
+inline std::size_t connection_event_count (const std::vector<socket_evidence_entry_t> &entries,
+                                           const std::string &kind,
+                                           const std::string &endpoint)
+{
+    return static_cast<std::size_t> (
+      std::count_if (entries.begin (), entries.end (), [&] (const auto &entry) {
+          return entry.kind == kind && entry.remote_address == endpoint;
+      }));
+}
+
+inline void wait_connected (const std::string &consumer_url, const std::string &endpoint)
+{
+    for (int attempt = 0; attempt < 80; ++attempt) {
+        const auto entries = connection_evidence (consumer_url);
+        if (connection_event_count (entries, "Connected", endpoint) > 0
+            || connection_event_count (entries, "ConnectionReady", endpoint) > 0) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("connection evidence did not become ready: " + endpoint);
 }
 
 inline std::string unique_marker (const std::string &prefix)

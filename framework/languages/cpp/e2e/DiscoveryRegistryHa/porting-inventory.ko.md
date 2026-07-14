@@ -27,6 +27,7 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 | `Server/Provider/Support/ProviderOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | provider-role | done | provider rid, HTTP endpoint, channel endpoint, Redis endpoint/key prefix, log dir를 env로 읽는다. |
 | `Server/Provider/Support/ProviderEvidenceStore.cs` | `Server/Provider/Infrastructure/provider_evidence_store.hpp` | infrastructure | done | provider evidence를 process-local memory에 보관한다. |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | Redis location store와 client-server channel client를 구성하고 public query/request endpoint를 연다. runner cleanup은 consumer `/shutdown` endpoint로 정상 종료를 먼저 요청한다. |
+| connection transition evidence | `Server/Consumer/Infrastructure/socket_evidence_store.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-evidence | done | client channel의 정식 socket monitoring event를 process-local로 기록하고 `/query/connections`에서 제공해 D1·D2가 survivor reconnect 부재와 dead peer disconnect를 확인한다. |
 | `Server/Consumer/PollingOnlyLocationStore.cs` | C++ Redis store 기본 동작 | store-mode | done | C++ Redis extension은 watch surface 없이 change-stamp/polling 기반으로 동작하므로 SF-A2는 polling 경로를 직접 검증한다. |
 | framework owner lease join | `framework/src/runtime/locations/live_location_reader.hpp` | runtime-read | done | Redis와 in-memory store는 raw row를 반환한다. framework reader가 store 기준 lease snapshot과 monotonic 경과 시간을 결합해 live peer·spot·actor·route row만 내부 소비자에게 제공한다. |
 | `Server/Consumer/DelayableLocationStore.cs` | `Server/Shared/location_store.hpp` | store-mode | done | C++ E2E wrapper가 `location_store_t`와 `location_change_stamp_store_t` 호출을 inner Redis store로 위임하되, delay state가 설정된 동안 해당 store 호출을 늦춘다. 이 지연은 SF-E1 하네스가 store 응답 지연 중 같은 process의 무관 application request가 막히지 않는지 실측하기 위한 전용 구성이다. |
@@ -42,6 +43,11 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 ## 검증
 
+- 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-075540-2274183`(SF-D1), `logs/20260715-075554-2275628`(SF-D2)
+  - 의미: D1·D2가 outage 전부터 traffic을 실행하고 최대 성공 간격과 socket transition evidence를
+    함께 검증했다.
 - 2026-07-15: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-074233-2224721`(SF-C1), `logs/20260715-074258-2226349`(SF-C2),

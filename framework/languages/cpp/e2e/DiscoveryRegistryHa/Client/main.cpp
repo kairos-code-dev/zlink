@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace sf_client = zlink::framework::e2e::store_failure::client;
+namespace sf = zlink::framework::e2e::store_failure;
 
 namespace
 {
@@ -20,6 +21,8 @@ struct options_t
     std::string consumer_url = sf_client::env_or ("ZLINK_CPP_SF_CONSUMER_URL");
     std::string provider_a_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_URL");
     std::string provider_b_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_URL");
+    std::string provider_a_endpoint = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_ENDPOINT");
+    std::string provider_b_endpoint = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_ENDPOINT");
     std::string replacement_provider_url =
       sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL");
     std::string replacement_provider_endpoint =
@@ -187,26 +190,113 @@ void graceful_removal (const options_t &options)
     std::cout << "scenario SF-C2 passed\n";
 }
 
+struct tolerant_traffic_t
+{
+    std::vector<sf::profile_res_t> replies;
+    std::chrono::milliseconds max_success_gap{0};
+};
+
+tolerant_traffic_t drive_tolerant_requests (const options_t &options,
+                                             std::chrono::milliseconds window)
+{
+    tolerant_traffic_t result;
+    const auto deadline = std::chrono::steady_clock::now () + window;
+    auto last_success = std::chrono::steady_clock::now ();
+    for (int index = 0; std::chrono::steady_clock::now () < deadline; ++index) {
+        try {
+            auto reply = sf_client::request_profile (
+              options.consumer_url, sf_client::unique_marker ("sf-d2-" + std::to_string (index)));
+            const auto now = std::chrono::steady_clock::now ();
+            result.max_success_gap = std::max (
+              result.max_success_gap,
+              std::chrono::duration_cast<std::chrono::milliseconds> (now - last_success));
+            last_success = now;
+            result.replies.push_back (std::move (reply));
+        }
+        catch (...) {
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (150));
+    }
+    result.max_success_gap = std::max (
+      result.max_success_gap, std::chrono::duration_cast<std::chrono::milliseconds> (
+                                std::chrono::steady_clock::now () - last_success));
+    sf_client::ensure (!result.replies.empty (), "SF-D2 produced no successful traffic");
+    sf_client::ensure (result.max_success_gap < options.lease_ttl * 2,
+                       "SF-D2 max_success_gap exceeded dead-transport tolerance");
+    return result;
+}
+
+void warm_provider_connections (const options_t &options, const std::string &scenario)
+{
+    std::set<std::string> served;
+    for (int index = 0; index < 20 && served.size () < 2; ++index) {
+        const auto reply = sf_client::request_profile (
+          options.consumer_url, sf_client::unique_marker (scenario + "-warm-" + std::to_string (index)));
+        served.insert (reply.provider_rid);
+    }
+    sf_client::ensure (served.contains ("api-a") && served.contains ("api-b"),
+                       scenario + " did not warm both provider connections");
+}
+
 void short_recovery (const options_t &options)
 {
+    warm_provider_connections (options, "SF-D1");
+    sf_client::wait_connected (options.consumer_url, options.provider_a_endpoint);
+    sf_client::wait_connected (options.consumer_url, options.provider_b_endpoint);
+    const auto before = sf_client::connection_evidence (options.consumer_url);
+    auto traffic = std::async (std::launch::async, [&options] {
+        return sf_client::drive_requests (options.consumer_url, "sf-d1", options.lease_ttl * 2,
+                                          "SF-D1");
+    });
     sf_client::stop_store ();
     std::this_thread::sleep_for (options.lease_ttl / 2);
     sf_client::restart_store ();
+    (void) traffic.get ();
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
       options.heartbeat * 10, "SF-D1 status did not recover");
-    sf_client::drive_requests (options.consumer_url, "sf-d1", options.lease_ttl, "SF-D1");
+    const auto after = sf_client::connection_evidence (options.consumer_url);
+    for (const auto &endpoint : {options.provider_a_endpoint, options.provider_b_endpoint}) {
+        std::cerr << "SF-D1 connection endpoint=" << endpoint
+                  << " connected-before="
+                  << sf_client::connection_event_count (before, "Connected", endpoint)
+                  << " connected-after="
+                  << sf_client::connection_event_count (after, "Connected", endpoint)
+                  << " disconnected-before="
+                  << sf_client::connection_event_count (before, "Disconnected", endpoint)
+                  << " disconnected-after="
+                  << sf_client::connection_event_count (after, "Disconnected", endpoint) << '\n';
+        sf_client::ensure (
+          sf_client::connection_event_count (after, "Disconnected", endpoint)
+            == sf_client::connection_event_count (before, "Disconnected", endpoint)
+            && sf_client::connection_event_count (after, "Connected", endpoint)
+                 == sf_client::connection_event_count (before, "Connected", endpoint),
+          "SF-D1 survivor connection changed");
+    }
     std::cout << "scenario SF-D1 passed\n";
 }
 
 void long_recovery (const options_t &options)
 {
+    warm_provider_connections (options, "SF-D2");
+    sf_client::wait_connected (options.consumer_url, options.provider_a_endpoint);
+    sf_client::wait_connected (options.consumer_url, options.provider_b_endpoint);
+    const auto before = sf_client::connection_evidence (options.consumer_url);
+    auto traffic = std::async (std::launch::async, [&options] {
+        return drive_tolerant_requests (
+          options, options.lease_ttl * 2 + options.heartbeat * 4);
+    });
     sf_client::stop_store ();
     sf_client::post_empty (options.provider_b_url, "/admin/crash");
     sf_client::wait_down (options.provider_b_url);
     std::this_thread::sleep_for (options.lease_ttl + options.heartbeat);
     sf_client::restart_store ();
+    const auto traffic_result = traffic.get ();
+    sf_client::ensure (
+      std::any_of (traffic_result.replies.begin (), traffic_result.replies.end (),
+                   [] (const auto &reply) { return reply.provider_rid == "api-a"; }),
+      "SF-D2 survivor served no outage traffic");
 
     sf_client::wait_peers (
       options.consumer_url,
@@ -221,6 +311,20 @@ void long_recovery (const options_t &options)
           sf_client::request_profile (options.consumer_url, "sf-d2-after-" + std::to_string (i));
         sf_client::ensure (reply.provider_rid == "api-a", "SF-D2 routed to dead provider");
     }
+    const auto after = sf_client::connection_evidence (options.consumer_url);
+    sf_client::ensure (
+      sf_client::connection_event_count (after, "Disconnected", options.provider_a_endpoint)
+          == sf_client::connection_event_count (before, "Disconnected",
+                                                 options.provider_a_endpoint)
+        && sf_client::connection_event_count (after, "Connected", options.provider_a_endpoint)
+             == sf_client::connection_event_count (before, "Connected",
+                                                    options.provider_a_endpoint),
+      "SF-D2 survivor connection changed");
+    sf_client::ensure (
+      sf_client::connection_event_count (after, "Disconnected", options.provider_b_endpoint)
+        > sf_client::connection_event_count (before, "Disconnected",
+                                             options.provider_b_endpoint),
+      "SF-D2 dead provider disconnect was not observed");
     std::cout << "scenario SF-D2 passed\n";
 }
 

@@ -70,6 +70,12 @@ struct peer_row_res_t
     std::string owner_id;
 };
 
+struct socket_evidence_entry_t
+{
+    std::string kind;
+    std::string remote_address;
+};
+
 inline void to_json (nlohmann::json &json, const profile_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}, {"marker", value.marker}};
@@ -185,6 +191,17 @@ inline void from_json (const nlohmann::json &json, peer_row_res_t &value)
     }
     json.at ("endpoint").get_to (value.endpoint);
     json.at ("owner_id").get_to (value.owner_id);
+}
+
+inline void to_json (nlohmann::json &json, const socket_evidence_entry_t &value)
+{
+    json = nlohmann::json{{"kind", value.kind}, {"remote_address", value.remote_address}};
+}
+
+inline void from_json (const nlohmann::json &json, socket_evidence_entry_t &value)
+{
+    json.at ("kind").get_to (value.kind);
+    json.at ("remote_address").get_to (value.remote_address);
 }
 
 } // namespace zlink::framework::e2e::store_failure

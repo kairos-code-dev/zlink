@@ -3,6 +3,7 @@
 
 #include "../../../Shared/store_failure_contracts.hpp"
 #include "../../Shared/location_store.hpp"
+#include "../Infrastructure/socket_evidence_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -166,6 +167,27 @@ class query_peers_handler_t
 
   private:
     zlink::framework::location_runtime_query_t &_query;
+};
+
+class query_connections_handler_t
+{
+  public:
+    using dependency_types = dependency_list_t<socket_evidence_store_t>;
+
+    explicit query_connections_handler_t (socket_evidence_store_t &evidence) :
+        _evidence (evidence)
+    {
+    }
+
+    http_response_t handle (const http_request_t &)
+    {
+        http_response_t response;
+        response.body = nlohmann::json (_evidence.snapshot ()).dump ();
+        return response;
+    }
+
+  private:
+    socket_evidence_store_t &_evidence;
 };
 
 class store_delay_handler_t

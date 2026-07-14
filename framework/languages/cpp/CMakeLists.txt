@@ -512,6 +512,23 @@ add_zlink_framework_codec_extension(
   zlink_framework_codec_protobuf
   zlink::framework_codec_protobuf
   extensions/framework-codec-protobuf)
+# The protobuf codec carries protobuf wire bytes, so it needs the runtime it
+# encodes with. Payload types come from protoc; the extension only serializes them.
+find_package(protobuf CONFIG REQUIRED)
+target_link_libraries(zlink_framework_codec_protobuf INTERFACE protobuf::libprotobuf)
+
+# Generates protobuf sources for a sample/e2e schema and exposes them as a target.
+function(add_zlink_protobuf_schema target_name proto_file)
+  get_filename_component(proto_dir "${proto_file}" DIRECTORY)
+  add_library(${target_name} STATIC "${proto_file}")
+  target_link_libraries(${target_name} PUBLIC protobuf::libprotobuf)
+  target_include_directories(${target_name} PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
+  set_target_properties(${target_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  protobuf_generate(
+    TARGET ${target_name}
+    IMPORT_DIRS "${proto_dir}"
+    PROTOC_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+endfunction()
 add_zlink_framework_codec_extension(
   zlink_framework_codec_messagepack
   zlink::framework_codec_messagepack
@@ -1370,10 +1387,13 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_pubsub_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_zlink_protobuf_schema(zlink_cpp_e2e_registration_codec_proto
+    ${ZLINK_FRAMEWORK_CPP_DIR}/e2e/RegistrationCodec/Shared/registration_codec.proto)
   add_executable(zlink_cpp_e2e_registration_codec_server
     e2e/RegistrationCodec/Server/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_server PRIVATE
     zlink::framework
+    zlink_cpp_e2e_registration_codec_proto
     zlink::framework_codec_protobuf
     zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_server PRIVATE
@@ -1383,6 +1403,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/RegistrationCodec/Server/InvalidDuplicate/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_invalid_duplicate PRIVATE
     zlink::framework
+    zlink_cpp_e2e_registration_codec_proto
     zlink::framework_codec_protobuf
     zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_invalid_duplicate PRIVATE
@@ -1392,6 +1413,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/RegistrationCodec/Server/JsonOnlyPeer/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_json_only_peer PRIVATE
     zlink::framework
+    zlink_cpp_e2e_registration_codec_proto
     zlink::framework_codec_protobuf
     zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_json_only_peer PRIVATE
@@ -1401,6 +1423,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/RegistrationCodec/Server/CodecRequester/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_codec_requester PRIVATE
     zlink::framework
+    zlink_cpp_e2e_registration_codec_proto
     zlink::framework_codec_protobuf
     zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_codec_requester PRIVATE
@@ -1600,20 +1623,24 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink_framework_cpp_add_boost_headers(${target_name})
   endfunction()
 
+  add_zlink_protobuf_schema(sample_cpp_framework_bingo_proto
+    ${ZLINK_FRAMEWORK_CPP_DIR}/samples/Bingo/Shared/Contracts/bingo_messages.proto)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_api
     samples/Bingo/Server/Api/main.cpp
     "framework-sample-bingo;framework-sample-api"
     zlink::framework_locations_redis
     zlink::framework
-    zlink::framework_codec_protobuf)
+    zlink::framework_codec_protobuf
+    sample_cpp_framework_bingo_proto)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_play
     samples/Bingo/Server/Play/main.cpp
     "framework-sample-bingo;framework-sample-play"
     zlink::framework_locations_redis
     zlink::framework
-    zlink::framework_codec_protobuf)
+    zlink::framework_codec_protobuf
+    sample_cpp_framework_bingo_proto)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_session
     samples/Bingo/Server/Session/main.cpp
@@ -1621,12 +1648,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::framework_locations_redis
     zlink::framework
     zlink::framework_codec_protobuf
+    sample_cpp_framework_bingo_proto
     zlink::stream_connector)
   add_executable(sample_cpp_framework_bingo_client
     samples/Bingo/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_bingo_client PRIVATE
     zlink::stream_e2e_client
-    zlink::framework_codec_protobuf)
+    zlink::framework_codec_protobuf
+    sample_cpp_framework_bingo_proto)
   add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_api
     samples/TicTacToe/Server/Api/main.cpp

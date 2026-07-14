@@ -891,32 +891,38 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_EQ (contracts.find ("RemoteActorPacket"), std::string::npos);
 }
 
-TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries)
+/* 샘플은 codec을 직접 짜지 않는다. protobuf payload는 protoc이 만든 message로 옮겨 싣고,
+ * 직렬화는 codec extension이 한다. 손으로 varint를 쓰거나 JSON을 protobuf인 척 포장하는 것은
+ * 금지다. connector의 payload 훅(to_stream_payload)은 그 message로 위임할 때만 쓴다. */
+TEST (CppFrameworkSampleParity, SamplesDoNotHandRollCodecs)
 {
-    const std::vector<std::string> helper_patterns{
-      "to_stream_payload",          "from_stream_payload",    "json_to_protobuf_payload",
-      "json_from_protobuf_payload", "append_protobuf_varint", "read_protobuf_varint",
+    const std::vector<std::string> banned_patterns{
+      "json_to_protobuf_payload",
+      "json_from_protobuf_payload",
+      "append_protobuf_varint",
+      "read_protobuf_varint",
     };
     std::vector<std::string> violations;
 
     for (const auto &file : sample_source_files ()) {
         const auto relative = relative_sample_path (file);
         const auto content = read_file (file);
-        if (!contains_any (content, helper_patterns)) {
-            continue;
+        for (const auto &pattern : banned_patterns) {
+            if (content.find (pattern) != std::string::npos) {
+                violations.push_back (relative + ":" + pattern);
+            }
         }
-        violations.push_back (relative);
-        if (content.find ("append_protobuf_varint") != std::string::npos
-            || content.find ("read_protobuf_varint") != std::string::npos) {
-            violations.push_back (relative + ":manual-protobuf-varint");
-        }
-        if (content.find ("json_to_protobuf_payload") != std::string::npos
-            || content.find ("json_from_protobuf_payload") != std::string::npos) {
-            violations.push_back (relative + ":json-protobuf-wrapper");
+        /* payload 훅을 정의하는 파일은 protobuf message로 위임해야 한다(호출만 하는 파일은
+         * 무관하다). */
+        if ((content.find ("inline zlink::message_t to_stream_payload") != std::string::npos
+             || content.find ("inline void from_stream_payload") != std::string::npos)
+            && content.find ("SerializeAsString") == std::string::npos
+            && content.find ("ParseFromString") == std::string::npos) {
+            violations.push_back (relative + ":stream-payload-hook-without-protobuf");
         }
     }
 
-    EXPECT_TRUE (violations.empty ()) << "codec helper leakage:\n"
+    EXPECT_TRUE (violations.empty ()) << "hand-rolled codec:\n"
                                       << testing::PrintToString (violations);
 }
 

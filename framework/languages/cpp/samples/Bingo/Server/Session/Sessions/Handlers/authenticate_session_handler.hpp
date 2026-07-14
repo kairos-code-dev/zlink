@@ -5,6 +5,8 @@
 #include "../../../Configuration/sample_topology.hpp"
 #include "../../../../Shared/Contracts/messages.hpp"
 
+#include "../../../../Shared/Contracts/protobuf_conversions.hpp"
+
 #include <zlink/framework.hpp>
 
 namespace zlink::samples::bingo
@@ -37,7 +39,9 @@ class authenticate_session_handler_t
     task_t<session_actor_t>
     handle (session_actor_manager_t &actors, stream_t &stream, const zlink::message_t &payload)
     {
-        auto request = payload.parse_json<authenticate_req_t> ();
+        /* client stream의 payload도 Protobuf다 — JSON으로 파싱하지 않는다. */
+        authenticate_req_t request;
+        from_stream_payload (payload, request);
         const auto authenticate_request = authenticate_player_req_t{request.access_token};
         auto authenticated = co_await _client.request (
             sample_names_t::api_channel, authenticate_request).async<authenticate_player_res_t> ();
@@ -70,7 +74,7 @@ class authenticate_session_handler_t
             ensured.actor_id, authenticated.display_name,
             std::string (ensured.actor.node_rid.value ())
         };
-        const auto reply_message = zlink::message_t::from_json (reply_payload);
+        const auto reply_message = to_stream_payload (reply_payload);
         stream.reply_packet (reply_message).submit ();
 
         co_return actor;

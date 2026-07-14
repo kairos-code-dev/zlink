@@ -9,6 +9,8 @@
 #include "../Handlers/registration_handlers.hpp"
 
 #include <zlink/codecs/messagepack.hpp>
+#include "../../Shared/protobuf_conversions.hpp"
+
 #include <zlink/codecs/protobuf.hpp>
 #include <zlink/framework.hpp>
 
@@ -43,11 +45,13 @@ struct binary_codecs_t
     template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
     {
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_req_t> (registrar);
+          protobuf_roundtrip_req_t, ::zlink::e2e::registrationcodec::ProtobufRoundtripReq> (
+          registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_res_t> (registrar);
+          protobuf_roundtrip_res_t, ::zlink::e2e::registrationcodec::ProtobufRoundtripRes> (
+          registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_codec_msg_t> (registrar);
+          protobuf_codec_msg_t, ::zlink::e2e::registrationcodec::ProtobufCodecMsg> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
           messagepack_roundtrip_req_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<

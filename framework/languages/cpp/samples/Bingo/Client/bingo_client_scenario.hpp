@@ -3,6 +3,7 @@
 
 #include "bingo_client_options.hpp"
 #include "../Shared/Contracts/messages.hpp"
+#include "../Shared/Contracts/protobuf_stream_codec.hpp"
 
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 

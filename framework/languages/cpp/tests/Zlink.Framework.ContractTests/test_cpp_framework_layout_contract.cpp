@@ -990,8 +990,10 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/run_sample.sh");
     ok &= require_exists (root / "samples/Bingo/run_sample.ps1");
     ok &= require_exists (root / "samples/Bingo/Shared/Contracts/messages.hpp");
-    ok &= require_absent (root / "samples/Bingo/Shared/Contracts/bingo_messages.proto",
-                          "Bingo C++ sample keeps message contracts in headers");
+    /* Bingo의 payload codec은 Protobuf다. wire 스키마는 `.proto`가 정본이고, 도메인 타입은 그
+     * 스키마가 만든 message로 옮겨 실린다. */
+    ok &= require_exists (root / "samples/Bingo/Shared/Contracts/bingo_messages.proto");
+    ok &= require_exists (root / "samples/Bingo/Shared/Contracts/protobuf_conversions.hpp");
     ok &= require_absent (root / "samples/Bingo/Shared" / "Configuration",
                           "Bingo Shared must contain message contracts only");
     ok &= require_absent (root / "samples/Bingo/Shared" / "sample.hpp",

@@ -4,12 +4,24 @@
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/stream_connector/contracts/codec_registry.hpp>
 
+#include <google/protobuf/message_lite.h>
+
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace zlink::framework_codecs
 {
 
+/* Protobuf codec extension: payload는 protobuf wire 그대로 싣는다. 등록 방법은 두 가지다.
+ *
+ *  - `register_message_serializer<TMessage>()`: payload 타입 자체가 protoc이 만든 message일 때.
+ *  - `register_payload_serializer<TPayload, TMessage>()`: 도메인 타입을 protobuf message로 옮겨
+ *    싣을 때. 변환은 ADL로 찾는 `to_protobuf(const TPayload&, TMessage&)`와
+ *    `from_protobuf(const TMessage&, TPayload&)`가 맡는다.
+ *
+ * 두 경우 모두 wire는 진짜 protobuf라서 다른 언어의 같은 `.proto`와 그대로 통한다. */
 class protobuf_codec_extension_t
 {
   public:
@@ -24,20 +36,67 @@ class protobuf_codec_extension_t
           .use_default_codec (zlink::stream_connector::codec_t::protobuf);
     }
 
-  public:
-    template <typename TPayload, typename TBuilder>
-    static void register_payload_serializer (TBuilder &codecs)
+    static constexpr const char *content_type = "application/x-protobuf";
+
+    template <typename TMessage, typename TBuilder>
+    static void register_message_serializer (TBuilder &codecs)
     {
-        codecs.template add_serializer<TPayload> (
-          [] (const TPayload &value) {
+        static_assert (std::is_base_of_v<google::protobuf::MessageLite, TMessage>,
+                       "protobuf codec requires a protobuf message type");
+        codecs.template add_serializer<TMessage> (
+          [] (const TMessage &value) {
               return zlink::framework::detail::encoded_payload_from_raw (
-                zlink::message_t::from_json (value));
+                zlink::message_t::from (serialize (value)));
           },
           [] (const zlink::framework::encoded_payload_t &payload) {
-              return zlink::framework::detail::encoded_payload_to_raw (payload)
-                .template parse_json<TPayload> ();
+              TMessage value;
+              parse (value,
+                     zlink::framework::detail::encoded_payload_to_raw (payload).to_string ());
+              return value;
           },
-          "application/x-protobuf");
+          content_type);
+    }
+
+    template <typename TPayload, typename TMessage, typename TBuilder>
+    static void register_payload_serializer (TBuilder &codecs)
+    {
+        static_assert (std::is_base_of_v<google::protobuf::MessageLite, TMessage>,
+                       "protobuf codec requires a protobuf message type");
+        codecs.template add_serializer<TPayload> (
+          [] (const TPayload &value) {
+              TMessage message;
+              to_protobuf (value, message);
+              return zlink::framework::detail::encoded_payload_from_raw (
+                zlink::message_t::from (serialize (message)));
+          },
+          [] (const zlink::framework::encoded_payload_t &payload) {
+              TMessage message;
+              parse (message,
+                     zlink::framework::detail::encoded_payload_to_raw (payload).to_string ());
+              TPayload value;
+              from_protobuf (message, value);
+              return value;
+          },
+          content_type);
+    }
+
+  private:
+    static std::string serialize (const google::protobuf::MessageLite &message)
+    {
+        std::string bytes;
+        if (!message.SerializeToString (&bytes)) {
+            throw std::runtime_error ("protobuf codec failed to serialize "
+                                      + std::string (message.GetTypeName ()));
+        }
+        return bytes;
+    }
+
+    static void parse (google::protobuf::MessageLite &message, const std::string &bytes)
+    {
+        if (!message.ParseFromString (bytes)) {
+            throw std::runtime_error ("protobuf codec failed to parse "
+                                      + std::string (message.GetTypeName ()));
+        }
     }
 };
 
@@ -45,47 +104,5 @@ inline protobuf_codec_extension_t protobuf ()
 {
     return {};
 }
-
-template <typename TPayload, typename... TPayloads>
-protobuf_codec_extension_t protobuf () = delete;
-
-template <typename... TPayloads> class protobuf_serializers_t
-{
-  public:
-    static zlink::framework::serializer_registry_t &instance ()
-    {
-        static zlink::framework::serializer_registry_t registry = [] {
-            zlink::framework::serializer_registry_t serializers;
-            serializers_proxy_t proxy{serializers};
-            (protobuf_codec_extension_t::register_payload_serializer<TPayloads> (proxy), ...);
-            return serializers;
-        } ();
-        return registry;
-    }
-
-  private:
-    class serializers_proxy_t
-    {
-      public:
-        explicit serializers_proxy_t (zlink::framework::serializer_registry_t &serializers) :
-            _serializers (&serializers)
-        {
-        }
-
-        template <typename TPayload>
-        serializers_proxy_t &add_serializer (
-          typename zlink::framework::serializer_t<TPayload>::serialize_fn_t serialize,
-          typename zlink::framework::serializer_t<TPayload>::deserialize_fn_t deserialize,
-          std::string content_type = "application/x-protobuf")
-        {
-            _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize),
-                                                  std::move (content_type));
-            return *this;
-        }
-
-      private:
-        zlink::framework::serializer_registry_t *_serializers;
-    };
-};
 
 } // namespace zlink::framework_codecs

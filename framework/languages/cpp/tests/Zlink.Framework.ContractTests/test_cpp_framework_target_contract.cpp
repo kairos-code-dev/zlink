@@ -146,6 +146,8 @@ int main ()
       e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp");
     const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
+    const auto spot_service_f5 = read_file (
+      e2e_root / "SpotService/Client/Scenarios/sm_f5_scenario.hpp");
 
     /* E2E-CP-13 — every common E2E configuration has an implementation map. */
     gate.require (
@@ -218,6 +220,20 @@ int main ()
     gate.require (every_pubsub_scenario_checks_evidence,
                   "E2E-CP-04",
                   "a PubSub client scenario prints PASS without checking subscriber evidence");
+
+    /* E2E-CP-17 — SM-F5 closes the target Spot before proving channel independence. */
+    gate.require (spot_service_f5.find (".base_url (play_b_http_endpoint)")
+                    != std::string::npos
+                    && spot_service_f5.find ("/spot/close") != std::string::npos,
+                  "E2E-CP-17",
+                  "SM-F5 does not close the target Spot through its owning node");
+    gate.require (spot_service_f5.find ("closed spot route unexpectedly succeeded")
+                    != std::string::npos,
+                  "E2E-CP-17",
+                  "SM-F5 does not require the closed Spot path to fail");
+    gate.require (spot_service_f5.find ("channel-after-close-f5") != std::string::npos,
+                  "E2E-CP-17",
+                  "SM-F5 does not retry ordinary channel messaging after Spot close");
 
     /* E2E-CP-46 — PS-A1 uses observed warm-up and a shared ordered sequence. */
     gate.require (pubsub_fanout_scenario.find ("sleep_for (std::chrono::milliseconds (500))")

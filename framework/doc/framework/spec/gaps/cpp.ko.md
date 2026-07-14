@@ -558,7 +558,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
 - [x] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**
   - 근거: 수정 전 target-contract gate가 SpotService `all` 목록의 `SM-D2` 누락을 검출했다. 기본 scenario inventory에 `SM-D2`를 추가한 뒤 gate와 `./run_e2e.sh SM-D2`의 client·play-a·play-b·session-a evidence 검증이 모두 통과했다.
-- [ ] **E2E-CP-17** (결함) — **`SM-F5`가 자기 계약의 정반대를 단언한다.** Spot을 닫지 않고 "살아 있음"을 확인한다
+- [x] **E2E-CP-17** (결함) — **`SM-F5`가 자기 계약의 정반대를 단언한다.** Spot을 닫지 않고 "살아 있음"을 확인한다
+  - 근거: 수정 전 target-contract 검증이 target Spot close, 닫힌 경로 실패, close 이후 일반 channel request 재검증의 부재를 모두 검출했다. actor가 없는 전용 user Spot을 public create 표면으로 만든 뒤 소유 node의 public close 표면으로 닫고, 해당 Spot 경로만 실패하며 같은 channel의 일반 request는 계속 성공하는지 client와 server evidence에서 확인했다. target-contract 검증과 `./run_e2e.sh SM-F5`가 통과했다.
 - [x] **E2E-CP-18** (결함) — **`SM-E1`(P0)이 자기 존재 이유인 message-flow error evidence를 단언하지 않는다**
   - 근거: 수정 전 target-contract gate가 SM-E1 블록의 missing request `reply_error`와 missing send `drop` flow 단언 부재를 각각 검출했다. target node인 `play-b-flow.log`에서 `MissingSpotReq`·`MissingSpotMsg`의 surface·reason·action을 검사하도록 바꾼 뒤 gate와 `./run_e2e.sh SM-E1`의 client·server evidence가 모두 통과했다.
 - [ ] **E2E-CP-19** (결함) — **`SM-F4`(P0)가 request 절반만 본다.** send drop·failure counter·flow 분류가 없다

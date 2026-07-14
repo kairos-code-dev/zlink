@@ -2384,9 +2384,9 @@ scenario = sys.argv[1]
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 spot = "user:play-b:b-room"
 
-def has(marker, value=None, actor_id=None):
+def has(marker, value=None, actor_id=None, target_spot=spot):
     return any(item["marker"] == marker
-               and item["spot_rid"] == spot
+               and item["spot_rid"] == target_spot
                and (value is None or item["value"] == value)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in play_b["entries"])
@@ -2403,7 +2403,10 @@ elif scenario == "sm-f4":
     assert has("SpotToSpotRequest", "route-recovery", "external-client")
 elif scenario == "sm-f5":
     assert has("SpotToSpotRequest", "route-recovery", "external-client")
-    assert has("SpotToSpotRequest", "route-survived-f5", "external-client")
+    f5_spot = "user:play-b:b-sm-f5-close"
+    assert has("SpotToSpotRequest", "spot-before-close-f5", "external-client", f5_spot)
+    assert has("SpotCloseRequested", "closed", target_spot=f5_spot)
+    assert not has("SpotToSpotRequest", "spot-after-close-f5", "external-client", f5_spot)
 else:
     raise AssertionError(f"unexpected scenario {scenario}")
 print(f"scenario {scenario.upper()} evidence passed")

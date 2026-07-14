@@ -315,7 +315,6 @@ export function createRuntimeHost(
     createProviderResolver(moduleRef, discovery)
   ) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
-    validateDiscoveredChannelHandlers(registration);
     registerDiscoveredRuntimeEventHandlers(runtime.eventPublisher, discovery);
     await runtime.start();
   };
@@ -326,24 +325,6 @@ export function createRuntimeHost(
   runtime.onApplicationBootstrap = async () => {};
   runtime.onApplicationShutdown = async () => { await runtime.drain(); };
   return runtime;
-}
-
-function validateDiscoveredChannelHandlers(registration: ZLinkFrameworkRegistration): void {
-  for (const [channelName, channel] of registration.channels.entries()) {
-    if (
-      channel.server !== undefined
-      && (channel.requestHandlers?.length ?? 0) + (channel.sendHandlers?.length ?? 0) === 0
-    ) {
-      throw new framework.ZLinkConfigurationException(
-        `Channel '${channelName}' server must register at least one request or send handler.`
-      );
-    }
-    if (channel.subscriber !== undefined && (channel.publishHandlers?.length ?? 0) === 0) {
-      throw new framework.ZLinkConfigurationException(
-        `Channel '${channelName}' subscriber must register at least one publish handler.`
-      );
-    }
-  }
 }
 
 function registerDiscoveredRuntimeEventHandlers(

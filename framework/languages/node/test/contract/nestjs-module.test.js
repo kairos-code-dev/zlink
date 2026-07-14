@@ -14,6 +14,14 @@ const {
   resolveModuleProviders
 } = require('./helpers/nestjs-test-utils');
 
+class NoopRequestHandler {
+  async handle() {}
+}
+
+class NoopPublishHandler {
+  async handle() {}
+}
+
 async function resolveFrameworkRegistration(module) {
   const provider = module.providers.find((candidate) => candidate.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION);
   if (provider?.useValue !== undefined) {
@@ -1239,12 +1247,14 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
       .enableClient()
     .addFanoutChannel('events')
       .enableSubscriber()
+      .addPublishHandler('NoopEvent', NoopPublishHandler)
     .build()));
   assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addClientServerChannel('api')
       .enableClient('tcp://127.0.0.1:7001')
     .addFanoutChannel('events')
       .enableSubscriber('tcp://127.0.0.1:7002')
+      .addPublishHandler('NoopEvent', NoopPublishHandler)
     .build()));
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
@@ -1365,6 +1375,14 @@ test('framework options builder maps dotnet-shaped registration flow into option
     spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node');
     spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node');
   });
+  options.channels.api.requestHandlers = [{
+    packetName: 'NoopRequest',
+    handler: new NoopRequestHandler()
+  }];
+  options.channels.events.publishHandlers = [{
+    packetName: 'NoopEvent',
+    handler: new NoopPublishHandler()
+  }];
 
   const registration = framework.createFrameworkRegistration(options);
   const spotNode = registration.spotNodes.get('game.stage');
@@ -1522,6 +1540,7 @@ test('zlinkFramework builder maps stream node registration without raw server co
     nestjs.zlinkFramework()
       .addClientServerChannel('api')
         .enableServer('tcp://0.0.0.0:9113')
+        .addRequestHandler('NoopRequest', NoopRequestHandler)
       .addFanoutChannel('game.events')
         .enablePublisher('tcp://0.0.0.0:9114')
       .addRouteMeshChannel('route')
@@ -1561,6 +1580,7 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
       .enablePubSub('tcp://0.0.0.0:9203', 'node-a', 'tcp://127.0.0.1:9204')
     .addClientServerChannel('api')
       .enableServer('tcp://0.0.0.0:9208')
+      .addRequestHandler('NoopRequest', NoopRequestHandler)
     .addRouteMeshChannel('route')
       .enableRouter('tcp://0.0.0.0:9209')
     .build());
@@ -2162,9 +2182,6 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
           },
           entrySpot: { routingId: 'entry-node-a' }
         }
-      },
-      channels: {
-        api: { server: { bind: 'tcp://0.0.0.0:9308' } }
       }
     })
   }, {

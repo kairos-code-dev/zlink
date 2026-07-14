@@ -3,38 +3,39 @@ const test = require('node:test');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 
+const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 
-test('Node startup rejects server and subscriber capabilities without matching handlers', async () => {
-  class ServerWithoutHandlersModule {}
-  Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addClientServerChannel('api')
-        .enableServer('tcp://127.0.0.1:0')
-      .build())]
-  })(ServerWithoutHandlersModule);
-
-  await assert.rejects(
-    () => NestFactory.createApplicationContext(ServerWithoutHandlersModule, {
-      logger: false,
-      abortOnError: false
-    }),
+test('Node registration rejects server and subscriber capabilities without matching handlers', () => {
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('api').enableServer('tcp://127.0.0.1:0');
+    })),
     /server must register at least one request or send handler/
   );
 
-  class SubscriberWithoutHandlersModule {}
-  Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addFanoutChannel('events').enableSubscriber('tcp://127.0.0.1:1');
+    })),
+    /subscriber must register at least one publish handler/
+  );
+});
+
+test('Node module registration rejects server and subscriber capabilities without matching handlers', () => {
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer('tcp://127.0.0.1:0')
+      .build()),
+    /server must register at least one request or send handler/
+  );
+
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addFanoutChannel('events')
         .enableSubscriber('tcp://127.0.0.1:1')
-      .build())]
-  })(SubscriberWithoutHandlersModule);
-
-  await assert.rejects(
-    () => NestFactory.createApplicationContext(SubscriberWithoutHandlersModule, {
-      logger: false,
-      abortOnError: false
-    }),
+      .build()),
     /subscriber must register at least one publish handler/
   );
 });

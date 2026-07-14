@@ -199,9 +199,22 @@ function validateChannelCapabilities(
         `Channel '${channelName}' publish handlers require a subscriber capability.`
       );
     }
+    if (channel.subscriber !== undefined && (channel.publishHandlers ?? []).length === 0) {
+      throw new ZLinkConfigurationException(
+        `Channel '${channelName}' subscriber must register at least one publish handler.`
+      );
+    }
     if (((channel.requestHandlers ?? []).length > 0 || (channel.sendHandlers ?? []).length > 0) && channel.server === undefined) {
       throw new ZLinkConfigurationException(
         `Channel '${channelName}' request/send handlers require a server capability.`
+      );
+    }
+    if (
+      channel.server !== undefined
+      && (channel.requestHandlers ?? []).length + (channel.sendHandlers ?? []).length === 0
+    ) {
+      throw new ZLinkConfigurationException(
+        `Channel '${channelName}' server must register at least one request or send handler.`
       );
     }
     validateDuplicatePacketNames(

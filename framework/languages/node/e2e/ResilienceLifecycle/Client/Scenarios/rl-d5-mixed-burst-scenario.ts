@@ -3,7 +3,7 @@ import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { profileReq } from '../Support/resilience-helpers';
-import { readProviderEvidence } from '../Support/provider-evidence';
+import { readProviderEvidenceFiles } from '../Support/provider-evidence';
 import { ensure } from '../Support/scenario-assert';
 
 interface LatencySample {
@@ -14,7 +14,6 @@ interface LatencySample {
 interface WorkerResult {
   readonly requests: number;
   readonly sends: number;
-  readonly lastSendId: string;
   readonly samples: readonly LatencySample[];
 }
 
@@ -45,7 +44,7 @@ export async function runRlD5(options: ClientOptions): Promise<void> {
     `RL-D5 latency drifted: first-p95=${firstHalfP95}ms second-p95=${secondHalfP95}ms.`
   );
 
-  await waitForSendEvidence(options, results.map((result) => result.lastSendId));
+  await confirmTailSends(options, runId);
 
   const cleanupReplies = await Promise.all(options.consumerUrls.map((url, index) =>
     postJson<ProfileRes>(url, '/profile/request/new-client', profileReq(`rl-d5-cleanup-${runId}-${index}`))));
@@ -87,19 +86,26 @@ async function runWorker(
   return {
     requests: sequence,
     sends: sequence,
-    lastSendId: `rl-d5-${runId}-w${workerId}-cmd${sequence}`,
     samples
   };
 }
 
-async function waitForSendEvidence(options: ClientOptions, commandIds: readonly string[]): Promise<void> {
+async function confirmTailSends(options: ClientOptions, runId: string): Promise<void> {
+  const pending = new Map(options.consumerUrls.map((url, index) => [
+    `rl-d5-${runId}-w${index + 1}-tail`,
+    url
+  ]));
   const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const evidence = await readProviderEvidence(options);
-    if (commandIds.every((commandId) => evidence.some((line) => line.includes(`marker=${commandId}|`)))) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
+  while (Date.now() < deadline && pending.size > 0) {
+    await Promise.all([...pending].map(([commandId, url]) =>
+      postJson(url, '/profile/command', { commandId })));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const evidence = readProviderEvidenceFiles(options);
+    for (const commandId of pending.keys()) {
+      if (evidence.some((line) => line.includes(`marker=${commandId}|`))) pending.delete(commandId);
+    }
   }
-  throw new Error('RL-D5 did not observe every client tail send before the evidence deadline.');
+  ensure(pending.size === 0, `RL-D5 tail send unavailable for clients: ${[...pending.values()].join(', ')}`);
 }
 
 function percentile(values: readonly number[], quantile: number): number {

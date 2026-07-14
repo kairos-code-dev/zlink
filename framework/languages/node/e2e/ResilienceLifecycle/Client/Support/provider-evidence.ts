@@ -9,6 +9,20 @@ export async function readProviderEvidence(options: ClientOptions): Promise<read
   return snapshots.flatMap((snapshot) => snapshot.status === 'fulfilled' ? snapshot.value : []);
 }
 
+export function readProviderEvidenceFiles(options: ClientOptions): readonly string[] {
+  return fs.readdirSync(options.logDir)
+    .filter((name) => /^api-.*\.evidence\.log$/.test(name))
+    .flatMap((name) => {
+      try {
+        return fs.readFileSync(path.join(options.logDir, name), 'utf8')
+          .split(/\r?\n/)
+          .filter((line) => line.length > 0);
+      } catch {
+        return [];
+      }
+    });
+}
+
 export async function waitForProviderEvidenceLine(
   options: ClientOptions,
   predicate: (line: string) => boolean,
@@ -23,3 +37,5 @@ export async function waitForProviderEvidenceLine(
   }
   throw new Error(failureMessage);
 }
+import fs from 'node:fs';
+import path from 'node:path';

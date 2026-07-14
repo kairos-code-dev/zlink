@@ -75,6 +75,8 @@ test('RL-D5 sustains mixed work across clients and checks drift plus cleanup', (
   assert.match(scenario, /while \(Date\.now\(\) < deadline\)/);
   assert.match(scenario, /firstHalfP95/);
   assert.match(scenario, /secondHalfP95/);
+  assert.match(scenario, /confirmTailSends/);
+  assert.match(scenario, /readProviderEvidenceFiles/);
   assert.match(scenario, /\/profile\/request\/new-client/);
   assert.doesNotMatch(scenario, /Array\.from\(\{ length: 60 \}/);
 });

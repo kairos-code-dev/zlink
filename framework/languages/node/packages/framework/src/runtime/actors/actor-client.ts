@@ -388,10 +388,7 @@ function routeNotConnected(message: string, cause?: unknown): ZLinkFrameworkExce
 
 function isStaleActorError(error: unknown): boolean {
   return error instanceof ZLinkFrameworkException
-    && (
-      error.kind === ZLinkFrameworkErrorKind.ActorRouteNotFound
-      || error.kind === ZLinkFrameworkErrorKind.ActorLocationStale
-    );
+    && error.kind === ZLinkFrameworkErrorKind.ActorLocationStale;
 }
 
 function actorLocationStale(actorId: string, cause: unknown): ZLinkFrameworkException {

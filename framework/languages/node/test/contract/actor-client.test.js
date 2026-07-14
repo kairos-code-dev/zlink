@@ -176,3 +176,21 @@ test('actor client maps stale and disconnected route failures', async () => {
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
   );
 });
+
+test('actor client preserves ActorRouteNotFound for a missing actor route', async () => {
+  const missingNode = {
+    requestToActor(_actor, _parts, callback) {
+      callback(RequestResult.NotFound, []);
+      return true;
+    }
+  };
+  const client = new framework.DefaultZLinkActorClient({
+    nodeProvider: () => missingNode,
+    locationResolver: () => createFailingResolver()
+  });
+
+  await assert.rejects(
+    () => client.requestToActor(actorRef('missing-actor'), new ActorAsk('ping')).submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
+  );
+});

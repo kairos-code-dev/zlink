@@ -54,9 +54,12 @@ class TestActorFactory implements ZLinkActorFactory {
 }
 
 class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
+  private readonly actors = new Map<string, TestActor>();
+
   constructor(readonly context: ZLinkEntrySpotContext) {}
 
   async onCreateActor(actor: TestActor, _request: ZLinkMessage): Promise<void> {
+    this.actors.set(actor.actorId, actor);
     evidence.append({ scenario: 'create', actorId: actor.actorId, kind: 'create', value: 'created' });
   }
 
@@ -68,6 +71,15 @@ class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
   async onJoinedActor(_actor: TestActor): Promise<void> {}
 
   async onLeaveActor(_actor: TestActor): Promise<void> {}
+
+  async destroy(actorId: string): Promise<void> {
+    const actor = this.actors.get(actorId);
+    if (actor === undefined) {
+      throw new Error(`Actor '${actorId}' is not active.`);
+    }
+    await this.context.destroyActor(actor);
+    this.actors.delete(actorId);
+  }
 }
 
 @zlinkEntrySpotActorSendHandler({
@@ -152,6 +164,7 @@ Module({
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(ActorModule, { logger: false, abortOnError: false });
   const actors = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
+  const entrySpot = app.get(TestEntrySpot, { strict: false });
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok' }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.all() },
@@ -185,6 +198,22 @@ async function main(): Promise<void> {
       handle: async () => {
         const actor = await actors.getOrCreate('ta-a4', 'test-actor');
         return { actorId: 'ta-a4', actor: actorSnapshot(actor) };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/actors/ta-b1-reference/ensure',
+      handle: async () => {
+        const actor = await actors.getOrCreate('ta-b1-reference', 'test-actor');
+        return { actorId: 'ta-b1-reference', actor: actorSnapshot(actor) };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/actors/ta-b1-reference/destroy',
+      handle: async () => {
+        await entrySpot.destroy('ta-b1-reference');
+        return { actorId: 'ta-b1-reference', status: 'destroyed' };
       }
     },
     {

@@ -114,8 +114,22 @@ async function runTaA4(options: ClientOptions): Promise<void> {
 }
 
 async function runTaB1(options: ClientOptions): Promise<void> {
-  await assertFailure(options, 'TA-B1-missing', 'missing-actor', 'actorRouteNotFound', true);
-  await assertFailure(options, 'TA-B1-missing-request', 'missing-actor', 'actorRouteNotFound', false);
+  const reference = await ensureActor(options, 'ta-b1-reference');
+  await postJson(`${options.actorUrl}/actors/ta-b1-reference/destroy`, {});
+  const missingActor = reference.actor;
+  await assertCall(options, 'TA-B1-missing-send', 'ta-b1-reference', missingActor, 'missing', 'sent', true);
+  await assertFailure(
+    options,
+    'TA-B1-missing-request',
+    'ta-b1-reference',
+    'actorRouteNotFound',
+    false,
+    missingActor
+  );
+  requireNoEvidence(
+    await getJson<ActorEvidence[]>(`${options.actorUrl}/evidence`),
+    'TA-B1-missing-send'
+  );
   console.log('scenario TA-B1 passed');
 }
 

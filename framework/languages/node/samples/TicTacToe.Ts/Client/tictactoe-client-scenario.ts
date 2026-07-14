@@ -58,9 +58,10 @@ class TicTacToeClientScenario {
     const observerPlayNode = game.playNodes.find((node) => node.streamEndpoint === observerPlayEndpoint);
     ensure(() => observerPlayNode !== undefined);
 
-    const client1 = createPlayerClient(game.ownerPlayEndpoint, 'host');
-    const client2 = createPlayerClient(observerPlayEndpoint, 'guest');
-    const observer = createPlayerClient(observerPlayEndpoint, 'observer');
+    const observedClients = new Set<string>();
+    const client1 = createPlayerClient(game.ownerPlayEndpoint, 'host', observedClients);
+    const client2 = createPlayerClient(observerPlayEndpoint, 'guest', observedClients);
+    const observer = createPlayerClient(observerPlayEndpoint, 'observer', observedClients);
 
     try {
       // 2. Host, guest, and observer connect directly to Play stream endpoints from the API response.
@@ -206,6 +207,9 @@ class TicTacToeClientScenario {
         client1.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit(),
         client2.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit()
       ]);
+      assertInboundObserved(observedClients, 'host');
+      assertInboundObserved(observedClients, 'guest');
+      assertInboundObserved(observedClients, 'observer');
     } finally {
       await Promise.allSettled([client1.close(), client2.close(), observer.close()]);
     }
@@ -251,7 +255,7 @@ function isRequestTimeout(error: unknown): boolean {
     && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
 }
 
-function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnector {
+function createPlayerClient(endpoint: string, name: string, observedClients: Set<string>): ZlinkStreamConnector {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
@@ -259,6 +263,9 @@ function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnecto
     heartbeat: { enabled: false }
   });
   client.observeInbound((observation) => {
+    if (observation.name.length > 0 && Number.isInteger(observation.kind) && observation.payloadLength >= 0) {
+      observedClients.add(name);
+    }
     console.log(
       `stream-inbound sample=TicTacToe client=${name} kind=${observation.kind} ` +
       `name=${observation.name} seq=${observation.requestSeq?.toString() ?? '-'} ` +
@@ -266,6 +273,10 @@ function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnecto
     );
   });
   return client;
+}
+
+function assertInboundObserved(observedClients: ReadonlySet<string>, clientName: string): void {
+  ensure(() => observedClients.has(clientName));
 }
 
 function stateOf(message: { state: GameState }): GameState {

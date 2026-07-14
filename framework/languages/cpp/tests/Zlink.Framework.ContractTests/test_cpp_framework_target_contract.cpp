@@ -94,6 +94,11 @@ int main ()
       read_file (include_root / "zlink/framework/contracts/configuration/app.hpp");
     const auto services_hpp =
       read_file (include_root / "zlink/framework/contracts/configuration/services.hpp");
+    const auto framework_options_hpp =
+      read_file (include_root / "zlink/framework/contracts/configuration/framework_options.hpp");
+    const auto framework_options_validation_hpp = read_file (
+      include_root
+      / "zlink/framework/contracts/configuration/detail/framework_options_validation.hpp");
     const auto execution_hpp =
       read_file (include_root / "zlink/framework/contracts/dispatch/execution.hpp");
     const auto events_hpp =
@@ -141,6 +146,18 @@ int main ()
     gate.require (!route_role_block.empty ()
                     && route_role_block.find ("location_role_t::dealer") == std::string::npos,
                   "IMP-CP-05", "RouteMesh discovery still accepts dealer rows");
+
+    /* IMP-CP-04 — incomplete and duplicate STREAM declarations fail validation. */
+    for (const std::string required : {"stream_nodes_with_bind", "stream_nodes_with_session"}) {
+        gate.require (framework_options_validation_hpp.find (required) != std::string::npos,
+                      "IMP-CP-04", "STREAM startup validation is missing " + required);
+    }
+    gate.require (framework_options_hpp.find ("STREAM node '") != std::string::npos
+                    && framework_options_hpp.find ("' is already registered")
+                         != std::string::npos,
+                  "IMP-CP-04", "duplicate STREAM node names are not rejected");
+    gate.require (framework_options_hpp.find ("STREAM packet session '") != std::string::npos,
+                  "IMP-CP-04", "duplicate STREAM packet session names are not rejected");
 
     /* CPP-G0-ASYNC-001 — one-way terminators return void. */
     gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",

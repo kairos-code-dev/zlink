@@ -75,6 +75,18 @@ inline void validate_framework_options (const framework_options_state_t &options
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "only one SPOT node can be configured per process");
     }
+    for (const auto &stream_node_name : options.stream_nodes) {
+        if (!options.stream_nodes_with_bind.contains (stream_node_name)) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM node '" + stream_node_name
+                                           + "' must configure a bind endpoint");
+        }
+        if (!options.stream_nodes_with_session.contains (stream_node_name)) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM node '" + stream_node_name
+                                           + "' must register a packet session");
+        }
+    }
     for (const auto &[spot_node_name, channel_names] :
          options.accepted_spot_route_channels_by_node) {
         if (!options.spot_nodes_with_router.contains (spot_node_name)) {

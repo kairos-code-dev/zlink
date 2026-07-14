@@ -1199,6 +1199,46 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node ("missing-bind")
+                .register_session ("missing-bind-session");
+          },
+          "STREAM node 'missing-bind' must configure a bind endpoint")) {
+        return 69;
+    }
+
+    if (!options_failure_contains (
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node ("missing-session")
+                .bind ("tcp://127.0.0.1:9211");
+          },
+          "STREAM node 'missing-session' must register a packet session")) {
+        return 70;
+    }
+
+    if (!options_failure_contains (
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node ("duplicate-stream");
+              invalid_options.add_stream_node ("duplicate-stream");
+          },
+          "STREAM node 'duplicate-stream' is already registered")) {
+        return 71;
+    }
+
+    if (!options_failure_contains (
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node ("stream-a")
+                .bind ("tcp://127.0.0.1:9212")
+                .register_session ("shared-session");
+              invalid_options.add_stream_node ("stream-b")
+                .bind ("tcp://127.0.0.1:9213")
+                .register_session ("shared-session");
+          },
+          "STREAM packet session 'shared-session' is already registered")) {
+        return 72;
+    }
+
+    if (!options_failure_contains (
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.metadata ().add_forwarded_metadata_key (" ");
           },
           "metadata key must not be empty")) {

@@ -1170,12 +1170,18 @@ class stream_node_options_builder_t
         _options (std::move (options))
     {
         detail::require_non_blank (_stream_name, "STREAM node name is required");
+        if (!_options->stream_nodes.insert (_stream_name).second) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM node '" + _stream_name
+                                           + "' is already registered");
+        }
     }
 
     stream_node_options_builder_t &bind (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "STREAM bind endpoint is required");
         _endpoint = std::move (endpoint);
+        _options->stream_nodes_with_bind.insert (_stream_name);
         apply ();
         return *this;
     }
@@ -1203,14 +1209,14 @@ class stream_node_options_builder_t
     requires std::derived_from<TSession, packet_stream_session_t> stream_node_options_builder_t &
     register_session ()
     {
+        auto session_name = detail::stream_session_name<TSession> ();
+        set_session_name (session_name);
         detail::injected_stream_session_registrar_t<
           TSession, typename detail::handler_dependencies_t<TSession>::type>::add (*_services);
-        auto session_name = detail::stream_session_name<TSession> ();
         _options->stream_session_factories[session_name] =
           [] (service_provider_t &provider) -> packet_stream_session_t & {
             return provider.get_required<TSession> ();
         };
-        set_session_name (std::move (session_name));
         apply ();
         return *this;
     }
@@ -1222,8 +1228,14 @@ class stream_node_options_builder_t
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "stream node already has a packet session");
         }
+        if (!_options->stream_session_names.insert (session_name).second) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM packet session '" + session_name
+                                           + "' is already registered");
+        }
         _session_configured = true;
         _session_name = std::move (session_name);
+        _options->stream_nodes_with_session.insert (_stream_name);
     }
 
     void apply ()

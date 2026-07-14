@@ -335,6 +335,10 @@ struct framework_options_state_t
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;
+    std::set<std::string> stream_nodes;
+    std::set<std::string> stream_nodes_with_bind;
+    std::set<std::string> stream_nodes_with_session;
+    std::set<std::string> stream_session_names;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
     std::map<std::string, spot_drain_policy_t> spot_drain_policies;
     bool use_in_memory_location_stores = false;

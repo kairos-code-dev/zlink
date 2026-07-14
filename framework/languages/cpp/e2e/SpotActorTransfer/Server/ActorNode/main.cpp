@@ -340,14 +340,18 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                                                     const e2e::join_target_req_t &request)
     {
         auto context = actor.context;
+        g_evidence->add (request.scenario, actor.actor_id, "commit_request",
+                         request.target_spot_rid);
         auto joined = co_await context
                         .join_spot (fw::spot_rid_t::from_string (request.target_spot_rid), request)
                         .timeout (std::chrono::seconds (10))
                         .async<e2e::join_target_res_t> ();
-        g_evidence->add (request.scenario, actor.actor_id, "commit_request",
-                         request.target_spot_rid);
         const auto *joined_accepted =
           std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
+        if (joined_accepted != nullptr) {
+            g_evidence->add (request.scenario, actor.actor_id, "location_committed",
+                             request.target_spot_rid);
+        }
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
                                          joined_accepted != nullptr

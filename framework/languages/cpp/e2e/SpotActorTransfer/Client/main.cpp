@@ -225,6 +225,20 @@ void assert_evidence_order (http::client_t &node,
              "Actor '" + actor_id + "' " + kind + " order mismatch: " + joined.str ());
 }
 
+void assert_evidence_sequence (http::client_t &node,
+                               const std::vector<std::string> &expected)
+{
+    const auto evidence = wait_evidence (node, expected);
+    std::size_t next = 0;
+    for (const auto &entry : evidence) {
+        if (next < expected.size ()
+            && e2e::evidence_text (entry).find (expected[next]) != std::string::npos) {
+            ++next;
+        }
+    }
+    require (next == expected.size (), "Lifecycle evidence order mismatch.");
+}
+
 class bound_session_t
 {
   public:
@@ -366,13 +380,14 @@ class scenario_runner_t
         require (probe.node_rid == "actor-a", "ST-A1 probe expected actor-a, got " + probe.node_rid);
         require (probe.spot_rid == spot_rid, "ST-A1 probe did not reach target spot.");
 
-        wait_evidence (_nodes.a, {
-                                   "ST-A1|" + actor_id + "|admission|spot=" + spot_rid,
-                                   "transfer|" + actor_id + "|leave|11",
-                                   "transfer|" + actor_id + "|joined|" + spot_rid + ":11",
-                                   "ST-A1|" + actor_id + "|success_reply|" + spot_rid,
-                                   "ST-A1|" + actor_id + "|packet_handler|after-joined",
-                                 });
+        assert_evidence_sequence (
+          _nodes.a, {"ST-A1|" + actor_id + "|admission|spot=" + spot_rid,
+                     "transfer|" + actor_id + "|leave|11",
+                     "transfer|" + actor_id + "|joined|" + spot_rid + ":11",
+                     "ST-A1|" + actor_id + "|location_committed|" + spot_rid,
+                     "ST-A1|" + actor_id + "|success_reply|" + spot_rid});
+        wait_evidence (_nodes.a,
+                       {"ST-A1|" + actor_id + "|packet_handler|after-joined"});
     }
 
     void local_reject ()

@@ -97,6 +97,8 @@ int main ()
     const auto error_hpp =
       read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
     const auto runner = read_file (e2e_root / "run_e2e_all.sh");
+    const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
+    const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
 
     /* CPP-G0-ASYNC-001 — one-way terminators return void. */
     gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",
@@ -263,6 +265,12 @@ int main ()
                   "run_e2e_all.sh does not register Config 10 SpotActorTransfer");
     gate.require (runner.find ("DeliveryDispatch") == std::string::npos, "CPP-G0-E2E-003",
                   "run_e2e_all.sh registers the non-contract DeliveryDispatch fork");
+
+    /* CPP-G0-E2E-004 — ST-A1 verifies lifecycle evidence in contract order. */
+    gate.require (transfer_client.find ("assert_evidence_sequence") != std::string::npos,
+                  "CPP-G0-E2E-004", "ST-A1 has no cross-kind evidence order assertion");
+    gate.require (transfer_server.find ("location_committed") != std::string::npos,
+                  "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
 
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
